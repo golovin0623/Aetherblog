@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.aetherblog</groupId>
+        <artifactId>aetherblog-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>aetherblog-common</artifactId>
+    <packaging>pom</packaging>
+    <name>AetherBlog Common</name>
+    <description>公共模块聚合</description>
+
+    <modules>
+        <module>common-core</module>
+        <module>common-security</module>
+        <module>common-redis</module>
+        <module>common-log</module>
+    </modules>
+</project>

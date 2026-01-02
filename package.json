@@ -1,0 +1,27 @@
+{
+  "name": "aetherblog",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "description": "AetherBlog - 智能博客系统",
+  "scripts": {
+    "dev": "pnpm --filter @aetherblog/admin dev",
+    "dev:blog": "pnpm --filter @aetherblog/blog dev",
+    "dev:admin": "pnpm --filter @aetherblog/admin dev",
+    "build": "pnpm -r build",
+    "build:blog": "pnpm --filter @aetherblog/blog build",
+    "build:admin": "pnpm --filter @aetherblog/admin build",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
