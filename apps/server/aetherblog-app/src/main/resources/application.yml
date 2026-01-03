@@ -2,6 +2,11 @@ spring:
   application:
     name: aetherblog
   
+  # 开启虚拟线程 (JDK 21+)
+  threads:
+    virtual:
+      enabled: true
+  
   # 数据源配置
   datasource:
     url: jdbc:postgresql://localhost:5432/aetherblog
