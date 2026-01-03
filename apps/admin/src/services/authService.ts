@@ -3,22 +3,18 @@ import { R, User, LoginRequest, LoginResponse } from '@/types';
 
 export const authService = {
   login: async (data: LoginRequest): Promise<R<LoginResponse>> => {
-    const response = await api.post<R<LoginResponse>>('/v1/auth/login', data);
-    return response.data;
+    return api.post<R<LoginResponse>>('/v1/auth/login', data);
   },
 
   logout: async (): Promise<R<void>> => {
-    const response = await api.post<R<void>>('/v1/auth/logout');
-    return response.data;
+    return api.post<R<void>>('/v1/auth/logout');
   },
 
   getCurrentUser: async (): Promise<R<User>> => {
-    const response = await api.get<R<User>>('/v1/auth/me');
-    return response.data;
+    return api.get<R<User>>('/v1/auth/me');
   },
 
   refreshToken: async (refreshToken: string): Promise<R<LoginResponse>> => {
-    const response = await api.post<R<LoginResponse>>('/v1/auth/refresh', { refreshToken });
-    return response.data;
+    return api.post<R<LoginResponse>>('/v1/auth/refresh', { refreshToken });
   },
 };

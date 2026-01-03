@@ -27,6 +27,10 @@
             <groupId>com.aetherblog</groupId>
             <artifactId>common-redis</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.aetherblog</groupId>
+            <artifactId>aetherblog-api</artifactId>
+        </dependency>
 
         <!-- Spring Web -->
         <dependency>

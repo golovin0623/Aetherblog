@@ -83,6 +83,14 @@ public class JwtService {
         LoginUser user = new LoginUser();
         user.setUserId(Long.valueOf(claims.getSubject()));
         user.setUsername((String) claims.get("username"));
+        
+        String role = (String) claims.get("role");
+        if (role != null) {
+            user.setRoles(java.util.Set.of(role));
+        } else {
+            user.setRoles(java.util.Set.of());
+        }
+        
         return user;
     }
 }

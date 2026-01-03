@@ -10,9 +10,30 @@ interface Post {
   publishedAt: string;
 }
 
-// 模拟数据，实际应从API获取
+// 实际从API获取数据
 async function getPosts(): Promise<Post[]> {
-  return [];
+  try {
+    // 这里直接请求后端 API，注意在 Docker 环境下可能需要用服务名，但在本地开发 localhost:8080 可行
+    // 添加 no-store 禁用缓存，方便调试
+    const res = await fetch('http://localhost:8080/api/v1/public/posts', { cache: 'no-store' });
+    if (!res.ok) {
+        // 如果后端没启动或报错，返回空
+        console.error('Failed to fetch posts:', res.status, res.statusText);
+        return [];
+    }
+    const json = await res.json();
+    return json.data.list.map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      slug: item.slug,
+      summary: item.summary,
+      coverImage: item.coverImage,
+      publishedAt: item.publishedAt // 格式化由后端或前端处理，这里简化
+    }));
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    return [];
+  }
 }
 
 export default async function PostsPage() {
@@ -26,11 +47,15 @@ export default async function PostsPage() {
           <Link href="/" className="text-xl font-bold text-white">
             AetherBlog
           </Link>
-          <nav className="flex gap-6">
+          <nav className="flex gap-6 items-center">
             <Link href="/posts" className="text-primary">文章</Link>
             <Link href="/archives" className="text-gray-400 hover:text-white">归档</Link>
             <Link href="/friends" className="text-gray-400 hover:text-white">友链</Link>
             <Link href="/about" className="text-gray-400 hover:text-white">关于</Link>
+            <div className="h-4 w-px bg-white/10 mx-2"></div>
+            <a href="http://localhost:5173" target="_blank" className="text-gray-400 hover:text-white text-sm">
+              后台管理
+            </a>
           </nav>
         </div>
       </header>
@@ -41,7 +66,7 @@ export default async function PostsPage() {
         
         {posts.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-gray-400 text-lg">暂无文章</p>
+            <p className="text-gray-400 text-lg">暂无文章 (请确认后端已启动并有数据)</p>
           </div>
         ) : (
           <div className="grid gap-6">
@@ -57,7 +82,8 @@ export default async function PostsPage() {
                 </Link>
                 <p className="text-gray-400 mb-4 line-clamp-2">{post.summary}</p>
                 <div className="flex items-center justify-between">
-                  <time className="text-sm text-gray-500">{post.publishedAt}</time>
+                  {/* 使用简单的日期格式化，或者接受后端字符串 */}
+                  <time className="text-sm text-gray-500">{new Date(post.publishedAt).toLocaleDateString()}</time>
                   <Link
                     href={`/posts/${post.slug}`}
                     className="text-primary text-sm flex items-center gap-1 hover:underline"

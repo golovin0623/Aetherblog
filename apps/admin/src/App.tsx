@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AdminLayout } from './components/layout/AdminLayout';
+import LoginPage from './pages/auth/LoginPage';
+import { useAuthStore } from './stores';
 import DashboardPage from './pages/DashboardPage';
 import PostsPage from './pages/PostsPage';
 import MediaPage from './pages/MediaPage';
@@ -14,7 +16,15 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<AdminLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="posts" element={<PostsPage />} />
@@ -29,6 +39,14 @@ function App() {
       </Routes>
     </BrowserRouter>
   );
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
 }
 
 export default App;

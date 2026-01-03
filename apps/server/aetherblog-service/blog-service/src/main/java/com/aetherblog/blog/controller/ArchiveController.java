@@ -1,7 +1,7 @@
 package com.aetherblog.blog.controller;
 
-import com.aetherblog.blog.entity.Post;
 import com.aetherblog.blog.service.PostService;
+import com.aetherblog.blog.service.StatsService;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,6 +15,8 @@ import java.util.stream.Collectors;
 
 /**
  * 归档控制器
+ * 
+ * @ref §8.1 - 归档功能
  */
 @Tag(name = "归档", description = "文章归档接口")
 @RestController
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 public class ArchiveController {
 
     private final PostService postService;
+    private final StatsService statsService;
 
     @Operation(summary = "获取归档列表")
     @GetMapping
@@ -46,16 +49,10 @@ public class ArchiveController {
 
     @Operation(summary = "获取归档统计")
     @GetMapping("/stats")
-    public R<List<ArchiveStats>> getArchiveStats() {
-        // 简化实现：返回每月文章数统计
-        return R.ok(List.of(
-                new ArchiveStats("2024-01", 12),
-                new ArchiveStats("2023-12", 8),
-                new ArchiveStats("2023-11", 15)
-        ));
+    public R<List<StatsService.ArchiveStats>> getArchiveStats() {
+        // 使用 StatsService 返回真实的月度统计
+        return R.ok(statsService.getMonthlyArchiveStats());
     }
 
     public record ArchiveItem(Long id, String title, String slug, LocalDate date) {}
-    
-    public record ArchiveStats(String month, int count) {}
 }

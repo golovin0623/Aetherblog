@@ -24,6 +24,9 @@ public class LoginUser implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        if (roles == null) {
+            return java.util.Collections.emptyList();
+        }
         return roles.stream()
                 .map(role -> (GrantedAuthority) () -> "ROLE_" + role)
                 .toList();
