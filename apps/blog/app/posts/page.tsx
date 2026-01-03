@@ -1,4 +1,4 @@
-import { ArrowRight, LayoutGrid, List } from 'lucide-react';
+import { LayoutGrid, List } from 'lucide-react';
 import Link from 'next/link';
 import ArticleCard from '../components/ArticleCard';
 import FeaturedPost from '../components/FeaturedPost';
@@ -19,7 +19,9 @@ interface Post {
 // 实际从API获取数据
 async function getPosts(): Promise<Post[]> {
   try {
-    const res = await fetch('http://localhost:8080/api/v1/public/posts?pageSize=10', { cache: 'no-store' });
+    const res = await fetch('http://localhost:8080/api/v1/public/posts?pageSize=10', { 
+      next: { revalidate: 60 } // 缓存60秒，期间使用缓存数据
+    });
     if (!res.ok) {
         console.error('Failed to fetch posts:', res.status, res.statusText);
         return [];
@@ -44,7 +46,9 @@ async function getPosts(): Promise<Post[]> {
 
 async function getFeaturedPostContent(slug: string): Promise<string> {
     try {
-        const res = await fetch(`http://localhost:8080/api/v1/public/posts/${slug}`, { cache: 'no-store' });
+        const res = await fetch(`http://localhost:8080/api/v1/public/posts/${slug}`, { 
+          next: { revalidate: 60 } // 缓存60秒
+        });
         if (!res.ok) return '';
         const json = await res.json();
         return json.data?.content || '';
@@ -67,32 +71,8 @@ export default async function PostsPage() {
 
   return (
     <div className="min-h-screen bg-background text-white selection:bg-primary/30">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-white/5 py-4">
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow">
-                A
-             </div>
-             <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                AetherBlog
-            </span>
-          </Link>
-          <nav className="flex gap-6 items-center">
-             <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/5">
-                <Link href="/posts" className="px-4 py-1.5 rounded-full bg-primary/20 text-primary text-sm font-medium transition-all">首页</Link>
-                <Link href="/timeline" className="px-4 py-1.5 rounded-full text-gray-400 hover:text-white text-sm font-medium transition-all hover:bg-white/5">时间线</Link>
-             </div>
-             <div className="h-4 w-px bg-white/10 mx-2 hidden md:block"></div>
-            <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
-            <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
-            <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
-          </nav>
-        </div>
-      </header>
-
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 pt-28 pb-12">
+      <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
         {/* Background Ambient Light */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
             <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full blur-[120px] opacity-30" />
@@ -111,14 +91,14 @@ export default async function PostsPage() {
           <div className="space-y-12">
             
             {/* Top Section: Featured + Sidebar */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:h-[360px]">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 {/* Left: Featured Post (75%) */}
-                <div className="lg:col-span-3 h-full">
+                <div className="lg:col-span-3 lg:h-[420px] lg:min-h-[420px]">
                      {latestPost && <FeaturedPost post={latestPost} />}
                 </div>
 
                 {/* Right: Author Profile (25%) */}
-                <div className="lg:col-span-1 h-full">
+                <div className="lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
                     <AuthorProfileCard className="h-full" />
                 </div>
             </div>

@@ -76,17 +76,8 @@ export default async function PostDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-white/10 py-4">
-        <div className="max-w-4xl mx-auto px-4">
-          <Link href="/" className="text-xl font-bold text-white">
-            AetherBlog
-          </Link>
-        </div>
-      </header>
-
       {/* Article */}
-      <article className="max-w-4xl mx-auto px-4 py-12">
+      <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
         <Link
           href="/posts"
           className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-8"

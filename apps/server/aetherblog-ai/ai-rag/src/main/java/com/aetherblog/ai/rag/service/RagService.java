@@ -49,7 +49,7 @@ public class RagService {
 
         // 2. 构建上下文
         String context = documents.stream()
-                .map(Document::getContent)
+                .map(Document::getText)
                 .collect(Collectors.joining("\n\n"));
 
         // 3. 生成回答

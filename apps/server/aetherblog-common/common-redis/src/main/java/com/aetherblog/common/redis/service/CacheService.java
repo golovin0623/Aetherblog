@@ -18,6 +18,7 @@ public class CacheService {
     /**
      * 获取缓存，不存在则从数据库加载
      */
+    @SuppressWarnings("unchecked")
     public <T> T getOrLoad(String key, Supplier<T> loader, long expireSeconds) {
         Object cached = redisService.get(key);
         if (cached != null) {
@@ -38,6 +39,7 @@ public class CacheService {
     /**
      * 获取 Optional 包装的缓存
      */
+    @SuppressWarnings("unchecked")
     public <T> Optional<T> getOptional(String key) {
         Object value = redisService.get(key);
         return Optional.ofNullable((T) value);

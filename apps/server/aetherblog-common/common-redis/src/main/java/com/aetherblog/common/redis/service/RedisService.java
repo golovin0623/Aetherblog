@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class RedisService {
 
     private final RedisTemplate<String, Object> redisTemplate;

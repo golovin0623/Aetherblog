@@ -10,6 +10,7 @@ import reactor.core.publisher.Flux;
  */
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class StreamingService {
 
     private final ChatClient chatClient;

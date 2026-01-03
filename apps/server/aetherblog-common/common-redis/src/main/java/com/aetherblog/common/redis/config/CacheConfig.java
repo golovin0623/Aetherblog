@@ -17,6 +17,7 @@ import java.time.Duration;
  */
 @Configuration
 @EnableCaching
+@SuppressWarnings("null")
 public class CacheConfig {
 
     @Bean

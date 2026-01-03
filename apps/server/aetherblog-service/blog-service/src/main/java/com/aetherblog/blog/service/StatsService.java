@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -103,12 +103,9 @@ public class StatsService {
      * 获取近期文章统计
      */
     public Map<String, Long> getRecentPostStats() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime weekAgo = now.minusDays(7);
-        LocalDateTime monthAgo = now.minusDays(30);
-        
         long totalPosts = postRepository.count();
-        // 简化实现：假设所有文章都是本月的（实际需要按时间过滤）
+        // TODO: 实现按时间过滤的文章统计
+        // 需要在 PostRepository 中添加按创建时间查询的方法
         
         Map<String, Long> stats = new HashMap<>();
         stats.put("total", totalPosts);

@@ -11,6 +11,10 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.2.0",
     "@codemirror/view": "^6.26.0",

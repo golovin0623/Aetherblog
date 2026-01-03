@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import BlogHeader from './components/BlogHeader';
+import ClientLayout from './components/ClientLayout';
 
 export const metadata: Metadata = {
   title: 'AetherBlog',
@@ -22,7 +24,10 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-background text-white antialiased" suppressHydrationWarning>
-        {children}
+        <BlogHeader />
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   );

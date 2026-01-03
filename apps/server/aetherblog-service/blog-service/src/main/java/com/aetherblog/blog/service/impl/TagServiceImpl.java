@@ -17,6 +17,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@SuppressWarnings("null")
 public class TagServiceImpl implements TagService {
 
     private final TagRepository tagRepository;

@@ -14,6 +14,7 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class EmbeddingService {
 
     private final VectorStore vectorStore;
@@ -45,7 +46,7 @@ public class EmbeddingService {
      */
     public List<Document> similaritySearch(String query, int topK) {
         return vectorStore.similaritySearch(
-                SearchRequest.query(query).withTopK(topK)
+                SearchRequest.builder().query(query).topK(topK).build()
         );
     }
 
@@ -54,9 +55,12 @@ public class EmbeddingService {
      */
     public List<Document> similaritySearch(String query, int topK, double threshold) {
         return vectorStore.similaritySearch(
-                SearchRequest.query(query)
-                        .withTopK(topK)
-                        .withSimilarityThreshold(threshold)
+                SearchRequest.builder()
+                        .query(query)
+                        .topK(topK)
+                        .similarityThreshold(threshold)
+                        .build()
         );
     }
 }
+

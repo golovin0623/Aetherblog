@@ -27,6 +27,7 @@ public class AgentContext {
         return (T) parameters.get(key);
     }
 
+    @SuppressWarnings("unchecked")
     public <T> T getParameter(String key, T defaultValue) {
         Object value = parameters.get(key);
         return value != null ? (T) value : defaultValue;

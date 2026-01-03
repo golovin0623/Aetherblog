@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@SuppressWarnings("null")
 public class PostServiceImpl implements PostService {
 
     private final PostRepository postRepository;

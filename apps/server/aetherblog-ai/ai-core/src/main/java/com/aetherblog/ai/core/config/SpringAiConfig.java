@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
  * Spring AI 配置类
  */
 @Configuration
+@SuppressWarnings("null")
 public class SpringAiConfig {
 
     @Bean

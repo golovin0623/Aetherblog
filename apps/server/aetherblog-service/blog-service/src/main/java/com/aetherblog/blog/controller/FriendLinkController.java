@@ -18,6 +18,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/v1/admin/friend-links")
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class FriendLinkController {
 
     private final FriendLinkRepository friendLinkRepository;

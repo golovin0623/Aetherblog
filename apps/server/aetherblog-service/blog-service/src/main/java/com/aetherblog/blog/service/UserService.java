@@ -22,6 +22,7 @@ import java.util.Optional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class UserService {
 
     private final UserRepository userRepository;

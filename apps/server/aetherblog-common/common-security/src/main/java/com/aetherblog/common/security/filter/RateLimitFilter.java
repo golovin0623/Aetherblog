@@ -17,13 +17,13 @@ import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 限流过滤器
  */
 @Slf4j
 @Component
+@SuppressWarnings("null")
 public class RateLimitFilter implements Filter {
 
     private final RedisService redisService;

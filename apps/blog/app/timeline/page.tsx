@@ -86,30 +86,6 @@ export default async function TimelinePage() {
 
     return (
         <div className="min-h-screen bg-background text-white selection:bg-primary/30">
-            {/* Header (Same as PostsPage) */}
-            <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-white/5 py-4">
-                <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-                <Link href="/" className="flex items-center gap-2 group">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow">
-                        A
-                    </div>
-                    <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                        AetherBlog
-                    </span>
-                </Link>
-                <nav className="flex gap-6 items-center">
-                    <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/5">
-                        <Link href="/posts" className="px-4 py-1.5 rounded-full text-gray-400 hover:text-white text-sm font-medium transition-all hover:bg-white/5">首页</Link>
-                        <Link href="/timeline" className="px-4 py-1.5 rounded-full bg-primary/20 text-primary text-sm font-medium transition-all">时间线</Link>
-                    </div>
-                    <div className="h-4 w-px bg-white/10 mx-2 hidden md:block"></div>
-                    <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
-                    <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
-                    <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
-                </nav>
-                </div>
-            </header>
-
             <main className="max-w-4xl mx-auto px-4 pt-32 pb-12">
                 <div className="relative mb-8 pl-4">
                     <h1 className="text-3xl font-bold text-white mb-2">时间轴</h1>

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("null")
 public class OperationLogService {
 
     private final OperationLogRepository repository;

@@ -27,8 +27,8 @@ export function CreatePostPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [summary, setSummary] = useState('');
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [loadingPost, setLoadingPost] = useState(false);
-  const [postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
+  const [_loadingPost, setLoadingPost] = useState(false);
+  const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
   // Quick create category modal
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
