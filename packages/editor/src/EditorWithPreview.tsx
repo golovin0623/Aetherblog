@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
-import { MarkdownPreview } from './MarkdownPreview';
+import { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview';
 import { Edit, Eye, Columns } from 'lucide-react';
 
 export interface EditorWithPreviewProps {
@@ -13,6 +13,20 @@ type ViewMode = 'edit' | 'preview' | 'split';
 
 export function EditorWithPreview({ value, onChange, className = '' }: EditorWithPreviewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('split');
+
+  // Inject markdown preview styles
+  useEffect(() => {
+    const styleId = 'markdown-preview-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = markdownPreviewStyles;
+      document.head.appendChild(style);
+    }
+    return () => {
+      // Don't remove the styles on unmount - they might be used by other instances
+    };
+  }, []);
 
   return (
     <div className={`flex flex-col h-full ${className}`}>

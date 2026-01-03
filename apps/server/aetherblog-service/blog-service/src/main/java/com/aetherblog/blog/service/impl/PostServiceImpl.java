@@ -15,6 +15,7 @@ import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.exception.BusinessException;
 import com.aetherblog.common.core.utils.SlugUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -31,6 +32,7 @@ import java.util.stream.Collectors;
  * 文章服务实现
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PostServiceImpl implements PostService {
@@ -47,6 +49,43 @@ public class PostServiceImpl implements PostService {
     @Override
     public PageResult<PostListResponse> getPublishedPosts(int pageNum, int pageSize) {
         Page<Post> page = postRepository.findPublished(PageRequest.of(pageNum - 1, pageSize));
+        return toPageResult(page, pageNum, pageSize);
+    }
+
+    @Override
+    public PageResult<PostListResponse> getPostsForAdmin(String status, String keyword, int pageNum, int pageSize) {
+        Page<Post> page;
+        PageRequest pageRequest = PageRequest.of(pageNum - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        
+        boolean hasStatus = status != null && !status.isEmpty();
+        boolean hasKeyword = keyword != null && !keyword.trim().isEmpty();
+        
+        if (!hasStatus && !hasKeyword) {
+            // 无筛选条件，返回所有
+            page = postRepository.findAllOrderByCreatedAtDesc(pageRequest);
+        } else if (hasStatus && !hasKeyword) {
+            // 仅状态筛选
+            if (status != null) {
+                 PostStatus postStatus = PostStatus.valueOf(status.toUpperCase());
+                 page = postRepository.findByStatus(postStatus, pageRequest);
+            } else {
+                 page = postRepository.findAllOrderByCreatedAtDesc(pageRequest);
+            }
+        } else if (!hasStatus && hasKeyword) {
+            // 仅关键词搜索
+            String searchKey = keyword == null ? "" : keyword.trim();
+            page = postRepository.findByKeyword(searchKey, pageRequest);
+        } else {
+            // 状态 + 关键词
+            String searchKey = keyword == null ? "" : keyword.trim();
+             if (status != null) {
+                PostStatus postStatus = PostStatus.valueOf(status.toUpperCase());
+                page = postRepository.findByStatusAndKeyword(postStatus, searchKey, pageRequest);
+             } else {
+                 page = postRepository.findByKeyword(searchKey, pageRequest);
+             }
+        }
+        
         return toPageResult(page, pageNum, pageSize);
     }
 
@@ -71,9 +110,18 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public PostDetailResponse getPostBySlug(String slug) {
+        log.info("Fetching post by slug: {}", slug);
         Post post = postRepository.findBySlug(slug)
-                .orElseThrow(() -> new BusinessException(404, "文章不存在"));
-        return toDetailResponse(post);
+                .orElseThrow(() -> {
+                    log.error("Post not found for slug: {}", slug);
+                    return new BusinessException(404, "文章不存在");
+                });
+        try {
+            return toDetailResponse(post);
+        } catch (Exception e) {
+            log.error("Error converting post to detail response: {}", e.getMessage(), e);
+            throw new BusinessException(500, "文章数据解析异常");
+        }
     }
 
     @Override
@@ -111,6 +159,15 @@ public class PostServiceImpl implements PostService {
         post.setContent(request.getContent());
         post.setSummary(request.getSummary());
         post.setCoverImage(request.getCoverImage());
+
+        // Update status and set publishedAt if publishing
+        if (request.getStatus() != null) {
+            PostStatus newStatus = PostStatus.valueOf(request.getStatus());
+            if (newStatus == PostStatus.PUBLISHED && post.getPublishedAt() == null) {
+                post.setPublishedAt(LocalDateTime.now());
+            }
+            post.setStatus(newStatus);
+        }
 
         if (request.getCategoryId() != null) {
             Category category = categoryRepository.findById(request.getCategoryId())
@@ -214,14 +271,18 @@ public class PostServiceImpl implements PostService {
             response.setCategory(categoryInfo);
         }
 
-        response.setTags(post.getTags().stream().map(tag -> {
-            PostDetailResponse.TagInfo tagInfo = new PostDetailResponse.TagInfo();
-            tagInfo.setId(tag.getId());
-            tagInfo.setName(tag.getName());
-            tagInfo.setSlug(tag.getSlug());
-            tagInfo.setColor(tag.getColor());
-            return tagInfo;
-        }).collect(Collectors.toList()));
+        if (post.getTags() != null) {
+            response.setTags(post.getTags().stream().map(tag -> {
+                PostDetailResponse.TagInfo tagInfo = new PostDetailResponse.TagInfo();
+                tagInfo.setId(tag.getId());
+                tagInfo.setName(tag.getName());
+                tagInfo.setSlug(tag.getSlug());
+                tagInfo.setColor(tag.getColor());
+                return tagInfo;
+            }).collect(Collectors.toList()));
+        } else {
+            response.setTags(List.of());
+        }
 
         return response;
     }

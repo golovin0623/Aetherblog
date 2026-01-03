@@ -4,6 +4,7 @@ import LoginPage from './pages/auth/LoginPage';
 import { useAuthStore } from './stores';
 import DashboardPage from './pages/DashboardPage';
 import PostsPage from './pages/PostsPage';
+import CreatePostPage from './pages/posts/CreatePostPage';
 import MediaPage from './pages/MediaPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CommentsPage from './pages/CommentsPage';
@@ -28,6 +29,8 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="posts" element={<PostsPage />} />
+          <Route path="posts/new" element={<CreatePostPage />} />
+          <Route path="posts/:id/edit" element={<CreatePostPage />} />
           <Route path="media" element={<MediaPage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="comments" element={<CommentsPage />} />

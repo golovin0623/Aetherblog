@@ -36,3 +36,162 @@ body {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
 }
+
+/* ========================================
+   Markdown Renderer Styles (Full)
+   ======================================== */
+.markdown-body h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  color: #f1f5f9;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.3em;
+}
+.markdown-body h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  color: #f1f5f9;
+}
+.markdown-body h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  color: #f1f5f9;
+}
+.markdown-body p {
+  margin: 0.75em 0;
+  color: #cbd5e1;
+}
+.markdown-body code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #f472b6;
+}
+.markdown-body pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.875em;
+  color: #e2e8f0;
+}
+.markdown-body ul, .markdown-body ol {
+  padding-left: 1.5em;
+  margin: 0.75em 0;
+  color: #cbd5e1;
+}
+.markdown-body li {
+  margin: 0.25em 0;
+}
+.markdown-body blockquote {
+  border-left: 4px solid #8b5cf6;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #94a3b8;
+  font-style: italic;
+}
+.markdown-body a {
+  color: #818cf8;
+  text-decoration: underline;
+}
+.markdown-body a:hover {
+  color: #a5b4fc;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 2em 0;
+}
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5em 1em;
+  text-align: left;
+}
+.markdown-body th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+/* ========================================
+   Mini Markdown Preview Styles (Compact)
+   ======================================== */
+.mini-preview {
+  color: #94a3b8;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.mini-preview h1, .mini-preview h2, .mini-preview h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin: 0.5em 0 0.3em;
+}
+.mini-preview p {
+  margin: 0.4em 0;
+}
+.mini-preview code {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+.mini-preview pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.6em;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 0.5em 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.mini-preview pre code {
+  background: transparent;
+  padding: 0;
+  color: #a5b4fc;
+  font-size: 0.8em;
+}
+.mini-preview ul, .mini-preview ol {
+  padding-left: 1.2em;
+  margin: 0.4em 0;
+}
+.mini-preview li {
+  margin: 0.15em 0;
+}
+.mini-preview blockquote {
+  border-left: 2px solid #8b5cf6;
+  padding-left: 0.6em;
+  margin: 0.4em 0;
+  color: #64748b;
+  font-style: italic;
+}
+.mini-preview a {
+  color: #818cf8;
+}
+.mini-preview img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+

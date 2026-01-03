@@ -26,9 +26,11 @@ public class PostController {
     @Operation(summary = "获取文章列表")
     @GetMapping
     public R<PageResult<PostListResponse>> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(postService.getPublishedPosts(pageNum, pageSize));
+        return R.ok(postService.getPostsForAdmin(status, keyword, pageNum, pageSize));
     }
 
     @Operation(summary = "获取文章详情")

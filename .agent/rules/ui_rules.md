@@ -73,3 +73,55 @@
 
 ## 7. AI 生成 Prompt 模板
 > "基于 AetherBlog 设计系统生成一个 React 组件 [组件名]。使用 Tailwind CSS 暗色主题 (#09090b)。实现毛玻璃拟态效果 (\`bg-white/5 backdrop-blur-xl border-white/10\`)。使用 Framer Motion 实现丝滑的入场动画 (spring physics)。主色调使用 Indigo-Purple 渐变。确保使用 Lucide 图标。整体设计需呈现高端、空灵且认知优雅的质感。"
+
+---
+
+## 7. 🚨 Monorepo 共享组件规范 (强制执行)
+
+### 7.1 组件使用优先级 (必须遵守)
+1. **第一优先级**: 检查 `packages/ui` 是否已有该组件
+2. **第二优先级**: 在 `packages/ui` 中创建新组件
+3. **禁止**: 在 `apps/admin` 或 `apps/blog` 中创建重复的 UI 组件
+
+### 7.2 共享包结构
+```
+packages/
+├── ui/           # 👈 所有 UI 组件必须在这里
+│   └── src/
+│       ├── Button.tsx
+│       ├── Card.tsx
+│       └── components/
+│           ├── Avatar.tsx
+│           ├── Modal.tsx    # 包含 ConfirmModal
+│           ├── Toast.tsx
+│           └── ...
+├── hooks/        # 共享 React Hooks
+├── types/        # 共享 TypeScript 类型
+├── utils/        # 共享工具函数
+└── editor/       # Markdown 编辑器
+```
+
+### 7.3 正确的引用方式
+```tsx
+// ✅ 正确：从共享包引入
+import { Button, Card, Modal, Toast } from '@aetherblog/ui';
+import { useDebounce, useApi } from '@aetherblog/hooks';
+import { cn, formatDate } from '@aetherblog/utils';
+
+// ❌ 错误：在 apps 中创建重复组件
+import { Button } from '@/components/ui/Button';  // 禁止！
+```
+
+### 7.4 新增组件流程
+1. 确认 `packages/ui` 中不存在该组件
+2. 在 `packages/ui/src/components/` 创建组件
+3. 在 `packages/ui/src/index.ts` 导出
+4. 在需要使用的 app 中从 `@aetherblog/ui` 引入
+
+### 7.5 apps 目录中允许的组件类型
+仅允许以下**业务特定**组件存放在 apps 中：
+- 页面组件 (Page Components)
+- 布局组件 (Layout Components)
+- 业务逻辑组件 (Business Logic Components)
+
+**通用 UI 组件 (Button, Modal 等) 必须放在 packages/ui！**

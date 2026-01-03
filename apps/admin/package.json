@@ -22,7 +22,12 @@
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0",
     "date-fns": "^4.1.0",
-    "axios": "^1.7.9"
+    "axios": "^1.7.9",
+    "@aetherblog/ui": "workspace:*",
+    "@aetherblog/hooks": "workspace:*",
+    "@aetherblog/types": "workspace:*",
+    "@aetherblog/utils": "workspace:*",
+    "@aetherblog/editor": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.0.2",

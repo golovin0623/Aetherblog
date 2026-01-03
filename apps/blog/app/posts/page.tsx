@@ -1,5 +1,8 @@
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, LayoutGrid, List } from 'lucide-react';
 import Link from 'next/link';
+import ArticleCard from '../components/ArticleCard';
+import FeaturedPost from '../components/FeaturedPost';
+import AuthorProfileCard from '../components/AuthorProfileCard';
 
 interface Post {
   id: number;
@@ -8,16 +11,16 @@ interface Post {
   summary: string;
   coverImage?: string;
   publishedAt: string;
+  viewCount?: number;
+  category?: { name: string; slug: string };
+  tags?: { name: string; slug: string }[];
 }
 
 // 实际从API获取数据
 async function getPosts(): Promise<Post[]> {
   try {
-    // 这里直接请求后端 API，注意在 Docker 环境下可能需要用服务名，但在本地开发 localhost:8080 可行
-    // 添加 no-store 禁用缓存，方便调试
-    const res = await fetch('http://localhost:8080/api/v1/public/posts', { cache: 'no-store' });
+    const res = await fetch('http://localhost:8080/api/v1/public/posts?pageSize=10', { cache: 'no-store' });
     if (!res.ok) {
-        // 如果后端没启动或报错，返回空
         console.error('Failed to fetch posts:', res.status, res.statusText);
         return [];
     }
@@ -28,7 +31,10 @@ async function getPosts(): Promise<Post[]> {
       slug: item.slug,
       summary: item.summary,
       coverImage: item.coverImage,
-      publishedAt: item.publishedAt // 格式化由后端或前端处理，这里简化
+      viewCount: item.viewCount,
+      publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
+      category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
+      tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : []
     }));
   } catch (error) {
     console.error('Error fetching posts:', error);
@@ -36,63 +42,123 @@ async function getPosts(): Promise<Post[]> {
   }
 }
 
+async function getFeaturedPostContent(slug: string): Promise<string> {
+    try {
+        const res = await fetch(`http://localhost:8080/api/v1/public/posts/${slug}`, { cache: 'no-store' });
+        if (!res.ok) return '';
+        const json = await res.json();
+        return json.data?.content || '';
+    } catch (e) {
+        console.error('Error fetching featured post content:', e);
+        return '';
+    }
+}
+
 export default async function PostsPage() {
   const posts = await getPosts();
+  let latestPost: any = posts.length > 0 ? posts[0] : null;
+  const remainingPosts = posts.length > 1 ? posts.slice(1) : [];
+
+  // Fetch content for the featured post if it exists
+  if (latestPost) {
+      const content = await getFeaturedPostContent(latestPost.slug);
+      latestPost = { ...latestPost, contentPreview: content };
+  }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-white selection:bg-primary/30">
       {/* Header */}
-      <header className="border-b border-white/10 py-4">
-        <div className="max-w-6xl mx-auto px-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-white">
-            AetherBlog
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-white/5 py-4">
+        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 group">
+             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow">
+                A
+             </div>
+             <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                AetherBlog
+            </span>
           </Link>
           <nav className="flex gap-6 items-center">
-            <Link href="/posts" className="text-primary">文章</Link>
-            <Link href="/archives" className="text-gray-400 hover:text-white">归档</Link>
-            <Link href="/friends" className="text-gray-400 hover:text-white">友链</Link>
-            <Link href="/about" className="text-gray-400 hover:text-white">关于</Link>
-            <div className="h-4 w-px bg-white/10 mx-2"></div>
-            <a href="http://localhost:5173" target="_blank" className="text-gray-400 hover:text-white text-sm">
-              后台管理
-            </a>
+             <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/5">
+                <Link href="/posts" className="px-4 py-1.5 rounded-full bg-primary/20 text-primary text-sm font-medium transition-all">首页</Link>
+                <Link href="/timeline" className="px-4 py-1.5 rounded-full text-gray-400 hover:text-white text-sm font-medium transition-all hover:bg-white/5">时间线</Link>
+             </div>
+             <div className="h-4 w-px bg-white/10 mx-2 hidden md:block"></div>
+            <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
+            <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
+            <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
           </nav>
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-12">
-        <h1 className="text-3xl font-bold text-white mb-8">所有文章</h1>
-        
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 pt-28 pb-12">
+        {/* Background Ambient Light */}
+        <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
+            <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full blur-[120px] opacity-30" />
+            <div className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-purple-500/10 rounded-full blur-[100px] opacity-20" />
+        </div>
+
         {posts.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-400 text-lg">暂无文章 (请确认后端已启动并有数据)</p>
+          <div className="text-center py-32 bg-white/5 rounded-3xl border border-white/5 backdrop-blur-sm">
+            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                <List className="w-10 h-10 text-gray-500" />
+            </div>
+            <p className="text-gray-300 text-xl font-medium">暂无文章</p>
+            <p className="text-gray-500 text-sm mt-2">精彩内容即将呈现...</p>
           </div>
         ) : (
-          <div className="grid gap-6">
-            {posts.map((post) => (
-              <article
-                key={post.id}
-                className="p-6 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-all"
-              >
-                <Link href={`/posts/${post.slug}`}>
-                  <h2 className="text-xl font-semibold text-white mb-2 hover:text-primary">
-                    {post.title}
-                  </h2>
-                </Link>
-                <p className="text-gray-400 mb-4 line-clamp-2">{post.summary}</p>
-                <div className="flex items-center justify-between">
-                  {/* 使用简单的日期格式化，或者接受后端字符串 */}
-                  <time className="text-sm text-gray-500">{new Date(post.publishedAt).toLocaleDateString()}</time>
-                  <Link
-                    href={`/posts/${post.slug}`}
-                    className="text-primary text-sm flex items-center gap-1 hover:underline"
-                  >
-                    阅读全文 <ArrowRight className="w-4 h-4" />
-                  </Link>
+          <div className="space-y-12">
+            
+            {/* Top Section: Featured + Sidebar */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:h-[360px]">
+                {/* Left: Featured Post (75%) */}
+                <div className="lg:col-span-3 h-full">
+                     {latestPost && <FeaturedPost post={latestPost} />}
                 </div>
-              </article>
-            ))}
+
+                {/* Right: Author Profile (25%) */}
+                <div className="lg:col-span-1 h-full">
+                    <AuthorProfileCard className="h-full" />
+                </div>
+            </div>
+
+            {/* Bottom Section: Remaining Posts Grid */}
+            <div>
+                <div className="flex items-center justify-between mb-8">
+                     <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                        <LayoutGrid className="w-6 h-6 text-primary" />
+                        最新发布
+                     </h2>
+                    <div className="flex gap-2">
+                         {/* View Toggles (Visual only for now) */}
+                    </div>
+                </div>
+
+                 {remainingPosts.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {remainingPosts.map((post, index) => (
+                        <ArticleCard
+                            key={post.id}
+                            title={post.title}
+                            slug={post.slug}
+                            summary={post.summary}
+                            coverImage={post.coverImage}
+                            category={post.category}
+                            tags={post.tags}
+                            publishedAt={post.publishedAt}
+                            viewCount={post.viewCount}
+                            index={index}
+                        />
+                        ))}
+                    </div>
+                 ) : (
+                    <div className="text-center py-20 border border-dashed border-white/10 rounded-2xl">
+                         <p className="text-gray-500">没有更多文章了</p>
+                    </div>
+                 )}
+            </div>
+
           </div>
         )}
       </main>

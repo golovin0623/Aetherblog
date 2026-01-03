@@ -14,6 +14,21 @@ importers:
 
   apps/admin:
     dependencies:
+      '@aetherblog/editor':
+        specifier: workspace:*
+        version: link:../../packages/editor
+      '@aetherblog/hooks':
+        specifier: workspace:*
+        version: link:../../packages/hooks
+      '@aetherblog/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@aetherblog/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@aetherblog/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       '@tanstack/react-query':
         specifier: ^5.62.8
         version: 5.90.16(react@19.2.3)
@@ -93,6 +108,9 @@ importers:
       lucide-react:
         specifier: ^0.469.0
         version: 0.469.0(react@19.2.3)
+      marked:
+        specifier: ^12.0.0
+        version: 12.0.2
       next:
         specifier: ^15.1.3
         version: 15.5.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -133,9 +151,18 @@ importers:
       '@codemirror/lang-markdown':
         specifier: ^6.2.0
         version: 6.5.0
+      '@codemirror/view':
+        specifier: ^6.26.0
+        version: 6.39.8
       '@uiw/react-codemirror':
         specifier: ^4.21.0
         version: 4.25.4(@babel/runtime@7.28.4)(@codemirror/autocomplete@6.20.0)(@codemirror/language@6.12.1)(@codemirror/lint@6.9.2)(@codemirror/search@6.5.11)(@codemirror/state@6.5.3)(@codemirror/theme-one-dark@6.1.3)(@codemirror/view@6.39.8)(codemirror@6.0.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      lucide-react:
+        specifier: ^0.469.0
+        version: 0.469.0(react@19.2.3)
+      marked:
+        specifier: ^12.0.0
+        version: 12.0.2
       react:
         specifier: ^19.0.0
         version: 19.2.3
@@ -1516,6 +1543,11 @@ packages:
     resolution: {integrity: sha512-28vvUnnKQ/dBwiCQtwJw7QauYnE7yd2Cyp4tTTJpvglX4EMpbflcdBgrgToX2j71B3YvugK/NH3BGUk+E/p/Fw==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  marked@12.0.2:
+    resolution: {integrity: sha512-qXUm7e/YKFoqFPYPa3Ukg9xlI5cyAtGmyEIzMfW//m6kXwCy2Ps9DYf5ioijFKQ8qyuscrHoY04iJGctu2Kg0Q==}
+    engines: {node: '>= 18'}
+    hasBin: true
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -3238,6 +3270,8 @@ snapshots:
   lucide-react@0.469.0(react@19.2.3):
     dependencies:
       react: 19.2.3
+
+  marked@12.0.2: {}
 
   math-intrinsics@1.1.0: {}
 

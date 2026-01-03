@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import MarkdownRenderer from '../../components/MarkdownRenderer';
 
 interface Post {
   id: number;
@@ -19,8 +20,36 @@ interface PageProps {
 }
 
 async function getPost(slug: string): Promise<Post | null> {
-  // 实际从API获取
-  return null;
+  try {
+    const res = await fetch(`http://localhost:8080/api/v1/public/posts/${slug}`, { 
+      cache: 'no-store' 
+    });
+    
+    if (!res.ok) {
+      console.error('Failed to fetch post:', res.status, res.statusText);
+      return null;
+    }
+    
+    const json = await res.json();
+    if (json.code === 200 && json.data) {
+        return {
+            id: json.data.id,
+            title: json.data.title,
+            slug: json.data.slug,
+            content: json.data.content,
+            summary: json.data.summary,
+            coverImage: json.data.coverImage,
+            categoryName: json.data.categoryName,
+            tags: json.data.tags ? json.data.tags.map((t: any) => t.name) : [],
+            viewCount: json.data.viewCount,
+            publishedAt: new Date(json.data.publishedAt).toLocaleDateString('zh-CN'),
+        };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching post:', error);
+    return null;
+  }
 }
 
 export default async function PostDetailPage({ params }: PageProps) {
@@ -87,9 +116,9 @@ export default async function PostDetailPage({ params }: PageProps) {
           </div>
         )}
 
-        <div
-          className="prose prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ __html: post.content }}
+        <MarkdownRenderer
+          content={post.content}
+          className="max-w-none"
         />
       </article>
     </div>

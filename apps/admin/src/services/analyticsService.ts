@@ -1,57 +1,59 @@
 import api from './api';
+import { R } from '@/types';
 
-export interface SiteStats {
+// Match backend StatsService.DashboardStats
+export interface DashboardStats {
   posts: number;
   categories: number;
   tags: number;
   comments: number;
   views: number;
-}
-
-export interface VisitorStats {
-  date: string;
-  pv: number;
-  uv: number;
+  visitors: number;
 }
 
 export interface TopPost {
   id: number;
   title: string;
-  views: number;
+  viewCount: number;
 }
 
-export interface DeviceStats {
-  device: string;
+export interface VisitorTrend {
+  date: string;
+  pv: number;
+  uv: number;
+}
+
+export interface ArchiveStats {
+  yearMonth: string;
   count: number;
-  percentage: number;
+}
+
+export interface DashboardData {
+  stats: DashboardStats;
+  topPosts: TopPost[];
+  visitorTrend: VisitorTrend[];
+  archiveStats: ArchiveStats[];
 }
 
 class AnalyticsService {
-  async getSiteStats(): Promise<SiteStats> {
-    const response = await api.get('/v1/analytics/stats');
-    return response.data.data;
+  // Get complete dashboard data in one call
+  async getDashboard(): Promise<R<DashboardData>> {
+    return api.get<R<DashboardData>>('/v1/admin/stats/dashboard');
   }
 
-  async getVisitorTrend(days: number = 7): Promise<VisitorStats[]> {
-    const response = await api.get(`/v1/analytics/visitors?days=${days}`);
-    return response.data.data;
+  async getTopPosts(limit: number = 10): Promise<R<TopPost[]>> {
+    return api.get<R<TopPost[]>>(`/v1/admin/stats/top-posts?limit=${limit}`);
   }
 
-  async getTopPosts(limit: number = 10): Promise<TopPost[]> {
-    const response = await api.get(`/v1/analytics/top-posts?limit=${limit}`);
-    return response.data.data;
+  async getVisitorTrend(days: number = 7): Promise<R<VisitorTrend[]>> {
+    return api.get<R<VisitorTrend[]>>(`/v1/admin/stats/visitor-trend?days=${days}`);
   }
 
-  async getDeviceStats(): Promise<DeviceStats[]> {
-    const response = await api.get('/v1/analytics/devices');
-    return response.data.data;
-  }
-
-  async getGeoDistribution(): Promise<Record<string, number>> {
-    const response = await api.get('/v1/analytics/geo');
-    return response.data.data;
+  async getArchiveStats(): Promise<R<ArchiveStats[]>> {
+    return api.get<R<ArchiveStats[]>>('/v1/admin/stats/archives');
   }
 }
 
 export const analyticsService = new AnalyticsService();
 export default analyticsService;
+

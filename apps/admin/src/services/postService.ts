@@ -1,20 +1,43 @@
 import { apiClient } from './api';
+import { R } from '@/types';
 
 export interface Post {
-  id: string;
+  id: number;
   title: string;
   slug: string;
   content: string;
   summary: string;
-  coverImage: string;
+  coverImage: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-  categoryId: string;
-  tagIds: string[];
+  categoryId: number | null;
+  categoryName: string | null;
+  tags: Array<{ id: number; name: string }>;
   viewCount: number;
   commentCount: number;
-  publishedAt: string;
+  publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PostListItem {
+  id: number;
+  title: string;
+  slug: string;
+  summary: string;
+  coverImage: string | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  viewCount: number;
+  commentCount: number;
+  publishedAt: string | null;
+  createdAt: string;
+}
+
+export interface PageResult<T> {
+  list: T[];
+  total: number;
+  pageNum: number;
+  pageSize: number;
+  pages: number;
 }
 
 export interface CreatePostRequest {
@@ -22,27 +45,28 @@ export interface CreatePostRequest {
   content: string;
   summary?: string;
   coverImage?: string;
-  categoryId?: string;
-  tagIds?: string[];
+  categoryId?: number;
+  tagIds?: number[];
   status?: 'DRAFT' | 'PUBLISHED';
 }
 
 export const postService = {
-  getList: (params: { page?: number; size?: number; status?: string }) =>
-    apiClient.get<{ list: Post[]; pagination: unknown }>('/v1/admin/posts', { params }),
+  getList: (params: { pageNum?: number; pageSize?: number; status?: string; keyword?: string }): Promise<R<PageResult<PostListItem>>> =>
+    apiClient.get<R<PageResult<PostListItem>>>('/v1/admin/posts', { params }),
 
-  getById: (id: string) =>
-    apiClient.get<Post>(`/v1/admin/posts/${id}`),
+  getById: (id: number): Promise<R<Post>> =>
+    apiClient.get<R<Post>>(`/v1/admin/posts/${id}`),
 
-  create: (data: CreatePostRequest) =>
-    apiClient.post<Post>('/v1/admin/posts', data),
+  create: (data: CreatePostRequest): Promise<R<Post>> =>
+    apiClient.post<R<Post>>('/v1/admin/posts', data),
 
-  update: (id: string, data: Partial<CreatePostRequest>) =>
-    apiClient.put<Post>(`/v1/admin/posts/${id}`, data),
+  update: (id: number, data: Partial<CreatePostRequest>): Promise<R<Post>> =>
+    apiClient.put<R<Post>>(`/v1/admin/posts/${id}`, data),
 
-  delete: (id: string) =>
-    apiClient.delete(`/v1/admin/posts/${id}`),
+  delete: (id: number): Promise<R<void>> =>
+    apiClient.delete<R<void>>(`/v1/admin/posts/${id}`),
 
-  publish: (id: string) =>
-    apiClient.patch(`/v1/admin/posts/${id}/publish`),
+  publish: (id: number): Promise<R<void>> =>
+    apiClient.patch<R<void>>(`/v1/admin/posts/${id}/publish`),
 };
+

@@ -20,7 +20,7 @@ public final class SlugUtils {
      */
     public static String toSlug(String input) {
         if (input == null || input.isBlank()) {
-            return "";
+            return "item-" + System.currentTimeMillis() % 100000;
         }
 
         String slug = input.toLowerCase(Locale.ROOT);
@@ -30,6 +30,11 @@ public final class SlugUtils {
         slug = NONLATIN.matcher(slug).replaceAll("");
         slug = MULTI_DASH.matcher(slug).replaceAll("-");
         slug = slug.replaceAll("^-|-$", "");
+
+        // 如果 slug 为空（中文输入），生成唯一标识
+        if (slug.isEmpty()) {
+            slug = "item-" + System.currentTimeMillis() % 100000;
+        }
 
         return slug;
     }
