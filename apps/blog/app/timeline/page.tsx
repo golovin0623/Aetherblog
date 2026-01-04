@@ -1,5 +1,9 @@
-import Link from 'next/link';
+'use client';
+
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import TimelineTree from '../components/TimelineTree';
+import TimelineLoading from './loading';
 
 interface Post {
     id: number;
@@ -13,32 +17,7 @@ interface Post {
     tags?: { name: string; slug: string }[];
 }
 
-// Reuse fetching logic (in a real app this should be shared)
-async function getPosts(): Promise<Post[]> {
-  try {
-    const res = await fetch('http://localhost:8080/api/v1/public/posts?pageSize=100', { cache: 'no-store' });
-    if (!res.ok) {
-        return [];
-    }
-    const json = await res.json();
-    return json.data.list.map((item: any) => ({
-      id: item.id,
-      title: item.title,
-      slug: item.slug,
-      summary: item.summary,
-      coverImage: item.coverImage,
-      viewCount: item.viewCount,
-      publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
-      category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
-      tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : []
-    }));
-  } catch (error) {
-    console.error('Error fetching posts:', error);
-    return [];
-  }
-}
-
-// Helper to group posts by year and month
+// Client-side helper to group posts
 function groupPostsByDate(posts: Post[]): any[] {
   const groups: { [year: number]: { [month: number]: any[] } } = {};
 
@@ -80,9 +59,37 @@ function groupPostsByDate(posts: Post[]): any[] {
   return archives;
 }
 
-export default async function TimelinePage() {
-    const posts = await getPosts();
-    const archives = groupPostsByDate(posts);
+export default function TimelinePage() {
+    // Fetch all posts for timeline (or a large page size)
+    const { data: posts = [], isLoading } = useQuery({
+        queryKey: ['timelinePosts'],
+        queryFn: async () => {
+             // In a real app we might want a specific endpoint for timeline or fetch all
+             // Reusing the public posts API, picking a large size to get most recent ones
+             // For a full timeline, we'd need pagination or a light-weight list endpoint
+             const res = await fetch('http://localhost:8080/api/v1/public/posts?pageSize=100');
+             if (!res.ok) throw new Error('Network response was not ok');
+             const json = await res.json();
+             return json.data.list.map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                slug: item.slug,
+                summary: item.summary,
+                coverImage: item.coverImage,
+                viewCount: item.viewCount,
+                publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
+                category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
+                tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : []
+             })) as Post[];
+        },
+        staleTime: 5 * 60 * 1000, // 5 minutes cache
+    });
+
+    const archives = useMemo(() => groupPostsByDate(posts), [posts]);
+
+    if (isLoading) {
+        return <TimelineLoading />;
+    }
 
     return (
         <div className="min-h-screen bg-background text-white selection:bg-primary/30">
