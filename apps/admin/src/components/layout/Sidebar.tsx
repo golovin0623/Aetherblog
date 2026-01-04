@@ -21,6 +21,7 @@ import {
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
@@ -39,6 +40,7 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState('');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,11 +57,14 @@ export function Sidebar() {
       className={cn(
         'fixed left-0 top-0 h-screen z-40 overflow-hidden',
         'bg-background-secondary border-r border-border',
-        'flex flex-col'
+        'flex flex-col will-change-[width] transform-gpu'
       )}
     >
       {/* Logo - Icon stays fixed, text collapses */}
-      <div className="h-14 flex items-center border-b border-border px-3">
+      <div className={cn(
+        "h-14 flex items-center border-b border-border transition-all duration-300",
+        isCollapsed ? "px-4" : "px-3"
+      )}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-lg">A</span>
@@ -76,22 +81,26 @@ export function Sidebar() {
       </div>
 
       {/* Search Bar - Icon stays fixed, input collapses */}
-      <div className="px-3 py-3 border-b border-border">
-        <form onSubmit={handleSearch} className="flex items-center gap-2">
+      <div className={cn(
+        "py-3 border-b border-border transition-all duration-300",
+        isCollapsed ? "px-4" : "px-3"
+      )}>
+        <form onSubmit={handleSearch} className="flex items-center">
           <button
             type="button"
             onClick={() => isCollapsed && toggle()}
             className={cn(
-              'flex-shrink-0 p-2 rounded-lg',
+              'flex-shrink-0 flex items-center justify-center rounded-lg',
+              isCollapsed ? 'w-8 h-8' : 'w-8 h-8', // Consistent size
               'text-gray-400 hover:text-white hover:bg-white/5',
               'transition-all duration-200'
             )}
           >
-            <Search className="w-5 h-5" />
+            <Search className="w-5 h-5 text-gray-400" />
           </button>
           <div className={cn(
             'overflow-hidden transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
+            isCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
           )}>
             <input
               type="text"
@@ -112,25 +121,31 @@ export function Sidebar() {
 
       {/* 导航菜单 */}
       <nav className="flex-1 py-3 overflow-y-auto">
-        <ul className="space-y-0.5 px-3">
+        <ul className={cn(
+          "space-y-0.5 transition-all duration-300",
+          isCollapsed ? "px-4" : "px-3"
+        )}>
           {navItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg',
-                    'transition-all duration-200',
+                    'flex items-center rounded-lg transition-all duration-200',
+                    isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
                     isActive
                       ? 'bg-primary text-white'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'
                   )
                 }
               >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <item.icon className={cn(
+                  'w-5 h-5 flex-shrink-0 transition-all duration-300',
+                  isCollapsed ? 'scale-100' : 'scale-100'
+                )} />
                 <span className={cn(
                   'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
-                  isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+                  isCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
                 )}>
                   {item.label}
                 </span>
@@ -141,19 +156,21 @@ export function Sidebar() {
       </nav>
 
       {/* Quick Links - Icons stay fixed, text collapses */}
-      <div className="border-t border-border px-3 py-2 space-y-0.5">
+      <div className={cn(
+        "border-t border-border py-2 space-y-0.5 transition-all duration-300",
+        isCollapsed ? "px-4" : "px-3"
+      )}>
         <NavLink
           to="/dashboard"
           className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-lg',
-            'text-gray-400 hover:text-white hover:bg-white/5',
-            'transition-all duration-200'
+            'flex items-center rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200',
+            isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
           )}
         >
           <Home className="w-5 h-5 flex-shrink-0" />
           <span className={cn(
             'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
           )}>
             主站
           </span>
@@ -162,8 +179,8 @@ export function Sidebar() {
           to="/about"
           className={({ isActive }) =>
             cn(
-              'flex items-center gap-3 px-3 py-2 rounded-lg',
-              'transition-all duration-200',
+              'flex items-center rounded-lg transition-all duration-200',
+              isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
               isActive
                 ? 'bg-primary text-white'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -173,7 +190,7 @@ export function Sidebar() {
           <Info className="w-5 h-5 flex-shrink-0" />
           <span className={cn(
             'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
           )}>
             关于
           </span>
@@ -182,7 +199,10 @@ export function Sidebar() {
 
       {/* User Info - Avatar stays fixed, details collapse */}
       <div className="border-t border-border p-3 space-y-2">
-        <div className="flex items-center gap-3 px-1">
+        <div className={cn(
+          "flex items-center transition-all duration-300",
+          isCollapsed ? "px-0 justify-center" : "gap-3 px-1"
+        )}>
           {/* Avatar - always visible, fixed position */}
           <div className="relative flex-shrink-0">
             <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
@@ -218,7 +238,7 @@ export function Sidebar() {
             isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <button
-              onClick={logout}
+              onClick={() => setShowLogoutConfirm(true)}
               className={cn(
                 'p-2 rounded-lg',
                 'text-gray-400 hover:text-red-400 hover:bg-white/5',
@@ -232,11 +252,14 @@ export function Sidebar() {
         </div>
 
         {/* Collapse Toggle - same pattern */}
-        <div className="flex items-center gap-2 px-1">
+        <div className={cn(
+          "flex items-center transition-all duration-300",
+          isCollapsed ? "px-0 justify-center" : "gap-2 px-1"
+        )}>
           <button
             onClick={toggle}
             className={cn(
-              'p-2 rounded-lg flex-shrink-0',
+              'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
               'text-gray-400 hover:text-white hover:bg-white/5',
               'transition-all duration-200'
             )}
@@ -255,6 +278,20 @@ export function Sidebar() {
           </span>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title="确认退出登录？"
+        message="退出后将返回登录页面，未保存的操作可能会丢失。"
+        confirmText="确认退出"
+        cancelText="取消"
+        variant="warning"
+        onConfirm={() => {
+          logout();
+          navigate('/login');
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </motion.aside>
   );
 }

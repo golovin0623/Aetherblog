@@ -1,22 +1,54 @@
-import React, { useMemo } from 'react';
-import { marked } from 'marked';
+import { useMemo } from 'react';
+import { marked, Renderer } from 'marked';
 
 export interface MarkdownPreviewProps {
   content: string;
   className?: string;
 }
 
-// Configure marked options
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+// Create a custom renderer that adds line numbers to elements
+function createLineTrackingRenderer(content: string): Renderer {
+  const renderer = new Renderer();
+  const lines = content.split('\n');
+  
+  // Find line number for a given text
+  const findLineNumber = (text: string): number => {
+    const trimmedText = text.trim().replace(/^#+\s*/, '');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(trimmedText)) {
+        return i + 1;
+      }
+    }
+    return -1;
+  };
+
+  // Override heading renderer to add data-source-line
+  renderer.heading = function(text: string, level: number) {
+    const lineNum = findLineNumber(text);
+    const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
+    return `<h${level}${lineAttr}>${text}</h${level}>\n`;
+  };
+
+  // Override paragraph renderer
+  renderer.paragraph = function(text: string) {
+    const lineNum = findLineNumber(text.substring(0, 50)); // Use first 50 chars to match
+    const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
+    return `<p${lineAttr}>${text}</p>\n`;
+  };
+
+  return renderer;
+}
 
 export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProps) {
   const html = useMemo(() => {
     if (!content) return '';
     try {
-      return marked.parse(content) as string;
+      const renderer = createLineTrackingRenderer(content);
+      return marked.parse(content, { 
+        gfm: true, 
+        breaks: true,
+        renderer 
+      }) as string;
     } catch {
       return content;
     }

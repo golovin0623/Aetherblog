@@ -2,7 +2,6 @@ import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { useSidebarStore } from '@/stores';
-import { cn } from '@/lib/utils';
 
 export function AdminLayout() {
   const { isCollapsed } = useSidebarStore();
@@ -13,14 +12,13 @@ export function AdminLayout() {
       <Sidebar />
 
       {/* 主内容区 */}
-      <div
-        className={cn(
-          'flex-1 flex flex-col transition-all duration-300',
-          isCollapsed ? 'ml-16' : 'ml-64'
-        )}
+      <motion.div
+        animate={{ marginLeft: isCollapsed ? 64 : 256 }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        className="flex-1 flex flex-col"
       >
         {/* 页面内容 - 全屏高度，无顶部 header */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-6 relative">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -29,7 +27,7 @@ export function AdminLayout() {
             <Outlet />
           </motion.div>
         </main>
-      </div>
+      </motion.div>
     </div>
   );
 }

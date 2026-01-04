@@ -4,4 +4,4 @@ export { EditorWithPreview } from './EditorWithPreview';
 
 export type { MarkdownEditorProps } from './MarkdownEditor';
 export type { MarkdownPreviewProps } from './MarkdownPreview';
-export type { EditorWithPreviewProps } from './EditorWithPreview';
+export type { EditorWithPreviewProps, ViewMode } from './EditorWithPreview';

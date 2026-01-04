@@ -437,15 +437,15 @@ export default function PostsPage() {
       <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-sm shadow-xl relative flex flex-col min-h-[500px]">
         {/* 固定表头 - 不参与动画 */}
         <table className="w-full table-fixed">
-          <thead className="bg-white/[0.02] border-b border-white/5 text-gray-400 text-[11px] font-semibold uppercase tracking-wider">
+          <thead className="bg-white/[0.02] border-b border-white/5 text-gray-400 text-xs font-semibold uppercase tracking-wider">
             <tr>
-              <th className="px-4 py-3 text-left w-[40%] tracking-tight">标题</th>
-              <th className="px-4 py-3 text-left w-20 tracking-tight">状态</th>
-              <th className="px-4 py-3 text-left w-24 tracking-tight">分类</th>
-              <th className="px-4 py-3 text-left w-36 tracking-tight">标签</th>
-              <th className="px-4 py-3 text-left w-16 tracking-tight">浏览</th>
-              <th className="px-4 py-3 text-left w-24 tracking-tight">时间</th>
-              <th className="px-4 py-3 text-right w-28 tracking-tight">操作</th>
+              <th className="px-4 py-3.5 text-left w-[40%]">标题</th>
+              <th className="px-4 py-3.5 text-left w-20">状态</th>
+              <th className="px-4 py-3.5 text-left w-24">分类</th>
+              <th className="px-4 py-3.5 text-left w-40">标签</th>
+              <th className="px-4 py-3.5 text-left w-16">浏览</th>
+              <th className="px-4 py-3.5 text-left w-24">时间</th>
+              <th className="px-4 py-3.5 text-right w-28">操作</th>
             </tr>
           </thead>
         </table>
@@ -465,13 +465,13 @@ export default function PostsPage() {
                   <tbody>
                     {Array.from({ length: 10 }).map((_, i) => (
                       <tr key={i} className="border-b border-white/5 last:border-b-0">
-                        <td className="px-4 py-3 w-[40%]"><div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div></td>
-                        <td className="px-4 py-3 w-20"><div className="h-5 bg-white/5 rounded-full w-12 mt-0.5 animate-pulse"></div></td>
-                        <td className="px-4 py-3 w-24"><div className="h-5 bg-white/5 rounded-md w-16 mt-0.5 animate-pulse"></div></td>
-                        <td className="px-4 py-3 w-36"><div className="flex gap-1 mt-0.5"><div className="h-4 bg-white/5 rounded w-10 animate-pulse"></div><div className="h-4 bg-white/5 rounded w-10 animate-pulse"></div></div></td>
-                        <td className="px-4 py-3 w-16"><div className="h-4 bg-white/5 rounded w-8 mt-0.5 animate-pulse"></div></td>
-                        <td className="px-4 py-3 w-24"><div className="h-4 bg-white/5 rounded w-20 mt-0.5 animate-pulse"></div></td>
-                        <td className="px-4 py-3 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div></td>
+                        <td className="px-4 py-3.5 w-[40%]"><div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div></td>
+                        <td className="px-4 py-3.5 w-20"><div className="h-5 bg-white/5 rounded-full w-14 animate-pulse"></div></td>
+                        <td className="px-4 py-3.5 w-24"><div className="h-6 bg-white/5 rounded-md w-16 animate-pulse"></div></td>
+                        <td className="px-4 py-3.5 w-40"><div className="flex gap-1.5"><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div></div></td>
+                        <td className="px-4 py-3.5 w-16"><div className="h-5 bg-white/5 rounded w-10 animate-pulse"></div></td>
+                        <td className="px-4 py-3.5 w-24"><div className="h-5 bg-white/5 rounded w-20 animate-pulse"></div></td>
+                        <td className="px-4 py-3.5 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div></td>
                       </tr>
                     ))}
                   </tbody>
@@ -515,37 +515,35 @@ export default function PostsPage() {
                         key={post.id} 
                         className="border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors group"
                       >
-                        <td className="px-4 py-3 w-[40%]">
-                          <p className="text-white text-sm font-medium truncate group-hover:text-primary transition-colors" title={post.title}>
+                        <td className="px-4 py-3.5 w-[40%]">
+                          <p className="text-white font-medium truncate group-hover:text-primary transition-colors" title={post.title}>
                             {post.title}
                           </p>
                         </td>
-                        <td className="px-4 py-3 w-20">
-                          <div className="inline-flex scale-90 origin-left">
-                            {getStatusBadge(post.status)}
-                          </div>
+                        <td className="px-4 py-3.5 w-20 whitespace-nowrap">
+                          {getStatusBadge(post.status)}
                         </td>
-                        <td className="px-4 py-3 w-24 text-left text-xs text-gray-400">
-                          <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10">
+                        <td className="px-4 py-3.5 w-24 whitespace-nowrap">
+                          <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-gray-300">
                             {post.categoryName || '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 w-36">
-                          <div className="flex items-center flex-wrap gap-1">
+                        <td className="px-4 py-3.5 w-40 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
                             {post.tagNames?.length > 0 ? post.tagNames.slice(0, 2).map((tag) => (
-                              <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded text-primary-light leading-none">
+                              <span key={tag} className="px-2 py-0.5 text-xs bg-primary/10 border border-primary/20 rounded text-primary-light">
                                 {tag}
                               </span>
-                            )) : <span className="text-gray-600 text-xs">-</span>}
+                            )) : <span className="text-gray-600 text-sm">-</span>}
                             {post.tagNames?.length > 2 && (
-                              <span className="text-gray-500 text-[10px] leading-none">+{post.tagNames.length - 2}</span>
+                              <span className="text-gray-500 text-xs">+{post.tagNames.length - 2}</span>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 w-16 text-left text-xs text-gray-400 font-mono">
+                        <td className="px-4 py-3.5 w-16 text-sm text-gray-400 font-mono whitespace-nowrap">
                           {post.viewCount}
                         </td>
-                        <td className="px-4 py-3 w-24 text-left text-xs text-gray-400">
+                        <td className="px-4 py-3.5 w-24 text-sm text-gray-400 whitespace-nowrap">
                           {formatDate(post.publishedAt || post.createdAt)}
                         </td>
                         <td className="px-4 py-3 w-28">
@@ -685,7 +683,7 @@ export default function PostsPage() {
           ? `确定要删除文章 "${confirmDialog.post?.title}" 吗？此操作不可恢复。`
           : `确定要复制文章 "${confirmDialog.post?.title}" 吗？复制后的文章将以草稿形式存在。`}
         confirmText={confirmDialog.type === 'delete' ? '确定删除' : '确定复制'}
-        variant={confirmDialog.type === 'delete' ? 'danger' : 'info'}
+        variant={confirmDialog.type === 'delete' ? 'danger' : 'copy'}
         onConfirm={confirmDialog.type === 'delete' ? confirmDelete : confirmCopy}
         onCancel={() => setConfirmDialog({ isOpen: false, type: 'delete', post: null })}
       />
