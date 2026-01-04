@@ -61,7 +61,8 @@ export function CreatePostPage() {
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
-  const tagsTimerRef = useRef<any>(null);
+  const expandedTagsRef = useRef<HTMLDivElement>(null);
+
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   // Sidebar auto-collapse
@@ -214,6 +215,9 @@ export function CreatePostPage() {
       }
       if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
         setShowTagDropdown(false);
+      }
+      if (expandedTagsRef.current && !expandedTagsRef.current.contains(e.target as Node)) {
+        setShowAllTags(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -617,13 +621,7 @@ export function CreatePostPage() {
     setSelectedTags(selectedTags.filter(t => t.id !== tagId));
   };
 
-  const handleExpandTags = () => {
-    setShowAllTags(true);
-    if (tagsTimerRef.current) clearTimeout(tagsTimerRef.current);
-    tagsTimerRef.current = setTimeout(() => {
-      setShowAllTags(false);
-    }, 3000);
-  };
+
 
   // Loading skeleton for edit mode
   if (isEditMode && (_loadingPost || loadingCategories || loadingTags)) {
@@ -745,7 +743,13 @@ export function CreatePostPage() {
                   <div ref={categoryDropdownRef} className="relative">
                     <button
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      onClick={() => {
+                        if (!showCategoryDropdown) {
+                          setShowAllTags(false);
+                          setShowTagDropdown(false);
+                        }
+                        setShowCategoryDropdown(!showCategoryDropdown);
+                      }}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-white/10 transition-colors text-sm"
                     >
                       <span className={selectedCategory ? 'text-primary font-medium' : 'text-gray-500'}>
@@ -810,41 +814,56 @@ export function CreatePostPage() {
                         </motion.span>
                       ))}
 
-                     {/* Expandable tags */}
-                     <AnimatePresence mode='popLayout'>
-                       {showAllTags && selectedTags.slice(2).map((tag) => (
-                        <motion.span
-                          key={tag.id}
-                          initial={{ opacity: 0, width: 0 }}
-                          animate={{ opacity: 1, width: 'auto' }}
-                          exit={{ opacity: 0, width: 0 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 30, mass: 1 }}
-                          className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs border border-primary/20 whitespace-nowrap overflow-hidden z-10"
-                        >
-                          <span className="flex-shrink-0">{tag.name}</span>
-                          <button onClick={() => removeTag(tag.id)} className="w-4 h-4 flex items-center justify-center hover:text-white flex-shrink-0 rounded-full hover:bg-primary/20 transition-colors"><X className="w-3 h-3" /></button>
-                        </motion.span>
-                      ))}
-                     </AnimatePresence>
-
-                    {!showAllTags && selectedTags.length > 2 && (
-                      <motion.button
-                        layout
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        onClick={handleExpandTags}
-                        className="flex items-center px-1.5 py-0.5 bg-white/5 text-gray-400 rounded text-xs border border-white/10 hover:bg-white/10 whitespace-nowrap transition-colors z-10"
-                      >
-                        +{selectedTags.length - 2}
-                      </motion.button>
-                    )}
+                     {/* Hidden Tags Floating Panel */}
+                     {selectedTags.length > 2 && (
+                       <div ref={expandedTagsRef} className="relative">
+                         <button
+                           onClick={() => {
+                             if (!showAllTags) {
+                               setShowCategoryDropdown(false);
+                               setShowTagDropdown(false);
+                             }
+                             setShowAllTags(!showAllTags);
+                           }}
+                           className="flex items-center justify-center gap-0.5 w-14 py-0.5 bg-white/5 text-gray-400 rounded text-xs border border-white/10 hover:bg-white/10 transition-colors z-10"
+                         >
+                           <span>{showAllTags ? '收起' : `+${selectedTags.length - 2}`}</span>
+                           <ChevronDown className={cn("w-3 h-3 transition-transform", showAllTags && "rotate-180")} />
+                         </button>
+                         
+                         <AnimatePresence>
+                          {showAllTags && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                              className="absolute top-full right-0 mt-2 p-2 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl z-50 grid grid-cols-3 gap-2 w-[340px] origin-top-right"
+                            >
+                               {selectedTags.slice(2).map((tag) => (
+                                <span
+                                  key={tag.id}
+                                  className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded text-xs border border-primary/20 overflow-hidden"
+                                >
+                                  <span className="truncate" title={tag.name}>{tag.name}</span>
+                                  <button onClick={() => removeTag(tag.id)} className="w-4 h-4 flex items-center justify-center hover:text-white rounded-full flex-shrink-0 hover:bg-primary/20 transition-colors"><X className="w-3 h-3" /></button>
+                                </span>
+                              ))}
+                            </motion.div>
+                          )}
+                         </AnimatePresence>
+                       </div>
+                     )}
 
 
                     <button
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => setShowTagDropdown(!showTagDropdown)}
+                      onClick={() => {
+                        if (!showTagDropdown) {
+                          setShowCategoryDropdown(false);
+                          setShowAllTags(false);
+                        }
+                        setShowTagDropdown(!showTagDropdown);
+                      }}
                       className={cn(
                         "p-1 rounded hover:bg-white/10 text-gray-400 hover:text-primary transition-colors",
                          showTagDropdown && "bg-white/10 text-primary"
@@ -907,7 +926,7 @@ export function CreatePostPage() {
               </div>
               
               {/* Right Buttons */}
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[#0a0a0c]">
                 
                 <motion.button
                   whileHover={{ scale: 1.02 }}
@@ -982,6 +1001,7 @@ export function CreatePostPage() {
                 </AnimatePresence>
               </div>
             </div>
+            
           </motion.div>
         )}
       </AnimatePresence>
