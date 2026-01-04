@@ -1,59 +1,48 @@
 import * as React from 'react';
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { cn } from '../utils';
 
 interface TooltipProps {
   content: React.ReactNode;
   children: React.ReactNode;
+  // Map 'position' to Radix 'side' for backward compatibility
   position?: 'top' | 'bottom' | 'left' | 'right';
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  align?: 'start' | 'center' | 'end';
   delay?: number;
 }
 
-export function Tooltip({ content, children, position = 'top', delay = 200 }: TooltipProps) {
-  const [isVisible, setIsVisible] = React.useState(false);
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
-
-  const handleMouseEnter = () => {
-    timeoutRef.current = setTimeout(() => setIsVisible(true), delay);
-  };
-
-  const handleMouseLeave = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setIsVisible(false);
-  };
-
-  const positionStyles = {
-    top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
-    bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
-    left: 'right-full top-1/2 -translate-y-1/2 mr-2',
-    right: 'left-full top-1/2 -translate-y-1/2 ml-2',
-  };
-
-  const arrowStyles = {
-    top: 'top-full left-1/2 -translate-x-1/2 border-t-gray-900',
-    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-gray-900',
-    left: 'left-full top-1/2 -translate-y-1/2 border-l-gray-900',
-    right: 'right-full top-1/2 -translate-y-1/2 border-r-gray-900',
-  };
+export function Tooltip({ 
+  content, 
+  children, 
+  position, 
+  side, 
+  align = 'center', 
+  delay = 200 
+}: TooltipProps) {
+  // Use 'side' if provided, otherwise fallback to 'position', default to 'top'
+  const finalSide = side || position || 'top';
 
   return (
-    <div
-      className="relative inline-block"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {children}
-      {isVisible && (
-        <div
-          className={cn(
-            'absolute z-50 px-3 py-2 text-sm text-white',
-            'bg-gray-900 border border-white/10 rounded-lg shadow-lg',
-            'whitespace-nowrap animate-in fade-in zoom-in-95 duration-150',
-            positionStyles[position]
-          )}
-        >
-          {content}
-        </div>
-      )}
-    </div>
+    <TooltipPrimitive.Provider delayDuration={delay}>
+      <TooltipPrimitive.Root>
+        <TooltipPrimitive.Trigger asChild>
+          {children}
+        </TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Content
+            side={finalSide}
+            align={align}
+            sideOffset={5}
+            className={cn(
+              "z-[100] overflow-hidden rounded-md border border-white/10 bg-gray-900 px-3 py-1.5 text-xs text-white shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+            )}
+          >
+            {content}
+            <TooltipPrimitive.Arrow className="fill-gray-900" width={11} height={5} />
+          </TooltipPrimitive.Content>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </TooltipPrimitive.Provider>
   );
 }

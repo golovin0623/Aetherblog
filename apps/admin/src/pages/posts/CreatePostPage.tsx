@@ -11,7 +11,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorWithPreview, type ViewMode } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
-import { Modal } from '@aetherblog/ui';
+import { Modal, Tooltip } from '@aetherblog/ui';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
@@ -57,10 +57,11 @@ export function CreatePostPage() {
   const [tagSearch, setTagSearch] = useState('');
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
-  const [creatingTag, setCreatingTag] = useState(false);
+  const [showAllTags, setShowAllTags] = useState(false);
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
+  const tagsTimerRef = useRef<any>(null);
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   // Sidebar auto-collapse
@@ -145,16 +146,14 @@ export function CreatePostPage() {
             setContent(post.content);
             setSummary(post.summary || '');
             setPostStatus(post.status as 'DRAFT' | 'PUBLISHED');
-            // Set category if exists
-            if (post.categoryId) {
-              const cat = categories.find(c => c.id === post.categoryId);
-              if (cat) setSelectedCategory(cat);
+            
+            // Direct assignment from detail response
+            if ((post as any).category) {
+              setSelectedCategory((post as any).category as Category);
             }
-            // Set tags if exist
+            
             if (post.tags && post.tags.length > 0) {
-              const tagIds = post.tags.map((t: any) => t.id);
-              const matchedTags = tags.filter(t => tagIds.includes(t.id));
-              setSelectedTags(matchedTags);
+              setSelectedTags(post.tags as Tag[]);
             }
           }
         } catch (error) {
@@ -164,12 +163,10 @@ export function CreatePostPage() {
           setLoadingPost(false);
         }
       };
-      // Wait for categories/tags to load first
-      if (categories.length > 0 || tags.length > 0) {
-        loadPost();
-      }
+      
+      loadPost();
     }
-  }, [isEditMode, postId, categories, tags]);
+  }, [isEditMode, postId]);
 
   // Click outside to close dropdowns
   useEffect(() => {
@@ -547,7 +544,6 @@ export function CreatePostPage() {
         }
       } else {
         // Create new tag
-        setCreatingTag(true);
         try {
           const res = await tagService.create({ name: tagSearch.trim() });
           if (res.data) {
@@ -556,9 +552,8 @@ export function CreatePostPage() {
           }
         } catch (error) {
           console.error('Failed to create tag:', error);
-        } finally {
-          setCreatingTag(false);
-        }
+
+      }
       }
       setTagSearch('');
       setShowTagDropdown(false);
@@ -569,110 +564,88 @@ export function CreatePostPage() {
     setSelectedTags(selectedTags.filter(t => t.id !== tagId));
   };
 
+  const handleExpandTags = () => {
+    setShowAllTags(true);
+    if (tagsTimerRef.current) clearTimeout(tagsTimerRef.current);
+    tagsTimerRef.current = setTimeout(() => {
+      setShowAllTags(false);
+    }, 3000);
+  };
+
   // Loading skeleton for edit mode
   if (isEditMode && (_loadingPost || loadingCategories || loadingTags)) {
     return (
-      <div className="h-[calc(100vh-4rem)] flex flex-col">
+      <div className="flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-50 overflow-hidden">
         {/* Header Skeleton */}
-        <div className="flex items-center justify-between px-6 py-2 border-b border-white/10 bg-[#0a0a0c]">
-          <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-lg bg-white/5 animate-pulse" />
-            <div className="w-64 h-6 rounded bg-white/5 animate-pulse" />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-16 h-8 rounded-lg bg-white/5 animate-pulse" />
-            <div className="w-20 h-8 rounded-lg bg-white/5 animate-pulse" />
-            <div className="w-16 h-8 rounded-lg bg-white/5 animate-pulse" />
-            <div className="w-24 h-8 rounded-lg bg-white/5 animate-pulse" />
-            <div className="w-20 h-8 rounded-lg bg-primary/20 animate-pulse" />
-          </div>
+        <div className="h-14 flex-shrink-0 border-b border-white/10 bg-[#0a0a0c] flex items-center justify-between px-4 gap-4">
+           {/* Left */}
+           <div className="flex items-center gap-3 flex-1">
+             <div className="w-8 h-8 rounded-lg bg-white/5 animate-pulse flex-shrink-0" /> {/* Back */}
+             <div className="h-8 rounded-lg bg-white/5 animate-pulse flex-1 max-w-md" />   {/* Title */}
+             <div className="w-px h-6 bg-white/10 flex-shrink-0 mx-1" />
+             <div className="flex gap-2">
+                <div className="w-24 h-7 rounded bg-white/5 animate-pulse" />
+                <div className="w-16 h-7 rounded bg-white/5 animate-pulse" />
+             </div>
+           </div>
+           
+           {/* Right */}
+           <div className="flex items-center gap-2">
+              <div className="w-20 h-8 rounded-lg bg-white/5 animate-pulse" /> {/* AI */}
+              <div className="w-8 h-8 rounded-lg bg-white/5 animate-pulse" />  {/* Settings */}
+              <div className="w-[90px] h-8 rounded-lg bg-white/5 animate-pulse" /> {/* Save */}
+              <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* Publish */}
+           </div>
         </div>
 
         {/* Toolbar Skeleton */}
-        <div className="flex items-center gap-1 px-4 py-1.5 border-b border-white/10 bg-[#0a0a0c]/80">
-          {[1, 2, 3, 4, 5].map((group) => (
-            <div key={group} className="flex items-center gap-1 px-3 border-r border-white/10 last:border-r-0">
-              {[1, 2, 3].map((btn) => (
-                <div key={btn} className="w-7 h-7 rounded bg-white/5 animate-pulse" />
-              ))}
-            </div>
-          ))}
+        <div className="flex-shrink-0 h-10 border-b border-white/10 bg-[#0a0a0c]/80 flex items-center px-4 gap-4 overflow-hidden">
+             <div className="flex items-center gap-1 pr-3 border-r border-white/10">
+                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+             </div>
+             <div className="flex items-center gap-1 px-3">
+                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+             </div>
+             <div className="flex-1" />
         </div>
 
-        {/* Editor Content Skeleton */}
-        <div className="flex-1 flex">
-          {/* Left Editor Panel */}
-          <div className="flex-1 flex flex-col">
-            {/* Mode Tabs Skeleton */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
-              <div className="w-16 h-7 rounded-lg bg-white/5 animate-pulse" />
-              <div className="w-16 h-7 rounded-lg bg-white/5 animate-pulse" />
-              <div className="w-16 h-7 rounded-lg bg-primary/20 animate-pulse" />
-            </div>
-            
-            {/* Editor Area Skeleton */}
-            <div className="flex-1 flex overflow-hidden">
-              {/* Left: Editor Lines */}
-              <div className="flex-1 p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-4 rounded bg-white/10 animate-pulse" />
-                  <div className="h-5 bg-white/5 rounded animate-pulse" style={{ width: '85%' }} />
+        {/* Content Area */}
+        <div className="flex-1 flex overflow-hidden">
+             {/* Editor */}
+             <div className="flex-1 p-8 space-y-6">
+                <div className="w-3/4 h-10 rounded-lg bg-white/5 animate-pulse" /> {/* H1 title-like */}
+                <div className="space-y-3">
+                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
+                    <div className="w-11/12 h-4 rounded bg-white/5 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
+                    <div className="w-4/5 h-4 rounded bg-white/5 animate-pulse" />
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-4 rounded bg-white/10 animate-pulse" />
-                  <div className="h-5 bg-white/5 rounded animate-pulse" style={{ width: '60%' }} />
+             </div>
+             
+             {/* Preview */}
+             <div className="flex-1 border-l border-white/10 bg-black/20 p-8 space-y-6 hidden lg:block">
+                <div className="w-2/3 h-10 rounded-lg bg-white/5 animate-pulse" />
+                <div className="space-y-3">
+                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-white/5 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
                 </div>
-                {[3, 4, 5, 6, 7, 8].map((line) => (
-                  <div key={line} className="flex items-center gap-3">
-                    <div className="w-6 h-4 rounded bg-white/10 animate-pulse" />
-                    <div 
-                      className="h-5 bg-white/5 rounded animate-pulse" 
-                      style={{ width: `${Math.random() * 40 + 30}%`, animationDelay: `${line * 50}ms` }} 
-                    />
-                  </div>
-                ))}
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-4 rounded bg-white/10 animate-pulse" />
-                  <div className="h-5 bg-white/5 rounded animate-pulse" style={{ width: '75%' }} />
-                </div>
-                {[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((line) => (
-                  <div key={line} className="flex items-center gap-3">
-                    <div className="w-6 h-4 rounded bg-white/10 animate-pulse" />
-                    <div 
-                      className="h-5 bg-white/5 rounded animate-pulse" 
-                      style={{ width: `${Math.random() * 50 + 20}%`, animationDelay: `${line * 50}ms` }} 
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Right: Preview Panel */}
-              <div className="flex-1 border-l border-white/10 p-6 space-y-4 bg-black/20">
-                <div className="h-8 bg-white/5 rounded animate-pulse" style={{ width: '70%' }} />
-                <div className="h-4 bg-white/5 rounded animate-pulse" style={{ width: '90%' }} />
-                <div className="h-4 bg-white/5 rounded animate-pulse" style={{ width: '85%' }} />
-                <div className="h-4 bg-white/5 rounded animate-pulse" style={{ width: '70%' }} />
-                <div className="h-6 mt-6 bg-white/5 rounded animate-pulse" style={{ width: '50%' }} />
-                <div className="h-4 bg-white/5 rounded animate-pulse" style={{ width: '95%' }} />
-                <div className="h-4 bg-white/5 rounded animate-pulse" style={{ width: '80%' }} />
-                <div className="h-24 bg-white/5 rounded-lg animate-pulse mt-4" />
-              </div>
-            </div>
-          </div>
+                <div className="w-full h-48 rounded-lg bg-white/5 animate-pulse" />
+             </div>
         </div>
-
-        {/* Footer Skeleton */}
-        <div className="flex items-center justify-between px-4 py-1.5 border-t border-white/10 bg-[#0a0a0c]">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-4 rounded bg-white/5 animate-pulse" />
-            <div className="w-16 h-4 rounded bg-white/5 animate-pulse" />
-          </div>
-          <div className="w-20 h-6 rounded bg-white/5 animate-pulse" />
+        
+        {/* Footer (Status Bar) */}
+        <div className="h-8 flex-shrink-0 border-t border-white/10 bg-[#0a0a0c] flex items-center justify-between px-4">
+             <div className="w-24 h-3 rounded bg-white/5 animate-pulse" />
+             <div className="w-16 h-3 rounded bg-white/5 animate-pulse" />
         </div>
       </div>
     );
   }
-
   return (
     <div className={cn(
       "flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-10 transition-all duration-300 overflow-hidden"
@@ -688,39 +661,212 @@ export function CreatePostPage() {
             transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="border-b border-white/10 bg-[#0a0a0c] z-20"
           >
-            <div className="flex items-center justify-between px-6 py-3.5">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between px-6 py-3.5 gap-4">
+              {/* Left Block: Back + Title + Metadata */}
+              <div className="flex items-center gap-4 flex-1 min-w-0">
                 <button 
                   onClick={() => navigate('/posts')}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
                   title="返回列表"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
-                <div className="flex-1 min-w-[300px]">
+                
+                {/* Title Input */}
+                <motion.div className="flex-1 min-w-[150px]">
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="请输入文章标题..."
-                    className="w-full bg-transparent text-xl font-bold text-white placeholder-gray-600 focus:outline-none"
+                    className="w-full bg-transparent text-xl font-bold text-white placeholder-gray-600 focus:outline-none min-w-0"
                   />
+                </motion.div>
+
+                {/* Divider */}
+                <div className="w-px h-6 bg-white/10 flex-shrink-0" />
+
+                {/* Metadata: Category & Tags */}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {/* Category Selector */}
+                  <div ref={categoryDropdownRef} className="relative">
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-white/10 transition-colors text-sm"
+                    >
+                      <span className={selectedCategory ? 'text-primary font-medium' : 'text-gray-500'}>
+                        {selectedCategory?.name || '选择分类'}
+                      </span>
+                      <ChevronDown className={cn("w-3 h-3 text-gray-500 transition-transform", showCategoryDropdown && "rotate-180")} />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {showCategoryDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                          className="absolute top-full left-0 mt-2 w-60 z-50 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                        >
+                          <div className="p-2 border-b border-white/10">
+                            <input
+                              type="text"
+                              value={categorySearch}
+                              onChange={(e) => setCategorySearch(e.target.value)}
+                              placeholder="搜索分类..."
+                              autoFocus
+                              className="w-full px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50"
+                            />
+                          </div>
+                          <div className="max-h-48 overflow-auto py-1">
+                            {filteredCategories.map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
+                                className={cn(
+                                  'w-full px-3 py-1.5 text-left text-sm hover:bg-white/10',
+                                  selectedCategory?.id === cat.id ? 'text-primary' : 'text-gray-300'
+                                )}
+                              >
+                                {cat.name}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
+                              className="w-full px-3 py-1.5 text-left text-xs text-primary hover:bg-white/10 flex items-center gap-2 border-t border-white/10 mt-1 pt-2"
+                            >
+                              <Plus className="w-3 h-3" /> 新建分类
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Tag Selector */}
+                  <div ref={tagDropdownRef} className="relative flex items-center gap-1.5">
+                     {/* Stable tags - first 2 always rendered if exist */}
+                       {selectedTags.slice(0, 2).map((tag) => (
+                        <motion.span
+                          key={tag.id}
+                          className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs border border-primary/20 whitespace-nowrap overflow-hidden z-10"
+                        >
+                          <span className="flex-shrink-0">{tag.name}</span>
+                          <button onClick={() => removeTag(tag.id)} className="w-4 h-4 flex items-center justify-center hover:text-white flex-shrink-0 rounded-full hover:bg-primary/20 transition-colors"><X className="w-3 h-3" /></button>
+                        </motion.span>
+                      ))}
+
+                     {/* Expandable tags */}
+                     <AnimatePresence mode='popLayout'>
+                       {showAllTags && selectedTags.slice(2).map((tag) => (
+                        <motion.span
+                          key={tag.id}
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 'auto' }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 30, mass: 1 }}
+                          className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs border border-primary/20 whitespace-nowrap overflow-hidden z-10"
+                        >
+                          <span className="flex-shrink-0">{tag.name}</span>
+                          <button onClick={() => removeTag(tag.id)} className="w-4 h-4 flex items-center justify-center hover:text-white flex-shrink-0 rounded-full hover:bg-primary/20 transition-colors"><X className="w-3 h-3" /></button>
+                        </motion.span>
+                      ))}
+                     </AnimatePresence>
+
+                    {!showAllTags && selectedTags.length > 2 && (
+                      <motion.button
+                        layout
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        onClick={handleExpandTags}
+                        className="flex items-center px-1.5 py-0.5 bg-white/5 text-gray-400 rounded text-xs border border-white/10 hover:bg-white/10 whitespace-nowrap transition-colors z-10"
+                      >
+                        +{selectedTags.length - 2}
+                      </motion.button>
+                    )}
+
+
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => setShowTagDropdown(!showTagDropdown)}
+                      className={cn(
+                        "p-1 rounded hover:bg-white/10 text-gray-400 hover:text-primary transition-colors",
+                         showTagDropdown && "bg-white/10 text-primary"
+                      )}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+
+                    <AnimatePresence>
+                      {showTagDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                          className="absolute top-full right-0 mt-2 w-64 z-50 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                        >
+                          <div className="p-2 border-b border-white/10">
+                            <input
+                              type="text"
+                              value={tagSearch}
+                              onChange={(e) => setTagSearch(e.target.value)}
+                              onKeyDown={handleTagKeyDown}
+                              placeholder="搜索或新建标签..."
+                              autoFocus
+                              className="w-full px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50"
+                            />
+                          </div>
+                          <div className="max-h-48 overflow-auto py-1">
+                             {filteredTags.map((tag) => {
+                               const isSelected = selectedTags.some(t => t.id === tag.id);
+                               return (
+                                <button
+                                  key={tag.id}
+                                  onClick={() => { 
+                                    if(isSelected) removeTag(tag.id);
+                                    else setSelectedTags([...selectedTags, tag]);
+                                    setTagSearch('');
+                                  }}
+                                  className={cn(
+                                    'w-full px-3 py-1.5 text-left text-sm hover:bg-white/10 flex justify-between items-center',
+                                    isSelected ? 'text-primary' : 'text-gray-300'
+                                  )}
+                                >
+                                  {tag.name}
+                                  {isSelected && <CheckCircle className="w-3 h-3" />}
+                                </button>
+                               );
+                             })}
+                             {tagSearch && !filteredTags.some(t => t.name === tagSearch) && (
+                               <div className="px-3 py-1.5 text-xs text-gray-500">
+                                 按回车创建 "{tagSearch}"
+                               </div>
+                             )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
+              {/* Right Buttons */}
+              <div className="flex items-center gap-2 flex-shrink-0">
                 
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setShowAI(true)}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
+                    'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
                     showAI ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
                   )}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  AI 助手
+                  AI
                 </motion.button>
                 
                 <motion.button
@@ -728,12 +874,11 @@ export function CreatePostPage() {
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setShowSettings(true)}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
+                    'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
                     showSettings ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
                   )}
                 >
                   <Settings className="w-3.5 h-3.5" />
-                  设置
                 </motion.button>
                 
                 <motion.button
@@ -742,12 +887,12 @@ export function CreatePostPage() {
                   onClick={handleSave}
                   disabled={isSaving || isPublishing}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
+                    'flex h-8 items-center justify-center gap-1.5 px-3 min-w-[90px] rounded-lg transition-colors text-sm',
                     isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-white/10 text-gray-300 hover:bg-white/20'
                   )}
                 >
                   {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  {isSaving ? '保存中...' : '保存草稿'}
+                  {isSaving ? '...' : '保存'}
                 </motion.button>
                 
                 <motion.button
@@ -756,7 +901,7 @@ export function CreatePostPage() {
                   onClick={handlePublish}
                   disabled={isSaving || isPublishing}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
+                    'flex h-8 items-center justify-center gap-1.5 px-3 min-w-[90px] rounded-lg transition-colors text-sm',
                     isPublishing ? 'bg-primary/50 cursor-wait' : 'bg-primary hover:bg-primary/90',
                     'text-white'
                   )}
@@ -895,46 +1040,53 @@ export function CreatePostPage() {
 
         {/* View Mode Toggle */}
         <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-          <button
-            onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors relative',
-              viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'
-            )}
-            title="源码 (Source)"
-          >
-            <FileCode2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors relative',
-              viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'
-            )}
-            title="阅读 (Reading)"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white',
-              isFullscreen ? 'bg-primary text-white' : ''
-            )}
-            title={isFullscreen ? '退出全屏' : '进入全屏 (Fullscreen)'}
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => setShowToc(!showToc)}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white',
-              showToc ? 'bg-primary text-white' : ''
-            )}
-            title={showToc ? '关闭目录' : '打开目录 (TOC)'}
-          >
-            <ListTree className="w-4 h-4" />
-          </button>
+          <Tooltip content="源码 (Source)">
+            <button
+              onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors relative',
+                viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'
+              )}
+            >
+              <FileCode2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          
+          <Tooltip content="阅读 (Reading)">
+            <button
+              onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors relative',
+                viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'
+              )}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip content={isFullscreen ? '退出全屏' : '进入全屏 (Fullscreen)'}>
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white',
+                isFullscreen ? 'bg-primary text-white' : ''
+              )}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+          </Tooltip>
+
+          <Tooltip content={showToc ? '关闭目录' : '打开目录 (TOC)'}>
+            <button
+              onClick={() => setShowToc(!showToc)}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white',
+                showToc ? 'bg-primary text-white' : ''
+              )}
+            >
+              <ListTree className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -1127,151 +1279,6 @@ export function CreatePostPage() {
         >
           <div className="space-y-6">
             <div className="space-y-4">
-              {/* Category Selector */}
-              <div ref={categoryDropdownRef} className="relative">
-                <label className="block text-sm font-medium text-gray-300 mb-2">分类</label>
-                <button
-                  onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white hover:border-primary/50 transition-colors"
-                >
-                  <span className={selectedCategory ? 'text-white' : 'text-gray-500'}>
-                    {selectedCategory?.name || '选择分类'}
-                  </span>
-                  <ChevronDown className={cn('w-4 h-4 text-gray-400 transition-transform', showCategoryDropdown && 'rotate-180')} />
-                </button>
-                
-                <AnimatePresence>
-                  {showCategoryDropdown && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="absolute z-20 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
-                    >
-                      <div className="p-2 border-b border-white/10">
-                        <div className="relative">
-                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                          <input
-                            type="text"
-                            value={categorySearch}
-                            onChange={(e) => setCategorySearch(e.target.value)}
-                            placeholder="搜索分类..."
-                            className="w-full pl-8 pr-3 py-1.5 bg-white/5 border border-white/10 rounded text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
-                          />
-                        </div>
-                      </div>
-                      <div className="max-h-48 overflow-auto">
-                        {loadingCategories ? (
-                          <div className="p-4 text-center text-gray-500">
-                            <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                          </div>
-                        ) : (
-                          <>
-                            {filteredCategories.length === 0 ? (
-                              <div className="p-4 text-center text-gray-500 text-sm">无匹配分类</div>
-                            ) : (
-                              filteredCategories.map((cat) => (
-                                <button
-                                  key={cat.id}
-                                  onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); setCategorySearch(''); }}
-                                  className={cn(
-                                    'w-full px-3 py-2 text-left text-sm hover:bg-white/10 transition-colors',
-                                    selectedCategory?.id === cat.id ? 'bg-primary/20 text-primary' : 'text-white'
-                                  )}
-                                >
-                                  {cat.name}
-                                </button>
-                              ))
-                            )}
-                            {/* Create new category button */}
-                            <button
-                              onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
-                              className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2 border-t border-white/10"
-                            >
-                              <Plus className="w-4 h-4" />
-                              新建分类...
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Tag Selector */}
-              <div ref={tagDropdownRef} className="relative">
-                <label className="block text-sm font-medium text-gray-300 mb-2">标签</label>
-                
-                {/* Selected tags */}
-                {selectedTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {selectedTags.map((tag) => (
-                      <span key={tag.id} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary rounded-md text-sm">
-                        {tag.name}
-                        <button onClick={() => removeTag(tag.id)} className="hover:text-white transition-colors">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={tagSearch}
-                    onChange={(e) => { setTagSearch(e.target.value); setShowTagDropdown(true); }}
-                    onFocus={() => setShowTagDropdown(true)}
-                    onKeyDown={handleTagKeyDown}
-                    placeholder="搜索或输入新标签，回车添加"
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
-                    disabled={creatingTag}
-                  />
-                  {creatingTag && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />}
-                </div>
-
-                <AnimatePresence>
-                  {showTagDropdown && (tagSearch || filteredTags.length > 0) && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="absolute z-20 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
-                    >
-                      <div className="max-h-48 overflow-auto">
-                        {loadingTags ? (
-                          <div className="p-4 text-center text-gray-500">
-                            <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                          </div>
-                        ) : (
-                          <>
-                            {filteredTags.map((tag) => (
-                              <button
-                                key={tag.id}
-                                onClick={() => { setSelectedTags([...selectedTags, tag]); setTagSearch(''); setShowTagDropdown(false); }}
-                                className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 transition-colors"
-                              >
-                                {tag.name}
-                              </button>
-                            ))}
-                            {tagSearch && !tags.find(t => t.name.toLowerCase() === tagSearch.toLowerCase()) && (
-                              <button
-                                onClick={() => handleTagKeyDown({ key: 'Enter', preventDefault: () => {} } as React.KeyboardEvent<HTMLInputElement>)}
-                                className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2"
-                              >
-                                <Plus className="w-4 h-4" />
-                                创建 "{tagSearch}"
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
               {/* Cover Image */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">封面图片</label>

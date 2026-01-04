@@ -50,6 +50,7 @@ export function Sidebar() {
   };
 
   return (
+    <>
     <motion.aside
       initial={false}
       animate={{ width: isCollapsed ? 64 : 256 }}
@@ -279,6 +280,8 @@ export function Sidebar() {
         </div>
       </div>
 
+    </motion.aside>
+
       <ConfirmDialog
         isOpen={showLogoutConfirm}
         title="确认退出登录？"
@@ -292,6 +295,6 @@ export function Sidebar() {
         }}
         onCancel={() => setShowLogoutConfirm(false)}
       />
-    </motion.aside>
+    </>
   );
 }
