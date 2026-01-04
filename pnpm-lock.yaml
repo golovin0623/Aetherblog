@@ -96,6 +96,9 @@ importers:
 
   apps/blog:
     dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.62.8
+        version: 5.90.16(react@19.2.3)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1

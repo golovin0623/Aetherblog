@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { LayoutGrid, List, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import ArticleCard from '../components/ArticleCard';
 import FeaturedPost from '../components/FeaturedPost';
 import AuthorProfileCard from '../components/AuthorProfileCard';
+import PostsLoading from './PostsLoading';
 
 interface Post {
   id: number;
@@ -19,70 +21,66 @@ interface Post {
   contentPreview?: string;
 }
 
-interface PaginationInfo {
-  pageNum: number;
-  pageSize: number;
-  total: number;
-  pages: number;
-}
-
-const PAGE_SIZE = 9; // 3x3 grid
+const PAGE_SIZE = 9;
 
 export default function PostsPage() {
-  const [featuredPost, setFeaturedPost] = useState<Post | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>({ pageNum: 1, pageSize: PAGE_SIZE, total: 0, pages: 0 });
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Fetch featured post (first post)
-  const fetchFeaturedPost = useCallback(async () => {
-    try {
+  // 1. Fetch Featured Post (Always fetch, it's small and cached)
+  const { 
+    data: featuredPost,
+    isLoading: isFeaturedLoading 
+  } = useQuery({
+    queryKey: ['featuredPost'],
+    queryFn: async () => {
       const res = await fetch('http://localhost:8080/api/v1/public/posts?pageNum=1&pageSize=1');
-      if (!res.ok) return;
+      if (!res.ok) throw new Error('Network response was not ok');
       const json = await res.json();
-      if (json.data?.list?.length > 0) {
-        const item = json.data.list[0];
-        const post = {
-          id: item.id,
-          title: item.title,
-          slug: item.slug,
-          summary: item.summary,
-          coverImage: item.coverImage,
-          viewCount: item.viewCount,
-          publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
-          category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
-          tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
-        };
-        // Fetch content for featured post
-        try {
-          const contentRes = await fetch(`http://localhost:8080/api/v1/public/posts/${item.slug}`);
-          if (contentRes.ok) {
-            const contentJson = await contentRes.json();
-            post.contentPreview = contentJson.data?.content || '';
-          }
-        } catch (e) {
-          console.error('Error fetching content:', e);
-        }
-        setFeaturedPost(post as Post);
-      }
-    } catch (error) {
-      console.error('Error fetching featured post:', error);
-    }
-  }, []);
+      if (!json.data?.list?.length) return null;
+      
+      const item = json.data.list[0];
+      const post: Post = {
+        id: item.id,
+        title: item.title,
+        slug: item.slug,
+        summary: item.summary,
+        coverImage: item.coverImage,
+        viewCount: item.viewCount,
+        publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
+        category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
+        tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
+      };
 
-  // Fetch paginated posts (excluding the first one)
-  const fetchPosts = useCallback(async (pageNum: number) => {
-    try {
-      setLoading(true);
-      // We skip the first post (featured) by adjusting the offset
-      // Actually, we fetch pageSize+1 if on page 1, and skip first
-      const res = await fetch(`http://localhost:8080/api/v1/public/posts?pageNum=${pageNum}&pageSize=${PAGE_SIZE + (pageNum === 1 ? 1 : 0)}`);
-      if (!res.ok) {
-        console.error('Failed to fetch posts');
-        return;
+      // Fetch content preview
+      try {
+        const contentRes = await fetch(`http://localhost:8080/api/v1/public/posts/${item.slug}`);
+        if (contentRes.ok) {
+          const contentJson = await contentRes.json();
+          post.contentPreview = contentJson.data?.content || '';
+        }
+      } catch (e) {
+        console.warn('Failed to fetch content preview', e);
       }
+      return post;
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
+  });
+
+  // 2. Fetch Paginated Posts
+  const { 
+    data: postsData,
+    isLoading: isPostsLoading,
+    isPlaceholderData 
+  } = useQuery({
+    queryKey: ['posts', currentPage],
+    queryFn: async () => {
+      // Calculate effective page size/offset logic
+      // Original logic: page 1 fetches 10 items (skipped 1), others fetch 9
+      const effectivePageSize = PAGE_SIZE + (currentPage === 1 ? 1 : 0);
+      const res = await fetch(`http://localhost:8080/api/v1/public/posts?pageNum=${currentPage}&pageSize=${effectivePageSize}`);
+      if (!res.ok) throw new Error('Network response was not ok');
       const json = await res.json();
+      
       let list = json.data.list.map((item: any) => ({
         id: item.id,
         title: item.title,
@@ -94,112 +92,38 @@ export default function PostsPage() {
         category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       }));
-      
-      // On page 1, skip the first post (it's the featured post)
-      if (pageNum === 1 && list.length > 0) {
+
+      // If page 1, remove the first item (featured post)
+      if (currentPage === 1 && list.length > 0) {
         list = list.slice(1);
       }
-      
-      setPosts(list);
-      // Adjust total to exclude the featured post
-      const adjustedTotal = Math.max(0, json.data.total - 1);
-      const adjustedPages = Math.ceil(adjustedTotal / PAGE_SIZE);
-      setPagination({
-        pageNum,
-        pageSize: PAGE_SIZE,
-        total: adjustedTotal,
-        pages: adjustedPages,
-      });
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-    } finally {
-      setLoading(false);
-      setInitialLoading(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    fetchFeaturedPost();
-    fetchPosts(1);
-  }, [fetchFeaturedPost, fetchPosts]);
+      const total = Math.max(0, json.data.total - 1);
+      
+      return {
+        list: list as Post[],
+        total: total,
+        pages: Math.ceil(total / PAGE_SIZE)
+      };
+    },
+    placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
+  });
 
   const handlePageChange = (page: number) => {
-    if (page < 1 || page > pagination.pages) return;
-    fetchPosts(page);
-    // Scroll to top of posts section
+    if (!postsData || page < 1 || page > postsData.pages) return;
+    setCurrentPage(page);
     window.scrollTo({ top: 500, behavior: 'smooth' });
   };
 
-  if (initialLoading) {
-    return (
-      <div className="min-h-screen bg-background text-white">
-        <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
-          {/* 顶部区域骨架 */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">
-            {/* Featured Post 骨架 */}
-            <div className="lg:col-span-3 lg:h-[420px] lg:min-h-[420px]">
-              <div className="h-full rounded-3xl bg-white/5 border border-white/10 overflow-hidden relative">
-                <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-              </div>
-            </div>
-            
-            {/* Author Card 骨架 */}
-            <div className="lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
-              <div className="h-full rounded-3xl bg-white/5 border border-white/10 overflow-hidden relative">
-                <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-              </div>
-            </div>
-          </div>
-
-          {/* 最新发布标题骨架 */}
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-6 h-6 rounded bg-white/10 overflow-hidden relative">
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-            </div>
-            <div className="w-24 h-8 rounded bg-white/10 overflow-hidden relative">
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-            </div>
-          </div>
-
-          {/* 文章卡片网格骨架 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div 
-                key={i} 
-                className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden"
-                style={{ animationDelay: `${i * 100}ms` }}
-              >
-                {/* 封面图骨架 */}
-                <div className="aspect-video bg-white/10 overflow-hidden relative">
-                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                </div>
-                {/* 内容区骨架 */}
-                <div className="p-5 space-y-3">
-                  <div className="flex justify-between">
-                    <div className="w-16 h-4 bg-white/10 rounded overflow-hidden relative">
-                      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                    </div>
-                    <div className="w-20 h-4 bg-white/10 rounded overflow-hidden relative">
-                      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                    </div>
-                  </div>
-                  <div className="w-full h-6 bg-white/10 rounded overflow-hidden relative">
-                    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                  </div>
-                  <div className="w-3/4 h-4 bg-white/10 rounded overflow-hidden relative">
-                    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                  </div>
-                  <div className="w-1/2 h-4 bg-white/10 rounded overflow-hidden relative">
-                    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-      </div>
-    );
+  // Initial loading state (only for first load)
+  if (isFeaturedLoading || (isPostsLoading && !postsData)) {
+    return <PostsLoading />;
   }
+
+  const posts = postsData?.list || [];
+  const total = postsData?.total || 0;
+  const pages = postsData?.pages || 0;
 
   return (
     <div className="min-h-screen bg-background text-white selection:bg-primary/30">
@@ -242,15 +166,16 @@ export default function PostsPage() {
                   <LayoutGrid className="w-6 h-6 text-primary" />
                   最新发布
                   <span className="text-sm font-normal text-gray-400 ml-2">
-                    （共 {pagination.total} 篇）
+                    （共 {total} 篇）
                   </span>
                 </h2>
               </div>
 
-              {loading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                </div>
+              {/* Grid or Pagination Loading Spinner */}
+              {isPostsLoading && isPlaceholderData ? (
+                 <div className="flex items-center justify-center py-20 opacity-50">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                 </div>
               ) : posts.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {posts.map((post, index) => (
@@ -270,18 +195,20 @@ export default function PostsPage() {
                 </div>
               ) : (
                 <div className="text-center py-20 border border-dashed border-white/10 rounded-2xl">
-                  <p className="text-gray-500">没有更多文章了</p>
+                  <p className="text-gray-500">
+                    {total === 0 ? '没有更多文章了' : '加载中...'}
+                  </p>
                 </div>
               )}
 
               {/* Pagination */}
-              {pagination.pages > 1 && (
+              {pages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-10">
                   <button
-                    onClick={() => handlePageChange(pagination.pageNum - 1)}
-                    disabled={pagination.pageNum <= 1}
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage <= 1 || isPlaceholderData}
                     className={`flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
-                      pagination.pageNum <= 1
+                      currentPage <= 1
                         ? 'text-gray-600 cursor-not-allowed'
                         : 'bg-white/5 text-gray-300 hover:bg-white/10'
                     }`}
@@ -290,15 +217,15 @@ export default function PostsPage() {
                     上一页
                   </button>
 
-                  {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
-                    const start = Math.max(1, Math.min(pagination.pageNum - 2, pagination.pages - 4));
+                  {Array.from({ length: Math.min(5, pages) }, (_, i) => {
+                    const start = Math.max(1, Math.min(currentPage - 2, pages - 4));
                     return start + i;
-                  }).filter(p => p <= pagination.pages).map((page) => (
+                  }).filter(p => p <= pages).map((page) => (
                     <button
                       key={page}
                       onClick={() => handlePageChange(page)}
                       className={`w-10 h-10 rounded-lg transition-colors ${
-                        page === pagination.pageNum
+                        page === currentPage
                           ? 'bg-primary text-white'
                           : 'bg-white/5 text-gray-400 hover:bg-white/10'
                       }`}
@@ -308,10 +235,10 @@ export default function PostsPage() {
                   ))}
 
                   <button
-                    onClick={() => handlePageChange(pagination.pageNum + 1)}
-                    disabled={pagination.pageNum >= pagination.pages}
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage >= pages || isPlaceholderData}
                     className={`flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
-                      pagination.pageNum >= pagination.pages
+                      currentPage >= pages
                         ? 'text-gray-600 cursor-not-allowed'
                         : 'bg-white/5 text-gray-300 hover:bg-white/10'
                     }`}

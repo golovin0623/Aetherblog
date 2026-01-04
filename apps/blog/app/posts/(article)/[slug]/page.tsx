@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import MarkdownRenderer from '../../components/MarkdownRenderer';
+import MarkdownRenderer from '../../../components/MarkdownRenderer';
 
 interface Post {
   id: number;
