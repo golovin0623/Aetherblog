@@ -17,6 +17,7 @@ export interface Post {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  draft?: CreatePostRequest; // Cached draft content
 }
 
 export interface PostListItem {
@@ -76,10 +77,12 @@ export const postService = {
   update: (id: number, data: Partial<CreatePostRequest>): Promise<R<Post>> =>
     apiClient.put<R<Post>>(`/v1/admin/posts/${id}`, data),
 
+  autoSave: (id: number, data: Partial<CreatePostRequest>): Promise<R<void>> =>
+    apiClient.post<R<void>>(`/v1/admin/posts/${id}/auto-save`, data),
+
   delete: (id: number): Promise<R<void>> =>
     apiClient.delete<R<void>>(`/v1/admin/posts/${id}`),
 
   publish: (id: number): Promise<R<void>> =>
     apiClient.patch<R<void>>(`/v1/admin/posts/${id}/publish`),
 };
-

@@ -1,6 +1,7 @@
 package com.aetherblog.blog.dto.response;
 
 import lombok.Data;
+import com.aetherblog.blog.dto.request.CreatePostRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,6 +27,11 @@ public class PostDetailResponse {
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /**
+     * 草稿内容 (如果有)
+     */
+    private CreatePostRequest draft;
 
     @Data
     public static class CategoryInfo {

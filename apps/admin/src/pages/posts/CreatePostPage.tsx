@@ -73,6 +73,34 @@ export function CreatePostPage() {
     return () => setAutoCollapse(false);
   }, [setAutoCollapse]);
 
+  // Auto-save logic
+  const latestDataRef = useRef({ title, content, summary, selectedCategory, selectedTags });
+  useEffect(() => {
+    latestDataRef.current = { title, content, summary, selectedCategory, selectedTags };
+  }, [title, content, summary, selectedCategory, selectedTags]);
+
+  useEffect(() => {
+    if (!isEditMode || !postId) return;
+
+    const timer = setInterval(() => {
+      const data = latestDataRef.current;
+      // Only auto-save if content exists
+      if (!data.title && !data.content) return;
+
+      // Automatically save to draft cache (Redis)
+      postService.autoSave(postId, {
+        title: data.title,
+        content: data.content,
+        summary: data.summary,
+        categoryId: data.selectedCategory?.id,
+        tagIds: data.selectedTags.map(t => t.id),
+        status: _postStatus
+      }).catch(err => console.error('Auto save failed', err));
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [isEditMode, postId, _postStatus]);
+
   // View configuration automation
   useEffect(() => {
     if (viewMode === 'edit') {
@@ -142,12 +170,22 @@ export function CreatePostPage() {
           const res = await postService.getById(postId);
           if (res.code === 200 && res.data) {
             const post = res.data;
-            setTitle(post.title);
-            setContent(post.content);
-            setSummary(post.summary || '');
+            const draft = post.draft;
+            const useDraft = !!draft;
+
+            // Prefer draft content if available
+            setTitle(useDraft ? draft.title : post.title);
+            setContent(useDraft ? draft.content : post.content);
+            setSummary((useDraft ? draft.summary : post.summary) || '');
             setPostStatus(post.status as 'DRAFT' | 'PUBLISHED');
             
-            // Direct assignment from detail response
+            if (useDraft) {
+              setSaveMessage({ type: 'success', text: '已自动恢复未发布的草稿内容' });
+              setTimeout(() => setSaveMessage(null), 3000);
+            }
+            
+            // For relations, we prioritize DB values initially to ensure we have full objects
+            // Future improvement: Hydrate Category/Tags from draft IDs if possible
             if ((post as any).category) {
               setSelectedCategory((post as any).category as Category);
             }
@@ -450,32 +488,47 @@ export function CreatePostPage() {
     setSaveMessage(null);
     
     try {
-      const res = isEditMode && postId
-        ? await postService.update(postId, {
+      // If editing a PUBLISHED post, "Save" only updates the Draft Cache
+      // Un-published (DRAFT) posts update the DB directly
+      if (isEditMode && postId && _postStatus === 'PUBLISHED') {
+         await postService.autoSave(postId, {
             title: title.trim(),
             content,
             summary: summary.trim() || undefined,
             categoryId: selectedCategory?.id,
             tagIds: selectedTags.map(t => t.id),
-            status: 'DRAFT',
-          })
-        : await postService.create({
-            title: title.trim(),
-            content,
-            summary: summary.trim() || undefined,
-            categoryId: selectedCategory?.id,
-            tagIds: selectedTags.map(t => t.id),
-            status: 'DRAFT',
-          });
-      
-      if (res.code === 200 && res.data) {
-        setSaveMessage({ type: 'success', text: '草稿保存成功！' });
-        // If it was a new post, navigate to edit page for this post to allow continued editing
-        if (!isEditMode && res.data.id) {
-          setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
-        }
+            status: 'PUBLISHED',
+         });
+         setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
       } else {
-        setSaveMessage({ type: 'error', text: res.message || '保存失败' });
+        // Normal save to DB
+        const res = isEditMode && postId
+          ? await postService.update(postId, {
+              title: title.trim(),
+              content,
+              summary: summary.trim() || undefined,
+              categoryId: selectedCategory?.id,
+              tagIds: selectedTags.map(t => t.id),
+              status: 'DRAFT',
+            })
+          : await postService.create({
+              title: title.trim(),
+              content,
+              summary: summary.trim() || undefined,
+              categoryId: selectedCategory?.id,
+              tagIds: selectedTags.map(t => t.id),
+              status: 'DRAFT',
+            });
+        
+        if (res.code === 200 && res.data) {
+          setSaveMessage({ type: 'success', text: '保存成功！' });
+          // If it was a new post, navigate to edit page
+          if (!isEditMode && res.data.id) {
+            setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
+          }
+        } else {
+          setSaveMessage({ type: 'error', text: res.message || '保存失败' });
+        }
       }
     } catch (error) {
       console.error('Save error:', error);

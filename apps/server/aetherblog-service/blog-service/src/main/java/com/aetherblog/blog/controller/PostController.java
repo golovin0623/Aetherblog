@@ -64,6 +64,13 @@ public class PostController {
         return R.ok(postService.updatePost(id, request));
     }
 
+    @Operation(summary = "自动保存/保存草稿")
+    @PostMapping("/{id}/auto-save")
+    public R<Void> saveDraft(@PathVariable Long id, @RequestBody CreatePostRequest request) {
+        postService.saveDraft(id, request);
+        return R.ok();
+    }
+
     @Operation(summary = "删除文章")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {

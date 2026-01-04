@@ -57,6 +57,13 @@ public interface PostService {
 
     PostDetailResponse updatePost(Long id, CreatePostRequest request);
 
+    /**
+     * 保存文章草稿 (缓存到Redis, 7天过期)
+     * @param id 文章ID
+     * @param request 草稿内容
+     */
+    void saveDraft(Long id, CreatePostRequest request);
+
     void deletePost(Long id);
 
     void publishPost(Long id);
