@@ -37,7 +37,7 @@ export function CreatePostPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [summary, setSummary] = useState('');
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [_loadingPost, setLoadingPost] = useState(false);
+  const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
   // Quick create category modal
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
@@ -49,14 +49,14 @@ export function CreatePostPage() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
   // Tag state
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState('');
   const [showTagDropdown, setShowTagDropdown] = useState(false);
-  const [loadingTags, setLoadingTags] = useState(false);
+  const [loadingTags, setLoadingTags] = useState(true);
   const [showAllTags, setShowAllTags] = useState(false);
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
@@ -623,28 +623,28 @@ export function CreatePostPage() {
 
 
 
-  // Loading skeleton for edit mode
-  if (isEditMode && (_loadingPost || loadingCategories || loadingTags)) {
+  // Loading skeleton
+  if (_loadingPost || loadingCategories || loadingTags) {
     return (
       <div className="flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-50 overflow-hidden">
         {/* Header Skeleton */}
-        <div className="h-14 flex-shrink-0 border-b border-white/10 bg-[#0a0a0c] flex items-center justify-between px-4 gap-4">
+        <div className="h-14 flex-shrink-0 border-b border-white/10 bg-[#0a0a0c] flex items-center justify-between px-6 gap-4">
            {/* Left */}
            <div className="flex items-center gap-3 flex-1">
-             <div className="w-8 h-8 rounded-lg bg-white/5 animate-pulse flex-shrink-0" /> {/* Back */}
-             <div className="h-8 rounded-lg bg-white/5 animate-pulse flex-1 max-w-md" />   {/* Title */}
+             <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse flex-shrink-0" /> {/* Back */}
+             <div className="h-8 rounded-lg bg-zinc-800 animate-pulse flex-1 max-w-md" />   {/* Title */}
              <div className="w-px h-6 bg-white/10 flex-shrink-0 mx-1" />
              <div className="flex gap-2">
-                <div className="w-24 h-7 rounded bg-white/5 animate-pulse" />
-                <div className="w-16 h-7 rounded bg-white/5 animate-pulse" />
+                <div className="w-24 h-7 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-16 h-7 rounded bg-zinc-800 animate-pulse" />
              </div>
            </div>
            
            {/* Right */}
            <div className="flex items-center gap-2">
-              <div className="w-20 h-8 rounded-lg bg-white/5 animate-pulse" /> {/* AI */}
-              <div className="w-8 h-8 rounded-lg bg-white/5 animate-pulse" />  {/* Settings */}
-              <div className="w-[90px] h-8 rounded-lg bg-white/5 animate-pulse" /> {/* Save */}
+              <div className="w-20 h-8 rounded-lg bg-zinc-800 animate-pulse" /> {/* AI */}
+              <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse" />  {/* Settings */}
+              <div className="w-[90px] h-8 rounded-lg bg-zinc-800 animate-pulse" /> {/* Save */}
               <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* Publish */}
            </div>
         </div>
@@ -652,14 +652,14 @@ export function CreatePostPage() {
         {/* Toolbar Skeleton */}
         <div className="flex-shrink-0 h-10 border-b border-white/10 bg-[#0a0a0c]/80 flex items-center px-4 gap-4 overflow-hidden">
              <div className="flex items-center gap-1 pr-3 border-r border-white/10">
-                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
              </div>
              <div className="flex items-center gap-1 px-3">
-                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-white/5 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
              </div>
              <div className="flex-1" />
         </div>
@@ -668,31 +668,35 @@ export function CreatePostPage() {
         <div className="flex-1 flex overflow-hidden">
              {/* Editor */}
              <div className="flex-1 p-8 space-y-6">
-                <div className="w-3/4 h-10 rounded-lg bg-white/5 animate-pulse" /> {/* H1 title-like */}
-                <div className="space-y-3">
-                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
-                    <div className="w-11/12 h-4 rounded bg-white/5 animate-pulse" />
-                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
-                    <div className="w-4/5 h-4 rounded bg-white/5 animate-pulse" />
+                <div className="w-3/4 h-10 rounded-lg bg-zinc-800 animate-pulse" /> {/* H1 title-like */}
+                <div className="space-y-4">
+                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-11/12 h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-4/5 h-4 rounded bg-zinc-800 animate-pulse" />
+                </div>
+                <div className="space-y-4 pt-4">
+                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-zinc-800 animate-pulse" />
                 </div>
              </div>
              
              {/* Preview */}
              <div className="flex-1 border-l border-white/10 bg-black/20 p-8 space-y-6 hidden lg:block">
-                <div className="w-2/3 h-10 rounded-lg bg-white/5 animate-pulse" />
-                <div className="space-y-3">
-                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-white/5 animate-pulse" />
-                    <div className="w-full h-4 rounded bg-white/5 animate-pulse" />
+                <div className="w-2/3 h-10 rounded-lg bg-zinc-800 animate-pulse" />
+                <div className="space-y-4">
+                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
                 </div>
-                <div className="w-full h-48 rounded-lg bg-white/5 animate-pulse" />
+                <div className="w-full h-48 rounded-lg bg-zinc-800 animate-pulse" />
              </div>
         </div>
         
         {/* Footer (Status Bar) */}
         <div className="h-8 flex-shrink-0 border-t border-white/10 bg-[#0a0a0c] flex items-center justify-between px-4">
-             <div className="w-24 h-3 rounded bg-white/5 animate-pulse" />
-             <div className="w-16 h-3 rounded bg-white/5 animate-pulse" />
+             <div className="w-24 h-3 rounded bg-zinc-800 animate-pulse" />
+             <div className="w-16 h-3 rounded bg-zinc-800 animate-pulse" />
         </div>
       </div>
     );

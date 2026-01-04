@@ -4,7 +4,8 @@ import { Sidebar } from './Sidebar';
 import { useSidebarStore } from '@/stores';
 
 export function AdminLayout() {
-  const { isCollapsed } = useSidebarStore();
+  const { isCollapsed, isAutoCollapsed } = useSidebarStore();
+  const effectiveCollapsed = isCollapsed || isAutoCollapsed;
 
   return (
     <div className="flex h-screen bg-background">
@@ -13,7 +14,7 @@ export function AdminLayout() {
 
       {/* 主内容区 */}
       <motion.div
-        animate={{ marginLeft: isCollapsed ? 64 : 256 }}
+        animate={{ marginLeft: effectiveCollapsed ? 64 : 256 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="flex-1 flex flex-col"
       >

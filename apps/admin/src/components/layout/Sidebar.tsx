@@ -36,7 +36,8 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { isCollapsed, toggle } = useSidebarStore();
+  const { isCollapsed, isAutoCollapsed, toggle } = useSidebarStore();
+  const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState('');
@@ -53,7 +54,7 @@ export function Sidebar() {
     <>
     <motion.aside
       initial={false}
-      animate={{ width: isCollapsed ? 64 : 256 }}
+      animate={{ width: effectiveCollapsed ? 64 : 256 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
       className={cn(
         'fixed left-0 top-0 h-screen z-40 overflow-hidden',
@@ -64,7 +65,7 @@ export function Sidebar() {
       {/* Logo - Icon stays fixed, text collapses */}
       <div className={cn(
         "h-14 flex items-center border-b border-border transition-all duration-300",
-        isCollapsed ? "px-4" : "px-3"
+        effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
@@ -72,7 +73,7 @@ export function Sidebar() {
           </div>
           <div className={cn(
             'overflow-hidden transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <span className="font-semibold text-white whitespace-nowrap">
               AetherBlog
@@ -84,15 +85,15 @@ export function Sidebar() {
       {/* Search Bar - Icon stays fixed, input collapses */}
       <div className={cn(
         "py-3 border-b border-border transition-all duration-300",
-        isCollapsed ? "px-4" : "px-3"
+        effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <form onSubmit={handleSearch} className="flex items-center">
           <button
             type="button"
-            onClick={() => isCollapsed && toggle()}
+            onClick={() => effectiveCollapsed && toggle()}
             className={cn(
               'flex-shrink-0 flex items-center justify-center rounded-lg',
-              isCollapsed ? 'w-8 h-8' : 'w-8 h-8', // Consistent size
+              effectiveCollapsed ? 'w-8 h-8' : 'w-8 h-8', // Consistent size
               'text-gray-400 hover:text-white hover:bg-white/5',
               'transition-all duration-200'
             )}
@@ -101,7 +102,7 @@ export function Sidebar() {
           </button>
           <div className={cn(
             'overflow-hidden transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
+            effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
           )}>
             <input
               type="text"
@@ -124,7 +125,7 @@ export function Sidebar() {
       <nav className="flex-1 py-3 overflow-y-auto">
         <ul className={cn(
           "space-y-0.5 transition-all duration-300",
-          isCollapsed ? "px-4" : "px-3"
+          effectiveCollapsed ? "px-4" : "px-3"
         )}>
           {navItems.map((item) => (
             <li key={item.path}>
@@ -133,7 +134,7 @@ export function Sidebar() {
                 className={({ isActive }) =>
                   cn(
                     'flex items-center rounded-lg transition-all duration-200',
-                    isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
+                    effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
                     isActive
                       ? 'bg-primary text-white'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -142,11 +143,11 @@ export function Sidebar() {
               >
                 <item.icon className={cn(
                   'w-5 h-5 flex-shrink-0 transition-all duration-300',
-                  isCollapsed ? 'scale-100' : 'scale-100'
+                  effectiveCollapsed ? 'scale-100' : 'scale-100'
                 )} />
                 <span className={cn(
                   'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
-                  isCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
+                  effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
                 )}>
                   {item.label}
                 </span>
@@ -159,19 +160,19 @@ export function Sidebar() {
       {/* Quick Links - Icons stay fixed, text collapses */}
       <div className={cn(
         "border-t border-border py-2 space-y-0.5 transition-all duration-300",
-        isCollapsed ? "px-4" : "px-3"
+        effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <NavLink
           to="/dashboard"
           className={cn(
             'flex items-center rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200',
-            isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
+            effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
           )}
         >
           <Home className="w-5 h-5 flex-shrink-0" />
           <span className={cn(
             'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
           )}>
             主站
           </span>
@@ -181,7 +182,7 @@ export function Sidebar() {
           className={({ isActive }) =>
             cn(
               'flex items-center rounded-lg transition-all duration-200',
-              isCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
+              effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
               isActive
                 ? 'bg-primary text-white'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -191,7 +192,7 @@ export function Sidebar() {
           <Info className="w-5 h-5 flex-shrink-0" />
           <span className={cn(
             'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
           )}>
             关于
           </span>
@@ -202,7 +203,7 @@ export function Sidebar() {
       <div className="border-t border-border p-3 space-y-2">
         <div className={cn(
           "flex items-center transition-all duration-300",
-          isCollapsed ? "px-0 justify-center" : "gap-3 px-1"
+          effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-1"
         )}>
           {/* Avatar - always visible, fixed position */}
           <div className="relative flex-shrink-0">
@@ -223,7 +224,7 @@ export function Sidebar() {
           {/* User details - collapse with overflow-hidden */}
           <div className={cn(
             'flex-1 min-w-0 overflow-hidden transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <p className="text-sm font-medium text-white truncate whitespace-nowrap">
               {user?.nickname || '管理员'}
@@ -236,7 +237,7 @@ export function Sidebar() {
           {/* Logout button - collapse with overflow-hidden */}
           <div className={cn(
             'overflow-hidden transition-all duration-300 flex-shrink-0',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <button
               onClick={() => setShowLogoutConfirm(true)}
@@ -255,7 +256,7 @@ export function Sidebar() {
         {/* Collapse Toggle - same pattern */}
         <div className={cn(
           "flex items-center transition-all duration-300",
-          isCollapsed ? "px-0 justify-center" : "gap-2 px-1"
+          effectiveCollapsed ? "px-0 justify-center" : "gap-2 px-1"
         )}>
           <button
             onClick={toggle}
@@ -265,7 +266,7 @@ export function Sidebar() {
               'transition-all duration-200'
             )}
           >
-            {isCollapsed ? (
+            {effectiveCollapsed ? (
               <ChevronRight className="w-4 h-4" />
             ) : (
               <ChevronLeft className="w-4 h-4" />
@@ -273,7 +274,7 @@ export function Sidebar() {
           </button>
           <span className={cn(
             'text-xs text-gray-400 overflow-hidden whitespace-nowrap transition-all duration-300',
-            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             收起侧边栏
           </span>
