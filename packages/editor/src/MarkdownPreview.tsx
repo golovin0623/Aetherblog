@@ -4,6 +4,7 @@ import { marked, Renderer } from 'marked';
 export interface MarkdownPreviewProps {
   content: string;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 // Create a custom renderer that adds line numbers to elements
@@ -39,7 +40,7 @@ function createLineTrackingRenderer(content: string): Renderer {
   return renderer;
 }
 
-export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProps) {
+export function MarkdownPreview({ content, className = '', style }: MarkdownPreviewProps) {
   const html = useMemo(() => {
     if (!content) return '';
     try {
@@ -62,6 +63,7 @@ export function MarkdownPreview({ content, className = '' }: MarkdownPreviewProp
         color: '#e2e8f0',
         lineHeight: 1.75,
         fontSize: '16px',
+        ...style,
       }}
     />
   );

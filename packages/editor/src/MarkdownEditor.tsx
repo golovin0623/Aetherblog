@@ -12,6 +12,9 @@ export interface MarkdownEditorProps {
   className?: string;
   readOnly?: boolean;
   plain?: boolean;
+  style?: React.CSSProperties;
+  showLineNumbers?: boolean;
+  contentCentered?: boolean;
 }
 
 export function MarkdownEditor({
@@ -22,6 +25,9 @@ export function MarkdownEditor({
   className = '',
   readOnly = false,
   plain = false,
+  style,
+  showLineNumbers = false,
+  contentCentered = false,
 }: MarkdownEditorProps) {
   const handleChange = useCallback(
     (val: string) => {
@@ -48,11 +54,14 @@ export function MarkdownEditor({
         '.cm-content': {
           minHeight,
           padding: '24px',
+          maxWidth: contentCentered ? '800px' : 'none',
+          margin: contentCentered ? '0 auto' : '0',
         },
         '.cm-gutters': {
           backgroundColor: 'transparent',
           border: 'none',
           paddingLeft: '12px',
+          display: showLineNumbers ? 'flex' : 'none', // Hide entire gutter if line numbers are off
         },
         '.cm-activeLine': {
           backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -65,7 +74,7 @@ export function MarkdownEditor({
         },
       }),
     ],
-    [minHeight]
+    [minHeight, showLineNumbers, contentCentered]
   );
 
   return (
@@ -78,12 +87,12 @@ export function MarkdownEditor({
         readOnly={readOnly}
         theme="dark"
         height="100%"
-        style={{ height: '100%' }}
+        style={{ height: '100%', ...style }}
         basicSetup={{
-          lineNumbers: true,
-          highlightActiveLineGutter: true,
+          lineNumbers: showLineNumbers,
+          highlightActiveLineGutter: showLineNumbers,
           highlightActiveLine: true,
-          foldGutter: true,
+          foldGutter: showLineNumbers,
           dropCursor: true,
           allowMultipleSelections: true,
           indentOnInput: true,

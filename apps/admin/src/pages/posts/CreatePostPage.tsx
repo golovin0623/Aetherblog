@@ -6,7 +6,7 @@ import {
   Link2, Image, Quote, Heading1, Heading2, Heading3,
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle, Tag as TagIcon,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
-  Maximize2, Minimize2, Eye, ListTree
+  Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorWithPreview, type ViewMode } from '@aetherblog/editor';
@@ -31,6 +31,8 @@ export function CreatePostPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
+  const [fontSize, setFontSize] = useState(14);
+  const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [summary, setSummary] = useState('');
@@ -69,6 +71,21 @@ export function CreatePostPage() {
     setAutoCollapse(true);
     return () => setAutoCollapse(false);
   }, [setAutoCollapse]);
+
+  // View configuration automation
+  useEffect(() => {
+    if (viewMode === 'edit') {
+      setShowToc(true);
+      setIsFullscreen(false); 
+    } else if (viewMode === 'preview') {
+      setIsFullscreen(true);
+      setShowToc(false);
+    } else {
+      // Split mode defaults
+      setIsFullscreen(false);
+      setShowToc(false);
+    }
+  }, [viewMode]);
 
   // Fetch categories and tags on mount
   useEffect(() => {
@@ -857,6 +874,25 @@ export function CreatePostPage() {
         {/* Spacer */}
         <div className="flex-1" />
         
+        {/* Zoom Controls */}
+        <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
+          <button
+            onClick={() => setFontSize(s => Math.max(12, s - 1))}
+            className="p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white"
+            title="缩小 (Zoom Out)"
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
+          <span className="text-xs text-gray-500 w-8 text-center select-none">{fontSize}px</span>
+          <button
+            onClick={() => setFontSize(s => Math.min(24, s + 1))}
+            className="p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white"
+            title="放大 (Zoom In)"
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* View Mode Toggle */}
         <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
           <button
@@ -915,6 +951,8 @@ export function CreatePostPage() {
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               isSyncScroll={isSyncScroll}
+              fontSize={fontSize}
+              showLineNumbers={showLineNumbers}
               hideToolbar
             />
           </div>
@@ -1047,15 +1085,29 @@ export function CreatePostPage() {
         </div>
         
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer group">
-            <input 
-              type="checkbox" 
-              checked={isSyncScroll} 
-              onChange={(e) => setIsSyncScroll(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
-            />
-            <span className="group-hover:text-gray-200 transition-colors">同步滚动</span>
-          </label>
+          {viewMode !== 'preview' && (
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                checked={showLineNumbers} 
+                onChange={(e) => setShowLineNumbers(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
+              />
+              <span className="group-hover:text-gray-200 transition-colors">显示行号</span>
+            </label>
+          )}
+          
+          {viewMode === 'split' && (
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                checked={isSyncScroll} 
+                onChange={(e) => setIsSyncScroll(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
+              />
+              <span className="group-hover:text-gray-200 transition-colors">同步滚动</span>
+            </label>
+          )}
           <button 
             onClick={scrollToTop} 
             className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-gray-200 transition-all ml-2"

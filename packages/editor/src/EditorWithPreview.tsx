@@ -17,6 +17,10 @@ export interface EditorWithPreviewProps {
   hideToolbar?: boolean;
   /** Synchronize scroll between editor and preview in split mode */
   isSyncScroll?: boolean;
+  /** Base font size in px */
+  fontSize?: number;
+  /** Whether to show line numbers in editor */
+  showLineNumbers?: boolean;
 }
 
 export function EditorWithPreview({ 
@@ -27,6 +31,8 @@ export function EditorWithPreview({
   onViewModeChange,
   hideToolbar = false,
   isSyncScroll = false,
+  fontSize = 14,
+  showLineNumbers = false,
 }: EditorWithPreviewProps) {
   const [internalViewMode, setInternalViewMode] = useState<ViewMode>('split');
   const editorScrollRef = useRef<HTMLDivElement>(null);
@@ -65,17 +71,20 @@ export function EditorWithPreview({
 
       // Get the current top visible line in the editor
       const getEditorTopLine = (): number => {
-        const lines = cmContent.querySelectorAll('.cm-line');
         const scrollTop = editorEl.scrollTop;
+        const paddingTop = parseFloat(getComputedStyle(cmContent).paddingTop) || 0;
         
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i] as HTMLElement;
-          const lineTop = line.offsetTop - cmContent.offsetTop;
-          if (lineTop >= scrollTop) {
-            return i + 1; // 1-indexed line number
-          }
-        }
-        return 1;
+        // Measure line height dynamically from the first visible line
+        const firstLine = cmContent.querySelector('.cm-line');
+        // Default to fontSize * 1.5 if no line found (1.5 is standard line-height)
+        const lineHeight = firstLine ? firstLine.clientHeight : (fontSize || 16) * 1.5;
+        
+        if (!lineHeight) return 1;
+
+        // Calculate line number based on scroll position
+        // Subtract padding to get content scroll position
+        const contentScrollTop = Math.max(0, scrollTop - paddingTop);
+        return Math.floor(contentScrollTop / lineHeight) + 1;
       };
 
       // Find the closest element in preview with data-source-line
@@ -97,8 +106,12 @@ export function EditorWithPreview({
           // Calculate offset position
           const elementTop = (closestElement as HTMLElement).offsetTop;
           const lineDiff = lineNum - closestLine;
-          // Estimate additional scroll based on line difference (assuming ~24px per line)
-          const additionalScroll = lineDiff * 24;
+          // Calculate dynamic line height
+          const firstLine = cmContent.querySelector('.cm-line');
+          const lineHeight = firstLine ? firstLine.clientHeight : (fontSize || 16) * 1.5;
+
+          // Estimate additional scroll based on line difference
+          const additionalScroll = lineDiff * lineHeight;
           
           previewEl.scrollTop = Math.max(0, elementTop + additionalScroll - 50);
         } else {
@@ -209,14 +222,27 @@ export function EditorWithPreview({
             ref={viewMode === 'split' ? editorScrollRef : null}
             className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-white/10' : ''}`}
           >
-            <MarkdownEditor value={value} onChange={onChange} plain />
+            <MarkdownEditor 
+              value={value} 
+              onChange={onChange} 
+              plain 
+              style={{ fontSize: `${Math.max(12, fontSize - 2)}px` }}
+              showLineNumbers={showLineNumbers}
+              contentCentered={viewMode === 'edit'}
+            />
           </div>
         )}
         
         {viewMode === 'preview' && (
           <div className="flex-1 overflow-y-auto bg-[#0a0a0c]">
-            <div className="max-w-[71.4%] mx-auto w-full py-12 px-6 min-h-full">
-              <MarkdownPreview content={value} />
+            <div 
+              className="w-full py-12 px-6 min-h-full"
+              style={{ maxWidth: '800px', margin: '0 auto' }}
+            >
+              <MarkdownPreview 
+                content={value} 
+                style={{ fontSize: `${fontSize}px` }}
+              />
             </div>
           </div>
         )}
@@ -227,7 +253,10 @@ export function EditorWithPreview({
             className="flex-1 overflow-y-auto bg-[#0a0a0c]"
           >
             <div className="max-w-[90%] mx-auto w-full py-10 px-6 min-h-full">
-              <MarkdownPreview content={value} />
+              <MarkdownPreview 
+                content={value} 
+                style={{ fontSize: `${fontSize}px` }}
+              />
             </div>
           </div>
         )}
