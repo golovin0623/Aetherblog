@@ -1351,7 +1351,7 @@ export function CreatePostPage() {
         <Modal 
           isOpen={showSettings} 
           onClose={() => setShowSettings(false)}
-          title="发布设置"
+          title="设置"
           size="md"
         >
           <div className="space-y-6">
