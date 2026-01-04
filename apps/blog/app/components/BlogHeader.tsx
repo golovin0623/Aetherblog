@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
+import { Settings2 } from 'lucide-react';
 
 /**
  * 博客共享头部组件
@@ -182,6 +183,18 @@ export default function BlogHeader() {
             <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
             <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
             <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
+            
+            {/* 管理后台入口 */}
+            <div className="h-4 w-px bg-white/10 mx-1 hidden md:block"></div>
+            <a 
+              href="http://localhost:5173" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-300 group/admin"
+              title="管理后台"
+            >
+              <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
+            </a>
           </nav>
         </div>
       </header>

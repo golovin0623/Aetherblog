@@ -26,6 +26,8 @@ export interface PostListItem {
   summary: string;
   coverImage: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  categoryName: string | null;
+  tagNames: string[];
   viewCount: number;
   commentCount: number;
   publishedAt: string | null;
@@ -51,7 +53,18 @@ export interface CreatePostRequest {
 }
 
 export const postService = {
-  getList: (params: { pageNum?: number; pageSize?: number; status?: string; keyword?: string }): Promise<R<PageResult<PostListItem>>> =>
+  getList: (params: { 
+    pageNum?: number; 
+    pageSize?: number; 
+    status?: string; 
+    keyword?: string;
+    categoryId?: number;
+    tagId?: number;
+    minViewCount?: number;
+    maxViewCount?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<R<PageResult<PostListItem>>> =>
     apiClient.get<R<PageResult<PostListItem>>>('/v1/admin/posts', { params }),
 
   getById: (id: number): Promise<R<Post>> =>

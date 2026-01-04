@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
-import { Header } from './Header';
 import { useSidebarStore } from '@/stores';
 import { cn } from '@/lib/utils';
 
@@ -20,10 +19,7 @@ export function AdminLayout() {
           isCollapsed ? 'ml-16' : 'ml-64'
         )}
       >
-        {/* 顶部导航 */}
-        <Header />
-
-        {/* 页面内容 */}
+        {/* 页面内容 - 全屏高度，无顶部 header */}
         <main className="flex-1 overflow-auto p-6">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -37,3 +33,4 @@ export function AdminLayout() {
     </div>
   );
 }
+

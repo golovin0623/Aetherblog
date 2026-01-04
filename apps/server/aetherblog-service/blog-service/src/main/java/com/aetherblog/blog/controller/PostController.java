@@ -11,9 +11,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDateTime;
 
 /**
  * 文章管理控制器
+ * 
+ * @author AI Assistant
+ * @since 1.0.0
+ * @see §4.3 - 业务服务实现
  */
 @Tag(name = "文章管理", description = "文章CRUD接口")
 @RestController
@@ -23,14 +29,21 @@ public class PostController {
 
     private final PostService postService;
 
-    @Operation(summary = "获取文章列表")
+    @Operation(summary = "获取文章列表", description = "支持多种复杂条件的动态筛选和分页查询")
     @GetMapping
     public R<PageResult<PostListResponse>> list(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long tagId,
+            @RequestParam(required = false) Integer minViewCount,
+            @RequestParam(required = false) Integer maxViewCount,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(postService.getPostsForAdmin(status, keyword, pageNum, pageSize));
+        return R.ok(postService.getPostsForAdmin(
+                status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate, pageNum, pageSize));
     }
 
     @Operation(summary = "获取文章详情")

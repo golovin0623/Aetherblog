@@ -4,14 +4,17 @@ import {
   Save, Settings, Sparkles, ArrowLeft, Send, 
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Link2, Image, Quote, Heading1, Heading2, Heading3,
-  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle
+  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle, Tag as TagIcon,
+  Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorWithPreview } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
+import { Modal } from '@aetherblog/ui';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
+import { useSidebarStore } from '@/stores';
 
 export function CreatePostPage() {
   const navigate = useNavigate();
@@ -51,6 +54,16 @@ export function CreatePostPage() {
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+
+  // Sidebar auto-collapse
+  const { setAutoCollapse } = useSidebarStore();
+
+  // Auto-collapse sidebar on mount, restore on unmount
+  useEffect(() => {
+    setAutoCollapse(true);
+    return () => setAutoCollapse(false);
+  }, [setAutoCollapse]);
 
   // Fetch categories and tags on mount
   useEffect(() => {
@@ -144,15 +157,22 @@ export function CreatePostPage() {
     );
   }, [tags, tagSearch, selectedTags]);
 
-  // Character and word count
+  // Character, word, and line count
   const stats = useMemo(() => {
     const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
     const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
+    const lines = content.split('\n').length;
     return {
       words: chineseChars + englishWords,
       chars: content.length,
+      lines,
     };
   }, [content]);
+
+  // Scroll to top function
+  const scrollToTop = useCallback(() => {
+    editorContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const insertMarkdown = useCallback((prefix: string, suffix: string = '') => {
     setContent((prev) => prev + prefix + suffix);
@@ -323,21 +343,16 @@ export function CreatePostPage() {
     setSelectedTags(selectedTags.filter(t => t.id !== tagId));
   };
 
-  // Panel animation variants
-  const panelVariants = {
-    hidden: { width: 0, opacity: 0, x: 50 },
-    visible: { width: 320, opacity: 1, x: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } },
-    exit: { width: 0, opacity: 0, x: 50, transition: { duration: 0.2 } }
-  };
+
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col">
       {/* Top Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 bg-[#0a0a0c]">
+      <div className="flex items-center justify-between px-6 py-2 border-b border-white/10 bg-[#0a0a0c]">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate('/posts')}
-            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -346,38 +361,38 @@ export function CreatePostPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="输入文章标题..."
-            className="text-xl font-bold bg-transparent text-white placeholder:text-gray-500 focus:outline-none w-96"
+            className="text-lg font-bold bg-transparent text-white placeholder:text-gray-500 focus:outline-none w-96"
           />
         </div>
         
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 mr-2">
-            {stats.words.toLocaleString()} 字 / {stats.chars.toLocaleString()} 字符
+          <span className="text-xs text-gray-500 mr-2">
+            {stats.words.toLocaleString()} 字
           </span>
           
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => { setShowAI(!showAI); setShowSettings(false); }}
+            onClick={() => setShowAI(true)}
             className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
               showAI ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
             )}
           >
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="w-3.5 h-3.5" />
             AI 助手
           </motion.button>
           
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => { setShowSettings(!showSettings); setShowAI(false); }}
+            onClick={() => setShowSettings(true)}
             className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-lg transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
               showSettings ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
             )}
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-3.5 h-3.5" />
             设置
           </motion.button>
           
@@ -387,11 +402,11 @@ export function CreatePostPage() {
             onClick={handleSave}
             disabled={isSaving || isPublishing}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
               isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-white/10 text-gray-300 hover:bg-white/20'
             )}
           >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {isSaving ? '保存中...' : '保存草稿'}
           </motion.button>
           
@@ -401,12 +416,12 @@ export function CreatePostPage() {
             onClick={handlePublish}
             disabled={isSaving || isPublishing}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm',
               isPublishing ? 'bg-primary/50 cursor-wait' : 'bg-primary hover:bg-primary/90',
               'text-white'
             )}
           >
-            {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {isPublishing ? '发布中...' : '发布'}
           </motion.button>
           
@@ -431,285 +446,344 @@ export function CreatePostPage() {
       </div>
 
       {/* Formatting Toolbar */}
-      <div className="flex items-center gap-1 px-6 py-2 border-b border-white/10 bg-[#0a0a0c]/80">
-        <div className="flex items-center gap-1 pr-4 border-r border-white/10">
-          <button onClick={() => insertMarkdown('# ')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 1">
+      <div className="flex items-center gap-1 px-4 py-1.5 border-b border-white/10 bg-[#0a0a0c]/80 overflow-x-auto">
+        {/* Headings */}
+        <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
+          <button onClick={() => insertMarkdown('# ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 1 (H1)">
             <Heading1 className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('## ')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 2">
+          <button onClick={() => insertMarkdown('## ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 2 (H2)">
             <Heading2 className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('### ')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 3">
+          <button onClick={() => insertMarkdown('### ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 3 (H3)">
             <Heading3 className="w-4 h-4" />
           </button>
         </div>
         
-        <div className="flex items-center gap-1 px-4 border-r border-white/10">
-          <button onClick={() => insertMarkdown('**', '**')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="粗体">
+        {/* Text Formatting */}
+        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+          <button onClick={() => insertMarkdown('**', '**')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="粗体 (Bold)">
             <Bold className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('*', '*')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="斜体">
+          <button onClick={() => insertMarkdown('*', '*')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="斜体 (Italic)">
             <Italic className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('~~', '~~')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="删除线">
+          <button onClick={() => insertMarkdown('<u>', '</u>')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="下划线 (Underline)">
+            <Underline className="w-4 h-4" />
+          </button>
+          <button onClick={() => insertMarkdown('~~', '~~')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="删除线 (Strikethrough)">
             <Strikethrough className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('`', '`')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="行内代码">
+        </div>
+
+        {/* Code */}
+        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+          <button onClick={() => insertMarkdown('`', '`')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="行内代码 (Inline Code)">
             <Code className="w-4 h-4" />
           </button>
+          <button onClick={() => insertMarkdown('```\n', '\n```')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="代码块 (Code Block)">
+            <FileCode2 className="w-4 h-4" />
+          </button>
         </div>
         
-        <div className="flex items-center gap-1 px-4 border-r border-white/10">
-          <button onClick={() => insertMarkdown('- ')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="无序列表">
+        {/* Lists */}
+        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+          <button onClick={() => insertMarkdown('- ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="无序列表 (Unordered List)">
             <List className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('1. ')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="有序列表">
+          <button onClick={() => insertMarkdown('1. ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="有序列表 (Ordered List)">
             <ListOrdered className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('> ')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="引用">
-            <Quote className="w-4 h-4" />
+          <button onClick={() => insertMarkdown('- [ ] ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="任务列表 (Task List)">
+            <CheckSquare className="w-4 h-4" />
           </button>
         </div>
-        
-        <div className="flex items-center gap-1 px-4">
-          <button onClick={() => insertMarkdown('[链接文字](', ')')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="链接">
+
+        {/* Insert */}
+        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+          <button onClick={() => insertMarkdown('[链接文字](', ')')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="链接 (Link)">
             <Link2 className="w-4 h-4" />
           </button>
-          <button onClick={() => insertMarkdown('![图片描述](', ')')} className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="图片">
+          <button onClick={() => insertMarkdown('![图片描述](', ')')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="图片 (Image)">
             <Image className="w-4 h-4" />
+          </button>
+          <button onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="表格 (Table)">
+            <Table2 className="w-4 h-4" />
+          </button>
+          <button onClick={() => insertMarkdown('\n---\n')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="分割线 (Horizontal Rule)">
+            <Minus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Advanced: Quote, Math, Diagram */}
+        <div className="flex items-center gap-0.5 px-3">
+          <button onClick={() => insertMarkdown('> ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="引用 (Quote)">
+            <Quote className="w-4 h-4" />
+          </button>
+          <button onClick={() => insertMarkdown('$$\n', '\n$$')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="数学公式 (Math/LaTeX)">
+            <Sigma className="w-4 h-4" />
+          </button>
+          <button onClick={() => insertMarkdown('```mermaid\ngraph TD;\n  A-->B;\n', '```')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="流程图 (Mermaid Diagram)">
+            <GitBranch className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Editor */}
-        <div className="flex-1 overflow-hidden">
+        <div ref={editorContainerRef} className="flex-1 overflow-hidden">
           <EditorWithPreview value={content} onChange={setContent} className="h-full" />
         </div>
 
-        {/* Settings Panel with AnimatePresence */}
-        <AnimatePresence>
-          {showSettings && (
-            <motion.div 
-              key="settings"
-              variants={panelVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="w-80 border-l border-white/10 p-6 space-y-6 overflow-auto bg-[#0a0a0c]"
+        {/* Editor Footer */}
+        <div className="flex items-center justify-between px-4 py-1.5 border-t border-white/10 bg-[#0a0a0c] text-xs text-gray-500">
+          {/* Left: Word count */}
+          <div className="flex items-center gap-4">
+            <span>字数: {stats.words.toLocaleString()}</span>
+            <span>行数: {stats.lines.toLocaleString()}</span>
+          </div>
+          
+          {/* Right: Controls */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={scrollToTop} 
+              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 hover:text-gray-300 transition-colors"
             >
-              <h3 className="text-lg font-semibold text-white">发布设置</h3>
-              
-              <div className="space-y-4">
-                {/* Category Selector */}
-                <div ref={categoryDropdownRef} className="relative">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">分类</label>
-                  <button
-                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white hover:border-primary/50 transition-colors"
-                  >
-                    <span className={selectedCategory ? 'text-white' : 'text-gray-500'}>
-                      {selectedCategory?.name || '选择分类'}
-                    </span>
-                    <ChevronDown className={cn('w-4 h-4 text-gray-400 transition-transform', showCategoryDropdown && 'rotate-180')} />
-                  </button>
-                  
-                  <AnimatePresence>
-                    {showCategoryDropdown && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="absolute z-10 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
-                      >
-                        <div className="p-2 border-b border-white/10">
-                          <div className="relative">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                            <input
-                              type="text"
-                              value={categorySearch}
-                              onChange={(e) => setCategorySearch(e.target.value)}
-                              placeholder="搜索分类..."
-                              className="w-full pl-8 pr-3 py-1.5 bg-white/5 border border-white/10 rounded text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
-                            />
-                          </div>
+              <ArrowUp className="w-3 h-3" />
+              回到顶部
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Modal */}
+        <Modal 
+          isOpen={showSettings} 
+          onClose={() => setShowSettings(false)}
+          title="发布设置"
+          size="md"
+        >
+          <div className="space-y-6">
+            <div className="space-y-4">
+              {/* Category Selector */}
+              <div ref={categoryDropdownRef} className="relative">
+                <label className="block text-sm font-medium text-gray-300 mb-2">分类</label>
+                <button
+                  onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white hover:border-primary/50 transition-colors"
+                >
+                  <span className={selectedCategory ? 'text-white' : 'text-gray-500'}>
+                    {selectedCategory?.name || '选择分类'}
+                  </span>
+                  <ChevronDown className={cn('w-4 h-4 text-gray-400 transition-transform', showCategoryDropdown && 'rotate-180')} />
+                </button>
+                
+                <AnimatePresence>
+                  {showCategoryDropdown && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute z-20 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                    >
+                      <div className="p-2 border-b border-white/10">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                          <input
+                            type="text"
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            placeholder="搜索分类..."
+                            className="w-full pl-8 pr-3 py-1.5 bg-white/5 border border-white/10 rounded text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
+                          />
                         </div>
-                        <div className="max-h-48 overflow-auto">
-                          {loadingCategories ? (
-                            <div className="p-4 text-center text-gray-500">
-                              <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                            </div>
-                          ) : (
-                            <>
-                              {filteredCategories.length === 0 ? (
-                                <div className="p-4 text-center text-gray-500 text-sm">无匹配分类</div>
-                              ) : (
-                                filteredCategories.map((cat) => (
-                                  <button
-                                    key={cat.id}
-                                    onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); setCategorySearch(''); }}
-                                    className={cn(
-                                      'w-full px-3 py-2 text-left text-sm hover:bg-white/10 transition-colors',
-                                      selectedCategory?.id === cat.id ? 'bg-primary/20 text-primary' : 'text-white'
-                                    )}
-                                  >
-                                    {cat.name}
-                                  </button>
-                                ))
-                              )}
-                              {/* Create new category button */}
+                      </div>
+                      <div className="max-h-48 overflow-auto">
+                        {loadingCategories ? (
+                          <div className="p-4 text-center text-gray-500">
+                            <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                          </div>
+                        ) : (
+                          <>
+                            {filteredCategories.length === 0 ? (
+                              <div className="p-4 text-center text-gray-500 text-sm">无匹配分类</div>
+                            ) : (
+                              filteredCategories.map((cat) => (
+                                <button
+                                  key={cat.id}
+                                  onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); setCategorySearch(''); }}
+                                  className={cn(
+                                    'w-full px-3 py-2 text-left text-sm hover:bg-white/10 transition-colors',
+                                    selectedCategory?.id === cat.id ? 'bg-primary/20 text-primary' : 'text-white'
+                                  )}
+                                >
+                                  {cat.name}
+                                </button>
+                              ))
+                            )}
+                            {/* Create new category button */}
+                            <button
+                              onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
+                              className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2 border-t border-white/10"
+                            >
+                              <Plus className="w-4 h-4" />
+                              新建分类...
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Tag Selector */}
+              <div ref={tagDropdownRef} className="relative">
+                <label className="block text-sm font-medium text-gray-300 mb-2">标签</label>
+                
+                {/* Selected tags */}
+                {selectedTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {selectedTags.map((tag) => (
+                      <span key={tag.id} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary rounded-md text-sm">
+                        {tag.name}
+                        <button onClick={() => removeTag(tag.id)} className="hover:text-white transition-colors">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={tagSearch}
+                    onChange={(e) => { setTagSearch(e.target.value); setShowTagDropdown(true); }}
+                    onFocus={() => setShowTagDropdown(true)}
+                    onKeyDown={handleTagKeyDown}
+                    placeholder="搜索或输入新标签，回车添加"
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
+                    disabled={creatingTag}
+                  />
+                  {creatingTag && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />}
+                </div>
+
+                <AnimatePresence>
+                  {showTagDropdown && (tagSearch || filteredTags.length > 0) && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute z-20 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                    >
+                      <div className="max-h-48 overflow-auto">
+                        {loadingTags ? (
+                          <div className="p-4 text-center text-gray-500">
+                            <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                          </div>
+                        ) : (
+                          <>
+                            {filteredTags.map((tag) => (
                               <button
-                                onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
-                                className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2 border-t border-white/10"
+                                key={tag.id}
+                                onClick={() => { setSelectedTags([...selectedTags, tag]); setTagSearch(''); setShowTagDropdown(false); }}
+                                className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 transition-colors"
+                              >
+                                {tag.name}
+                              </button>
+                            ))}
+                            {tagSearch && !tags.find(t => t.name.toLowerCase() === tagSearch.toLowerCase()) && (
+                              <button
+                                onClick={() => handleTagKeyDown({ key: 'Enter', preventDefault: () => {} } as React.KeyboardEvent<HTMLInputElement>)}
+                                className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2"
                               >
                                 <Plus className="w-4 h-4" />
-                                新建分类...
+                                创建 "{tagSearch}"
                               </button>
-                            </>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Tag Selector */}
-                <div ref={tagDropdownRef} className="relative">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">标签</label>
-                  
-                  {/* Selected tags */}
-                  {selectedTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {selectedTags.map((tag) => (
-                        <span key={tag.id} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary rounded-md text-sm">
-                          {tag.name}
-                          <button onClick={() => removeTag(tag.id)} className="hover:text-white transition-colors">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
                   )}
-                  
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={tagSearch}
-                      onChange={(e) => { setTagSearch(e.target.value); setShowTagDropdown(true); }}
-                      onFocus={() => setShowTagDropdown(true)}
-                      onKeyDown={handleTagKeyDown}
-                      placeholder="搜索或输入新标签，回车添加"
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
-                      disabled={creatingTag}
-                    />
-                    {creatingTag && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />}
-                  </div>
+                </AnimatePresence>
+              </div>
 
-                  <AnimatePresence>
-                    {showTagDropdown && (tagSearch || filteredTags.length > 0) && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="absolute z-10 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
-                      >
-                        <div className="max-h-48 overflow-auto">
-                          {loadingTags ? (
-                            <div className="p-4 text-center text-gray-500">
-                              <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                            </div>
-                          ) : (
-                            <>
-                              {filteredTags.map((tag) => (
-                                <button
-                                  key={tag.id}
-                                  onClick={() => { setSelectedTags([...selectedTags, tag]); setTagSearch(''); setShowTagDropdown(false); }}
-                                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 transition-colors"
-                                >
-                                  {tag.name}
-                                </button>
-                              ))}
-                              {tagSearch && !tags.find(t => t.name.toLowerCase() === tagSearch.toLowerCase()) && (
-                                <button
-                                  onClick={() => handleTagKeyDown({ key: 'Enter', preventDefault: () => {} } as React.KeyboardEvent<HTMLInputElement>)}
-                                  className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2"
-                                >
-                                  <Plus className="w-4 h-4" />
-                                  创建 "{tagSearch}"
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Cover Image */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">封面图片</label>
-                  <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                    <Image className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-gray-400 text-sm">点击或拖拽上传</p>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">摘要</label>
-                  <textarea
-                    rows={3}
-                    value={summary}
-                    onChange={(e) => setSummary(e.target.value)}
-                    placeholder="文章摘要，为空将自动截取..."
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-primary/50"
-                  />
+              {/* Cover Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">封面图片</label>
+                <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
+                  <Image className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-gray-400 text-sm">点击或拖拽上传</p>
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
-        {/* AI Panel with AnimatePresence */}
-        <AnimatePresence>
-          {showAI && (
-            <motion.div 
-              key="ai"
-              variants={panelVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="w-80 border-l border-white/10 p-6 space-y-4 overflow-auto bg-[#0a0a0c]"
-            >
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-primary" />
-                AI 写作助手
-              </h3>
-              
-              <div className="space-y-3">
-                {[
-                  { title: '生成摘要', desc: 'AI 自动生成文章摘要' },
-                  { title: '智能标签', desc: 'AI 推荐相关标签' },
-                  { title: '润色优化', desc: '优化文章表达和结构' },
-                  { title: '续写内容', desc: 'AI 辅助续写段落' },
-                  { title: 'SEO 优化', desc: '生成 SEO 标题和描述' },
-                ].map((item) => (
-                  <motion.button 
-                    key={item.title}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    className="w-full px-4 py-3 rounded-lg bg-white/5 hover:bg-white/10 text-left transition-colors border border-white/5 hover:border-primary/30"
-                  >
-                    <p className="text-white font-medium">{item.title}</p>
-                    <p className="text-gray-400 text-sm">{item.desc}</p>
-                  </motion.button>
-                ))}
+              {/* Summary */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">摘要</label>
+                <textarea
+                  rows={3}
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                  placeholder="文章摘要，为空将自动截取..."
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-primary/50"
+                />
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+            
+            <div className="flex justify-end pt-4 border-t border-white/10">
+               <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
+               >
+                 确认
+               </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* AI Assistant Modal */}
+        <Modal 
+          isOpen={showAI} 
+          onClose={() => setShowAI(false)}
+          title="AI 写作助手"
+          size="md"
+        >
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              选择 AI 功能
+            </h3>
+            
+            <div className="grid grid-cols-1 gap-3">
+              {[
+                { title: '生成摘要', desc: 'AI 自动生成文章摘要', icon: Sparkles },
+                { title: '智能标签', desc: 'AI 推荐相关标签', icon: TagIcon },
+                { title: '润色优化', desc: '优化文章表达和结构', icon: Settings },
+                { title: '续写内容', desc: 'AI 辅助续写段落', icon: Send },
+                { title: 'SEO 优化', desc: '生成 SEO 标题和描述', icon: Search },
+              ].map((item) => (
+                <button 
+                  key={item.title}
+                  className="w-full p-4 rounded-xl bg-white/5 hover:bg-white/10 text-left transition-colors border border-white/5 hover:border-primary/30 group"
+                  onClick={() => {/* Implement AI action */}}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors">
+                      <item.icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-white font-medium">{item.title}</p>
+                      <p className="text-gray-400 text-sm">{item.desc}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Modal>
 
         {/* Create Category Modal */}
         <AnimatePresence>
@@ -763,7 +837,6 @@ export function CreatePostPage() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
     </div>
   );
 }

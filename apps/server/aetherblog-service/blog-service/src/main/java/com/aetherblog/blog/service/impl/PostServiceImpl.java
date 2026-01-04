@@ -28,8 +28,16 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.criteria.Predicate;
+import java.util.ArrayList;
+
 /**
- * 文章服务实现
+ * 文章服务实现类
+ *
+ * @author AI Assistant
+ * @since 1.0.0
+ * @see §4.3 - 业务服务实现
  */
 @Service
 @Slf4j
@@ -53,41 +61,106 @@ public class PostServiceImpl implements PostService {
         return toPageResult(page, pageNum, pageSize);
     }
 
+    /**
+     * 管理后台获取文章列表（支持状态筛选、关键词搜索及高级筛选）
+     * 
+     * @param status       状态筛选
+     * @param keyword      搜索关键词
+     * @param categoryId   分类ID
+     * @param tagId        标签ID
+     * @param minViewCount 最小浏览量
+     * @param maxViewCount 最大浏览量
+     * @param startDate    开始时间
+     * @param endDate      结束时间
+     * @param pageNum      页码
+     * @param pageSize     每页数量
+     * @return 分页结果集
+     * @ref §7.2 - 管理后台获取文章列表
+     */
     @Override
-    public PageResult<PostListResponse> getPostsForAdmin(String status, String keyword, int pageNum, int pageSize) {
-        Page<Post> page;
+    public PageResult<PostListResponse> getPostsForAdmin(
+            String status, 
+            String keyword, 
+            Long categoryId,
+            Long tagId,
+            Integer minViewCount,
+            Integer maxViewCount,
+            LocalDateTime startDate,
+            LocalDateTime endDate,
+            int pageNum, 
+            int pageSize) {
+        
+        Specification<Post> spec = buildAdminSpecification(status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate);
+        
         PageRequest pageRequest = PageRequest.of(pageNum - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-        
-        boolean hasStatus = status != null && !status.isEmpty();
-        boolean hasKeyword = keyword != null && !keyword.trim().isEmpty();
-        
-        if (!hasStatus && !hasKeyword) {
-            // 无筛选条件，返回所有
-            page = postRepository.findAllOrderByCreatedAtDesc(pageRequest);
-        } else if (hasStatus && !hasKeyword) {
-            // 仅状态筛选
-            if (status != null) {
-                 PostStatus postStatus = PostStatus.valueOf(status.toUpperCase());
-                 page = postRepository.findByStatus(postStatus, pageRequest);
-            } else {
-                 page = postRepository.findAllOrderByCreatedAtDesc(pageRequest);
-            }
-        } else if (!hasStatus && hasKeyword) {
-            // 仅关键词搜索
-            String searchKey = keyword == null ? "" : keyword.trim();
-            page = postRepository.findByKeyword(searchKey, pageRequest);
-        } else {
-            // 状态 + 关键词
-            String searchKey = keyword == null ? "" : keyword.trim();
-             if (status != null) {
-                PostStatus postStatus = PostStatus.valueOf(status.toUpperCase());
-                page = postRepository.findByStatusAndKeyword(postStatus, searchKey, pageRequest);
-             } else {
-                 page = postRepository.findByKeyword(searchKey, pageRequest);
-             }
-        }
+        Page<Post> page = postRepository.findAll(spec, pageRequest);
         
         return toPageResult(page, pageNum, pageSize);
+    }
+
+    /**
+     * 构建管理后台文章筛选 Specification
+     */
+    private Specification<Post> buildAdminSpecification(
+            String status, 
+            String keyword, 
+            Long categoryId,
+            Long tagId,
+            Integer minViewCount,
+            Integer maxViewCount,
+            LocalDateTime startDate,
+            LocalDateTime endDate) {
+        
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // 1. 状态筛选
+            if (status != null && !status.trim().isEmpty()) {
+                try {
+                    predicates.add(cb.equal(root.get("status"), PostStatus.valueOf(status.toUpperCase())));
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid post status: {}", status);
+                }
+            }
+
+            // 2. 关键词搜索 (匹配标题和内容)
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String pattern = "%" + keyword.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                    cb.like(cb.lower(root.get("title")), pattern),
+                    cb.like(cb.lower(root.get("content")), pattern)
+                ));
+            }
+
+            // 3. 分类筛选
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            }
+
+            // 4. 标签筛选
+            if (tagId != null) {
+                query.distinct(true); 
+                predicates.add(cb.equal(root.join("tags").get("id"), tagId));
+            }
+
+            // 5. 浏览量范围
+            if (minViewCount != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("viewCount"), minViewCount));
+            }
+            if (maxViewCount != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("viewCount"), maxViewCount));
+            }
+
+            // 6. 发布时间范围
+            if (startDate != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), startDate));
+            }
+            if (endDate != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), endDate));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     @Override

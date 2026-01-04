@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -12,9 +12,15 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  Home,
+  Info,
+  LogOut,
+  Search,
+  User,
 } from 'lucide-react';
-import { useSidebarStore } from '@/stores';
+import { useSidebarStore, useAuthStore } from '@/stores';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
@@ -30,6 +36,16 @@ const navItems = [
 
 export function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore();
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const [searchValue, setSearchValue] = useState('');
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchValue.trim()) {
+      navigate(`/posts?search=${encodeURIComponent(searchValue.trim())}`);
+    }
+  };
 
   return (
     <motion.aside
@@ -37,44 +53,73 @@ export function Sidebar() {
       animate={{ width: isCollapsed ? 64 : 256 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
       className={cn(
-        'fixed left-0 top-0 h-screen z-40',
+        'fixed left-0 top-0 h-screen z-40 overflow-hidden',
         'bg-background-secondary border-r border-border',
         'flex flex-col'
       )}
     >
-      {/* Logo */}
-      <div className="h-16 flex items-center justify-center border-b border-border">
-        <motion.div
-          initial={false}
-          animate={{ opacity: 1 }}
-          className="flex items-center gap-2"
-        >
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+      {/* Logo - Icon stays fixed, text collapses */}
+      <div className="h-14 flex items-center border-b border-border px-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-lg">A</span>
           </div>
-          {!isCollapsed && (
-            <motion.span
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="font-semibold text-white"
-            >
+          <div className={cn(
+            'overflow-hidden transition-all duration-300',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            <span className="font-semibold text-white whitespace-nowrap">
               AetherBlog
-            </motion.span>
-          )}
-        </motion.div>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Search Bar - Icon stays fixed, input collapses */}
+      <div className="px-3 py-3 border-b border-border">
+        <form onSubmit={handleSearch} className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => isCollapsed && toggle()}
+            className={cn(
+              'flex-shrink-0 p-2 rounded-lg',
+              'text-gray-400 hover:text-white hover:bg-white/5',
+              'transition-all duration-200'
+            )}
+          >
+            <Search className="w-5 h-5" />
+          </button>
+          <div className={cn(
+            'overflow-hidden transition-all duration-300',
+            isCollapsed ? 'w-0 opacity-0' : 'flex-1 opacity-100'
+          )}>
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              placeholder="搜索..."
+              className={cn(
+                'w-full px-3 py-1.5 rounded-lg text-sm',
+                'bg-white/5 border border-border',
+                'text-white placeholder-gray-500',
+                'focus:outline-none focus:border-primary/50',
+                'transition-colors duration-200'
+              )}
+            />
+          </div>
+        </form>
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 py-4 overflow-y-auto">
-        <ul className="space-y-1 px-3">
+      <nav className="flex-1 py-3 overflow-y-auto">
+        <ul className="space-y-0.5 px-3">
           {navItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg',
+                    'flex items-center gap-3 px-3 py-2 rounded-lg',
                     'transition-all duration-200',
                     isActive
                       ? 'bg-primary text-white'
@@ -83,40 +128,132 @@ export function Sidebar() {
                 }
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
-                {!isCollapsed && (
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-sm font-medium"
-                  >
-                    {item.label}
-                  </motion.span>
-                )}
+                <span className={cn(
+                  'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
+                  isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+                )}>
+                  {item.label}
+                </span>
               </NavLink>
             </li>
           ))}
         </ul>
       </nav>
 
-      {/* 折叠按钮 */}
-      <div className="p-3 border-t border-border">
-        <button
-          onClick={toggle}
+      {/* Quick Links - Icons stay fixed, text collapses */}
+      <div className="border-t border-border px-3 py-2 space-y-0.5">
+        <NavLink
+          to="/dashboard"
           className={cn(
-            'w-full flex items-center justify-center gap-2 px-3 py-2',
-            'rounded-lg text-gray-400 hover:text-white hover:bg-white/5',
+            'flex items-center gap-3 px-3 py-2 rounded-lg',
+            'text-gray-400 hover:text-white hover:bg-white/5',
             'transition-all duration-200'
           )}
         >
-          {isCollapsed ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <>
-              <ChevronLeft className="w-5 h-5" />
-              <span className="text-sm">收起</span>
-            </>
-          )}
-        </button>
+          <Home className="w-5 h-5 flex-shrink-0" />
+          <span className={cn(
+            'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            主站
+          </span>
+        </NavLink>
+        <NavLink
+          to="/about"
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg',
+              'transition-all duration-200',
+              isActive
+                ? 'bg-primary text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            )
+          }
+        >
+          <Info className="w-5 h-5 flex-shrink-0" />
+          <span className={cn(
+            'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            关于
+          </span>
+        </NavLink>
+      </div>
+
+      {/* User Info - Avatar stays fixed, details collapse */}
+      <div className="border-t border-border p-3 space-y-2">
+        <div className="flex items-center gap-3 px-1">
+          {/* Avatar - always visible, fixed position */}
+          <div className="relative flex-shrink-0">
+            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt={user.nickname}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="w-4 h-4 text-primary" />
+              )}
+            </div>
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-background-secondary" />
+          </div>
+
+          {/* User details - collapse with overflow-hidden */}
+          <div className={cn(
+            'flex-1 min-w-0 overflow-hidden transition-all duration-300',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            <p className="text-sm font-medium text-white truncate whitespace-nowrap">
+              {user?.nickname || '管理员'}
+            </p>
+            <p className="text-xs text-gray-400 whitespace-nowrap">
+              {user?.role || 'ADMIN'}
+            </p>
+          </div>
+
+          {/* Logout button - collapse with overflow-hidden */}
+          <div className={cn(
+            'overflow-hidden transition-all duration-300 flex-shrink-0',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            <button
+              onClick={logout}
+              className={cn(
+                'p-2 rounded-lg',
+                'text-gray-400 hover:text-red-400 hover:bg-white/5',
+                'transition-all duration-200'
+              )}
+              title="退出登录"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Collapse Toggle - same pattern */}
+        <div className="flex items-center gap-2 px-1">
+          <button
+            onClick={toggle}
+            className={cn(
+              'p-2 rounded-lg flex-shrink-0',
+              'text-gray-400 hover:text-white hover:bg-white/5',
+              'transition-all duration-200'
+            )}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
+          </button>
+          <span className={cn(
+            'text-xs text-gray-400 overflow-hidden whitespace-nowrap transition-all duration-300',
+            isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            收起侧边栏
+          </span>
+        </div>
       </div>
     </motion.aside>
   );
