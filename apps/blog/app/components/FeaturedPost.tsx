@@ -23,7 +23,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
   const displaySummary = post.summary 
     ? post.summary 
     : post.contentPreview 
-        ? post.contentPreview.slice(0, 80).replace(/[#*`]/g, '') + '...' 
+        ? post.contentPreview.slice(0, 300) + '...' 
         : '暂无摘要';
 
   // 鼠标位置状态
@@ -94,10 +94,10 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                         </div>
                     )}
 
-                    {/* Summary */}
-                    <p className="text-gray-400 text-sm leading-relaxed mb-6 line-clamp-4 lg:line-clamp-[6]">
-                        {displaySummary}
-                    </p>
+                    {/* Summary - with markdown rendering */}
+                    <div className="text-gray-400 text-sm leading-relaxed mb-6 line-clamp-4 lg:line-clamp-[6] overflow-hidden">
+                        <MiniMarkdownPreview content={displaySummary} maxLength={300} />
+                    </div>
                 </div>
 
                 {/* Read More Button */}

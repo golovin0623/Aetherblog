@@ -1,15 +1,23 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
-import { marked, Renderer } from 'marked';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+
+// Import KaTeX CSS
+import 'katex/dist/katex.min.css';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
 
-// Supported languages for syntax highlighting
+// Supported languages for Shiki syntax highlighting
 const SUPPORTED_LANGUAGES: BundledLanguage[] = [
   'javascript', 'typescript', 'jsx', 'tsx',
   'python', 'java', 'go', 'rust', 'c', 'cpp',
@@ -29,7 +37,6 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'yml': 'yaml',
   'sh': 'bash',
   'zsh': 'bash',
-  'dockerfile': 'dockerfile',
   'docker': 'dockerfile',
 };
 
@@ -52,7 +59,7 @@ async function getHighlighter(): Promise<Highlighter> {
 }
 
 // Normalize language name
-function normalizeLanguage(lang: string): BundledLanguage {
+function normalizeLanguage(lang: string): BundledLanguage | 'text' {
   const normalized = lang.toLowerCase().trim();
   if (LANGUAGE_ALIASES[normalized]) {
     return LANGUAGE_ALIASES[normalized];
@@ -60,165 +67,329 @@ function normalizeLanguage(lang: string): BundledLanguage {
   if (SUPPORTED_LANGUAGES.includes(normalized as BundledLanguage)) {
     return normalized as BundledLanguage;
   }
-  return 'text' as BundledLanguage;
+  return 'text';
 }
 
-// Create a custom renderer with syntax highlighting
-function createHighlightingRenderer(highlighter: Highlighter | null): Renderer {
-  const renderer = new Renderer();
+// 递归提取 React 子节点的文本内容
+function extractTextContent(children: React.ReactNode): string {
+  if (typeof children === 'string') {
+    return children;
+  }
+  if (typeof children === 'number') {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(extractTextContent).join('');
+  }
+  if (React.isValidElement(children)) {
+    const props = children.props as { children?: React.ReactNode };
+    return extractTextContent(props.children);
+  }
+  return '';
+}
 
-  // Override code block renderer for syntax highlighting
-  renderer.code = function(code: string, language?: string) {
-    const lang = normalizeLanguage(language || 'text');
-    const langDisplay = language?.toUpperCase() || 'TEXT';
-    
-    if (highlighter) {
+// Mermaid 图表组件
+const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
+  const [svg, setSvg] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!code || !code.trim()) {
+      setIsLoading(false);
+      return;
+    }
+
+    const renderMermaid = async () => {
       try {
-        const highlightedCode = highlighter.codeToHtml(code, {
-          lang,
-          theme: 'github-dark',
+        setIsLoading(true);
+        const mermaid = (await import('mermaid')).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          themeVariables: {
+            primaryColor: '#6366f1',
+            primaryTextColor: '#f1f5f9',
+            primaryBorderColor: '#818cf8',
+            lineColor: '#64748b',
+            secondaryColor: '#1e1b4b',
+            tertiaryColor: '#1e293b',
+          },
         });
         
-        // Wrap in custom container with language label
-        return `
-          <div class="code-block-wrapper">
-            <div class="code-block-header">
-              <span class="code-block-lang">${langDisplay}</span>
-              <button class="code-block-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block-wrapper').querySelector('code').textContent)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-              </button>
-            </div>
-            <div class="code-block-content">${highlightedCode}</div>
-          </div>
-        `;
-      } catch {
-        // Fall back to plain code block if highlighting fails
+        const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
+        const { svg: renderedSvg } = await mermaid.render(id, code.trim());
+        setSvg(renderedSvg);
+        setError(null);
+      } catch (e) {
+        console.error('Mermaid render error:', e, 'Code:', code);
+        setError('图表渲染失败');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    renderMermaid();
+  }, [code]);
+
+  if (!code || !code.trim()) {
+    return (
+      <div className="my-4 p-4 bg-slate-800/30 border border-white/5 rounded-lg text-center text-gray-600">
+        📊 空流程图
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="my-4 flex justify-center bg-slate-900/50 rounded-lg p-8">
+        <div className="text-gray-500 animate-pulse">加载流程图...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+        <div>{error}</div>
+        <pre className="mt-2 text-xs text-gray-500 overflow-x-auto whitespace-pre-wrap">{code}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="my-4 flex justify-center bg-slate-900/50 rounded-lg p-4 overflow-x-auto"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+};
+
+// Shiki 代码块组件 - 带语法高亮
+const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Highlighter | null }> = ({ 
+  language, 
+  code,
+  highlighter
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (highlighter && code) {
+      try {
+        const lang = normalizeLanguage(language);
+        const html = highlighter.codeToHtml(code, {
+          lang: lang === 'text' ? 'text' : lang,
+          theme: 'github-dark',
+        });
+        setHighlightedHtml(html);
+      } catch (e) {
+        console.error('Shiki highlight error:', e);
+        setHighlightedHtml(null);
       }
     }
-    
-    // Fallback without syntax highlighting
-    const escapedCode = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    
-    return `
-      <div class="code-block-wrapper">
-        <div class="code-block-header">
-          <span class="code-block-lang">${langDisplay}</span>
-        </div>
-        <pre class="code-block-fallback"><code>${escapedCode}</code></pre>
-      </div>
-    `;
-  };
+  }, [highlighter, code, language]);
 
-  return renderer;
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+
+  const langDisplay = language?.toUpperCase() || 'TEXT';
+
+  return (
+    <div className="code-block-wrapper relative group my-4 rounded-xl overflow-hidden border border-white/10 bg-[#1a1b26]">
+      {/* Header */}
+      <div className="code-block-header flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10">
+        <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">
+          {langDisplay}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-transparent hover:bg-white/10 rounded text-gray-400 hover:text-gray-200 transition-all"
+        >
+          {copied ? (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              已复制
+            </>
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              复制
+            </>
+          )}
+        </button>
+      </div>
+      
+      {/* Code content */}
+      <div className="code-block-content overflow-x-auto">
+        {highlightedHtml ? (
+          <div 
+            className="shiki-wrapper"
+            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          />
+        ) : (
+          <pre className="p-4 m-0 bg-transparent">
+            <code className={`language-${language}`}>{code}</code>
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 创建自定义组件映射
+function createComponents(highlighter: Highlighter | null): Components {
+  return {
+    // 处理 pre 标签 - 捕获所有代码块
+    pre: ({ children, ...props }) => {
+      const child = React.Children.toArray(children)[0];
+      
+      if (React.isValidElement(child) && (child.type === 'code' || (child.props as { className?: string })?.className)) {
+        const childProps = child.props as { className?: string; children?: React.ReactNode };
+        const className = childProps.className || '';
+        const match = /language-(\w+)/.exec(className);
+        const language = match?.[1] || '';
+        
+        const codeContent = extractTextContent(childProps.children).replace(/\n$/, '');
+        
+        // Mermaid 图表
+        if (language === 'mermaid') {
+          return <MermaidBlock code={codeContent} />;
+        }
+        
+        // 使用 Shiki 高亮的代码块
+        if (language) {
+          return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} />;
+        }
+      }
+      
+      // 默认 pre
+      return <pre className="overflow-x-auto p-4 bg-slate-900/80 border border-white/5 rounded-lg my-4" {...props}>{children}</pre>;
+    },
+    
+    // 行内代码
+    code: ({ className, children, ...props }) => {
+      if (className) {
+        return <code className={className} {...props}>{children}</code>;
+      }
+      return (
+        <code className="bg-primary/15 text-primary px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+          {children}
+        </code>
+      );
+    },
+    
+    // 图片
+    img: ({ src, alt, ...props }) => (
+      <span className="block my-4">
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          className="max-w-full rounded-lg border border-white/10 shadow-lg"
+          {...props}
+        />
+        {alt && <span className="block text-center text-sm text-gray-500 mt-2">{alt}</span>}
+      </span>
+    ),
+    
+    // 表格
+    table: ({ children }) => (
+      <div className="overflow-x-auto my-4">
+        <table className="w-full border-collapse border border-white/10 rounded-lg overflow-hidden">
+          {children}
+        </table>
+      </div>
+    ),
+    
+    th: ({ children }) => (
+      <th className="bg-white/5 px-4 py-2 text-left font-semibold text-gray-200 border border-white/10">
+        {children}
+      </th>
+    ),
+    
+    td: ({ children }) => (
+      <td className="px-4 py-2 text-gray-300 border border-white/10">
+        {children}
+      </td>
+    ),
+    
+    // 引用
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-4 border-primary pl-4 my-4 text-gray-400 italic bg-primary/5 py-2 pr-4 rounded-r">
+        {children}
+      </blockquote>
+    ),
+    
+    // 链接
+    a: ({ href, children, ...props }) => (
+      <a
+        href={href}
+        target={href?.startsWith('http') ? '_blank' : undefined}
+        rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+        className="text-primary hover:text-primary/80 underline underline-offset-2"
+        {...props}
+      >
+        {children}
+      </a>
+    ),
+    
+    // 水平线
+    hr: () => <hr className="my-8 border-t border-white/10" />,
+  };
 }
 
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
 
-  // Load highlighter on mount
+  // 加载 Shiki highlighter
   useEffect(() => {
-    getHighlighter().then(setHighlighter);
+    getHighlighter().then(setHighlighter).catch(console.error);
   }, []);
 
-  const html = useMemo(() => {
-    if (!content) return '';
-    try {
-      const renderer = createHighlightingRenderer(highlighter);
-      return marked.parse(content, {
-        gfm: true,
-        breaks: true,
-        renderer
-      }) as string;
-    } catch {
-      return content;
-    }
-  }, [content, highlighter]);
+  // 基于 highlighter 状态创建组件
+  const components = useMemo(() => createComponents(highlighter), [highlighter]);
+
+  if (!content) return null;
 
   return (
     <>
+      {/* Shiki 代码块样式 */}
       <style jsx global>{`
-        /* Code block wrapper styles */
-        .markdown-body .code-block-wrapper {
-          position: relative;
-          margin: 1em 0;
-          border-radius: 12px;
-          overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          background: #1a1b26;
-        }
-        .markdown-body .code-block-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0.5em 1em;
-          background: rgba(255, 255, 255, 0.05);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .markdown-body .code-block-lang {
-          font-size: 0.75em;
-          color: #94a3b8;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .markdown-body .code-block-copy {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0.25em;
-          background: transparent;
-          border: none;
-          border-radius: 4px;
-          color: #64748b;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .markdown-body .code-block-copy:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #e2e8f0;
-        }
-        .markdown-body .code-block-content {
-          overflow-x: auto;
-        }
-        .markdown-body .code-block-content pre {
-          margin: 0 !important;
-          border: none !important;
-          border-radius: 0 !important;
-          background: transparent !important;
-        }
-        .markdown-body .code-block-content code {
-          font-size: 0.875em;
-          line-height: 1.6;
-          tab-size: 2;
-        }
-        .markdown-body .code-block-fallback {
-          margin: 0;
-          padding: 1em;
-          background: transparent;
-          border: none;
-          border-radius: 0;
-        }
-        /* Shiki code styling overrides */
-        .markdown-body .shiki {
+        /* Shiki code styling */
+        .shiki-wrapper .shiki {
           background: transparent !important;
           padding: 1em;
           margin: 0;
         }
-        .markdown-body .shiki code {
+        .shiki-wrapper .shiki code {
           background: transparent !important;
           padding: 0;
+          font-size: 0.875em;
+          line-height: 1.7;
+          tab-size: 2;
+        }
+        .shiki-wrapper .shiki .line {
+          display: block;
         }
       `}</style>
-      <div
-        className={`markdown-body ${className}`}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div className={`markdown-body prose prose-invert max-w-none ${className}`}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex, rehypeRaw]}
+          components={components}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
     </>
   );
 }

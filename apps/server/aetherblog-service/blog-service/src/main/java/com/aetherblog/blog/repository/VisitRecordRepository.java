@@ -21,13 +21,13 @@ public interface VisitRecordRepository extends JpaRepository<VisitRecord, Long> 
     @Query("SELECT COUNT(v) FROM VisitRecord v WHERE v.createdAt >= :startTime")
     long countByCreatedAtAfter(@Param("startTime") LocalDateTime startTime);
 
-    @Query("SELECT COUNT(DISTINCT v.visitorId) FROM VisitRecord v WHERE v.createdAt >= :startTime")
+    @Query("SELECT COUNT(DISTINCT v.visitorHash) FROM VisitRecord v WHERE v.createdAt >= :startTime")
     long countDistinctVisitorByCreatedAtAfter(@Param("startTime") LocalDateTime startTime);
 
     @Query("SELECT v.post.id, COUNT(v) as cnt FROM VisitRecord v WHERE v.post IS NOT NULL GROUP BY v.post.id ORDER BY cnt DESC")
     List<Object[]> findTopVisitedPosts(Pageable pageable);
 
-    @Query("SELECT CAST(v.createdAt AS date), COUNT(v), COUNT(DISTINCT v.visitorId) FROM VisitRecord v WHERE v.createdAt >= :startTime GROUP BY CAST(v.createdAt AS date) ORDER BY CAST(v.createdAt AS date)")
+    @Query("SELECT CAST(v.createdAt AS date), COUNT(v), COUNT(DISTINCT v.visitorHash) FROM VisitRecord v WHERE v.createdAt >= :startTime GROUP BY CAST(v.createdAt AS date) ORDER BY CAST(v.createdAt AS date)")
     List<Object[]> getDailyStats(@Param("startTime") LocalDateTime startTime);
 
     @Query("SELECT v.country, COUNT(v) FROM VisitRecord v WHERE v.country IS NOT NULL GROUP BY v.country ORDER BY COUNT(v) DESC")

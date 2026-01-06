@@ -46,7 +46,9 @@ export default function PostsPage() {
         summary: item.summary,
         coverImage: item.coverImage,
         viewCount: item.viewCount,
-        publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
+        publishedAt: item.publishedAt 
+          ? new Date(item.publishedAt).toLocaleDateString('zh-CN') 
+          : '暂无日期',
         category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       };
@@ -88,7 +90,9 @@ export default function PostsPage() {
         summary: item.summary,
         coverImage: item.coverImage,
         viewCount: item.viewCount,
-        publishedAt: new Date(item.publishedAt).toLocaleDateString('zh-CN'),
+        publishedAt: item.publishedAt 
+          ? new Date(item.publishedAt).toLocaleDateString('zh-CN') 
+          : '暂无日期',
         category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       }));

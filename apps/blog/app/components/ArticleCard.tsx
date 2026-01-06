@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, Eye, Tag, Folder } from 'lucide-react';
+import MiniMarkdownPreview from './MiniMarkdownPreview';
 
 interface ArticleCardProps {
   title: string;
@@ -113,11 +114,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
               </span>
             </h2>
 
-            {/* 摘要 - 限制行数 */}
+            {/* 摘要 - 使用 MiniMarkdownPreview 渲染并限制行数 */}
             {summary && (
-              <p className="text-gray-400 text-sm leading-relaxed line-clamp-2 md:line-clamp-3 mb-4 overflow-hidden text-ellipsis">
-                {summary}
-              </p>
+              <div className="text-gray-400 text-sm leading-relaxed line-clamp-2 md:line-clamp-3 mb-4 overflow-hidden">
+                <MiniMarkdownPreview content={summary} maxLength={150} />
+              </div>
             )}
           </div>
 
