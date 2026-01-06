@@ -1,0 +1,127 @@
+# =============================================================================
+# AetherBlog Production Docker Compose
+# =============================================================================
+# 
+# 使用方法:
+#   docker-compose -f docker-compose.prod.yml up -d --build
+#
+# 端口映射:
+#   - 7893: 博客前端 (Next.js)
+#   - 7894: 管理后台 (Vite)
+#   - 5433: PostgreSQL (避免与现有5432冲突)
+#
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Database Services
+  # ---------------------------------------------------------------------------
+  
+  # PostgreSQL 17 with pgvector (AI功能必需)
+  # 使用端口 5433 避免与现有 PostgreSQL 冲突
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: aetherblog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aetherblog
+      POSTGRES_USER: aetherblog
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
+    ports:
+      - "5433:5432"  # 外部5433 → 内部5432
+    volumes:
+      - aetherblog_postgres_data:/var/lib/postgresql/data
+    networks:
+      - aetherblog-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aetherblog -d aetherblog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Application Services
+  # ---------------------------------------------------------------------------
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    container_name: aetherblog-backend
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # 使用新建的 PostgreSQL (容器内部通信)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aetherblog
+      SPRING_DATASOURCE_USERNAME: aetherblog
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
+      # 使用现有 Redis (端口 6999)
+      SPRING_REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      SPRING_REDIS_PORT: ${REDIS_PORT:-6999}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      JAVA_OPTS: "-Xms512m -Xmx1024m"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aetherblog-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  blog:
+    build:
+      context: .
+      dockerfile: apps/blog/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://backend:8080
+    container_name: aetherblog-blog
+    restart: unless-stopped
+    ports:
+      - "7893:3000"
+    environment:
+      API_URL: http://backend:8080
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - aetherblog-network
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    container_name: aetherblog-admin
+    restart: unless-stopped
+    ports:
+      - "7894:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - aetherblog-network
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+
+volumes:
+  aetherblog_postgres_data:
+    name: aetherblog_postgres_data
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+
+networks:
+  aetherblog-network:
+    driver: bridge

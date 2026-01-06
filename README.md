@@ -135,6 +135,74 @@ cd apps/server
 
 > ⚠️ **注意**: 只有 `aetherblog-app` 模块使用 `spring-boot-maven-plugin` 打包成可执行 JAR，其他业务模块（如 `blog-service`）作为库被引用，**不应该**配置 `spring-boot-maven-plugin`。
 
+## 🐳 Docker 生产部署
+
+### 端口映射
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| 博客前台 | **7893** | Next.js SSR |
+| 管理后台 | **7894** | Vite + Nginx |
+| PostgreSQL | 5433 | pgvector (避免与现有5432冲突) |
+| 后端 API | 内部 | 仅容器间通信 |
+
+### 部署架构
+
+```
+用户请求
+    │
+    ├── :7893 → blog (Next.js)
+    │              └── API代理 → backend:8080
+    │
+    └── :7894 → admin (Nginx)
+                   └── /api 代理 → backend:8080
+                   
+backend:8080 ← postgres:5432 (容器内)
+            ← redis:6999 (宿主机现有服务)
+```
+
+### 快速部署
+
+```bash
+# 1. 克隆项目到服务器
+git clone https://github.com/your/AetherBlog.git
+cd AetherBlog
+
+# 2. 配置环境变量
+cp .env.example .env
+vim .env  # 配置 OPENAI_API_KEY (可选)
+
+# 3. 构建并启动
+docker-compose -f docker-compose.prod.yml up -d --build
+
+# 4. 查看日志
+docker-compose -f docker-compose.prod.yml logs -f
+
+# 5. 停止服务
+docker-compose -f docker-compose.prod.yml down
+```
+
+### 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| `docker-compose.prod.yml` | 生产环境编排配置 |
+| `apps/blog/Dockerfile` | 博客前端镜像 (Next.js standalone) |
+| `apps/admin/Dockerfile` | 管理后台镜像 (Vite + Nginx) |
+| `apps/admin/nginx.conf` | Nginx 配置 (含 API 代理) |
+| `apps/server/Dockerfile` | 后端镜像 (Spring Boot) |
+| `.env.example` | 环境变量模板 |
+| `.dockerignore` | Docker 构建排除 |
+
+### 使用现有 Redis
+
+如果服务器已有 Redis 服务，配置 `.env`：
+
+```bash
+REDIS_HOST=host.docker.internal
+REDIS_PORT=6999  # 你的 Redis 端口
+```
+
 ## 📄 许可证
 
 MIT License
