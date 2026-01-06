@@ -17,8 +17,8 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "site_settings", indexes = {
-    @Index(name = "idx_site_settings_group", columnList = "group_name"),
-    @Index(name = "idx_site_settings_public", columnList = "is_public")
+    @Index(name = "idx_site_settings_key", columnList = "setting_key"),
+    @Index(name = "idx_site_settings_group", columnList = "group_name")
 })
 public class SiteSetting {
 
@@ -29,22 +29,22 @@ public class SiteSetting {
     /**
      * 设置键名（唯一）
      */
-    @Column(name = "key", nullable = false, unique = true, length = 100)
-    private String key;
+    @Column(name = "setting_key", nullable = false, unique = true, length = 100)
+    private String settingKey;
 
     /**
      * 设置值
      */
     @Lob
-    @Column(columnDefinition = "TEXT")
-    private String value;
+    @Column(name = "setting_value", columnDefinition = "TEXT")
+    private String settingValue;
 
     /**
      * 值类型: STRING, NUMBER, BOOLEAN, JSON, TEXT
      */
-    @Column(nullable = false, length = 20)
+    @Column(name = "setting_type", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
-    private SettingType type = SettingType.STRING;
+    private SettingType settingType = SettingType.STRING;
 
     /**
      * 分组名称
@@ -58,11 +58,6 @@ public class SiteSetting {
     @Column(length = 500)
     private String description;
 
-    /**
-     * 是否公开（前台可见）
-     */
-    @Column(name = "is_public", nullable = false)
-    private Boolean isPublic = false;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

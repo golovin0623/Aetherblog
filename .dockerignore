@@ -33,19 +33,48 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Documentation
+# Documentation (keep README)
 *.md
 !README.md
 
 # Tests
 coverage
 .nyc_output
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
 
 # Temp
 tmp
 temp
 .cache
+.turbo
 
 # PIDs
 .pids
 *.pid
+
+# Maven/Java specific
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+.mvn/wrapper/maven-wrapper.jar
+
+# Design docs (large)
+系统需求企划书及详细设计.md
+
+# Agent/AI configs
+.agent
+
+# Gemini config
+.gemini
+
+# Scripts (not needed in container)
+start.sh
+stop.sh
+docker-build.sh
+
