@@ -3,17 +3,22 @@ package com.aetherblog.blog.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
 /**
  * 评论实体
+ * 
+ * @ref §6.1 - 核心表结构 (V2 增强版)
  */
 @Data
 @Entity
 @Table(name = "comments", indexes = {
-    @Index(name = "idx_comments_post_id", columnList = "post_id"),
-    @Index(name = "idx_comments_status", columnList = "status")
+    @Index(name = "idx_comments_post", columnList = "post_id"),
+    @Index(name = "idx_comments_parent", columnList = "parent_id"),
+    @Index(name = "idx_comments_status", columnList = "status"),
+    @Index(name = "idx_comments_created", columnList = "createdAt")
 })
 public class Comment {
 
@@ -52,11 +57,28 @@ public class Comment {
     @Column(length = 50)
     private String ip;
 
-    @Column(length = 200)
+    @Column(name = "user_agent", length = 500)
     private String userAgent;
 
+    /**
+     * 是否为管理员回复
+     */
+    @Column(name = "is_admin", nullable = false)
+    private Boolean isAdmin = false;
+
+    /**
+     * 评论点赞数 (V2新增)
+     */
+    @Column(name = "like_count", nullable = false)
+    private Integer likeCount = 0;
+
     @CreationTimestamp
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     public enum CommentStatus {
         PENDING, APPROVED, REJECTED, SPAM

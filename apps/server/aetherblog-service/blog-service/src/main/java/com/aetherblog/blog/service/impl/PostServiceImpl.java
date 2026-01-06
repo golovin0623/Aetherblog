@@ -115,7 +115,7 @@ public class PostServiceImpl implements PostService {
                 String pattern = "%" + keyword.trim().toLowerCase() + "%";
                 predicates.add(cb.or(
                     cb.like(cb.lower(root.get("title")), pattern),
-                    cb.like(cb.lower(root.get("content")), pattern)
+                    cb.like(cb.lower(root.get("contentMarkdown")), pattern)
                 ));
             }
 
@@ -207,7 +207,7 @@ public class PostServiceImpl implements PostService {
     public PostDetailResponse createPost(CreatePostRequest request) {
         Post post = new Post();
         post.setTitle(request.getTitle());
-        post.setContent(request.getContent());
+        post.setContentMarkdown(request.getContent());
         post.setSummary(request.getSummary());
         post.setCoverImage(request.getCoverImage());
         post.setSlug(generateUniqueSlug(request.getTitle()));
@@ -234,7 +234,7 @@ public class PostServiceImpl implements PostService {
                 .orElseThrow(() -> new BusinessException(404, "文章不存在"));
 
         post.setTitle(request.getTitle());
-        post.setContent(request.getContent());
+        post.setContentMarkdown(request.getContent());
         post.setSummary(request.getSummary());
         post.setCoverImage(request.getCoverImage());
 
@@ -360,7 +360,7 @@ public class PostServiceImpl implements PostService {
         response.setId(post.getId());
         response.setTitle(post.getTitle());
         response.setSlug(post.getSlug());
-        response.setContent(post.getContent());
+        response.setContent(post.getContentMarkdown());
         response.setSummary(post.getSummary());
         response.setCoverImage(post.getCoverImage());
         response.setStatus(post.getStatus().name());

@@ -51,4 +51,10 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
 
     @Query("SELECT p FROM Post p WHERE p.status = :status AND LOWER(p.title) LIKE LOWER(CONCAT('%', :keyword, '%')) ORDER BY p.createdAt DESC")
     Page<Post> findByStatusAndKeyword(@Param("status") PostStatus status, @Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * 统计时间范围内新增文章数
+     */
+    @Query("SELECT COUNT(p) FROM Post p WHERE p.createdAt BETWEEN :startTime AND :endTime")
+    int countByCreatedAtBetween(@Param("startTime") java.time.LocalDateTime startTime, @Param("endTime") java.time.LocalDateTime endTime);
 }

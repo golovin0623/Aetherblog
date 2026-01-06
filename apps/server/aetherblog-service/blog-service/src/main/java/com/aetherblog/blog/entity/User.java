@@ -97,6 +97,12 @@ public class User {
     private LocalDateTime updatedAt;
 
     /**
+     * 是否必须修改密码（首次登录时强制修改）
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private Boolean mustChangePassword = false;
+
+    /**
      * 用户角色枚举
      */
     public enum UserRole {

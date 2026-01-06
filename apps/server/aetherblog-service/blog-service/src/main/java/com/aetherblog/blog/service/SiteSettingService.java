@@ -39,8 +39,8 @@ public class SiteSettingService {
      * 获取字符串类型设置（带默认值）
      */
     public String getString(String key, String defaultValue) {
-        return settingRepository.findByKey(key)
-                .map(SiteSetting::getValue)
+        return settingRepository.findBySettingKey(key)
+                .map(SiteSetting::getSettingValue)
                 .orElse(defaultValue);
     }
 
@@ -55,8 +55,8 @@ public class SiteSettingService {
      * 获取布尔类型设置（带默认值）
      */
     public Boolean getBoolean(String key, Boolean defaultValue) {
-        return settingRepository.findByKey(key)
-                .map(s -> "true".equalsIgnoreCase(s.getValue()))
+        return settingRepository.findBySettingKey(key)
+                .map(s -> "true".equalsIgnoreCase(s.getSettingValue()))
                 .orElse(defaultValue);
     }
 
@@ -64,10 +64,10 @@ public class SiteSettingService {
      * 获取整数类型设置
      */
     public Integer getInteger(String key, Integer defaultValue) {
-        return settingRepository.findByKey(key)
+        return settingRepository.findBySettingKey(key)
                 .map(s -> {
                     try {
-                        return Integer.parseInt(s.getValue());
+                        return Integer.parseInt(s.getSettingValue());
                     } catch (NumberFormatException e) {
                         return defaultValue;
                     }
@@ -79,32 +79,16 @@ public class SiteSettingService {
      * 获取 JSON 类型设置并解析
      */
     public <T> T getJson(String key, TypeReference<T> typeRef) {
-        return settingRepository.findByKey(key)
+        return settingRepository.findBySettingKey(key)
                 .map(s -> {
                     try {
-                        return objectMapper.readValue(s.getValue(), typeRef);
+                        return objectMapper.readValue(s.getSettingValue(), typeRef);
                     } catch (Exception e) {
                         log.warn("Failed to parse JSON setting: key={}", key, e);
                         return null;
                     }
                 })
                 .orElse(null);
-    }
-
-    /**
-     * 获取所有公开设置
-     */
-    public Map<String, Object> getPublicSettings() {
-        List<SiteSetting> settings = settingRepository.findByIsPublicTrue();
-        return convertToMap(settings);
-    }
-
-    /**
-     * 获取指定分组的公开设置
-     */
-    public Map<String, Object> getPublicSettingsByGroup(String groupName) {
-        List<SiteSetting> settings = settingRepository.findByGroupNameAndIsPublicTrue(groupName);
-        return convertToMap(settings);
     }
 
     /**
@@ -116,14 +100,22 @@ public class SiteSettingService {
     }
 
     /**
+     * 获取所有设置
+     */
+    public Map<String, Object> getAllSettings() {
+        List<SiteSetting> settings = settingRepository.findAll();
+        return convertToMap(settings);
+    }
+
+    /**
      * 更新设置值
      */
     @Transactional
     public void updateSetting(String key, String value) {
-        Optional<SiteSetting> existing = settingRepository.findByKey(key);
+        Optional<SiteSetting> existing = settingRepository.findBySettingKey(key);
         if (existing.isPresent()) {
             SiteSetting setting = existing.get();
-            setting.setValue(value);
+            setting.setSettingValue(value);
             settingRepository.save(setting);
             log.info("Updated site setting: key={}", key);
         } else {
@@ -146,16 +138,15 @@ public class SiteSettingService {
      */
     @Transactional
     public SiteSetting saveOrUpdate(String key, String value, SettingType type, 
-                                     String groupName, String description, Boolean isPublic) {
-        SiteSetting setting = settingRepository.findByKey(key)
+                                     String groupName, String description) {
+        SiteSetting setting = settingRepository.findBySettingKey(key)
                 .orElseGet(SiteSetting::new);
         
-        setting.setKey(key);
-        setting.setValue(value);
-        setting.setType(type);
+        setting.setSettingKey(key);
+        setting.setSettingValue(value);
+        setting.setSettingType(type);
         setting.setGroupName(groupName);
         setting.setDescription(description);
-        setting.setIsPublic(isPublic);
         
         return settingRepository.save(setting);
     }
@@ -167,7 +158,7 @@ public class SiteSettingService {
         Map<String, Object> result = new HashMap<>();
         for (SiteSetting setting : settings) {
             Object value = convertValue(setting);
-            result.put(setting.getKey(), value);
+            result.put(setting.getSettingKey(), value);
         }
         return result;
     }
@@ -176,31 +167,31 @@ public class SiteSettingService {
      * 根据类型转换值
      */
     private Object convertValue(SiteSetting setting) {
-        if (setting.getValue() == null) {
+        if (setting.getSettingValue() == null) {
             return null;
         }
         
-        return switch (setting.getType()) {
-            case BOOLEAN -> "true".equalsIgnoreCase(setting.getValue());
+        return switch (setting.getSettingType()) {
+            case BOOLEAN -> "true".equalsIgnoreCase(setting.getSettingValue());
             case NUMBER -> {
                 try {
-                    if (setting.getValue().contains(".")) {
-                        yield Double.parseDouble(setting.getValue());
+                    if (setting.getSettingValue().contains(".")) {
+                        yield Double.parseDouble(setting.getSettingValue());
                     } else {
-                        yield Long.parseLong(setting.getValue());
+                        yield Long.parseLong(setting.getSettingValue());
                     }
                 } catch (NumberFormatException e) {
-                    yield setting.getValue();
+                    yield setting.getSettingValue();
                 }
             }
             case JSON -> {
                 try {
-                    yield objectMapper.readValue(setting.getValue(), Object.class);
+                    yield objectMapper.readValue(setting.getSettingValue(), Object.class);
                 } catch (Exception e) {
-                    yield setting.getValue();
+                    yield setting.getSettingValue();
                 }
             }
-            default -> setting.getValue();
+            default -> setting.getSettingValue();
         };
     }
 }

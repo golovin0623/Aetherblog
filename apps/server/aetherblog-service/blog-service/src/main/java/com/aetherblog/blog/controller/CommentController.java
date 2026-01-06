@@ -2,58 +2,90 @@ package com.aetherblog.blog.controller;
 
 import com.aetherblog.blog.entity.Comment;
 import com.aetherblog.blog.entity.Comment.CommentStatus;
-import com.aetherblog.blog.repository.CommentRepository;
+import com.aetherblog.blog.service.CommentService;
+import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.domain.R;
-import com.aetherblog.common.core.exception.BusinessException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 评论管理控制器
+ * 
+ * @author AI Assistant
+ * @since 1.0.0
+ * @ref §3.2-11 - 评论管理模块
  */
-@Tag(name = "评论管理", description = "评论CRUD接口")
+@Tag(name = "评论管理", description = "评论审核和管理接口")
 @RestController
 @RequestMapping("/v1/admin/comments")
 @RequiredArgsConstructor
-@SuppressWarnings("null")
 public class CommentController {
 
-    private final CommentRepository commentRepository;
+    private final CommentService commentService;
 
     @Operation(summary = "获取待审核评论")
     @GetMapping("/pending")
-    public R<Page<Comment>> getPending(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return R.ok(commentRepository.findByStatus(CommentStatus.PENDING, PageRequest.of(page, size)));
+    public R<PageResult<Comment>> listPending(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "10") int pageSize) {
+        return R.ok(commentService.listPending(pageNum, pageSize));
+    }
+
+    @Operation(summary = "获取所有评论")
+    @GetMapping
+    public R<PageResult<Comment>> listAll(
+            @RequestParam(required = false) CommentStatus status,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "10") int pageSize) {
+        return R.ok(commentService.listAll(status, pageNum, pageSize));
+    }
+
+    @Operation(summary = "获取评论详情")
+    @GetMapping("/{id}")
+    public R<Comment> getById(@PathVariable Long id) {
+        return R.ok(commentService.getById(id));
     }
 
     @Operation(summary = "审核通过")
     @PatchMapping("/{id}/approve")
     public R<Comment> approve(@PathVariable Long id) {
-        Comment comment = commentRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "评论不存在"));
-        comment.setStatus(CommentStatus.APPROVED);
-        return R.ok(commentRepository.save(comment));
+        return R.ok(commentService.approve(id));
     }
 
     @Operation(summary = "审核拒绝")
     @PatchMapping("/{id}/reject")
     public R<Comment> reject(@PathVariable Long id) {
-        Comment comment = commentRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "评论不存在"));
-        comment.setStatus(CommentStatus.REJECTED);
-        return R.ok(commentRepository.save(comment));
+        return R.ok(commentService.reject(id));
+    }
+
+    @Operation(summary = "标记为垃圾评论")
+    @PatchMapping("/{id}/spam")
+    public R<Comment> markAsSpam(@PathVariable Long id) {
+        return R.ok(commentService.markAsSpam(id));
     }
 
     @Operation(summary = "删除评论")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        commentRepository.deleteById(id);
+        commentService.delete(id);
+        return R.ok();
+    }
+
+    @Operation(summary = "批量删除评论")
+    @DeleteMapping("/batch")
+    public R<Void> batchDelete(@RequestBody List<Long> ids) {
+        commentService.batchDelete(ids);
+        return R.ok();
+    }
+
+    @Operation(summary = "批量审核通过")
+    @PatchMapping("/batch/approve")
+    public R<Void> batchApprove(@RequestBody List<Long> ids) {
+        commentService.batchApprove(ids);
         return R.ok();
     }
 }
