@@ -137,6 +137,60 @@ cd apps/server
 
 ## 🐳 Docker 生产部署
 
+### 镜像构建
+
+项目提供了优化的多平台构建脚本 `docker-build.sh`，支持并行构建充分利用多核 CPU。
+
+#### 构建命令
+
+```bash
+# 并行构建并推送到 Docker Hub (推荐，利用多核 CPU)
+./docker-build.sh --push --version v1.0.0
+
+# 串行构建 (网络不稳定时)
+./docker-build.sh --push --sequential --version v1.0.0
+
+# 只构建单个镜像
+./docker-build.sh --only backend --push
+./docker-build.sh --only blog --push
+./docker-build.sh --only admin --push
+
+# 本地构建测试 (不推送)
+./docker-build.sh --version v1.0.0
+
+# 指定 CPU 并行度
+./docker-build.sh --cores 4 --push
+
+# 查看帮助
+./docker-build.sh --help
+```
+
+#### 构建参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--push` | 推送镜像到 Docker Hub | 否 |
+| `--version` | 版本标签 | `v1.0.0` |
+| `--parallel` | 并行构建所有镜像 | 是 |
+| `--sequential` | 串行构建 | 否 |
+| `--only NAME` | 只构建指定镜像 (backend/blog/admin) | 全部 |
+| `--cores N` | 指定构建并行度 | CPU 核心数 |
+
+#### 生成的镜像
+
+| 镜像名称 | 说明 | 大小 |
+|----------|------|------|
+| `golovin0623/aetherblog-backend` | Spring Boot 后端 | ~300MB |
+| `golovin0623/aetherblog-blog` | Next.js 博客前台 | ~200MB |
+| `golovin0623/aetherblog-admin` | Vite + Nginx 管理后台 | ~50MB |
+
+#### 支持平台
+
+- `linux/amd64` - 常规 x86 服务器 (CentOS, Ubuntu 等)
+- `linux/arm64` - ARM 服务器、Mac M1/M2/M3
+
+---
+
 ### 端口映射
 
 | 服务 | 端口 | 说明 |
@@ -161,7 +215,11 @@ backend:8080 ← postgres:5432 (容器内)
             ← redis:6999 (宿主机现有服务)
 ```
 
-### 快速部署
+---
+
+### 服务器部署
+
+#### 方式一：拉取预构建镜像 (推荐)
 
 ```bash
 # 1. 克隆项目到服务器
@@ -170,27 +228,59 @@ cd AetherBlog
 
 # 2. 配置环境变量
 cp .env.example .env
-vim .env  # 配置 OPENAI_API_KEY (可选)
+vim .env  # 配置数据库密码、OPENAI_API_KEY 等
 
-# 3. 构建并启动
-docker-compose -f docker-compose.prod.yml up -d --build
+# 3. 设置镜像版本
+export DOCKER_REGISTRY=golovin0623
+export VERSION=v1.0.0
 
-# 4. 查看日志
+# 4. 拉取镜像并启动
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d
+
+# 5. 查看日志
 docker-compose -f docker-compose.prod.yml logs -f
 
-# 5. 停止服务
+# 6. 停止服务
 docker-compose -f docker-compose.prod.yml down
 ```
+
+#### 方式二：服务器本地构建
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/your/AetherBlog.git
+cd AetherBlog
+
+# 2. 配置环境变量
+cp .env.example .env
+
+# 3. 本地构建并启动
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+#### 更新部署
+
+```bash
+# 拉取最新镜像
+docker-compose -f docker-compose.prod.yml pull
+
+# 重启服务 (零停机)
+docker-compose -f docker-compose.prod.yml up -d --force-recreate
+```
+
+---
 
 ### 相关文件
 
 | 文件 | 说明 |
 |------|------|
+| `docker-build.sh` | 多平台构建脚本 (支持并行) |
 | `docker-compose.prod.yml` | 生产环境编排配置 |
+| `apps/server/Dockerfile` | 后端镜像 (Spring Boot + JRE 21) |
 | `apps/blog/Dockerfile` | 博客前端镜像 (Next.js standalone) |
 | `apps/admin/Dockerfile` | 管理后台镜像 (Vite + Nginx) |
 | `apps/admin/nginx.conf` | Nginx 配置 (含 API 代理) |
-| `apps/server/Dockerfile` | 后端镜像 (Spring Boot) |
 | `.env.example` | 环境变量模板 |
 | `.dockerignore` | Docker 构建排除 |
 

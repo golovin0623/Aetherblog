@@ -2,8 +2,11 @@
 # AetherBlog Production Docker Compose
 # =============================================================================
 # 
-# 使用方法:
+# 使用方法 (本地构建):
 #   docker-compose -f docker-compose.prod.yml up -d --build
+#
+# 使用方法 (从 Docker Hub 拉取):
+#   DOCKER_REGISTRY=golovin0623 docker-compose -f docker-compose.prod.yml up -d
 #
 # 端口映射:
 #   - 7893: 博客前端 (Next.js)
@@ -39,15 +42,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   # ---------------------------------------------------------------------------
   # Application Services
   # ---------------------------------------------------------------------------
 
   backend:
+    image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-backend:${VERSION:-latest}
     build:
       context: .
       dockerfile: apps/server/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
     container_name: aetherblog-backend
     restart: unless-stopped
     expose:
@@ -62,7 +75,6 @@ services:
       SPRING_REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
       SPRING_REDIS_PORT: ${REDIS_PORT:-6999}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      JAVA_OPTS: "-Xms512m -Xmx1024m"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -71,16 +83,26 @@ services:
     networks:
       - aetherblog-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+        reservations:
+          memory: 512M
 
   blog:
+    image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-blog:${VERSION:-latest}
     build:
       context: .
       dockerfile: apps/blog/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
       args:
         NEXT_PUBLIC_API_URL: http://backend:8080
     container_name: aetherblog-blog
@@ -95,11 +117,21 @@ services:
         condition: service_healthy
     networks:
       - aetherblog-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
   admin:
+    image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-admin:${VERSION:-latest}
     build:
       context: .
       dockerfile: apps/admin/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
     container_name: aetherblog-admin
     restart: unless-stopped
     ports:
@@ -109,6 +141,12 @@ services:
         condition: service_healthy
     networks:
       - aetherblog-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
 # ---------------------------------------------------------------------------
 # Volumes
@@ -125,3 +163,4 @@ volumes:
 networks:
   aetherblog-network:
     driver: bridge
+

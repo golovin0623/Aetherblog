@@ -2,16 +2,25 @@ package com.aetherblog.blog.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 分类实体
+ * 
+ * @ref §6.1 - 核心表结构 (V2 增强版)
  */
 @Data
 @Entity
-@Table(name = "categories")
+@Table(name = "categories", indexes = {
+    @Index(name = "idx_categories_slug", columnList = "slug"),
+    @Index(name = "idx_categories_parent", columnList = "parent_id"),
+    @Index(name = "idx_categories_sort_order", columnList = "sort_order")
+})
 public class Category {
 
     @Id
@@ -24,9 +33,18 @@ public class Category {
     @Column(nullable = false, unique = true, length = 100)
     private String slug;
 
-    @Column(length = 500)
+    @Column(columnDefinition = "TEXT")
     private String description;
 
+    /**
+     * 分类封面图 (V2新增)
+     */
+    @Column(name = "cover_image", length = 500)
+    private String coverImage;
+
+    /**
+     * 分类图标
+     */
     @Column(length = 100)
     private String icon;
 
@@ -34,9 +52,24 @@ public class Category {
     @JoinColumn(name = "parent_id")
     private Category parent;
 
+
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
     private List<Category> children = new ArrayList<>();
 
-    @Column(nullable = false)
+    @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
+
+    /**
+     * 文章数量 (缓存字段)
+     */
+    @Column(name = "post_count", nullable = false)
+    private Integer postCount = 0;
+
+    @CreationTimestamp
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 }
