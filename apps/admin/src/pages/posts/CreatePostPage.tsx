@@ -107,11 +107,7 @@ export function CreatePostPage() {
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
-  const [publishTime, setPublishTime] = useState<string>(() => {
-    // Default to current time in local ISO format for datetime-local input
-    const now = new Date();
-    return now.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:mm
-  });
+  const [publishTime, setPublishTime] = useState<string>('');
   // Quick create category modal
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -191,20 +187,50 @@ export function CreatePostPage() {
     }
   }, [viewMode]);
 
-  // Fetch categories and tags on mount
+  // Fetch categories, tags, and server time on mount
   useEffect(() => {
     const fetchData = async () => {
       setLoadingCategories(true);
       setLoadingTags(true);
       try {
-        const [catRes, tagRes] = await Promise.all([
+        const [catRes, tagRes, timeRes] = await Promise.all([
           categoryService.getList(),
-          tagService.getList()
+          tagService.getList(),
+          postService.getServerTime().catch(() => null) // Gracefully handle if API not available
         ]);
         if (catRes.data) setCategories(catRes.data);
         if (tagRes.data) setTags(tagRes.data);
+        
+        // Set publish time from server time, fallback to local time if API fails
+        if (timeRes?.data?.timestamp) {
+          // Server returns ISO timestamp, convert to local datetime-local format
+          const serverDate = new Date(timeRes.data.timestamp);
+          const year = serverDate.getFullYear();
+          const month = String(serverDate.getMonth() + 1).padStart(2, '0');
+          const day = String(serverDate.getDate()).padStart(2, '0');
+          const hours = String(serverDate.getHours()).padStart(2, '0');
+          const minutes = String(serverDate.getMinutes()).padStart(2, '0');
+          setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+        } else {
+          // Fallback to local time
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const hours = String(now.getHours()).padStart(2, '0');
+          const minutes = String(now.getMinutes()).padStart(2, '0');
+          setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+        }
       } catch (error) {
         console.error('Failed to fetch categories/tags:', error);
+        // Still set a default publish time on error
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } finally {
         setLoadingCategories(false);
         setLoadingTags(false);
@@ -518,7 +544,7 @@ export function CreatePostPage() {
   const tableCommands = useTableCommands(editorViewRef);
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
   const [showTableToolbar, setShowTableToolbar] = useState(false);
-  const tableToolbarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Check table state on selection change and scroll
   useEffect(() => {
