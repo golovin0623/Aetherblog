@@ -21,7 +21,7 @@ interface Post {
   contentPreview?: string;
 }
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 6;
 
 export default function PostsPage() {
   const [currentPage, setCurrentPage] = useState(1);
