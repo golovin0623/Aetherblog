@@ -58,6 +58,13 @@ start_middleware() {
             exit 1
         fi
         
+        # 检查并清理异常退出的容器（防止端口残留）
+        EXITED_CONTAINERS=$(docker compose ps -a --filter "status=exited" -q 2>/dev/null || true)
+        if [ -n "$EXITED_CONTAINERS" ]; then
+            echo -e "${BLUE}   清理异常退出的容器...${NC}"
+            docker compose rm -f $EXITED_CONTAINERS 2>/dev/null || true
+        fi
+        
         # 启动容器
         docker compose up -d
         
