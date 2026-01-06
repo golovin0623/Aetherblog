@@ -13,7 +13,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, type ViewMode, type TableInfo } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
 import {
-  Rows3, Columns3, ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
+  ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
   AlignLeft, AlignCenter, AlignRight
 } from 'lucide-react';
 import { Modal } from '@aetherblog/ui';
