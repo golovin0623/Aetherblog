@@ -1,6 +1,11 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { marked, Renderer } from 'marked';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import katex from 'katex';
+import mermaid from 'mermaid';
+
+// Import KaTeX CSS
+import 'katex/dist/katex.min.css';
 
 export interface MarkdownPreviewProps {
   content: string;
@@ -50,6 +55,30 @@ async function getHighlighter(): Promise<Highlighter> {
   return highlighterInstance;
 }
 
+// Initialize mermaid with dark theme
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#6366f1',
+    primaryTextColor: '#e2e8f0',
+    primaryBorderColor: '#4f46e5',
+    lineColor: '#64748b',
+    secondaryColor: '#1e293b',
+    tertiaryColor: '#0f172a',
+    background: '#1a1b26',
+    mainBkg: '#1a1b26',
+    nodeBorder: '#4f46e5',
+    clusterBkg: 'rgba(99, 102, 241, 0.1)',
+    clusterBorder: '#4f46e5',
+    titleColor: '#f1f5f9',
+    edgeLabelBackground: '#1e293b',
+    nodeTextColor: '#e2e8f0',
+  },
+  fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+  securityLevel: 'loose',
+});
+
 // Normalize language name
 function normalizeLanguage(lang: string): BundledLanguage {
   const normalized = lang.toLowerCase().trim();
@@ -60,6 +89,41 @@ function normalizeLanguage(lang: string): BundledLanguage {
     return normalized as BundledLanguage;
   }
   return 'text' as BundledLanguage;
+}
+
+// Render LaTeX math formulas
+function renderMath(text: string): string {
+  // Block math: $$...$$
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula) => {
+    try {
+      return `<div class="math-block">${katex.renderToString(formula.trim(), {
+        displayMode: true,
+        throwOnError: false,
+      })}</div>`;
+    } catch {
+      return `<div class="math-block math-error">${formula}</div>`;
+    }
+  });
+
+  // Inline math: $...$
+  text = text.replace(/\$([^$\n]+?)\$/g, (_match, formula) => {
+    try {
+      return `<span class="math-inline">${katex.renderToString(formula.trim(), {
+        displayMode: false,
+        throwOnError: false,
+      })}</span>`;
+    } catch {
+      return `<span class="math-inline math-error">${formula}</span>`;
+    }
+  });
+
+  return text;
+}
+
+// Generate unique ID for mermaid diagrams
+let mermaidIdCounter = 0;
+function generateMermaidId(): string {
+  return `mermaid-${Date.now()}-${mermaidIdCounter++}`;
 }
 
 // Create a custom renderer that adds line numbers to elements
@@ -88,22 +152,37 @@ function createLineTrackingRenderer(
     return `<h${level}${lineAttr}>${text}</h${level}>\n`;
   };
 
-  // Override paragraph renderer
+  // Override paragraph renderer - also process math
   renderer.paragraph = function(text: string) {
-    const lineNum = findLineNumber(text.substring(0, 50)); // Use first 50 chars to match
+    const processedText = renderMath(text);
+    const lineNum = findLineNumber(text.substring(0, 50));
     const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
-    return `<p${lineAttr}>${text}</p>\n`;
+    return `<p${lineAttr}>${processedText}</p>\n`;
   };
 
-  // Override code block renderer for syntax highlighting
+  // Override code block renderer for syntax highlighting and mermaid
   renderer.code = function(code: string, language?: string) {
-    const lang = normalizeLanguage(language || 'text');
+    const lang = language?.toLowerCase().trim() || 'text';
+    
+    // Handle Mermaid diagrams
+    if (lang === 'mermaid') {
+      const id = generateMermaidId();
+      return `
+        <div class="mermaid-wrapper">
+          <div class="mermaid-container" data-mermaid-id="${id}">
+            <pre class="mermaid">${code}</pre>
+          </div>
+        </div>
+      `;
+    }
+    
+    const normalizedLang = normalizeLanguage(lang);
     const langDisplay = language?.toUpperCase() || 'TEXT';
     
     if (highlighter) {
       try {
         const highlightedCode = highlighter.codeToHtml(code, {
-          lang,
+          lang: normalizedLang,
           theme: 'github-dark',
         });
         
@@ -148,6 +227,7 @@ function createLineTrackingRenderer(
 
 export function MarkdownPreview({ content, className = '', style }: MarkdownPreviewProps) {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Load highlighter on mount
   useEffect(() => {
@@ -168,8 +248,40 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
     }
   }, [content, highlighter]);
 
+  // Render mermaid diagrams after HTML is set
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const mermaidContainers = containerRef.current.querySelectorAll('.mermaid-container');
+    if (mermaidContainers.length === 0) return;
+
+    // Reset mermaid to render new diagrams
+    mermaidIdCounter = 0;
+    
+    const renderMermaidDiagrams = async () => {
+      for (const container of mermaidContainers) {
+        const pre = container.querySelector('pre.mermaid');
+        if (!pre) continue;
+        
+        const code = pre.textContent || '';
+        const id = container.getAttribute('data-mermaid-id') || generateMermaidId();
+        
+        try {
+          const { svg } = await mermaid.render(id, code);
+          container.innerHTML = svg;
+        } catch (error) {
+          console.error('Mermaid rendering error:', error);
+          container.innerHTML = `<div class="mermaid-error">Failed to render diagram</div>`;
+        }
+      }
+    };
+
+    renderMermaidDiagrams();
+  }, [html]);
+
   return (
     <div
+      ref={containerRef}
       className={`markdown-preview ${className}`}
       dangerouslySetInnerHTML={{ __html: html }}
       style={{
@@ -344,6 +456,50 @@ export const markdownPreviewStyles = `
   .markdown-preview img {
     max-width: 100%;
     border-radius: 8px;
+  }
+  /* Math styles */
+  .markdown-preview .math-block {
+    margin: 1em 0;
+    padding: 1em;
+    background: rgba(99, 102, 241, 0.05);
+    border-radius: 8px;
+    overflow-x: auto;
+    text-align: center;
+  }
+  .markdown-preview .math-inline {
+    padding: 0 0.2em;
+  }
+  .markdown-preview .math-error {
+    color: #f87171;
+    font-family: monospace;
+  }
+  /* Mermaid styles */
+  .markdown-preview .mermaid-wrapper {
+    margin: 1em 0;
+    padding: 1em;
+    background: rgba(99, 102, 241, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    overflow-x: auto;
+  }
+  .markdown-preview .mermaid-container {
+    display: flex;
+    justify-content: center;
+    min-height: 100px;
+  }
+  .markdown-preview .mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .markdown-preview .mermaid-error {
+    color: #f87171;
+    padding: 1em;
+    text-align: center;
+    font-family: monospace;
+  }
+  /* KaTeX overrides for dark theme */
+  .markdown-preview .katex {
+    color: #e2e8f0;
   }
 `;
 
