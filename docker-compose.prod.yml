@@ -11,7 +11,7 @@
 # 端口映射:
 #   - 7893: 博客前端 (Next.js)
 #   - 7894: 管理后台 (Vite)
-#   - 5433: PostgreSQL (避免与现有5432冲突)
+#   - 7895: PostgreSQL (避免与现有5432冲突)
 #
 # =============================================================================
 
@@ -32,7 +32,7 @@ services:
       POSTGRES_USER: aetherblog
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
     ports:
-      - "5433:5432"  # 外部5433 → 内部5432
+      - "7895:5432"  # 外部7895 → 内部5432
     volumes:
       - aetherblog_postgres_data:/var/lib/postgresql/data
     networks:
