@@ -14,7 +14,7 @@ INSERT INTO users (username, email, password_hash, nickname, role, status, must_
 VALUES (
     'admin',
     'admin@aetherblog.local',
-    '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9o3DLPe4YpLwqKi',
+    '$2a$10$1B6fti5pzyTwI58rszwobe/Lpbe2GUzhUk7xVlkGe8kpTckIPsdHe',
     '管理员',
     'ADMIN',
     'ACTIVE',

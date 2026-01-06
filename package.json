@@ -18,6 +18,7 @@
     "docker:logs": "docker-compose logs -f"
   },
   "devDependencies": {
+    "bcryptjs": "^3.0.3",
     "typescript": "^5.7.2"
   },
   "engines": {
