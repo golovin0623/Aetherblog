@@ -112,4 +112,23 @@ public class UserService {
             throw new BusinessException("用户已被封禁");
         }
     }
+
+    /**
+     * 修改用户密码
+     */
+    @Transactional
+    public void changePassword(Long userId, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+        
+        // 加密新密码
+        String encodedPassword = passwordEncoder.encode(newPassword);
+        user.setPasswordHash(encodedPassword);
+        
+        // 清除首次登录修改密码标记
+        user.setMustChangePassword(false);
+        
+        userRepository.save(user);
+        log.info("用户密码修改成功: userId={}", userId);
+    }
 }

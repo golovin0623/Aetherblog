@@ -1,7 +1,6 @@
 package com.aetherblog.api.dto.auth;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
@@ -17,9 +16,13 @@ public class LoginRequest {
     private String username;
 
     /**
-     * 密码
+     * 密码（可能是加密后的）
      */
     @NotBlank(message = "密码不能为空")
-    @Size(min = 6, max = 64, message = "密码长度必须在6-64之间")
     private String password;
+
+    /**
+     * 是否已加密
+     */
+    private Boolean encrypted = false;
 }

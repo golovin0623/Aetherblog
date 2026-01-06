@@ -17,4 +17,8 @@ export const authService = {
   refreshToken: async (refreshToken: string): Promise<R<LoginResponse>> => {
     return api.post<R<LoginResponse>>('/v1/auth/refresh', { refreshToken });
   },
+
+  changePassword: async (data: { currentPassword: string; newPassword: string; encrypted?: boolean }): Promise<R<void>> => {
+    return api.post<R<void>>('/v1/auth/change-password', data);
+  },
 };

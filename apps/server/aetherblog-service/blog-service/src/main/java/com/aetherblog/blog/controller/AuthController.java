@@ -40,7 +40,7 @@ public class AuthController {
      */
     @PostMapping("/login")
     public R<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        log.info("用户登录请求: username={}", request.getUsername());
+        log.info("用户登录请求: username={}, encrypted={}", request.getUsername(), request.getEncrypted());
 
         // 查找用户
         User user = userService.findByUsernameOrEmail(request.getUsername())
@@ -49,8 +49,20 @@ public class AuthController {
         // 检查用户状态
         userService.checkUserCanLogin(user);
 
+        // 获取密码（如果加密则解密）
+        String password = request.getPassword();
+        if (Boolean.TRUE.equals(request.getEncrypted())) {
+            try {
+                password = com.aetherblog.common.core.util.CryptoUtils.decryptPassword(password);
+                log.debug("密码解密成功");
+            } catch (Exception e) {
+                log.error("密码解密失败", e);
+                throw new BusinessException("登录失败，请重试");
+            }
+        }
+
         // 验证密码
-        if (!userService.validatePassword(user, request.getPassword())) {
+        if (!userService.validatePassword(user, password)) {
             throw new BusinessException("用户名或密码错误");
         }
 
@@ -69,6 +81,7 @@ public class AuthController {
                 .accessToken(token)
                 .tokenType("Bearer")
                 .expiresIn(TOKEN_EXPIRATION_SECONDS)
+                .mustChangePassword(user.getMustChangePassword())
                 .userInfo(LoginResponse.UserInfoVO.builder()
                         .id(user.getId())
                         .username(user.getUsername())
@@ -79,7 +92,8 @@ public class AuthController {
                         .build())
                 .build();
 
-        log.info("用户登录成功: userId={}, username={}", user.getId(), user.getUsername());
+        log.info("用户登录成功: userId={}, username={}, mustChangePassword={}", 
+                user.getId(), user.getUsername(), user.getMustChangePassword());
         return R.ok(response);
     }
 
@@ -144,6 +158,61 @@ public class AuthController {
         }
         // JWT 是无状态的，前端删除 Token 即可
         // 如需实现 Token 黑名单，可在此添加 Redis 逻辑
+        return R.ok();
+    }
+
+    /**
+     * 修改密码
+     */
+    @PostMapping("/change-password")
+    public R<Void> changePassword(
+            @AuthenticationPrincipal LoginUser loginUser,
+            @Valid @RequestBody com.aetherblog.api.dto.auth.ChangePasswordRequest request) {
+        
+        if (loginUser == null) {
+            throw new BusinessException("未登录");
+        }
+        
+        log.info("用户修改密码: userId={}, encrypted={}", loginUser.getUserId(), request.getEncrypted());
+        
+        // 查找用户
+        User user = userService.findById(loginUser.getUserId())
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+        
+        // 获取密码（如果加密则解密）
+        String currentPassword = request.getCurrentPassword();
+        String newPassword = request.getNewPassword();
+        
+        if (Boolean.TRUE.equals(request.getEncrypted())) {
+            try {
+                currentPassword = com.aetherblog.common.core.util.CryptoUtils.decryptPassword(currentPassword);
+                newPassword = com.aetherblog.common.core.util.CryptoUtils.decryptPassword(newPassword);
+                log.debug("密码解密成功");
+            } catch (Exception e) {
+                log.error("密码解密失败", e);
+                throw new BusinessException("操作失败，请重试");
+            }
+        }
+        
+        // 验证当前密码
+        if (!userService.validatePassword(user, currentPassword)) {
+            throw new BusinessException("当前密码错误");
+        }
+        
+        // 检查新密码不能与当前密码相同
+        if (currentPassword.equals(newPassword)) {
+            throw new BusinessException("新密码不能与当前密码相同");
+        }
+        
+        // 检查新密码长度
+        if (newPassword.length() < 8) {
+            throw new BusinessException("新密码长度至少为8位");
+        }
+        
+        // 更新密码
+        userService.changePassword(user.getId(), newPassword);
+        
+        log.info("用户密码修改成功: userId={}", loginUser.getUserId());
         return R.ok();
     }
 

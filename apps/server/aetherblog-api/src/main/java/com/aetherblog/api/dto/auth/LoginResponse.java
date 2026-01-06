@@ -36,6 +36,12 @@ public class LoginResponse {
     private UserInfoVO userInfo;
 
     /**
+     * 是否需要修改密码
+     */
+    @Builder.Default
+    private Boolean mustChangePassword = false;
+
+    /**
      * 用户信息 VO
      */
     @Data
