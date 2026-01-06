@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 
@@ -15,6 +15,8 @@ export interface MarkdownEditorProps {
   style?: React.CSSProperties;
   showLineNumbers?: boolean;
   contentCentered?: boolean;
+  /** Ref to expose the CodeMirror EditorView for external control */
+  editorViewRef?: React.MutableRefObject<EditorView | null>;
 }
 
 export function MarkdownEditor({
@@ -28,7 +30,14 @@ export function MarkdownEditor({
   style,
   showLineNumbers = false,
   contentCentered = false,
+  editorViewRef,
 }: MarkdownEditorProps) {
+  // Internal ref for CodeMirror component
+  const cmRef = useCallback((ref: ReactCodeMirrorRef | null) => {
+    if (editorViewRef && ref?.view) {
+      editorViewRef.current = ref.view;
+    }
+  }, [editorViewRef]);
   const handleChange = useCallback(
     (val: string) => {
       onChange(val);
@@ -80,6 +89,7 @@ export function MarkdownEditor({
   return (
     <div className={`h-full ${!plain ? 'rounded-lg border border-white/10 bg-white/5' : ''} ${className}`}>
       <CodeMirror
+        ref={cmRef}
         value={value}
         onChange={handleChange}
         extensions={extensions}

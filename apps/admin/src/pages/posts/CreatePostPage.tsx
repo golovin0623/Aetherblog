@@ -6,16 +6,71 @@ import {
   Link2, Image, Quote, Heading1, Heading2, Heading3,
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle, Tag as TagIcon,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
-  Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut
+  Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
+  Undo2, Redo2
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { EditorWithPreview, type ViewMode } from '@aetherblog/editor';
+import { EditorWithPreview, EditorView, useEditorCommands, type ViewMode } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
-import { Modal, Tooltip } from '@aetherblog/ui';
+import { Modal } from '@aetherblog/ui';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
 import { useSidebarStore } from '@/stores';
+
+// Instant tooltip button component for toolbar
+interface ToolbarButtonProps {
+  onClick: () => void;
+  tooltip: string;
+  children: React.ReactNode;
+  isActive?: boolean;
+  activeColor?: 'primary' | 'emerald';
+  className?: string;
+}
+
+function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'primary', className }: ToolbarButtonProps) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const handleMouseEnter = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top - 4
+      });
+    }
+    setShowTooltip(true);
+  };
+
+  return (
+    <button
+      ref={buttonRef}
+      onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setShowTooltip(false)}
+      className={cn(
+        'relative p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors',
+        isActive && activeColor === 'primary' && 'bg-primary text-white',
+        isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
+        className
+      )}
+    >
+      <span className="block transition-transform active:scale-90">
+        {children}
+      </span>
+      {showTooltip && (
+        <span 
+          className="fixed z-[9999] px-2 py-1 text-xs text-white bg-gray-900 rounded border border-white/10 whitespace-nowrap -translate-x-1/2 -translate-y-full pointer-events-none"
+          style={{ left: position.x, top: position.y }}
+        >
+          {tooltip}
+        </span>
+      )}
+    </button>
+  );
+}
 
 export function CreatePostPage() {
   const navigate = useNavigate();
@@ -39,6 +94,12 @@ export function CreatePostPage() {
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
+  const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
+  const [publishTime, setPublishTime] = useState<string>(() => {
+    // Default to current time in local ISO format for datetime-local input
+    const now = new Date();
+    return now.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:mm
+  });
   // Quick create category modal
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -64,6 +125,7 @@ export function CreatePostPage() {
   const expandedTagsRef = useRef<HTMLDivElement>(null);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
 
   // Sidebar auto-collapse
   const { setAutoCollapse } = useSidebarStore();
@@ -81,7 +143,7 @@ export function CreatePostPage() {
   }, [title, content, summary, selectedCategory, selectedTags]);
 
   useEffect(() => {
-    if (!isEditMode || !postId) return;
+    if (!isEditMode || !postId || !isAutoSaveEnabled) return;
 
     const timer = setInterval(() => {
       const data = latestDataRef.current;
@@ -100,7 +162,7 @@ export function CreatePostPage() {
     }, 30000);
 
     return () => clearInterval(timer);
-  }, [isEditMode, postId, _postStatus]);
+  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled]);
 
   // View configuration automation
   useEffect(() => {
@@ -437,9 +499,63 @@ export function CreatePostPage() {
     });
   }, []);
 
-  const insertMarkdown = useCallback((prefix: string, suffix: string = '') => {
-    setContent((prev) => prev + prefix + suffix);
-  }, []);
+  // Editor commands for toolbar
+  const editorCommands = useEditorCommands(editorViewRef);
+
+  type InsertMode = 'wrap' | 'insert' | 'lineStart';
+  
+  const insertMarkdown = useCallback((prefix: string, suffix: string = '', mode: InsertMode = 'wrap') => {
+    if (mode === 'lineStart') {
+      editorCommands.toggleLineStart(prefix);
+    } else if (suffix) {
+      editorCommands.toggleWrap(prefix, suffix);
+    } else {
+      editorCommands.insertText(prefix);
+    }
+    editorCommands.focus();
+  }, [editorCommands]);
+
+  // Handle formatting keyboard shortcuts (Ctrl+B, Ctrl+I, Ctrl+K, etc.)
+  useEffect(() => {
+    const handleFormatShortcut = (e: KeyboardEvent) => {
+      // Only handle if Ctrl/Cmd is pressed
+      if (!(e.ctrlKey || e.metaKey)) return;
+      
+      switch (e.key.toLowerCase()) {
+        case 'b': // Bold
+          e.preventDefault();
+          editorCommands.toggleWrap('**', '**');
+          editorCommands.focus();
+          break;
+        case 'i': // Italic
+          e.preventDefault();
+          editorCommands.toggleWrap('*', '*');
+          editorCommands.focus();
+          break;
+        case 'k': // Link (Ctrl+K) or Code Block (Ctrl+Shift+K)
+          e.preventDefault();
+          if (e.shiftKey) {
+            editorCommands.toggleWrap('```\n', '\n```');
+          } else {
+            editorCommands.toggleWrap('[', '](url)');
+          }
+          editorCommands.focus();
+          break;
+        case '`': // Inline code
+          e.preventDefault();
+          editorCommands.toggleWrap('`', '`');
+          editorCommands.focus();
+          break;
+        case 'u': // Underline
+          e.preventDefault();
+          editorCommands.toggleWrap('<u>', '</u>');
+          editorCommands.focus();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleFormatShortcut);
+    return () => window.removeEventListener('keydown', handleFormatShortcut);
+  }, [editorCommands]);
 
   // Validation check
   const validatePost = (forPublish = false) => {
@@ -1010,87 +1126,97 @@ export function CreatePostPage() {
         )}
       </AnimatePresence>
 
-      {/* Formatting Toolbar */}
-      <div className="flex items-center gap-1 px-4 py-1.5 border-b border-white/10 bg-[#0a0a0c]/80 overflow-x-auto">
+      {/* Formatting Toolbar - outer container with overflow-visible for tooltips */}
+      <div className="relative border-b border-white/10 bg-[#0a0a0c]/80">
+        <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto">
+        {/* Undo/Redo */}
+        <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
+          <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
+            <Undo2 className="w-4 h-4" />
+          </ToolbarButton>
+          <ToolbarButton onClick={() => editorCommands.redo()} tooltip="重做 (⇧⌘Z)">
+            <Redo2 className="w-4 h-4" />
+          </ToolbarButton>
+        </div>
         {/* Headings */}
         <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
-          <button onClick={() => insertMarkdown('# ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 1 (H1)">
+          <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
             <Heading1 className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('## ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 2 (H2)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('## ', '', 'lineStart')} tooltip="标题 2 (H2)">
             <Heading2 className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('### ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="标题 3 (H3)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('### ', '', 'lineStart')} tooltip="标题 3 (H3)">
             <Heading3 className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
         
         {/* Text Formatting */}
         <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
-          <button onClick={() => insertMarkdown('**', '**')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="粗体 (Bold)">
+          <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
             <Bold className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('*', '*')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="斜体 (Italic)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('*', '*')} tooltip="斜体 (⌘I)">
             <Italic className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('<u>', '</u>')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="下划线 (Underline)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('<u>', '</u>')} tooltip="下划线 (⌘U)">
             <Underline className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('~~', '~~')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="删除线 (Strikethrough)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('~~', '~~')} tooltip="删除线">
             <Strikethrough className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
 
         {/* Code */}
         <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
-          <button onClick={() => insertMarkdown('`', '`')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="行内代码 (Inline Code)">
+          <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
             <Code className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('```\n', '\n```')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="代码块 (Code Block)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('```\n', '\n```')} tooltip="代码块 (⇧⌘K)">
             <FileCode2 className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
         
         {/* Lists */}
         <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
-          <button onClick={() => insertMarkdown('- ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="无序列表 (Unordered List)">
+          <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
             <List className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('1. ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="有序列表 (Ordered List)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('1. ', '', 'lineStart')} tooltip="有序列表">
             <ListOrdered className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('- [ ] ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="任务列表 (Task List)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('- [ ] ', '', 'lineStart')} tooltip="任务列表">
             <CheckSquare className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
 
         {/* Insert */}
         <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
-          <button onClick={() => insertMarkdown('[链接文字](', ')')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="链接 (Link)">
+          <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
             <Link2 className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('![图片描述](', ')')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="图片 (Image)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('![', '](image-url)', 'wrap')} tooltip="图片">
             <Image className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="表格 (Table)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n', '', 'insert')} tooltip="表格">
             <Table2 className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('\n---\n')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="分割线 (Horizontal Rule)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('\n---\n', '', 'insert')} tooltip="分割线">
             <Minus className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
 
         {/* Advanced: Quote, Math, Diagram */}
         <div className="flex items-center gap-0.5 px-3">
-          <button onClick={() => insertMarkdown('> ')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="引用 (Quote)">
+          <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
             <Quote className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('$$\n', '\n$$')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="数学公式 (Math/LaTeX)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('$$\n', '\n$$', 'wrap')} tooltip="数学公式">
             <Sigma className="w-4 h-4" />
-          </button>
-          <button onClick={() => insertMarkdown('```mermaid\ngraph TD;\n  A-->B;\n', '```')} className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" title="流程图 (Mermaid Diagram)">
+          </ToolbarButton>
+          <ToolbarButton onClick={() => insertMarkdown('```mermaid\n', '\n```', 'wrap')} tooltip="流程图">
             <GitBranch className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
         
         {/* Spacer */}
@@ -1098,73 +1224,59 @@ export function CreatePostPage() {
         
         {/* Zoom Controls */}
         <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-          <button
-            onClick={() => setFontSize(s => Math.max(12, s - 1))}
-            className="p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white"
-            title="缩小 (Zoom Out)"
-          >
+          <ToolbarButton onClick={() => setFontSize(s => Math.max(12, s - 1))} tooltip="缩小">
             <ZoomOut className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
           <span className="text-xs text-gray-500 w-8 text-center select-none">{fontSize}px</span>
-          <button
-            onClick={() => setFontSize(s => Math.min(24, s + 1))}
-            className="p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white"
-            title="放大 (Zoom In)"
-          >
+          <ToolbarButton onClick={() => setFontSize(s => Math.min(24, s + 1))} tooltip="放大">
             <ZoomIn className="w-4 h-4" />
-          </button>
+          </ToolbarButton>
         </div>
 
         {/* View Mode Toggle */}
         <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-          <Tooltip content="源码 (Source)">
-            <button
-              onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
-              className={cn(
-                'p-1.5 rounded-lg transition-colors relative',
-                viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'
-              )}
-            >
-              <FileCode2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
+          <ToolbarButton 
+            onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')} 
+            tooltip="源码模式"
+            isActive={viewMode === 'edit'}
+          >
+            <FileCode2 className="w-4 h-4" />
+          </ToolbarButton>
           
-          <Tooltip content="阅读 (Reading)">
-            <button
-              onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
-              className={cn(
-                'p-1.5 rounded-lg transition-colors relative',
-                viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10 hover:text-white'
-              )}
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-          </Tooltip>
+          <ToolbarButton 
+            onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')} 
+            tooltip="阅读模式"
+            isActive={viewMode === 'preview'}
+          >
+            <Eye className="w-4 h-4" />
+          </ToolbarButton>
 
-          <Tooltip content={isFullscreen ? '退出全屏' : '进入全屏 (Fullscreen)'}>
-            <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className={cn(
-                'p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white',
-                isFullscreen ? 'bg-primary text-white' : ''
-              )}
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          </Tooltip>
+          <ToolbarButton 
+            onClick={() => setIsFullscreen(!isFullscreen)} 
+            tooltip={isFullscreen ? '退出全屏' : '进入全屏'}
+            isActive={isFullscreen}
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </ToolbarButton>
 
-          <Tooltip content={showToc ? '关闭目录' : '打开目录 (TOC)'}>
-            <button
-              onClick={() => setShowToc(!showToc)}
-              className={cn(
-                'p-1.5 rounded-lg transition-colors text-gray-400 hover:bg-white/10 hover:text-white',
-                showToc ? 'bg-primary text-white' : ''
-              )}
-            >
-              <ListTree className="w-4 h-4" />
-            </button>
-          </Tooltip>
+          <ToolbarButton 
+            onClick={() => setShowToc(!showToc)} 
+            tooltip={showToc ? '关闭目录' : '打开目录'}
+            isActive={showToc}
+          >
+            <ListTree className="w-4 h-4" />
+          </ToolbarButton>
+
+          <ToolbarButton 
+            onClick={() => setIsAutoSaveEnabled(!isAutoSaveEnabled)} 
+            tooltip={isAutoSaveEnabled ? '关闭自动保存' : '开启自动保存'}
+            isActive={isAutoSaveEnabled}
+            activeColor="emerald"
+          >
+            <HardDrive className="w-4 h-4" />
+          </ToolbarButton>
         </div>
+      </div>
       </div>
 
       {/* Main Content Area */}
@@ -1183,6 +1295,7 @@ export function CreatePostPage() {
               fontSize={fontSize}
               showLineNumbers={showLineNumbers}
               hideToolbar
+              editorViewRef={editorViewRef}
             />
           </div>
         </div>
@@ -1363,6 +1476,21 @@ export function CreatePostPage() {
                   <Image className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-gray-400 text-sm">点击或拖拽上传</p>
                 </div>
+              </div>
+
+              {/* Publish Time */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  发布时间
+                </label>
+                <input
+                  type="datetime-local"
+                  value={publishTime}
+                  onChange={(e) => setPublishTime(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary/50 [color-scheme:dark]"
+                />
+                <p className="text-xs text-gray-500 mt-1">设置文章的发布时间，支持精确到分钟</p>
               </div>
 
               {/* Summary */}

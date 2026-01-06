@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { EditorView } from '@codemirror/view';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview';
 import { Edit, Eye, Columns } from 'lucide-react';
@@ -21,6 +22,8 @@ export interface EditorWithPreviewProps {
   fontSize?: number;
   /** Whether to show line numbers in editor */
   showLineNumbers?: boolean;
+  /** Ref to expose the CodeMirror EditorView for external control (toolbar commands) */
+  editorViewRef?: React.MutableRefObject<EditorView | null>;
 }
 
 export function EditorWithPreview({ 
@@ -33,6 +36,7 @@ export function EditorWithPreview({
   isSyncScroll = false,
   fontSize = 14,
   showLineNumbers = false,
+  editorViewRef,
 }: EditorWithPreviewProps) {
   const [internalViewMode, setInternalViewMode] = useState<ViewMode>('split');
   const editorScrollRef = useRef<HTMLDivElement>(null);
@@ -229,6 +233,7 @@ export function EditorWithPreview({
               style={{ fontSize: `${Math.max(12, fontSize - 2)}px` }}
               showLineNumbers={showLineNumbers}
               contentCentered={viewMode === 'edit'}
+              editorViewRef={editorViewRef}
             />
           </div>
         )}
