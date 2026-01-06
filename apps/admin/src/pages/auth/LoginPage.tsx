@@ -1,14 +1,26 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight } from 'lucide-react';
+import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
+import CryptoJS from 'crypto-js';
+
+// Encryption key - in production this should come from server or env
+const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
+
+// Encrypt password before sending
+const encryptPassword = (password: string): string => {
+  const timestamp = Date.now().toString();
+  const data = JSON.stringify({ password, timestamp });
+  return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
+};
 
 export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const login = useAuthStore((state) => state.login);
@@ -20,10 +32,17 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      const res = await authService.login({ username, password });
+      // Encrypt password before sending
+      const encryptedPassword = encryptPassword(password);
+      
+      const res = await authService.login({ 
+        username, 
+        password: encryptedPassword,
+        encrypted: true // Flag to tell backend this is encrypted
+      });
       
       if (res.code === 200 && res.data) {
-         const { accessToken, userInfo } = res.data;
+         const { accessToken, userInfo, mustChangePassword } = res.data;
          const user = {
             id: String(userInfo.id),
             username: userInfo.username,
@@ -33,7 +52,13 @@ export function LoginPage() {
          };
          
          login(user as any, accessToken);
-         navigate('/');
+         
+         // Check if user must change password on first login
+         if (mustChangePassword) {
+            navigate('/change-password', { state: { firstLogin: true } });
+         } else {
+            navigate('/');
+         }
       } else {
          setError(res.message || '登录失败');
       }
@@ -138,13 +163,26 @@ export function LoginPage() {
                 <div className="relative group">
                   <Lock className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
                     placeholder="Enter your password"
                     required
                   />
+                  {/* Password visibility toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-3.5 w-5 h-5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

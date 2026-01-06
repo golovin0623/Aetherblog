@@ -12,6 +12,8 @@ export interface User {
 export interface LoginRequest {
   username: string;
   password: string;
+  /** Flag to indicate password is encrypted */
+  encrypted?: boolean;
 }
 
 export interface LoginResponse {
@@ -19,4 +21,6 @@ export interface LoginResponse {
   refreshToken?: string;
   expiresIn: number;
   userInfo: User;
+  /** Whether user must change password on first login */
+  mustChangePassword?: boolean;
 }
