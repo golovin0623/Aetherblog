@@ -94,19 +94,54 @@ pnpm dev:blog
 
 ## ⚠️ 常见问题
 
-### 端口冲突
+### 停止脚本使用说明
 
-如果遇到端口被占用的错误，检查并停止占用端口的服务：
+```bash
+# 1️⃣ 停止应用服务（保留中间件运行）
+./stop.sh
+
+# 2️⃣ 停止所有服务（包括 Docker 中间件）
+./stop.sh --all
+
+# 3️⃣ 完全清理（强制移除所有容器并释放端口）
+docker compose down --remove-orphans
+./stop.sh
+```
+
+> **推荐**: 开发时使用 `./stop.sh` 保留中间件，可加快下次启动速度。
+
+### Docker 容器异常导致端口残留
+
+**症状**: 运行 `./start.sh` 时报错 `port is already allocated`，但 `./stop.sh` 无效。
+
+**原因**: 容器可能因系统休眠/意外关机/Docker重启而异常退出（`Exited (128)`），端口映射未被操作系统正常回收。
+
+**快速解决**:
+```bash
+# 方法1: 强制清理异常容器
+docker compose down --remove-orphans
+./start.sh
+
+# 方法2: 查找并杀死占用端口的进程
+lsof -i :6379   # 查看 Redis 端口
+lsof -i :5432   # 查看 PostgreSQL 端口
+# 如果输出显示 com.docke 占用，执行方法1
+```
+
+> **提示**: `start.sh` 已优化为自动检测并清理异常退出的容器，正常情况下不会再遇到此问题。
+
+### 端口冲突（非 Docker 原因）
+
+如果端口被其他应用程序占用：
 
 ```bash
 # 查看端口占用
 lsof -i :8080   # 后端 API
-lsof -i :5432   # PostgreSQL
-lsof -i :6379   # Redis
+lsof -i :3000   # 博客前台
+lsof -i :5173   # 管理后台
 
-# 停止占用端口的 Docker 容器
-docker ps --format "table {{.Names}}\t{{.Ports}}" | grep -E "8080|5432|6379"
-docker stop <容器名>
+# 终止占用进程
+kill -9 <PID>
 ```
 
 ### Maven 构建问题
