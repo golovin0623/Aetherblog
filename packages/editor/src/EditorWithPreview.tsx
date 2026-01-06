@@ -18,26 +18,35 @@ export interface EditorWithPreviewProps {
   hideToolbar?: boolean;
   /** Synchronize scroll between editor and preview in split mode */
   isSyncScroll?: boolean;
-  /** Base font size in px */
+  /** Base font size in px (used when editorFontSize/previewFontSize not provided) */
   fontSize?: number;
+  /** Editor font size in px (overrides fontSize for editor) */
+  editorFontSize?: number;
+  /** Preview font size in px (overrides fontSize for preview) */
+  previewFontSize?: number;
   /** Whether to show line numbers in editor */
   showLineNumbers?: boolean;
   /** Ref to expose the CodeMirror EditorView for external control (toolbar commands) */
   editorViewRef?: React.MutableRefObject<EditorView | null>;
 }
 
-export function EditorWithPreview({ 
-  value, 
-  onChange, 
+export function EditorWithPreview({
+  value,
+  onChange,
   className = '',
   viewMode: externalViewMode,
   onViewModeChange,
   hideToolbar = false,
   isSyncScroll = false,
   fontSize = 14,
+  editorFontSize,
+  previewFontSize,
   showLineNumbers = false,
   editorViewRef,
 }: EditorWithPreviewProps) {
+  // Resolve actual font sizes (individual overrides base)
+  const actualEditorFontSize = editorFontSize ?? fontSize;
+  const actualPreviewFontSize = previewFontSize ?? fontSize;
   const [internalViewMode, setInternalViewMode] = useState<ViewMode>('split');
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -222,15 +231,15 @@ export function EditorWithPreview({
       {/* Content */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {(viewMode === 'edit' || viewMode === 'split') && (
-          <div 
+          <div
             ref={viewMode === 'split' ? editorScrollRef : null}
             className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-white/10' : ''}`}
           >
-            <MarkdownEditor 
-              value={value} 
-              onChange={onChange} 
-              plain 
-              style={{ fontSize: `${Math.max(12, fontSize - 2)}px` }}
+            <MarkdownEditor
+              value={value}
+              onChange={onChange}
+              plain
+              fontSize={actualEditorFontSize}
               showLineNumbers={showLineNumbers}
               contentCentered={viewMode === 'edit'}
               editorViewRef={editorViewRef}
@@ -240,27 +249,27 @@ export function EditorWithPreview({
         
         {viewMode === 'preview' && (
           <div className="flex-1 overflow-y-auto bg-[#0a0a0c]">
-            <div 
+            <div
               className="w-full py-12 px-6 min-h-full"
               style={{ maxWidth: '800px', margin: '0 auto' }}
             >
-              <MarkdownPreview 
-                content={value} 
-                style={{ fontSize: `${fontSize}px` }}
+              <MarkdownPreview
+                content={value}
+                style={{ fontSize: `${actualPreviewFontSize}px` }}
               />
             </div>
           </div>
         )}
 
         {viewMode === 'split' && (
-          <div 
+          <div
             ref={previewScrollRef}
             className="flex-1 overflow-y-auto bg-[#0a0a0c]"
           >
             <div className="max-w-[90%] mx-auto w-full py-10 px-6 min-h-full">
-              <MarkdownPreview 
-                content={value} 
-                style={{ fontSize: `${fontSize}px` }}
+              <MarkdownPreview
+                content={value}
+                style={{ fontSize: `${actualPreviewFontSize}px` }}
               />
             </div>
           </div>

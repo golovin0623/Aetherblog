@@ -27,6 +27,7 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "shiki": "^1.1.0",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
