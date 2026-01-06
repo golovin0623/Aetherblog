@@ -2,8 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Highlight.js dark theme for code blocks */
-@import 'highlight.js/styles/github-dark.css';
+/* Note: Code syntax highlighting is now handled by Shiki in MarkdownRenderer */
 
 :root {
   --color-primary: #6366f1;
