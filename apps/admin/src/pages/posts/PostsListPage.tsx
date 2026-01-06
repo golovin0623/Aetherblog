@@ -185,7 +185,12 @@ export function PostsListPage() {
                         />
                       )}
                       <div className="min-w-0">
-                        <p className="text-white font-medium truncate">{post.title}</p>
+                        <Link
+                          to={`/posts/edit/${post.id}`}
+                          className="text-white font-medium truncate hover:text-primary transition-colors cursor-pointer block"
+                        >
+                          {post.title}
+                        </Link>
                         {post.summary && (
                           <p className="text-gray-500 text-xs truncate mt-0.5">{post.summary}</p>
                         )}
