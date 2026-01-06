@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
+import BackButton from '../../../components/BackButton';
 
 interface Post {
   id: number;
@@ -62,13 +63,7 @@ export default async function PostDetailPage({ params }: PageProps) {
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white mb-4">404</h1>
           <p className="text-gray-400 mb-6">文章不存在</p>
-          <Link
-            href="/posts"
-            className="inline-flex items-center gap-2 text-primary hover:underline"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            返回文章列表
-          </Link>
+          <BackButton fallbackHref="/posts" />
         </div>
       </div>
     );
@@ -78,13 +73,7 @@ export default async function PostDetailPage({ params }: PageProps) {
     <div className="min-h-screen bg-background">
       {/* Article */}
       <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
-        <Link
-          href="/posts"
-          className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-8"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          返回文章列表
-        </Link>
+        <BackButton fallbackHref="/posts" className="mb-8" />
 
         <h1 className="text-4xl font-bold text-white mb-4">{post.title}</h1>
 

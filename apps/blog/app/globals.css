@@ -211,4 +211,51 @@ body {
 .mini-preview img {
   max-width: 100%;
   border-radius: 4px;
+  margin: 0.4em 0;
+}
+.mini-preview video {
+  max-width: 100%;
+  border-radius: 4px;
+  margin: 0.4em 0;
+}
+/* 表格样式 */
+.mini-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.85em;
+}
+.mini-preview th, .mini-preview td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+.mini-preview th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.mini-preview td {
+  color: #94a3b8;
+}
+/* 分割线 */
+.mini-preview hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0.6em 0;
+}
+/* 任务列表复选框 */
+.mini-preview input[type="checkbox"] {
+  margin-right: 0.4em;
+  accent-color: #8b5cf6;
+}
+/* 删除线 */
+.mini-preview del {
+  color: #64748b;
+  text-decoration: line-through;
+}
+/* 水平滚动防止溢出 */
+.mini-preview pre {
+  overflow-x: auto;
+  max-width: 100%;
 }
