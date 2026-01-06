@@ -35,7 +35,6 @@ public class SiteSetting {
     /**
      * 设置值
      */
-    @Lob
     @Column(name = "setting_value", columnDefinition = "TEXT")
     private String settingValue;
 

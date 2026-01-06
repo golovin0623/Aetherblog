@@ -40,14 +40,12 @@ public class Post {
     /**
      * Markdown 原始内容
      */
-    @Lob
     @Column(name = "content_markdown", columnDefinition = "TEXT")
     private String contentMarkdown;
 
     /**
      * 渲染后的 HTML 内容缓存
      */
-    @Lob
     @Column(name = "content_html", columnDefinition = "TEXT")
     private String contentHtml;
 

@@ -58,7 +58,6 @@ public class User {
     /**
      * 个人简介
      */
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String bio;
 

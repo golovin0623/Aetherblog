@@ -26,46 +26,46 @@ VALUES (
 -- ============================================================
 
 -- General Settings
-INSERT INTO site_settings (key, value, type, group_name, description, is_public) VALUES
-    ('site_name', 'AetherBlog', 'STRING', 'general', '站点名称', true),
-    ('site_description', '一个优雅的技术博客', 'STRING', 'general', '站点描述', true),
-    ('site_keywords', '技术博客,编程,开发,Java,Spring', 'STRING', 'general', '站点关键词', true),
-    ('site_logo', '', 'STRING', 'general', '站点Logo', true),
-    ('site_favicon', '', 'STRING', 'general', '站点Favicon', true),
-    ('footer_text', '© 2026 AetherBlog. All rights reserved.', 'TEXT', 'general', '页脚文字', true),
-    ('footer_signature', '记录技术，分享生活', 'STRING', 'general', '个性签名', true),
-    ('icp_number', '', 'STRING', 'general', 'ICP备案号', true),
-    ('welcome_enabled', 'true', 'BOOLEAN', 'general', '是否启用欢迎页', true),
-    ('welcome_title', '欢迎来到我的博客', 'STRING', 'general', '欢迎页标题', true),
-    ('welcome_subtitle', '记录技术，分享生活', 'STRING', 'general', '欢迎页副标题', true)
-ON CONFLICT (key) DO NOTHING;
+INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
+    ('site_name', 'AetherBlog', 'STRING', 'general', '站点名称'),
+    ('site_description', '一个优雅的技术博客', 'STRING', 'general', '站点描述'),
+    ('site_keywords', '技术博客,编程,开发,Java,Spring', 'STRING', 'general', '站点关键词'),
+    ('site_logo', '', 'STRING', 'general', '站点Logo'),
+    ('site_favicon', '', 'STRING', 'general', '站点Favicon'),
+    ('footer_text', '© 2026 AetherBlog. All rights reserved.', 'TEXT', 'general', '页脚文字'),
+    ('footer_signature', '记录技术，分享生活', 'STRING', 'general', '个性签名'),
+    ('icp_number', '', 'STRING', 'general', 'ICP备案号'),
+    ('welcome_enabled', 'true', 'BOOLEAN', 'general', '是否启用欢迎页'),
+    ('welcome_title', '欢迎来到我的博客', 'STRING', 'general', '欢迎页标题'),
+    ('welcome_subtitle', '记录技术，分享生活', 'STRING', 'general', '欢迎页副标题')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- Author Settings
-INSERT INTO site_settings (key, value, type, group_name, description, is_public) VALUES
-    ('author_name', 'AetherBlog 博主', 'STRING', 'author', '博主名称', true),
-    ('author_avatar', '', 'STRING', 'author', '博主头像', true),
-    ('author_bio', '热爱技术，热爱生活', 'TEXT', 'author', '博主简介', true),
-    ('author_github', '', 'STRING', 'author', 'GitHub地址', true),
-    ('author_twitter', '', 'STRING', 'author', 'Twitter地址', true),
-    ('author_email', '', 'STRING', 'author', '联系邮箱', true)
-ON CONFLICT (key) DO NOTHING;
+INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
+    ('author_name', 'AetherBlog 博主', 'STRING', 'author', '博主名称'),
+    ('author_avatar', '', 'STRING', 'author', '博主头像'),
+    ('author_bio', '热爱技术，热爱生活', 'TEXT', 'author', '博主简介'),
+    ('author_github', '', 'STRING', 'author', 'GitHub地址'),
+    ('author_twitter', '', 'STRING', 'author', 'Twitter地址'),
+    ('author_email', '', 'STRING', 'author', '联系邮箱')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- Comment Settings
-INSERT INTO site_settings (key, value, type, group_name, description, is_public) VALUES
-    ('comment_enabled', 'true', 'BOOLEAN', 'comment', '是否启用评论', false),
-    ('comment_audit', 'true', 'BOOLEAN', 'comment', '评论是否需要审核', false)
-ON CONFLICT (key) DO NOTHING;
+INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
+    ('comment_enabled', 'true', 'BOOLEAN', 'comment', '是否启用评论'),
+    ('comment_audit', 'true', 'BOOLEAN', 'comment', '评论是否需要审核')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- Storage Settings
-INSERT INTO site_settings (key, value, type, group_name, description, is_public) VALUES
-    ('storage_type', 'LOCAL', 'STRING', 'storage', '存储类型: LOCAL, MINIO, COS', false)
-ON CONFLICT (key) DO NOTHING;
+INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
+    ('storage_type', 'LOCAL', 'STRING', 'storage', '存储类型: LOCAL, MINIO, COS')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- AI Settings
-INSERT INTO site_settings (key, value, type, group_name, description, is_public) VALUES
-    ('ai_enabled', 'true', 'BOOLEAN', 'ai', '是否启用AI功能', false),
-    ('ai_provider', 'openai', 'STRING', 'ai', 'AI服务提供商', false)
-ON CONFLICT (key) DO NOTHING;
+INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
+    ('ai_enabled', 'true', 'BOOLEAN', 'ai', '是否启用AI功能'),
+    ('ai_provider', 'openai', 'STRING', 'ai', 'AI服务提供商')
+ON CONFLICT (setting_key) DO NOTHING;
 
 -- ============================================================
 -- DEFAULT CATEGORY
@@ -77,14 +77,14 @@ ON CONFLICT (slug) DO NOTHING;
 -- ============================================================
 -- DEFAULT TAG
 -- ============================================================
-INSERT INTO tags (name, slug, color)
-VALUES ('Hello World', 'hello-world', 'blue')
+INSERT INTO tags (name, slug, color, post_count)
+VALUES ('Hello World', 'hello-world', 'blue', 1)
 ON CONFLICT (slug) DO NOTHING;
 
 -- ============================================================
 -- HELLO WORLD POST
 -- ============================================================
-INSERT INTO posts (title, slug, content, summary, status, view_count, comment_count, like_count, published_at, category_id)
+INSERT INTO posts (title, slug, content_markdown, summary, status, view_count, comment_count, like_count, published_at, category_id, author_id)
 SELECT 
     'Hello World', 
     'hello-world', 
@@ -93,9 +93,10 @@ SELECT
     'PUBLISHED', 
     0, 0, 0, 
     CURRENT_TIMESTAMP, 
-    c.id
-FROM categories c
-WHERE c.slug = 'default'
+    c.id,
+    u.id
+FROM categories c, users u
+WHERE c.slug = 'default' AND u.username = 'admin'
 ON CONFLICT (slug) DO NOTHING;
 
 -- Link post to tag
