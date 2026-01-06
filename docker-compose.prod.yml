@@ -106,12 +106,14 @@ services:
         - linux/arm64
       args:
         NEXT_PUBLIC_API_URL: http://backend:8080
+        NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL:-http://localhost:7894}
     container_name: aetherblog-blog
     restart: unless-stopped
     ports:
       - "7893:3000"
     environment:
       API_URL: http://backend:8080
+      NEXT_PUBLIC_ADMIN_URL: ${ADMIN_URL:-http://localhost:7894}
       NODE_ENV: production
     depends_on:
       backend:

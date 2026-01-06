@@ -7,6 +7,7 @@ import ArticleCard from '../components/ArticleCard';
 import FeaturedPost from '../components/FeaturedPost';
 import AuthorProfileCard from '../components/AuthorProfileCard';
 import PostsLoading from './PostsLoading';
+import { API_ENDPOINTS } from '../lib/api';
 
 interface Post {
   id: number;
@@ -33,7 +34,7 @@ export default function PostsPage() {
   } = useQuery({
     queryKey: ['featuredPost'],
     queryFn: async () => {
-      const res = await fetch('http://localhost:8080/api/v1/public/posts?pageNum=1&pageSize=1');
+      const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=1&pageSize=1`);
       if (!res.ok) throw new Error('Network response was not ok');
       const json = await res.json();
       if (!json.data?.list?.length) return null;
@@ -55,7 +56,7 @@ export default function PostsPage() {
 
       // Fetch content preview
       try {
-        const contentRes = await fetch(`http://localhost:8080/api/v1/public/posts/${item.slug}`);
+        const contentRes = await fetch(API_ENDPOINTS.postBySlug(item.slug));
         if (contentRes.ok) {
           const contentJson = await contentRes.json();
           post.contentPreview = contentJson.data?.content || '';
@@ -79,7 +80,7 @@ export default function PostsPage() {
       // Calculate effective page size/offset logic
       // Original logic: page 1 fetches 10 items (skipped 1), others fetch 9
       const effectivePageSize = PAGE_SIZE + (currentPage === 1 ? 1 : 0);
-      const res = await fetch(`http://localhost:8080/api/v1/public/posts?pageNum=${currentPage}&pageSize=${effectivePageSize}`);
+      const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=${currentPage}&pageSize=${effectivePageSize}`);
       if (!res.ok) throw new Error('Network response was not ok');
       const json = await res.json();
       
