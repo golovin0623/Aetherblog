@@ -1484,7 +1484,7 @@ export function CreatePostPage() {
                       onMouseLeave={handleTableTriggerLeave}
                     >
                        {/* Render Segments between dots */}
-                       {tableInfo.columnPositions.slice(0, -1).map((x, i) => {
+                       {tableInfo.columnPositions.slice(0, -1).map((x: number, i: number) => {
                          const nextX = tableInfo.columnPositions![i + 1];
                          const width = nextX - x;
                          return (
@@ -1501,7 +1501,7 @@ export function CreatePostPage() {
                        })}
                        
                        {/* Render Dots exactly at pipe | positions */}
-                       {tableInfo.columnPositions.map((x, i) => (
+                       {tableInfo.columnPositions.map((x: number, i: number) => (
                          <div
                            key={`col-dot-${i}`}
                            className="absolute top-1/2 -translate-y-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
