@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -1586,6 +1589,10 @@ packages:
 
   baseline-browser-mapping@2.9.11:
     resolution: {integrity: sha512-Sg0xJUNDU1sJNGdfGWhVHX0kkZ+HWcvmVymJbj6NSgZZmW/8S9Y2HQ5euytnIgakgxN6papOAWiwDo1ctFDcoQ==}
+    hasBin: true
+
+  bcryptjs@3.0.3:
+    resolution: {integrity: sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==}
     hasBin: true
 
   binary-extensions@2.3.0:
@@ -4678,6 +4685,8 @@ snapshots:
   balanced-match@1.0.2: {}
 
   baseline-browser-mapping@2.9.11: {}
+
+  bcryptjs@3.0.3: {}
 
   binary-extensions@2.3.0: {}
 

@@ -254,54 +254,77 @@ backend:8080 ← postgres:5432 (容器内)
 
 ### 服务器部署
 
-#### 方式一：拉取预构建镜像 (推荐)
-
+#### 1. 配置环境变量 (推荐)
+在服务器项目根目录下创建 `.env` 文件：
 ```bash
-# 1. 克隆项目到服务器
-git clone https://github.com/your/AetherBlog.git
-cd AetherBlog
-
-# 2. 配置环境变量
-cp .env.example .env
-vim .env  # 配置数据库密码、OPENAI_API_KEY 等
-
-# 3. 设置镜像版本
-export DOCKER_REGISTRY=golovin0623
-export VERSION=v1.0.0
-
-# 4. 拉取镜像并启动
-docker-compose -f docker-compose.prod.yml pull
-docker-compose -f docker-compose.prod.yml up -d
-
-# 5. 查看日志
-docker-compose -f docker-compose.prod.yml logs -f
-
-# 6. 停止服务
-docker-compose -f docker-compose.prod.yml down
+cat > .env <<EOF
+DOCKER_REGISTRY=golovin0623
+VERSION=v1.1.0
+POSTGRES_PASSWORD=aetherblog123
+REDIS_HOST=host.docker.internal
+REDIS_PORT=6999
+REDIS_PASSWORD=你的密码  # 如果没有密码可不填
+OPENAI_API_KEY=你的API_KEY
+EOF
 ```
 
-#### 方式二：服务器本地构建
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/your/AetherBlog.git
-cd AetherBlog
-
-# 2. 配置环境变量
-cp .env.example .env
-
-# 3. 本地构建并启动
-docker-compose -f docker-compose.prod.yml up -d --build
-```
-
-#### 更新部署
-
+#### 2. 启动服务
 ```bash
 # 拉取最新镜像
 docker-compose -f docker-compose.prod.yml pull
 
-# 重启服务 (零停机)
-docker-compose -f docker-compose.prod.yml up -d --force-recreate
+# 启动 (后台运行)
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+#### 3. 访问与登录
+- **博客前台**: `http://<服务器IP>:7893`
+- **管理后台**: `http://<服务器IP>:7894`
+- **后端 API**: `http://<服务器IP>:8080/api`
+
+---
+
+### 🔑 默认管理员凭据
+
+| 用户名 | 默认密码 | 说明 |
+|:---|:---|:---|
+| `admin` | `admin123` | **首次登录成功后必须修改密码** |
+
+---
+
+### 🛠 登录故障排查
+
+如果在服务器部署后无法使用 `admin123` 登录：
+
+1.  **检查后端日志**：
+    ```bash
+    docker-compose -f docker-compose.prod.yml logs -f backend
+    ```
+    确认没有 Redis 或数据库连接错误。
+2.  **手动重置密码**：
+    如果你确信密码正确但无法登录，可以使用 Navicat 运行以下 SQL 将密码强制重置为 `123456`：
+    ```sql
+    UPDATE users SET password_hash = '$2a$10$8.UnVuG9HHgffUDAlk8q2OuVGkqBKkjJRqdE7z6OcExSqz8tRdByW' WHERE username = 'admin';
+    ```
+    重置后请尝试使用 `admin` / `123456` 登录。
+
+---
+
+#### 4. 查看日志
+```bash
+docker-compose -f docker-compose.prod.yml logs -f
+```
+
+### 常用运维命令
+```bash
+# 查看所有容器状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 查看后端日志
+docker-compose -f docker-compose.prod.yml logs -f backend
+
+# 停止并移除容器
+docker-compose -f docker-compose.prod.yml down
 ```
 
 ---

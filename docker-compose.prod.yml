@@ -22,7 +22,7 @@ services:
   # ---------------------------------------------------------------------------
   
   # PostgreSQL 17 with pgvector (AI功能必需)
-  # 使用端口 5433 避免与现有 PostgreSQL 冲突
+  # 使用端口 7895 避免与现有 PostgreSQL 冲突
   postgres:
     image: pgvector/pgvector:pg17
     container_name: aetherblog-postgres
@@ -72,8 +72,9 @@ services:
       SPRING_DATASOURCE_USERNAME: aetherblog
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
       # 使用现有 Redis (端口 6999)
-      SPRING_REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
-      SPRING_REDIS_PORT: ${REDIS_PORT:-6999}
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6999}
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -83,7 +84,7 @@ services:
     networks:
       - aetherblog-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 5
