@@ -10,8 +10,12 @@ import {
   Undo2, Redo2
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { EditorWithPreview, EditorView, useEditorCommands, type ViewMode } from '@aetherblog/editor';
+import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, type ViewMode, type TableInfo } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
+import {
+  ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
+  AlignLeft, AlignCenter, AlignRight
+} from 'lucide-react';
 import { Modal } from '@aetherblog/ui';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
@@ -26,9 +30,11 @@ interface ToolbarButtonProps {
   isActive?: boolean;
   activeColor?: 'primary' | 'emerald';
   className?: string;
+  /** Tooltip position: 'top' (default) or 'bottom' */
+  tooltipPosition?: 'top' | 'bottom';
 }
 
-function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'primary', className }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'primary', className, tooltipPosition = 'top' }: ToolbarButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -38,7 +44,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       const rect = buttonRef.current.getBoundingClientRect();
       setPosition({
         x: rect.left + rect.width / 2,
-        y: rect.top - 4
+        y: tooltipPosition === 'bottom' ? rect.bottom + 2 : rect.top - 2
       });
     }
     setShowTooltip(true);
@@ -52,7 +58,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       onMouseLeave={() => setShowTooltip(false)}
       className={cn(
         'relative p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors',
-        isActive && activeColor === 'primary' && 'bg-primary text-white',
+        isActive && activeColor === 'primary' && 'bg-indigo-500/90 text-white',
         isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
         className
       )}
@@ -61,8 +67,11 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
         {children}
       </span>
       {showTooltip && (
-        <span 
-          className="fixed z-[9999] px-2 py-1 text-xs text-white bg-gray-900 rounded border border-white/10 whitespace-nowrap -translate-x-1/2 -translate-y-full pointer-events-none"
+        <span
+          className={cn(
+            "fixed z-[9999] px-2.5 py-1.5 text-xs text-white bg-[#1e1e20] rounded-md border border-white/20 whitespace-nowrap -translate-x-1/2 pointer-events-none shadow-lg",
+            tooltipPosition === 'bottom' ? 'mt-1' : '-translate-y-full -mt-1'
+          )}
           style={{ left: position.x, top: position.y }}
         >
           {tooltip}
@@ -86,7 +95,10 @@ export function CreatePostPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
-  const [fontSize, setFontSize] = useState(14);
+  // Font size control - separate editor and preview font sizes
+  const [editorFontSize, setEditorFontSize] = useState(14);
+  const [previewFontSize, setPreviewFontSize] = useState(16);
+  const [zoomTarget, setZoomTarget] = useState<'editor' | 'preview' | 'both'>('both');
   const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -95,11 +107,7 @@ export function CreatePostPage() {
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
-  const [publishTime, setPublishTime] = useState<string>(() => {
-    // Default to current time in local ISO format for datetime-local input
-    const now = new Date();
-    return now.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:mm
-  });
+  const [publishTime, setPublishTime] = useState<string>('');
   // Quick create category modal
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -179,20 +187,50 @@ export function CreatePostPage() {
     }
   }, [viewMode]);
 
-  // Fetch categories and tags on mount
+  // Fetch categories, tags, and server time on mount
   useEffect(() => {
     const fetchData = async () => {
       setLoadingCategories(true);
       setLoadingTags(true);
       try {
-        const [catRes, tagRes] = await Promise.all([
+        const [catRes, tagRes, timeRes] = await Promise.all([
           categoryService.getList(),
-          tagService.getList()
+          tagService.getList(),
+          postService.getServerTime().catch(() => null) // Gracefully handle if API not available
         ]);
         if (catRes.data) setCategories(catRes.data);
         if (tagRes.data) setTags(tagRes.data);
+        
+        // Set publish time from server time, fallback to local time if API fails
+        if (timeRes?.data?.timestamp) {
+          // Server returns ISO timestamp, convert to local datetime-local format
+          const serverDate = new Date(timeRes.data.timestamp);
+          const year = serverDate.getFullYear();
+          const month = String(serverDate.getMonth() + 1).padStart(2, '0');
+          const day = String(serverDate.getDate()).padStart(2, '0');
+          const hours = String(serverDate.getHours()).padStart(2, '0');
+          const minutes = String(serverDate.getMinutes()).padStart(2, '0');
+          setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+        } else {
+          // Fallback to local time
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const hours = String(now.getHours()).padStart(2, '0');
+          const minutes = String(now.getMinutes()).padStart(2, '0');
+          setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+        }
       } catch (error) {
         console.error('Failed to fetch categories/tags:', error);
+        // Still set a default publish time on error
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } finally {
         setLoadingCategories(false);
         setLoadingTags(false);
@@ -501,6 +539,67 @@ export function CreatePostPage() {
 
   // Editor commands for toolbar
   const editorCommands = useEditorCommands(editorViewRef);
+  
+  // Table commands for table operations
+  const tableCommands = useTableCommands(editorViewRef);
+  const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
+  const [showTableToolbar, setShowTableToolbar] = useState(false);
+  const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Check table state on selection change and scroll
+  useEffect(() => {
+    const checkTable = () => {
+      const info = tableCommands.getTableInfo();
+      setTableInfo(info);
+    };
+    
+    // Check on content change
+    const interval = setInterval(checkTable, 100);
+    
+    // Also update on scroll
+    const editorContainer = editorContainerRef.current;
+    if (editorContainer) {
+      const scroller = editorContainer.querySelector('.cm-scroller');
+      if (scroller) {
+        scroller.addEventListener('scroll', checkTable);
+      }
+    }
+    
+    return () => {
+      clearInterval(interval);
+      if (editorContainer) {
+        const scroller = editorContainer.querySelector('.cm-scroller');
+        if (scroller) {
+          scroller.removeEventListener('scroll', checkTable);
+        }
+      }
+    };
+  }, [tableCommands]);
+  
+  // Table toolbar hover handlers
+  const handleTableTriggerEnter = useCallback(() => {
+    if (tableToolbarTimeoutRef.current) {
+      clearTimeout(tableToolbarTimeoutRef.current);
+      tableToolbarTimeoutRef.current = null;
+    }
+    setShowTableToolbar(true);
+  }, []);
+  
+  const handleTableTriggerLeave = useCallback(() => {
+    // Delay hiding to allow moving to toolbar
+    tableToolbarTimeoutRef.current = setTimeout(() => {
+      setShowTableToolbar(false);
+    }, 200);
+  }, []);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (tableToolbarTimeoutRef.current) {
+        clearTimeout(tableToolbarTimeoutRef.current);
+      }
+    };
+  }, []);
 
   type InsertMode = 'wrap' | 'insert' | 'lineStart';
   
@@ -1222,13 +1321,68 @@ export function CreatePostPage() {
         {/* Spacer */}
         <div className="flex-1" />
         
-        {/* Zoom Controls */}
+        {/* Zoom Controls with Domain Toggle */}
         <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-          <ToolbarButton onClick={() => setFontSize(s => Math.max(12, s - 1))} tooltip="缩小">
+          <ToolbarButton
+            onClick={() => {
+              if (zoomTarget === 'editor') {
+                setEditorFontSize(s => Math.max(12, s - 1));
+              } else if (zoomTarget === 'preview') {
+                setPreviewFontSize(s => Math.max(12, s - 1));
+              } else {
+                setEditorFontSize(s => Math.max(12, s - 1));
+                setPreviewFontSize(s => Math.max(12, s - 1));
+              }
+            }}
+            tooltip={`缩小${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
+          >
             <ZoomOut className="w-4 h-4" />
           </ToolbarButton>
-          <span className="text-xs text-gray-500 w-8 text-center select-none">{fontSize}px</span>
-          <ToolbarButton onClick={() => setFontSize(s => Math.min(24, s + 1))} tooltip="放大">
+          
+          {/* Font Size Display with Domain Toggle */}
+          <button
+            onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
+            className={cn(
+              "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
+              "hover:bg-white/10",
+              zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
+              zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
+              zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
+            )}
+            title={`点击切换控制域 (当前: ${zoomTarget === 'both' ? '全部' : zoomTarget === 'editor' ? '编辑器' : '预览'})`}
+          >
+            {zoomTarget === 'both' ? (
+              <>
+                <span className="text-blue-400">{editorFontSize}</span>
+                <span className="text-gray-500 mx-0.5">||</span>
+                <span className="text-emerald-400">{previewFontSize}</span>
+              </>
+            ) : zoomTarget === 'editor' ? (
+              <>
+                <FileCode2 className="w-3 h-3" />
+                <span>{editorFontSize}px</span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-3 h-3" />
+                <span>{previewFontSize}px</span>
+              </>
+            )}
+          </button>
+          
+          <ToolbarButton
+            onClick={() => {
+              if (zoomTarget === 'editor') {
+                setEditorFontSize(s => Math.min(24, s + 1));
+              } else if (zoomTarget === 'preview') {
+                setPreviewFontSize(s => Math.min(24, s + 1));
+              } else {
+                setEditorFontSize(s => Math.min(24, s + 1));
+                setPreviewFontSize(s => Math.min(24, s + 1));
+              }
+            }}
+            tooltip={`放大${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
+          >
             <ZoomIn className="w-4 h-4" />
           </ToolbarButton>
         </div>
@@ -1284,19 +1438,247 @@ export function CreatePostPage() {
         {/* Editor Container */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Editor */}
-          <div ref={editorContainerRef} className="flex-1 overflow-hidden min-h-0">
-            <EditorWithPreview 
-              value={content} 
-              onChange={setContent} 
-              className="h-full" 
+          <div ref={editorContainerRef} className="flex-1 overflow-hidden min-h-0 relative">
+            <EditorWithPreview
+              value={content}
+              onChange={setContent}
+              className="h-full"
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               isSyncScroll={isSyncScroll}
-              fontSize={fontSize}
+              editorFontSize={editorFontSize}
+              previewFontSize={previewFontSize}
               showLineNumbers={showLineNumbers}
               hideToolbar
               editorViewRef={editorViewRef}
             />
+            
+            {/* IDEA-style Table Trigger Zones - Fixed positioning with viewport coordinates */}
+            {tableInfo?.isInTable && tableInfo.tableBounds && tableInfo.rowPositions && editorContainerRef.current && (() => {
+              const containerRect = editorContainerRef.current.getBoundingClientRect();
+              const isInViewport = tableInfo.tableBounds.top >= containerRect.top - 100 &&
+                                   tableInfo.tableBounds.top <= containerRect.bottom + 100;
+              if (!isInViewport) return null;
+              
+              // Calculate accurate line height
+              const lineHeight = tableInfo.rowPositions.length > 1
+                ? tableInfo.rowPositions[1] - tableInfo.rowPositions[0]
+                : 24;
+
+              // Generate extended row positions to include the bottom of the last row
+              const extendedRowPositions = [...tableInfo.rowPositions, tableInfo.rowPositions[tableInfo.rowPositions.length - 1] + lineHeight];
+
+              return (
+                <>
+                  {/* Top Trigger Zone (Column Operations) */}
+                  {tableInfo.columnPositions && tableInfo.columnPositions.length > 0 && (
+                    <div
+                      className="fixed z-40"
+                      style={{
+                        top: tableInfo.tableBounds.top - 20,
+                        left: tableInfo.tableBounds.left,
+                        height: 20,
+                        width: tableInfo.tableBounds.right - tableInfo.tableBounds.left,
+                      }}
+                      onMouseEnter={handleTableTriggerEnter}
+                      onMouseLeave={handleTableTriggerLeave}
+                    >
+                       {/* Render Segments between dots */}
+                       {tableInfo.columnPositions.slice(0, -1).map((x, i) => {
+                         const nextX = tableInfo.columnPositions![i + 1];
+                         const width = nextX - x;
+                         return (
+                           <div
+                             key={`col-seg-${i}`}
+                             className="absolute top-1/2 -translate-y-1/2 h-[4px] bg-[#52525b] hover:bg-[#3b82f6] cursor-pointer transition-colors"
+                             style={{
+                               left: x - tableInfo.tableBounds!.left,
+                               width: width,
+                             }}
+                             onClick={() => setShowTableToolbar(true)}
+                           />
+                         );
+                       })}
+                       
+                       {/* Render Dots exactly at pipe | positions */}
+                       {tableInfo.columnPositions.map((x, i) => (
+                         <div
+                           key={`col-dot-${i}`}
+                           className="absolute top-1/2 -translate-y-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
+                           style={{
+                             left: x - tableInfo.tableBounds!.left - 3, // Center 6px dot: -3px offset
+                           }}
+                         />
+                       ))}
+                    </div>
+                  )}
+
+                  {/* Left Trigger Zone (Row Operations) */}
+                  {extendedRowPositions.length > 0 && (
+                    <div
+                      className="fixed z-40"
+                      style={{
+                        top: tableInfo.tableBounds.top,
+                        left: tableInfo.tableBounds.left - 24,
+                        width: 24,
+                        height: tableInfo.tableBounds.bottom - tableInfo.tableBounds.top,
+                      }}
+                      onMouseEnter={handleTableTriggerEnter}
+                      onMouseLeave={handleTableTriggerLeave}
+                    >
+                      {/* Render Segments between dots (representing rows) */}
+                      {extendedRowPositions.slice(0, -1).map((y, i) => {
+                        const nextY = extendedRowPositions[i + 1];
+                        const height = nextY - y;
+                        // Start exactly at the row top (gap position)
+                        const startY = y - tableInfo.tableBounds!.top;
+                        
+                        return (
+                          <div
+                            key={`row-seg-${i}`}
+                            className="absolute left-1/2 -translate-x-1/2 w-[4px] bg-[#52525b] hover:bg-[#3b82f6] cursor-pointer transition-colors"
+                            style={{
+                              top: startY,
+                              height: height,
+                            }}
+                            onClick={() => setShowTableToolbar(true)}
+                          />
+                        );
+                      })}
+
+                      {/* Render Dots at row gaps (top/bottom of lines) */}
+                      {extendedRowPositions.map((y, i) => (
+                        <div
+                          key={`row-dot-${i}`}
+                          className="absolute left-1/2 -translate-x-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
+                          style={{
+                            top: y - tableInfo.tableBounds!.top - 3, // Center 6px dot at line gap: -3px offset
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            
+            {/* Floating Table Operations Toolbar */}
+            <AnimatePresence>
+              {showTableToolbar && tableInfo?.isInTable && tableInfo.tableBounds && editorContainerRef.current && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.1, ease: 'easeOut' }}
+                  className="fixed z-50 flex items-center gap-1 px-1 py-0.5 bg-[#2b2b2d] border border-[#3d3d40] rounded-md shadow-xl"
+                  style={{
+                    // Positioned above and slightly to the right
+                    top: tableInfo.tableBounds.top - 50,
+                    left: tableInfo.tableBounds.left + 20,
+                  }}
+                  onMouseEnter={handleTableTriggerEnter}
+                  onMouseLeave={handleTableTriggerLeave}
+                >
+                  {/* Back/Return button */}
+                  <ToolbarButton
+                    onClick={() => setShowTableToolbar(false)}
+                    tooltip="关闭"
+                    tooltipPosition="bottom"
+                    className="text-indigo-400 hover:text-indigo-300"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </ToolbarButton>
+                  
+                  <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
+                  
+                  {/* Row operations - purple/pink colors like IDEA */}
+                  <ToolbarButton
+                    onClick={() => { tableCommands.insertRowAbove(); editorCommands.focus(); }}
+                    tooltip="上方插入行"
+                    tooltipPosition="bottom"
+                    className={tableInfo.currentRowIndex <= 1 ? 'opacity-40 cursor-not-allowed' : 'text-fuchsia-400 hover:text-fuchsia-300'}
+                  >
+                    <ArrowUpToLine className="w-4 h-4" />
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={() => { tableCommands.insertRowBelow(); editorCommands.focus(); }}
+                    tooltip="下方插入行"
+                    tooltipPosition="bottom"
+                    className="text-emerald-400 hover:text-emerald-300"
+                  >
+                    <ArrowDownToLine className="w-4 h-4" />
+                  </ToolbarButton>
+                  
+                  <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
+                  
+                  {/* Column operations - blue colors */}
+                  <ToolbarButton
+                    onClick={() => { tableCommands.insertColumnLeft(); editorCommands.focus(); }}
+                    tooltip="左侧插入列"
+                    tooltipPosition="bottom"
+                    className="text-sky-400 hover:text-sky-300"
+                  >
+                    <ArrowLeftToLine className="w-4 h-4" />
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={() => { tableCommands.insertColumnRight(); editorCommands.focus(); }}
+                    tooltip="右侧插入列"
+                    tooltipPosition="bottom"
+                    className="text-sky-400 hover:text-sky-300"
+                  >
+                    <ArrowRightToLine className="w-4 h-4" />
+                  </ToolbarButton>
+                  
+                  <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
+                  
+                  {/* Column alignment - white/gray, active is blue bg */}
+                  <ToolbarButton
+                    onClick={() => { tableCommands.setColumnAlignment('left'); editorCommands.focus(); }}
+                    tooltip="左对齐"
+                    tooltipPosition="bottom"
+                    isActive={tableInfo.alignments[tableInfo.currentColumnIndex] === 'left'}
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={() => { tableCommands.setColumnAlignment('center'); editorCommands.focus(); }}
+                    tooltip="居中对齐"
+                    tooltipPosition="bottom"
+                    isActive={tableInfo.alignments[tableInfo.currentColumnIndex] === 'center'}
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={() => { tableCommands.setColumnAlignment('right'); editorCommands.focus(); }}
+                    tooltip="右对齐"
+                    tooltipPosition="bottom"
+                    isActive={tableInfo.alignments[tableInfo.currentColumnIndex] === 'right'}
+                  >
+                    <AlignRight className="w-4 h-4" />
+                  </ToolbarButton>
+                  
+                  <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
+                  
+                  {/* Delete operations - red colors */}
+                  <ToolbarButton
+                    onClick={() => { tableCommands.deleteRow(); editorCommands.focus(); }}
+                    tooltip="删除行"
+                    tooltipPosition="bottom"
+                    className={tableInfo.currentRowIndex <= 1 || tableInfo.rowCount <= 3 ? 'opacity-40 cursor-not-allowed' : 'text-rose-400 hover:text-rose-300'}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </ToolbarButton>
+                  <ToolbarButton
+                    onClick={() => { tableCommands.deleteColumn(); editorCommands.focus(); }}
+                    tooltip="删除列"
+                    tooltipPosition="bottom"
+                    className={tableInfo.columnCount <= 1 ? 'opacity-40 cursor-not-allowed' : 'text-rose-400 hover:text-rose-300'}
+                  >
+                    <X className="w-4 h-4" />
+                  </ToolbarButton>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
