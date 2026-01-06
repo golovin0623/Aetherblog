@@ -212,6 +212,9 @@ public class PostServiceImpl implements PostService {
         post.setCoverImage(request.getCoverImage());
         post.setSlug(generateUniqueSlug(request.getTitle()));
         post.setStatus(PostStatus.valueOf(request.getStatus()));
+        if (post.getStatus() == PostStatus.PUBLISHED) {
+            post.setPublishedAt(LocalDateTime.now());
+        }
 
         if (request.getCategoryId() != null) {
             Category category = categoryRepository.findById(request.getCategoryId())

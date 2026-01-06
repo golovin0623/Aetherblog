@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import lombok.ToString;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
@@ -32,6 +34,8 @@ public class Comment {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private Comment parent;
 
     @Column(nullable = false, length = 50)
@@ -46,7 +50,6 @@ public class Comment {
     @Column(length = 200)
     private String avatar;
 
-    @Lob
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 

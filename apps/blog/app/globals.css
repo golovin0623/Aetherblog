@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Highlight.js dark theme for code blocks */
+@import 'highlight.js/styles/github-dark.css';
+
 :root {
   --color-primary: #6366f1;
   --bg-primary: #0a0a0f;
@@ -40,6 +43,7 @@ body {
 }
 
 /* 遮罩效果 */
+
 .mask-image-b {
   mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);

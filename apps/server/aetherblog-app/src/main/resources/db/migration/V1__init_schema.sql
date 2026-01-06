@@ -328,19 +328,23 @@ CREATE TABLE IF NOT EXISTS media_files (
     filename VARCHAR(255) NOT NULL,
     original_name VARCHAR(255) NOT NULL,
     file_path VARCHAR(500) NOT NULL,
+    file_url VARCHAR(500) NOT NULL,
     file_size BIGINT NOT NULL,
-    mime_type VARCHAR(100) NOT NULL,
+    mime_type VARCHAR(100),
+    file_type VARCHAR(20) NOT NULL DEFAULT 'IMAGE',
     storage_type VARCHAR(20) NOT NULL DEFAULT 'LOCAL',
     width INT,
     height INT,
+    alt_text VARCHAR(200),
     uploader_id BIGINT REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    CONSTRAINT chk_media_storage_type CHECK (storage_type IN ('LOCAL', 'TENCENT_COS', 'ALIYUN_OSS', 'MINIO', 'AWS_S3'))
+    CONSTRAINT chk_media_storage_type CHECK (storage_type IN ('LOCAL', 'MINIO', 'COS', 'OSS', 'S3')),
+    CONSTRAINT chk_media_file_type CHECK (file_type IN ('IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'OTHER'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_media_files_uploader ON media_files(uploader_id);
-CREATE INDEX IF NOT EXISTS idx_media_files_type ON media_files(mime_type);
+CREATE INDEX IF NOT EXISTS idx_media_files_type ON media_files(file_type);
 CREATE INDEX IF NOT EXISTS idx_media_files_created ON media_files(created_at DESC);
 
 -- 附件表 (文章附件/下载)
