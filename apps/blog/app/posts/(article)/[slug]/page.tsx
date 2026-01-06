@@ -3,6 +3,9 @@ import { ArrowLeft } from 'lucide-react';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 
+// Server-side API URL - use internal Docker network URL or fallback
+const API_BASE_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
 interface Post {
   id: number;
   title: string;
@@ -22,7 +25,7 @@ interface PageProps {
 
 async function getPost(slug: string): Promise<Post | null> {
   try {
-    const res = await fetch(`http://localhost:8080/api/v1/public/posts/${slug}`, { 
+    const res = await fetch(`${API_BASE_URL}/api/v1/public/posts/${slug}`, { 
       cache: 'no-store' 
     });
     

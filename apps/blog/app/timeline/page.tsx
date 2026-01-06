@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import TimelineTree from '../components/TimelineTree';
 import TimelineLoading from './loading';
+import { API_ENDPOINTS } from '../lib/api';
 
 interface Post {
     id: number;
@@ -67,7 +68,7 @@ export default function TimelinePage() {
              // In a real app we might want a specific endpoint for timeline or fetch all
              // Reusing the public posts API, picking a large size to get most recent ones
              // For a full timeline, we'd need pagination or a light-weight list endpoint
-             const res = await fetch('http://localhost:8080/api/v1/public/posts?pageSize=100');
+             const res = await fetch(`${API_ENDPOINTS.posts}?pageSize=100`);
              if (!res.ok) throw new Error('Network response was not ok');
              const json = await res.json();
              return json.data.list.map((item: any) => ({

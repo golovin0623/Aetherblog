@@ -17,7 +17,7 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       siteName: 'AetherBlog',
       siteDescription: '智能博客系统',
-      siteUrl: 'http://localhost:3000',
+      siteUrl: typeof window !== 'undefined' ? window.location.origin : '',
 
       setSiteName: (siteName) => set({ siteName }),
       setSiteDescription: (siteDescription) => set({ siteDescription }),

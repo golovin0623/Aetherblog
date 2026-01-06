@@ -187,7 +187,7 @@ export default function BlogHeader() {
             {/* 管理后台入口 */}
             <div className="h-4 w-px bg-white/10 mx-1 hidden md:block"></div>
             <a 
-              href="http://localhost:5173" 
+              href={process.env.NEXT_PUBLIC_ADMIN_URL || '/admin'} 
               target="_blank" 
               rel="noopener noreferrer"
               className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-300 group/admin"

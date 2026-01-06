@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Users } from 'lucide-react';
 import FriendCard from '../components/FriendCard';
 import FriendsLoading from './FriendsLoading';
+import { API_ENDPOINTS } from '../lib/api';
 
 interface FriendLink {
   id: number;
@@ -97,7 +98,7 @@ export default function FriendsPage() {
     queryFn: async () => {
       // 真实环境不使用激进的超时策略，等待后端响应
       try {
-        const res = await fetch('http://localhost:8080/v1/friend-links');
+        const res = await fetch(API_ENDPOINTS.friendLinks);
         if (!res.ok) throw new Error('API Error');
         const json = await res.json();
         const list = (json.data || []) as FriendLink[];
