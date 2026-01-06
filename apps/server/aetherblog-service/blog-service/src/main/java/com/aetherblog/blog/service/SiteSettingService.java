@@ -108,6 +108,30 @@ public class SiteSettingService {
     }
 
     /**
+     * 获取公开设置（站点基本信息）
+     * 过滤掉敏感设置只返回公开信息
+     */
+    public Map<String, Object> getPublicSettings() {
+        // 获取基本设置组（site group）
+        List<SiteSetting> settings = settingRepository.findByGroupName("site");
+        Map<String, Object> result = convertToMap(settings);
+        
+        // 添加一些默认值
+        result.putIfAbsent("name", "AetherBlog");
+        result.putIfAbsent("description", "A modern blog platform");
+        result.putIfAbsent("author", "Admin");
+        
+        return result;
+    }
+
+    /**
+     * 根据分组获取公开设置
+     */
+    public Map<String, Object> getPublicSettingsByGroup(String groupName) {
+        return getSettingsByGroup(groupName);
+    }
+
+    /**
      * 更新设置值
      */
     @Transactional

@@ -40,3 +40,4 @@ coverage/
 .pids/admin.pid
 .pids/backend.pid
 .pids/blog.pid
+.kilocode/rules/code-rule.md

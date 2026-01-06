@@ -9,12 +9,24 @@
 FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
 
-# Copy Maven files first for dependency caching (correct submodule paths)
+# Copy Maven files first for dependency caching (all submodule pom.xml files)
 COPY apps/server/pom.xml ./
+# aetherblog-common and its submodules
 COPY apps/server/aetherblog-common/pom.xml ./aetherblog-common/
+COPY apps/server/aetherblog-common/common-core/pom.xml ./aetherblog-common/common-core/
+COPY apps/server/aetherblog-common/common-security/pom.xml ./aetherblog-common/common-security/
+COPY apps/server/aetherblog-common/common-redis/pom.xml ./aetherblog-common/common-redis/
+COPY apps/server/aetherblog-common/common-log/pom.xml ./aetherblog-common/common-log/
+# aetherblog-ai and its submodules
+COPY apps/server/aetherblog-ai/pom.xml ./aetherblog-ai/
+COPY apps/server/aetherblog-ai/ai-core/pom.xml ./aetherblog-ai/ai-core/
+COPY apps/server/aetherblog-ai/ai-agent/pom.xml ./aetherblog-ai/ai-agent/
+COPY apps/server/aetherblog-ai/ai-prompt/pom.xml ./aetherblog-ai/ai-prompt/
+COPY apps/server/aetherblog-ai/ai-rag/pom.xml ./aetherblog-ai/ai-rag/
+# aetherblog-service and its submodules
 COPY apps/server/aetherblog-service/pom.xml ./aetherblog-service/
 COPY apps/server/aetherblog-service/blog-service/pom.xml ./aetherblog-service/blog-service/
-COPY apps/server/aetherblog-ai/pom.xml ./aetherblog-ai/
+# aetherblog-api and aetherblog-app
 COPY apps/server/aetherblog-api/pom.xml ./aetherblog-api/
 COPY apps/server/aetherblog-app/pom.xml ./aetherblog-app/
 
