@@ -250,60 +250,166 @@ cd apps/server
 
 ### 端口映射
 
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| 博客前台 | **7893** | Next.js SSR |
-| 管理后台 | **7894** | Vite + Nginx |
-| PostgreSQL | 5433 | pgvector (避免与现有5432冲突) |
-| 后端 API | 内部 | 仅容器间通信 |
+| 服务 | 端口 | 环境变量 | 说明 |
+|------|------|----------|------|
+| **统一网关** | **7899** | `GATEWAY_PORT` | ⭐ 推荐使用，自动路由所有请求 |
+| 博客前台 | 7893 | `BLOG_PORT` | 可选，直接访问 |
+| 管理后台 | 7894 | `ADMIN_PORT` | 可选，直接访问 |
+| PostgreSQL | 7895 | `POSTGRES_PORT` | pgvector 数据库 |
+| 后端 API | 内部 | - | 仅容器间通信 |
 
 ### 部署架构
 
 ```
-用户请求
-    │
-    ├── :7893 → blog (Next.js)
-    │              └── API代理 → backend:8080
-    │
-    └── :7894 → admin (Nginx)
-                   └── /api 代理 → backend:8080
-                   
-backend:8080 ← postgres:5432 (容器内)
-            ← redis:6999 (宿主机现有服务)
+                        ┌─────────────────────────────────────┐
+                        │         统一网关 (:7899)             │
+                        │         Nginx Gateway               │
+                        └────────────┬────────────────────────┘
+                                     │
+           ┌─────────────────────────┼─────────────────────────┐
+           │                         │                         │
+           ▼                         ▼                         ▼
+   ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
+   │   /           │        │   /admin      │        │   /api        │
+   │   blog:3000   │        │   admin:80    │        │   backend:8080│
+   │   (Next.js)   │        │   (Nginx)     │        │   (Spring)    │
+   └───────────────┘        └───────────────┘        └───────┬───────┘
+                                                              │
+                                                    ┌─────────┴─────────┐
+                                                    ▼                   ▼
+                                              postgres:5432       redis:6999
+                                              (容器内)            (宿主机)
+```
+
+---
+
+## 🌐 域名配置
+
+### 方式一：Nginx Proxy Manager (推荐)
+
+如果您使用 [Nginx Proxy Manager](https://nginxproxymanager.com/)，配置非常简单：
+
+#### 1. 添加 Proxy Host
+
+| 字段 | 值 |
+|------|-----|
+| **Domain Names** | `yourdomain.com` |
+| **Scheme** | `http` |
+| **Forward Hostname/IP** | `127.0.0.1` 或服务器内网IP |
+| **Forward Port** | `7899` |
+
+#### 2. 勾选选项
+
+- ✅ **Websockets Support** ← AI 实时对话必需
+- ✅ **Block Common Exploits**
+
+#### 3. Advanced 配置
+
+在 "Custom Nginx Configuration" 中添加（支持大文件上传和 AI 长连接）：
+
+```nginx
+# 大文件上传支持 (图片/视频)
+client_max_body_size 500M;
+
+# AI 长连接超时 (多轮对话/工具调用)
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+
+# SSE 流式响应 (AI 实时输出)
+proxy_buffering off;
+```
+
+#### 4. 访问
+
+配置完成后：
+- 博客首页: `https://yourdomain.com/`
+- 管理后台: `https://yourdomain.com/admin`
+- 后端 API: `https://yourdomain.com/api`
+
+---
+
+### 方式二：手动配置 Nginx
+
+如果您使用标准 Nginx，添加以下配置：
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;  # 替换为您的域名
+    
+    location / {
+        proxy_pass http://127.0.0.1:7899;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket 支持 (AI 实时对话)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # 大文件上传 (图片/视频)
+        client_max_body_size 500M;
+        
+        # AI 长连接超时
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        
+        # SSE 流式响应
+        proxy_buffering off;
+    }
+}
+```
+
+然后重载配置：
+```bash
+sudo nginx -t && sudo nginx -s reload
 ```
 
 ---
 
 ### 服务器部署
 
-#### 1. 配置环境变量 (推荐)
+#### 1. 配置环境变量
 在服务器项目根目录下创建 `.env` 文件：
 ```bash
 cat > .env <<EOF
-DOCKER_REGISTRY=golovin0623
-VERSION=v1.1.1
+# 端口配置
+GATEWAY_PORT=7899
+BLOG_PORT=7893
+ADMIN_PORT=7894
+POSTGRES_PORT=7895
+
+# 数据库
 POSTGRES_PASSWORD=aetherblog123
+
+# Redis (使用现有服务)
 REDIS_HOST=host.docker.internal
 REDIS_PORT=6999
-REDIS_PASSWORD=你的密码  # 如果没有密码可不填
+
+# AI 功能
 OPENAI_API_KEY=你的API_KEY
-ADMIN_URL=http://你的域名:7894  # 博客首页跳转后台管理的地址
 EOF
 ```
 
 #### 2. 启动服务
 ```bash
 # 拉取最新镜像
+export DOCKER_REGISTRY=golovin0623
+export VERSION=v1.1.2
 docker-compose -f docker-compose.prod.yml pull
 
 # 启动 (后台运行)
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
-#### 3. 访问与登录
-- **博客前台**: `http://<服务器IP>:7893`
-- **管理后台**: `http://<服务器IP>:7894`
-- **后端 API**: `http://<服务器IP>:8080/api`
+#### 3. 配置域名
+参考上方 [域名配置](#-域名配置) 章节，将域名代理到网关端口 (7899)。
+
+#### 4. 访问与登录
+- **博客前台**: `https://yourdomain.com/`
+- **管理后台**: `https://yourdomain.com/admin`
+- **后端 API**: `https://yourdomain.com/api`
 
 ---
 
