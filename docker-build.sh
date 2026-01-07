@@ -197,55 +197,102 @@ build_image() {
     fi
 }
 
-# 并行构建所有镜像
+# 并行构建所有镜像 (优化版 - 实时显示完成状态)
 build_parallel() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}                   并行构建模式 (${CPU_CORES} 核心)                   ${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     local pids=()
-    local names=()
-    local results=()
+    local names=("backend" "blog" "admin")
+    local status_files=()
+    local completed=0
+    local failed=0
+    
+    # 创建状态文件
+    for name in "${names[@]}"; do
+        status_files+=("/tmp/aetherblog-status-${name}")
+        rm -f "/tmp/aetherblog-status-${name}"
+    done
     
     # 启动后端构建 (后台)
     (
-        build_image "backend" "apps/server/Dockerfile" "" "3/5"
+        if build_image "backend" "apps/server/Dockerfile" "" "3/5"; then
+            echo "success" > /tmp/aetherblog-status-backend
+        else
+            echo "failed" > /tmp/aetherblog-status-backend
+        fi
     ) &
     pids+=($!)
-    names+=("backend")
     
     # 启动博客前端构建 (后台)
     (
-        build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080" "4/5"
+        if build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-http://localhost:7894}" "4/5"; then
+            echo "success" > /tmp/aetherblog-status-blog
+        else
+            echo "failed" > /tmp/aetherblog-status-blog
+        fi
     ) &
     pids+=($!)
-    names+=("blog")
     
     # 启动管理后台构建 (后台)
     (
-        build_image "admin" "apps/admin/Dockerfile" "" "5/5"
+        if build_image "admin" "apps/admin/Dockerfile" "" "5/5"; then
+            echo "success" > /tmp/aetherblog-status-admin
+        else
+            echo "failed" > /tmp/aetherblog-status-admin
+        fi
     ) &
     pids+=($!)
-    names+=("admin")
     
     echo -e "${CYAN}正在并行构建 ${#pids[@]} 个镜像...${NC}"
+    echo ""
     
-    # 等待所有构建完成
-    local failed=0
-    for i in "${!pids[@]}"; do
-        if wait "${pids[$i]}"; then
-            results+=("${GREEN}✓ ${names[$i]}${NC}")
-        else
-            results+=("${RED}✗ ${names[$i]}${NC}")
-            ((failed++))
+    # 实时监控完成状态
+    local all_done=false
+    local checked=("" "" "")
+    
+    while [ "$all_done" = false ]; do
+        all_done=true
+        for i in "${!names[@]}"; do
+            if [ -z "${checked[$i]}" ]; then
+                if [ -f "${status_files[$i]}" ]; then
+                    local status=$(cat "${status_files[$i]}")
+                    checked[$i]="$status"
+                    ((completed++))
+                    
+                    if [ "$status" = "success" ]; then
+                        echo -e "${GREEN}🎉 ${names[$i]} 构建完成并已推送!${NC} (${completed}/${#names[@]})"
+                        if [ "$PUSH" = true ]; then
+                            echo -e "   ${YELLOW}可以先在服务器拉取: docker pull ${REGISTRY}/${PROJECT}-${names[$i]}:${VERSION}${NC}"
+                        fi
+                    else
+                        echo -e "${RED}✗ ${names[$i]} 构建失败${NC}"
+                        ((failed++))
+                    fi
+                else
+                    all_done=false
+                fi
+            fi
+        done
+        
+        if [ "$all_done" = false ]; then
+            sleep 2
         fi
     done
     
     echo ""
     echo -e "${CYAN}构建结果:${NC}"
-    for result in "${results[@]}"; do
-        echo -e "  $result"
+    for i in "${!names[@]}"; do
+        if [ "${checked[$i]}" = "success" ]; then
+            echo -e "  ${GREEN}✓ ${names[$i]}${NC}"
+        else
+            echo -e "  ${RED}✗ ${names[$i]}${NC}"
+        fi
     done
+    
+    # 清理状态文件
+    rm -f /tmp/aetherblog-status-*
     
     if [ $failed -gt 0 ]; then
         echo -e "${RED}${failed} 个镜像构建失败${NC}"
@@ -262,7 +309,7 @@ build_sequential() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     build_image "backend" "apps/server/Dockerfile" "" "3/5"
-    build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080" "4/5"
+    build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-http://localhost:7894}" "4/5"
     build_image "admin" "apps/admin/Dockerfile" "" "5/5"
 }
 
@@ -277,7 +324,7 @@ build_single() {
             build_image "backend" "apps/server/Dockerfile" "" "1/1"
             ;;
         blog)
-            build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080" "1/1"
+            build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-http://localhost:7894}" "1/1"
             ;;
         admin)
             build_image "admin" "apps/admin/Dockerfile" "" "1/1"

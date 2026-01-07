@@ -53,6 +53,7 @@ public class PostDraftTest {
         lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
     }
 
+    @SuppressWarnings("null")
     @Test
     void testSaveDraft_Success() throws Exception {
         Long postId = 1L;

@@ -34,9 +34,7 @@ COPY . .
 
 # Set environment variables for build
 ARG NEXT_PUBLIC_API_URL
-ARG NEXT_PUBLIC_ADMIN_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
-ENV NEXT_PUBLIC_ADMIN_URL=${NEXT_PUBLIC_ADMIN_URL:-http://localhost:5173}
 
 # Build the application with memory limit
 ENV NODE_OPTIONS="--max-old-space-size=2048"

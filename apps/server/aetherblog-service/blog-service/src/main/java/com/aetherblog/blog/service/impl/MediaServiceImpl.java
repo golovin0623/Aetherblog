@@ -222,6 +222,7 @@ public class MediaServiceImpl implements MediaService {
 
     @Override
     @Transactional
+    @SuppressWarnings("null")
     public MediaFile update(Long id, String altText, String originalName) {
         Objects.requireNonNull(id, "文件ID不能为空");
         MediaFile mediaFile = getById(id);
@@ -231,7 +232,7 @@ public class MediaServiceImpl implements MediaService {
         if (originalName != null) {
             mediaFile.setOriginalName(originalName);
         }
-        return mediaFileRepository.save(mediaFile);
+        return Objects.requireNonNull(mediaFileRepository.save(mediaFile), "保存媒体文件失败");
     }
 
     private FileType determineFileType(String contentType) {
