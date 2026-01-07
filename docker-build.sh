@@ -227,7 +227,7 @@ build_parallel() {
     
     # 启动博客前端构建 (后台)
     (
-        if build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-http://localhost:7894}" "4/5"; then
+        if build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/5"; then
             echo "success" > /tmp/aetherblog-status-blog
         else
             echo "failed" > /tmp/aetherblog-status-blog
@@ -309,7 +309,7 @@ build_sequential() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     build_image "backend" "apps/server/Dockerfile" "" "3/5"
-    build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-http://localhost:7894}" "4/5"
+    build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/5"
     build_image "admin" "apps/admin/Dockerfile" "" "5/5"
 }
 
@@ -324,7 +324,7 @@ build_single() {
             build_image "backend" "apps/server/Dockerfile" "" "1/1"
             ;;
         blog)
-            build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-http://localhost:7894}" "1/1"
+            build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "1/1"
             ;;
         admin)
             build_image "admin" "apps/admin/Dockerfile" "" "1/1"

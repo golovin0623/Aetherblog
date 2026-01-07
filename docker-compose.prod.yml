@@ -139,6 +139,7 @@ services:
         - linux/arm64
       args:
         NEXT_PUBLIC_API_URL: http://backend:8080
+        NEXT_PUBLIC_ADMIN_URL: /admin/
     container_name: aetherblog-blog
     restart: unless-stopped
     ports:
