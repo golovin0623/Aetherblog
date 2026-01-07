@@ -15,8 +15,11 @@ import AIToolsPage from './pages/AIToolsPage';
 import MonitorPage from './pages/MonitorPage';
 
 function App() {
+  // 使用 Vite 注入的 BASE_URL，开发环境为 '/'，生产环境为 '/admin/'
+  const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+  
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename === '/' ? undefined : basename}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
