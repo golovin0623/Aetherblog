@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
+import { SERVER_API_URL } from '../../../lib/api';
 
-// Server-side API URL - use internal Docker network URL or fallback
-const API_BASE_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// Server-side API URL - use internal Docker network URL
+const API_BASE_URL = SERVER_API_URL;
 
 interface Post {
   id: number;
