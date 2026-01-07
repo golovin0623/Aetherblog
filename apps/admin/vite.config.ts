@@ -13,6 +13,9 @@ export default defineConfig(({ command }) => ({
   },
   server: {
     port: 5173,
+    host: true, // 允许外部访问 (开发网关模式需要)
+    strictPort: true,
+    allowedHosts: true, // 允许所有主机访问 (Vite 6.x 安全要求)
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
@@ -21,4 +24,3 @@ export default defineConfig(({ command }) => ({
     },
   },
 }));
-
