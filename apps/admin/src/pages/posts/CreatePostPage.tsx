@@ -140,9 +140,22 @@ export function CreatePostPage() {
   const { setAutoCollapse } = useSidebarStore();
 
   // Auto-collapse sidebar on mount, restore on unmount
+  // Use requestAnimationFrame + setTimeout to delay collapse until page is rendered
   useEffect(() => {
-    setAutoCollapse(true);
-    return () => setAutoCollapse(false);
+    // Delay collapse to avoid animation competing with page render
+    const rafId = requestAnimationFrame(() => {
+      const timerId = setTimeout(() => {
+        setAutoCollapse(true);
+      }, 100); // Small delay for smoother transition
+      
+      // Store timerId in a ref-like closure for cleanup
+      return () => clearTimeout(timerId);
+    });
+    
+    return () => {
+      cancelAnimationFrame(rafId);
+      setAutoCollapse(false);
+    };
   }, [setAutoCollapse]);
 
   // Auto-save logic
