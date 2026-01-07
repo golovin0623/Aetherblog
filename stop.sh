@@ -2,6 +2,10 @@
 
 # AetherBlog 一键停止脚本
 # 停止所有正在运行的服务
+#
+# 用法:
+#   ./stop.sh         # 停止应用服务 (保留中间件)
+#   ./stop.sh --all   # 停止所有服务 (包括中间件)
 
 set -e
 
@@ -13,6 +17,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
@@ -76,9 +81,26 @@ stop_by_port() {
     fi
 }
 
+# 停止网关
+stop_gateway() {
+    echo -e "${BLUE}[5/6] 停止网关...${NC}"
+    
+    # 停止通过 docker-compose 启动的网关
+    if docker ps --filter "name=aetherblog-gateway" --format '{{.Names}}' | grep -q "aetherblog-gateway"; then
+        docker stop aetherblog-gateway 2>/dev/null || true
+        docker rm aetherblog-gateway 2>/dev/null || true
+        echo -e "${GREEN}✅ 网关已停止${NC}"
+    else
+        echo -e "${YELLOW}⚠️  网关未在运行${NC}"
+    fi
+    
+    # 停止占用 7899 端口的进程
+    stop_by_port 7899 "网关"
+}
+
 # 停止中间件 (Docker)
 stop_middleware() {
-    echo -e "${BLUE}[5/5] 停止中间件服务...${NC}"
+    echo -e "${BLUE}[6/6] 停止中间件服务...${NC}"
     cd "$PROJECT_ROOT"
     
     if [ -f "docker-compose.yml" ]; then
@@ -119,10 +141,13 @@ main() {
     stop_by_port 5173 "管理后台"
     
     echo ""
-    echo -e "${BLUE}[4/5] 清理 Node 进程...${NC}"
+    echo -e "${BLUE}[4/6] 清理 Node 进程...${NC}"
     pkill -f "next dev" 2>/dev/null || true
     pkill -f "vite" 2>/dev/null || true
     echo -e "${GREEN}✅ 清理完成${NC}"
+    
+    echo ""
+    stop_gateway
     
     # 如果传入 --all 参数，同时停止中间件
     if [ "$STOP_ALL" = true ]; then

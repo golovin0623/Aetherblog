@@ -107,6 +107,7 @@ export function CreatePostPage() {
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
+  const [autoSaveFlash, setAutoSaveFlash] = useState(false); // 自动保存时的微妙闪烁
   const [publishTime, setPublishTime] = useState<string>('');
   // Quick create category modal
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
@@ -139,9 +140,22 @@ export function CreatePostPage() {
   const { setAutoCollapse } = useSidebarStore();
 
   // Auto-collapse sidebar on mount, restore on unmount
+  // Use requestAnimationFrame + setTimeout to delay collapse until page is rendered
   useEffect(() => {
-    setAutoCollapse(true);
-    return () => setAutoCollapse(false);
+    // Delay collapse to avoid animation competing with page render
+    const rafId = requestAnimationFrame(() => {
+      const timerId = setTimeout(() => {
+        setAutoCollapse(true);
+      }, 100); // Small delay for smoother transition
+      
+      // Store timerId in a ref-like closure for cleanup
+      return () => clearTimeout(timerId);
+    });
+    
+    return () => {
+      cancelAnimationFrame(rafId);
+      setAutoCollapse(false);
+    };
   }, [setAutoCollapse]);
 
   // Auto-save logic
@@ -166,6 +180,10 @@ export function CreatePostPage() {
         categoryId: data.selectedCategory?.id,
         tagIds: data.selectedTags.map(t => t.id),
         status: _postStatus
+      }).then(() => {
+        // 触发微妙的保存闪烁动画
+        setAutoSaveFlash(true);
+        setTimeout(() => setAutoSaveFlash(false), 1500);
       }).catch(err => console.error('Auto save failed', err));
     }, 30000);
 
@@ -363,15 +381,25 @@ export function CreatePostPage() {
   const tocItems = useMemo((): TocItem[] => {
     const lines = content.split('\n');
     const items: TocItem[] = [];
+    let inCodeBlock = false;
     
     lines.forEach((line, index) => {
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        items.push({
-          level: match[1].length,
-          text: match[2].trim(),
-          line: index + 1,
-        });
+      // 检测代码块边界 (```xxx 或 ~~~xxx)
+      if (/^(`{3,}|~{3,})/.test(line.trim())) {
+        inCodeBlock = !inCodeBlock;
+        return;
+      }
+      
+      // 只在非代码块中识别标题
+      if (!inCodeBlock) {
+        const match = line.match(/^(#{1,6})\s+(.+)$/);
+        if (match) {
+          items.push({
+            level: match[1].length,
+            text: match[2].trim(),
+            line: index + 1,
+          });
+        }
       }
     });
     
@@ -1427,7 +1455,35 @@ export function CreatePostPage() {
             isActive={isAutoSaveEnabled}
             activeColor="emerald"
           >
-            <HardDrive className="w-4 h-4" />
+            <div className="relative">
+              <HardDrive className={cn(
+                "w-4 h-4 transition-all duration-300",
+                autoSaveFlash && "scale-110"
+              )} />
+              {/* 自动保存成功时的微妙光晕 */}
+              {autoSaveFlash && (
+                <motion.div
+                  initial={{ opacity: 0.8, scale: 0.8 }}
+                  animate={{ opacity: 0, scale: 2 }}
+                  transition={{ duration: 1.2, ease: "easeOut" }}
+                  className="absolute inset-0 rounded-full bg-emerald-400/40"
+                />
+              )}
+              {/* 保存成功时的小勾号 */}
+              <AnimatePresence>
+                {autoSaveFlash && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.5, y: 2 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
+                  >
+                    <CheckCircle className="w-2 h-2 text-white" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </ToolbarButton>
         </div>
       </div>

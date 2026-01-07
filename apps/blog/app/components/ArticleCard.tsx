@@ -2,8 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, Eye, Tag, Folder } from 'lucide-react';
-import MiniMarkdownPreview from './MiniMarkdownPreview';
+import { Calendar, Eye, Folder } from 'lucide-react';
 
 interface ArticleCardProps {
   title: string;
@@ -45,10 +44,15 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     });
   };
 
+  // 计算显示的标签数量
+  const maxVisibleTags = 4;
+  const visibleTags = tags.slice(0, maxVisibleTags);
+  const remainingTagCount = tags.length - maxVisibleTags;
+
   return (
-    <Link href={`/posts/${slug}`} className="block">
+    <Link href={`/posts/${slug}`} className="block h-full">
       <article
-        className="group relative flex flex-col overflow-hidden rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:-translate-y-1 h-full cursor-pointer"
+        className="group relative flex flex-col overflow-hidden rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:-translate-y-1 cursor-pointer min-h-[280px] h-full"
         style={{ animationDelay: `${index * 100}ms` }}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
@@ -85,76 +89,89 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
         )}
 
         {/* 内容区域 */}
-        <div className="flex-1 flex flex-col p-5 relative z-20 min-h-0">
-          <div className="mb-auto">
-            {/* 分类 & 日期 */}
-            <div className="flex items-center justify-between mb-3 text-xs">
-               {category ? (
-                  <span className="flex items-center gap-1.5 text-primary">
-                    <Folder className="h-3 w-3" />
-                    {category.name}
-                  </span>
-               ) : (
-                  <span className="w-1" />
-               )}
-               
-               <span className="flex items-center gap-1 text-gray-500 font-mono">
-                  <Calendar className="h-3 w-3" />
-                  {publishedAt}
-               </span>
-            </div>
+        <div className="flex-1 flex flex-col p-5 relative z-20">
+          {/* 分类 & 日期 - 固定高度 */}
+          <div className="flex items-center justify-between mb-3 text-xs h-[20px]">
+             {category ? (
+                <span className="flex items-center gap-1.5 text-primary">
+                  <Folder className="h-3 w-3" />
+                  {category.name}
+                </span>
+             ) : (
+                <span className="w-1" />
+             )}
+             
+             <span className="flex items-center gap-1 text-gray-500 font-mono">
+                <Calendar className="h-3 w-3" />
+                {publishedAt}
+             </span>
+          </div>
 
-            {/* 标题 */}
-            <h2 className="mb-3">
-              <span
-                className="text-lg font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-snug"
-                title={title}
-              >
-                {title}
-              </span>
-            </h2>
+          {/* 标题 - 固定高度 */}
+          <h2 className="mb-3 h-[56px]">
+            <span
+              className="text-lg font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-snug"
+              title={title}
+            >
+              {title}
+            </span>
+          </h2>
 
-            {/* 摘要 - 使用 MiniMarkdownPreview 渲染并限制行数 */}
-            {summary && (
-              <div className="text-gray-400 text-sm leading-relaxed line-clamp-2 md:line-clamp-3 mb-4 overflow-hidden">
-                <MiniMarkdownPreview content={summary} maxLength={150} />
-              </div>
+          {/* 摘要 - 固定高度，无摘要时显示占位 */}
+          <div className="h-[60px] mb-4 overflow-hidden">
+            {summary ? (
+              <p className="text-gray-400 text-sm leading-relaxed line-clamp-3">
+                {summary
+                  .replace(/[#*`>\[\]!|_~]/g, '')
+                  .replace(/\n+/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .slice(0, 120)}
+                {summary.length > 120 && '...'}
+              </p>
+            ) : (
+              <p className="text-gray-600 text-sm italic">暂无摘要</p>
             )}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-3">
-              {/* 标签 */}
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 h-[26px] overflow-hidden">
-                  {tags.slice(0, 3).map((tag) => (
+          {/* 底部区域 - 标签和元信息 */}
+          <div className="mt-auto pt-3 border-t border-white/5">
+            {/* 标签 - 固定高度，优化显示 */}
+            <div className="flex items-center gap-1.5 h-[24px] mb-2 overflow-hidden">
+              {visibleTags.length > 0 ? (
+                <>
+                  {visibleTags.map((tag) => (
                     <span
                       key={tag.slug}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-white/5 text-gray-500 border border-white/5 font-mono"
+                      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] bg-white/5 text-gray-500 border border-white/5 font-mono whitespace-nowrap"
                     >
                       #{tag.name}
                     </span>
                   ))}
-                </div>
+                  {remainingTagCount > 0 && (
+                    <span className="text-[10px] text-gray-600 font-mono">
+                      +{remainingTagCount}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-[10px] text-gray-600 italic">无标签</span>
               )}
-      
-              {/* 底部元信息 */}
-              <div className="flex items-center justify-between text-xs text-gray-600">
-                 <div className="flex items-center gap-3">
-                    {readingTime && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {readingTime}m
-                      </span>
-                    )}
-                 </div>
-                 
-                 {viewCount !== undefined && (
-                  <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Eye className="h-3 w-3" />
-                    {viewCount}
-                  </span>
-                )}
-              </div>
+            </div>
+    
+            {/* 底部元信息 */}
+            <div className="flex items-center justify-between text-xs text-gray-600 h-[20px]">
+               <span className="flex items-center gap-1">
+                  {readingTime && <span>{readingTime}m 阅读</span>}
+               </span>
+               
+               {viewCount !== undefined && (
+                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Eye className="h-3 w-3" />
+                  {viewCount}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </article>

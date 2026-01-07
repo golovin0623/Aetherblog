@@ -41,3 +41,4 @@ coverage/
 .pids/backend.pid
 .pids/blog.pid
 .kilocode/rules/code-rule.md
+apps/blog/.env.local.example

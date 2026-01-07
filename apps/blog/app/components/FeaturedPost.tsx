@@ -94,8 +94,14 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                         </div>
                     )}
 
-                    {/* Summary - with markdown rendering */}
-                    <div className="text-gray-400 text-sm leading-relaxed mb-6 line-clamp-4 lg:line-clamp-[6] overflow-hidden">
+                    {/* Summary - with markdown rendering, optimized height, subtle scrollbar */}
+                    <div 
+                      className="text-gray-400 text-sm leading-relaxed mb-6 max-h-[140px] lg:max-h-[180px] overflow-y-auto"
+                      style={{
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: 'rgba(255,255,255,0.1) transparent',
+                      }}
+                    >
                         <MiniMarkdownPreview content={displaySummary} maxLength={300} />
                     </div>
                 </div>

@@ -2,6 +2,11 @@
 
 # AetherBlog 一键启动脚本
 # 启动后端服务、前端博客和管理后台
+# 
+# 用法:
+#   ./start.sh            # 开发模式 (直接访问各端口)
+#   ./start.sh --gateway  # 开发网关模式 (测试网关路由，保留热更新)
+#   ./start.sh --prod     # 生产模式 (通过网关统一入口)
 
 set -e
 
@@ -14,14 +19,47 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
+
+# 默认参数
+PROD_MODE=false
+GATEWAY_MODE=false
+
+# 解析参数
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --prod) PROD_MODE=true ;;
+        --gateway) GATEWAY_MODE=true ;;
+        -h|--help) 
+            echo "用法: ./start.sh [选项]"
+            echo "选项:"
+            echo "  --gateway 开发网关模式 (测试网关路由，保留热更新)"
+            echo "  --prod    生产模式 (通过网关统一入口 :7899)"
+            echo "  -h,--help 显示帮助"
+            exit 0
+            ;;
+        *) echo "未知参数: $1"; exit 1 ;;
+    esac
+    shift
+done
 
 # 创建目录
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║           🚀 AetherBlog 一键启动脚本              ║${NC}"
-echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
+if [ "$PROD_MODE" = true ]; then
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║      🚀 AetherBlog 生产模式启动 (含网关)          ║${NC}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════╝${NC}"
+elif [ "$GATEWAY_MODE" = true ]; then
+    echo -e "${YELLOW}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║    🚀 AetherBlog 开发网关模式启动 (测试路由)      ║${NC}"
+    echo -e "${YELLOW}╚═══════════════════════════════════════════════════╝${NC}"
+else
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║           🚀 AetherBlog 开发模式启动              ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
+fi
 echo ""
 
 # 检查依赖
@@ -202,6 +240,39 @@ start_admin() {
     fi
 }
 
+# 启动网关
+# 参数: $1 - 配置文件 (nginx.dev.conf 或 nginx.conf)
+start_gateway() {
+    local config_file="${1:-nginx.conf}"
+    echo -e "${YELLOW}[7/7] 启动 Nginx 网关...${NC}"
+    cd "$PROJECT_ROOT"
+    
+    # 停止已有网关容器
+    docker stop aetherblog-gateway 2>/dev/null || true
+    docker rm aetherblog-gateway 2>/dev/null || true
+    
+    # 启动网关容器
+    if [ "$PROD_MODE" = true ]; then
+        # 生产模式: 优先使用 docker-compose.prod.yml 的 gateway 服务
+        docker compose -f docker-compose.prod.yml up -d gateway 2>/dev/null || {
+            docker run -d --name aetherblog-gateway \
+                -p 7899:80 \
+                -v "$PROJECT_ROOT/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+                --network host \
+                nginx:alpine 2>/dev/null || true
+        }
+    else
+        # 开发网关模式: 使用开发配置
+        docker run -d --name aetherblog-gateway \
+            -p 7899:80 \
+            -v "$PROJECT_ROOT/nginx/${config_file}:/etc/nginx/conf.d/default.conf:ro" \
+            --add-host=host.docker.internal:host-gateway \
+            nginx:alpine
+    fi
+    
+    echo -e "${GREEN}✅ 网关已启动 (端口: 7899, 配置: ${config_file})${NC}"
+}
+
 # 显示状态
 show_status() {
     echo ""
@@ -209,6 +280,22 @@ show_status() {
     echo -e "${GREEN}🎉 AetherBlog 启动完成!${NC}"
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
     echo ""
+    
+    if [ "$PROD_MODE" = true ] || [ "$GATEWAY_MODE" = true ]; then
+        echo -e "  ${CYAN}🌐 统一入口 (网关): ${GREEN}http://localhost:7899${NC}"
+        echo -e "      └─ /        → 博客前台"
+        echo -e "      └─ /admin/  → 管理后台"
+        echo -e "      └─ /api     → 后端 API"
+        echo ""
+        if [ "$GATEWAY_MODE" = true ]; then
+            echo -e "  ${YELLOW}📖 开发网关模式说明:${NC}"
+            echo -e "      使用 nginx.dev.conf 配置，代理到本地开发服务器"
+            echo -e "      热更新仍然可用，适合测试网关路由"
+            echo ""
+        fi
+        echo -e "  ${YELLOW}📌 直接访问端口 (可选):${NC}"
+    fi
+    
     echo -e "  📝 博客前台: ${GREEN}http://localhost:3000${NC}"
     echo -e "  ⚙️  管理后台: ${GREEN}http://localhost:5173${NC}"
     echo -e "  🔧 后端 API: ${GREEN}http://localhost:8080${NC}"
@@ -226,6 +313,13 @@ main() {
     start_backend
     start_blog
     start_admin
+    
+    if [ "$PROD_MODE" = true ]; then
+        start_gateway "nginx.conf"
+    elif [ "$GATEWAY_MODE" = true ]; then
+        start_gateway "nginx.dev.conf"
+    fi
+    
     show_status
 }
 
