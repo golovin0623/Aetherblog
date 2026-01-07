@@ -1,0 +1,103 @@
+---
+description: 构建并发布新版本 Docker 镜像到 Docker Hub，自动生成版本总结
+---
+
+# Deploy 工作流 - 构建发布新版本
+
+此工作流用于构建 Docker 镜像并推送到 Docker Hub，同时生成版本发布总结。
+
+## 前置条件
+
+1. Docker Desktop 正在运行
+2. 已登录 Docker Hub (`docker login`)
+3. 所有代码更改已提交到 Git
+
+## 工作流步骤
+
+### 1. 检查当前最新版本
+
+// turbo
+```bash
+curl -s "https://hub.docker.com/v2/repositories/golovin0623/aetherblog-backend/tags/?page_size=5" 2>/dev/null | grep -o '"name":"v[^"]*"' | head -3
+```
+
+根据返回结果确定新版本号（当前最新版本 +1）。
+
+### 2. 确认 Git 状态
+
+// turbo
+```bash
+git status --short
+```
+
+如果有未提交的更改，先执行 `git add . && git commit -m "your message"`。
+
+### 3. 构建并推送 Docker 镜像
+
+将 `VERSION` 替换为新版本号
+小功能修复（如 v1.1.3 -> v1.1.4）
+大功能新增（如 v1.1.3 -> v1.2.1）
+大版本迭代（如 v1.1.3 -> v2.0.0）：
+
+```bash
+./docker-build.sh --push --version VERSION
+```
+
+此命令会：
+- 并行构建 3 个镜像 (backend, blog, admin)
+- 支持多平台 (linux/amd64, linux/arm64)
+- 自动推送到 Docker Hub
+
+### 4. 生成版本总结
+
+查看自上次发布以来的所有提交：
+
+// turbo
+```bash
+git log --oneline origin/main..HEAD
+```
+
+根据提交记录生成版本总结，格式如下：
+
+```markdown
+## vX.X.X 版本更新
+
+### 🐛 Bug Fixes
+- [修复内容1]
+- [修复内容2]
+
+### ✨ Features  
+- [新功能1]
+- [新功能2]
+
+### 🔧 Improvements
+- [优化内容1]
+- [优化内容2]
+```
+
+### 5. 服务器部署命令
+
+构建完成后，在服务器执行：
+
+```bash
+export DOCKER_REGISTRY=golovin0623
+export VERSION=vX.X.X  # 替换为实际版本号
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+## 快速命令参考
+
+| 命令 | 说明 |
+|:-----|:-----|
+| `./docker-build.sh --push --version vX.X.X` | 构建并推送指定版本 |
+| `./docker-build.sh --only backend --push` | 只构建后端 |
+| `./docker-build.sh --only blog --push` | 只构建博客前端 |
+| `./docker-build.sh --only admin --push` | 只构建管理后台 |
+| `./docker-build.sh --sequential --push` | 串行构建（网络不稳定时使用） |
+
+## 注意事项
+
+- 版本号格式：`vX.Y.Z`（如 v1.1.3）
+- 构建时间约 2-3 分钟（取决于网络和缓存）
+- 如遇构建失败，检查 Docker 登录状态和网络连接
