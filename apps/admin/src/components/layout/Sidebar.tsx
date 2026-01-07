@@ -17,6 +17,8 @@ import {
   LogOut,
   Search,
   User,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { cn } from '@/lib/utils';
@@ -157,17 +159,21 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Quick Links - Icons stay fixed, text collapses */}
+      {/* Quick Links + Collapse Toggle - Above Avatar */}
       <div className={cn(
         "border-t border-border py-2 space-y-0.5 transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
-        <NavLink
-          to="/dashboard"
+        {/* Home Link */}
+        <a
+          href="/"
+          target="_blank"
+          rel="noopener noreferrer"
           className={cn(
             'flex items-center rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200',
             effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
           )}
+          title="访问主站"
         >
           <Home className="w-5 h-5 flex-shrink-0" />
           <span className={cn(
@@ -176,38 +182,47 @@ export function Sidebar() {
           )}>
             主站
           </span>
-        </NavLink>
-        <NavLink
-          to="/about"
-          className={({ isActive }) =>
-            cn(
-              'flex items-center rounded-lg transition-all duration-200',
-              effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
-              isActive
-                ? 'bg-primary text-white'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
-            )
-          }
+        </a>
+
+        {/* Collapse Toggle - Distinct from NavLinks via Typography & Icon */}
+        <button
+          onClick={toggle}
+          className={cn(
+            'w-full flex items-center rounded-lg transition-all duration-200 group',
+            effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
+            'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+          )}
+          title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
         >
-          <Info className="w-5 h-5 flex-shrink-0" />
-          <span className={cn(
-            'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
-            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
+          <div className={cn(
+            'flex items-center justify-center w-5 h-5 transition-transform duration-300',
+            // Hover animation: move left when expanding, move right when collapsing
+            !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
           )}>
-            关于
+            {effectiveCollapsed ? (
+              <ChevronsRight className="w-5 h-5" />
+            ) : (
+              <ChevronsLeft className="w-5 h-5" />
+            )}
+          </div>
+          <span className={cn(
+            'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            收起导航
           </span>
-        </NavLink>
+        </button>
       </div>
 
       {/* User Info - Avatar stays fixed, details collapse */}
-      <div className="border-t border-border p-3 space-y-2">
+      <div className="border-t border-border p-3">
         <div className={cn(
-          "flex items-center transition-all duration-300",
+          "flex items-center transition-all duration-300 cursor-pointer group",
           effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-1"
         )}>
           {/* Avatar - always visible, fixed position */}
           <div className="relative flex-shrink-0">
-            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/50 transition-all">
               {user?.avatar ? (
                 <img
                   src={user.avatar}
@@ -218,7 +233,7 @@ export function Sidebar() {
                 <User className="w-4 h-4 text-primary" />
               )}
             </div>
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-background-secondary" />
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-background-secondary" />
           </div>
 
           {/* User details - collapse with overflow-hidden */}
@@ -251,33 +266,6 @@ export function Sidebar() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
-        </div>
-
-        {/* Collapse Toggle - same pattern */}
-        <div className={cn(
-          "flex items-center transition-all duration-300",
-          effectiveCollapsed ? "px-0 justify-center" : "gap-2 px-1"
-        )}>
-          <button
-            onClick={toggle}
-            className={cn(
-              'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-              'text-gray-400 hover:text-white hover:bg-white/5',
-              'transition-all duration-200'
-            )}
-          >
-            {effectiveCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </button>
-          <span className={cn(
-            'text-xs text-gray-400 overflow-hidden whitespace-nowrap transition-all duration-300',
-            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
-          )}>
-            收起侧边栏
-          </span>
         </div>
       </div>
 
