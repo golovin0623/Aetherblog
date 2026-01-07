@@ -12,7 +12,7 @@ export const API_ENDPOINTS = {
   postBySlug: (slug: string) => `${API_BASE_URL}/api/v1/public/posts/${slug}`,
   
   // Friend Links
-  friendLinks: `${API_BASE_URL}/v1/friend-links`,
+  friendLinks: `${API_BASE_URL}/api/v1/public/friend-links`,
   
   // Archives
   archives: `${API_BASE_URL}/api/v1/public/archives`,

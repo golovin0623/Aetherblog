@@ -28,10 +28,23 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response.data,
       (error) => {
-        if (error.response?.status === 401) {
-          useAuthStore.getState().logout();
-          window.location.href = '/login';
+        const status = error.response?.status;
+        
+        // 处理认证失败 (401 Unauthorized 或 403 Forbidden)
+        // Token 过期、无效或权限不足时自动登出
+        if (status === 401 || status === 403) {
+          const authStore = useAuthStore.getState();
+          
+          // 只有当前已登录状态时才执行登出，避免重复跳转
+          if (authStore.isAuthenticated) {
+            console.warn(`[Auth] 认证失败 (${status})，正在登出...`);
+            authStore.logout();
+            
+            // 使用 replace 避免后退时回到已失效的页面
+            window.location.replace('/login');
+          }
         }
+        
         return Promise.reject(error.response?.data || error);
       }
     );
