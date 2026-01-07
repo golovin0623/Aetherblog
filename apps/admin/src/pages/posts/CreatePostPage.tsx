@@ -363,15 +363,25 @@ export function CreatePostPage() {
   const tocItems = useMemo((): TocItem[] => {
     const lines = content.split('\n');
     const items: TocItem[] = [];
+    let inCodeBlock = false;
     
     lines.forEach((line, index) => {
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        items.push({
-          level: match[1].length,
-          text: match[2].trim(),
-          line: index + 1,
-        });
+      // 检测代码块边界 (```xxx 或 ~~~xxx)
+      if (/^(`{3,}|~{3,})/.test(line.trim())) {
+        inCodeBlock = !inCodeBlock;
+        return;
+      }
+      
+      // 只在非代码块中识别标题
+      if (!inCodeBlock) {
+        const match = line.match(/^(#{1,6})\s+(.+)$/);
+        if (match) {
+          items.push({
+            level: match[1].length,
+            text: match[2].trim(),
+            line: index + 1,
+          });
+        }
       }
     });
     
