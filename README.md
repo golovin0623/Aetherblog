@@ -176,14 +176,21 @@ cd apps/server
 
 项目提供了优化的多平台构建脚本 `docker-build.sh`，支持并行构建充分利用多核 CPU。
 
+#### 特性
+
+- ⚡ **并行构建** - 同时构建 backend/blog/admin 三个镜像
+- 📡 **实时进度** - 每个镜像完成后立即通知，可提前在服务器拉取
+- 🔐 **密码加密** - 登录密码 AES 加密传输
+- 🌐 **多平台** - 支持 amd64 和 arm64 架构
+
 #### 构建命令
 
 ```bash
-# 并行构建并推送到 Docker Hub (推荐，利用多核 CPU)
-./docker-build.sh --push --version v1.0.0
+# 并行构建并推送到 Docker Hub (推荐)
+./docker-build.sh --push --version v1.1.1
 
 # 串行构建 (网络不稳定时)
-./docker-build.sh --push --sequential --version v1.0.0
+./docker-build.sh --push --sequential --version v1.1.1
 
 # 只构建单个镜像
 ./docker-build.sh --only backend --push
@@ -191,13 +198,28 @@ cd apps/server
 ./docker-build.sh --only admin --push
 
 # 本地构建测试 (不推送)
-./docker-build.sh --version v1.0.0
+./docker-build.sh --version v1.1.1
 
 # 指定 CPU 并行度
 ./docker-build.sh --cores 4 --push
 
 # 查看帮助
 ./docker-build.sh --help
+```
+
+#### 构建输出示例
+
+```
+正在并行构建 3 个镜像...
+
+🎉 admin 构建完成并已推送! (1/3)
+   可以先在服务器拉取: docker pull golovin0623/aetherblog-admin:v1.1.1
+
+🎉 backend 构建完成并已推送! (2/3)
+   可以先在服务器拉取: docker pull golovin0623/aetherblog-backend:v1.1.1
+
+🎉 blog 构建完成并已推送! (3/3)
+   可以先在服务器拉取: docker pull golovin0623/aetherblog-blog:v1.1.1
 ```
 
 #### 构建参数
@@ -259,12 +281,13 @@ backend:8080 ← postgres:5432 (容器内)
 ```bash
 cat > .env <<EOF
 DOCKER_REGISTRY=golovin0623
-VERSION=v1.1.0
+VERSION=v1.1.1
 POSTGRES_PASSWORD=aetherblog123
 REDIS_HOST=host.docker.internal
 REDIS_PORT=6999
 REDIS_PASSWORD=你的密码  # 如果没有密码可不填
 OPENAI_API_KEY=你的API_KEY
+ADMIN_URL=http://你的域名:7894  # 博客首页跳转后台管理的地址
 EOF
 ```
 
