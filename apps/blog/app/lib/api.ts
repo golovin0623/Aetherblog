@@ -1,10 +1,17 @@
 /**
  * API Configuration
  * 
- * Uses environment variables for API base URL with fallback for development
+ * 服务端渲染 (SSR): 使用 API_URL (Docker 内部网络 http://backend:8080)
+ * 客户端浏览器: 使用相对路径 /api (通过 nginx 网关代理)
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// 检测是否在服务端运行
+const isServer = typeof window === 'undefined';
+
+// 服务端使用 Docker 内部网络地址，客户端使用相对路径
+const API_BASE_URL = isServer 
+  ? (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080')
+  : '';  // 客户端使用空字符串，让请求变成相对路径
 
 export const API_ENDPOINTS = {
   // Public Posts
@@ -17,5 +24,9 @@ export const API_ENDPOINTS = {
   // Archives
   archives: `${API_BASE_URL}/api/v1/public/archives`,
 };
+
+// 提供两个版本的 URL，供需要明确指定的场景使用
+export const SERVER_API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+export const CLIENT_API_URL = '';  // 相对路径
 
 export default API_BASE_URL;
