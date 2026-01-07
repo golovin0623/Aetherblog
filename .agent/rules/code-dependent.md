@@ -268,3 +268,40 @@ public class PostServiceImpl implements PostService {
 ```
 
 ---
+## 🌐 API URL 配置规范 (重要!)
+
+### 问题背景
+在 Docker 生产环境中，前端应用可能同时运行在：
+- **服务端 (SSR)**: Docker 容器内部，可访问 `http://backend:8080`
+- **客户端 (浏览器)**: 用户设备，只能访问公网域名
+
+**如果客户端代码使用 Docker 内部地址，会导致**:
+- `Mixed Content` 错误 (HTTPS 页面请求 HTTP 资源)
+- `ERR_NAME_NOT_RESOLVED` 错误 (浏览器无法解析 Docker 内部域名)
+
+### ✅ 正确做法
+
+#### Next.js (Blog 前端)
+```typescript
+// app/lib/api.ts - 统一 API 配置
+const isServer = typeof window === 'undefined';
+const API_BASE_URL = isServer 
+  ? (process.env.API_URL || 'http://localhost:8080')
+  : '';  // 客户端使用空字符串 = 相对路径
+
+export const API_ENDPOINTS = {
+  posts: `${API_BASE_URL}/api/v1/public/posts`,
+};
+```
+
+#### Vite (Admin 前端)
+```typescript
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';  // 默认相对路径
+```
+
+### ❌ 禁止做法
+```typescript
+// ❌ 永远不要在客户端代码中硬编码后端地址
+const API = 'http://backend:8080/api';  // 浏览器无法解析
+const API = 'http://localhost:8080/api'; // 生产环境无法访问
+```
