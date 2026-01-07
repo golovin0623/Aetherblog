@@ -516,9 +516,14 @@ export default function PostsPage() {
                         className="border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors group"
                       >
                         <td className="px-4 py-3.5 w-[40%]">
-                          <p className="text-white font-medium truncate group-hover:text-primary transition-colors" title={post.title}>
-                            {post.title}
-                          </p>
+                          <button
+                            onClick={(e) => handleEdit(post, e)}
+                            className="text-left w-full"
+                          >
+                            <p className="text-white font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
+                              {post.title}
+                            </p>
+                          </button>
                         </td>
                         <td className="px-4 py-3.5 w-20 whitespace-nowrap">
                           {getStatusBadge(post.status)}
