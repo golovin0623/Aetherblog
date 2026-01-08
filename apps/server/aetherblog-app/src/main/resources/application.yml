@@ -2,6 +2,14 @@ spring:
   application:
     name: aetherblog
   
+  # 文件上传配置 (支持大文件/视频上传, 最大10GB)
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10GB
+      max-request-size: 10GB
+      file-size-threshold: 50MB
+  
   # 开启虚拟线程 (JDK 21+)
   threads:
     virtual:
