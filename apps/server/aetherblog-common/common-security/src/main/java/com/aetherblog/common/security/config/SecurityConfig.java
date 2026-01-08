@@ -52,6 +52,7 @@ public class SecurityConfig {
             "/api-docs/**",
             "/swagger-ui/**",
             "/actuator/health",
+            "/uploads/**",      // 上传文件静态访问
             "/error"
     };
 

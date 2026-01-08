@@ -39,8 +39,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 /**
  * 获取媒体文件的完整URL
- * 开发环境: Vite proxy 转发 /uploads/* 到 localhost:8080
- * 生产环境: Nginx 转发 /uploads/* 到 backend:8080
+ * 后端 context path 是 /api，所以 /uploads/* 需要变成 /api/uploads/*
  */
 export const getMediaUrl = (fileUrl: string): string => {
   if (!fileUrl) return '';
@@ -48,7 +47,10 @@ export const getMediaUrl = (fileUrl: string): string => {
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  // 相对路径直接返回，由 Vite/Nginx 代理
+  // /uploads/... -> /api/uploads/... (后端 context path 是 /api)
+  if (fileUrl.startsWith('/uploads')) {
+    return `/api${fileUrl}`;
+  }
   return fileUrl;
 };
 
