@@ -109,6 +109,8 @@ services:
       SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6999}
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - aetherblog_uploads:/app/uploads
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -194,6 +196,8 @@ services:
 volumes:
   aetherblog_postgres_data:
     name: aetherblog_postgres_data
+  aetherblog_uploads:
+    name: aetherblog_uploads
 
 # ---------------------------------------------------------------------------
 # Networks
