@@ -55,8 +55,10 @@ RUN addgroup --system --gid 1001 spring && \
 # Copy the built jar
 COPY --from=builder /app/aetherblog-app/target/*.jar app.jar
 
-# Change ownership
-RUN chown spring:spring app.jar
+# Create uploads directory and change ownership
+RUN mkdir -p /app/uploads && \
+    chown -R spring:spring /app/uploads && \
+    chown spring:spring app.jar
 
 USER spring
 
