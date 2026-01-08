@@ -13,6 +13,7 @@ import FriendsPage from './pages/FriendsPage';
 import SettingsPage from './pages/SettingsPage';
 import AIToolsPage from './pages/AIToolsPage';
 import MonitorPage from './pages/MonitorPage';
+import { Toaster } from 'sonner';
 
 function App() {
   // 使用 Vite 注入的 BASE_URL，开发环境为 '/'，生产环境为 '/admin/'
@@ -20,6 +21,7 @@ function App() {
   
   return (
     <BrowserRouter basename={basename === '/' ? undefined : basename}>
+      <Toaster richColors position="top-center" />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />

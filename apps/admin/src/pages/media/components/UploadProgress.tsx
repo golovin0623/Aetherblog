@@ -1,11 +1,12 @@
 /**
  * @file UploadProgress.tsx
- * @description 上传进度组件
+ * @description 上传进度组件 - 可折叠悬浮通知 (长时间上传友好)
  * @ref §3.2.4 - 媒体管理模块
  */
 
-import { motion } from 'framer-motion';
-import { X, FileUp, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, CheckCircle2, Loader2, AlertCircle, ChevronUp, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface UploadingFile {
@@ -21,90 +22,230 @@ interface UploadProgressProps {
 }
 
 /**
- * 上传进度组件
+ * 上传进度组件 - 右下角可折叠悬浮通知
  */
 export function UploadProgress({ files, onCancel }: UploadProgressProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [hasNewFiles, setHasNewFiles] = useState(false);
+
+  // 计算进度
+  const completedCount = files.filter(f => f.progress >= 100 && !f.error).length;
+  const errorCount = files.filter(f => f.error).length;
+  const uploadingCount = files.length - completedCount - errorCount;
+  const overallProgress = files.length > 0 
+    ? Math.round(files.reduce((sum, f) => sum + f.progress, 0) / files.length)
+    : 0;
+
+  // 新文件添加时自动展开
+  useEffect(() => {
+    if (files.length > 0) {
+      setIsExpanded(true);
+      setHasNewFiles(true);
+    }
+  }, [files.length]);
+
+  // 5秒后自动折叠（除非有错误）
+  useEffect(() => {
+    if (hasNewFiles && errorCount === 0) {
+      const timer = setTimeout(() => {
+        setIsExpanded(false);
+        setHasNewFiles(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [hasNewFiles, errorCount]);
+
+  // 全部完成后3秒清理（可选：由父组件处理）
+  useEffect(() => {
+    if (files.length > 0 && uploadingCount === 0 && errorCount === 0) {
+      const timer = setTimeout(() => {
+        setIsExpanded(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [files.length, uploadingCount, errorCount]);
+
+  if (files.length === 0) return null;
+
+  // 折叠状态 - 只显示一个小圆形指示器
+  if (!isExpanded) {
+    return (
+      <motion.button
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.8 }}
+        onClick={() => setIsExpanded(true)}
+        className={cn(
+          "fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-2xl",
+          "flex items-center justify-center cursor-pointer",
+          "bg-zinc-900/95 backdrop-blur-xl border border-white/10",
+          "hover:scale-110 transition-transform"
+        )}
+      >
+        {/* 进度环 */}
+        <svg className="absolute inset-0 w-full h-full -rotate-90">
+          <circle
+            cx="28"
+            cy="28"
+            r="24"
+            fill="none"
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth="3"
+          />
+          <motion.circle
+            cx="28"
+            cy="28"
+            r="24"
+            fill="none"
+            stroke={errorCount > 0 ? '#ef4444' : uploadingCount > 0 ? '#8b5cf6' : '#22c55e'}
+            strokeWidth="3"
+            strokeLinecap="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: overallProgress / 100 }}
+            transition={{ duration: 0.3 }}
+            style={{ 
+              strokeDasharray: '150.79644737231007',
+              strokeDashoffset: 0,
+            }}
+          />
+        </svg>
+        
+        {/* 中心图标 */}
+        <div className="relative z-10">
+          {uploadingCount > 0 ? (
+            <Upload className="w-5 h-5 text-primary" />
+          ) : errorCount > 0 ? (
+            <AlertCircle className="w-5 h-5 text-red-400" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-green-400" />
+          )}
+        </div>
+        
+        {/* 文件数量徽章 */}
+        {files.length > 1 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+            {files.length}
+          </span>
+        )}
+      </motion.button>
+    );
+  }
+
+  // 展开状态 - 完整通知面板
   return (
     <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className={cn(
-        'rounded-xl overflow-hidden',
-        'bg-white/5 backdrop-blur-sm border border-white/10'
-      )}
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.95 }}
+      className="fixed bottom-6 right-6 z-50 w-80"
     >
-      <div className="p-4 border-b border-white/10">
-        <h3 className="text-sm font-medium text-white">
-          正在上传 ({files.length} 个文件)
-        </h3>
-      </div>
-
-      <div className="divide-y divide-white/5 max-h-48 overflow-y-auto">
-        {files.map((item) => {
-          const isComplete = item.progress >= 100;
-          const hasError = !!item.error;
-
-          return (
-            <div
-              key={item.id}
-              className="flex items-center gap-3 p-3 hover:bg-white/5"
-            >
-              {/* 图标 */}
-              <div
-                className={cn(
-                  'w-8 h-8 rounded-lg flex items-center justify-center',
-                  hasError
-                    ? 'bg-red-500/20'
-                    : isComplete
-                    ? 'bg-green-500/20'
-                    : 'bg-primary/20'
-                )}
-              >
-                {isComplete ? (
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                ) : (
-                  <FileUp className="w-4 h-4 text-primary" />
+      <div className={cn(
+        "rounded-2xl overflow-hidden shadow-2xl",
+        "bg-zinc-900/95 backdrop-blur-xl border border-white/10"
+      )}>
+        {/* 头部概览 */}
+        <div className="px-4 py-3 border-b border-white/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {uploadingCount > 0 ? (
+                <Loader2 className="w-5 h-5 text-primary animate-spin" />
+              ) : errorCount > 0 ? (
+                <AlertCircle className="w-5 h-5 text-red-400" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-green-400" />
+              )}
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {uploadingCount > 0 
+                    ? `正在上传 ${uploadingCount} 个文件...` 
+                    : errorCount > 0 
+                      ? `${errorCount} 个文件上传失败`
+                      : '上传完成'}
+                </p>
+                {uploadingCount > 0 && (
+                  <p className="text-xs text-white/50">{overallProgress}% 完成</p>
                 )}
               </div>
+            </div>
+            
+            {/* 折叠按钮 */}
+            <button
+              onClick={() => setIsExpanded(false)}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors"
+              title="最小化"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          </div>
+          
+          {/* 整体进度条 */}
+          {uploadingCount > 0 && (
+            <div className="mt-3 h-1 bg-white/10 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-primary rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${overallProgress}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          )}
+        </div>
 
-              {/* 文件信息 */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-white truncate">{item.file.name}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  {hasError ? (
-                    <p className="text-xs text-red-400">{item.error}</p>
-                  ) : (
-                    <>
-                      {/* 进度条 */}
-                      <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-primary rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${item.progress}%` }}
-                          transition={{ duration: 0.2 }}
-                        />
-                      </div>
-                      <span className="text-xs text-gray-400 w-10 text-right">
-                        {item.progress}%
-                      </span>
-                    </>
+        {/* 文件列表（最多显示3个） */}
+        <AnimatePresence>
+          {files.slice(0, 3).map((item) => {
+            const isComplete = item.progress >= 100 && !item.error;
+            const hasError = !!item.error;
+
+            return (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="px-4 py-2 border-b border-white/5 last:border-0"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className={cn(
+                      "text-xs truncate",
+                      hasError ? "text-red-400" : isComplete ? "text-green-400" : "text-white/70"
+                    )}>
+                      {item.file.name}
+                    </p>
+                    {hasError && (
+                      <p className="text-[10px] text-red-400/70">{item.error}</p>
+                    )}
+                  </div>
+                  
+                  {!isComplete && !hasError && (
+                    <span className="text-[10px] text-white/40 tabular-nums">{item.progress}%</span>
+                  )}
+                  
+                  {isComplete && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                  )}
+                  
+                  {hasError && (
+                    <button
+                      onClick={() => onCancel(item.id)}
+                      className="p-1 rounded hover:bg-white/10 text-white/40 hover:text-white"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   )}
                 </div>
-              </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
 
-              {/* 取消按钮 */}
-              {!isComplete && (
-                <button
-                  onClick={() => onCancel(item.id)}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {/* 更多文件提示 */}
+        {files.length > 3 && (
+          <div className="px-4 py-2 text-center border-t border-white/5">
+            <p className="text-[10px] text-white/30">还有 {files.length - 3} 个文件...</p>
+          </div>
+        )}
       </div>
     </motion.div>
   );

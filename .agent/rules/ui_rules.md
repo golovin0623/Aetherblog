@@ -125,3 +125,12 @@ import { Button } from '@/components/ui/Button';  // 禁止！
 - 业务逻辑组件 (Business Logic Components)
 
 **通用 UI 组件 (Button, Modal 等) 必须放在 packages/ui！**
+
+## 1.5 加载体验规范 (Zero-Latency Perception)
+- **绝对禁止**: 使用全屏或局部的简单 Spinner (转圈加载)。
+- **强制执行**: 所有内容区域加载必须使用与最终布局一致的骨架屏 (Skeleton)。
+- **视觉要求**:
+  - 骨架屏必须包含动态流光效果 (Shimmer/Pulse)。
+  - 颜色应为低透明度 (如 `bg-white/5`) 配合微妙边框。
+  - 加载过程应无缝衔接，避免内容出现时的跳变。
+- **目的**: 减少用户等待焦虑，提供布局确定性。
