@@ -6,27 +6,41 @@
 
 import { useState, useCallback, useMemo, useRef, DragEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Search,
-  Upload,
-  Grid,
-  List,
-  Image,
-  Video,
-  Music,
+import { 
+  Plus, 
+  Search, 
+  LayoutGrid, 
+  List, 
+  Filter, 
+  Trash2, 
+  Check, 
+  X, 
+  Copy, 
+  Download, 
+  Link2,
+  ChevronRight,
+  RefreshCw,
+  Eye,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Music as MusicIcon,
   FileText,
-  Filter,
+  Upload,
   Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
-import { mediaService, MediaListParams, MediaType } from '@/services/mediaService';
+import { mediaService, MediaListParams, MediaType, getMediaUrl } from '@/services/mediaService';
 import { MediaGrid } from './media/components/MediaGrid';
 import { MediaList } from './media/components/MediaList';
 import { MediaDetail } from './media/components/MediaDetail';
+import { MediaViewer } from './media/components/MediaViewer';
 import { UploadProgress } from './media/components/UploadProgress';
+import { MediaGridSkeleton } from './media/components/MediaGridSkeleton';
 import { Pagination } from '@/components/common/Pagination';
+import { toast } from 'sonner';
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'ALL' | MediaType;
@@ -38,11 +52,11 @@ interface UploadingFile {
   error?: string;
 }
 
-const typeOptions: { value: FilterType; label: string; icon: typeof Filter }[] = [
+const typeOptions: { value: FilterType; label: string; icon: any }[] = [
   { value: 'ALL', label: '全部', icon: Filter },
-  { value: 'IMAGE', label: '图片', icon: Image },
-  { value: 'VIDEO', label: '视频', icon: Video },
-  { value: 'AUDIO', label: '音频', icon: Music },
+  { value: 'IMAGE', label: '图片', icon: ImageIcon },
+  { value: 'VIDEO', label: '视频', icon: VideoIcon },
+  { value: 'AUDIO', label: '音频', icon: MusicIcon },
   { value: 'DOCUMENT', label: '文档', icon: FileText },
 ];
 
@@ -51,49 +65,138 @@ const typeOptions: { value: FilterType; label: string; icon: typeof Filter }[] =
  */
 export default function MediaPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('ALL');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const [page, setPage] = useState(1);
   const [selectedMedia, setSelectedMedia] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewingIndex, setViewingIndex] = useState(0);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const queryClient = useQueryClient();
-  const debouncedSearch = useDebounce(searchQuery, 300);
-
-  // 构建查询参数
-  const queryParams: MediaListParams = useMemo(
-    () => ({
-      keyword: debouncedSearch || undefined,
-      fileType: filterType !== 'ALL' ? filterType : undefined,
-      pageNum: currentPage,
-      pageSize: 24,
-    }),
-    [debouncedSearch, filterType, currentPage]
-  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 获取媒体列表
-  const { data: mediaData, isLoading } = useQuery({
-    queryKey: ['media', 'list', queryParams],
-    queryFn: () => mediaService.getList(queryParams),
+  const params: MediaListParams = {
+    pageNum: page,
+    pageSize: 20,
+    fileType: filterType === 'ALL' ? undefined : filterType,
+    keyword: debouncedSearch || undefined,
+  };
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['media', 'list', params],
+    queryFn: async () => {
+      const res = await mediaService.getList(params);
+      return res.data; // 返回 PageResult<MediaItem>
+    },
   });
 
-  // 删除媒体
   const deleteMutation = useMutation({
     mutationFn: (id: number) => mediaService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
-      setSelectedMedia(null);
+      // 只有当删除的是当前选中的项目才关闭详情栏
+      if (selectedMedia) {
+        // 使用函数式更新确保获取最新状态
+        setSelectedMedia((prev) => {
+          // 这里其实 deleteMutation 是在 MediaDetail 触发的，
+          // MediaDetail 传进来的是具体的 id，但这里 selectedMedia 是 state
+          // 为了简单，如果删除操作成功，我们可以直接关闭详情栏如果它是打开的
+          return null;
+        });
+      }
+      toast.success('删除成功');
     },
   });
 
-  // 选择/取消选择媒体（点击同一项取消选择）
+  // 删除确认处理 - 支持传入回调
+  const handleDeleteConfirm = (id: number, onSuccess?: () => void) => {
+    toast.custom((t) => (
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 shadow-2xl w-80">
+        <div className="flex items-start gap-4">
+          <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
+            <Trash2 className="w-5 h-5 text-red-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-white mb-1">确认删除？</h3>
+            <p className="text-xs text-zinc-400 mb-4">
+              此操作无法撤销，文件将被永久删除。
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => toast.dismiss(t)}
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  deleteMutation.mutate(id);
+                  toast.dismiss(t);
+                  onSuccess?.();
+                }}
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ), { duration: 5000 });
+  };
+
+  const currentItems = data?.list || [];
+  const currentMedia = currentItems.find((item: any) => item.id === selectedMedia);
+
   const handleSelectMedia = useCallback((id: number) => {
     setSelectedMedia((prev) => (prev === id ? null : id));
   }, []);
 
-  // 处理文件上传
+  const handleToggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handlePreview = useCallback((id: number) => {
+    const index = currentItems.findIndex((item: any) => item.id === id);
+    if (index !== -1) {
+      setViewingIndex(index);
+      setIsViewerOpen(true);
+    }
+  }, [currentItems]);
+
+  const handleCopyUrl = useCallback((url: string) => {
+    navigator.clipboard.writeText(url);
+    toast.success('链接已复制到剪贴板');
+  }, []);
+
+  const handleDownload = useCallback((url: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, []);
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => mediaService.batchDelete(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
+      setSelectedIds(new Set());
+      toast.success('批量删除成功');
+    },
+  });
+
   const handleUpload = useCallback(
     async (files: FileList | File[]) => {
       const fileArray = Array.from(files);
@@ -105,304 +208,359 @@ export default function MediaPage() {
 
       setUploadingFiles((prev) => [...prev, ...newFiles]);
 
-      for (const uploadFile of newFiles) {
+      newFiles.forEach(async (uploadFile) => {
         try {
-          await mediaService.upload(uploadFile.file, (progress) => {
+          await mediaService.upload(uploadFile.file, (progress: number) => {
             setUploadingFiles((prev) =>
-              prev.map((f) =>
-                f.id === uploadFile.id ? { ...f, progress } : f
-              )
+              prev.map((f) => f.id === uploadFile.id ? { ...f, progress } : f)
             );
           });
-          // 上传完成后移除
           setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadFile.id));
           queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
-        } catch (error) {
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.msg || error.response?.data?.message || '上传失败';
+          console.error('Upload failed:', error);
           setUploadingFiles((prev) =>
-            prev.map((f) =>
-              f.id === uploadFile.id
-                ? { ...f, error: '上传失败' }
-                : f
-            )
+            prev.map((f) => f.id === uploadFile.id ? { ...f, error: errorMessage } : f)
           );
         }
-      }
+      });
     },
     [queryClient]
   );
 
-  // 拖放处理
-  const handleDragEnter = (e: DragEvent) => {
+  const onDragOver = (e: DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const onDragLeave = () => {
     setIsDragging(false);
-
-    const files = e.dataTransfer?.files;
-    if (files && files.length > 0) {
-      handleUpload(files);
-    }
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleUpload(files);
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+      handleUpload(e.dataTransfer.files);
     }
-    // 重置 input 以允许重复选择同一文件
-    e.target.value = '';
-  };
-
-  const cancelUpload = (id: string) => {
-    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   return (
-    <div
-      className="space-y-6 relative"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
+    <div 
+      className="p-6 h-full flex flex-col gap-6 overflow-hidden"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
-      {/* 隐藏的文件输入 */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
-        className="hidden"
-        onChange={handleFileInputChange}
-      />
-
-      {/* 拖放覆盖层 */}
-      <AnimatePresence>
-        {isDragging && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-gray-950/90 flex items-center justify-center"
-          >
-            <div className="text-center">
-              <motion.div
-                animate={{ y: [0, -10, 0] }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
-              >
-                <Upload className="w-16 h-16 text-primary mx-auto mb-4" />
-              </motion.div>
-              <p className="text-xl text-white font-medium">释放以上传文件</p>
-              <p className="text-gray-400 mt-2">支持 PNG, JPG, GIF, MP4, PDF 等格式</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
+      <header className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-white">媒体库</h1>
-          <p className="text-gray-400 mt-1">
-            管理您的所有媒体文件，共 {mediaData?.data?.total || 0} 个
-          </p>
+          <h1 className="text-2xl font-bold text-white mb-1">媒体库</h1>
+          <p className="text-sm text-gray-400">管理您的图片、视频和文档资源</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => fileInputRef.current?.click()}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg',
-            'bg-primary text-white font-medium',
-            'hover:bg-primary/90 transition-colors'
-          )}
-        >
-          <Upload className="w-4 h-4" />
-          上传文件
-        </motion.button>
-      </div>
 
-      {/* 工具栏 */}
-      <div
-        className={cn(
-          'flex flex-col lg:flex-row lg:items-center gap-4 p-4 rounded-xl',
-          'bg-white/5 backdrop-blur-sm border border-white/10'
-        )}
-      >
-        {/* 搜索框 */}
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <div className="flex items-center gap-3">
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            multiple
+            onChange={(e) => e.target.files && handleUpload(e.target.files)}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl transition-all shadow-lg shadow-primary/20"
+          >
+            <Upload className="w-4 h-4" />
+            上传资源
+          </button>
+        </div>
+      </header>
+
+      <div className="flex items-center gap-4 shrink-0 bg-white/5 p-2 rounded-2xl border border-white/10">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
+            placeholder="搜索文件名..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索媒体文件..."
-            className={cn(
-              'w-full pl-10 pr-4 py-2.5 rounded-lg',
-              'bg-black/30 border border-white/10 text-white placeholder-gray-500',
-              'focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30'
-            )}
+            className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-primary/50 transition-all outline-none"
           />
         </div>
 
-        {/* 类型筛选 */}
-        <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1">
-          {typeOptions.map((option) => {
-            const Icon = option.icon;
+        <div className="flex items-center gap-1 p-1 bg-black/20 rounded-xl">
+          {typeOptions.map((opt) => {
+            const Icon = opt.icon;
             return (
               <button
-                key={option.value}
-                onClick={() => {
-                  setFilterType(option.value);
-                  setCurrentPage(1);
-                }}
+                key={opt.value}
+                onClick={() => setFilterType(opt.value)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm',
-                  'transition-all duration-200',
-                  filterType === option.value
-                    ? 'bg-primary text-white'
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  filterType === opt.value
+                    ? 'bg-primary text-white shadow-md'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 )}
               >
-                <Icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{option.label}</span>
+                <Icon className="w-3.5 h-3.5" />
+                {opt.label}
               </button>
             );
           })}
         </div>
 
-        {/* 视图切换 */}
-        <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1">
+        <div className="w-px h-6 bg-white/10" />
+
+        <div className="flex items-center gap-1 p-1 bg-black/20 rounded-xl">
           <button
             onClick={() => setViewMode('grid')}
             className={cn(
-              'p-2 rounded-md transition-colors',
-              viewMode === 'grid'
-                ? 'bg-primary text-white'
-                : 'text-gray-400 hover:text-white'
+              'p-1.5 rounded-lg transition-all',
+              viewMode === 'grid' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
             )}
-            title="网格视图"
           >
-            <Grid className="w-4 h-4" />
+            <LayoutGrid className="w-4 h-4" />
           </button>
           <button
             onClick={() => setViewMode('list')}
             className={cn(
-              'p-2 rounded-md transition-colors',
-              viewMode === 'list'
-                ? 'bg-primary text-white'
-                : 'text-gray-400 hover:text-white'
+              'p-1.5 rounded-lg transition-all',
+              viewMode === 'list' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
             )}
-            title="列表视图"
           >
             <List className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* 上传进度 */}
-      <AnimatePresence>
-        {uploadingFiles.length > 0 && (
-          <UploadProgress files={uploadingFiles} onCancel={cancelUpload} />
-        )}
-      </AnimatePresence>
-
-      {/* 主内容区 */}
-      <div className="flex gap-6">
-        {/* 媒体列表 */}
-        <div className="flex-1 min-w-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            </div>
-          ) : !mediaData?.data?.list || mediaData.data.list.length === 0 ? (
-            <div
-              className={cn(
-                'p-12 rounded-xl text-center',
-                'bg-white/5 backdrop-blur-sm border border-white/10'
-              )}
-            >
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
-                <Image className="w-8 h-8 text-gray-500" />
+      {/* 主内容区 + 抽屉式侧边栏 (完美同步) */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* 主内容区 - 自动调整宽度，移除 layout 属性以避免垂直抖动 */}
+        <div className="flex-1 flex flex-col gap-6 overflow-hidden">
+          {/* 将加载状态和内容包装在同一个容器中以避免布局跳动 */}
+          <div className="flex-1 flex flex-col h-full">
+            {isLoading ? (
+              <div className="flex-1 overflow-hidden p-1">
+                <MediaGridSkeleton />
               </div>
-              <h3 className="text-lg font-medium text-white mb-2">
-                暂无媒体文件
-              </h3>
-              <p className="text-gray-400 mb-4">
-                上传您的第一个媒体文件开始使用
-              </p>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90"
-              >
-                <Upload className="w-4 h-4" />
-                上传文件
-              </button>
+            ) : currentItems.length > 0 ? (
+            <div className="flex-1 overflow-y-auto no-scrollbar pb-20 pr-4">
+              {viewMode === 'grid' ? (
+                <MediaGrid
+                  items={currentItems}
+                  selectedIds={selectedIds}
+                  onSelect={handleSelectMedia}
+                  onToggleSelect={handleToggleSelect}
+                  onPreview={handlePreview}
+                  onDelete={(id) => handleDeleteConfirm(id)}
+                  onCopyUrl={handleCopyUrl}
+                  onDownload={handleDownload}
+                  selectionMode={selectedIds.size > 0}
+                />
+              ) : (
+                <MediaList
+                  items={currentItems}
+                  selectedId={selectedMedia}
+                  selectedIds={selectedIds}
+                  onSelect={handleSelectMedia}
+                  onToggleSelect={handleToggleSelect}
+                  onPreview={handlePreview}
+                  onDelete={(id) => handleDeleteConfirm(id)}
+                  onCopyUrl={handleCopyUrl}
+                  onDownload={handleDownload}
+                />
+              )}
+              
+              {data && data.total > 20 && (
+                <div className="mt-8 flex justify-center">
+                  <Pagination
+                    page={page}
+                    total={data.total}
+                    pageSize={20}
+                    onPageChange={setPage}
+                  />
+                </div>
+              )}
             </div>
-          ) : viewMode === 'grid' ? (
-            <MediaGrid
-              items={mediaData.data.list}
-              selectedId={selectedMedia}
-              onSelect={handleSelectMedia}
-            />
           ) : (
-            <MediaList
-              items={mediaData.data.list}
-              selectedId={selectedMedia}
-              onSelect={handleSelectMedia}
-              onDelete={(id) => deleteMutation.mutate(id)}
-            />
-          )}
-
-          {/* 分页 */}
-          {mediaData?.data && mediaData.data.total > 24 && (
-            <div className="mt-6">
-              <Pagination
-                page={currentPage}
-                total={mediaData.data.total}
-                pageSize={24}
-                onPageChange={setCurrentPage}
-              />
+            <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-dashed border-white/10">
+              <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center mb-4">
+                <ImageIcon className="w-10 h-10 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-white mb-1">暂无媒体文件</h3>
+              <p className="text-sm text-gray-400">点击上方按钮或拖拽文件到此处上传</p>
             </div>
           )}
+          </div>
         </div>
 
-        {/* 详情面板 */}
+        {/* 侧边详情栏 - 优化流畅度 */}
         <AnimatePresence>
-          {selectedMedia && (
+          {selectedMedia && currentMedia && (
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="w-80 flex-shrink-0"
+              initial={{ width: 0 }}
+              animate={{ width: 384 }}
+              exit={{ width: 0 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.32, 0.72, 0, 1] // iOS-style ease
+              }}
+              className="shrink-0 overflow-hidden will-change-[width]"
+              style={{ willChange: 'width' }}
             >
-              <MediaDetail
-                mediaId={selectedMedia}
-                onClose={() => setSelectedMedia(null)}
-                onDelete={() => deleteMutation.mutate(selectedMedia)}
-                isDeleting={deleteMutation.isPending}
-              />
+              <motion.div
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 30 }}
+                transition={{
+                  duration: 0.35,
+                  ease: [0.32, 0.72, 0, 1],
+                  delay: 0.05
+                }}
+                className="w-96 h-full pl-6"
+              >
+                <div className="h-full bg-white/5 backdrop-blur-sm rounded-3xl border border-white/10 p-6 overflow-y-auto no-scrollbar">
+                  <MediaDetail
+                    item={currentMedia}
+                    onClose={() => setSelectedMedia(null)}
+                    onDelete={(id) => handleDeleteConfirm(id)}
+                  />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 拖拽上传遮罩 */}
+        <AnimatePresence>
+          {isDragging && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary rounded-3xl flex items-center justify-center"
+            >
+              <div className="bg-black/80 rounded-3xl p-8 flex flex-col items-center gap-4">
+                <Upload className="w-12 h-12 text-primary animate-bounce" />
+                <p className="text-xl font-bold text-white">松开上传到媒体库</p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {uploadingFiles.length > 0 && (
+        <UploadProgress
+          files={uploadingFiles}
+          onCancel={(id) => setUploadingFiles((prev) => prev.filter((f) => f.id !== id))}
+        />
+      )}
+
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+          >
+            <div className={cn(
+              "pointer-events-auto flex items-center gap-6 px-8 py-4",
+              "bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+            )}>
+              <div className="flex flex-col">
+                <span className="text-white text-sm font-bold">{selectedIds.size} 项已选中</span>
+                <span className="text-white/40 text-[10px] tracking-widest uppercase">Batch Mode</span>
+              </div>
+              
+              <div className="w-px h-8 bg-white/10 mx-2" />
+              
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    const urls = currentItems
+                      .filter((item: any) => selectedIds.has(item.id))
+                      .map((item: any) => getMediaUrl(item.fileUrl))
+                      .join('\n');
+                    navigator.clipboard.writeText(urls);
+                    toast.success('已复制所有选中链接');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-white transition-all group"
+                >
+                  <Link2 className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold">复制全部</span>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    const count = selectedIds.size;
+                    const ids = Array.from(selectedIds);
+                    toast.custom((t) => (
+                      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 shadow-2xl w-80">
+                        <div className="flex items-start gap-4">
+                          <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
+                            <Trash2 className="w-5 h-5 text-red-500" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-white mb-1">批量删除?</h3>
+                            <p className="text-xs text-zinc-400 mb-4">
+                              确定要删除选中的 {count} 个文件吗？操作无法撤销。
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => toast.dismiss(t)}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors"
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => {
+                                  batchDeleteMutation.mutate(ids);
+                                  toast.dismiss(t);
+                                }}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                              >
+                                确认删除
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ), { duration: 5000 });
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 transition-all group"
+                >
+                  <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold">批量删除</span>
+                </button>
+                
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="p-2.5 rounded-2xl hover:bg-white/10 text-white/40 hover:text-white transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isViewerOpen && (
+          <MediaViewer
+            items={currentItems}
+            currentIndex={viewingIndex}
+            onClose={() => setIsViewerOpen(false)}
+            onNext={() => setViewingIndex((prev) => Math.min(prev + 1, currentItems.length - 1))}
+            onPrev={() => setViewingIndex((prev) => Math.max(prev - 1, 0))}
+            onSelectIndex={(index: number) => setViewingIndex(index)}
+            onDelete={(id) => handleDeleteConfirm(id, () => setIsViewerOpen(false))}
+            onDownload={handleDownload}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

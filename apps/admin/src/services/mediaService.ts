@@ -88,7 +88,6 @@ export const mediaService = {
       formData,
       {
         headers: {
-          'Content-Type': 'multipart/form-data',
           ...(token && { Authorization: `Bearer ${token}` }),
         },
         onUploadProgress: (event) => {

@@ -58,6 +58,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<Void> handleException(Exception e) {
         log.error("系统异常", e);
-        return R.fail(ResultCode.INTERNAL_ERROR);
+        // FIXME: 调试期间暴露异常信息，生产环境应屏蔽
+        return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常: " + e.getMessage());
     }
 }
