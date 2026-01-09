@@ -187,7 +187,8 @@ public class MetricsHistoryService {
         List<MetricSnapshot> sampled = sampleData(filtered, maxPoints);
         
         MetricHistory history = new MetricHistory();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm");
+        // 使用 ISO 格式返回完整时间，交由前端格式化
+        DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
         
         history.setCpu(sampled.stream()
             .map(s -> new MetricPoint(s.getTimestamp().format(formatter), s.getCpu()))
