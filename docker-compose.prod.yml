@@ -84,6 +84,25 @@ services:
         reservations:
           memory: 256M
 
+  redis:
+    image: redis:7.2-alpine
+    container_name: aetherblog-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - aetherblog-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+
   # ---------------------------------------------------------------------------
   # Application Services
   # ---------------------------------------------------------------------------
@@ -105,10 +124,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aetherblog
       SPRING_DATASOURCE_USERNAME: aetherblog
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
-      SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
-      SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6999}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
     volumes:
       - aetherblog_uploads:/app/uploads
     extra_hosts:

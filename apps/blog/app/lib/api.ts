@@ -23,6 +23,9 @@ export const API_ENDPOINTS = {
   
   // Archives
   archives: `${API_BASE_URL}/api/v1/public/archives`,
+  
+  // Site Settings
+  settings: `${API_BASE_URL}/api/v1/public/settings`,
 };
 
 // 提供两个版本的 URL，供需要明确指定的场景使用
