@@ -50,6 +50,7 @@ interface UploadingFile {
   progress: number;
   id: string;
   error?: string;
+  status: 'uploading' | 'processing' | 'success' | 'error';
 }
 
 const typeOptions: { value: FilterType; label: string; icon: any }[] = [
@@ -204,6 +205,7 @@ export default function MediaPage() {
         file,
         progress: 0,
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        status: 'uploading' as const,
       }));
 
       setUploadingFiles((prev) => [...prev, ...newFiles]);
@@ -212,17 +214,33 @@ export default function MediaPage() {
         try {
           await mediaService.upload(uploadFile.file, (progress: number) => {
             setUploadingFiles((prev) =>
-              prev.map((f) => f.id === uploadFile.id ? { ...f, progress } : f)
+              prev.map((f) => {
+                if (f.id !== uploadFile.id) return f;
+                // 当进度达到 100% 时，切换到 'processing' 状态
+                if (progress >= 100) {
+                  return { ...f, progress: 100, status: 'processing' as const };
+                }
+                return { ...f, progress, status: 'uploading' as const };
+              })
             );
           });
-          setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadFile.id));
+          // 服务器返回成功响应，标记为成功并延迟移除
+          setUploadingFiles((prev) =>
+            prev.map((f) => f.id === uploadFile.id ? { ...f, status: 'success' as const } : f)
+          );
+          // 延迟 1 秒后移除成功项，让用户看到成功状态
+          setTimeout(() => {
+            setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadFile.id));
+          }, 1000);
           queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
         } catch (error: any) {
           const errorMessage = error.response?.data?.msg || error.response?.data?.message || '上传失败';
           console.error('Upload failed:', error);
           setUploadingFiles((prev) =>
-            prev.map((f) => f.id === uploadFile.id ? { ...f, error: errorMessage } : f)
+            prev.map((f) => f.id === uploadFile.id ? { ...f, status: 'error' as const, error: errorMessage } : f)
           );
+          // 显示错误提示
+          toast.error(`${uploadFile.file.name}: ${errorMessage}`);
         }
       });
     },
