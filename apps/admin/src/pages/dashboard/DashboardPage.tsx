@@ -8,6 +8,7 @@ import {
   DeviceChart, 
   SystemStatus,
   RecentActivity,
+  SystemTrends,
   ActivityItem
 } from './components';
 import { analyticsService, DashboardData } from '@/services/analyticsService';
@@ -185,13 +186,21 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* Secondary Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Secondary Area - Content & Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <motion.div variants={item}>
           <TopPosts posts={topPostsData} loading={loading} />
         </motion.div>
         <motion.div variants={item}>
           <RecentActivity loading={loading} />
+        </motion.div>
+      </div>
+
+      {/* System Monitoring Area */}
+      <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div variants={item} className="lg:col-span-2">
+          <SystemTrends />
         </motion.div>
         <motion.div variants={item}>
           <SystemStatus refreshInterval={30} />
