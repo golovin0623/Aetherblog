@@ -194,10 +194,7 @@ export default function DashboardPage() {
           <RecentActivity loading={loading} />
         </motion.div>
         <motion.div variants={item}>
-          <SystemStatus 
-            metrics={{ cpu: 45, memory: 60, disk: 30, jvm: 55 }}
-            loading={loading}
-          />
+          <SystemStatus refreshInterval={30} />
         </motion.div>
       </div>
     </motion.div>
