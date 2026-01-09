@@ -1,4 +1,6 @@
-export { StatsCard } from './StatsCard';
-export { VisitorChart } from './VisitorChart';
-export { TopPosts } from './TopPosts';
-export { SystemStatus } from './SystemStatus';
+export * from './StatsCard';
+export * from './VisitorChart';
+export * from './TopPosts';
+export * from './DeviceChart';
+export * from './SystemStatus';
+export * from './RecentActivity';
