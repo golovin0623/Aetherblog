@@ -2,13 +2,24 @@ import type { Metadata } from 'next';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
+import { getSiteSettings } from './lib/services';
 
-export const metadata: Metadata = {
-  title: 'AetherBlog',
-  description: 'AetherBlog - 智能博客系统',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSiteSettings();
+  
+  return {
+    title: {
+      default: settings.siteTitle || 'AetherBlog',
+      template: `%s | ${settings.siteTitle || 'AetherBlog'}`,
+    },
+    description: settings.siteDescription || 'AetherBlog - 智能博客系统',
+    keywords: settings.siteKeywords?.split(/[,，]/).map(k => k.trim()) || ['blog', 'tech', 'ai'],
+    authors: [{ name: settings.authorName || 'Admin' }],
+    metadataBase: new URL(settings.siteUrl || 'http://localhost:3000'),
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
