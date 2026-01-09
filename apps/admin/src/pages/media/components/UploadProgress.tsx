@@ -14,6 +14,7 @@ interface UploadingFile {
   progress: number;
   id: string;
   error?: string;
+  status: 'uploading' | 'processing' | 'success' | 'error';
 }
 
 interface UploadProgressProps {
@@ -28,10 +29,12 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [hasNewFiles, setHasNewFiles] = useState(false);
 
-  // 计算进度
-  const completedCount = files.filter(f => f.progress >= 100 && !f.error).length;
-  const errorCount = files.filter(f => f.error).length;
-  const uploadingCount = files.length - completedCount - errorCount;
+  // 计算进度 - 使用 status 字段
+  const completedCount = files.filter(f => f.status === 'success').length;
+  const errorCount = files.filter(f => f.status === 'error').length;
+  const processingCount = files.filter(f => f.status === 'processing').length;
+  const uploadingCount = files.filter(f => f.status === 'uploading').length;
+  const activeCount = uploadingCount + processingCount;
   const overallProgress = files.length > 0 
     ? Math.round(files.reduce((sum, f) => sum + f.progress, 0) / files.length)
     : 0;
@@ -57,13 +60,13 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
 
   // 全部完成后3秒清理（可选：由父组件处理）
   useEffect(() => {
-    if (files.length > 0 && uploadingCount === 0 && errorCount === 0) {
+    if (files.length > 0 && activeCount === 0 && errorCount === 0) {
       const timer = setTimeout(() => {
         setIsExpanded(false);
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [files.length, uploadingCount, errorCount]);
+  }, [files.length, activeCount, errorCount]);
 
   if (files.length === 0) return null;
 
@@ -112,7 +115,7 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
         
         {/* 中心图标 */}
         <div className="relative z-10">
-          {uploadingCount > 0 ? (
+          {activeCount > 0 ? (
             <Upload className="w-5 h-5 text-primary" />
           ) : errorCount > 0 ? (
             <AlertCircle className="w-5 h-5 text-red-400" />
@@ -147,7 +150,7 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
         <div className="px-4 py-3 border-b border-white/5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {uploadingCount > 0 ? (
+              {activeCount > 0 ? (
                 <Loader2 className="w-5 h-5 text-primary animate-spin" />
               ) : errorCount > 0 ? (
                 <AlertCircle className="w-5 h-5 text-red-400" />
@@ -156,13 +159,15 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
               )}
               <div>
                 <p className="text-sm font-medium text-white">
-                  {uploadingCount > 0 
-                    ? `正在上传 ${uploadingCount} 个文件...` 
-                    : errorCount > 0 
-                      ? `${errorCount} 个文件上传失败`
-                      : '上传完成'}
+                  {processingCount > 0 
+                    ? `正在处理 ${processingCount} 个文件...`
+                    : uploadingCount > 0 
+                      ? `正在上传 ${uploadingCount} 个文件...` 
+                      : errorCount > 0 
+                        ? `${errorCount} 个文件上传失败`
+                        : '上传完成'}
                 </p>
-                {uploadingCount > 0 && (
+                {activeCount > 0 && (
                   <p className="text-xs text-white/50">{overallProgress}% 完成</p>
                 )}
               </div>
@@ -179,7 +184,7 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
           </div>
           
           {/* 整体进度条 */}
-          {uploadingCount > 0 && (
+          {activeCount > 0 && (
             <div className="mt-3 h-1 bg-white/10 rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-primary rounded-full"
@@ -194,8 +199,9 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
         {/* 文件列表（最多显示3个） */}
         <AnimatePresence>
           {files.slice(0, 3).map((item) => {
-            const isComplete = item.progress >= 100 && !item.error;
-            const hasError = !!item.error;
+            const isComplete = item.status === 'success';
+            const isProcessing = item.status === 'processing';
+            const hasError = item.status === 'error';
 
             return (
               <motion.div
@@ -209,17 +215,24 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
                   <div className="flex-1 min-w-0">
                     <p className={cn(
                       "text-xs truncate",
-                      hasError ? "text-red-400" : isComplete ? "text-green-400" : "text-white/70"
+                      hasError ? "text-red-400" : isComplete ? "text-green-400" : isProcessing ? "text-yellow-400" : "text-white/70"
                     )}>
                       {item.file.name}
                     </p>
                     {hasError && (
                       <p className="text-[10px] text-red-400/70">{item.error}</p>
                     )}
+                    {isProcessing && (
+                      <p className="text-[10px] text-yellow-400/70">正在处理...</p>
+                    )}
                   </div>
                   
-                  {!isComplete && !hasError && (
+                  {!isComplete && !hasError && !isProcessing && (
                     <span className="text-[10px] text-white/40 tabular-nums">{item.progress}%</span>
+                  )}
+                  
+                  {isProcessing && (
+                    <Loader2 className="w-3.5 h-3.5 text-yellow-400 shrink-0 animate-spin" />
                   )}
                   
                   {isComplete && (
