@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * AetherBlog 应用启动类
@@ -12,6 +13,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * @author AetherBlog Team
  */
 @SpringBootApplication
+@EnableScheduling
 @ComponentScan(basePackages = "com.aetherblog")
 @EnableJpaRepositories(basePackages = "com.aetherblog")
 @EntityScan(basePackages = "com.aetherblog")
