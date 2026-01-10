@@ -77,6 +77,21 @@ logging:
   level:
     com.aetherblog: DEBUG
     org.springframework.security: DEBUG
+  file:
+    path: ./logs
+    name: ./logs/aetherblog.log
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 30
+      total-size-cap: 1GB
+
+# 应用自定义配置
+app:
+  upload:
+    path: ./uploads
+  log:
+    path: ./logs
 
 # Actuator 配置
 management:
