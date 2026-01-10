@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+  const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
 
   // Mock data for fallback or initial dev
   const mockData: DashboardData = {
@@ -52,30 +53,70 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Attempt to fetch real data
-        // const res = await analyticsService.getDashboard();
-        // if (res.code === 200 && res.data) {
-        //   setData(res.data);
-        // } else {
-        //   // Fallback to mock data for demo if API fails or not ready
-        //   setData(mockData as any);
-        // }
-        
-        // Simulating API call for now since backend endpoints might not be fully ready
-        setTimeout(() => {
+        // Call real API
+        const res = await analyticsService.getDashboard();
+        if (res.code === 200 && res.data) {
+          setData(res.data);
+        } else {
+          // Fallback to mock data if API fails
+          logger.warn('Dashboard API returned non-200, using mock data');
           setData(mockData);
-          setLoading(false);
-        }, 1000);
-
+        }
       } catch (err) {
         logger.error('Failed to fetch dashboard data:', err);
-        toast.error('加载仪表盘数据失败');
+        toast.error('加载仪表盘数据失败，显示演示数据');
         setData(mockData); // Fallback
+      } finally {
         setLoading(false);
       }
     };
     fetchData();
   }, []);
+
+  // Refetch visitor trend when time range changes
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [visitorTrend, setVisitorTrend] = useState<typeof mockData.visitorTrend | null>(null);
+
+  useEffect(() => {
+    const fetchTrendData = async () => {
+      const days = timeRange === '7d' ? 7 : 30;
+      try {
+        setTrendLoading(true);
+        const res = await analyticsService.getVisitorTrend(days);
+        if (res.code === 200 && res.data) {
+          setVisitorTrend(res.data);
+        } else {
+          // Generate fallback mock data for selected range
+          const fallbackData = Array.from({ length: days }, (_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - (days - 1 - i));
+            return {
+              date: date.toISOString().split('T')[0],
+              pv: Math.floor(Math.random() * 1000) + 500,
+              uv: Math.floor(Math.random() * 500) + 200
+            };
+          });
+          setVisitorTrend(fallbackData);
+        }
+      } catch (err) {
+        logger.error(`Failed to fetch ${days}-day visitor trend:`, err);
+        // Generate fallback mock data
+        const fallbackData = Array.from({ length: days }, (_, i) => {
+          const date = new Date();
+          date.setDate(date.getDate() - (days - 1 - i));
+          return {
+            date: date.toISOString().split('T')[0],
+            pv: Math.floor(Math.random() * 1000) + 500,
+            uv: Math.floor(Math.random() * 500) + 200
+          };
+        });
+        setVisitorTrend(fallbackData);
+      } finally {
+        setTrendLoading(false);
+      }
+    };
+    fetchTrendData();
+  }, [timeRange]);
 
   const container = {
     hidden: { opacity: 0 },
@@ -107,7 +148,8 @@ export default function DashboardPage() {
     );
   }
 
-  const chartData = data?.visitorTrend || mockData.visitorTrend;
+  // Use visitorTrend from dedicated fetch, fallback to data.visitorTrend, then mockData
+  const chartData = visitorTrend || data?.visitorTrend || mockData.visitorTrend;
   const topPostsData = data?.topPosts || mockData.topPosts;
 
   return (
@@ -180,7 +222,12 @@ export default function DashboardPage() {
       {/* Main Charts Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div variants={item} className="lg:col-span-2">
-          <VisitorChart data={chartData} loading={loading} />
+          <VisitorChart 
+            data={chartData} 
+            loading={loading || trendLoading}
+            timeRange={timeRange}
+            onTimeRangeChange={setTimeRange}
+          />
         </motion.div>
         <motion.div variants={item}>
           <DeviceChart loading={loading} />
