@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, Minus, Loader2 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { analyticsService, DashboardData } from '@/services/analyticsService';
 
 const container = {
@@ -36,7 +37,7 @@ export default function DashboardPage() {
           setError(res.message || '获取数据失败');
         }
       } catch (err: any) {
-        console.error('Dashboard fetch error:', err);
+        logger.error('Dashboard fetch error:', err);
         setError(err.message || '网络错误');
       } finally {
         setLoading(false);

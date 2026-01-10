@@ -1,8 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AdminLayout } from './components/layout/AdminLayout';
+import { AuthGuard } from './components/auth/AuthGuard';
 import LoginPage from './pages/auth/LoginPage';
 import ChangePasswordPage from './pages/auth/ChangePasswordPage';
-import { useAuthStore } from './stores';
 import DashboardPage from './pages/DashboardPage';
 import PostsPage from './pages/PostsPage';
 import CreatePostPage from './pages/posts/CreatePostPage';
@@ -24,13 +24,13 @@ function App() {
       <Toaster richColors position="top-center" />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
+        <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
         <Route
           path="/"
           element={
-            <ProtectedRoute>
+            <AuthGuard>
               <AdminLayout />
-            </ProtectedRoute>
+            </AuthGuard>
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
@@ -51,12 +51,5 @@ function App() {
   );
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-  return <>{children}</>;
-}
-
 export default App;
+

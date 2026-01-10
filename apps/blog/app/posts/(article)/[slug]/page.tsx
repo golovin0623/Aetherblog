@@ -4,6 +4,7 @@ import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 import FadeIn from '../../../components/FadeIn';
 import { SERVER_API_URL } from '../../../lib/api';
+import { logger } from '../../../lib/logger';
 
 // Server-side API URL - use internal Docker network URL
 const API_BASE_URL = SERVER_API_URL;
@@ -32,7 +33,7 @@ async function getPost(slug: string): Promise<Post | null> {
     });
     
     if (!res.ok) {
-      console.error('Failed to fetch post:', res.status, res.statusText);
+      logger.error('Failed to fetch post:', res.status, res.statusText);
       return null;
     }
     
@@ -53,7 +54,7 @@ async function getPost(slug: string): Promise<Post | null> {
     }
     return null;
   } catch (error) {
-    console.error('Error fetching post:', error);
+    logger.error('Error fetching post:', error);
     return null;
   }
 }
@@ -85,7 +86,7 @@ export default async function PostDetailPage({ params }: PageProps) {
         </FadeIn>
 
         <FadeIn delay={0.1}>
-          <h1 className="text-4xl font-bold text-white mb-4">{post.title}</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">{post.title}</h1>
         </FadeIn>
 
         <FadeIn delay={0.15}>

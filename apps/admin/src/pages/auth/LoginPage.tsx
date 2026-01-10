@@ -5,6 +5,7 @@ import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight, Eye, EyeOff } fr
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import CryptoJS from 'crypto-js';
 
 // Encryption key - in production this should come from server or env
@@ -43,15 +44,22 @@ export function LoginPage() {
       
       if (res.code === 200 && res.data) {
          const { accessToken, userInfo, mustChangePassword } = res.data;
+         const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
+         // Validate role is one of the allowed values
+         const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
+         const role = validRoles.includes(roleStr as typeof validRoles[number]) 
+           ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER') 
+           : 'USER';
+         
          const user = {
             id: String(userInfo.id),
             username: userInfo.username,
             nickname: userInfo.nickname,
             avatar: userInfo.avatar || '',
-            role: (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER'
+            role
          };
          
-         login(user as any, accessToken);
+         login(user, accessToken);
          
          // Check if user must change password on first login
          if (mustChangePassword) {
@@ -63,7 +71,7 @@ export function LoginPage() {
          setError(res.message || '登录失败');
       }
     } catch (err: any) {
-      console.error(err);
+      logger.error('Login failed:', err);
       setError(err.message || '登录异常，请稍后重试');
     } finally {
       setIsLoading(false);
@@ -119,7 +127,7 @@ export function LoginPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.2 }}
-        className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-black/40 backdrop-blur-sm border-l border-white/5"
+        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-black/40 backdrop-blur-sm border-l border-white/5"
       >
         <div className="w-full max-w-[420px] space-y-8">
           <div className="text-center lg:text-left">
@@ -148,7 +156,7 @@ export function LoginPage() {
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
                     placeholder="Enter your username"
                     required
                   />
@@ -166,7 +174,7 @@ export function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
                     placeholder="Enter your password"
                     required
                   />

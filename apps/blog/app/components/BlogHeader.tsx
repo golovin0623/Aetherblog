@@ -4,16 +4,41 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Settings2 } from 'lucide-react';
+import MobileMenu from './MobileMenu';
 
 /**
  * 博客共享头部组件
  * - 在所有页面显示统一样式
  * - 在文章详情页 (/posts/[slug]) 自动隐藏，鼠标靠近顶部时显示
+ * - 响应式设计：桌面端显示完整导航，移动端显示汉堡菜单
  */
 export default function BlogHeader() {
   const pathname = usePathname();
-  const isTimeline = pathname === '/timeline';
+  const isTimelinePage = pathname === '/timeline';
+  const isPostsPage = pathname === '/posts';
   const isArticleDetail = pathname.startsWith('/posts/') && pathname !== '/posts';
+  
+  // 使用 sessionStorage 记住用户的来源页面
+  // 当从时间线进入文章详情时，切换器仍显示"时间线"为选中状态
+  const [activeTab, setActiveTab] = useState<'posts' | 'timeline'>('posts');
+  
+  useEffect(() => {
+    if (isTimelinePage) {
+      // 用户在时间线页面，记住这个状态
+      sessionStorage.setItem('blogNavSource', 'timeline');
+      setActiveTab('timeline');
+    } else if (isPostsPage) {
+      // 用户在首页/文章列表页面
+      sessionStorage.setItem('blogNavSource', 'posts');
+      setActiveTab('posts');
+    } else if (isArticleDetail) {
+      // 在文章详情页，使用之前记住的状态
+      const source = sessionStorage.getItem('blogNavSource');
+      setActiveTab(source === 'timeline' ? 'timeline' : 'posts');
+    }
+  }, [pathname, isTimelinePage, isPostsPage, isArticleDetail]);
+  
+  const isTimeline = activeTab === 'timeline';
   
   // 鼠标位置状态
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -28,7 +53,7 @@ export default function BlogHeader() {
       return;
     }
 
-    // 进入文章详情页后 2 秒自动隐藏（原来 3 秒，减少 30%）
+    // 进入文章详情页后 2 秒自动隐藏
     const timer = setTimeout(() => {
       if (!isHovering) {
         setIsVisible(false);
@@ -88,7 +113,6 @@ export default function BlogHeader() {
       if (!isVisible) setIsVisible(true);
     } else if (e.clientY > 120) {
       // 鼠标离开顶部区域一定距离后，标记为不再悬停
-      // 这会触发 useEffect 中的 2秒倒计时隐藏
       if (isHovering) setIsHovering(false);
     }
   }, [isArticleDetail, isHovering, isVisible]);
@@ -118,7 +142,6 @@ export default function BlogHeader() {
           isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
         }`}
         style={{
-          // 基础背景
           background: 'rgba(10, 10, 15, 0.6)',
           backdropFilter: 'blur(12px)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
@@ -149,9 +172,10 @@ export default function BlogHeader() {
             </span>
           </Link>
           
-          <nav className="flex gap-6 items-center">
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex gap-6 items-center">
             {/* View Mode Toggle with sliding animation */}
-            <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
+            <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
               {/* Sliding pill indicator */}
               <div
                 className="absolute top-1 bottom-1 w-[72px] bg-primary/20 rounded-full transition-all duration-300 ease-out"
@@ -179,13 +203,13 @@ export default function BlogHeader() {
               </Link>
             </div>
             
-            <div className="h-4 w-px bg-white/10 mx-2 hidden md:block"></div>
+            <div className="h-4 w-px bg-white/10 mx-2"></div>
             <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
             <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
             <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
             
             {/* 管理后台入口 */}
-            <div className="h-4 w-px bg-white/10 mx-1 hidden md:block"></div>
+            <div className="h-4 w-px bg-white/10 mx-1"></div>
             <a 
               href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"} 
               target="_blank" 
@@ -196,6 +220,9 @@ export default function BlogHeader() {
               <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
             </a>
           </nav>
+
+          {/* Mobile Navigation */}
+          <MobileMenu />
         </div>
       </header>
     </>

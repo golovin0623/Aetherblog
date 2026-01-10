@@ -27,7 +27,7 @@ export default async function HomePage() {
             <span className="text-sm text-gray-300">AI 驱动的智能博客</span>
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent leading-tight tracking-tight">
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent leading-tight tracking-tight">
             {settings.siteTitle}
           </h1>
 

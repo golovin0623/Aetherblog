@@ -1,4 +1,5 @@
 import { API_ENDPOINTS } from './api';
+import { logger } from './logger';
 
 export interface SiteSettings {
   siteTitle: string;
@@ -48,7 +49,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     const json = await res.json();
     return json.data || {};
   } catch (error) {
-    console.warn('Failed to fetch site settings:', error);
+    logger.warn('Failed to fetch site settings:', error);
     return {
       siteTitle: 'AetherBlog',
       siteSubtitle: 'Sharing Technology & Life',
@@ -76,7 +77,7 @@ export async function getRecentPosts(limit: number = 6): Promise<Post[]> {
     const json = await res.json();
     return json.data?.list || [];
   } catch (error) {
-    console.warn('Failed to fetch recent posts:', error);
+    logger.warn('Failed to fetch recent posts:', error);
     return [];
   }
 }
@@ -96,7 +97,7 @@ export async function getFriendLinks(): Promise<FriendLink[]> {
     const json = await res.json();
     return json.data || [];
   } catch (error) {
-    console.warn('Failed to fetch friend links:', error);
+    logger.warn('Failed to fetch friend links:', error);
     return [];
   }
 }

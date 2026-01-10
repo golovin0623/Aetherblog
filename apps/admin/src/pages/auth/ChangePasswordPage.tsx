@@ -5,6 +5,7 @@ import { Loader2, Lock, ShieldCheck, ArrowRight, AlertCircle, Sparkles, KeyRound
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import CryptoJS from 'crypto-js';
 
 // Encryption key - must match backend
@@ -82,7 +83,7 @@ export function ChangePasswordPage() {
         setError(res.message || '密码修改失败');
       }
     } catch (err: any) {
-      console.error(err);
+      logger.error('Change password failed:', err);
       setError(err.message || '密码修改异常，请稍后重试');
     } finally {
       setIsLoading(false);
@@ -141,7 +142,7 @@ export function ChangePasswordPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.2 }}
-        className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-black/40 backdrop-blur-sm border-l border-white/5"
+        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-black/40 backdrop-blur-sm border-l border-white/5"
       >
         <div className="w-full max-w-[420px] space-y-8">
           <div className="text-center lg:text-left">
@@ -212,7 +213,7 @@ export function ChangePasswordPage() {
                       type={showCurrentPassword ? "text" : "password"}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                      className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
                       placeholder="Enter current password"
                       required
                     />
@@ -235,7 +236,7 @@ export function ChangePasswordPage() {
                       type={showNewPassword ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                      className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
                       placeholder="Enter new password (min. 8 characters)"
                       required
                       minLength={8}
@@ -259,7 +260,7 @@ export function ChangePasswordPage() {
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                      className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
                       placeholder="Re-enter new password"
                       required
                       minLength={8}
