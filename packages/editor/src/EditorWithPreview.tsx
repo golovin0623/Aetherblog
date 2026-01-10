@@ -28,6 +28,16 @@ export interface EditorWithPreviewProps {
   showLineNumbers?: boolean;
   /** Ref to expose the CodeMirror EditorView for external control (toolbar commands) */
   editorViewRef?: React.MutableRefObject<EditorView | null>;
+  /** 拖放事件处理 */
+  onDrop?: (e: React.DragEvent) => void;
+  /** 拖拽进入事件 */
+  onDragOver?: (e: React.DragEvent) => void;
+  /** 拖拽离开事件 */
+  onDragLeave?: (e: React.DragEvent) => void;
+  /**粘贴事件处理 */
+  onPaste?: (e: React.ClipboardEvent) => void;
+  /** 是否正在拖拽文件 */
+  isDragging?: boolean;
 }
 
 export function EditorWithPreview({
@@ -43,6 +53,10 @@ export function EditorWithPreview({
   previewFontSize,
   showLineNumbers = false,
   editorViewRef,
+  onDrop,
+  onDragOver,
+  onDragLeave,
+  onPaste,isDragging = false,
 }: EditorWithPreviewProps) {
   // Resolve actual font sizes (individual overrides base)
   const actualEditorFontSize = editorFontSize ?? fontSize;
@@ -242,7 +256,11 @@ export function EditorWithPreview({
               fontSize={actualEditorFontSize}
               showLineNumbers={showLineNumbers}
               contentCentered={viewMode === 'edit'}
-              editorViewRef={editorViewRef}
+              editorViewRef={editorViewRef}onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onPaste={onPaste}
+              isDragging={isDragging}
             />
           </div>
         )}
