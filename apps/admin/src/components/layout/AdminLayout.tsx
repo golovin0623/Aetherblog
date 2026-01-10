@@ -2,10 +2,13 @@ import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { useSidebarStore } from '@/stores';
+import { MobileHeader } from './MobileHeader';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function AdminLayout() {
   const { isCollapsed, isAutoCollapsed } = useSidebarStore();
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   return (
     <div className="flex h-screen bg-background">
@@ -14,10 +17,12 @@ export function AdminLayout() {
 
       {/* 主内容区 */}
       <motion.div
-        animate={{ marginLeft: effectiveCollapsed ? 64 : 256 }}
+        animate={{ marginLeft: isMobile ? 0 : (effectiveCollapsed ? 64 : 256) }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="flex-1 flex flex-col"
       >
+        <MobileHeader />
+
         {/* 页面内容 - 全屏高度，无顶部 header */}
         <main className="flex-1 overflow-auto p-6 relative">
           <motion.div

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { logger } from '@/lib/logger';
 
 export function useCopyToClipboard(): [boolean, (text: string) => Promise<void>] {
   const [copied, setCopied] = useState(false);
@@ -9,7 +10,7 @@ export function useCopyToClipboard(): [boolean, (text: string) => Promise<void>]
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy:', error);
+      logger.error('Failed to copy:', error);
     }
   }, []);
 

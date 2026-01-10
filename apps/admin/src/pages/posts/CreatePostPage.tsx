@@ -21,6 +21,7 @@ import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
 import { useSidebarStore } from '@/stores';
+import { logger } from '@/lib/logger';
 
 // Instant tooltip button component for toolbar
 interface ToolbarButtonProps {
@@ -184,7 +185,7 @@ export function CreatePostPage() {
         // 触发微妙的保存闪烁动画
         setAutoSaveFlash(true);
         setTimeout(() => setAutoSaveFlash(false), 1500);
-      }).catch(err => console.error('Auto save failed', err));
+      }).catch(err => logger.error('Auto save failed', err));
     }, 30000);
 
     return () => clearInterval(timer);
@@ -240,7 +241,7 @@ export function CreatePostPage() {
           setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
         }
       } catch (error) {
-        console.error('Failed to fetch categories/tags:', error);
+        logger.error('Failed to fetch categories/tags:', error);
         // Still set a default publish time on error
         const now = new Date();
         const year = now.getFullYear();
@@ -305,8 +306,8 @@ export function CreatePostPage() {
             
             // For relations, we prioritize DB values initially to ensure we have full objects
             // Future improvement: Hydrate Category/Tags from draft IDs if possible
-            if ((post as any).category) {
-              setSelectedCategory((post as any).category as Category);
+            if (post.category) {
+              setSelectedCategory(post.category as Category);
             }
             
             if (post.tags && post.tags.length > 0) {
@@ -314,7 +315,7 @@ export function CreatePostPage() {
             }
           }
         } catch (error) {
-          console.error('Failed to load post:', error);
+          logger.error('Failed to load post:', error);
           setSaveMessage({ type: 'error', text: '加载文章失败' });
         } finally {
           setLoadingPost(false);
@@ -720,7 +721,7 @@ export function CreatePostPage() {
         setSaveMessage({ type: 'success', text: `分类 “${res.data.name}” 创建成功` });
       }
     } catch (error) {
-      console.error('Create category error:', error);
+      logger.error('Create category error:', error);
       setSaveMessage({ type: 'error', text: '创建分类失败' });
     } finally {
       setCreatingCategory(false);
@@ -778,7 +779,7 @@ export function CreatePostPage() {
         }
       }
     } catch (error) {
-      console.error('Save error:', error);
+      logger.error('Save error:', error);
       setSaveMessage({ type: 'error', text: '保存失败，请重试' });
     } finally {
       setIsSaving(false);
@@ -818,7 +819,7 @@ export function CreatePostPage() {
         setSaveMessage({ type: 'error', text: res.message || '发布失败' });
       }
     } catch (error) {
-      console.error('Publish error:', error);
+      logger.error('Publish error:', error);
       setSaveMessage({ type: 'error', text: '发布失败，请重试' });
     } finally {
       setIsPublishing(false);
@@ -851,7 +852,7 @@ export function CreatePostPage() {
             setSelectedTags([...selectedTags, res.data]);
           }
         } catch (error) {
-          console.error('Failed to create tag:', error);
+          logger.error('Failed to create tag:', error);
 
       }
       }

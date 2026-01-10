@@ -1,93 +1,212 @@
 import { useState, useEffect } from 'react';
-import { FileText, Users, Eye, MessageSquare, TrendingUp } from 'lucide-react';
-import { StatsCard, VisitorChart, TopPosts, SystemStatus } from './components';
+import { motion } from 'framer-motion';
+import { FileText, Users, Eye, MessageSquare, Clock } from 'lucide-react';
+import { 
+  StatsCard, 
+  VisitorChart, 
+  TopPosts, 
+  DeviceChart, 
+  SystemStatus,
+  RecentActivity,
+  SystemTrends,
+  ActivityItem
+} from './components';
+import { analyticsService, DashboardData } from '@/services/analyticsService';
+import { logger } from '@/lib/logger';
+import { toast } from 'sonner';
 
-export function DashboardPage() {
-  const [stats] = useState({
-    posts: 128,
-    visitors: 12453,
-    views: 45678,
-    comments: 892,
-  });
+export default function DashboardPage() {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DashboardData | null>(null);
 
-  const [visitorData] = useState([
-    { date: '2024-01-01', pv: 1200, uv: 800 },
-    { date: '2024-01-02', pv: 1400, uv: 900 },
-    { date: '2024-01-03', pv: 1100, uv: 750 },
-    { date: '2024-01-04', pv: 1600, uv: 1100 },
-    { date: '2024-01-05', pv: 1800, uv: 1200 },
-    { date: '2024-01-06', pv: 2000, uv: 1400 },
-    { date: '2024-01-07', pv: 1900, uv: 1300 },
-  ]);
+  // Mock data for fallback or initial dev
+  const mockData: DashboardData = {
+    stats: {
+      posts: 128,
+      categories: 12,
+      tags: 34,
+      comments: 567,
+      views: 45678,
+      visitors: 12453
+    },
+    topPosts: [
+      { id: 1, title: 'Spring Boot 3.0 新特性详解', viewCount: 3456 },
+      { id: 2, title: 'React 19 Server Components 实战', viewCount: 2890 },
+      { id: 3, title: '使用 AI 提升开发效率的 10 个技巧', viewCount: 2341 },
+      { id: 4, title: 'PostgreSQL 性能优化指南', viewCount: 1987 },
+      { id: 5, title: 'Docker Compose 多容器部署实践', viewCount: 1654 },
+    ],
+    visitorTrend: Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return {
+        date: date.toISOString().split('T')[0],
+        pv: Math.floor(Math.random() * 1000) + 1000,
+        uv: Math.floor(Math.random() * 500) + 500
+      };
+    }),
+    archiveStats: []
+  };
 
-  const [topPosts] = useState([
-    { id: 1, title: 'Spring Boot 3.0 新特性详解', views: 3456 },
-    { id: 2, title: 'React 19 Server Components 实战', views: 2890 },
-    { id: 3, title: '使用 AI 提升开发效率的 10 个技巧', views: 2341 },
-    { id: 4, title: 'PostgreSQL 性能优化指南', views: 1987 },
-    { id: 5, title: 'Docker Compose 多容器部署实践', views: 1654 },
-  ]);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        // Attempt to fetch real data
+        // const res = await analyticsService.getDashboard();
+        // if (res.code === 200 && res.data) {
+        //   setData(res.data);
+        // } else {
+        //   // Fallback to mock data for demo if API fails or not ready
+        //   setData(mockData as any);
+        // }
+        
+        // Simulating API call for now since backend endpoints might not be fully ready
+        setTimeout(() => {
+          setData(mockData);
+          setLoading(false);
+        }, 1000);
+
+      } catch (err) {
+        logger.error('Failed to fetch dashboard data:', err);
+        toast.error('加载仪表盘数据失败');
+        setData(mockData); // Fallback
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const container = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 },
+    },
+  };
+
+  const item = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 },
+  };
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-6 animate-pulse p-6">
+        <div className="h-20 bg-white/5 rounded-xl w-1/3" />
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-32 bg-white/5 rounded-xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-6 h-96">
+          <div className="col-span-2 bg-white/5 rounded-xl" />
+          <div className="bg-white/5 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  const chartData = data?.visitorTrend || mockData.visitorTrend;
+  const topPostsData = data?.topPosts || mockData.topPosts;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">仪表盘</h1>
-        <p className="text-gray-400 mt-1">欢迎回来！这是您的博客概览</p>
+    <motion.div 
+      className="space-y-6"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">仪表盘</h1>
+          <p className="text-gray-400 mt-1">欢迎回来，查看您的博客数据概览</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-500 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
+          <Clock className="w-4 h-4" />
+          <span>上次更新: {new Date().toLocaleTimeString()}</span>
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatsCard
-          title="文章总数"
-          value={stats.posts}
-          change={12}
-          changeLabel="本月"
-          icon={<FileText className="w-5 h-5" />}
-          color="primary"
-        />
-        <StatsCard
-          title="独立访客"
-          value={stats.visitors.toLocaleString()}
-          change={8}
-          changeLabel="本周"
-          icon={<Users className="w-5 h-5" />}
-          color="blue"
-        />
-        <StatsCard
-          title="页面浏览"
-          value={stats.views.toLocaleString()}
-          change={15}
-          changeLabel="本周"
-          icon={<Eye className="w-5 h-5" />}
-          color="green"
-        />
-        <StatsCard
-          title="评论数"
-          value={stats.comments}
-          change={-3}
-          changeLabel="本周"
-          icon={<MessageSquare className="w-5 h-5" />}
-          color="orange"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div variants={item}>
+          <StatsCard
+            title="文章总数"
+            value={data?.stats.posts || 0}
+            change={12}
+            changeLabel="本月新增"
+            icon={<FileText className="w-5 h-5" />}
+            color="primary"
+            loading={loading}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatsCard
+            title="独立访客"
+            value={data?.stats.visitors || 0}
+            change={8}
+            changeLabel="较上周"
+            icon={<Users className="w-5 h-5" />}
+            color="blue"
+            loading={loading}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatsCard
+            title="总浏览量"
+            value={data?.stats.views || 0}
+            change={15}
+            changeLabel="较上周"
+            icon={<Eye className="w-5 h-5" />}
+            color="green"
+            loading={loading}
+          />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatsCard
+            title="评论总数"
+            value={data?.stats.comments || 0}
+            change={5}
+            changeLabel="待审核"
+            icon={<MessageSquare className="w-5 h-5" />}
+            color="orange"
+            loading={loading}
+          />
+        </motion.div>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-2 gap-6">
-        <VisitorChart data={visitorData} />
-        <TopPosts posts={topPosts} />
+      {/* Main Charts Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div variants={item} className="lg:col-span-2">
+          <VisitorChart data={chartData} loading={loading} />
+        </motion.div>
+        <motion.div variants={item}>
+          <DeviceChart loading={loading} />
+        </motion.div>
       </div>
 
-      {/* System Status */}
-      <SystemStatus
-        status="healthy"
-        services={[
-          { name: 'API 服务', status: 'up', latency: 45 },
-          { name: 'Database', status: 'up', latency: 12 },
-          { name: 'Cache', status: 'up', latency: 3 },
-        ]}
-      />
-    </div>
+      {/* Secondary Area - Content & Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <motion.div variants={item}>
+          <TopPosts posts={topPostsData} loading={loading} />
+        </motion.div>
+        <motion.div variants={item}>
+          <RecentActivity loading={loading} />
+        </motion.div>
+      </div>
+
+      {/* System Monitoring Area */}
+      <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div variants={item} className="lg:col-span-2">
+          <SystemTrends />
+        </motion.div>
+        <motion.div variants={item}>
+          <SystemStatus refreshInterval={30} />
+        </motion.div>
+      </div>
+    </motion.div>
   );
 }
-
-export default DashboardPage;

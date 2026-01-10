@@ -35,7 +35,7 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { isCollapsed, isAutoCollapsed, toggle } = useSidebarStore();
+  const { isCollapsed, isAutoCollapsed, isMobileOpen, toggle, setMobileOpen } = useSidebarStore();
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
@@ -46,22 +46,100 @@ export function Sidebar() {
     e.preventDefault();
     if (searchValue.trim()) {
       navigate(`/posts?search=${encodeURIComponent(searchValue.trim())}`);
+      setMobileOpen(false); // Close mobile drawer on search
     }
+  };
+
+  const handleNavigation = () => {
+     setMobileOpen(false); // Close mobile drawer on navigation
+  };
+
+  const contentProps = {
+    effectiveCollapsed,
+    user,
+    logout: () => setShowLogoutConfirm(true),
+    searchValue,
+    setSearchValue,
+    handleSearch,
+    toggle,
+    handleNavigation, // New prop
   };
 
   return (
     <>
-    <motion.aside
-      initial={false}
-      animate={{ width: effectiveCollapsed ? 64 : 256 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className={cn(
-        'fixed left-0 top-0 h-screen z-40 overflow-hidden',
-        'bg-background-secondary border-r border-border',
-        'flex flex-col will-change-[width] transform-gpu'
+      {/* Mobile Backdrop */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
       )}
-    >
-      {/* Logo - Icon stays fixed, text collapses */}
+
+      {/* Mobile Drawer */}
+      <div className={cn(
+        "fixed inset-y-0 left-0 z-50 w-64 bg-background-secondary border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
+        isMobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} />
+      </div>
+
+      {/* Desktop Sidebar */}
+      <motion.aside
+        initial={false}
+        animate={{ width: effectiveCollapsed ? 64 : 256 }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        className={cn(
+          'fixed left-0 top-0 h-screen z-40 overflow-hidden',
+          'bg-background-secondary border-r border-border',
+          'hidden md:flex flex-col will-change-[width] transform-gpu'
+        )}
+      >
+        <SidebarContent {...contentProps} isMobile={false} />
+      </motion.aside>
+
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title="确认退出登录？"
+        message="退出后将返回登录页面，未保存的操作可能会丢失。"
+        confirmText="确认退出"
+        cancelText="取消"
+        variant="warning"
+        onConfirm={() => {
+          logout();
+          navigate('/login');
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
+    </>
+  );
+}
+
+interface SidebarContentProps {
+  effectiveCollapsed: boolean;
+  user: any;
+  logout: () => void;
+  searchValue: string;
+  setSearchValue: (val: string) => void;
+  handleSearch: (e: React.FormEvent) => void;
+  toggle: () => void;
+  isMobile: boolean;
+  handleNavigation: () => void;
+}
+
+function SidebarContent({
+  effectiveCollapsed,
+  user,
+  logout,
+  searchValue,
+  setSearchValue,
+  handleSearch,
+  toggle,
+  isMobile,
+  handleNavigation
+}: SidebarContentProps) {
+  return (
+    <>
+      {/* Logo */}
       <div className={cn(
         "h-14 flex items-center border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
@@ -81,7 +159,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Search Bar - Icon stays fixed, input collapses */}
+      {/* Search Bar */}
       <div className={cn(
         "py-3 border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
@@ -89,10 +167,10 @@ export function Sidebar() {
         <form onSubmit={handleSearch} className="flex items-center">
           <button
             type="button"
-            onClick={() => effectiveCollapsed && toggle()}
+            onClick={() => !isMobile && effectiveCollapsed && toggle()}
             className={cn(
               'flex-shrink-0 flex items-center justify-center rounded-lg',
-              effectiveCollapsed ? 'w-8 h-8' : 'w-8 h-8', // Consistent size
+              'w-8 h-8',
               'text-gray-400 hover:text-white hover:bg-white/5',
               'transition-all duration-200'
             )}
@@ -130,6 +208,7 @@ export function Sidebar() {
             <li key={item.path}>
               <NavLink
                 to={item.path}
+                onClick={handleNavigation}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center rounded-lg transition-all duration-200',
@@ -140,10 +219,8 @@ export function Sidebar() {
                   )
                 }
               >
-                <item.icon className={cn(
-                  'w-5 h-5 flex-shrink-0 transition-all duration-300',
-                  effectiveCollapsed ? 'scale-100' : 'scale-100'
-                )} />
+              
+                <item.icon className="w-5 h-5 flex-shrink-0" />
                 <span className={cn(
                   'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
                   effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
@@ -156,12 +233,11 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Quick Links + Collapse Toggle - Above Avatar */}
+      {/* Quick Links + Collapse Toggle */}
       <div className={cn(
         "border-t border-border py-2 space-y-0.5 transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
-        {/* Home Link */}
         <a
           href="/"
           target="_blank"
@@ -181,43 +257,42 @@ export function Sidebar() {
           </span>
         </a>
 
-        {/* Collapse Toggle - Distinct from NavLinks via Typography & Icon */}
-        <button
-          onClick={toggle}
-          className={cn(
-            'w-full flex items-center rounded-lg transition-all duration-200 group',
-            effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
-            'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-          )}
-          title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
-        >
-          <div className={cn(
-            'flex items-center justify-center w-5 h-5 transition-transform duration-300',
-            // Hover animation: move left when expanding, move right when collapsing
-            !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
-          )}>
-            {effectiveCollapsed ? (
-              <ChevronsRight className="w-5 h-5" />
-            ) : (
-              <ChevronsLeft className="w-5 h-5" />
+        {!isMobile && (
+          <button
+            onClick={toggle}
+            className={cn(
+              'w-full flex items-center rounded-lg transition-all duration-200 group',
+              effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
+              'text-gray-500 hover:text-gray-300 hover:bg-white/5'
             )}
-          </div>
-          <span className={cn(
-            'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
-            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
-          )}>
-            收起导航
-          </span>
-        </button>
+            title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            <div className={cn(
+              'flex items-center justify-center w-5 h-5 transition-transform duration-300',
+              !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
+            )}>
+              {effectiveCollapsed ? (
+                <ChevronsRight className="w-5 h-5" />
+              ) : (
+                <ChevronsLeft className="w-5 h-5" />
+              )}
+            </div>
+            <span className={cn(
+              'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
+              effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            )}>
+              收起导航
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* User Info - Avatar stays fixed, details collapse */}
+      {/* User Info */}
       <div className="border-t border-border p-3">
         <div className={cn(
           "flex items-center transition-all duration-300 cursor-pointer group",
           effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-1"
         )}>
-          {/* Avatar - always visible, fixed position */}
           <div className="relative flex-shrink-0">
             <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/50 transition-all">
               {user?.avatar ? (
@@ -233,7 +308,6 @@ export function Sidebar() {
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-background-secondary" />
           </div>
 
-          {/* User details - collapse with overflow-hidden */}
           <div className={cn(
             'flex-1 min-w-0 overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
@@ -246,13 +320,12 @@ export function Sidebar() {
             </p>
           </div>
 
-          {/* Logout button - collapse with overflow-hidden */}
           <div className={cn(
             'overflow-hidden transition-all duration-300 flex-shrink-0',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <button
-              onClick={() => setShowLogoutConfirm(true)}
+              onClick={logout}
               className={cn(
                 'p-2 rounded-lg',
                 'text-gray-400 hover:text-red-400 hover:bg-white/5',
@@ -265,22 +338,6 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-
-    </motion.aside>
-
-      <ConfirmDialog
-        isOpen={showLogoutConfirm}
-        title="确认退出登录？"
-        message="退出后将返回登录页面，未保存的操作可能会丢失。"
-        confirmText="确认退出"
-        cancelText="取消"
-        variant="warning"
-        onConfirm={() => {
-          logout();
-          navigate('/login');
-        }}
-        onCancel={() => setShowLogoutConfirm(false)}
-      />
     </>
   );
 }
