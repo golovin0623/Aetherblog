@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Users, Eye, MessageSquare, Clock } from 'lucide-react';
+import { FileText, Users, Eye, MessageSquare, Clock, FolderTree } from 'lucide-react';
 import { 
   StatsCard, 
   VisitorChart, 
@@ -160,19 +160,19 @@ export default function DashboardPage() {
       animate="show"
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">仪表盘</h1>
-          <p className="text-gray-400 mt-1">欢迎回来，查看您的博客数据概览</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">仪表盘</h1>
+          <p className="text-gray-400 text-sm sm:text-base mt-0.5 sm:mt-1">欢迎回来，查看您的博客数据概览</p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">
-          <Clock className="w-4 h-4" />
-          <span>上次更新: {new Date().toLocaleTimeString()}</span>
+        <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 bg-white/5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-white/5 self-start sm:self-auto">
+          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <span><span className="hidden sm:inline">上次更新: </span>{new Date().toLocaleTimeString()}</span>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         <motion.div variants={item}>
           <StatsCard
             title="文章总数"
@@ -214,6 +214,18 @@ export default function DashboardPage() {
             changeLabel="待审核"
             icon={<MessageSquare className="w-5 h-5" />}
             color="orange"
+            loading={loading}
+          />
+        </motion.div>
+
+        <motion.div variants={item}>
+          <StatsCard
+            title="分类总数"
+            value={data?.stats.categories || 0}
+            change={2}
+            changeLabel="新增"
+            icon={<FolderTree className="w-5 h-5" />}
+            color="purple"
             loading={loading}
           />
         </motion.div>

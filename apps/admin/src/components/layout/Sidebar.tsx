@@ -77,7 +77,7 @@ export function Sidebar() {
 
       {/* Mobile Drawer */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-background-secondary border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
+        "fixed top-0 left-0 h-[100dvh] z-50 w-64 bg-background-secondary border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} />
@@ -145,14 +145,24 @@ function SidebarContent({
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-lg">A</span>
+          {/* Glossy Logo */}
+          <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
+            {/* Base gradient */}
+            <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
+            {/* Glass shine overlay */}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
+            {/* Inner glow */}
+            <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
+            {/* Letter */}
+            <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg drop-shadow-md">
+              A
+            </span>
           </div>
           <div className={cn(
             'overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
-            <span className="font-semibold text-white whitespace-nowrap">
+            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-white via-gray-200 to-gray-400 whitespace-nowrap">
               AetherBlog
             </span>
           </div>
@@ -257,34 +267,34 @@ function SidebarContent({
           </span>
         </a>
 
-        {!isMobile && (
-          <button
-            onClick={toggle}
-            className={cn(
-              'w-full flex items-center rounded-lg transition-all duration-200 group',
-              effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
-              'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+        <button
+          onClick={isMobile ? handleNavigation : toggle}
+          className={cn(
+            'w-full flex items-center rounded-lg transition-all duration-200 group',
+            effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
+            'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+          )}
+          title={isMobile ? "关闭菜单" : (effectiveCollapsed ? "展开侧边栏" : "收起侧边栏")}
+        >
+          <div className={cn(
+            'flex items-center justify-center w-5 h-5 transition-transform duration-300',
+            !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
+          )}>
+            {isMobile ? (
+              <ChevronsLeft className="w-5 h-5" />
+            ) : effectiveCollapsed ? (
+              <ChevronsRight className="w-5 h-5" />
+            ) : (
+              <ChevronsLeft className="w-5 h-5" />
             )}
-            title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
-          >
-            <div className={cn(
-              'flex items-center justify-center w-5 h-5 transition-transform duration-300',
-              !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
-            )}>
-              {effectiveCollapsed ? (
-                <ChevronsRight className="w-5 h-5" />
-              ) : (
-                <ChevronsLeft className="w-5 h-5" />
-              )}
-            </div>
-            <span className={cn(
-              'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
-              effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
-            )}>
-              收起导航
-            </span>
-          </button>
-        )}
+          </div>
+          <span className={cn(
+            'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}>
+            {isMobile ? '收起菜单' : '收起导航'}
+          </span>
+        </button>
       </div>
 
       {/* User Info */}
