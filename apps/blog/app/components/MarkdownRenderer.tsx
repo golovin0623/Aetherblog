@@ -8,6 +8,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import { logger } from '../lib/logger';
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
@@ -18,7 +19,7 @@ function loadKatexCss() {
   link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
   document.head.appendChild(link);
   katexCssLoaded = true;
-  console.log('[KaTeX] CSS 懒加载完成');
+  logger.info('[KaTeX] CSS 懒加载完成');
 }
 
 interface MarkdownRendererProps {
@@ -100,12 +101,12 @@ async function ensureLanguageLoaded(highlighter: Highlighter, lang: BundledLangu
     if (langModule) {
       await highlighter.loadLanguage(langModule);
       loadedLanguages.add(lang);
-      console.log(`[Shiki] 动态加载语言: ${lang}`);
+      logger.info(`[Shiki] 动态加载语言: ${lang}`);
       return true;
     }
     return false;
   } catch (e) {
-    console.warn(`[Shiki] 无法加载语言 ${lang}:`, e);
+    logger.warn(`[Shiki] 无法加载语言 ${lang}:`, e);
     return false;
   }
 }
@@ -174,7 +175,7 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
         setSvg(renderedSvg);
         setError(null);
       } catch (e) {
-        console.error('Mermaid render error:', e, 'Code:', code);
+        logger.error('Mermaid render error:', e, 'Code:', code);
         setError('图表渲染失败');
       } finally {
         setIsLoading(false);
@@ -244,7 +245,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
         });
         setHighlightedHtml(html);
       } catch (e) {
-        console.error('Shiki highlight error:', e);
+        logger.error('Shiki highlight error:', e);
         setHighlightedHtml(null);
       }
     };
@@ -414,7 +415,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
 
   // 加载 Shiki highlighter
   useEffect(() => {
-    getHighlighter().then(setHighlighter).catch(console.error);
+    getHighlighter().then(setHighlighter).catch(logger.error);
   }, []);
 
   // 检测数学公式，按需加载 KaTeX CSS

@@ -12,6 +12,7 @@ import {
   ActivityItem
 } from './components';
 import { analyticsService, DashboardData } from '@/services/analyticsService';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 
 export default function DashboardPage() {
@@ -19,7 +20,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
 
   // Mock data for fallback or initial dev
-  const mockData = {
+  const mockData: DashboardData = {
     stats: {
       posts: 128,
       categories: 12,
@@ -62,14 +63,14 @@ export default function DashboardPage() {
         
         // Simulating API call for now since backend endpoints might not be fully ready
         setTimeout(() => {
-          setData(mockData as any);
+          setData(mockData);
           setLoading(false);
         }, 1000);
 
       } catch (err) {
-        console.error('Failed to fetch dashboard data:', err);
+        logger.error('Failed to fetch dashboard data:', err);
         toast.error('加载仪表盘数据失败');
-        setData(mockData as any); // Fallback
+        setData(mockData); // Fallback
         setLoading(false);
       }
     };

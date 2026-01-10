@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/stores';
+import { logger } from '@/lib/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -37,7 +38,7 @@ class ApiClient {
           
           // 只有当前已登录状态时才执行登出，避免重复跳转
           if (authStore.isAuthenticated) {
-            console.warn(`[Auth] 认证失败 (${status})，正在登出...`);
+            logger.warn(`[Auth] 认证失败 (${status})，正在登出...`);
             authStore.logout();
             
             // 使用 replace 避免后退时回到已失效的页面

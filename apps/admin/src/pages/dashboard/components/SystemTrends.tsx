@@ -23,6 +23,7 @@ import {
   MetricHistory, 
 } from '@/services/systemService';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import { format, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -82,7 +83,7 @@ export function SystemTrends() {
         setData(mergeHistoryData(res.data));
       }
     } catch (err) {
-      console.error('Failed to fetch history:', err);
+      logger.error('Failed to fetch history:', err);
     } finally {
       if (isInitial) setLoading(false);
     }
@@ -109,7 +110,7 @@ export function SystemTrends() {
         toast.error(res.message || '清理失败');
       }
     } catch (err) {
-      console.error(err);
+      logger.error('Failed to clear history:', err);
       toast.error('清理请求失败');
     } finally {
       setIsCleaning(false);

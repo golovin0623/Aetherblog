@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { ConfirmModal } from '@aetherblog/ui';
+import { logger } from '@/lib/logger';
 
 export default function CategoriesPage() {
   const [activeTab, setActiveTab] = useState<'categories' | 'tags'>('categories');
@@ -43,7 +44,7 @@ export default function CategoriesPage() {
         }
       }
     } catch (err: any) {
-      console.error('Fetch error:', err);
+      logger.error('Fetch error:', err);
       setError(err.message || '网络错误');
     } finally {
       setLoading(false);
@@ -76,7 +77,7 @@ export default function CategoriesPage() {
         }
       }
     } catch (err: any) {
-      console.error('Create error:', err);
+      logger.error('Create error:', err);
       alert(err.message || '创建失败');
     } finally {
       setCreating(false);
@@ -103,7 +104,7 @@ export default function CategoriesPage() {
         }
       }
     } catch (err: any) {
-      console.error('Delete error:', err);
+      logger.error('Delete error:', err);
       alert(err.message || '删除失败');
     } finally {
       setDeleteTarget(null);

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, X, Loader2, FileText, Folder, Tag, ArrowRight, History, TrendingUp, Sparkles, Clock, Trash2 } from 'lucide-react';
+import { logger } from '../lib/logger';
 
 interface SearchResult {
   id: string;
@@ -100,7 +101,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
       });
       setIsAiLoading(false);
     } catch (error) {
-      console.error('Search error:', error);
+      logger.error('Search error:', error);
       setIsLoading(false);
       setIsAiLoading(false);
     }
