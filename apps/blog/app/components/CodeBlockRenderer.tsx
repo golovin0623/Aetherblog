@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Copy, Check, ChevronDown, ChevronUp, Terminal, Maximize2, Minimize2 } from 'lucide-react';
+import { logger } from '../lib/logger';
 
 // 语言图标映射
 const LANGUAGE_ICONS: Record<string, string> = {
@@ -82,7 +83,7 @@ export const CodeBlockRenderer: React.FC<CodeBlockProps> = ({
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      logger.error('Failed to copy:', err);
     }
   };
 

@@ -8,25 +8,46 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import { logger } from '../lib/logger';
 
-// Import KaTeX CSS
-import 'katex/dist/katex.min.css';
+// KaTeX CSS - 懒加载（仅在有数学公式时加载）
+let katexCssLoaded = false;
+function loadKatexCss() {
+  if (katexCssLoaded || typeof document === 'undefined') return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
+  document.head.appendChild(link);
+  katexCssLoaded = true;
+  logger.info('[KaTeX] CSS 懒加载完成');
+}
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
 
-// Supported languages for Shiki syntax highlighting
-const SUPPORTED_LANGUAGES: BundledLanguage[] = [
+// ============================================================================
+// 语言配置 - 按需加载优化
+// ============================================================================
+
+// 核心语言 - 初始加载 (最常用的 8 种，约 50kB)
+const CORE_LANGUAGES: BundledLanguage[] = [
   'javascript', 'typescript', 'jsx', 'tsx',
+  'json', 'html', 'css', 'bash'
+];
+
+// 扩展语言 - 按需动态加载
+const EXTENDED_LANGUAGES: BundledLanguage[] = [
   'python', 'java', 'go', 'rust', 'c', 'cpp',
-  'html', 'css', 'scss', 'json', 'yaml', 'xml',
-  'sql', 'bash', 'shell', 'powershell',
+  'scss', 'yaml', 'xml', 'sql', 'shell', 'powershell',
   'markdown', 'dockerfile', 'nginx',
   'php', 'ruby', 'swift', 'kotlin',
   'vue', 'svelte', 'astro'
 ];
+
+// 所有支持的语言 (用于判断是否可加载)
+const ALL_SUPPORTED_LANGUAGES = [...CORE_LANGUAGES, ...EXTENDED_LANGUAGES];
 
 // Language alias mapping
 const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
@@ -43,19 +64,51 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
 // Global highlighter instance (singleton)
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighterInstance: Highlighter | null = null;
+// 已加载的语言集合
+const loadedLanguages = new Set<string>(CORE_LANGUAGES);
 
 async function getHighlighter(): Promise<Highlighter> {
   if (highlighterInstance) return highlighterInstance;
   
   if (!highlighterPromise) {
+    // 仅初始加载核心语言，减少 bundle 体积
     highlighterPromise = createHighlighter({
-      themes: ['github-dark', 'github-dark-dimmed'],
-      langs: SUPPORTED_LANGUAGES,
+      themes: ['github-dark'],  // 只加载一个主题
+      langs: CORE_LANGUAGES,
     });
   }
   
   highlighterInstance = await highlighterPromise;
   return highlighterInstance;
+}
+
+/**
+ * 动态加载语言 - 遇到未加载的语言时按需加载
+ * 使用 Shiki 的 bundledLanguages 实现真正的懒加载
+ */
+async function ensureLanguageLoaded(highlighter: Highlighter, lang: BundledLanguage): Promise<boolean> {
+  // 已加载
+  if (loadedLanguages.has(lang)) return true;
+  
+  // 不在支持列表中
+  if (!ALL_SUPPORTED_LANGUAGES.includes(lang)) return false;
+  
+  try {
+    // 使用动态 import 加载语言定义（真正的代码分割）
+    const { bundledLanguages } = await import('shiki/bundle/web');
+    const langModule = bundledLanguages[lang as keyof typeof bundledLanguages];
+    
+    if (langModule) {
+      await highlighter.loadLanguage(langModule);
+      loadedLanguages.add(lang);
+      logger.info(`[Shiki] 动态加载语言: ${lang}`);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    logger.warn(`[Shiki] 无法加载语言 ${lang}:`, e);
+    return false;
+  }
 }
 
 // Normalize language name
@@ -64,7 +117,7 @@ function normalizeLanguage(lang: string): BundledLanguage | 'text' {
   if (LANGUAGE_ALIASES[normalized]) {
     return LANGUAGE_ALIASES[normalized];
   }
-  if (SUPPORTED_LANGUAGES.includes(normalized as BundledLanguage)) {
+  if (ALL_SUPPORTED_LANGUAGES.includes(normalized as BundledLanguage)) {
     return normalized as BundledLanguage;
   }
   return 'text';
@@ -122,7 +175,7 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
         setSvg(renderedSvg);
         setError(null);
       } catch (e) {
-        console.error('Mermaid render error:', e, 'Code:', code);
+        logger.error('Mermaid render error:', e, 'Code:', code);
         setError('图表渲染失败');
       } finally {
         setIsLoading(false);
@@ -175,19 +228,29 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
 
   useEffect(() => {
-    if (highlighter && code) {
+    if (!highlighter || !code) return;
+    
+    const highlight = async () => {
       try {
         const lang = normalizeLanguage(language);
+        
+        // 动态加载语言（如果未加载）
+        if (lang !== 'text') {
+          await ensureLanguageLoaded(highlighter, lang);
+        }
+        
         const html = highlighter.codeToHtml(code, {
           lang: lang === 'text' ? 'text' : lang,
           theme: 'github-dark',
         });
         setHighlightedHtml(html);
       } catch (e) {
-        console.error('Shiki highlight error:', e);
+        logger.error('Shiki highlight error:', e);
         setHighlightedHtml(null);
       }
-    }
+    };
+    
+    highlight();
   }, [highlighter, code, language]);
 
   const handleCopy = useCallback(async () => {
@@ -352,8 +415,16 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
 
   // 加载 Shiki highlighter
   useEffect(() => {
-    getHighlighter().then(setHighlighter).catch(console.error);
+    getHighlighter().then(setHighlighter).catch(logger.error);
   }, []);
+
+  // 检测数学公式，按需加载 KaTeX CSS
+  useEffect(() => {
+    // 检测是否包含数学公式 ($...$ 或 $$...$$)
+    if (content && /\$\$?[^$]+\$\$?/.test(content)) {
+      loadKatexCss();
+    }
+  }, [content]);
 
   // 基于 highlighter 状态创建组件
   const components = useMemo(() => createComponents(highlighter), [highlighter]);

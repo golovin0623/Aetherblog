@@ -11,6 +11,7 @@ export interface Post {
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   categoryId: number | null;
   categoryName: string | null;
+  category?: { id: number; name: string; slug: string }; // Full category object when populated
   tags: Array<{ id: number; name: string }>;
   viewCount: number;
   commentCount: number;
