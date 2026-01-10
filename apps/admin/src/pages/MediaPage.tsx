@@ -267,18 +267,18 @@ export default function MediaPage() {
 
   return (
     <div 
-      className="p-6 h-full flex flex-col gap-6 overflow-hidden"
+      className="p-4 lg:p-6 h-full flex flex-col gap-4 lg:gap-6 overflow-hidden"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       <header className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-1">媒体库</h1>
-          <p className="text-sm text-gray-400">管理您的图片、视频和文档资源</p>
+          <h1 className="text-xl lg:text-2xl font-bold text-white mb-0.5 lg:mb-1">媒体库</h1>
+          <p className="text-xs lg:text-sm text-gray-400 hidden sm:block">管理您的图片、视频和文档资源</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 lg:gap-3">
           <input
             type="file"
             ref={fileInputRef}
@@ -288,68 +288,70 @@ export default function MediaPage() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl transition-all shadow-lg shadow-primary/20"
+            className="flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2 bg-primary hover:bg-primary/90 text-white rounded-lg lg:rounded-xl transition-all shadow-lg shadow-primary/20"
           >
-            <Upload className="w-4 h-4" />
-            上传资源
+            <Upload className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+            <span className="text-sm font-medium">上传</span>
           </button>
         </div>
       </header>
 
-      <div className="flex items-center gap-4 shrink-0 bg-white/5 p-2 rounded-2xl border border-white/10">
-        <div className="relative flex-1">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 shrink-0 bg-transparent lg:bg-white/5 lg:p-2 lg:rounded-2xl lg:border lg:border-white/10">
+        <div className="relative w-full lg:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             placeholder="搜索文件名..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-primary/50 transition-all outline-none"
+            className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 lg:py-2 text-sm focus:border-primary/50 transition-all outline-none"
           />
         </div>
 
-        <div className="flex items-center gap-1 p-1 bg-black/20 rounded-xl">
-          {typeOptions.map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <button
-                key={opt.value}
-                onClick={() => setFilterType(opt.value)}
+        <div className="flex items-center justify-between gap-3 overflow-x-auto no-scrollbar lg:contents">
+            <div className="flex items-center gap-1.5 lg:gap-1 p-1 bg-white/5 lg:bg-black/20 rounded-xl overflow-x-auto no-scrollbar flex-1 lg:flex-none">
+            {typeOptions.map((opt) => {
+                const Icon = opt.icon;
+                return (
+                <button
+                    key={opt.value}
+                    onClick={() => setFilterType(opt.value)}
+                    className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 whitespace-nowrap',
+                    filterType === opt.value
+                        ? 'bg-primary text-white shadow-md'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                    )}
+                >
+                    <Icon className="w-3.5 h-3.5" />
+                    {opt.label}
+                </button>
+                );
+            })}
+            </div>
+
+            <div className="w-px h-6 bg-white/10 hidden lg:block" />
+
+            <div className="flex items-center gap-1 p-1 bg-white/5 lg:bg-black/20 rounded-xl shrink-0">
+            <button
+                onClick={() => setViewMode('grid')}
                 className={cn(
-                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  filterType === opt.value
-                    ? 'bg-primary text-white shadow-md'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                'p-1.5 rounded-lg transition-all',
+                viewMode === 'grid' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
                 )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="w-px h-6 bg-white/10" />
-
-        <div className="flex items-center gap-1 p-1 bg-black/20 rounded-xl">
-          <button
-            onClick={() => setViewMode('grid')}
-            className={cn(
-              'p-1.5 rounded-lg transition-all',
-              viewMode === 'grid' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
-            )}
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={cn(
-              'p-1.5 rounded-lg transition-all',
-              viewMode === 'list' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
-            )}
-          >
-            <List className="w-4 h-4" />
-          </button>
+            >
+                <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+                onClick={() => setViewMode('list')}
+                className={cn(
+                'p-1.5 rounded-lg transition-all',
+                viewMode === 'list' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
+                )}
+            >
+                <List className="w-4 h-4" />
+            </button>
+            </div>
         </div>
       </div>
 
@@ -414,7 +416,7 @@ export default function MediaPage() {
           </div>
         </div>
 
-        {/* 侧边详情栏 - 优化流畅度 */}
+      {/* 侧边详情栏 - 桌面端 (lg:block) */}
         <AnimatePresence>
           {selectedMedia && currentMedia && (
             <motion.div
@@ -423,9 +425,9 @@ export default function MediaPage() {
               exit={{ width: 0 }}
               transition={{
                 duration: 0.4,
-                ease: [0.32, 0.72, 0, 1] // iOS-style ease
+                ease: [0.32, 0.72, 0, 1]
               }}
-              className="shrink-0 overflow-hidden will-change-[width]"
+              className="hidden lg:block shrink-0 overflow-hidden will-change-[width]"
               style={{ willChange: 'width' }}
             >
               <motion.div
@@ -450,6 +452,53 @@ export default function MediaPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* 底部详情板 - 移动端 (lg:hidden) */}
+        <AnimatePresence>
+          {selectedMedia && currentMedia && (
+            <>
+              {/* 遮罩 */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="lg:hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+                onClick={() => setSelectedMedia(null)}
+              />
+              
+              {/* Bottom Sheet */}
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                drag="y"
+                dragConstraints={{ top: 0 }}
+                dragElastic={0.2}
+                onDragEnd={(_, info) => {
+                  if (info.offset.y > 100) {
+                    setSelectedMedia(null);
+                  }
+                }}
+                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-[#1a1b1e] rounded-t-3xl border-t border-white/10 shadow-2xl overflow-hidden flex flex-col"
+              >
+                {/* 拖拽手柄 */}
+                <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={() => setSelectedMedia(null)}>
+                  <div className="w-12 h-1.5 bg-white/20 rounded-full" />
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 pb-safe-area">
+                  <MediaDetail
+                    item={currentMedia}
+                    onClose={() => setSelectedMedia(null)}
+                    onDelete={(id) => handleDeleteConfirm(id)}
+                  />
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
 
         {/* 拖拽上传遮罩 */}
         <AnimatePresence>
