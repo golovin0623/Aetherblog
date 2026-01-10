@@ -47,7 +47,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m' # 无颜色
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
