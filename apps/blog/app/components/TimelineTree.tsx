@@ -174,17 +174,22 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
             {/* 年份节点 */}
             <button
               onClick={() => toggleYear(yearData.year)}
-              className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all"
+              className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10"
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary">
+              {/* Node with pulse animation when expanded */}
+              <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary group-hover:bg-primary/30 transition-colors">
+                {/* Pulse ring animation when expanded */}
+                {isYearExpanded && (
+                  <span className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: '2s' }} />
+                )}
                 {isYearExpanded ? (
-                  <ChevronDown className="h-5 w-5" />
+                  <ChevronDown className="h-5 w-5 relative z-10" />
                 ) : (
-                  <ChevronRight className="h-5 w-5" />
+                  <ChevronRight className="h-5 w-5 relative z-10" />
                 )}
               </div>
-              <span className="text-xl font-bold text-white">{yearData.year}</span>
-              <span className="ml-auto px-2 py-0.5 rounded-full text-xs bg-white/10 text-gray-400">
+              <span className="text-xl font-bold text-white group-hover:text-primary/90 transition-colors">{yearData.year}</span>
+              <span className="ml-auto px-2 py-0.5 rounded-full text-xs bg-white/10 text-gray-400 group-hover:bg-primary/20 group-hover:text-primary/80 transition-colors">
                 {yearData.totalPosts} 篇
               </span>
             </button>
@@ -253,10 +258,10 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
                                     <Link
                                       href={`/posts/${post.slug}`}
                                       onClick={() => handlePostClick(post.id)}
-                                      className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all ${
+                                      className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all transform ${
                                         highlightedPostId === post.id 
-                                          ? `${isHighlightFading ? 'duration-1000 bg-transparent ring-0 opacity-100' : 'duration-300 bg-primary/15 ring-1 ring-primary/40'}` 
-                                          : `duration-300 hover:bg-white/5 ${fadeOpacity}`
+                                          ? `${isHighlightFading ? 'duration-1000 bg-transparent ring-0 opacity-100 translate-x-0' : 'duration-300 bg-primary/15 ring-1 ring-primary/40 translate-x-1'}` 
+                                          : `duration-200 hover:bg-white/5 hover:translate-x-1 ${fadeOpacity}`
                                       }`}
                                     >
                                       <FileText className={`h-4 w-4 transition-colors ${
