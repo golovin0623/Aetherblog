@@ -398,6 +398,10 @@ REDIS_PORT=6999
 
 # AI 功能
 OPENAI_API_KEY=你的API_KEY
+
+# Flyway 数据库迁移 (生产环境推荐开启)
+FLYWAY_VALIDATE=true
+FLYWAY_CLEAN_DISABLED=true
 EOF
 ```
 

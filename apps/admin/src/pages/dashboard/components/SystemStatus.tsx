@@ -317,7 +317,7 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
                 )}
               </div>
               <div className="flex items-center gap-3">
-                {service.latency > 0 && (
+                {service.status === 'up' && (
                   <span className={cn(
                     "text-xs font-mono",
                     service.latency < 100 ? "text-green-400" : 
