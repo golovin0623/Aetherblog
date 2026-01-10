@@ -351,18 +351,39 @@ function createComponents(highlighter: Highlighter | null): Components {
     },
     
     // 图片
-    img: ({ src, alt, ...props }) => (
-      <span className="block my-4">
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          className="max-w-full rounded-lg border border-white/10 shadow-lg"
-          {...props}
-        />
-        {alt && <span className="block text-center text-sm text-gray-500 mt-2">{alt}</span>}
-      </span>
-    ),
+    img: ({ src, alt, ...props }) => {
+      // 解析 alt 文本中的大小设置 ![alt|50%](url)
+      let width: string | undefined = undefined;
+      let displayAlt = alt;
+
+      if (alt && alt.includes('|')) {
+        const parts = alt.split('|');
+        // 取最后一部分作为大小，其余部分合并作为 alt
+        const sizePart = parts.pop();
+        
+        if (sizePart && /^\d+%?$/.test(sizePart)) {
+            width = sizePart.endsWith('%') ? sizePart : `${sizePart}px`;
+            displayAlt = parts.join('|');
+        } else {
+            // 如果最后一部分不是有效的大小格式，则不进行分割
+            displayAlt = alt;
+        }
+      }
+
+      return (
+        <span className="block my-4 text-center">
+          <img
+            src={src}
+            alt={displayAlt}
+            loading="lazy"
+            className="max-w-full rounded-lg border border-white/10 shadow-lg inline-block transition-all duration-300"
+            style={{ width: width }}
+            {...props}
+          />
+          {displayAlt && <span className="block text-center text-sm text-gray-500 mt-2">{displayAlt}</span>}
+        </span>
+      );
+    },
     
     // 表格
     table: ({ children }) => (
