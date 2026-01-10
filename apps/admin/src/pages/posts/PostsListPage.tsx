@@ -4,6 +4,7 @@ import { Plus, Search, Edit, Trash2, Eye, Copy, ChevronLeft, ChevronRight, Loade
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { postService, PostListItem } from '@/services/postService';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 
 export function PostsListPage() {
   const navigate = useNavigate();
@@ -35,7 +36,7 @@ export function PostsListPage() {
       queryClient.invalidateQueries({ queryKey: ['posts'] });
     },
     onError: (err) => {
-      console.error('删除失败:', err);
+      logger.error('删除失败:', err);
     },
   });
 
@@ -59,7 +60,7 @@ export function PostsListPage() {
       queryClient.invalidateQueries({ queryKey: ['posts'] });
     },
     onError: (err) => {
-      console.error('复制失败:', err);
+      logger.error('复制失败:', err);
     },
   });
 
@@ -162,86 +163,88 @@ export function PostsListPage() {
             </Link>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-white/10">
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">标题</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 w-24">状态</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 w-20">浏览</th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 w-28">创建时间</th>
-                <th className="px-6 py-4 text-right text-sm font-medium text-gray-400 w-36">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {posts.map((post) => (
-                <tr key={post.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {post.coverImage && (
-                        <img
-                          src={post.coverImage}
-                          alt=""
-                          className="w-12 h-8 rounded object-cover flex-shrink-0"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <Link
-                          to={`/posts/edit/${post.id}`}
-                          className="text-white font-medium truncate hover:text-primary transition-colors cursor-pointer block"
-                        >
-                          {post.title}
-                        </Link>
-                        {post.summary && (
-                          <p className="text-gray-500 text-xs truncate mt-0.5">{post.summary}</p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">{getStatusBadge(post.status)}</td>
-                  <td className="px-6 py-4 text-gray-400 text-sm">{post.viewCount.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-gray-400 text-sm">{formatDate(post.createdAt)}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-1">
-                      {/* View */}
-                      <button
-                        onClick={() => window.open(`/posts/${post.slug}`, '_blank')}
-                        className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                        title="预览"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      {/* Edit */}
-                      <button
-                        onClick={() => navigate(`/posts/${post.id}/edit`)}
-                        className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                        title="编辑"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      {/* Copy */}
-                      <button
-                        onClick={() => handleCopy(post)}
-                        disabled={copyMutation.isPending}
-                        className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-                        title="复制"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      {/* Delete */}
-                      <button
-                        onClick={() => handleDelete(post.id, post.title)}
-                        disabled={deleteMutation.isPending}
-                        className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50"
-                        title="删除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[800px]">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">标题</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 w-24">状态</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 w-20">浏览</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 w-28">创建时间</th>
+                  <th className="px-6 py-4 text-right text-sm font-medium text-gray-400 w-36">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {posts.map((post) => (
+                  <tr key={post.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {post.coverImage && (
+                          <img
+                            src={post.coverImage}
+                            alt=""
+                            className="w-12 h-8 rounded object-cover flex-shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <Link
+                            to={`/posts/edit/${post.id}`}
+                            className="text-white font-medium truncate hover:text-primary transition-colors cursor-pointer block"
+                          >
+                            {post.title}
+                          </Link>
+                          {post.summary && (
+                            <p className="text-gray-500 text-xs truncate mt-0.5">{post.summary}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">{getStatusBadge(post.status)}</td>
+                    <td className="px-6 py-4 text-gray-400 text-sm">{post.viewCount.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-gray-400 text-sm">{formatDate(post.createdAt)}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-1">
+                        {/* View */}
+                        <button
+                          onClick={() => window.open(`/posts/${post.slug}`, '_blank')}
+                          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="预览"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {/* Edit */}
+                        <button
+                          onClick={() => navigate(`/posts/${post.id}/edit`)}
+                          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="编辑"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        {/* Copy */}
+                        <button
+                          onClick={() => handleCopy(post)}
+                          disabled={copyMutation.isPending}
+                          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                          title="复制"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                        {/* Delete */}
+                        <button
+                          onClick={() => handleDelete(post.id, post.title)}
+                          disabled={deleteMutation.isPending}
+                          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

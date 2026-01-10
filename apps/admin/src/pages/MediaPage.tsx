@@ -41,6 +41,7 @@ import { UploadProgress } from './media/components/UploadProgress';
 import { MediaGridSkeleton } from './media/components/MediaGridSkeleton';
 import { Pagination } from '@/components/common/Pagination';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'ALL' | MediaType;
@@ -235,7 +236,7 @@ export default function MediaPage() {
           queryClient.invalidateQueries({ queryKey: ['media', 'list'] });
         } catch (error: any) {
           const errorMessage = error.response?.data?.msg || error.response?.data?.message || '上传失败';
-          console.error('Upload failed:', error);
+          logger.error('Upload failed:', error);
           setUploadingFiles((prev) =>
             prev.map((f) => f.id === uploadFile.id ? { ...f, status: 'error' as const, error: errorMessage } : f)
           );

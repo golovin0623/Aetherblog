@@ -8,6 +8,7 @@ import { postService, PostListItem } from '@/services/postService';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { logger } from '@/lib/logger';
 
 export default function PostsPage() {
   const navigate = useNavigate();
@@ -72,7 +73,7 @@ export default function PostsPage() {
         setError(res.message || '获取文章列表失败');
       }
     } catch (err: any) {
-      console.error('Posts fetch error:', err);
+      logger.error('Posts fetch error:', err);
       setError(err.message || '网络错误');
     } finally {
       setLoading(false);
@@ -95,7 +96,7 @@ export default function PostsPage() {
         if (cRes.code === 200) setCategories(cRes.data);
         if (tRes.code === 200) setTags(tRes.data);
       } catch (err) {
-        console.error('Failed to load filter data:', err);
+        logger.error('Failed to load filter data:', err);
       }
     };
     loadFilterData();
@@ -118,7 +119,7 @@ export default function PostsPage() {
       setConfirmDialog({ isOpen: false, type: 'delete', post: null });
       fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters);
     } catch (err) {
-      console.error('Delete failed:', err);
+      logger.error('Delete failed:', err);
     } finally {
       setActionLoading(null);
     }
@@ -144,7 +145,7 @@ export default function PostsPage() {
         fetchPosts(1, activeStatus, debouncedSearch || undefined, filters);
       }
     } catch (err) {
-      console.error('Copy failed:', err);
+      logger.error('Copy failed:', err);
     } finally {
       setActionLoading(null);
     }

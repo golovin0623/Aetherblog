@@ -11,6 +11,7 @@ interface BackButtonProps {
 /**
  * 返回按钮组件
  * 使用 router.back() 返回上一页，保持浏览历史和滚动位置
+ * 标准实现，无需手动遮罩，过渡由全局 PageTransition 处理
  */
 export default function BackButton({ 
   fallbackHref = '/posts', 

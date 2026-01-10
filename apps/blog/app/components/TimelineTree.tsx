@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronRight, FileText, Calendar } from 'lucide-react';
+import { logger } from '../lib/logger';
 
 interface ArchivePost {
   id: string;
@@ -97,7 +98,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
       sessionStorage.removeItem(STORAGE_KEYS.EXPANDED_POSTS_MONTHS);
       sessionStorage.removeItem(STORAGE_KEYS.LAST_CLICKED_POST);
     } catch (e) {
-      console.warn('Failed to restore timeline state:', e);
+      logger.warn('Failed to restore timeline state:', e);
     }
   }, []);
 
@@ -111,7 +112,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
       sessionStorage.setItem(STORAGE_KEYS.EXPANDED_MONTHS, JSON.stringify([...expandedMonths]));
       sessionStorage.setItem(STORAGE_KEYS.EXPANDED_POSTS_MONTHS, JSON.stringify([...expandedPostsMonths]));
     } catch (e) {
-      console.warn('Failed to save timeline state:', e);
+      logger.warn('Failed to save timeline state:', e);
     }
   }, [expandedYears, expandedMonths, expandedPostsMonths]);
 
@@ -190,7 +191,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
 
             {/* 月份列表 */}
             {isYearExpanded && (
-              <div className="mt-2 ml-4 pl-4 border-l-2 border-white/10 space-y-2">
+              <div className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-white/10 space-y-2">
                 {yearData.months.map((monthData) => {
                   const yearMonth = `${yearData.year}-${monthData.month}`;
                   const isMonthExpanded = expandedMonths.has(yearMonth);
@@ -232,7 +233,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
                             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                             className="overflow-hidden"
                           >
-                            <div className="mt-1 ml-8 space-y-1 relative">
+                            <div className="mt-1 ml-4 md:ml-8 space-y-1 relative">
                               {visiblePosts.map((post, index) => {
                                 // 计算淡出效果
                                 const shouldFade = hasMorePosts && !showAllPosts;

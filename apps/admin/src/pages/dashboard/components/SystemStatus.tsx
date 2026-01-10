@@ -27,6 +27,7 @@ import {
   formatBytes, 
   formatUptime 
 } from '@/services/systemService';
+import { logger } from '@/lib/logger';
 
 // ========== 子组件 ==========
 
@@ -115,7 +116,7 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
         setError('获取数据失败');
       }
     } catch (err) {
-      console.error('Failed to fetch system status:', err);
+      logger.error('Failed to fetch system status:', err);
       setError('连接失败');
     } finally {
       setLoading(false);

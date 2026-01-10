@@ -8,6 +8,7 @@ import FeaturedPost from '../components/FeaturedPost';
 import AuthorProfileCard from '../components/AuthorProfileCard';
 import PostsLoading from './PostsLoading';
 import { API_ENDPOINTS } from '../lib/api';
+import { logger } from '../lib/logger';
 
 interface Post {
   id: number;
@@ -62,7 +63,7 @@ export default function PostsPage() {
           post.contentPreview = contentJson.data?.content || '';
         }
       } catch (e) {
-        console.warn('Failed to fetch content preview', e);
+        logger.warn('Failed to fetch content preview', e);
       }
       return post;
     },
