@@ -71,7 +71,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
 
             <div className="flex items-center gap-1.5 text-xs text-gray-500 group-hover:text-primary transition-colors">
               <Eye className="w-3.5 h-3.5" />
-              <span>{post.viewCount.toLocaleString()}</span>
+              <span>{(post.viewCount || 0).toLocaleString()}</span>
             </div>
           </motion.div>
         ))}

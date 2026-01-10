@@ -3,7 +3,7 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import LoginPage from './pages/auth/LoginPage';
 import ChangePasswordPage from './pages/auth/ChangePasswordPage';
-import DashboardPage from './pages/DashboardPage';
+import DashboardPage from './pages/dashboard/DashboardPage';
 import PostsPage from './pages/PostsPage';
 import CreatePostPage from './pages/posts/CreatePostPage';
 import MediaPage from './pages/MediaPage';

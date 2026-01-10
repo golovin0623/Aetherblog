@@ -120,8 +120,8 @@ export default function CommentsPage() {
   };
 
   const handleDelete = (id: number) => {
-    setComments(prev => prev.filter(c => c.id !== id));
-    toast.success('评论已删除');
+    setComments(prev => prev.map(c => c.id === id ? { ...c, status: 'trash' as const } : c));
+    toast.success('评论已移至回收站');
   };
 
   const handleReply = (id: number) => {

@@ -60,8 +60,8 @@ export function SystemTrends() {
   const [visibleMetrics, setVisibleMetrics] = useState({
     cpu: true,
     memory: true,
-    disk: false,
-    jvm: false
+    disk: true,
+    jvm: true
   });
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [isCleaning, setIsCleaning] = useState(false);

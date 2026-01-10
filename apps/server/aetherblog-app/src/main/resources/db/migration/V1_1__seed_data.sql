@@ -105,3 +105,15 @@ SELECT p.id, t.id
 FROM posts p, tags t
 WHERE p.slug = 'hello-world' AND t.slug = 'hello-world'
 ON CONFLICT DO NOTHING;
+
+-- ============================================================
+-- FRIEND LINKS
+-- ============================================================
+INSERT INTO friend_links (name, url, logo, description, theme_color, sort_order, visible) VALUES
+    ('Google', 'https://www.google.com', 'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png', '全球最大的搜索引擎，提供网页、图片、视频等多种搜索服务', '#4285F4', 1, TRUE),
+    ('GitHub', 'https://github.com', 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png', '全球最大的代码托管平台，开源社区的家园', '#24292e', 2, TRUE),
+    ('OpenAI', 'https://openai.com', 'https://cdn.oaistatic.com/assets/favicon-o20kmmos.svg', 'AI 研究实验室，ChatGPT、GPT-4、DALL·E 的创造者', '#10A37F', 3, TRUE),
+    ('Apple', 'https://www.apple.com', 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Apple_logo_grey.svg', '创新科技公司，iPhone、Mac、iPad 的缔造者', '#555555', 4, TRUE),
+    ('Microsoft', 'https://www.microsoft.com', 'https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg', '全球领先的软件公司，Windows、Office、Azure 的开发者', '#00A4EF', 5, TRUE),
+    ('百度', 'https://www.baidu.com', 'https://www.baidu.com/favicon.ico', '中国最大的搜索引擎，提供搜索、AI、云服务等', '#2932E1', 6, TRUE)
+ON CONFLICT DO NOTHING;

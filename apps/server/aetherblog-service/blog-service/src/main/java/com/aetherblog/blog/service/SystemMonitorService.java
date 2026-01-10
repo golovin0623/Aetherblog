@@ -131,22 +131,26 @@ public class SystemMonitorService {
             }
         }
         
-        // 系统内存
+        // 系统内存 - 改进版：获取可用内存而非仅空闲内存
         if (osBean instanceof com.sun.management.OperatingSystemMXBean sunOsBean) {
             long totalMem = sunOsBean.getTotalMemorySize();
-            long freeMem = sunOsBean.getFreeMemorySize();
-            long usedMem = totalMem - freeMem;
+            
+            // 尝试获取更准确的可用内存（macOS/Linux）
+            long availableMem = getAvailableMemory(totalMem);
+            long usedMem = totalMem - availableMem;
+            
             metrics.setMemoryTotal(totalMem);
             metrics.setMemoryUsed(usedMem);
             metrics.setMemoryPercent((double) usedMem / totalMem * 100);
         }
         
-        // 磁盘使用率 (根目录)
+        // 磁盘使用率 - 使用 getUsableSpace 而非 getFreeSpace（更准确）
         File root = new File("/");
         if (root.exists()) {
             long totalSpace = root.getTotalSpace();
-            long freeSpace = root.getFreeSpace();
-            long usedSpace = totalSpace - freeSpace;
+            // getUsableSpace() 返回的是当前用户可实际使用的空间（排除系统保留）
+            long usableSpace = root.getUsableSpace();
+            long usedSpace = totalSpace - usableSpace;
             metrics.setDiskTotal(totalSpace);
             metrics.setDiskUsed(usedSpace);
             metrics.setDiskPercent((double) usedSpace / totalSpace * 100);
@@ -165,6 +169,93 @@ public class SystemMonitorService {
         metrics.setUptime(uptime);
         
         return metrics;
+    }
+    
+    /**
+     * 获取可用内存（考虑缓存可回收部分）
+     * macOS: 使用 vm_stat 命令
+     * Linux: 使用 /proc/meminfo
+     * 其他: 回退到 JVM API
+     */
+    private long getAvailableMemory(long totalMem) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        
+        try {
+            if (osName.contains("mac")) {
+                return getAvailableMemoryMacOS(totalMem);
+            } else if (osName.contains("linux")) {
+                return getAvailableMemoryLinux();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to get available memory via system command, falling back to JVM API", e);
+        }
+        
+        // 回退：使用 JVM API（不准确但可用）
+        if (ManagementFactory.getOperatingSystemMXBean() instanceof com.sun.management.OperatingSystemMXBean sunOsBean) {
+            return sunOsBean.getFreeMemorySize();
+        }
+        return totalMem / 4; // 默认假设25%可用
+    }
+    
+    /**
+     * macOS: 使用 vm_stat 获取可用内存
+     * 可用内存 ≈ free + inactive + file cache (purgeable)
+     */
+    private long getAvailableMemoryMacOS(long totalMem) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("vm_stat");
+        Process process = pb.start();
+        String output = new String(process.getInputStream().readAllBytes());
+        process.waitFor();
+        
+        long pageSize = 4096; // macOS 默认页大小
+        long freePages = 0;
+        long inactivePages = 0;
+        long purgeablePages = 0;
+        long speculativePages = 0;
+        
+        for (String line : output.split("\n")) {
+            if (line.contains("page size of")) {
+                // 解析页大小: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
+                String[] parts = line.split("page size of ");
+                if (parts.length > 1) {
+                    pageSize = Long.parseLong(parts[1].replaceAll("[^0-9]", ""));
+                }
+            } else if (line.startsWith("Pages free:")) {
+                freePages = parseMacVmStatValue(line);
+            } else if (line.startsWith("Pages inactive:")) {
+                inactivePages = parseMacVmStatValue(line);
+            } else if (line.startsWith("Pages purgeable:")) {
+                purgeablePages = parseMacVmStatValue(line);
+            } else if (line.startsWith("Pages speculative:")) {
+                speculativePages = parseMacVmStatValue(line);
+            }
+        }
+        
+        // 可用内存 = (free + inactive + speculative + purgeable) * pageSize
+        long availablePages = freePages + inactivePages + speculativePages + purgeablePages;
+        return availablePages * pageSize;
+    }
+    
+    private long parseMacVmStatValue(String line) {
+        // 解析格式: "Pages free:                             1234."
+        String value = line.split(":")[1].trim().replace(".", "");
+        return Long.parseLong(value);
+    }
+    
+    /**
+     * Linux: 从 /proc/meminfo 读取 MemAvailable
+     */
+    private long getAvailableMemoryLinux() throws Exception {
+        Path meminfo = Paths.get("/proc/meminfo");
+        for (String line : Files.readAllLines(meminfo)) {
+            if (line.startsWith("MemAvailable:")) {
+                // 格式: "MemAvailable:    1234567 kB"
+                String[] parts = line.split("\\s+");
+                long valueKB = Long.parseLong(parts[1]);
+                return valueKB * 1024; // 转换为字节
+            }
+        }
+        throw new RuntimeException("MemAvailable not found in /proc/meminfo");
     }
 
     /**
@@ -237,10 +328,29 @@ public class SystemMonitorService {
     // ========== 私有方法 ==========
 
     private StorageItem calculateDirectorySize(String path, String name) {
-        Path dir = Paths.get(path);
+        Path dir = Paths.get(path).toAbsolutePath();
         long[] result = {0, 0}; // [size, count]
         
         try {
+            // 尝试多个可能的日志目录
+            if (!Files.exists(dir) && name.contains("日志")) {
+                // 尝试备用日志路径
+                String[] fallbackPaths = {
+                    System.getProperty("user.dir") + "/logs",
+                    "/var/log/aetherblog",
+                    "/app/logs",
+                    System.getProperty("java.io.tmpdir") + "/aetherblog-logs"
+                };
+                for (String fallback : fallbackPaths) {
+                    Path fallbackDir = Paths.get(fallback);
+                    if (Files.exists(fallbackDir)) {
+                        dir = fallbackDir;
+                        log.debug("Using fallback log path: {}", dir);
+                        break;
+                    }
+                }
+            }
+            
             if (Files.exists(dir)) {
                 Files.walk(dir)
                     .filter(Files::isRegularFile)
@@ -250,6 +360,8 @@ public class SystemMonitorService {
                             result[1]++;
                         } catch (Exception ignored) {}
                     });
+            } else {
+                log.warn("Directory does not exist, returning 0: {}", path);
             }
         } catch (Exception e) {
             log.warn("Failed to calculate directory size: {}", path, e);

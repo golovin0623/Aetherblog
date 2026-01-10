@@ -254,25 +254,25 @@ export default function CategoriesPage() {
           ) : (
             <div className="divide-y divide-white/5">
               {categories.map((cat) => (
-                <div key={cat.id} className="flex items-center justify-between px-6 py-4 hover:bg-white/5 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
+                <div key={cat.id} className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 hover:bg-white/5 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                       <Folder className="w-5 h-5 text-primary" />
                     </div>
-                    <div>
-                      <p className="text-white font-medium">{cat.name}</p>
-                      <p className="text-gray-500 text-sm">{cat.description || '暂无描述'}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-medium truncate">{cat.name}</p>
+                      <p className="text-gray-500 text-sm truncate">{cat.description || '暂无描述'}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-gray-400 text-sm">{cat.postCount || 0} 篇文章</span>
-                    <div className="flex gap-2">
-                      <button className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                  <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                    <span className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">{cat.postCount || 0} 篇</span>
+                    <div className="flex gap-1 sm:gap-2">
+                      <button className="p-1.5 sm:p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => setDeleteTarget({ id: cat.id, name: cat.name, type: 'category' })}
-                        className="p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors"
+                        className="p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -286,23 +286,50 @@ export default function CategoriesPage() {
           tags.length === 0 ? (
             <div className="text-center py-12 text-gray-500">暂无标签，点击"新建标签"创建</div>
           ) : (
-            <div className="p-6 flex flex-wrap gap-3">
-              {tags.map((tag) => (
-                <div
-                  key={tag.id}
-                  className="group flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 hover:border-primary/50 transition-colors"
-                >
-                  <TagIcon className="w-4 h-4 text-primary" />
-                  <span className="text-white">{tag.name}</span>
-                  <span className="text-gray-500 text-sm">({tag.postCount || 0})</span>
-                  <button 
-                    onClick={() => setDeleteTarget({ id: tag.id, name: tag.name, type: 'tag' })}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-all"
+            <div className="p-4 sm:p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {tags.map((tag, index) => {
+                // Color variants based on index for visual variety
+                const colorVariants = [
+                  'from-primary/20 to-purple-500/10 border-primary/30 text-primary',
+                  'from-blue-500/20 to-cyan-500/10 border-blue-500/30 text-blue-400',
+                  'from-green-500/20 to-emerald-500/10 border-green-500/30 text-green-400',
+                  'from-orange-500/20 to-amber-500/10 border-orange-500/30 text-orange-400',
+                  'from-pink-500/20 to-rose-500/10 border-pink-500/30 text-pink-400',
+                ];
+                const colorClass = colorVariants[index % colorVariants.length];
+                
+                return (
+                  <motion.div
+                    key={tag.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: index * 0.03 }}
+                    className={`
+                      group relative flex items-center justify-between gap-2 px-4 py-3 rounded-xl
+                      bg-gradient-to-br ${colorClass.split(' ').slice(0, 2).join(' ')}
+                      border ${colorClass.split(' ')[2]}
+                      hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10
+                      transition-all duration-300 cursor-pointer
+                    `}
                   >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <TagIcon className={`w-4 h-4 shrink-0 ${colorClass.split(' ')[3]}`} />
+                      <span className="text-white font-medium truncate">{tag.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-400 bg-black/20 px-2 py-0.5 rounded-full">
+                        {tag.postCount || 0}
+                      </span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: tag.id, name: tag.name, type: 'tag' }); }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           )
         )}

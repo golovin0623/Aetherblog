@@ -1,6 +1,5 @@
 import { Menu } from 'lucide-react';
 import { useSidebarStore } from '@/stores';
-import { cn } from '@/lib/utils';
 
 export function MobileHeader() {
   const { toggleMobile } = useSidebarStore();
@@ -15,8 +14,24 @@ export function MobileHeader() {
         <Menu className="w-5 h-5" />
       </button>
       
-      <div className="ml-3 font-semibold text-lg tracking-tight">
-        AetherBlog
+      <div className="ml-3 flex items-center gap-2.5">
+        {/* Glossy Logo */}
+        <div className="relative w-7 h-7 rounded-lg overflow-hidden flex-shrink-0 shadow-md shadow-primary/20">
+          {/* Base gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
+          {/* Glass shine overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
+          {/* Inner glow */}
+          <div className="absolute inset-[1px] rounded-[6px] bg-gradient-to-br from-white/20 to-transparent" />
+          {/* Letter */}
+          <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm drop-shadow-sm">
+            A
+          </span>
+        </div>
+        {/* Gradient Text */}
+        <span className="font-semibold text-lg text-transparent bg-clip-text bg-gradient-to-r from-white via-gray-200 to-gray-400 tracking-tight">
+          AetherBlog
+        </span>
       </div>
     </header>
   );

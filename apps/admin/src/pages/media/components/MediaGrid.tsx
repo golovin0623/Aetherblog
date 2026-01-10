@@ -43,7 +43,7 @@ export function MediaGrid({
   selectionMode,
 }: MediaGridProps) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 lg:gap-6">
       <AnimatePresence mode="popLayout">
         {items.map((item, index) => {
           const Icon = typeIcons[item.fileType] || FileText;
@@ -64,8 +64,12 @@ export function MediaGrid({
                 delay: index * 0.01 
               }}
               onClick={() => onSelect(item.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onToggleSelect(item.id);
+              }}
               className={cn(
-                'relative aspect-square rounded-2xl overflow-hidden cursor-pointer group',
+                'relative aspect-square rounded-xl lg:rounded-2xl overflow-hidden cursor-pointer group',
                 'bg-white/5 border-2 transition-all duration-500',
                 isSelected
                   ? 'border-primary ring-4 ring-primary/20 scale-[0.98]'

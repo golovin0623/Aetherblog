@@ -11,7 +11,7 @@ interface StatsCardProps {
   change?: number;
   changeLabel?: string;
   icon: React.ReactNode;
-  color?: 'primary' | 'green' | 'blue' | 'orange' | 'pink';
+  color?: 'primary' | 'green' | 'blue' | 'orange' | 'pink' | 'purple';
   loading?: boolean;
 }
 
@@ -45,6 +45,7 @@ export function StatsCard({
     blue: 'from-blue-500/20 to-cyan-500/10 border-blue-500/20',
     orange: 'from-orange-500/20 to-yellow-500/10 border-orange-500/20',
     pink: 'from-pink-500/20 to-rose-500/10 border-pink-500/20',
+    purple: 'from-purple-500/20 to-indigo-500/10 border-purple-500/20',
   };
 
   const iconColorStyles = {
@@ -53,6 +54,7 @@ export function StatsCard({
     blue: 'bg-blue-500/20 text-blue-400',
     orange: 'bg-orange-500/20 text-orange-400',
     pink: 'bg-pink-500/20 text-pink-400',
+    purple: 'bg-purple-500/20 text-purple-400',
   };
 
   if (loading) {
