@@ -42,3 +42,6 @@ coverage/
 .pids/blog.pid
 .kilocode/rules/code-rule.md
 apps/blog/.env.local.example
+
+# 忽略 .kilocode 下的所有内容
+.kilocode/*

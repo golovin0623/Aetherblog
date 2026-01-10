@@ -10,7 +10,7 @@ import {
   Undo2, Redo2
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, type ViewMode, type TableInfo } from '@aetherblog/editor';
+import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, useImageUpload, UploadProgress, type ViewMode, type TableInfo, type UploadResult } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
 import {
   ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
@@ -20,6 +20,7 @@ import { Modal } from '@aetherblog/ui';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
+import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { useSidebarStore } from '@/stores';
 import { logger } from '@/lib/logger';
 
@@ -574,7 +575,38 @@ export function CreatePostPage() {
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
   const [showTableToolbar, setShowTableToolbar] = useState(false);
   const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
+  // Image upload hook
+  const handleUploadFn = useCallback(async (file: File, onProgress?: (percent: number) => void): Promise<UploadResult> => {
+    const result = await mediaService.upload(file, onProgress);
+    return {
+      url: getMediaUrl(result.fileUrl),
+      originalName: result.originalName,
+      width: result.width,
+      height: result.height,
+    };
+  }, []);
+
+  const {
+    uploads,
+    handleDrop,
+    handleDragOver,
+    handleDragLeave,
+    handlePaste,
+    isDragging,
+    removeUpload,
+    retryUpload,
+    clearCompleted,
+  } = useImageUpload({
+    uploadFn: handleUploadFn,
+    onUploadComplete: (result) => {
+      //上传成功后插入图片到编辑器
+      editorCommands.insertImage(result.url, result.originalName);
+    },
+    onUploadError: (error, file) => {
+      logger.error('图片上传失败:', error, file.name);
+    },
+  });
   // Check table state on selection change and scroll
   useEffect(() => {
     const checkTable = () => {
@@ -945,6 +977,7 @@ export function CreatePostPage() {
       </div>
     );
   }
+  // @ts-ignore
   return (
     <div className={cn(
       "flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-10 transition-all duration-300 overflow-hidden"
@@ -1508,7 +1541,22 @@ export function CreatePostPage() {
               showLineNumbers={showLineNumbers}
               hideToolbar
               editorViewRef={editorViewRef}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onPaste={handlePaste}
+              isDragging={isDragging}
             />
+
+            {/* Upload Progress Overlay */}
+            {uploads.length > 0 && (
+              <UploadProgress
+                uploads={uploads}
+                onRemove={removeUpload}
+                onRetry={retryUpload}
+                onClearCompleted={clearCompleted}
+              />
+            )}
             
             {/* IDEA-style Table Trigger Zones - Fixed positioning with viewport coordinates */}
             {tableInfo?.isInTable && tableInfo.tableBounds && tableInfo.rowPositions && editorContainerRef.current && (() => {

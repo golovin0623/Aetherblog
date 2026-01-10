@@ -8,6 +8,15 @@ import { useCallback } from 'react';
 import { EditorView } from '@codemirror/view';
 import { undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
 
+/**图片信息 */
+export interface ImageInfo {
+  from: number;
+  to: number;
+  url: string;
+  alt: string;
+  size?: string; // 如"50%" 或 "200px"
+}
+
 export interface EditorCommands {
   /** Insert text at current cursor position */
   insertText: (text: string) => void;
@@ -27,6 +36,14 @@ export interface EditorCommands {
   undo: () => void;
   /** Redo the last undone change */
   redo: () => void;
+  /** Insert image markdown at cursor position */
+  insertImage: (url: string, alt?: string, size?: string) => void;
+  /** Update image size at given position */
+  updateImageSize: (imageInfo: ImageInfo, newSize: string | null) => void;
+  /** Find image at current cursor position */
+  getImageAtCursor: () => ImageInfo | null;
+  /** Get current cursor position */
+  getCursorPosition: () => number;
 }
 
 /**
@@ -185,6 +202,98 @@ export function useEditorCommands(
     cmRedo(view);
   }, [editorViewRef]);
 
+  /**
+   * 插入图片 Markdown
+   * 支持带大小参数的语法: ![alt|size](url)
+   */
+  const insertImage = useCallback((url: string, alt: string = '', size?: string) => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    
+    // 构建图片 Markdown
+    // 使用自定义语法: ![alt|size](url)
+    // 如: ![图片|50%](http://example.com/image.png)
+    let markdown: string;
+    if (size) {
+      markdown = `![${alt}|${size}](${url})`;
+    } else {
+      markdown = `![${alt}](${url})`;
+    }
+    
+    const { from } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to: from, insert: markdown },
+      selection: { anchor: from + markdown.length },
+    });
+  }, [editorViewRef]);
+
+  /**
+   * 更新图片大小
+   * 修改已有图片的大小参数
+   */
+  const updateImageSize = useCallback((imageInfo: ImageInfo, newSize: string | null) => {
+    const view = editorViewRef.current;
+    if (!view) return;
+
+    const { from, to, url, alt } = imageInfo;
+    
+    // 构建新的图片 Markdown
+    let newMarkdown: string;
+    if (newSize) {
+      newMarkdown = `![${alt}|${newSize}](${url})`;
+    } else {
+      newMarkdown = `![${alt}](${url})`;
+    }
+    
+    view.dispatch({
+      changes: { from, to, insert: newMarkdown },
+    });
+  }, [editorViewRef]);
+
+  /**
+   * 获取光标位置的图片信息
+   * 解析 ![alt|size](url) 格式
+   */
+  const getImageAtCursor = useCallback((): ImageInfo | null => {
+    const view = editorViewRef.current;
+    if (!view) return null;
+
+    const { from } = view.state.selection.main;
+    const line = view.state.doc.lineAt(from);
+    const lineText = line.text;
+    
+    //匹配图片语法: ![alt|size?](url)
+    const imageRegex = /!\[([^\]|]*?)(?:\|([^\]]*?))?\]\(([^)]+)\)/g;
+    
+    let match;
+    while ((match = imageRegex.exec(lineText)) !== null) {
+      const matchStart = line.from + match.index;
+      const matchEnd = matchStart + match[0].length;
+      
+      // 检查光标是否在这个图片范围内
+      if (from >= matchStart && from <= matchEnd) {
+        return {
+          from: matchStart,
+          to: matchEnd,
+          alt: match[1] || '',
+          size: match[2] || undefined,
+          url: match[3],
+        };
+      }
+    }
+    
+    return null;
+  }, [editorViewRef]);
+
+  /**
+   * 获取当前光标位置
+   */
+  const getCursorPosition = useCallback((): number => {
+    const view = editorViewRef.current;
+    if (!view) return 0;
+    return view.state.selection.main.from;
+  }, [editorViewRef]);
+
   return {
     insertText,
     wrapSelection,
@@ -195,6 +304,10 @@ export function useEditorCommands(
     focus,
     undo,
     redo,
+    insertImage,
+    updateImageSize,
+    getImageAtCursor,
+    getCursorPosition,
   };
 }
 
