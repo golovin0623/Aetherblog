@@ -30,15 +30,17 @@ curl -s "https://hub.docker.com/v2/repositories/golovin0623/aetherblog-backend/t
 git status --short
 ```
 
-如果有未提交的更改，先执行 `git add . && git commit -m "your message"`。
+如果有未提交的更改，先检查所有已修改的代码，生成待提交的代码改动摘要；
+然后先执行 `git add . && git commit -m "your message"`。
 
 ### 3. [关键!] 用户确认
-**STOP!** 请在此步骤暂停，等待用户确认。
+**STOP!** 请在此步骤暂停，等待用户确认，提供给用户本次即将提交的摘要内容。
 
 在执行构建之前，**必须**向用户汇报以下信息并请求批准：
 1. **当前最新版本**: (从步骤 1 获取)
 2. **计划发布版本**: (建议版本号，如 v1.1.6 -> v1.1.7)
 3. **包含的变更**: (简述步骤 2 中的 commit 记录)
+4. 本次改动的代码内容涉及几个模块，即将部署发布哪个模块的更新镜像或者是全部镜像
 
 **仅当用户回复 "确认"、"批准" 或 "/approve" 时，才继续执行步骤 4。**
 
@@ -48,6 +50,9 @@ git status --short
 小功能修复（如 v1.1.3 -> v1.1.4）
 大功能新增（如 v1.1.3 -> v1.2.1）
 大版本迭代（如 v1.1.3 -> v2.0.0）：
+
+请分析修改代码的涉及模块，从而决定是部分构建迭代推送，还是全面的的构建推送？
+例如，所有模块代码均存在变更，则执行下述全面构建指令：
 
 ```bash
 ./docker-build.sh --push --version VERSION
@@ -87,11 +92,11 @@ git log --oneline origin/main..HEAD
 
 ### 5. 服务器部署命令
 
-构建完成后，在服务器执行：
+构建完成后，若用户有需要，则在服务器执行：
 
 ```bash
 export DOCKER_REGISTRY=golovin0623
-export VERSION=vX.X.X  # 替换为实际版本号
+export VERSION=latest
 docker-compose -f docker-compose.prod.yml pull
 docker-compose -f docker-compose.prod.yml up -d
 ```
