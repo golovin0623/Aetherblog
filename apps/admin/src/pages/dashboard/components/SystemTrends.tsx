@@ -302,7 +302,7 @@ export function SystemTrends() {
       )}>
         {data.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+            <AreaChart data={data} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
@@ -345,12 +345,22 @@ export function SystemTrends() {
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
+                    const visiblePayload = payload.filter((entry: any) => {
+                      if (entry.dataKey === 'cpu') return visibleMetrics.cpu;
+                      if (entry.dataKey === 'memory') return visibleMetrics.memory;
+                      if (entry.dataKey === 'disk') return visibleMetrics.disk;
+                      if (entry.dataKey === 'jvm') return visibleMetrics.jvm;
+                      return true;
+                    });
+
+                    if (visiblePayload.length === 0) return null;
+
                     return (
                       <div className="p-2 sm:p-3 bg-zinc-900/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-50 min-w-[120px]">
                         <p className="text-zinc-500 text-[10px] mb-1.5 uppercase font-medium tracking-wider">
                           {formatTooltipLabel(label)}
                         </p>
-                        {payload.map((entry: any) => (
+                        {visiblePayload.map((entry: any) => (
                           <div key={entry.name} className="flex items-center gap-2 text-xs font-medium mb-1 last:mb-0">
                             <div 
                               className="w-1.5 h-1.5 rounded-full shadow-[0_0_5px_currentColor]"
@@ -369,62 +379,62 @@ export function SystemTrends() {
                 }}
               />
               
-              {visibleMetrics.cpu && (
-                <Area
-                  key="cpu"
-                  type="monotone"
-                  dataKey="cpu"
-                  name="CPU"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorCpu)"
-                  animationDuration={500}
-                  isAnimationActive={true}
-                />
-              )}
-              {visibleMetrics.memory && (
-                <Area
-                  key="memory"
-                  type="monotone"
-                  dataKey="memory"
-                  name="内存"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorMem)"
-                  animationDuration={500}
-                  isAnimationActive={true}
-                />
-              )}
-              {visibleMetrics.disk && (
-                <Area
-                  key="disk"
-                  type="monotone"
-                  dataKey="disk"
-                  name="磁盘"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorDisk)"
-                  animationDuration={500}
-                  isAnimationActive={true}
-                />
-              )}
-              {visibleMetrics.jvm && (
-                <Area
-                  key="jvm"
-                  type="monotone"
-                  dataKey="jvm"
-                  name="JVM"
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorJvm)"
-                  animationDuration={500}
-                  isAnimationActive={true}
-                />
-              )}
+              <Area
+                key="cpu"
+                type="monotone"
+                dataKey="cpu"
+                name="CPU"
+                stroke="#8b5cf6"
+                strokeWidth={2}
+                fill="url(#colorCpu)"
+                animationDuration={300}
+                isAnimationActive={true}
+                strokeOpacity={visibleMetrics.cpu ? 1 : 0}
+                fillOpacity={visibleMetrics.cpu ? 1 : 0}
+                style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.cpu ? 'auto' : 'none' }}
+              />
+              <Area
+                key="memory"
+                type="monotone"
+                dataKey="memory"
+                name="内存"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                fill="url(#colorMem)"
+                animationDuration={300}
+                isAnimationActive={true}
+                strokeOpacity={visibleMetrics.memory ? 1 : 0}
+                fillOpacity={visibleMetrics.memory ? 1 : 0}
+                style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.memory ? 'auto' : 'none' }}
+              />
+              <Area
+                key="disk"
+                type="monotone"
+                dataKey="disk"
+                name="磁盘"
+                stroke="#22c55e"
+                strokeWidth={2}
+                fill="url(#colorDisk)"
+                animationDuration={300}
+                isAnimationActive={true}
+                strokeOpacity={visibleMetrics.disk ? 1 : 0}
+                fillOpacity={visibleMetrics.disk ? 1 : 0}
+                style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.disk ? 'auto' : 'none' }}
+              />
+              <Area
+                key="jvm"
+                type="monotone"
+                dataKey="jvm"
+                name="JVM"
+                stroke="#f97316"
+                strokeWidth={2}
+                fill="url(#colorJvm)"
+                animationDuration={300}
+                isAnimationActive={true}
+                strokeOpacity={visibleMetrics.jvm ? 1 : 0}
+                fillOpacity={visibleMetrics.jvm ? 1 : 0}
+                style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.jvm ? 'auto' : 'none' }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
