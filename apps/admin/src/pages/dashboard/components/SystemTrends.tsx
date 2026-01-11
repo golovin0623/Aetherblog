@@ -336,11 +336,11 @@ export function SystemTrends() {
                 stroke="#4b5563" 
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: 11, fill: '#9ca3af' }}
+                tick={{ fontSize: 10, fill: '#e5e7eb' }}
                 tickFormatter={(value) => `${value}%`}
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
-                width={35}
+                width={40}
               />
               <Tooltip
                 content={({ active, payload, label }) => {
@@ -371,6 +371,7 @@ export function SystemTrends() {
               
               {visibleMetrics.cpu && (
                 <Area
+                  key="cpu"
                   type="monotone"
                   dataKey="cpu"
                   name="CPU"
@@ -379,11 +380,12 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorCpu)"
                   animationDuration={500}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
                 />
               )}
               {visibleMetrics.memory && (
                 <Area
+                  key="memory"
                   type="monotone"
                   dataKey="memory"
                   name="内存"
@@ -392,11 +394,12 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorMem)"
                   animationDuration={500}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
                 />
               )}
               {visibleMetrics.disk && (
                 <Area
+                  key="disk"
                   type="monotone"
                   dataKey="disk"
                   name="磁盘"
@@ -405,11 +408,12 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorDisk)"
                   animationDuration={500}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
                 />
               )}
               {visibleMetrics.jvm && (
                 <Area
+                  key="jvm"
                   type="monotone"
                   dataKey="jvm"
                   name="JVM"
@@ -418,7 +422,7 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorJvm)"
                   animationDuration={500}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
                 />
               )}
             </AreaChart>
