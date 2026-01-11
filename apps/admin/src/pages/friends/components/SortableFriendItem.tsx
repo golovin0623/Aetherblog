@@ -48,8 +48,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
           {...listeners} 
           className={cn(
             "cursor-grab active:cursor-grabbing p-1.5 rounded-md",
-            "text-gray-600 hover:text-gray-400 hover:bg-white/5 transition-colors",
-            "opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            "text-gray-600 hover:text-gray-400 hover:bg-white/5 transition-colors"
           )}
         >
           <GripVertical className="w-4 h-4" />
