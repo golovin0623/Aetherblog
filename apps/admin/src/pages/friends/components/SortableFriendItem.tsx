@@ -48,8 +48,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
           {...listeners} 
           className={cn(
             "cursor-grab active:cursor-grabbing p-1.5 rounded-md",
-            "text-gray-600 hover:text-gray-400 hover:bg-white/5 transition-colors",
-            "opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            "text-gray-600 hover:text-gray-400 hover:bg-white/5 transition-colors"
           )}
         >
           <GripVertical className="w-4 h-4" />
@@ -114,7 +113,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1 pl-4 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+      <div className="flex items-center gap-1 pl-4">
         <button
           onClick={(e) => { e.stopPropagation(); onToggleVisible(); }}
           className={cn(
