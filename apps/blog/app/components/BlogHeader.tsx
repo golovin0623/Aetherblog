@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Settings2 } from 'lucide-react';
 import MobileMenu from './MobileMenu';
+import MobileNavSwitch from './MobileNavSwitch';
 
 /**
  * 博客共享头部组件
@@ -138,7 +139,7 @@ export default function BlogHeader() {
       )}
 
       <header 
-        className={`fixed top-0 left-0 right-0 z-50 py-4 transition-all duration-500 ease-out overflow-hidden group ${
+        className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-500 ease-out group ${
           isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
         }`}
         style={{
@@ -164,65 +165,76 @@ export default function BlogHeader() {
 
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between relative z-10">
           <Link href="/" className="flex items-center gap-2 group/logo">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow flex-shrink-0">
               A
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+            <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent hidden sm:block">
               AetherBlog
             </span>
           </Link>
+
+          {/* Mobile View Toggle - Centered */}
+
           
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex gap-6 items-center">
-            {/* View Mode Toggle with sliding animation */}
-            <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
-              {/* Sliding pill indicator */}
-              <div
-                className="absolute top-1 bottom-1 w-[72px] bg-primary/20 rounded-full transition-all duration-300 ease-out"
-                style={{
-                  left: isTimeline ? 'calc(50% + 2px)' : '4px',
-                }}
-              />
-              
-              {/* Links - fixed width to prevent layout shift */}
-              <Link
-                href="/posts"
-                className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
-                  !isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                首页
-              </Link>
-              <Link
-                href="/timeline"
-                className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
-                  isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                时间线
-              </Link>
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 ml-auto">
+            {/* Mobile View Toggle - Right Aligned & Stable */}
+            <div className="md:hidden flex items-center justify-center">
+              <MobileNavSwitch />
             </div>
-            
-            <div className="h-4 w-px bg-white/10 mx-2"></div>
-            <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
-            <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
-            <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
-            
-            {/* 管理后台入口 */}
-            <div className="h-4 w-px bg-white/10 mx-1"></div>
-            <a 
-              href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-300 group/admin"
-              title="管理后台"
-            >
-              <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
-            </a>
-          </nav>
 
-          {/* Mobile Navigation */}
-          <MobileMenu />
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex gap-6 items-center">
+              {/* View Mode Toggle with sliding animation */}
+              <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
+                {/* Sliding pill indicator */}
+                <div
+                  className="absolute top-1 bottom-1 w-[72px] bg-primary/20 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    left: isTimeline ? 'calc(50% + 2px)' : '4px',
+                  }}
+                />
+                
+                {/* Links - fixed width to prevent layout shift */}
+                <Link
+                  href="/posts"
+                  className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
+                    !isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  首页
+                </Link>
+                <Link
+                  href="/timeline"
+                  className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
+                    isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  时间线
+                </Link>
+              </div>
+              
+              <div className="h-4 w-px bg-white/10 mx-2"></div>
+              <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
+              <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
+              <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
+              
+              {/* 管理后台入口 */}
+              <div className="h-4 w-px bg-white/10 mx-1"></div>
+              <a 
+                href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-300 group/admin"
+                title="管理后台"
+              >
+                <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
+              </a>
+            </nav>
+
+            {/* Mobile Navigation */}
+            <MobileMenu />
+          </div>
         </div>
       </header>
     </>

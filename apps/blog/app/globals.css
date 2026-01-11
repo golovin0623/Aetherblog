@@ -27,6 +27,19 @@ body {
   background-color: var(--bg-primary);
 }
 
+/* 移动端禁止横向滚动 - 防止内容撑开页面 */
+@media (max-width: 767px) {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg-primary);
+}
+
 /* 滚动条 */
 ::-webkit-scrollbar {
   width: 8px;
@@ -138,7 +151,10 @@ body {
   margin: 2em 0;
 }
 .markdown-body table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 1em 0;
 }
@@ -223,7 +239,10 @@ body {
 }
 /* 表格样式 */
 .mini-preview table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 0.5em 0;
   font-size: 0.85em;

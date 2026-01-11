@@ -93,12 +93,30 @@ const components: Components = {
     );
   },
   
-  // 图片 - 缩略图
-  img: ({ alt }) => (
-    <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-      🖼️ <span className="text-primary/60">{alt || '图片'}</span>
-    </span>
-  ),
+  // 图片 - 实际渲染图片
+  img: ({ src, alt }) => {
+    if (!src) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+          🖼️ <span className="text-primary/60">{alt || '图片'}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="block my-2">
+        <img 
+          src={src} 
+          alt={alt || ''} 
+          className="max-w-full h-auto rounded-lg border border-white/10"
+          loading="lazy"
+          style={{ maxHeight: '300px', objectFit: 'contain' }}
+        />
+        {alt && (
+          <span className="block text-center text-xs text-gray-500 mt-1">{alt}</span>
+        )}
+      </span>
+    );
+  },
   
   // 表格 - 紧凑版
   table: ({ children }) => (
