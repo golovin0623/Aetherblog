@@ -9,6 +9,9 @@ export interface DashboardStats {
   comments: number;
   views: number;
   visitors: number;
+  totalWords: number;    // 总字数
+  aiTokens: number;      // AI总tokens数量
+  aiCost: number;        // AI总费用（美元）
 }
 
 export interface TopPost {

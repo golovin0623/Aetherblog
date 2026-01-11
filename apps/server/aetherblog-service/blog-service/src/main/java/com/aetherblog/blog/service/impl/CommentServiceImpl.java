@@ -130,20 +130,64 @@ public class CommentServiceImpl implements CommentService {
 
     @Override
     @Transactional
+    public Comment restore(Long id) {
+        Objects.requireNonNull(id, "评论ID不能为空");
+        Comment comment = getById(id);
+        if (comment.getStatus() != CommentStatus.DELETED) {
+            throw new BusinessException(400, "只有已删除的评论才能还原");
+        }
+        comment.setStatus(CommentStatus.APPROVED); // 还原后默认设为已通过
+        Comment saved = commentRepository.save(comment);
+
+        // 更新文章评论数
+        Post post = comment.getPost();
+        if (post != null && post.getId() != null) {
+            updatePostCommentCount(post.getId());
+        }
+
+        log.info("还原评论: id={}", id);
+        return saved;
+    }
+
+    @Override
+    @Transactional
     public void delete(Long id) {
+        Objects.requireNonNull(id, "评论ID不能为空");
+        Comment comment = getById(id);
+
+        // 如果已经是已删除状态，则不做任何操作（或者可以抛异常）
+        if (comment.getStatus() == CommentStatus.DELETED) {
+            return;
+        }
+
+        comment.setStatus(CommentStatus.DELETED);
+        commentRepository.save(comment);
+
+        // 更新文章评论数
+        Post post = comment.getPost();
+        if (post != null && post.getId() != null) {
+            updatePostCommentCount(post.getId());
+        }
+
+        log.info("移至回收站: id={}", id);
+    }
+
+    @Override
+    @Transactional
+    public void permanentDelete(Long id) {
         Objects.requireNonNull(id, "评论ID不能为空");
         Comment comment = getById(id);
         Post post = comment.getPost();
         Long postId = (post != null) ? post.getId() : null;
-        
+
         commentRepository.deleteById(id);
-        
+
         // 更新文章评论数
         if (postId != null) {
             updatePostCommentCount(postId);
         }
-        
-        log.info("删除评论: id={}", id);
+
+        log.info("彻底删除评论: id={}", id);
     }
 
     @Override
@@ -153,8 +197,23 @@ public class CommentServiceImpl implements CommentService {
         if (ids.isEmpty()) {
             return;
         }
+        for (Long id : ids) {
+            if (id != null) {
+                delete(id);
+            }
+        }
+        log.info("批量移至回收站: ids={}", ids);
+    }
+
+    @Override
+    @Transactional
+    public void batchPermanentDelete(List<Long> ids) {
+        Objects.requireNonNull(ids, "ID列表不能为空");
+        if (ids.isEmpty()) {
+            return;
+        }
         commentRepository.deleteAllById(ids);
-        log.info("批量删除评论: ids={}", ids);
+        log.info("批量彻底删除评论: ids={}", ids);
     }
 
     @Override

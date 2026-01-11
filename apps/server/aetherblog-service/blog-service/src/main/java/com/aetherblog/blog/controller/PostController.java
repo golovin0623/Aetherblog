@@ -1,6 +1,7 @@
 package com.aetherblog.blog.controller;
 
 import com.aetherblog.blog.dto.request.CreatePostRequest;
+import com.aetherblog.blog.dto.request.UpdatePostPropertiesRequest;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.service.PostService;
@@ -62,6 +63,12 @@ public class PostController {
     @PutMapping("/{id}")
     public R<PostDetailResponse> update(@PathVariable Long id, @Valid @RequestBody CreatePostRequest request) {
         return R.ok(postService.updatePost(id, request));
+    }
+
+    @Operation(summary = "更新文章属性", description = "快速编辑文章属性，不包含内容")
+    @PatchMapping("/{id}/properties")
+    public R<PostDetailResponse> updateProperties(@PathVariable Long id, @Valid @RequestBody UpdatePostPropertiesRequest request) {
+        return R.ok(postService.updatePostProperties(id, request));
     }
 
     @Operation(summary = "自动保存/保存草稿")

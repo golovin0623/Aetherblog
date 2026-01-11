@@ -1,7 +1,6 @@
 package com.aetherblog.blog.controller;
 
 import com.aetherblog.blog.entity.MediaFile;
-import com.aetherblog.blog.entity.MediaFile.FileType;
 import com.aetherblog.blog.service.MediaService;
 import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.domain.R;
@@ -48,7 +47,7 @@ public class MediaController {
     @Operation(summary = "获取媒体列表")
     @GetMapping
     public R<PageResult<MediaFile>> list(
-            @RequestParam(required = false) FileType fileType,
+            @RequestParam(required = false) String fileType,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {

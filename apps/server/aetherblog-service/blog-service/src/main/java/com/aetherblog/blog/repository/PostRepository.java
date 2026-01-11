@@ -27,6 +27,8 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
 
     boolean existsBySlug(String slug);
 
+    boolean existsBySlugAndIdNot(String slug, Long id);
+
     List<Post> findAllByStatusOrderByPublishedAtDesc(PostStatus status);
 
     Page<Post> findByStatus(PostStatus status, Pageable pageable);

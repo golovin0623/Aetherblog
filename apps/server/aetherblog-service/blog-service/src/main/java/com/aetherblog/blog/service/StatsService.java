@@ -38,11 +38,22 @@ public class StatsService {
         long categoryCount = categoryRepository.count();
         long tagCount = tagRepository.count();
         long commentCount = commentRepository.count();
-        
+
         // 计算总浏览量
         Long totalViews = postRepository.findAll().stream()
                 .mapToLong(Post::getViewCount)
                 .sum();
+
+        // 计算总字数
+        Long totalWords = postRepository.findAll().stream()
+                .filter(post -> post.getWordCount() != null)
+                .mapToLong(Post::getWordCount)
+                .sum();
+
+        // TODO: AI tokens 和费用需要从 AI 使用记录表中统计
+        // 目前暂时返回 0，后续实现 AI 使用记录功能后再补充
+        long aiTokens = 0L;
+        double aiCost = 0.0;
 
         return new DashboardStats(
                 postCount,
@@ -50,7 +61,10 @@ public class StatsService {
                 tagCount,
                 commentCount,
                 totalViews,
-                0L  // 访客数需要 visit_records 表，暂为 0
+                0L,  // 访客数需要 visit_records 表，暂为 0
+                totalWords,
+                aiTokens,
+                aiCost
         );
     }
 
@@ -122,14 +136,17 @@ public class StatsService {
             long tags,
             long comments,
             long views,
-            long visitors
+            long visitors,
+            long totalWords,      // 总字数
+            long aiTokens,        // AI总tokens数量
+            double aiCost         // AI总费用（美元）
     ) {}
 
     public record TopPost(
             Long id,
             String title,
             String slug,
-            Long views
+            Long viewCount
     ) {}
 
     public record ArchiveStats(

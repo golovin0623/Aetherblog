@@ -1,13 +1,15 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { postService, PostListItem } from '@/services/postService';
+import { postService, PostListItem, Post } from '@/services/postService';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { PostPropertiesModal } from '@/components/PostPropertiesModal';
+import { UpdatePostPropertiesRequest } from '@/types/post';
 import { logger } from '@/lib/logger';
 
 export default function PostsPage() {
@@ -40,6 +42,24 @@ export default function PostsPage() {
     type: 'delete' | 'copy';
     post: PostListItem | null;
   }>({ isOpen: false, type: 'delete', post: null });
+
+  // Properties Modal state
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
+  const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
+  const tagPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Close tag popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
+        setActiveTagPopover(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
 
   // Debounce search
   useEffect(() => {
@@ -166,6 +186,39 @@ export default function PostsPage() {
     e.stopPropagation();
     navigate(`/posts/${post.id}/edit`);
   }, [navigate]);
+
+  // Handle open properties modal
+  const handleOpenProperties = useCallback(async (post: PostListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsFetchingDetail(true);
+    try {
+      const res = await postService.getById(post.id);
+      console.log('[Debug] API Response:', res);
+      if (res.data) {
+        setSelectedPost(res.data);
+        setIsPropertiesModalOpen(true);
+      }
+    } catch (err) {
+      logger.error('获取文章详情失败:', err);
+    } finally {
+      setIsFetchingDetail(false);
+    }
+  }, []);
+
+  // Handle save properties
+  const handleSaveProperties = useCallback(async (data: UpdatePostPropertiesRequest) => {
+    if (!selectedPost) return;
+    try {
+      setActionLoading(selectedPost.id);
+      await postService.updateProperties(selectedPost.id, data);
+      setIsPropertiesModalOpen(false);
+      fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters);
+    } catch (err) {
+      logger.error('Update properties failed:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [selectedPost, pagination.pageNum, activeStatus, debouncedSearch, filters]);
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
@@ -435,17 +488,17 @@ export default function PostsPage() {
 
 
       {/* 文章列表 */}
-      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-sm shadow-xl relative flex flex-col min-h-[500px]">
-        {/* 固定表头 - 不参与动画 */}
-        <table className="w-full table-fixed">
+      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-sm shadow-xl relative flex flex-col">
+        {/* 固定表头 - 仅桌面端显示 */}
+        <table className="w-full table-fixed hidden md:table">
           <thead className="bg-white/[0.02] border-b border-white/5 text-gray-400 text-xs font-semibold uppercase tracking-wider">
             <tr>
               <th className="px-4 py-3.5 text-left w-[40%]">标题</th>
               <th className="px-4 py-3.5 text-left w-20">状态</th>
               <th className="px-4 py-3.5 text-left w-24">分类</th>
               <th className="px-4 py-3.5 text-left w-40">标签</th>
-              <th className="px-4 py-3.5 text-left w-16">浏览</th>
               <th className="px-4 py-3.5 text-left w-24">时间</th>
+              <th className="px-4 py-3.5 text-left w-16">浏览</th>
               <th className="px-4 py-3.5 text-right w-28">操作</th>
             </tr>
           </thead>
@@ -461,22 +514,39 @@ export default function PostsPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
+                className="p-4"
               >
-                <table className="w-full table-fixed">
-                  <tbody>
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <tr key={i} className="border-b border-white/5 last:border-b-0">
-                        <td className="px-4 py-3.5 w-[40%]"><div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div></td>
-                        <td className="px-4 py-3.5 w-20"><div className="h-5 bg-white/5 rounded-full w-14 animate-pulse"></div></td>
-                        <td className="px-4 py-3.5 w-24"><div className="h-6 bg-white/5 rounded-md w-16 animate-pulse"></div></td>
-                        <td className="px-4 py-3.5 w-40"><div className="flex gap-1.5"><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div></div></td>
-                        <td className="px-4 py-3.5 w-16"><div className="h-5 bg-white/5 rounded w-10 animate-pulse"></div></td>
-                        <td className="px-4 py-3.5 w-24"><div className="h-5 bg-white/5 rounded w-20 animate-pulse"></div></td>
-                        <td className="px-4 py-3.5 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {/* 桌面端骨架屏 */}
+                <div className="hidden md:block">
+                  <table className="w-full table-fixed">
+                    <tbody>
+                      {Array.from({ length: 10 }).map((_, i) => (
+                        <tr key={i} className="border-b border-white/5 last:border-b-0">
+                          <td className="px-4 py-3.5 w-[40%]"><div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-20"><div className="h-5 bg-white/5 rounded-full w-14 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-24"><div className="h-6 bg-white/5 rounded-md w-16 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-40"><div className="flex gap-1.5"><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div></div></td>
+                          <td className="px-4 py-3.5 w-24"><div className="h-5 bg-white/5 rounded w-20 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-16"><div className="h-5 bg-white/5 rounded w-10 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 移动端骨架屏 */}
+                <div className="md:hidden space-y-4">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
+                      <div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div>
+                      <div className="flex justify-between items-center">
+                        <div className="h-5 bg-white/5 rounded-full w-14 animate-pulse"></div>
+                        <div className="h-5 bg-white/5 rounded w-24 animate-pulse"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             ) : error ? (
               <motion.div
@@ -509,63 +579,206 @@ export default function PostsPage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                <table className="w-full table-fixed">
-                  <tbody>
+                  {/* 桌面端视图 */}
+                  <div className="hidden md:block">
+                    <table className="w-full table-fixed">
+                      <tbody>
+                        {posts.map((post) => (
+                          <tr 
+                            key={post.id} 
+                            className="border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors group"
+                          >
+                            <td className="px-4 py-3.5 w-[40%]">
+                              <button
+                                onClick={(e) => handleEdit(post, e)}
+                                className="text-left w-full"
+                              >
+                                <p className="text-white font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
+                                  {post.title}
+                                </p>
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 w-20 whitespace-nowrap">
+                              {getStatusBadge(post.status)}
+                            </td>
+                            <td className="px-4 py-3.5 w-24 whitespace-nowrap">
+                              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-gray-300">
+                                {post.categoryName || '-'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 w-40 overflow-visible">
+                              <div className="flex items-center gap-1.5 overflow-visible relative">
+                                {post.tagNames?.length > 0 ? (
+                                  <>
+                                    <div className="flex flex-wrap gap-1.5 max-w-[120px]">
+                                      <span className="px-2 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded-md text-primary-light truncate max-w-[80px]">
+                                        {post.tagNames[0]}
+                                      </span>
+                                      {post.tagNames.length > 1 && (
+                                        <div className="relative">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveTagPopover(activeTagPopover === post.id ? null : post.id);
+                                            }}
+                                            className={cn(
+                                              "px-1.5 py-0.5 text-[10px] rounded-md font-mono transition-all",
+                                              activeTagPopover === post.id 
+                                                ? "bg-primary text-white border-primary shadow-lg shadow-primary/20" 
+                                                : "bg-white/5 border border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
+                                            )}
+                                          >
+                                            +{post.tagNames.length - 1}
+                                          </button>
+
+                                          <AnimatePresence>
+                                            {activeTagPopover === post.id && (
+                                              <motion.div
+                                                ref={tagPopoverRef}
+                                                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                className="absolute left-0 bottom-full mb-2 z-[60] min-w-[120px] p-2 rounded-xl bg-gray-900/95 border border-white/10 backdrop-blur-xl shadow-2xl"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                                                  {post.tagNames.map((tag) => (
+                                                    <span 
+                                                      key={tag} 
+                                                      className="px-2 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded-md text-primary-light whitespace-nowrap"
+                                                    >
+                                                      {tag}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                                <div className="absolute left-4 -bottom-1 w-2 h-2 bg-gray-900 border-r border-b border-white/10 rotate-45" />
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <span className="text-gray-600 text-[10px] ml-1">无标签</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5 w-24 text-sm text-gray-400 whitespace-nowrap">
+                              {formatDate(post.publishedAt || post.createdAt)}
+                            </td>
+                            <td className="px-4 py-3.5 w-16 text-sm text-gray-400 font-mono whitespace-nowrap">
+                              {post.viewCount}
+                            </td>
+                            <td className="px-4 py-3 w-28">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={(e) => handleOpenProperties(post, e)}
+                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200"
+                                  title="设置"
+                                >
+                                  <Settings className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => handleEdit(post, e)}
+                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200"
+                                  title="编辑"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => handleCopyClick(post, e)}
+                                  disabled={actionLoading === post.id}
+                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200 disabled:opacity-50"
+                                  title="复制"
+                                >
+                                  {actionLoading === post.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteClick(post, e)}
+                                  disabled={actionLoading === post.id}
+                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400 transition-all duration-200 disabled:opacity-50"
+                                  title="删除"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* 移动端视图 - 列表卡片 */}
+                  <div className="md:hidden divide-y divide-white/5">
                     {posts.map((post) => (
-                      <tr 
-                        key={post.id} 
-                        className="border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors group"
-                      >
-                        <td className="px-4 py-3.5 w-[40%]">
+                      <div key={post.id} className="p-4 space-y-3 active:bg-white/5 transition-colors">
+                        <div className="flex justify-between items-start gap-4">
                           <button
                             onClick={(e) => handleEdit(post, e)}
-                            className="text-left w-full"
+                            className="text-left flex-1"
                           >
-                            <p className="text-white font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
+                            <h3 className="text-white font-medium text-sm line-clamp-2 leading-relaxed">
                               {post.title}
-                            </p>
+                            </h3>
                           </button>
-                        </td>
-                        <td className="px-4 py-3.5 w-20 whitespace-nowrap">
                           {getStatusBadge(post.status)}
-                        </td>
-                        <td className="px-4 py-3.5 w-24 whitespace-nowrap">
-                          <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-gray-300">
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                          <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
                             {post.categoryName || '-'}
                           </span>
-                        </td>
-                        <td className="px-4 py-3.5 w-40 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            {post.tagNames?.length > 0 ? post.tagNames.slice(0, 2).map((tag) => (
-                              <span key={tag} className="px-2 py-0.5 text-xs bg-primary/10 border border-primary/20 rounded text-primary-light">
-                                {tag}
-                              </span>
-                            )) : <span className="text-gray-600 text-sm">-</span>}
-                            {post.tagNames?.length > 2 && (
-                              <span className="text-gray-500 text-xs">+{post.tagNames.length - 2}</span>
+                          <span className="w-px h-2.5 bg-white/10" />
+                          <span>{formatDate(post.publishedAt || post.createdAt)}</span>
+                          <span className="w-px h-2.5 bg-white/10" />
+                          <span>{post.viewCount} 浏览</span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <div className="flex flex-wrap gap-1.5 flex-1 mr-4">
+                            {post.tagNames?.length > 0 ? (
+                              <>
+                                {post.tagNames.slice(0, 2).map((tag) => (
+                                  <span 
+                                    key={tag} 
+                                    className="px-1.5 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded text-primary-light/90 whitespace-nowrap"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                                {post.tagNames.length > 2 && (
+                                  <span className="px-1.5 py-0.5 text-[10px] bg-white/5 border border-white/10 rounded text-gray-500 font-mono">
+                                    +{post.tagNames.length - 2}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-[10px] text-gray-600 italic">无标签</span>
                             )}
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5 w-16 text-sm text-gray-400 font-mono whitespace-nowrap">
-                          {post.viewCount}
-                        </td>
-                        <td className="px-4 py-3.5 w-24 text-sm text-gray-400 whitespace-nowrap">
-                          {formatDate(post.publishedAt || post.createdAt)}
-                        </td>
-                        <td className="px-4 py-3 w-28">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center gap-0.5">
+                            <button
+                              onClick={(e) => handleOpenProperties(post, e)}
+                              className="p-2 text-gray-400 active:text-white"
+                            >
+                              <Settings className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={(e) => handleEdit(post, e)}
-                              className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200"
-                              title="编辑"
+                              className="p-2 text-gray-400 active:text-white"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
                               onClick={(e) => handleCopyClick(post, e)}
                               disabled={actionLoading === post.id}
-                              className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200 disabled:opacity-50"
-                              title="复制"
+                              className="p-2 text-gray-400 active:text-white disabled:opacity-50"
                             >
                               {actionLoading === post.id ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -575,18 +788,15 @@ export default function PostsPage() {
                             </button>
                             <button
                               onClick={(e) => handleDeleteClick(post, e)}
-                              disabled={actionLoading === post.id}
-                              className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400 transition-all duration-200 disabled:opacity-50"
-                              title="删除"
+                              className="p-2 text-gray-400 active:text-red-400"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -685,7 +895,7 @@ export default function PostsPage() {
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.type === 'delete' ? '确定要删除这篇文章吗？' : '确定要复制这篇文章吗？'}
-        message={confirmDialog.type === 'delete' 
+        message={confirmDialog.type === 'delete'
           ? `确定要删除文章 "${confirmDialog.post?.title}" 吗？此操作不可恢复。`
           : `确定要复制文章 "${confirmDialog.post?.title}" 吗？复制后的文章将以草稿形式存在。`}
         confirmText={confirmDialog.type === 'delete' ? '确定删除' : '确定复制'}
@@ -693,6 +903,18 @@ export default function PostsPage() {
         onConfirm={confirmDialog.type === 'delete' ? confirmDelete : confirmCopy}
         onCancel={() => setConfirmDialog({ isOpen: false, type: 'delete', post: null })}
       />
+
+      {/* Properties Modal */}
+      {selectedPost && (
+        <PostPropertiesModal
+          isOpen={isPropertiesModalOpen}
+          onClose={() => setIsPropertiesModalOpen(false)}
+          post={selectedPost}
+          categories={categories}
+          tags={tags}
+          onSave={handleSaveProperties}
+        />
+      )}
     </div>
   );
 }

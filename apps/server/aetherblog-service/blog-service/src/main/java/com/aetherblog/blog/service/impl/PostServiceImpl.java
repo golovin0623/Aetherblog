@@ -1,6 +1,7 @@
 package com.aetherblog.blog.service.impl;
 
 import com.aetherblog.blog.dto.request.CreatePostRequest;
+import com.aetherblog.blog.dto.request.UpdatePostPropertiesRequest;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.entity.Category;
@@ -264,6 +265,86 @@ public class PostServiceImpl implements PostService {
         if (request.getTagIds() != null) {
             Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.getTagIds()));
             post.setTags(tags);
+        }
+
+        return toDetailResponse(postRepository.save(post));
+    }
+
+    @Override
+    @Transactional
+    public PostDetailResponse updatePostProperties(Long id, UpdatePostPropertiesRequest request) {
+        Post post = postRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(404, "文章不存在"));
+
+        // 更新标题
+        if (request.getTitle() != null) {
+            post.setTitle(request.getTitle());
+        }
+
+        // 更新摘要
+        if (request.getSummary() != null) {
+            post.setSummary(request.getSummary());
+        }
+
+        // 更新封面图
+        if (request.getCoverImage() != null) {
+            post.setCoverImage(request.getCoverImage());
+        }
+
+        // 更新分类
+        if (request.getCategoryId() != null) {
+            Category category = categoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new BusinessException(404, "分类不存在"));
+            post.setCategory(category);
+        }
+
+        // 更新标签
+        if (request.getTagIds() != null) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.getTagIds()));
+            post.setTags(tags);
+        }
+
+        // 更新状态
+        if (request.getStatus() != null) {
+            PostStatus newStatus = PostStatus.valueOf(request.getStatus());
+            if (newStatus == PostStatus.PUBLISHED && post.getPublishedAt() == null) {
+                post.setPublishedAt(LocalDateTime.now());
+            }
+            post.setStatus(newStatus);
+        }
+
+        // 更新置顶状态
+        if (request.getIsPinned() != null) {
+            post.setIsPinned(request.getIsPinned());
+        }
+
+        // 更新置顶优先级
+        if (request.getPinPriority() != null) {
+            post.setPinPriority(request.getPinPriority());
+        }
+
+        // 更新是否允许评论
+        if (request.getAllowComment() != null) {
+            post.setAllowComment(request.getAllowComment());
+        }
+
+        // 更新文章密码
+        if (request.getPassword() != null) {
+            post.setPassword(request.getPassword());
+        }
+
+        // 更新自定义路径名
+        if (request.getSlug() != null && !request.getSlug().isEmpty()) {
+            // 检查slug是否已存在（排除当前文章）
+            if (postRepository.existsBySlugAndIdNot(request.getSlug(), id)) {
+                throw new BusinessException(400, "该路径名已被使用");
+            }
+            post.setSlug(request.getSlug());
+        }
+
+        // 更新创建时间
+        if (request.getCreatedAt() != null) {
+            post.setCreatedAt(request.getCreatedAt());
         }
 
         return toDetailResponse(postRepository.save(post));
