@@ -1,6 +1,5 @@
 package com.aetherblog.blog.controller;
 
-import com.aetherblog.blog.entity.SiteSetting;
 import com.aetherblog.blog.service.SiteSettingService;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;
