@@ -1,10 +1,11 @@
-import { 
-  FileText, 
-  MessageSquare, 
-  UserPlus, 
-  AlertTriangle, 
+import {
+  FileText,
+  MessageSquare,
+  UserPlus,
+  AlertTriangle,
   CheckCircle2,
-  Clock 
+  Clock,
+  ArrowUpRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -29,7 +30,7 @@ interface RecentActivityProps {
   loading?: boolean;
 }
 
-export function RecentActivity({ 
+export function RecentActivity({
   activities = [
     {
       id: '1',
@@ -60,7 +61,7 @@ export function RecentActivity({
       timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
     },
   ],
-  loading 
+  loading
 }: RecentActivityProps) {
 
   const getIcon = (type: ActivityType) => {
@@ -85,63 +86,85 @@ export function RecentActivity({
 
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[400px] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px]">
+        <div className="flex justify-between items-center mb-4">
+          <div className="w-24 h-6 bg-white/10 rounded animate-pulse" />
+          <div className="w-16 h-4 bg-white/10 rounded animate-pulse" />
+        </div>
+        <div className="space-y-4 ml-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex items-start gap-4 relative overflow-hidden">
+              <div className="w-6 h-6 bg-white/10 rounded-full flex-shrink-0 animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-white/10 rounded w-3/4 animate-pulse relative overflow-hidden">
+                  {/* Shimmer effect */}
+                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                </div>
+                <div className="h-3 bg-white/10 rounded w-1/2 animate-pulse relative overflow-hidden">
+                  {/* Shimmer effect */}
+                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 rounded-xl bg-white/5 border border-white/10">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] flex flex-col">
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-white">最近动态</h3>
-        <button className="text-xs text-primary hover:text-primary/80 transition-colors">
-          查看全部
+        <button className="text-sm text-primary hover:text-primary/80 transition-colors flex items-center gap-1">
+          查看全部 <ArrowUpRight className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="space-y-6 relative ml-3">
-        {/* Vertical Line */}
-        <div className="absolute left-0 top-2 bottom-2 w-px bg-white/10" />
+      <div className="flex-1 overflow-hidden">
+        <div className="space-y-6 relative h-full overflow-y-auto pr-2 pl-10 pt-2">
+          {/* Vertical Line - 精确对齐到图标中心 */}
+          <div className="absolute left-[20px] top-2 bottom-2 w-px bg-white/10" />
 
-        {activities.map((item) => (
-          <div key={item.id} className="relative pl-8">
-            {/* Timeline Dot */}
-            <div className={cn(
-              "absolute left-[-11px] top-1 w-6 h-6 rounded-full border flex items-center justify-center bg-black/50 backdrop-blur-sm",
-              getBgColor(item.type).replace('bg-', 'border-')
-            )}>
-              {getIcon(item.type)}
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-white">{item.title}</p>
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <Clock className="w-3 h-3" />
-                  <span>
-                    {formatDistanceToNow(new Date(item.timestamp), { 
-                      addSuffix: true, 
-                      locale: zhCN 
-                    })}
-                  </span>
-                </div>
+          {activities.map((item) => (
+            <div key={item.id} className="relative">
+              {/* Timeline Dot - 宽度24px(w-6)，中心点在20px处 */}
+              <div className={cn(
+                "absolute left-[-32px] top-1 w-6 h-6 rounded-full border flex items-center justify-center bg-[#13131a] backdrop-blur-sm z-10",
+                getBgColor(item.type).replace('bg-', 'border-')
+              )}>
+                {getIcon(item.type)}
               </div>
-              
-              {item.description && (
-                <p className="text-xs text-gray-400 line-clamp-2">
-                  {item.description}
-                </p>
-              )}
-              
-              {item.user && (
-                <p className="text-xs text-gray-500 mt-1">
-                  by <span className="text-gray-300">{item.user.name}</span>
-                </p>
-              )}
+
+              <div className="space-y-1 pl-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-white">{item.title}</p>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Clock className="w-3 h-3" />
+                    <span>
+                      {formatDistanceToNow(new Date(item.timestamp), {
+                        addSuffix: true,
+                        locale: zhCN
+                      })}
+                    </span>
+                  </div>
+                </div>
+
+                {item.description && (
+                  <p className="text-xs text-gray-400 line-clamp-2">
+                    {item.description}
+                  </p>
+                )}
+
+                {item.user && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    by <span className="text-gray-300">{item.user.name}</span>
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

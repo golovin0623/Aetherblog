@@ -11,14 +11,16 @@ export interface Post {
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   categoryId: number | null;
   categoryName: string | null;
-  category?: { id: number; name: string; slug: string }; // Full category object when populated
+  category?: { id: number; name: string; slug: string };
   tags: Array<{ id: number; name: string }>;
   viewCount: number;
   commentCount: number;
+  isPinned?: boolean;
+  pinPriority?: number;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  draft?: CreatePostRequest; // Cached draft content
+  draft?: CreatePostRequest;
 }
 
 export interface PostListItem {
@@ -32,6 +34,8 @@ export interface PostListItem {
   tagNames: string[];
   viewCount: number;
   commentCount: number;
+  isPinned?: boolean;
+  pinPriority?: number;
   publishedAt: string | null;
   createdAt: string;
 }

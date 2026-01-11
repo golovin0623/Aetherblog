@@ -139,13 +139,23 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
   // 加载状态
   if (loading && !data) {
     return (
-      <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[400px] animate-pulse">
-        <div className="h-6 w-24 bg-white/10 rounded mb-6" />
+      <div className="p-6 rounded-xl bg-white/5 border border-white/10">
+        <div className="h-6 w-24 bg-white/10 rounded mb-6 animate-pulse" />
         <div className="grid grid-cols-2 gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="space-y-2">
+            <div key={i} className="space-y-2 animate-pulse relative overflow-hidden">
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
               <div className="h-4 bg-white/10 rounded" />
               <div className="h-2 bg-white/10 rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse relative overflow-hidden">
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             </div>
           ))}
         </div>
@@ -172,7 +182,7 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
   const services = data?.services || [];
 
   return (
-    <div className="p-6 rounded-xl bg-white/5 border border-white/10">
+    <div className="p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col">
       {/* 头部 */}
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-white">系统状态</h3>
@@ -216,8 +226,10 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
         </div>
       </div>
 
-      {/* 系统指标 */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      {/* Content area - remove scroll, let it expand naturally */}
+      <div>
+        {/* 系统指标 */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
         <MetricCard
           icon={Cpu}
           label="CPU"
@@ -296,8 +308,8 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
             <motion.div
               key={service.name}
               layout
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               className="flex items-center justify-between text-sm"
             >
               <div className="flex items-center gap-2">
@@ -338,6 +350,7 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
           上次更新: {lastUpdate.toLocaleTimeString()}
         </div>
       )}
+      </div>
     </div>
   );
 }

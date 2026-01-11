@@ -5,13 +5,13 @@ import { cn } from '@/lib/utils';
 
 interface StatsCardProps {
   title: string;
-  value: number; // Changed to number for animation
+  value: number | string; // Changed to support both number and string for formatted values
   prefix?: string;
   suffix?: string;
   change?: number;
   changeLabel?: string;
   icon: React.ReactNode;
-  color?: 'primary' | 'green' | 'blue' | 'orange' | 'pink' | 'purple';
+  color?: 'primary' | 'green' | 'blue' | 'orange' | 'pink' | 'purple' | 'cyan' | 'indigo' | 'emerald';
   loading?: boolean;
 }
 
@@ -46,6 +46,9 @@ export function StatsCard({
     orange: 'from-orange-500/20 to-yellow-500/10 border-orange-500/20',
     pink: 'from-pink-500/20 to-rose-500/10 border-pink-500/20',
     purple: 'from-purple-500/20 to-indigo-500/10 border-purple-500/20',
+    cyan: 'from-cyan-500/20 to-blue-500/10 border-cyan-500/20',
+    indigo: 'from-indigo-500/20 to-purple-500/10 border-indigo-500/20',
+    emerald: 'from-emerald-500/20 to-green-500/10 border-emerald-500/20',
   };
 
   const iconColorStyles = {
@@ -55,6 +58,9 @@ export function StatsCard({
     orange: 'bg-orange-500/20 text-orange-400',
     pink: 'bg-pink-500/20 text-pink-400',
     purple: 'bg-purple-500/20 text-purple-400',
+    cyan: 'bg-cyan-500/20 text-cyan-400',
+    indigo: 'bg-indigo-500/20 text-indigo-400',
+    emerald: 'bg-emerald-500/20 text-emerald-400',
   };
 
   if (loading) {
@@ -72,8 +78,8 @@ export function StatsCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       whileHover={{ y: -2 }}
       className={cn(
         "p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",
@@ -84,20 +90,24 @@ export function StatsCard({
         <div>
           <p className="text-gray-400 text-sm font-medium">{title}</p>
           <p className="text-3xl font-bold text-white mt-2 tabular-nums">
-            <Counter value={value} prefix={prefix} suffix={suffix} />
+            {typeof value === 'string' ? (
+              value
+            ) : (
+              <Counter value={value} prefix={prefix} suffix={suffix} />
+            )}
           </p>
-          
+
           {(change !== undefined || changeLabel) && (
             <div className="flex items-center gap-2 mt-3 text-sm">
               {change !== undefined && (
                 <div className={cn(
                   "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium",
-                  change > 0 ? "bg-green-500/10 text-green-400" : 
-                  change < 0 ? "bg-red-500/10 text-red-400" : 
+                  change > 0 ? "bg-green-500/10 text-green-400" :
+                  change < 0 ? "bg-red-500/10 text-red-400" :
                   "bg-white/5 text-gray-400"
                 )}>
-                  {change > 0 ? <TrendingUp className="w-3 h-3" /> : 
-                   change < 0 ? <TrendingDown className="w-3 h-3" /> : 
+                  {change > 0 ? <TrendingUp className="w-3 h-3" /> :
+                   change < 0 ? <TrendingDown className="w-3 h-3" /> :
                    <Minus className="w-3 h-3" />}
                   <span>{Math.abs(change)}%</span>
                 </div>
@@ -106,7 +116,7 @@ export function StatsCard({
             </div>
           )}
         </div>
-        
+
         <div className={cn("p-3 rounded-xl", iconColorStyles[color])}>
           {icon}
         </div>

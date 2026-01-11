@@ -22,66 +22,41 @@ type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated';
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const location = useLocation();
-  const { isAuthenticated, token, logout, login, user } = useAuthStore();
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(
-    // If no stored auth, immediately mark as unauthenticated
-    isAuthenticated && token ? 'checking' : 'unauthenticated'
-  );
+  const { isAuthenticated, token, logout } = useAuthStore();
+
+  // We trust the persisted auth state for the initial render to show skeletons immediately.
+  // The background validation will handle expired tokens.
+  const [isChecking, setIsChecking] = useState(isAuthenticated && token);
 
   useEffect(() => {
-    // If no token or already unauthenticated, skip validation
     if (!token || !isAuthenticated) {
-      setAuthStatus('unauthenticated');
       return;
     }
 
-    // Validate token with backend
     const validateToken = async () => {
       try {
         const res = await authService.getCurrentUser();
-        
-        if (res.code === 200 && res.data) {
-          // Token is valid, update user info if needed
-          logger.info('[AuthGuard] Token validated successfully');
-          setAuthStatus('authenticated');
-        } else {
-          // Token is invalid
-          logger.warn('[AuthGuard] Token validation failed:', res.message);
+        if (res.code !== 200 || !res.data) {
           logout();
-          setAuthStatus('unauthenticated');
         }
       } catch (error) {
-        // Network error or 401/403 (interceptor may have already logged out)
         logger.error('[AuthGuard] Token validation error:', error);
         logout();
-        setAuthStatus('unauthenticated');
+      } finally {
+        setIsChecking(false);
       }
     };
 
     validateToken();
-  }, []); // Only run on mount
+  }, [token, isAuthenticated, logout]);
 
-  // Show loading spinner while validating
-  if (authStatus === 'checking') {
-    return (
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl animate-pulse" />
-            <Loader2 className="w-12 h-12 text-primary animate-spin relative z-10" />
-          </div>
-          <p className="text-gray-400 text-sm animate-pulse">正在验证身份...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect to login if not authenticated
-  if (authStatus === 'unauthenticated') {
+  // If definitely not authenticated, redirect
+  if (!isAuthenticated || !token) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Token is valid, render children
+  // If we have a token, we render children immediately so skeletons can show.
+  // The background check will kick the user out if the token is actually invalid.
   return <>{children}</>;
 }
 

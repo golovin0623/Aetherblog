@@ -50,7 +50,7 @@ public class MediaServiceImpl implements MediaService {
     private String uploadUrlPrefix;
 
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
-            "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/svg+xml", "image/avif"
     );
 
     private static final Set<String> ALLOWED_VIDEO_TYPES = Set.of(
@@ -137,13 +137,29 @@ public class MediaServiceImpl implements MediaService {
     }
 
     @Override
-    public PageResult<MediaFile> listPage(FileType fileType, String keyword, int pageNum, int pageSize) {
+    public PageResult<MediaFile> listPage(String fileTypeStr, String keyword, int pageNum, int pageSize) {
+        log.info("查询媒体列表: fileType={}, keyword={}, pageNum={}, pageSize={}", fileTypeStr, keyword, pageNum, pageSize);
+        
+        FileType fileType = null;
+        if (StringUtils.hasText(fileTypeStr)) {
+            try {
+                fileType = FileType.valueOf(fileTypeStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("无效的文件类型参数: {}", fileTypeStr);
+            }
+        }
+
         PageRequest pageRequest = PageRequest.of(pageNum - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<MediaFile> page;
 
-        if (fileType != null) {
+        boolean hasFileType = fileType != null;
+        boolean hasKeyword = StringUtils.hasText(keyword);
+
+        if (hasFileType && hasKeyword) {
+            page = mediaFileRepository.findByFileTypeAndKeyword(fileType, keyword, pageRequest);
+        } else if (hasFileType) {
             page = mediaFileRepository.findByFileType(fileType, pageRequest);
-        } else if (StringUtils.hasText(keyword)) {
+        } else if (hasKeyword) {
             page = mediaFileRepository.searchByKeyword(keyword, pageRequest);
         } else {
             page = mediaFileRepository.findAll(pageRequest);
