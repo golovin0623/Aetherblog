@@ -7,24 +7,30 @@ import { usePathname } from 'next/navigation';
  * 视图模式切换组件
  * 具有滑动胶囊动画效果的首页/时间线切换器
  */
-export default function ViewModeToggle() {
+export default function ViewModeToggle({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname();
   const isTimeline = pathname === '/timeline';
 
+  // Dimensions based on compact mode
+  const widthClass = compact ? 'w-[64px]' : 'w-[72px]';
+  const paddingClass = compact ? 'p-0.5' : 'p-1';
+  const textClass = compact ? 'text-xs' : 'text-sm';
+  const pillInset = compact ? '2px' : '4px';
+
   return (
-    <div className="hidden md:flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
+    <div className={`flex items-center bg-white/5 rounded-full ${paddingClass} border border-white/5 relative`}>
       {/* Sliding pill indicator */}
       <div
-        className="absolute top-1 bottom-1 w-[72px] bg-primary/20 rounded-full transition-all duration-300 ease-out"
+        className={`absolute top-0.5 bottom-0.5 ${widthClass} bg-primary/20 rounded-full transition-all duration-300 ease-out`}
         style={{
-          left: isTimeline ? 'calc(50% + 2px)' : '4px',
+          left: isTimeline ? `calc(50% + ${compact ? '0px' : '2px'})` : pillInset,
         }}
       />
       
       {/* Links - fixed width to prevent layout shift */}
       <Link
         href="/posts"
-        className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
+        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
           !isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
         }`}
       >
@@ -32,7 +38,7 @@ export default function ViewModeToggle() {
       </Link>
       <Link
         href="/timeline"
-        className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
+        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
           isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
         }`}
       >

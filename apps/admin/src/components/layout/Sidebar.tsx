@@ -16,6 +16,7 @@ import {
   User,
   ChevronsLeft,
   ChevronsRight,
+  X,
 } from 'lucide-react';
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { cn } from '@/lib/utils';
@@ -75,12 +76,12 @@ export function Sidebar() {
         />
       )}
 
-      {/* Mobile Drawer */}
+      {/* Mobile Drawer - 缩小宽度以适配移动端 */}
       <div className={cn(
-        "fixed top-0 left-0 h-[100dvh] z-50 w-64 bg-background-secondary border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
+        "fixed top-0 left-0 h-[100dvh] z-50 w-[75vw] max-w-[280px] bg-background-secondary border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} />
+        <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
       </div>
 
       {/* Desktop Sidebar */}
@@ -94,7 +95,7 @@ export function Sidebar() {
           'hidden md:flex flex-col will-change-[width] transform-gpu'
         )}
       >
-        <SidebarContent {...contentProps} isMobile={false} />
+        <SidebarContent {...contentProps} isMobile={false} closeMobile={() => {}} />
       </motion.aside>
 
       <ConfirmDialog
@@ -124,6 +125,7 @@ interface SidebarContentProps {
   toggle: () => void;
   isMobile: boolean;
   handleNavigation: () => void;
+  closeMobile: () => void;
 }
 
 function SidebarContent({
@@ -135,13 +137,14 @@ function SidebarContent({
   handleSearch,
   toggle,
   isMobile,
-  handleNavigation
+  handleNavigation,
+  closeMobile
 }: SidebarContentProps) {
   return (
     <>
-      {/* Logo */}
+      {/* Logo + Mobile Close Button */}
       <div className={cn(
-        "h-14 flex items-center border-b border-border transition-all duration-300",
+        "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <div className="flex items-center gap-3">
@@ -167,6 +170,17 @@ function SidebarContent({
             </span>
           </div>
         </div>
+        
+        {/* Mobile: Close button in header */}
+        {isMobile && (
+          <button
+            onClick={closeMobile}
+            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="关闭菜单"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -243,10 +257,11 @@ function SidebarContent({
         </ul>
       </nav>
 
-      {/* Quick Links + Collapse Toggle */}
+      {/* Quick Links + Collapse Toggle (Desktop only) */}
       <div className={cn(
         "border-t border-border py-2 space-y-0.5 transition-all duration-300",
-        effectiveCollapsed ? "px-4" : "px-3"
+        effectiveCollapsed ? "px-4" : "px-3",
+        isMobile && "hidden" // 移动端隐藏收起按钮，因为已有顶部X按钮
       )}>
         <a
           href="/"
@@ -268,21 +283,19 @@ function SidebarContent({
         </a>
 
         <button
-          onClick={isMobile ? handleNavigation : toggle}
+          onClick={toggle}
           className={cn(
             'w-full flex items-center rounded-lg transition-all duration-200 group',
             effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
             'text-gray-500 hover:text-gray-300 hover:bg-white/5'
           )}
-          title={isMobile ? "关闭菜单" : (effectiveCollapsed ? "展开侧边栏" : "收起侧边栏")}
+          title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
         >
           <div className={cn(
             'flex items-center justify-center w-5 h-5 transition-transform duration-300',
             !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
           )}>
-            {isMobile ? (
-              <ChevronsLeft className="w-5 h-5" />
-            ) : effectiveCollapsed ? (
+            {effectiveCollapsed ? (
               <ChevronsRight className="w-5 h-5" />
             ) : (
               <ChevronsLeft className="w-5 h-5" />
@@ -292,7 +305,7 @@ function SidebarContent({
             'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
-            {isMobile ? '收起菜单' : '收起导航'}
+            收起导航
           </span>
         </button>
       </div>
