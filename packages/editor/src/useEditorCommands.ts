@@ -8,6 +8,20 @@ import { useCallback } from 'react';
 import { EditorView } from '@codemirror/view';
 import { undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
 
+/**
+ * 验证 URL 是否安全
+ * 只允许 http/https 协议，防止 javascript: 等危险协议
+ */
+function isValidUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:', 'data:'].includes(parsed.protocol);
+  } catch {
+    // 相对路径也允许
+    return url.startsWith('/') || url.startsWith('./') || url.startsWith('../');
+  }
+}
+
 /**图片信息 */
 export interface ImageInfo {
   from: number;
@@ -209,7 +223,13 @@ export function useEditorCommands(
   const insertImage = useCallback((url: string, alt: string = '', size?: string) => {
     const view = editorViewRef.current;
     if (!view) return;
-    
+
+    // 验证 URL 安全性
+    if (!isValidUrl(url)) {
+      console.warn('[Editor] Invalid or unsafe URL:', url);
+      return;
+    }
+
     // 构建图片 Markdown
     // 使用自定义语法: ![alt|size](url)
     // 如: ![图片|50%](http://example.com/image.png)
@@ -219,7 +239,7 @@ export function useEditorCommands(
     } else {
       markdown = `![${alt}](${url})`;
     }
-    
+
     const { from } = view.state.selection.main;
     view.dispatch({
       changes: { from, to: from, insert: markdown },

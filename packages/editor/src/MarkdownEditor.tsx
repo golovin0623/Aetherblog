@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -186,7 +186,8 @@ export function MarkdownEditor({
           bracketMatching: true,
           closeBrackets: true,
           autocompletion: true,
-        }}onPaste={onPaste}
+        }}
+        onPaste={onPaste}
       />
       {/*拖拽覆盖层 */}
       {isDragging && (
