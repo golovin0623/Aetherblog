@@ -1,6 +1,7 @@
 package com.aetherblog.blog.service;
 
 import com.aetherblog.blog.dto.request.CreatePostRequest;
+import com.aetherblog.blog.dto.request.UpdatePostPropertiesRequest;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.entity.Post;
@@ -56,6 +57,14 @@ public interface PostService {
     PostDetailResponse createPost(CreatePostRequest request);
 
     PostDetailResponse updatePost(Long id, CreatePostRequest request);
+
+    /**
+     * 更新文章属性 (快速编辑，不包含内容)
+     * @param id 文章ID
+     * @param request 属性更新请求
+     * @return 更新后的文章详情
+     */
+    PostDetailResponse updatePostProperties(Long id, UpdatePostPropertiesRequest request);
 
     /**
      * 保存文章草稿 (缓存到Redis, 7天过期)
