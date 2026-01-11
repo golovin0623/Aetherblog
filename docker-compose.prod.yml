@@ -84,10 +84,14 @@ services:
         reservations:
           memory: 256M
 
+  # Redis (可选，添加 --profile with-redis 启动内置 Redis)
+  # 如果使用外部 Redis，设置 REDIS_HOST 和 REDIS_PORT 环境变量
   redis:
     image: redis:7.2-alpine
     container_name: aetherblog-redis
     restart: unless-stopped
+    profiles:
+      - with-redis
     ports:
       - "${REDIS_PORT:-6379}:6379"
     networks:
@@ -124,8 +128,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aetherblog
       SPRING_DATASOURCE_USERNAME: aetherblog
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
     volumes:
