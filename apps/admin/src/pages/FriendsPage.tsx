@@ -105,7 +105,7 @@ export default function FriendsPage() {
   const reorderMutation = useMutation({
     mutationFn: (ids: number[]) => friendService.reorder(ids),
     onSuccess: () => {
-      // queryClient.invalidateQueries({ queryKey: ['friends'] }); // Optional, local update is faster
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
       toast.success('排序已保存');
     }
   });

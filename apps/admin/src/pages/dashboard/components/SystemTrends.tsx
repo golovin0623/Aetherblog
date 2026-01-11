@@ -60,8 +60,8 @@ export function SystemTrends() {
   const [visibleMetrics, setVisibleMetrics] = useState({
     cpu: true,
     memory: true,
-    disk: false,
-    jvm: false
+    disk: true,
+    jvm: true
   });
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -338,6 +338,7 @@ export function SystemTrends() {
                 axisLine={false}
                 tick={{ fontSize: 10 }}
                 domain={[0, 100]}
+                ticks={[0, 25, 50, 75, 100]}
                 unit="%"
                 width={30}
               />

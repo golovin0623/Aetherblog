@@ -77,4 +77,11 @@ public class FriendLinkController {
     public R<FriendLink> toggleVisible(@PathVariable Long id) {
         return R.ok(friendLinkService.toggleVisible(id));
     }
+
+    @Operation(summary = "批量更新排序")
+    @PatchMapping("/reorder")
+    public R<Void> reorder(@RequestBody List<Long> ids) {
+        friendLinkService.reorder(ids);
+        return R.ok();
+    }
 }
