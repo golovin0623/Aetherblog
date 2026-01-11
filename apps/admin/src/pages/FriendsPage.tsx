@@ -198,7 +198,11 @@ export default function FriendsPage() {
                         key={friend.id}
                         friend={friend}
                         onEdit={() => handleEdit(friend)}
-                        onDelete={() => deleteMutation.mutate(friend.id)}
+                        onDelete={() => {
+                          if (window.confirm('确定要删除这个友链吗？')) {
+                            deleteMutation.mutate(friend.id);
+                          }
+                        }}
                         onToggleVisible={() => toggleMutation.mutate(friend.id)}
                       />
                     ))}
