@@ -352,7 +352,8 @@ function createComponents(highlighter: Highlighter | null): Components {
     
     // 图片
     img: ({ src, alt, ...props }) => {
-      // 解析 alt 文本中的大小设置 ![alt|50%](url)
+      // 解析 alt 文本中的大小设置 ![alt|size](url)
+      // 支持多种 CSS 单位: px, %, vw, vh, em, rem
       let width: string | undefined = undefined;
       let displayAlt = alt;
 
@@ -360,13 +361,15 @@ function createComponents(highlighter: Highlighter | null): Components {
         const parts = alt.split('|');
         // 取最后一部分作为大小，其余部分合并作为 alt
         const sizePart = parts.pop();
-        
-        if (sizePart && /^\d+%?$/.test(sizePart)) {
-            width = sizePart.endsWith('%') ? sizePart : `${sizePart}px`;
-            displayAlt = parts.join('|');
+
+        // 支持: 纯数字(默认px)、数字+单位(px/%/vw/vh/em/rem)
+        if (sizePart && /^\d+(px|%|vw|vh|em|rem)?$/i.test(sizePart)) {
+          // 纯数字默认添加 px
+          width = /^\d+$/.test(sizePart) ? `${sizePart}px` : sizePart;
+          displayAlt = parts.join('|');
         } else {
-            // 如果最后一部分不是有效的大小格式，则不进行分割
-            displayAlt = alt;
+          // 如果最后一部分不是有效的大小格式，则不进行分割
+          displayAlt = alt;
         }
       }
 
