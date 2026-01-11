@@ -114,7 +114,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1 pl-4 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+      <div className="flex items-center gap-1 pl-4">
         <button
           onClick={(e) => { e.stopPropagation(); onToggleVisible(); }}
           className={cn(
