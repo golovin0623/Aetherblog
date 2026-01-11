@@ -121,16 +121,52 @@ export function SystemTrends() {
     setVisibleMetrics(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Calculate Ticks based on time range
+  const ticks = useMemo(() => {
+    if (data.length === 0) return [];
+    
+    const startTime = data[0].timestamp;
+    const endTime = data[data.length - 1].timestamp;
+    const duration = endTime - startTime;
+    
+    // Target approximately 5-8 ticks
+    let tickCount = 6;
+    
+    if (minutes <= 60) tickCount = 6;        // 10 min interval
+    else if (minutes <= 1440) tickCount = 8; // 3 hour interval usually, but for 24h maybe 4h
+    else if (minutes <= 10080) tickCount = 7; // Daily
+    else tickCount = 6;                      // 5 days
+
+    const step = duration / (tickCount - 1);
+    const generatedTicks: string[] = [];
+    
+    for (let i = 0; i < tickCount; i++) {
+        // Find closest data point to the ideal tick time
+        const targetTime = startTime + i * step;
+        const closest = data.reduce((prev, curr) => {
+            return (Math.abs(curr.timestamp - targetTime) < Math.abs(prev.timestamp - targetTime) ? curr : prev);
+        });
+        // Avoid duplicates
+        if (!generatedTicks.find(t => t === closest.time)) {
+             generatedTicks.push(closest.time);
+        }
+    }
+    return generatedTicks;
+  }, [data, minutes]);
+
   // Smart Formatter
-  const formatXAxis = (isoTime: string) => {
+  const formatXAxis = (isoTime: string, index: number) => {
+    // Hide the first tick to prevent overlap with Y-axis
+    if (index === 0) return '';
+    
     try {
       const date = parseISO(isoTime);
       if (minutes > 1440) { // > 24 Hours
-        return format(date, 'MM-dd HH:mm');
+        return format(date, 'MM-dd');
       }
       return format(date, 'HH:mm');
     } catch (e) {
-      return isoTime;
+      return '';
     }
   };
 
@@ -328,7 +364,8 @@ export function SystemTrends() {
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 10 }}
-                minTickGap={30}
+                ticks={ticks}
+                interval={0}
                 tickFormatter={formatXAxis}
                 height={30}
               />
