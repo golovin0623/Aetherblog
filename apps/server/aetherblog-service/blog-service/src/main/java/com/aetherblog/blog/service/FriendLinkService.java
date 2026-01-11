@@ -61,4 +61,9 @@ public interface FriendLinkService {
      * 更新排序
      */
     void updateSortOrder(Long id, Integer sortOrder);
+    /**
+     * 更新友链排序
+     * @param ids 排序后的ID列表
+     */
+    void reorder(List<Long> ids);
 }

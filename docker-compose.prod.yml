@@ -132,8 +132,11 @@ services:
       SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
+      LOGGING_FILE_NAME: /app/logs/server.log
+      APP_LOG_PATH: /app/logs
     volumes:
       - aetherblog_uploads:/app/uploads
+      - aetherblog_logs:/app/logs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -221,6 +224,8 @@ volumes:
     name: aetherblog_postgres_data
   aetherblog_uploads:
     name: aetherblog_uploads
+  aetherblog_logs:
+    name: aetherblog_logs
 
 # ---------------------------------------------------------------------------
 # Networks

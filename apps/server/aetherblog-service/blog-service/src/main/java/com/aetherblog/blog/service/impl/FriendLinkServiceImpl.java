@@ -130,4 +130,22 @@ public class FriendLinkServiceImpl implements FriendLinkService {
         friendLinkRepository.save(existing);
         log.info("更新友链排序: id={}, sortOrder={}", id, sortOrder);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reorder(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        
+        for (int i = 0; i < ids.size(); i++) {
+            Long id = ids.get(i);
+            final int sortOrder = i;
+            friendLinkRepository.findById(id).ifPresent(friendLink -> {
+                friendLink.setSortOrder(sortOrder);
+                friendLinkRepository.save(friendLink);
+            });
+        }
+        log.info("批量更新友链排序: count={}", ids.size());
+    }
 }

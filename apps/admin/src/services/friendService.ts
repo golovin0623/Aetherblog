@@ -88,13 +88,12 @@ class FriendService {
    * 重新排序 (由于后端暂无批量排序接口，使用并发更新)
    * @param ids ID array in new order
    */
+  /**
+   * 重新排序
+   * @param ids ID array in new order
+   */
   async reorder(ids: number[]): Promise<void> {
-    // Current implementation: Update sortOrder for each item
-    // This is not atomic but sufficient for admin usage
-    const updates = ids.map((id, index) => {
-      return this.update(id, { sortOrder: index });
-    });
-    await Promise.all(updates);
+    await api.patch(`${this.BASE_URL}/reorder`, ids);
   }
 }
 
