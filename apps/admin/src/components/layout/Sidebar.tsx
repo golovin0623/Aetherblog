@@ -90,7 +90,7 @@ export function Sidebar() {
         animate={{ width: effectiveCollapsed ? 64 : 256 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className={cn(
-          'fixed left-0 top-0 h-screen z-40 overflow-hidden',
+          'relative h-screen z-40 overflow-hidden flex-shrink-0',
           'bg-background-secondary border-r border-border',
           'hidden md:flex flex-col will-change-[width] transform-gpu'
         )}

@@ -39,18 +39,32 @@ export function VisitorChart({
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 h-[280px] sm:h-[380px] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 h-[420px]">
+        <div className="flex justify-between items-center mb-6">
+          <div className="space-y-2">
+            <div className="w-24 h-6 bg-white/10 rounded animate-pulse" />
+            <div className="w-32 h-4 bg-white/10 rounded animate-pulse" />
+          </div>
+          <div className="flex gap-2">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="w-12 h-8 bg-white/10 rounded animate-pulse" />
+            ))}
+          </div>
+        </div>
+        <div className="h-[300px] bg-white/5 rounded-lg animate-pulse relative overflow-hidden">
+          {/* Shimmer effect */}
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+        </div>
       </div>
     );
   }
 
   // Generate extended mock data based on timeRange if needed
   // In real app, parent should fetch data based on timeRange
-  const displayData = data; 
+  const displayData = data;
 
   return (
-    <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10">
+    <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div>
           <h3 className="text-lg font-semibold text-white">访问趋势</h3>
@@ -64,8 +78,8 @@ export function VisitorChart({
             onClick={() => setActiveTab('pv')}
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[36px] touch-manipulation",
-              activeTab === 'pv' 
-                ? "bg-primary text-white shadow-lg" 
+              activeTab === 'pv'
+                ? "bg-primary text-white shadow-lg"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
             )}
           >
@@ -75,8 +89,8 @@ export function VisitorChart({
             onClick={() => setActiveTab('uv')}
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[36px] touch-manipulation",
-              activeTab === 'uv' 
-                ? "bg-cyan-500 text-white shadow-lg" 
+              activeTab === 'uv'
+                ? "bg-cyan-500 text-white shadow-lg"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
             )}
           >
@@ -87,8 +101,8 @@ export function VisitorChart({
             onClick={() => handleTimeRangeChange('7d')}
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[40px] touch-manipulation",
-              timeRange === '7d' 
-                ? "bg-white/10 text-white" 
+              timeRange === '7d'
+                ? "bg-white/10 text-white"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
             )}
           >
@@ -98,8 +112,8 @@ export function VisitorChart({
             onClick={() => handleTimeRangeChange('30d')}
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[44px] touch-manipulation",
-              timeRange === '30d' 
-                ? "bg-white/10 text-white" 
+              timeRange === '30d'
+                ? "bg-white/10 text-white"
                 : "text-gray-400 hover:text-white hover:bg-white/5"
             )}
           >
@@ -107,8 +121,8 @@ export function VisitorChart({
           </button>
         </div>
       </div>
-      {/* Responsive chart height */}
-      <div className="h-[220px] sm:h-[300px] w-full">
+      {/* Chart with flex-1 to fill remaining space */}
+      <div className="flex-1 w-full min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={displayData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
@@ -122,17 +136,17 @@ export function VisitorChart({
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis 
-              dataKey="date" 
-              stroke="#6b7280" 
+            <XAxis
+              dataKey="date"
+              stroke="#6b7280"
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 12 }}
               interval="preserveStartEnd"
               tickFormatter={(value) => value.slice(5)} // Show MM-DD
             />
-            <YAxis 
-              stroke="#6b7280" 
+            <YAxis
+              stroke="#6b7280"
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 12 }}
@@ -146,7 +160,7 @@ export function VisitorChart({
                       <p className="text-zinc-400 text-xs mb-2">{label}</p>
                       {payload.map((entry: any) => (
                         <div key={entry.name} className="flex items-center gap-2 text-sm font-medium">
-                          <div 
+                          <div
                             className="w-2 h-2 rounded-full"
                             style={{ backgroundColor: entry.color }}
                           />
@@ -161,7 +175,7 @@ export function VisitorChart({
                 return null;
               }}
             />
-            
+
             {activeTab === 'pv' && (
               <Area
                 type="monotone"
@@ -174,7 +188,7 @@ export function VisitorChart({
                 animationDuration={1000}
               />
             )}
-            
+
             {activeTab === 'uv' && (
               <Area
                 type="monotone"

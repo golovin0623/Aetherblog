@@ -54,14 +54,29 @@ public interface CommentService {
     Comment markAsSpam(Long id);
 
     /**
-     * 删除评论
+     * 还原评论
+     */
+    Comment restore(Long id);
+
+    /**
+     * 软删除评论（移至回收站）
      */
     void delete(Long id);
 
     /**
-     * 批量删除评论
+     * 彻底删除评论
+     */
+    void permanentDelete(Long id);
+
+    /**
+     * 批量删除评论（软删除）
      */
     void batchDelete(List<Long> ids);
+
+    /**
+     * 批量彻底删除评论
+     */
+    void batchPermanentDelete(List<Long> ids);
 
     /**
      * 批量审核通过

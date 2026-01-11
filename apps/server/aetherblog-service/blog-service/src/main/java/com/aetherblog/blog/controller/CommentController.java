@@ -68,17 +68,37 @@ public class CommentController {
         return R.ok(commentService.markAsSpam(id));
     }
 
-    @Operation(summary = "删除评论")
+    @Operation(summary = "还原评论")
+    @PatchMapping("/{id}/restore")
+    public R<Comment> restore(@PathVariable Long id) {
+        return R.ok(commentService.restore(id));
+    }
+
+    @Operation(summary = "删除评论（移至回收站）")
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
         commentService.delete(id);
         return R.ok();
     }
 
-    @Operation(summary = "批量删除评论")
+    @Operation(summary = "彻底删除评论")
+    @DeleteMapping("/{id}/permanent")
+    public R<Void> permanentDelete(@PathVariable Long id) {
+        commentService.permanentDelete(id);
+        return R.ok();
+    }
+
+    @Operation(summary = "批量删除评论（移至回收站）")
     @DeleteMapping("/batch")
     public R<Void> batchDelete(@RequestBody List<Long> ids) {
         commentService.batchDelete(ids);
+        return R.ok();
+    }
+
+    @Operation(summary = "批量彻底删除评论")
+    @DeleteMapping("/batch/permanent")
+    public R<Void> batchPermanentDelete(@RequestBody List<Long> ids) {
+        commentService.batchPermanentDelete(ids);
         return R.ok();
     }
 
