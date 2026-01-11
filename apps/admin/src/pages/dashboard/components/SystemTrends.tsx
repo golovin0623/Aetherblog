@@ -336,11 +336,11 @@ export function SystemTrends() {
                 stroke="#4b5563" 
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: 10 }}
+                tick={{ fontSize: 11, fill: '#9ca3af' }}
+                tickFormatter={(value) => `${value}%`}
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
-                unit="%"
-                width={30}
+                width={35}
               />
               <Tooltip
                 content={({ active, payload, label }) => {
@@ -379,7 +379,7 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorCpu)"
                   animationDuration={500}
-                  isAnimationActive={!loading} // Prevent re-animation flicker during updates
+                  isAnimationActive={false}
                 />
               )}
               {visibleMetrics.memory && (
@@ -392,7 +392,7 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorMem)"
                   animationDuration={500}
-                  isAnimationActive={!loading}
+                  isAnimationActive={false}
                 />
               )}
               {visibleMetrics.disk && (
@@ -405,7 +405,7 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorDisk)"
                   animationDuration={500}
-                  isAnimationActive={!loading}
+                  isAnimationActive={false}
                 />
               )}
               {visibleMetrics.jvm && (
@@ -418,7 +418,7 @@ export function SystemTrends() {
                   fillOpacity={1}
                   fill="url(#colorJvm)"
                   animationDuration={500}
-                  isAnimationActive={!loading}
+                  isAnimationActive={false}
                 />
               )}
             </AreaChart>
