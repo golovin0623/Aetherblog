@@ -1,10 +1,14 @@
 import { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Plus, Search, Edit, Trash2, Eye, Copy, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, Copy, ChevronLeft, ChevronRight, Loader2, Settings } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { postService, PostListItem } from '@/services/postService';
+import { categoryService } from '@/services/categoryService';
+import { tagService } from '@/services/tagService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
+import { PostPropertiesModal } from '@/components/PostPropertiesModal';
+import { UpdatePostPropertiesRequest } from '@/types/post';
 
 export function PostsListPage() {
   const navigate = useNavigate();
@@ -13,6 +17,8 @@ export function PostsListPage() {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+  const [selectedPost, setSelectedPost] = useState<PostListItem | null>(null);
+  const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
 
   // Fetch posts with pagination
   const { data, isLoading, error } = useQuery({
@@ -28,6 +34,20 @@ export function PostsListPage() {
   const posts = data?.data?.list || [];
   const total = data?.data?.total || 0;
   const totalPages = data?.data?.pages || 1;
+
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: categoryService.getList,
+  });
+  const categories = categoriesData?.data || [];
+
+  // Fetch tags
+  const { data: tagsData } = useQuery({
+    queryKey: ['tags'],
+    queryFn: tagService.getList,
+  });
+  const tags = tagsData?.data || [];
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -64,6 +84,18 @@ export function PostsListPage() {
     },
   });
 
+  // Update properties mutation
+  const updatePropertiesMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdatePostPropertiesRequest }) =>
+      postService.updateProperties(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+    },
+    onError: (err) => {
+      logger.error('更新失败:', err);
+    },
+  });
+
   const handleDelete = useCallback((id: number, title: string) => {
     if (window.confirm(`确定要删除文章 "${title}" 吗？此操作不可恢复。`)) {
       deleteMutation.mutate(id);
@@ -73,6 +105,19 @@ export function PostsListPage() {
   const handleCopy = useCallback((post: PostListItem) => {
     copyMutation.mutate(post);
   }, [copyMutation]);
+
+  const handleOpenProperties = useCallback((post: PostListItem) => {
+    setSelectedPost(post);
+    setIsPropertiesModalOpen(true);
+  }, []);
+
+  const handleSaveProperties = useCallback(
+    async (data: UpdatePostPropertiesRequest) => {
+      if (!selectedPost) return;
+      await updatePropertiesMutation.mutateAsync({ id: selectedPost.id, data });
+    },
+    [selectedPost, updatePropertiesMutation]
+  );
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -212,6 +257,14 @@ export function PostsListPage() {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+                        {/* Settings */}
+                        <button
+                          onClick={() => handleOpenProperties(post)}
+                          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="设置"
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
                         {/* Edit */}
                         <button
                           onClick={() => navigate(`/posts/${post.id}/edit`)}
@@ -318,6 +371,19 @@ export function PostsListPage() {
         </div>
       )}
     </div>
+
+    {/* Properties Modal */}
+    {selectedPost && (
+      <PostPropertiesModal
+        isOpen={isPropertiesModalOpen}
+        onClose={() => setIsPropertiesModalOpen(false)}
+        post={selectedPost}
+        categories={categories}
+        tags={tags}
+        onSave={handleSaveProperties}
+      />
+    )}
+  </div>
   );
 }
 

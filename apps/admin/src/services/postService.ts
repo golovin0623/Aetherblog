@@ -54,6 +54,21 @@ export interface CreatePostRequest {
   status?: 'DRAFT' | 'PUBLISHED';
 }
 
+export interface UpdatePostPropertiesRequest {
+  title?: string;
+  summary?: string;
+  coverImage?: string;
+  categoryId?: number;
+  tagIds?: number[];
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  isPinned?: boolean;
+  pinPriority?: number;
+  allowComment?: boolean;
+  password?: string;
+  slug?: string;
+  createdAt?: string;
+}
+
 export const postService = {
   getList: (params: { 
     pageNum?: number; 
@@ -77,6 +92,9 @@ export const postService = {
 
   update: (id: number, data: Partial<CreatePostRequest>): Promise<R<Post>> =>
     apiClient.put<R<Post>>(`/v1/admin/posts/${id}`, data),
+
+  updateProperties: (id: number, data: UpdatePostPropertiesRequest): Promise<R<Post>> =>
+    apiClient.patch<R<Post>>(`/v1/admin/posts/${id}/properties`, data),
 
   autoSave: (id: number, data: Partial<CreatePostRequest>): Promise<R<void>> =>
     apiClient.post<R<void>>(`/v1/admin/posts/${id}/auto-save`, data),

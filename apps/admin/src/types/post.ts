@@ -12,6 +12,10 @@ export interface Post {
   viewCount: number;
   commentCount: number;
   likeCount?: number;
+  isPinned?: boolean;
+  pinPriority?: number;
+  allowComment?: boolean;
+  password?: string;
   publishedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -30,7 +34,10 @@ export interface PostListItem {
   tagNames: string[];
   viewCount: number;
   commentCount: number;
+  isPinned?: boolean;
+  pinPriority?: number;
   publishedAt?: string;
+  createdAt?: string;
 }
 
 export interface CreatePostRequest {
@@ -41,6 +48,21 @@ export interface CreatePostRequest {
   categoryId?: number;
   tagIds?: number[];
   status?: PostStatus;
+}
+
+export interface UpdatePostPropertiesRequest {
+  title?: string;
+  summary?: string;
+  coverImage?: string;
+  categoryId?: number;
+  tagIds?: number[];
+  status?: PostStatus;
+  isPinned?: boolean;
+  pinPriority?: number;
+  allowComment?: boolean;
+  password?: string;
+  slug?: string;
+  createdAt?: string;
 }
 
 export interface Category {

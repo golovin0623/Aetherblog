@@ -4,7 +4,7 @@ description: 构建并发布新版本 Docker 镜像到 Docker Hub，自动生成
 
 # Deploy 工作流 - 构建发布新版本
 
-此工作流用于构建 Docker 镜像并推送到 Docker Hub，同时生成版本发布总结。
+此工作流用于构建 Docker 镜像并推送到 Docker Hub，同时生成版本发布总结。描述和提交内容以及对用户的汇报必须用精准的中文描述。
 
 ## 前置条件
 
