@@ -17,6 +17,9 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, Long> {
 
     Page<MediaFile> findByUploaderId(Long uploaderId, Pageable pageable);
 
+    @Query("SELECT m FROM MediaFile m WHERE m.fileType = :fileType AND (m.filename LIKE %:keyword% OR m.originalName LIKE %:keyword%)")
+    Page<MediaFile> findByFileTypeAndKeyword(FileType fileType, String keyword, Pageable pageable);
+
     @Query("SELECT m FROM MediaFile m WHERE m.filename LIKE %:keyword% OR m.originalName LIKE %:keyword%")
     Page<MediaFile> searchByKeyword(String keyword, Pageable pageable);
 

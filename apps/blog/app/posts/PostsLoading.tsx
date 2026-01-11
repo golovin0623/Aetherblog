@@ -9,15 +9,15 @@ export default function PostsLoading() {
       <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
         {/* 顶部区域骨架 */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-12">
-          {/* Featured Post 骨架 */}
-          <div className="lg:col-span-3 lg:h-[420px] lg:min-h-[420px]">
+          {/* Featured Post 骨架 - 移动端更高 */}
+          <div className="lg:col-span-3 min-h-[66vh] md:min-h-0 lg:h-[420px] lg:min-h-[420px]">
             <div className="h-full rounded-3xl bg-white/5 border border-white/10 overflow-hidden relative">
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>
           </div>
           
-          {/* Author Card 骨架 */}
-          <div className="lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
+          {/* Author Card 骨架 - 移动端隐藏 */}
+          <div className="hidden lg:block lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
             <div className="h-full rounded-3xl bg-white/5 border border-white/10 overflow-hidden relative">
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>

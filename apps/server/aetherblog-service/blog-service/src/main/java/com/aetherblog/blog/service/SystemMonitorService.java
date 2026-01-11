@@ -131,17 +131,32 @@ public class SystemMonitorService {
             }
         }
         
-        // 系统内存 - 改进版：获取可用内存而非仅空闲内存
+        // 系统内存 - 改进版：处理 Docker/容器环境
         if (osBean instanceof com.sun.management.OperatingSystemMXBean sunOsBean) {
             long totalMem = sunOsBean.getTotalMemorySize();
+            long freeMem = sunOsBean.getFreeMemorySize();
             
-            // 尝试获取更准确的可用内存（macOS/Linux）
-            long availableMem = getAvailableMemory(totalMem);
-            long usedMem = totalMem - availableMem;
-            
-            metrics.setMemoryTotal(totalMem);
-            metrics.setMemoryUsed(usedMem);
-            metrics.setMemoryPercent((double) usedMem / totalMem * 100);
+            // Docker 兼容性处理：如果 JVM 最大内存显著小于系统总内存，说明设置了容器限制
+            long jvmMax = Runtime.getRuntime().maxMemory();
+            if (jvmMax < totalMem * 0.8) { // 容器核减逻辑：如果 JVM Max < 80% System Total，说明容器有限制
+                // 在容器中，sunOsBean 往往报告宿主机的 Total，但 JVM 只能看到容器分配的部分（或 cgroup 限制）
+                // 我们优先使用容器能感觉到的总内存
+                totalMem = jvmMax;
+                // 粗略估算容器已用内存：JVM 已用 + 系统探测到的非空闲（需小心负值）
+                long jvmUsed = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+                long usedMem = Math.max(jvmUsed, totalMem - freeMem);
+                
+                metrics.setMemoryTotal(totalMem);
+                metrics.setMemoryUsed(usedMem);
+                metrics.setMemoryPercent(Math.min(100, (double) usedMem / totalMem * 100));
+            } else {
+                // 标准物理机/虚拟机逻辑
+                long availableMem = getAvailableMemory(totalMem);
+                long usedMem = totalMem - availableMem;
+                metrics.setMemoryTotal(totalMem);
+                metrics.setMemoryUsed(usedMem);
+                metrics.setMemoryPercent(Math.min(100, (double) usedMem / totalMem * 100));
+            }
         }
         
         // 磁盘使用率 - 使用 getUsableSpace 而非 getFreeSpace（更准确）
@@ -334,18 +349,21 @@ public class SystemMonitorService {
         try {
             // 尝试多个可能的日志目录
             if (!Files.exists(dir) && name.contains("日志")) {
-                // 尝试备用日志路径
+                // 尝试备用日志路径：1.配置路径 2.应用目录 3.常见Docker路径 4.容器应用路径
                 String[] fallbackPaths = {
+                    logPath,
                     System.getProperty("user.dir") + "/logs",
-                    "/var/log/aetherblog",
                     "/app/logs",
+                    "/logs",
+                    "./logs",
                     System.getProperty("java.io.tmpdir") + "/aetherblog-logs"
                 };
                 for (String fallback : fallbackPaths) {
-                    Path fallbackDir = Paths.get(fallback);
+                    if (fallback == null || fallback.isEmpty()) continue;
+                    Path fallbackDir = Paths.get(fallback).toAbsolutePath();
                     if (Files.exists(fallbackDir)) {
                         dir = fallbackDir;
-                        log.debug("Using fallback log path: {}", dir);
+                        log.debug("Found active log path at: {}", dir);
                         break;
                     }
                 }

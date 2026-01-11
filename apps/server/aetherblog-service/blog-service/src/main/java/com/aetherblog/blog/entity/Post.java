@@ -103,6 +103,12 @@ public class Post {
     private Boolean isPinned = false;
 
     /**
+     * 置顶优先级 (数值越大优先级越高，0表示不置顶)
+     */
+    @Column(name = "pin_priority", nullable = false)
+    private Integer pinPriority = 0;
+
+    /**
      * 是否精选
      */
     @Column(name = "is_featured", nullable = false)

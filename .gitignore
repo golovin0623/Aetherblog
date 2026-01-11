@@ -45,3 +45,13 @@ apps/blog/.env.local.example
 
 # 忽略 .kilocode 下的所有内容
 .kilocode/*
+
+# User uploads c(prevent test uploads from being committed)
+apps/server/uploads/
+**/uploads/
+# Prevent accidental image uploads in wrong locations
+packages/**/src/**/*.png
+packages/**/src/**/*.jpg
+packages/**/src/**/*.jpeg
+packages/**/src/**/*.gif
+packages/**/src/**/*.webp

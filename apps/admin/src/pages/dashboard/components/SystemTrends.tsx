@@ -184,21 +184,24 @@ export function SystemTrends() {
 
   if (showSkeleton) {
     return (
-      <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 h-[350px] sm:h-[400px] animate-pulse">
+      <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10">
         <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
-          <div className="h-6 w-32 bg-white/10 rounded" />
+          <div className="h-6 w-32 bg-white/10 rounded animate-pulse" />
           <div className="flex gap-2">
-             <div className="h-8 w-24 bg-white/10 rounded" />
-             <div className="h-8 w-16 bg-white/10 rounded" />
+             <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
+             <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
           </div>
         </div>
-        <div className="h-[200px] sm:h-[300px] bg-white/5 rounded-xl" />
+        <div className="h-[200px] sm:h-[300px] bg-white/5 rounded-xl animate-pulse relative overflow-hidden">
+          {/* Shimmer effect */}
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 transition-all duration-300">
+    <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 transition-all duration-300 flex flex-col">
       {/* Header & Controls */}
       <div className="flex flex-col gap-4 mb-6">
         

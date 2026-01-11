@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Users, Eye, MessageSquare, Clock, FolderTree } from 'lucide-react';
+import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign } from 'lucide-react';
 import { 
   StatsCard, 
   VisitorChart, 
@@ -28,7 +28,10 @@ export default function DashboardPage() {
       tags: 34,
       comments: 567,
       views: 45678,
-      visitors: 12453
+      visitors: 12453,
+      totalWords: 256789,
+      aiTokens: 1234567,
+      aiCost: 12.34
     },
     topPosts: [
       { id: 1, title: 'Spring Boot 3.0 新特性详解', viewCount: 3456 },
@@ -118,31 +121,140 @@ export default function DashboardPage() {
     fetchTrendData();
   }, [timeRange]);
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 },
-    },
-  };
-
-  const item = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0 },
-  };
-
   if (loading && !data) {
     return (
-      <div className="space-y-6 animate-pulse p-6">
-        <div className="h-20 bg-white/5 rounded-xl w-1/3" />
-        <div className="grid grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-32 bg-white/5 rounded-xl" />
+      <div className="space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="space-y-2">
+            <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
+            <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
+          </div>
+          <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
+        </div>
+
+        {/* Stats Cards Skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="p-6 rounded-xl bg-white/5 border border-white/10 h-[140px] relative overflow-hidden">
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <div className="flex justify-between items-start">
+                <div className="space-y-3 flex-1">
+                  <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
+                  <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
+                  <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
+                </div>
+                <div className="w-10 h-10 bg-white/10 rounded-lg animate-pulse" />
+              </div>
+            </div>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-6 h-96">
-          <div className="col-span-2 bg-white/5 rounded-xl" />
-          <div className="bg-white/5 rounded-xl" />
+
+        {/* Content & Activity Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Posts Skeleton */}
+          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="flex justify-between items-center mb-6">
+              <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
+              <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+            </div>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 p-3">
+                  <div className="w-8 h-8 bg-white/10 rounded-lg animate-pulse" />
+                  <div className="flex-1 h-4 bg-white/10 rounded animate-pulse" />
+                  <div className="w-12 h-4 bg-white/10 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recent Activity Skeleton */}
+          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="flex justify-between items-center mb-4">
+              <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
+              <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+            </div>
+            <div className="space-y-4 ml-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-start gap-4">
+                  <div className="w-6 h-6 bg-white/10 rounded-full animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-white/10 rounded w-3/4 animate-pulse" />
+                    <div className="h-3 bg-white/10 rounded w-1/2 animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Charts Area Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Visitor Chart Skeleton */}
+          <div className="lg:col-span-2 p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="flex justify-between items-center mb-6">
+              <div className="space-y-2">
+                <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
+                <div className="h-4 w-32 bg-white/10 rounded animate-pulse" />
+              </div>
+              <div className="flex gap-2">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="w-12 h-8 bg-white/10 rounded animate-pulse" />
+                ))}
+              </div>
+            </div>
+            <div className="h-[300px] bg-white/5 rounded-lg animate-pulse" />
+          </div>
+
+          {/* Device Chart Skeleton */}
+          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="h-6 w-24 bg-white/10 rounded animate-pulse mb-4" />
+            <div className="h-[340px] flex items-center justify-center">
+              <div className="w-48 h-48 rounded-full bg-white/10 animate-pulse" />
+            </div>
+          </div>
+        </div>
+
+        {/* System Monitoring Area Skeleton */}
+        <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* System Trends Skeleton */}
+          <div className="lg:col-span-2 p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="flex justify-between mb-6">
+              <div className="h-6 w-32 bg-white/10 rounded animate-pulse" />
+              <div className="flex gap-2">
+                <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
+                <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
+              </div>
+            </div>
+            <div className="h-[300px] bg-white/5 rounded-xl animate-pulse" />
+          </div>
+
+          {/* System Status Skeleton */}
+          <div className="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="h-6 w-24 bg-white/10 rounded mb-6 animate-pulse" />
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="h-4 bg-white/10 rounded animate-pulse" />
+                  <div className="h-2 bg-white/10 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -153,11 +265,11 @@ export default function DashboardPage() {
   const topPostsData = data?.topPosts || mockData.topPosts;
 
   return (
-    <motion.div 
+    <motion.div
       className="space-y-6"
-      variants={container}
-      initial="hidden"
-      animate="show"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -173,98 +285,98 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        <motion.div variants={item}>
-          <StatsCard
-            title="文章总数"
-            value={data?.stats.posts || 0}
-            change={12}
-            changeLabel="本月新增"
-            icon={<FileText className="w-5 h-5" />}
-            color="primary"
-            loading={loading}
-          />
-        </motion.div>
-        <motion.div variants={item}>
-          <StatsCard
-            title="独立访客"
-            value={data?.stats.visitors || 0}
-            change={8}
-            changeLabel="较上周"
-            icon={<Users className="w-5 h-5" />}
-            color="blue"
-            loading={loading}
-          />
-        </motion.div>
-        <motion.div variants={item}>
-          <StatsCard
-            title="总浏览量"
-            value={data?.stats.views || 0}
-            change={15}
-            changeLabel="较上周"
-            icon={<Eye className="w-5 h-5" />}
-            color="green"
-            loading={loading}
-          />
-        </motion.div>
-        <motion.div variants={item}>
-          <StatsCard
-            title="评论总数"
-            value={data?.stats.comments || 0}
-            change={5}
-            changeLabel="待审核"
-            icon={<MessageSquare className="w-5 h-5" />}
-            color="orange"
-            loading={loading}
-          />
-        </motion.div>
-
-        <motion.div variants={item}>
-          <StatsCard
-            title="分类总数"
-            value={data?.stats.categories || 0}
-            change={2}
-            changeLabel="新增"
-            icon={<FolderTree className="w-5 h-5" />}
-            color="purple"
-            loading={loading}
-          />
-        </motion.div>
+        <StatsCard
+          title="文章总数"
+          value={data?.stats.posts || 0}
+          change={12}
+          changeLabel="本月新增"
+          icon={<FileText className="w-5 h-5" />}
+          color="primary"
+        />
+        <StatsCard
+          title="独立访客"
+          value={data?.stats.visitors || 0}
+          change={8}
+          changeLabel="较上周"
+          icon={<Users className="w-5 h-5" />}
+          color="blue"
+        />
+        <StatsCard
+          title="总浏览量"
+          value={data?.stats.views || 0}
+          change={15}
+          changeLabel="较上周"
+          icon={<Eye className="w-5 h-5" />}
+          color="green"
+        />
+        <StatsCard
+          title="评论总数"
+          value={data?.stats.comments || 0}
+          change={5}
+          changeLabel="待审核"
+          icon={<MessageSquare className="w-5 h-5" />}
+          color="orange"
+        />
+        <StatsCard
+          title="分类总数"
+          value={data?.stats.categories || 0}
+          change={2}
+          changeLabel="新增"
+          icon={<FolderTree className="w-5 h-5" />}
+          color="purple"
+        />
+        <StatsCard
+          title="总字数"
+          value={data?.stats.totalWords || 0}
+          change={8}
+          changeLabel="本月新增"
+          icon={<FileType className="w-5 h-5" />}
+          color="cyan"
+        />
+        <StatsCard
+          title="AI Tokens"
+          value={data?.stats.aiTokens || 0}
+          change={0}
+          changeLabel="总消耗"
+          icon={<Cpu className="w-5 h-5" />}
+          color="indigo"
+        />
+        <StatsCard
+          title="AI 费用"
+          value={`$${(data?.stats.aiCost || 0).toFixed(2)}`}
+          change={0}
+          changeLabel="总花费"
+          icon={<DollarSign className="w-5 h-5" />}
+          color="emerald"
+        />
       </div>
 
-      {/* Main Charts Area */}
+      {/* Content & Activity - Moved up */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TopPosts posts={topPostsData} />
+        <RecentActivity />
+      </div>
+
+      {/* Charts Area */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.div variants={item} className="lg:col-span-2">
-          <VisitorChart 
-            data={chartData} 
-            loading={loading || trendLoading}
+        <div className="lg:col-span-2">
+          <VisitorChart
+            data={chartData}
+            loading={trendLoading}
             timeRange={timeRange}
             onTimeRangeChange={setTimeRange}
           />
-        </motion.div>
-        <motion.div variants={item}>
-          <DeviceChart loading={loading} />
-        </motion.div>
-      </div>
-
-      {/* Secondary Area - Content & Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <motion.div variants={item}>
-          <TopPosts posts={topPostsData} loading={loading} />
-        </motion.div>
-        <motion.div variants={item}>
-          <RecentActivity loading={loading} />
-        </motion.div>
+        </div>
+        <DeviceChart />
       </div>
 
       {/* System Monitoring Area */}
       <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.div variants={item} className="lg:col-span-2">
+        <div className="lg:col-span-2">
           <SystemTrends />
-        </motion.div>
-        <motion.div variants={item}>
-          <SystemStatus refreshInterval={30} />
-        </motion.div>
+        </div>
+        <SystemStatus refreshInterval={30} />
       </div>
     </motion.div>
   );

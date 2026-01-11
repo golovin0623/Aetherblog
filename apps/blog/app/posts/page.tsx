@@ -159,8 +159,8 @@ export default function PostsPage() {
                 {featuredPost && <FeaturedPost post={featuredPost} />}
               </div>
 
-              {/* Right: Author Profile (25%) */}
-              <div className="lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
+              {/* Right: Author Profile (25%) - Hidden on mobile, moved to sidebar */}
+              <div className="hidden lg:block lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
                 <AuthorProfileCard className="h-full" />
               </div>
             </div>

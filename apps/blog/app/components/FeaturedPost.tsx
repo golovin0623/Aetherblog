@@ -41,7 +41,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
   return (
     <div 
-        className="relative group rounded-3xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-xl transition-all hover:border-white/20 h-full flex flex-col duration-300"
+        className="relative group rounded-3xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-xl transition-all hover:border-white/20 h-full min-h-[66vh] md:min-h-0 flex flex-col duration-300"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
@@ -94,15 +94,15 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                         </div>
                     )}
 
-                    {/* Summary - with markdown rendering, optimized height, subtle scrollbar */}
+                    {/* Summary - with markdown rendering, auto-fill available space */}
                     <div 
-                      className="text-gray-400 text-sm leading-relaxed mb-6 max-h-[140px] lg:max-h-[180px] overflow-y-auto"
+                      className="text-gray-400 text-sm leading-relaxed mb-6 flex-1 overflow-y-auto"
                       style={{
                         scrollbarWidth: 'thin',
                         scrollbarColor: 'rgba(255,255,255,0.1) transparent',
                       }}
                     >
-                        <MiniMarkdownPreview content={displaySummary} maxLength={300} />
+                        <MiniMarkdownPreview content={displaySummary} maxLength={800} />
                     </div>
                 </div>
 

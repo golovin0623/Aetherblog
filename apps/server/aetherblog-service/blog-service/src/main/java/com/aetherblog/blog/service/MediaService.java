@@ -1,7 +1,6 @@
 package com.aetherblog.blog.service;
 
 import com.aetherblog.blog.entity.MediaFile;
-import com.aetherblog.blog.entity.MediaFile.FileType;
 import com.aetherblog.common.core.domain.PageResult;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,7 +32,7 @@ public interface MediaService {
     /**
      * 分页获取所有文件
      */
-    PageResult<MediaFile> listPage(FileType fileType, String keyword, int pageNum, int pageSize);
+    PageResult<MediaFile> listPage(String fileTypeStr, String keyword, int pageNum, int pageSize);
 
     /**
      * 获取用户上传的文件

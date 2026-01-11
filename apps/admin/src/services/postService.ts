@@ -11,14 +11,16 @@ export interface Post {
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   categoryId: number | null;
   categoryName: string | null;
-  category?: { id: number; name: string; slug: string }; // Full category object when populated
+  category?: { id: number; name: string; slug: string };
   tags: Array<{ id: number; name: string }>;
   viewCount: number;
   commentCount: number;
+  isPinned?: boolean;
+  pinPriority?: number;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  draft?: CreatePostRequest; // Cached draft content
+  draft?: CreatePostRequest;
 }
 
 export interface PostListItem {
@@ -32,6 +34,8 @@ export interface PostListItem {
   tagNames: string[];
   viewCount: number;
   commentCount: number;
+  isPinned?: boolean;
+  pinPriority?: number;
   publishedAt: string | null;
   createdAt: string;
 }
@@ -52,6 +56,21 @@ export interface CreatePostRequest {
   categoryId?: number;
   tagIds?: number[];
   status?: 'DRAFT' | 'PUBLISHED';
+}
+
+export interface UpdatePostPropertiesRequest {
+  title?: string;
+  summary?: string;
+  coverImage?: string;
+  categoryId?: number;
+  tagIds?: number[];
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  isPinned?: boolean;
+  pinPriority?: number;
+  allowComment?: boolean;
+  password?: string;
+  slug?: string;
+  createdAt?: string;
 }
 
 export const postService = {
@@ -77,6 +96,9 @@ export const postService = {
 
   update: (id: number, data: Partial<CreatePostRequest>): Promise<R<Post>> =>
     apiClient.put<R<Post>>(`/v1/admin/posts/${id}`, data),
+
+  updateProperties: (id: number, data: UpdatePostPropertiesRequest): Promise<R<Post>> =>
+    apiClient.patch<R<Post>>(`/v1/admin/posts/${id}/properties`, data),
 
   autoSave: (id: number, data: Partial<CreatePostRequest>): Promise<R<void>> =>
     apiClient.post<R<void>>(`/v1/admin/posts/${id}/auto-save`, data),
