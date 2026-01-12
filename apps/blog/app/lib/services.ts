@@ -10,7 +10,8 @@ export interface SiteSettings {
   authorName: string;
   icp?: string;
   startYear?: string;
-  [key: string]: string | undefined;
+  comment_enabled?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }
 
 export interface Post {
@@ -34,6 +35,25 @@ export interface FriendLink {
   themeColor?: string;
 }
 
+export interface Comment {
+  id: number;
+  parentId?: number;
+  nickname: string;
+  avatar?: string;
+  content: string;
+  website?: string;
+  createdAt: string;
+  children?: Comment[];
+}
+
+export interface CreateCommentRequest {
+  nickname: string;
+  email?: string;
+  website?: string;
+  content: string;
+  parentId?: number;
+}
+
 /**
  * 获取站点全量配置
  * Revalidation: 1 hour (3600s)
@@ -43,9 +63,9 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     const res = await fetch(API_ENDPOINTS.settings, {
       next: { revalidate: 3600 }
     });
-    
+
     if (!res.ok) throw new Error('Failed to fetch settings');
-    
+
     const json = await res.json();
     return json.data || {};
   } catch (error) {
@@ -100,4 +120,44 @@ export async function getFriendLinks(): Promise<FriendLink[]> {
     logger.warn('Failed to fetch friend links:', error);
     return [];
   }
+}
+
+/**
+ * 获取文章评论列表
+ */
+export async function getComments(postId: number): Promise<Comment[]> {
+  try {
+    const res = await fetch(API_ENDPOINTS.comments(postId), {
+      cache: 'no-store'
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch comments');
+
+    const json = await res.json();
+    return json.data?.list || [];
+  } catch (error) {
+    logger.warn('Failed to fetch comments:', error);
+    return [];
+  }
+}
+
+/**
+ * 提交评论
+ */
+export async function createComment(postId: number, data: CreateCommentRequest): Promise<Comment> {
+  const res = await fetch(API_ENDPOINTS.comments(postId), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.message || 'Failed to submit comment');
+  }
+
+  const json = await res.json();
+  return json.data;
 }

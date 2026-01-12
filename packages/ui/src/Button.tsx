@@ -10,6 +10,7 @@ interface ButtonProps {
   disabled?: boolean;
   onClick?: () => void;
   className?: string;
+  type?: 'button' | 'submit' | 'reset';
 }
 
 const variants = {
@@ -33,9 +34,11 @@ export function Button({
   disabled,
   onClick,
   className,
+  type = 'button',
 }: ButtonProps) {
   return (
     <motion.button
+      type={type}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
