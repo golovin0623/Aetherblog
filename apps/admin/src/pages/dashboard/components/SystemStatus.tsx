@@ -1,6 +1,6 @@
 /**
  * @file SystemStatus.tsx
- * @description 系统状态监控组件 - 显示 CPU/内存/磁盘/JVM 指标和服务健康状态
+ * @description 系统状态监控组件 - 显示 CPU/内存/磁盘/网络 指标和服务健康状态
  * @ref §8.2 - Dashboard 系统监控
  */
 
@@ -18,7 +18,8 @@ import {
   RefreshCw,
   Upload,
   FileText,
-  Clock
+  Clock,
+  Wifi
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -96,11 +97,11 @@ interface SystemStatusProps {
   refreshInterval?: number; // 刷新间隔 (秒)
 }
 
-export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
+export function SystemStatus({ refreshInterval = 30, className }: SystemStatusProps & { className?: string }) {
   const [data, setData] = useState<MonitorOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchData = useCallback(async (showRefreshing = false) => {
@@ -111,7 +112,6 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
       if (res.code === 200 && res.data) {
         setData(res.data);
         setError(null);
-        setLastUpdate(new Date());
       } else {
         setError('获取数据失败');
       }
@@ -139,7 +139,7 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
   // 加载状态
   if (loading && !data) {
     return (
-      <div className="p-6 rounded-xl bg-white/5 border border-white/10">
+      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col", className)}>
         <div className="h-6 w-24 bg-white/10 rounded mb-6 animate-pulse" />
         <div className="grid grid-cols-2 gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
@@ -172,9 +172,10 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
     diskPercent: 0,
     diskUsed: 0,
     diskTotal: 0,
-    jvmPercent: 0,
-    jvmHeapUsed: 0,
-    jvmHeapMax: 0,
+    networkIn: 0,
+    networkOut: 0,
+    networkInRate: 'N/A',
+    networkOutRate: 'N/A',
     uptime: 0,
   };
 
@@ -182,9 +183,9 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
   const services = data?.services || [];
 
   return (
-    <div className="p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col">
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
+    <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col", className)}>
+      {/* 头部 - Fixed */}
+      <div className="flex items-center justify-between mb-6 shrink-0">
         <h3 className="text-lg font-semibold text-white">系统状态</h3>
         <div className="flex items-center gap-3">
           {/* 运行时间 */}
@@ -226,130 +227,122 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
         </div>
       </div>
 
-      {/* Content area - remove scroll, let it expand naturally */}
-      <div>
+      {/* Content area - Scrollable */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">
         {/* 系统指标 */}
         <div className="grid grid-cols-2 gap-4 mb-6">
-        <MetricCard
-          icon={Cpu}
-          label="CPU"
-          value={`${metrics.cpuUsage.toFixed(1)}%`}
-          percent={metrics.cpuUsage}
-          color="primary"
-        />
-        <MetricCard
-          icon={Activity}
-          label="内存"
-          value={`${metrics.memoryPercent.toFixed(1)}%`}
-          percent={metrics.memoryPercent}
-          color="blue"
-          detail={`${formatBytes(metrics.memoryUsed)} / ${formatBytes(metrics.memoryTotal)}`}
-        />
-        <MetricCard
-          icon={HardDrive}
-          label="磁盘"
-          value={`${metrics.diskPercent.toFixed(1)}%`}
-          percent={metrics.diskPercent}
-          color="green"
-          detail={`${formatBytes(metrics.diskUsed)} / ${formatBytes(metrics.diskTotal)}`}
-        />
-        <MetricCard
-          icon={Server}
-          label="JVM"
-          value={`${metrics.jvmPercent.toFixed(1)}%`}
-          percent={metrics.jvmPercent}
-          color="orange"
-          detail={`${formatBytes(metrics.jvmHeapUsed)} / ${formatBytes(metrics.jvmHeapMax)}`}
-        />
-      </div>
+          <MetricCard
+            icon={Cpu}
+            label="CPU"
+            value={`${metrics.cpuUsage.toFixed(1)}%`}
+            percent={metrics.cpuUsage}
+            color="primary"
+          />
+          <MetricCard
+            icon={Activity}
+            label="内存"
+            value={`${metrics.memoryPercent.toFixed(1)}%`}
+            percent={metrics.memoryPercent}
+            color="blue"
+            detail={`${formatBytes(metrics.memoryUsed)} / ${formatBytes(metrics.memoryTotal)}`}
+          />
+          <MetricCard
+            icon={HardDrive}
+            label="磁盘"
+            value={`${metrics.diskPercent.toFixed(1)}%`}
+            percent={metrics.diskPercent}
+            color="green"
+            detail={`${formatBytes(metrics.diskUsed)} / ${formatBytes(metrics.diskTotal)}`}
+          />
+          <MetricCard
+            icon={Wifi}
+            label="网络"
+            value={formatBytes(metrics.networkIn + metrics.networkOut)}
+            percent={0}  // 网络流量不使用百分比
+            color="orange"
+            detail={`↑${formatBytes(metrics.networkOut)} ↓${formatBytes(metrics.networkIn)}`}
+          />
+        </div>
 
-      {/* 存储明细 */}
-      {storage && (
-        <div className="mb-6 pt-4 border-t border-white/5">
-          <h4 className="text-xs font-medium text-gray-400 mb-3 flex items-center gap-1">
-            <Database className="w-3.5 h-3.5" />
-            存储明细
-          </h4>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 flex items-center gap-1.5">
-                <Upload className="w-3 h-3" />
-                上传文件
-              </span>
-              <span className="text-white font-mono">
-                {storage.uploads.formatted}
-                <span className="text-gray-500 ml-1">
-                  ({storage.uploads.fileCount.toLocaleString()} 个)
+        {/* 存储明细 */}
+        {storage && (
+          <div className="mb-6 pt-4 border-t border-white/5">
+            <h4 className="text-[10px] uppercase tracking-wider font-semibold text-gray-600 mb-3">
+              存储明细
+            </h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400 flex items-center gap-1.5">
+                  <Upload className="w-3 h-3" />
+                  上传文件
                 </span>
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 flex items-center gap-1.5">
-                <Database className="w-3 h-3" />
-                数据库
-              </span>
-              <span className="text-white font-mono">{storage.database.formatted}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 flex items-center gap-1.5">
-                <FileText className="w-3 h-3" />
-                日志
-              </span>
-              <span className="text-white font-mono">{storage.logs.formatted}</span>
+                <span className="text-white font-mono">
+                  {storage.uploads.formatted}
+                  <span className="text-gray-500 ml-1">
+                    ({storage.uploads.fileCount.toLocaleString()} 个)
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400 flex items-center gap-1.5">
+                  <Database className="w-3 h-3" />
+                  数据库
+                </span>
+                <span className="text-white font-mono">{storage.database.formatted}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400 flex items-center gap-1.5">
+                  <FileText className="w-3 h-3" />
+                  日志
+                </span>
+                <span className="text-white font-mono">{storage.logs.formatted}</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* 服务健康 */}
-      <div className="space-y-3 pt-4 border-t border-white/5">
-        <AnimatePresence mode="popLayout">
-          {services.map((service) => (
-            <motion.div
-              key={service.name}
-              layout
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center justify-between text-sm"
-            >
-              <div className="flex items-center gap-2">
-                {service.status === 'up' ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-400" />
-                ) : service.status === 'warning' ? (
-                  <AlertCircle className="w-4 h-4 text-yellow-400" />
-                ) : (
-                  <XCircle className="w-4 h-4 text-red-400" />
-                )}
-                <span className="text-gray-300">{service.name}</span>
-                {/* ES 黄色状态说明 */}
-                {service.name === 'Elasticsearch' && service.status === 'warning' && (
-                  <span className="text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">
-                    单节点
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {service.status === 'up' && (
-                  <span className={cn(
-                    "text-xs font-mono",
-                    service.latency < 100 ? "text-green-400" : 
-                    service.latency < 500 ? "text-yellow-400" : "text-red-400"
-                  )}>
-                    {service.latency}ms
-                  </span>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-
-      {/* 上次更新时间 */}
-      {lastUpdate && (
-        <div className="mt-4 pt-3 border-t border-white/5 text-[10px] text-gray-600 text-center">
-          上次更新: {lastUpdate.toLocaleTimeString()}
+        {/* 服务健康 */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-4 border-t border-white/5">
+          <AnimatePresence mode="popLayout">
+            {services.map((service) => (
+              <motion.div
+                key={service.name}
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center justify-between text-xs"
+              >
+                <div className="flex items-center gap-1.5">
+                  {service.status === 'up' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                  ) : service.status === 'warning' ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-yellow-400" />
+                  ) : (
+                    <XCircle className="w-3.5 h-3.5 text-red-400" />
+                  )}
+                  <span className="text-gray-300 truncate max-w-[80px] sm:max-w-none">{service.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* ES 黄色状态说明 */}
+                  {service.name === 'Elasticsearch' && service.status === 'warning' && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 whitespace-nowrap scale-90">
+                      单节点
+                    </span>
+                  )}
+                  {service.status === 'up' && (
+                    <span className={cn(
+                      "text-[10px] font-mono",
+                      service.latency < 100 ? "text-green-400" : 
+                      service.latency < 500 ? "text-yellow-400" : "text-red-400"
+                    )}>
+                      {service.latency}ms
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
-      )}
       </div>
     </div>
   );
