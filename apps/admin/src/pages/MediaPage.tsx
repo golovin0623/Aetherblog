@@ -366,7 +366,7 @@ export default function MediaPage() {
                 <MediaGridSkeleton />
               </div>
             ) : currentItems.length > 0 ? (
-            <div className="flex-1 overflow-y-auto no-scrollbar pb-20 pr-4">
+            <div className="flex-1 overflow-y-auto no-scrollbar pb-20 pr-0 lg:pr-4">
               {viewMode === 'grid' ? (
                 <MediaGrid
                   items={currentItems}

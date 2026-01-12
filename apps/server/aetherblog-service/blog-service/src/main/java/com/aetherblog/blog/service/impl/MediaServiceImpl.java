@@ -58,7 +58,11 @@ public class MediaServiceImpl implements MediaService {
     );
 
     private static final Set<String> ALLOWED_AUDIO_TYPES = Set.of(
-            "audio/mpeg", "audio/ogg", "audio/wav"
+            "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/flac"
+    );
+
+    private static final Set<String> DOCUMENT_EXTENSIONS = Set.of(
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers"
     );
 
     @Override
@@ -70,11 +74,11 @@ public class MediaServiceImpl implements MediaService {
         }
 
         String contentType = file.getContentType();
-        FileType fileType = determineFileType(contentType);
+        String originalFilename = file.getOriginalFilename();
+        FileType fileType = determineFileType(contentType, originalFilename);
 
         // 生成存储路径: /uploads/2026/01/06/uuid.ext
         String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
-        String originalFilename = file.getOriginalFilename();
         String originalName = StringUtils.cleanPath(originalFilename != null ? originalFilename : "unknown");
         String extension = getFileExtension(originalName);
         String filename = UUID.randomUUID() + "." + extension;
@@ -251,12 +255,29 @@ public class MediaServiceImpl implements MediaService {
         return Objects.requireNonNull(mediaFileRepository.save(mediaFile), "保存媒体文件失败");
     }
 
-    private FileType determineFileType(String contentType) {
+    private FileType determineFileType(String contentType, String originalFilename) {
         if (contentType == null) return FileType.OTHER;
         if (ALLOWED_IMAGE_TYPES.contains(contentType)) return FileType.IMAGE;
         if (ALLOWED_VIDEO_TYPES.contains(contentType)) return FileType.VIDEO;
         if (ALLOWED_AUDIO_TYPES.contains(contentType)) return FileType.AUDIO;
-        if (contentType.startsWith("application/")) return FileType.DOCUMENT;
+        if (contentType.startsWith("application/") || contentType.startsWith("text/")) {
+            // Check extension for specific document types that might be text/* or application/*
+            String extension = getFileExtension(originalFilename);
+            if (DOCUMENT_EXTENSIONS.contains(extension)) {
+                return FileType.DOCUMENT;
+            }
+            // Fallback for standard application types (pdf, office, etc)
+            if (contentType.startsWith("application/") && !contentType.equals("application/octet-stream")) {
+                return FileType.DOCUMENT;
+            }
+        }
+
+        // Final check on extension just in case MIME type was generic binary
+        String extension = getFileExtension(originalFilename);
+        if (DOCUMENT_EXTENSIONS.contains(extension)) {
+            return FileType.DOCUMENT;
+        }
+
         return FileType.OTHER;
     }
 
