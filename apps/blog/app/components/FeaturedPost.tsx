@@ -39,6 +39,17 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
     });
   };
 
+  // 根据标题长度动态调整字号
+  const titleLength = post.title.length;
+  const isLongTitle = titleLength > 20;
+  const isVeryLongTitle = titleLength > 40;
+  
+  const titleSizeClass = isVeryLongTitle 
+    ? 'text-xl md:text-2xl' 
+    : isLongTitle 
+      ? 'text-[1.35rem] md:text-[1.75rem]' // 介于 xl(1.25) 和 2xl(1.5) / 3xl(1.875) 之间微调
+      : 'text-2xl md:text-3xl';
+
   return (
     <div 
         className="relative group rounded-3xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-xl transition-all hover:border-white/20 min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300"
@@ -63,7 +74,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
             <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-white/5 overflow-hidden">
                 <div className="flex flex-col items-start min-h-0 flex-1 overflow-hidden">
                      {/* Meta Info: Category, Date */}
-                    <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-4">
+                    <div className="flex flex-wrap items-center gap-3 text-[10px] font-medium text-primary mb-4">
                         {post.category && (
                             <Link href={`/categories/${post.category.slug}`} className="flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-full hover:bg-primary/20 transition-colors">
                                 <Folder className="w-3 h-3" />
@@ -74,25 +85,27 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                             <Calendar className="w-3 h-3" />
                             <span>{post.publishedAt}</span>
                         </div>
+                        
+                        {/* Tags moved here */}
+                        {post.tags && post.tags.length > 0 && (
+                            <div className="flex items-center gap-2 border-l border-white/10 pl-3 ml-1">
+                                {post.tags.slice(0, 3).map(tag => (
+                                    <span key={tag.slug} className="text-gray-500 hover:text-primary transition-colors cursor-default">
+                                        #{tag.name}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Title */}
-                    <h1 className="text-2xl md:text-3xl font-bold text-white mb-4 leading-tight group-hover:text-primary transition-colors cursor-pointer line-clamp-3">
+                    <h1 className={`${titleSizeClass} font-bold text-white mb-4 leading-tight group-hover:text-primary transition-colors cursor-pointer line-clamp-3`}>
                         <Link href={`/posts/${post.slug}`}>
                             {post.title}
                         </Link>
                     </h1>
                     
-                    {/* Tags */}
-                    {post.tags && post.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                            {post.tags.slice(0, 5).map(tag => (
-                                <span key={tag.slug} className="text-[10px] font-mono text-gray-500 bg-white/5 px-2 py-0.5 rounded border border-white/5 hover:border-primary/30 transition-colors">
-                                    #{tag.name}
-                                </span>
-                            ))}
-                        </div>
-                    )}
+                    {/* Tags section removed (moved up) */}
 
                     {/* Summary - Mobile: flex-1 fills remaining space, scrollable; Desktop: fixed max-h */}
                     <div 
