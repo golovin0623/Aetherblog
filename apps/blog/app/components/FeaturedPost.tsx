@@ -23,7 +23,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
   const displaySummary = post.summary 
     ? post.summary 
     : post.contentPreview 
-        ? post.contentPreview.slice(0, 300) + '...' 
+        ? post.contentPreview.slice(0, 500) + '...' 
         : '暂无摘要';
 
   // 鼠标位置状态
@@ -41,7 +41,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
   return (
     <div 
-        className="relative group rounded-3xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-xl transition-all hover:border-white/20 h-full min-h-[66vh] md:min-h-0 flex flex-col duration-300"
+        className="relative group rounded-3xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-xl transition-all hover:border-white/20 min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
@@ -59,9 +59,9 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent z-10" />
 
         <div className="grid lg:grid-cols-3 h-full max-h-full overflow-hidden relative z-20">
-            {/* Left Content Section (1/3 width) - Mobile: 100% */}
-            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col justify-between h-full border-b lg:border-b-0 lg:border-r border-white/5">
-                <div className="flex-1 flex flex-col items-start min-h-0">
+            {/* Left Content Section (1/3 width on desktop, 100% on mobile) */}
+            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-white/5 overflow-hidden">
+                <div className="flex flex-col items-start min-h-0 flex-1 overflow-hidden">
                      {/* Meta Info: Category, Date */}
                     <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-4">
                         {post.category && (
@@ -94,9 +94,9 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                         </div>
                     )}
 
-                    {/* Summary - with markdown rendering, auto-fill available space */}
+                    {/* Summary - Mobile: flex-1 fills remaining space, scrollable; Desktop: fixed max-h */}
                     <div 
-                      className="text-gray-400 text-sm leading-relaxed mb-6 flex-1 overflow-y-auto"
+                      className="text-gray-400 text-sm leading-relaxed mb-4 flex-1 lg:flex-initial lg:max-h-[160px] overflow-y-auto"
                       style={{
                         scrollbarWidth: 'thin',
                         scrollbarColor: 'rgba(255,255,255,0.1) transparent',
@@ -109,7 +109,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                 {/* Read More Button */}
                 <Link 
                     href={`/posts/${post.slug}`}
-                    className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-primary hover:border-primary text-xs"
+                    className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-primary hover:border-primary text-xs shrink-0"
                 >
                     <span>阅读全文</span>
                     <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-1 transition-transform" />
