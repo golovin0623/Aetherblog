@@ -9,7 +9,8 @@ import {
   SystemStatus,
   RecentActivity,
   SystemTrends,
-  ActivityItem
+  ActivityItem,
+  ContainerStatus
 } from './components';
 import { analyticsService, DashboardData } from '@/services/analyticsService';
 import { logger } from '@/lib/logger';
@@ -376,7 +377,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-2">
           <SystemTrends />
         </div>
-        <SystemStatus refreshInterval={30} />
+        <div className="space-y-6">
+          <SystemStatus refreshInterval={30} />
+          <ContainerStatus refreshInterval={30} />
+        </div>
       </div>
     </motion.div>
   );

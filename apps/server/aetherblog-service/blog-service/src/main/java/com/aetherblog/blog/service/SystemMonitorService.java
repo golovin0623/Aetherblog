@@ -54,9 +54,10 @@ public class SystemMonitorService {
         private long diskUsed;         // bytes
         private long diskTotal;        // bytes
         private double diskPercent;    // 0-100
-        private long jvmHeapUsed;      // bytes
-        private long jvmHeapMax;       // bytes
-        private double jvmPercent;     // 0-100
+        private long networkIn;        // bytes 累计接收
+        private long networkOut;       // bytes 累计发送
+        private String networkInRate;  // 接收速率 (格式化)
+        private String networkOutRate; // 发送速率 (格式化)
         private long uptime;           // seconds
     }
 
@@ -171,19 +172,105 @@ public class SystemMonitorService {
             metrics.setDiskPercent((double) usedSpace / totalSpace * 100);
         }
         
-        // JVM 堆内存
-        MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
-        long heapUsed = memoryBean.getHeapMemoryUsage().getUsed();
-        long heapMax = memoryBean.getHeapMemoryUsage().getMax();
-        metrics.setJvmHeapUsed(heapUsed);
-        metrics.setJvmHeapMax(heapMax);
-        metrics.setJvmPercent((double) heapUsed / heapMax * 100);
+        // 网络流量统计
+        try {
+            long[] networkStats = getNetworkStats();
+            metrics.setNetworkIn(networkStats[0]);
+            metrics.setNetworkOut(networkStats[1]);
+            metrics.setNetworkInRate(formatBytes(networkStats[0]) + " 累计接收");
+            metrics.setNetworkOutRate(formatBytes(networkStats[1]) + " 累计发送");
+        } catch (Exception e) {
+            log.debug("Failed to get network stats", e);
+            metrics.setNetworkIn(0);
+            metrics.setNetworkOut(0);
+            metrics.setNetworkInRate("N/A");
+            metrics.setNetworkOutRate("N/A");
+        }
         
         // 系统运行时间
         long uptime = ManagementFactory.getRuntimeMXBean().getUptime() / 1000;
         metrics.setUptime(uptime);
         
         return metrics;
+    }
+    
+    /**
+     * 获取网络流量统计
+     * macOS: 使用 netstat 命令
+     * Linux: 读取 /proc/net/dev
+     */
+    private long[] getNetworkStats() throws Exception {
+        String osName = System.getProperty("os.name").toLowerCase();
+        
+        if (osName.contains("linux")) {
+            return getNetworkStatsLinux();
+        } else if (osName.contains("mac")) {
+            return getNetworkStatsMacOS();
+        }
+        
+        return new long[]{0, 0};
+    }
+    
+    /**
+     * Linux: 从 /proc/net/dev 读取网络统计
+     */
+    private long[] getNetworkStatsLinux() throws Exception {
+        Path netDev = Paths.get("/proc/net/dev");
+        long totalIn = 0, totalOut = 0;
+        
+        for (String line : Files.readAllLines(netDev)) {
+            line = line.trim();
+            // 跳过 lo (本地回环) 和标题行
+            if (line.startsWith("lo:") || !line.contains(":")) continue;
+            
+            String[] parts = line.split("\\s+");
+            if (parts.length >= 10) {
+                String iface = parts[0].replace(":", "");
+                // 只统计 eth/ens/enp 等网络接口
+                if (iface.startsWith("eth") || iface.startsWith("ens") || iface.startsWith("enp") || iface.startsWith("wlan")) {
+                    totalIn += Long.parseLong(parts[1]);   // 接收字节
+                    totalOut += Long.parseLong(parts[9]);  // 发送字节
+                }
+            }
+        }
+        
+        return new long[]{totalIn, totalOut};
+    }
+    
+    /**
+     * macOS: 使用 netstat 获取网络统计
+     */
+    private long[] getNetworkStatsMacOS() throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("netstat", "-ib");
+        Process process = pb.start();
+        String output = new String(process.getInputStream().readAllBytes());
+        process.waitFor();
+        
+        long totalIn = 0, totalOut = 0;
+        boolean headerPassed = false;
+        
+        for (String line : output.split("\n")) {
+            if (line.startsWith("Name")) {
+                headerPassed = true;
+                continue;
+            }
+            if (!headerPassed) continue;
+            
+            String[] parts = line.trim().split("\\s+");
+            // 格式: Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
+            if (parts.length >= 10) {
+                String iface = parts[0];
+                // 只统计 en 开头的物理网络接口
+                if (iface.startsWith("en")) {
+                    try {
+                        totalIn += Long.parseLong(parts[6]);   // Ibytes
+                        totalOut += Long.parseLong(parts[9]);  // Obytes
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        
+        return new long[]{totalIn, totalOut};
     }
     
     /**

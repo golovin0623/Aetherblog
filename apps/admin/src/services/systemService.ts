@@ -17,9 +17,10 @@ export interface SystemMetrics {
   diskUsed: number;       // bytes
   diskTotal: number;      // bytes
   diskPercent: number;    // 0-100
-  jvmHeapUsed: number;    // bytes
-  jvmHeapMax: number;     // bytes
-  jvmPercent: number;     // 0-100
+  networkIn: number;      // bytes 累计接收
+  networkOut: number;     // bytes 累计发送
+  networkInRate: string;  // 格式化的接收信息
+  networkOutRate: string; // 格式化的发送信息
   uptime: number;         // seconds
 }
 
@@ -53,18 +54,51 @@ export interface MonitorOverview {
   services: ServiceHealth[];
 }
 
+// ========== 容器监控类型 ==========
+
+export interface ContainerMetrics {
+  id: string;
+  name: string;
+  displayName: string;
+  status: string;
+  state: string;
+  cpuPercent: number;
+  memoryUsed: number;
+  memoryLimit: number;
+  memoryPercent: number;
+  image: string;
+  type: string;
+}
+
+export interface ContainerOverview {
+  containers: ContainerMetrics[];
+  totalContainers: number;
+  runningContainers: number;
+  totalMemoryUsed: number;
+  totalMemoryLimit: number;
+  avgCpuPercent: number;
+  dockerAvailable: boolean;
+  errorMessage?: string;
+}
+
 // ========== 历史数据类型 ==========
 
 export interface MetricPoint {
-  time: string;   // HH:mm 格式
+  time: string;   // ISO 日期时间格式
   value: number;
+}
+
+export interface NetworkPoint {
+  time: string;
+  in: number;   // 接收 bytes
+  out: number;  // 发送 bytes
 }
 
 export interface MetricHistory {
   cpu: MetricPoint[];
   memory: MetricPoint[];
   disk: MetricPoint[];
-  jvm: MetricPoint[];
+  network: NetworkPoint[];  // 网络流量历史
   totalPoints: number;
   startTime?: string;
   endTime?: string;
@@ -111,7 +145,7 @@ export const systemService = {
   // ========== 实时指标 ==========
   
   /**
-   * 获取系统指标 (CPU/内存/磁盘/JVM)
+   * 获取系统指标 (CPU/内存/磁盘/网络)
    */
   getMetrics: () => api.get<R<SystemMetrics>>('/v1/admin/system/metrics'),
 
@@ -129,6 +163,11 @@ export const systemService = {
    * 获取完整监控数据 (一次性获取所有)
    */
   getOverview: () => api.get<R<MonitorOverview>>('/v1/admin/system/overview'),
+
+  /**
+   * 获取 Docker 容器资源监控
+   */
+  getContainers: () => api.get<R<ContainerOverview>>('/v1/admin/system/containers'),
 
   // ========== 历史数据 ==========
 

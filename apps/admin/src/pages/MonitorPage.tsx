@@ -1,4 +1,4 @@
-import { SystemTrends, SystemStatus } from './dashboard/components';
+import { SystemTrends, SystemStatus, ContainerStatus } from './dashboard/components';
 
 export default function MonitorPage() {
   return (
@@ -14,8 +14,9 @@ export default function MonitorPage() {
         <div className="lg:col-span-2">
           <SystemTrends />
         </div>
-        <div>
+        <div className="space-y-6">
           <SystemStatus refreshInterval={30} />
+          <ContainerStatus refreshInterval={30} />
         </div>
       </div>
     </div>
