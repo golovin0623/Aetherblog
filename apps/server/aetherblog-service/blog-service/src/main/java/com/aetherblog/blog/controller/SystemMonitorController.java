@@ -4,6 +4,8 @@ import com.aetherblog.blog.service.SystemMonitorService;
 import com.aetherblog.blog.service.SystemMonitorService.*;
 import com.aetherblog.blog.service.MetricsHistoryService;
 import com.aetherblog.blog.service.MetricsHistoryService.*;
+import com.aetherblog.blog.service.ContainerMonitorService;
+import com.aetherblog.blog.service.ContainerMonitorService.*;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,6 +29,7 @@ public class SystemMonitorController {
 
     private final SystemMonitorService systemMonitorService;
     private final MetricsHistoryService metricsHistoryService;
+    private final ContainerMonitorService containerMonitorService;
 
     // ========== 实时指标 ==========
 
@@ -64,6 +67,24 @@ public class SystemMonitorController {
     @GetMapping("/overview")
     public R<MonitorOverview> getMonitorOverview() {
         return R.ok(systemMonitorService.getMonitorOverview());
+    }
+
+    /**
+     * 获取 Docker 容器资源使用情况
+     */
+    @Operation(summary = "获取容器资源监控")
+    @GetMapping("/containers")
+    public R<ContainerOverview> getContainerMetrics() {
+        return R.ok(containerMonitorService.getContainerMetrics());
+    }
+
+    /**
+     * 获取容器实时日志
+     */
+    @Operation(summary = "获取容器实时日志")
+    @GetMapping("/containers/{id}/logs")
+    public R<List<String>> getContainerLogs(@PathVariable String id) {
+        return R.ok(containerMonitorService.getContainerLogs(id));
     }
 
     // ========== 历史数据 ==========

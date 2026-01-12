@@ -5,3 +5,5 @@ export * from './DeviceChart';
 export * from './SystemStatus';
 export * from './SystemTrends';
 export * from './RecentActivity';
+export * from './ContainerStatus';
+export * from './RealtimeLogViewer';

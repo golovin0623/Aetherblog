@@ -94,9 +94,17 @@ logging:
 # 应用自定义配置
 app:
   upload:
-    path: ./uploads
+    path: ${UPLOAD_PATH:./uploads}
   log:
-    path: ./logs
+    path: ${LOG_PATH:./logs}
+
+# AetherBlog 配置 (兼容其他服务)
+aetherblog:
+  upload:
+    path: ${UPLOAD_PATH:./uploads}
+    url-prefix: /uploads
+  log:
+    path: ${LOG_PATH:./logs}
 
 # Actuator 配置
 management:

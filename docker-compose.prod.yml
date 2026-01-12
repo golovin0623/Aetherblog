@@ -137,6 +137,7 @@ services:
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # 容器监控 (只读)
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

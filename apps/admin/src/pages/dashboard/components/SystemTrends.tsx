@@ -34,7 +34,6 @@ interface MergedDataPoint {
   cpu: number;
   memory: number;
   disk: number;
-  jvm: number;
   timestamp: number; // Parsed timestamp for sorting/formatting
 }
 
@@ -46,22 +45,20 @@ function mergeHistoryData(history: MetricHistory): MergedDataPoint[] {
     cpu: point.value,
     memory: history.memory[index]?.value || 0,
     disk: history.disk[index]?.value || 0,
-    jvm: history.jvm[index]?.value || 0,
     timestamp: parseISO(point.time).getTime()
   }));
 }
 
 // ========== Component ==========
 
-export function SystemTrends() {
+export function SystemTrends({ className }: { className?: string }) {
   const [data, setData] = useState<MergedDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [minutes, setMinutes] = useState(60); // View last 60 mins
   const [visibleMetrics, setVisibleMetrics] = useState({
     cpu: true,
     memory: true,
-    disk: true,
-    jvm: true
+    disk: true
   });
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -121,36 +118,47 @@ export function SystemTrends() {
     setVisibleMetrics(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Calculate Ticks based on time range
+  // Calculate Ticks based on time range (Time-aligned)
   const ticks = useMemo(() => {
     if (data.length === 0) return [];
     
+    // 1. Determine nice interval based on range
+    let intervalMs = 3600 * 1000; // Default 1h
+    if (minutes <= 30) intervalMs = 5 * 60 * 1000; // 5 min
+    else if (minutes <= 60) intervalMs = 10 * 60 * 1000; // 10 min
+    else if (minutes <= 180) intervalMs = 30 * 60 * 1000; // 30 min
+    else if (minutes <= 720) intervalMs = 2 * 3600 * 1000; // 2 hours
+    else if (minutes <= 1440) intervalMs = 4 * 3600 * 1000; // 4 hours
+    else if (minutes <= 4320) intervalMs = 12 * 3600 * 1000; // 12 hours
+    else intervalMs = 24 * 3600 * 1000; // 1 day
+
     const startTime = data[0].timestamp;
     const endTime = data[data.length - 1].timestamp;
-    const duration = endTime - startTime;
     
-    // Target approximately 5-8 ticks
-    let tickCount = 6;
-    
-    if (minutes <= 60) tickCount = 6;        // 10 min interval
-    else if (minutes <= 1440) tickCount = 8; // 3 hour interval usually, but for 24h maybe 4h
-    else if (minutes <= 10080) tickCount = 7; // Daily
-    else tickCount = 6;                      // 5 days
-
-    const step = duration / (tickCount - 1);
+    // 2. Align start to next interval (Round up to nearest nice tick)
+    let current = Math.ceil(startTime / intervalMs) * intervalMs;
     const generatedTicks: string[] = [];
     
-    for (let i = 0; i < tickCount; i++) {
-        // Find closest data point to the ideal tick time
-        const targetTime = startTime + i * step;
-        const closest = data.reduce((prev, curr) => {
-            return (Math.abs(curr.timestamp - targetTime) < Math.abs(prev.timestamp - targetTime) ? curr : prev);
-        });
-        // Avoid duplicates
-        if (!generatedTicks.find(t => t === closest.time)) {
+    while (current <= endTime) {
+        // Find closest data point to represent this tick
+        // Since XAxis is categorical, we need the exact string from data
+        const closest = data.reduce((prev, curr) => 
+            Math.abs(curr.timestamp - current) < Math.abs(prev.timestamp - current) ? curr : prev
+        );
+        
+        // Avoid duplicates and ensure we don't jump back in time (though sorted data prevents that usually)
+        if (!generatedTicks.includes(closest.time)) {
              generatedTicks.push(closest.time);
         }
+        current += intervalMs;
     }
+
+    // Ensure we have at least a few ticks if alignment skipped too many
+    if (generatedTicks.length < 2) {
+        generatedTicks.push(data[0].time);
+        generatedTicks.push(data[data.length-1].time);
+    }
+
     return generatedTicks;
   }, [data, minutes]);
 
@@ -184,7 +192,7 @@ export function SystemTrends() {
 
   if (showSkeleton) {
     return (
-      <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10">
+      <div className={cn("p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col", className)}>
         <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
           <div className="h-6 w-32 bg-white/10 rounded animate-pulse" />
           <div className="flex gap-2">
@@ -192,7 +200,7 @@ export function SystemTrends() {
              <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
           </div>
         </div>
-        <div className="h-[200px] sm:h-[300px] bg-white/5 rounded-xl animate-pulse relative overflow-hidden">
+        <div className="flex-1 bg-white/5 rounded-xl animate-pulse relative overflow-hidden">
           {/* Shimmer effect */}
           <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
         </div>
@@ -201,142 +209,130 @@ export function SystemTrends() {
   }
 
   return (
-    <div className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 transition-all duration-300 flex flex-col">
-      {/* Header & Controls */}
-      <div className="flex flex-col gap-4 mb-6">
+    <div className={cn("p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 transition-all duration-300 flex flex-col", className)}>
+      {/* Unified Header & Controls */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-6 gap-4 shrink-0">
         
-        {/* Row 1: Title & Metrics (Mobile: Stacked, Desktop: Row) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base sm:text-lg font-semibold text-white">系统负载</h3>
-             {loading && data.length > 0 && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-              {/* CPU */}
-              <button 
-                onClick={() => toggleMetric('cpu')}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium transition-colors border",
-                  visibleMetrics.cpu 
-                    ? "bg-primary/10 border-primary/30 text-primary" 
-                    : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
-                )}
-              >
-                <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.cpu ? "bg-primary" : "bg-gray-600")} />
-                CPU
-              </button>
-              {/* RAM */}
-              <button 
-                onClick={() => toggleMetric('memory')}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium transition-colors border",
-                  visibleMetrics.memory 
-                    ? "bg-blue-500/10 border-blue-500/30 text-blue-400" 
-                    : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
-                )}
-              >
-                <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.memory ? "bg-blue-400" : "bg-gray-600")} />
-                内存
-              </button>
-              {/* IO */}
-              <button 
-                onClick={() => toggleMetric('disk')}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium transition-colors border",
-                  visibleMetrics.disk 
-                    ? "bg-green-500/10 border-green-500/30 text-green-400" 
-                    : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
-                )}
-              >
-                <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.disk ? "bg-green-400" : "bg-gray-600")} />
-                磁盘
-              </button>
-              {/* JVM */}
-              <button 
-                onClick={() => toggleMetric('jvm')}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium transition-colors border",
-                  visibleMetrics.jvm 
-                    ? "bg-orange-500/10 border-orange-500/30 text-orange-400" 
-                    : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
-                )}
-              >
-                <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.jvm ? "bg-orange-400" : "bg-gray-600")} />
-                JVM
-              </button>
-          </div>
+        {/* Left: Title & Status */}
+        <div className="flex items-center gap-3">
+          <h3 className="text-base sm:text-lg font-semibold text-white">系统负载</h3>
+          {loading && data.length > 0 && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
+          {minutes > 1440 && (
+             <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-yellow-500/80 bg-yellow-500/10 px-2 py-0.5 rounded-full">
+               <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+               长周期数据需依赖持久化
+             </div>
+          )}
         </div>
 
-        {/* Row 2: Controls & Warning */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/5 p-2 rounded-lg border border-white/5">
-           
-           {/* Left: Warning (if any) or Spacer */}
-           <div className="flex-1">
-             {minutes > 1440 && (
-              <div className="flex items-center gap-1.5 text-[10px] text-yellow-500/80">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
-                长周期数据需依赖持久化存储
-              </div>
-            )}
-           </div>
+        {/* Right: Toolbar (Legend + Controls) */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          
+          {/* Legend Group */}
+          <div className="flex items-center gap-2">
+               {/* CPU */}
+               <button 
+                 onClick={() => toggleMetric('cpu')}
+                 className={cn(
+                   "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
+                   visibleMetrics.cpu 
+                     ? "bg-primary/10 border-primary/30 text-primary" 
+                     : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
+                 )}
+               >
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.cpu ? "bg-primary" : "bg-gray-600")} />
+                 CPU
+               </button>
+               {/* RAM */}
+               <button 
+                 onClick={() => toggleMetric('memory')}
+                 className={cn(
+                   "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
+                   visibleMetrics.memory 
+                     ? "bg-blue-500/10 border-blue-500/30 text-blue-400" 
+                     : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
+                 )}
+               >
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.memory ? "bg-blue-400" : "bg-gray-600")} />
+                 内存
+               </button>
+               {/* 磁盘 */}
+               <button 
+                 onClick={() => toggleMetric('disk')}
+                 className={cn(
+                   "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
+                   visibleMetrics.disk 
+                     ? "bg-green-500/10 border-green-500/30 text-green-400" 
+                     : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
+                 )}
+               >
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.disk ? "bg-green-400" : "bg-gray-600")} />
+                 磁盘
+               </button>
+          </div>
 
-           {/* Right: Selectors */}
-           <div className="flex items-center gap-2 justify-between sm:justify-end w-full sm:w-auto">
-              <select
-                value={minutes}
-                onChange={(e) => setMinutes(Number(e.target.value))}
-                className="bg-zinc-900 border border-white/10 text-white text-[10px] sm:text-xs rounded-md px-2 py-1 focus:outline-none focus:border-primary/50 max-w-[100px] sm:max-w-none"
-              >
-                <option value="30">30 分钟</option>
-                <option value="60">1 小时</option>
-                <option value="180">3 小时</option>
-                <option value="720">12 小时</option>
-                <option value="1440">24 小时</option>
-                <option value="4320">3 天</option>
-                <option value="10080">7 天</option>
-                <option value="43200">30 天</option>
-              </select>
+          <div className="w-px h-4 bg-white/10 hidden sm:block" />
 
-              <div className="w-px h-4 bg-white/10" />
+          {/* Controls Group */}
+          <div className="flex items-center bg-white/5 rounded-lg border border-white/5 p-0.5 h-7">
+             <select
+                 value={minutes}
+                 onChange={(e) => setMinutes(Number(e.target.value))}
+                 className="bg-transparent text-white text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-primary transition-colors appearance-none text-center h-full min-w-[50px]"
+                 title="时间范围"
+               >
+                 <option value="30">30分</option>
+                 <option value="60">1小时</option>
+                 <option value="180">3小时</option>
+                 <option value="720">12小时</option>
+                 <option value="1440">24小时</option>
+                 <option value="4320">3天</option>
+                 <option value="10080">7天</option>
+                 <option value="43200">30天</option>
+             </select>
+             
+             <div className="w-px h-3 bg-white/10 mx-0.5" />
 
-              <select
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                className="bg-transparent text-gray-400 text-[10px] sm:text-xs focus:outline-none"
-              >
-                <option value="5">5s</option>
-                <option value="10">10s</option>
-                <option value="30">30s</option>
-                <option value="60">1m</option>
-                <option value="300">5m</option>
-              </select>
+             <select
+                 value={refreshInterval}
+                 onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                 className="bg-transparent text-gray-400 text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-white transition-colors appearance-none text-center h-full min-w-[40px]"
+                 title="刷新频率"
+               >
+                 <option value="5">5s</option>
+                 <option value="10">10s</option>
+                 <option value="30">30s</option>
+                 <option value="60">1m</option>
+                 <option value="300">5m</option>
+             </select>
 
-              <div className="w-px h-4 bg-white/10" />
+             <div className="w-px h-3 bg-white/10 mx-0.5" />
 
-               <button
-                  onClick={() => fetchHistory(true)}
-                  className="p-1 text-gray-400 hover:text-white transition-colors"
-                  title="刷新"
-                >
-                  <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-                </button>
-                
-                <button
-                  onClick={handleCleanup}
-                  disabled={isCleaning}
-                  className="p-1 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50"
-                  title="清理"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-           </div>
+             <button
+               onClick={() => fetchHistory(true)}
+               className="h-full px-2 text-gray-400 hover:text-white transition-colors flex items-center justify-center"
+               title="刷新数据"
+             >
+               <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
+             </button>
+             
+             <div className="w-px h-3 bg-white/10 mx-0.5" />
+
+             <button
+               onClick={handleCleanup}
+               disabled={isCleaning}
+               className="h-full px-2 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 flex items-center justify-center"
+               title="清理历史数据"
+             >
+               <Trash2 className="w-3 h-3" />
+             </button>
+          </div>
         </div>
       </div>
 
       {/* Chart - Responsive Height and Opacity Transition */}
       <div className={cn(
-        "h-[250px] sm:h-[300px] w-full transition-opacity duration-300",
+        "flex-1 w-full transition-opacity duration-300 min-h-[250px]",
         loading && data.length > 0 ? "opacity-50 blur-[1px]" : "opacity-100"
       )}>
         {data.length > 0 ? (
@@ -355,10 +351,6 @@ export function SystemTrends() {
                   <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="colorJvm" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis 
@@ -368,7 +360,8 @@ export function SystemTrends() {
                 axisLine={false}
                 tick={{ fontSize: 10 }}
                 ticks={ticks}
-                interval={0}
+                interval="preserveStartEnd"
+                minTickGap={30}
                 tickFormatter={formatXAxis}
                 height={30}
               />
@@ -389,7 +382,6 @@ export function SystemTrends() {
                       if (entry.dataKey === 'cpu') return visibleMetrics.cpu;
                       if (entry.dataKey === 'memory') return visibleMetrics.memory;
                       if (entry.dataKey === 'disk') return visibleMetrics.disk;
-                      if (entry.dataKey === 'jvm') return visibleMetrics.jvm;
                       return true;
                     });
 
@@ -460,20 +452,6 @@ export function SystemTrends() {
                 strokeOpacity={visibleMetrics.disk ? 1 : 0}
                 fillOpacity={visibleMetrics.disk ? 1 : 0}
                 style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.disk ? 'auto' : 'none' }}
-              />
-              <Area
-                key="jvm"
-                type="monotone"
-                dataKey="jvm"
-                name="JVM"
-                stroke="#f97316"
-                strokeWidth={2}
-                fill="url(#colorJvm)"
-                animationDuration={300}
-                isAnimationActive={true}
-                strokeOpacity={visibleMetrics.jvm ? 1 : 0}
-                fillOpacity={visibleMetrics.jvm ? 1 : 0}
-                style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.jvm ? 'auto' : 'none' }}
               />
             </AreaChart>
           </ResponsiveContainer>

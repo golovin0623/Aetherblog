@@ -9,7 +9,9 @@ import {
   SystemStatus,
   RecentActivity,
   SystemTrends,
-  ActivityItem
+  ActivityItem,
+  ContainerStatus,
+  RealtimeLogViewer
 } from './components';
 import { analyticsService, DashboardData } from '@/services/analyticsService';
 import { logger } from '@/lib/logger';
@@ -19,6 +21,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
+  
+  // Container Logs State
+  const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
+
+  const handleContainerSelect = (id: string, name: string) => {
+    setSelectedContainer({id, name});
+  };
 
   // Mock data for fallback or initial dev
   const mockData: DashboardData = {
@@ -371,12 +380,38 @@ export default function DashboardPage() {
       </div>
 
       {/* System Monitoring Area */}
-      <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <SystemTrends />
+      <div className="space-y-6 pt-4">
+        <h2 className="text-lg font-semibold text-white">系统监控</h2>
+        
+        {/* Row 1: Trends + Status */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+           <div className="lg:col-span-2">
+             <SystemTrends className="h-[500px]" />
+           </div>
+           <div className="lg:col-span-1">
+             <SystemStatus refreshInterval={5} className="h-[500px]" />
+           </div>
         </div>
-        <SystemStatus refreshInterval={30} />
+
+        {/* Row 2: Logs + Container */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+           <div className="lg:col-span-2">
+             <RealtimeLogViewer 
+                containerId={selectedContainer.id}
+                containerName={selectedContainer.name}
+                className="h-[500px]"
+             />
+           </div>
+           
+           <div className="lg:col-span-1">
+             <ContainerStatus 
+                refreshInterval={30}
+                onSelectContainer={handleContainerSelect}
+                selectedId={selectedContainer.id}
+                className="h-[500px]" 
+             />
+           </div>
+        </div>
       </div>
     </motion.div>
   );
