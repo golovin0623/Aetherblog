@@ -60,7 +60,7 @@ RUN mkdir -p /app/uploads && \
     chown -R spring:spring /app/uploads && \
     chown spring:spring app.jar
 
-USER spring
+# USER spring
 
 EXPOSE 8080
 
