@@ -117,17 +117,17 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
             </span>
           </h2>
 
-          {/* 摘要 - 响应式高度，移动端更高以显示更多内容 */}
-          <div className="h-[100px] md:h-[60px] mb-4 overflow-hidden">
+          {/* 摘要 - 响应式高度：移动端3行(72px)，桌面端2行(48px) */}
+          <div className="h-[72px] md:h-[48px] mb-4 overflow-hidden">
             {summary ? (
-              <p className="text-gray-400 text-sm leading-relaxed line-clamp-5 md:line-clamp-3">
+              <p className="text-gray-400 text-sm leading-relaxed line-clamp-3 md:line-clamp-2">
                 {summary
                   .replace(/[#*`>\[\]!|_~]/g, '')
                   .replace(/\n+/g, ' ')
                   .replace(/\s+/g, ' ')
                   .trim()
-                  .slice(0, 120)}
-                {summary.length > 120 && '...'}
+                  .slice(0, 80)}
+                {summary.length > 80 && '...'}
               </p>
             ) : (
               <p className="text-gray-600 text-sm italic">暂无摘要</p>
