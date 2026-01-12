@@ -63,14 +63,16 @@ public class MetricsHistoryService {
         private double cpu;
         private double memory;
         private double disk;
-        private double jvm;
+        private long networkIn;  // 网络接收 bytes
+        private long networkOut; // 网络发送 bytes
         
-        public MetricSnapshot(double cpu, double memory, double disk, double jvm) {
+        public MetricSnapshot(double cpu, double memory, double disk, long networkIn, long networkOut) {
             this.timestamp = LocalDateTime.now();
             this.cpu = cpu;
             this.memory = memory;
             this.disk = disk;
-            this.jvm = jvm;
+            this.networkIn = networkIn;
+            this.networkOut = networkOut;
         }
     }
 
@@ -79,10 +81,23 @@ public class MetricsHistoryService {
         private List<MetricPoint> cpu;
         private List<MetricPoint> memory;
         private List<MetricPoint> disk;
-        private List<MetricPoint> jvm;
+        private List<NetworkPoint> network; // 网络流量历史
         private int totalPoints;
         private String startTime;
         private String endTime;
+    }
+
+    @Data
+    public static class NetworkPoint {
+        private String time;
+        private long in;  // 接收 bytes
+        private long out; // 发送 bytes
+        
+        public NetworkPoint(String time, long in, long out) {
+            this.time = time;
+            this.in = in;
+            this.out = out;
+        }
     }
 
     @Data
@@ -153,7 +168,8 @@ public class MetricsHistoryService {
                 metrics.getCpuUsage(),
                 metrics.getMemoryPercent(),
                 metrics.getDiskPercent(),
-                metrics.getJvmPercent()
+                metrics.getNetworkIn(),
+                metrics.getNetworkOut()
             );
             
             historyQueue.addLast(snapshot);
@@ -202,8 +218,8 @@ public class MetricsHistoryService {
             .map(s -> new MetricPoint(s.getTimestamp().format(formatter), s.getDisk()))
             .collect(Collectors.toList()));
         
-        history.setJvm(sampled.stream()
-            .map(s -> new MetricPoint(s.getTimestamp().format(formatter), s.getJvm()))
+        history.setNetwork(sampled.stream()
+            .map(s -> new NetworkPoint(s.getTimestamp().format(formatter), s.getNetworkIn(), s.getNetworkOut()))
             .collect(Collectors.toList()));
         
         history.setTotalPoints(filtered.size());

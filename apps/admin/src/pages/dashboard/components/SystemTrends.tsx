@@ -34,7 +34,6 @@ interface MergedDataPoint {
   cpu: number;
   memory: number;
   disk: number;
-  jvm: number;
   timestamp: number; // Parsed timestamp for sorting/formatting
 }
 
@@ -46,7 +45,6 @@ function mergeHistoryData(history: MetricHistory): MergedDataPoint[] {
     cpu: point.value,
     memory: history.memory[index]?.value || 0,
     disk: history.disk[index]?.value || 0,
-    jvm: history.jvm[index]?.value || 0,
     timestamp: parseISO(point.time).getTime()
   }));
 }
@@ -60,8 +58,7 @@ export function SystemTrends() {
   const [visibleMetrics, setVisibleMetrics] = useState({
     cpu: true,
     memory: true,
-    disk: true,
-    jvm: true
+    disk: true
   });
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -239,7 +236,7 @@ export function SystemTrends() {
                 <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.memory ? "bg-blue-400" : "bg-gray-600")} />
                 内存
               </button>
-              {/* IO */}
+              {/* 磁盘 */}
               <button 
                 onClick={() => toggleMetric('disk')}
                 className={cn(
@@ -251,19 +248,6 @@ export function SystemTrends() {
               >
                 <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.disk ? "bg-green-400" : "bg-gray-600")} />
                 磁盘
-              </button>
-              {/* JVM */}
-              <button 
-                onClick={() => toggleMetric('jvm')}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium transition-colors border",
-                  visibleMetrics.jvm 
-                    ? "bg-orange-500/10 border-orange-500/30 text-orange-400" 
-                    : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
-                )}
-              >
-                <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", visibleMetrics.jvm ? "bg-orange-400" : "bg-gray-600")} />
-                JVM
               </button>
           </div>
         </div>
@@ -355,10 +339,6 @@ export function SystemTrends() {
                   <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="colorJvm" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis 
@@ -389,7 +369,6 @@ export function SystemTrends() {
                       if (entry.dataKey === 'cpu') return visibleMetrics.cpu;
                       if (entry.dataKey === 'memory') return visibleMetrics.memory;
                       if (entry.dataKey === 'disk') return visibleMetrics.disk;
-                      if (entry.dataKey === 'jvm') return visibleMetrics.jvm;
                       return true;
                     });
 
@@ -460,20 +439,6 @@ export function SystemTrends() {
                 strokeOpacity={visibleMetrics.disk ? 1 : 0}
                 fillOpacity={visibleMetrics.disk ? 1 : 0}
                 style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.disk ? 'auto' : 'none' }}
-              />
-              <Area
-                key="jvm"
-                type="monotone"
-                dataKey="jvm"
-                name="JVM"
-                stroke="#f97316"
-                strokeWidth={2}
-                fill="url(#colorJvm)"
-                animationDuration={300}
-                isAnimationActive={true}
-                strokeOpacity={visibleMetrics.jvm ? 1 : 0}
-                fillOpacity={visibleMetrics.jvm ? 1 : 0}
-                style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.jvm ? 'auto' : 'none' }}
               />
             </AreaChart>
           </ResponsiveContainer>

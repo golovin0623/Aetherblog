@@ -1,6 +1,6 @@
 /**
  * @file SystemStatus.tsx
- * @description 系统状态监控组件 - 显示 CPU/内存/磁盘/JVM 指标和服务健康状态
+ * @description 系统状态监控组件 - 显示 CPU/内存/磁盘/网络 指标和服务健康状态
  * @ref §8.2 - Dashboard 系统监控
  */
 
@@ -18,7 +18,8 @@ import {
   RefreshCw,
   Upload,
   FileText,
-  Clock
+  Clock,
+  Wifi
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
@@ -172,9 +173,10 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
     diskPercent: 0,
     diskUsed: 0,
     diskTotal: 0,
-    jvmPercent: 0,
-    jvmHeapUsed: 0,
-    jvmHeapMax: 0,
+    networkIn: 0,
+    networkOut: 0,
+    networkInRate: 'N/A',
+    networkOutRate: 'N/A',
     uptime: 0,
   };
 
@@ -254,12 +256,12 @@ export function SystemStatus({ refreshInterval = 30 }: SystemStatusProps) {
           detail={`${formatBytes(metrics.diskUsed)} / ${formatBytes(metrics.diskTotal)}`}
         />
         <MetricCard
-          icon={Server}
-          label="JVM"
-          value={`${metrics.jvmPercent.toFixed(1)}%`}
-          percent={metrics.jvmPercent}
+          icon={Wifi}
+          label="网络"
+          value={formatBytes(metrics.networkIn + metrics.networkOut)}
+          percent={0}  // 网络流量不使用百分比
           color="orange"
-          detail={`${formatBytes(metrics.jvmHeapUsed)} / ${formatBytes(metrics.jvmHeapMax)}`}
+          detail={`↑${formatBytes(metrics.networkOut)} ↓${formatBytes(metrics.networkIn)}`}
         />
       </div>
 
