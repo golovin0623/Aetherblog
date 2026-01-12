@@ -23,9 +23,12 @@ export const API_ENDPOINTS = {
   
   // Archives
   archives: `${API_BASE_URL}/api/v1/public/archives`,
-  
+
   // Site Settings
-  settings: `${API_BASE_URL}/api/v1/public/settings`,
+  settings: `${API_BASE_URL}/api/v1/public/site/info`,
+
+  // Comments
+  comments: (postId: number) => `${API_BASE_URL}/api/v1/public/comments/post/${postId}`,
 };
 
 // 提供两个版本的 URL，供需要明确指定的场景使用

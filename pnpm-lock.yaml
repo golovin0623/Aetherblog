@@ -126,6 +126,12 @@ importers:
 
   apps/blog:
     dependencies:
+      '@aetherblog/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@aetherblog/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       '@tanstack/react-query':
         specifier: ^5.62.8
         version: 5.90.16(react@19.2.3)
