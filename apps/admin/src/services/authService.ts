@@ -21,4 +21,12 @@ export const authService = {
   changePassword: async (data: { currentPassword: string; newPassword: string; encrypted?: boolean }): Promise<R<void>> => {
     return api.post<R<void>>('/v1/auth/change-password', data);
   },
+
+  updateProfile: async (data: { nickname?: string; email?: string }): Promise<R<User>> => {
+    return api.put<R<User>>('/v1/auth/profile', data);
+  },
+
+  updateAvatar: async (avatarUrl: string): Promise<R<string>> => {
+    return api.put<R<string>>('/v1/auth/avatar', { avatarUrl });
+  },
 };
