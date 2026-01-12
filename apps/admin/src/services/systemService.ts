@@ -202,6 +202,11 @@ export const systemService = {
    * 获取监控配置
    */
   getConfig: () => api.get<R<MonitoringConfig>>('/v1/admin/system/config'),
+  /**
+   * 获取容器实时日志
+   */
+  getContainerLogs: (id: string) => 
+    api.get<R<string[]>>(`/system/containers/${id}/logs`).then(res => res.data),
 };
 
 // ========== 工具函数 ==========

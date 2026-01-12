@@ -67,6 +67,21 @@ public class ContainerMonitorService {
     /**
      * 获取所有 AetherBlog 相关容器的指标
      */
+    /**
+     * 获取指定容器的实时日志 (最后 N 行)
+     */
+    public List<String> getContainerLogs(String containerId) {
+        if (!dockerApiEnabled) {
+            return List.of("Docker API 已禁用");
+        }
+        try {
+            return getContainerLogsViaCommand(containerId);
+        } catch (Exception e) {
+            log.error("Failed to get logs for container {}: {}", containerId, e.getMessage());
+            return List.of("无法获取日志: " + e.getMessage());
+        }
+    }
+
     public ContainerOverview getContainerMetrics() {
         ContainerOverview overview = new ContainerOverview();
         overview.setContainers(new ArrayList<>());
@@ -113,6 +128,29 @@ public class ContainerMonitorService {
     }
 
     // ========== 私有方法 ==========
+
+    private List<String> getContainerLogsViaCommand(String containerId) throws Exception {
+        // limit to last 200 lines
+        // 简单防注入: 确保 id 只包含字母数字
+        if (!containerId.matches("^[a-zA-Z0-9]+$")) {
+            throw new IllegalArgumentException("Invalid container ID");
+        }
+
+        ProcessBuilder pb = new ProcessBuilder("docker", "logs", "--tail", "200", containerId);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        
+        List<String> logs = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                logs.add(line);
+            }
+        }
+        process.waitFor();
+        return logs;
+    }
 
     /**
      * 通过 docker stats 命令获取容器统计
