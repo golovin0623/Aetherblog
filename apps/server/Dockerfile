@@ -45,8 +45,8 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:21-jre-alpine AS runner
 WORKDIR /app
 
-# Install required packages for health checks
-RUN apk add --no-cache curl
+# Install required packages for health checks and container monitoring
+RUN apk add --no-cache curl docker-cli
 
 # Add non-root user
 RUN addgroup --system --gid 1001 spring && \
