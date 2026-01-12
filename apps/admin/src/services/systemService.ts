@@ -206,7 +206,7 @@ export const systemService = {
    * 获取容器实时日志
    */
   getContainerLogs: (id: string) => 
-    api.get<R<string[]>>(`/system/containers/${id}/logs`).then(res => res.data),
+    api.get<R<string[]>>(`/v1/admin/system/containers/${id}/logs`).then(res => res.data),
 };
 
 // ========== 工具函数 ==========
