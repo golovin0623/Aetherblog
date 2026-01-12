@@ -98,14 +98,14 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     {/* Tags (New Style) */}
                     {post.tags && post.tags.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
-                            {post.tags.slice(0, 3).map(tag => (
+                            {post.tags.slice(0, 2).map(tag => (
                                 <span key={tag.slug} className="text-xs font-medium text-gray-400 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full hover:text-white hover:border-primary/50 hover:bg-white/10 transition-all duration-300 backdrop-blur-sm">
                                     #{tag.name}
                                 </span>
                             ))}
-                            {post.tags.length > 3 && (
+                            {post.tags.length > 2 && (
                                 <span className="text-xs font-medium text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full cursor-default backdrop-blur-sm">
-                                    +{post.tags.length - 3}
+                                    +{post.tags.length - 2}
                                 </span>
                             )}
                         </div>
