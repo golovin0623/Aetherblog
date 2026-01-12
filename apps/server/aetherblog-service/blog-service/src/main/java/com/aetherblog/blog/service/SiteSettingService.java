@@ -112,15 +112,27 @@ public class SiteSettingService {
      * 过滤掉敏感设置只返回公开信息
      */
     public Map<String, Object> getPublicSettings() {
-        // 获取基本设置组（site group）
-        List<SiteSetting> settings = settingRepository.findByGroupName("site");
-        Map<String, Object> result = convertToMap(settings);
-        
+        Map<String, Object> result = new HashMap<>();
+
+        // 获取基本设置组
+        List<SiteSetting> generalSettings = settingRepository.findByGroupName("general");
+        result.putAll(convertToMap(generalSettings));
+
+        // 获取评论设置组
+        List<SiteSetting> commentSettings = settingRepository.findByGroupName("comment");
+        result.putAll(convertToMap(commentSettings));
+
+        // 兼容旧代码，尝试获取 'site' 组（如果存在）
+        List<SiteSetting> siteSettings = settingRepository.findByGroupName("site");
+        if (!siteSettings.isEmpty()) {
+            result.putAll(convertToMap(siteSettings));
+        }
+
         // 添加一些默认值
         result.putIfAbsent("name", "AetherBlog");
         result.putIfAbsent("description", "A modern blog platform");
         result.putIfAbsent("author", "Admin");
-        
+
         return result;
     }
 
