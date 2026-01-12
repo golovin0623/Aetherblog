@@ -107,12 +107,14 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     
                     {/* Tags section removed (moved up) */}
 
-                    {/* Summary - Mobile: flex-1 fills remaining space, scrollable; Desktop: fixed max-h */}
+                    {/* Summary - Adaptive height with fade mask */}
                     <div 
-                      className="text-gray-400 text-sm leading-relaxed mb-4 flex-1 lg:flex-initial lg:max-h-[160px] overflow-y-auto"
+                      className="text-gray-400 text-sm leading-relaxed mb-4 flex-1 min-h-0 overflow-y-auto"
                       style={{
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: 'rgba(255,255,255,0.1) transparent',
+                        scrollbarWidth: 'none',
+                        msOverflowStyle: 'none',
+                        maskImage: 'linear-gradient(to bottom, black 80%, transparent 100%)',
+                        WebkitMaskImage: 'linear-gradient(to bottom, black 80%, transparent 100%)'
                       }}
                     >
                         <MiniMarkdownPreview content={displaySummary} maxLength={800} />
