@@ -105,20 +105,34 @@ function ContainerIcon({ type }: { type: string }) {
   );
 }
 
-function ContainerCard({ container }: { container: ContainerMetrics }) {
+function ContainerCard({ 
+  container, 
+  onClick, 
+  isSelected 
+}: { 
+  container: ContainerMetrics; 
+  onClick?: () => void;
+  isSelected?: boolean;
+}) {
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="p-3 rounded-lg bg-white/5 border border-white/5 hover:border-white/10 transition-colors"
+      onClick={onClick}
+      className={cn(
+        "p-3 rounded-lg border transition-all cursor-pointer",
+        isSelected 
+          ? "bg-primary/10 border-primary/30" 
+          : "bg-white/5 border-white/5 hover:border-white/10 hover:bg-white/10"
+      )}
     >
       <div className="flex items-center gap-3">
         <ContainerIcon type={container.type} />
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-medium text-white truncate">
+            <span className={cn("text-sm font-medium truncate", isSelected ? "text-primary" : "text-white")}>
               {container.displayName}
             </span>
             <span className="text-[10px] text-gray-500 font-mono ml-2">
@@ -222,39 +236,35 @@ const mockOverview: ContainerOverview = {
 
 interface ContainerStatusProps {
   refreshInterval?: number;
-  useMock?: boolean; // 开发模式下使用模拟数据
+  onSelectContainer?: (id: string, name: string) => void;
+  selectedId?: string | null;
+  className?: string;
 }
 
-export function ContainerStatus({ refreshInterval = 30, useMock = false }: ContainerStatusProps) {
+export function ContainerStatus({ 
+  refreshInterval = 30, 
+  onSelectContainer,
+  selectedId,
+  className 
+}: ContainerStatusProps) {
   const [data, setData] = useState<ContainerOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true);
-    
     try {
       const res = await systemService.getContainers();
       if (res.code === 200 && res.data) {
-        // 如果 Docker 不可用或没有容器，使用模拟数据
-        if (!res.data.dockerAvailable || res.data.containers.length === 0) {
-          setData(mockOverview);
-        } else {
-          setData(res.data);
-        }
-      } else {
-        // API 失败时使用模拟数据
-        setData(mockOverview);
+        setData(res.data);
       }
     } catch (err) {
-      logger.error('Failed to fetch container status:', err);
-      // 错误时使用模拟数据
-      setData(mockOverview);
+      logger.error('Failed to fetch container metrics:', err);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [useMock]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -262,33 +272,41 @@ export function ContainerStatus({ refreshInterval = 30, useMock = false }: Conta
     return () => clearInterval(timer);
   }, [fetchData, refreshInterval]);
 
+  // Auto-select first container if none selected and data loaded
+  useEffect(() => {
+    if (data?.containers?.length && !selectedId && onSelectContainer) {
+       onSelectContainer(data.containers[0].id, data.containers[0].displayName);
+    }
+  }, [data, selectedId, onSelectContainer]);
+
   const handleRefresh = () => {
     if (!isRefreshing) fetchData(true);
   };
 
-  // 加载状态
   if (loading && !data) {
     return (
-      <div className="p-6 rounded-xl bg-white/5 border border-white/10">
-        <div className="h-6 w-32 bg-white/10 rounded mb-4 animate-pulse" />
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-14 bg-white/5 rounded-lg animate-pulse" />
-          ))}
-        </div>
+      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 animate-pulse h-[400px]", className)} />
+    );
+  }
+
+  if (!data?.dockerAvailable) {
+    return (
+      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-gray-500 h-[200px]", className)}>
+        <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
+        <span className="text-sm">Docker API 不可用</span>
       </div>
     );
   }
 
   return (
-    <div className="p-6 rounded-xl bg-white/5 border border-white/10">
+    <div className={cn("rounded-xl bg-white/5 border border-white/10 flex flex-col min-h-0", className)}>
       {/* 头部 */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="p-4 sm:p-6 border-b border-white/5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-white">容器监控</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-white">容器监控</h3>
           {data && (
-            <span className="text-xs text-gray-500 bg-white/5 px-2 py-0.5 rounded">
-              {data.runningContainers}/{data.totalContainers} 运行中
+            <span className="text-xs text-gray-400 bg-white/5 px-2 py-0.5 rounded">
+               {data.runningContainers}/{data.totalContainers}
             </span>
           )}
         </div>
@@ -304,28 +322,33 @@ export function ContainerStatus({ refreshInterval = 30, useMock = false }: Conta
           
           <div className="flex items-center gap-1 px-2 py-1 rounded border bg-green-500/10 border-green-500/20">
             <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-            <span className="text-xs font-medium text-green-400">正常</span>
+            <span className="text-[10px] font-medium text-green-400">正常</span>
           </div>
         </div>
       </div>
 
       {/* 容器列表 */}
-      <div className="space-y-2">
+      <div className="p-4 space-y-2 overflow-y-auto custom-scrollbar flex-1 min-h-0">
         <AnimatePresence mode="popLayout">
           {data?.containers.map((container) => (
-            <ContainerCard key={container.id} container={container} />
+            <ContainerCard 
+              key={container.id} 
+              container={container} 
+              onClick={() => onSelectContainer?.(container.id, container.displayName)}
+              isSelected={selectedId === container.id}
+            />
           ))}
         </AnimatePresence>
       </div>
 
       {/* 汇总信息 */}
       {data && data.containers.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-gray-500">
+        <div className="p-3 border-t border-white/5 flex items-center justify-between text-[10px] text-gray-500 shrink-0">
           <span>
-            总内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
+            内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
           </span>
           <span>
-            平均 CPU: {data.avgCpuPercent.toFixed(1)}%
+            CPU: {data.avgCpuPercent.toFixed(1)}%
           </span>
         </div>
       )}

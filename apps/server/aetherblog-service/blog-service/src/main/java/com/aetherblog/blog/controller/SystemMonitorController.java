@@ -78,6 +78,15 @@ public class SystemMonitorController {
         return R.ok(containerMonitorService.getContainerMetrics());
     }
 
+    /**
+     * 获取容器实时日志
+     */
+    @Operation(summary = "获取容器实时日志")
+    @GetMapping("/containers/{id}/logs")
+    public R<List<String>> getContainerLogs(@PathVariable String id) {
+        return R.ok(containerMonitorService.getContainerLogs(id));
+    }
+
     // ========== 历史数据 ==========
 
     /**
