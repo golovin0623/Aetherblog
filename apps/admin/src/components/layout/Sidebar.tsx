@@ -22,6 +22,8 @@ import { useSidebarStore, useAuthStore } from '@/stores';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { UserProfileModal } from './UserProfileModal';
+import { getMediaUrl } from '@/services/mediaService';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
@@ -42,6 +44,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +62,7 @@ export function Sidebar() {
     effectiveCollapsed,
     user,
     logout: () => setShowLogoutConfirm(true),
+    openProfile: () => setShowProfileModal(true),
     searchValue,
     setSearchValue,
     handleSearch,
@@ -70,7 +74,7 @@ export function Sidebar() {
     <>
       {/* Mobile Backdrop */}
       {isMobileOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
           onClick={() => setMobileOpen(false)}
         />
@@ -111,6 +115,11 @@ export function Sidebar() {
         }}
         onCancel={() => setShowLogoutConfirm(false)}
       />
+
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+      />
     </>
   );
 }
@@ -119,6 +128,7 @@ interface SidebarContentProps {
   effectiveCollapsed: boolean;
   user: any;
   logout: () => void;
+  openProfile: () => void;
   searchValue: string;
   setSearchValue: (val: string) => void;
   handleSearch: (e: React.FormEvent) => void;
@@ -132,6 +142,7 @@ function SidebarContent({
   effectiveCollapsed,
   user,
   logout,
+  openProfile,
   searchValue,
   setSearchValue,
   handleSearch,
@@ -312,15 +323,18 @@ function SidebarContent({
 
       {/* User Info */}
       <div className="border-t border-border p-3">
-        <div className={cn(
-          "flex items-center transition-all duration-300 cursor-pointer group",
-          effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-1"
-        )}>
+        <div
+          onClick={openProfile}
+          className={cn(
+            "flex items-center transition-all duration-300 cursor-pointer group",
+            effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-1"
+          )}
+        >
           <div className="relative flex-shrink-0">
             <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/50 transition-all">
               {user?.avatar ? (
                 <img
-                  src={user.avatar}
+                  src={getMediaUrl(user.avatar)}
                   alt={user.nickname}
                   className="w-full h-full rounded-full object-cover"
                 />
@@ -348,7 +362,10 @@ function SidebarContent({
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             <button
-              onClick={logout}
+              onClick={(e) => {
+                e.stopPropagation();
+                logout();
+              }}
               className={cn(
                 'p-2 rounded-lg',
                 'text-gray-400 hover:text-red-400 hover:bg-white/5',

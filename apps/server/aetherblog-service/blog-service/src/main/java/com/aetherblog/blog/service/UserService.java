@@ -120,15 +120,55 @@ public class UserService {
     public void changePassword(Long userId, String newPassword) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("用户不存在"));
-        
+
         // 加密新密码
         String encodedPassword = passwordEncoder.encode(newPassword);
         user.setPasswordHash(encodedPassword);
-        
+
         // 清除首次登录修改密码标记
         user.setMustChangePassword(false);
-        
+
         userRepository.save(user);
         log.info("用户密码修改成功: userId={}", userId);
+    }
+
+    /**
+     * 更新个人信息
+     */
+    @Transactional
+    public User updateProfile(Long userId, String nickname, String email) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+
+        if (nickname != null && !nickname.isBlank()) {
+            user.setNickname(nickname);
+        }
+
+        if (email != null && !email.isBlank()) {
+            // 检查邮箱是否被其他用户占用
+            userRepository.findByEmail(email).ifPresent(existingUser -> {
+                if (!existingUser.getId().equals(userId)) {
+                    throw new BusinessException("邮箱已被其他用户占用");
+                }
+            });
+            user.setEmail(email);
+        }
+
+        User savedUser = userRepository.save(user);
+        log.info("更新个人信息成功: userId={}", userId);
+        return savedUser;
+    }
+
+    /**
+     * 更新头像
+     */
+    @Transactional
+    public void updateAvatar(Long userId, String avatarUrl) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException("用户不存在"));
+
+        user.setAvatar(avatarUrl);
+        userRepository.save(user);
+        log.info("更新头像成功: userId={}, avatarUrl={}", userId, avatarUrl);
     }
 }

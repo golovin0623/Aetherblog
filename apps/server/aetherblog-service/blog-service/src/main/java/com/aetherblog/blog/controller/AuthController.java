@@ -168,21 +168,21 @@ public class AuthController {
     public R<Void> changePassword(
             @AuthenticationPrincipal LoginUser loginUser,
             @Valid @RequestBody com.aetherblog.api.dto.auth.ChangePasswordRequest request) {
-        
+
         if (loginUser == null) {
             throw new BusinessException("未登录");
         }
-        
+
         log.info("用户修改密码: userId={}, encrypted={}", loginUser.getUserId(), request.getEncrypted());
-        
+
         // 查找用户
         User user = userService.findById(loginUser.getUserId())
                 .orElseThrow(() -> new BusinessException("用户不存在"));
-        
+
         // 获取密码（如果加密则解密）
         String currentPassword = request.getCurrentPassword();
         String newPassword = request.getNewPassword();
-        
+
         if (Boolean.TRUE.equals(request.getEncrypted())) {
             try {
                 currentPassword = com.aetherblog.common.core.util.CryptoUtils.decryptPassword(currentPassword);
@@ -193,27 +193,79 @@ public class AuthController {
                 throw new BusinessException("操作失败，请重试");
             }
         }
-        
+
         // 验证当前密码
         if (!userService.validatePassword(user, currentPassword)) {
             throw new BusinessException("当前密码错误");
         }
-        
+
         // 检查新密码不能与当前密码相同
         if (currentPassword.equals(newPassword)) {
             throw new BusinessException("新密码不能与当前密码相同");
         }
-        
+
         // 检查新密码长度
         if (newPassword.length() < 8) {
             throw new BusinessException("新密码长度至少为8位");
         }
-        
+
         // 更新密码
         userService.changePassword(user.getId(), newPassword);
-        
+
         log.info("用户密码修改成功: userId={}", loginUser.getUserId());
         return R.ok();
+    }
+
+    /**
+     * 更新个人信息
+     */
+    @PutMapping("/profile")
+    public R<LoginResponse.UserInfoVO> updateProfile(
+            @AuthenticationPrincipal LoginUser loginUser,
+            @Valid @RequestBody com.aetherblog.api.dto.auth.UpdateProfileRequest request) {
+
+        if (loginUser == null) {
+            throw new BusinessException("未登录");
+        }
+
+        log.info("用户更新个人信息: userId={}", loginUser.getUserId());
+
+        User user = userService.updateProfile(loginUser.getUserId(), request.getNickname(), request.getEmail());
+
+        LoginResponse.UserInfoVO userInfo = LoginResponse.UserInfoVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .avatar(user.getAvatar())
+                .role(user.getRole().name())
+                .build();
+
+        return R.ok(userInfo);
+    }
+
+    /**
+     * 更新头像
+     */
+    @PutMapping("/avatar")
+    public R<String> updateAvatar(
+            @AuthenticationPrincipal LoginUser loginUser,
+            @RequestBody Map<String, String> body) {
+
+        if (loginUser == null) {
+            throw new BusinessException("未登录");
+        }
+
+        String avatarUrl = body.get("avatarUrl");
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            throw new BusinessException("头像地址不能为空");
+        }
+
+        log.info("用户更新头像: userId={}, avatarUrl={}", loginUser.getUserId(), avatarUrl);
+
+        userService.updateAvatar(loginUser.getUserId(), avatarUrl);
+
+        return R.ok(avatarUrl);
     }
 
     /**
