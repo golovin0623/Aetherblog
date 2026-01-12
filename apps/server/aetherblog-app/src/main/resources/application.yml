@@ -83,8 +83,8 @@ logging:
     com.aetherblog: DEBUG
     org.springframework.security: DEBUG
   file:
-    path: ./logs
-    name: ./logs/aetherblog.log
+    path: ${APP_LOG_PATH:./logs}
+    name: ${APP_LOG_PATH:./logs}/aetherblog.log
   logback:
     rollingpolicy:
       max-file-size: 50MB
