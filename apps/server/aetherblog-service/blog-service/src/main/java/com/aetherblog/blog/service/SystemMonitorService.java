@@ -20,8 +20,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 系统监控服务
@@ -398,16 +396,30 @@ public class SystemMonitorService {
         List<ServiceHealth> services = new ArrayList<>();
         
         // 并行检查各服务
-        CompletableFuture<ServiceHealth> pgFuture = CompletableFuture.supplyAsync(this::checkPostgreSQL);
-        CompletableFuture<ServiceHealth> redisFuture = CompletableFuture.supplyAsync(this::checkRedis);
-        CompletableFuture<ServiceHealth> esFuture = CompletableFuture.supplyAsync(this::checkElasticsearch);
-        
-        try {
-            services.add(pgFuture.get(5, TimeUnit.SECONDS));
-            services.add(redisFuture.get(5, TimeUnit.SECONDS));
-            services.add(esFuture.get(5, TimeUnit.SECONDS));
-        } catch (Exception e) {
-            log.warn("Health check timeout", e);
+        // 并行检查各服务 (使用结构化并发 + 虚拟线程)
+        // Create a virtual thread executor
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var pgFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkPostgreSQL, executor);
+            var redisFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkRedis, executor);
+            var esFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkElasticsearch, executor);
+
+            try {
+                // Wait for all tasks to complete with a timeout
+                java.util.concurrent.CompletableFuture.allOf(pgFuture, redisFuture, esFuture)
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+                services.add(pgFuture.get());
+                services.add(redisFuture.get());
+                services.add(esFuture.get());
+            } catch (Exception e) {
+                log.warn("Health check timeout or interrupted", e);
+                // Even if timeout/error, try to get results that finished (optimistic)
+                // Or just proceed. The checks capture their own exceptions so futures should complete successfully returning a 'down' status object.
+                // If future.get() throws, it means the task crashed unexpectedly or timeout.
+                if (!pgFuture.isCompletedExceptionally() && pgFuture.isDone()) services.add(pgFuture.join());
+                if (!redisFuture.isCompletedExceptionally() && redisFuture.isDone()) services.add(redisFuture.join());
+                if (!esFuture.isCompletedExceptionally() && esFuture.isDone()) services.add(esFuture.join());
+            }
         }
         
         // API Gateway (自身)

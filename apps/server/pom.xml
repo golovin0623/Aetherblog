@@ -15,7 +15,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.1</version>
+        <version>4.0.0</version>
         <relativePath/>
     </parent>
 
@@ -28,17 +28,21 @@
     </modules>
 
     <properties>
-        <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <java.version>25</java.version>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- 版本管理 -->
-        <spring-ai.version>1.0.0-M5</spring-ai.version>
+        <spring-ai.version>2.0.0-M1</spring-ai.version>
         <springdoc.version>2.7.0</springdoc.version>
         <mapstruct.version>1.6.3</mapstruct.version>
-        <lombok.version>1.18.36</lombok.version>
+        <lombok.version>1.18.42</lombok.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- Jackson 3.x (tools.jackson) for Spring Boot 4 -->
+        <jackson.version>3.0.3</jackson.version>
+        <!-- JDK 25 Testing Support: Override Byte Buddy for Mockito compatibility -->
+        <byte-buddy.version>1.17.5</byte-buddy.version>
     </properties>
 
     <dependencyManagement>
@@ -123,6 +127,13 @@
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
             </dependency>
+
+            <!-- Jackson 3.x (tools.jackson) -->
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -135,6 +146,13 @@
     </dependencies>
 
     <repositories>
+        <!-- Maven Central (优先，用于 Spring Boot 4.0.1 GA) -->
+        <repository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+        <!-- Spring Milestones (用于 Spring AI 2.0.0-M1) -->
         <repository>
             <id>spring-milestones</id>
             <name>Spring Milestones</name>
@@ -163,10 +181,40 @@
                             <groupId>org.mapstruct</groupId>
                             <artifactId>mapstruct-processor</artifactId>
                             <version>${mapstruct.version}</version>
+
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+            <!-- Note: spring-boot-maven-plugin is configured in aetherblog-app only -->
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <configuration>
+                            <buildArgs>
+                                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                            </buildArgs>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
