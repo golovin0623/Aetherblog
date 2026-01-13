@@ -1,12 +1,10 @@
-# syntax=docker/dockerfile:1
-
 # =============================================================================
 # AetherBlog Backend - Spring Boot Application
 # Multi-platform: linux/amd64 (CentOS 7), linux/arm64 (Mac M1/M2)
 # =============================================================================
 
-# Stage 1: Build
-FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS builder
+# Stage 1: Build (JDK 25 + Spring Boot 3.5.0-M2)
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-25 AS builder
 WORKDIR /app
 
 # Copy Maven files first for dependency caching (all submodule pom.xml files)
@@ -30,19 +28,17 @@ COPY apps/server/aetherblog-service/blog-service/pom.xml ./aetherblog-service/bl
 COPY apps/server/aetherblog-api/pom.xml ./aetherblog-api/
 COPY apps/server/aetherblog-app/pom.xml ./aetherblog-app/
 
-# Download dependencies (with retry for network issues)
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn dependency:go-offline -B || mvn dependency:go-offline -B
-
 # Copy source code
 COPY apps/server ./
 
-# Build the application with optimal settings
+# Build the application with optimal settings (with retry for network issues)
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -B -T 1C
+    mvn clean package -DskipTests -B -T 1C || \
+    (sleep 5 && mvn clean package -DskipTests -B -T 1C) || \
+    (sleep 10 && mvn clean package -DskipTests -B -T 1C)
 
 # Stage 2: Production
-FROM eclipse-temurin:21-jre-alpine AS runner
+FROM eclipse-temurin:25-jre-alpine AS runner
 WORKDIR /app
 
 # Install required packages for health checks and container monitoring
@@ -64,16 +60,31 @@ RUN mkdir -p /app/uploads && \
 
 EXPOSE 8080
 
-# Container-aware JVM settings:
-# - UseContainerSupport: Automatically detect container memory limits
+# JDK 25 Optimized JVM Settings:
+# === Memory Management ===
+# - UseContainerSupport: Auto-detect container memory limits
 # - MaxRAMPercentage: Use up to 75% of container memory for heap
 # - InitialRAMPercentage: Start with 50% of max for faster startup
-# - G1GC: Best GC for containers with predictable latency
-# - ExitOnOutOfMemoryError: Fail fast on OOM for container restart
+# - UseCompactObjectHeaders: JDK 25 Lilliput project (10-15% memory savings)
+#
+# === Garbage Collection ===
+# - UseZGC: Z Garbage Collector (generational by default in JDK 25)
+#
+# === Startup Optimization ===
+# - TieredStopAtLevel=1: Quick C1 compilation only for faster startup
+#
+# === Security & Reliability ===
+# - ExitOnOutOfMemoryError: Fail fast on OOM for container orchestration
+#
+# NOTE: CDS disabled - incompatible with UseCompactObjectHeaders + UseZGC
+# NOTE: ZGenerational removed - now default in JDK 25, flag deprecated
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
     -XX:InitialRAMPercentage=50.0 \
-    -XX:+UseG1GC \
+    -XX:+UseZGC \
+    -XX:+UnlockExperimentalVMOptions \
+    -XX:+UseCompactObjectHeaders \
+    -XX:TieredStopAtLevel=1 \
     -XX:+ExitOnOutOfMemoryError \
     -Djava.security.egd=file:/dev/./urandom"
 

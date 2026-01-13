@@ -16,7 +16,7 @@ trigger: always_on
 
 **项目信息**:
 - **项目名称**: AetherBlog（以太博客）
-- **技术栈**: React 19 + Spring Boot 3.4 + JDK 21 + PostgreSQL 17 + Spring AI
+- **技术栈**: React 19 + Spring Boot 4.0 + JDK 25 + PostgreSQL 17 + Spring AI
 - **设计理念**: 认知优雅（Cognitive Elegance）- 融合 Apple/Microsoft 设计语言
 
 ---
@@ -29,9 +29,9 @@ trigger: always_on
 |:-----|:-----|:---------|:---------|
 | **§1** | **产品愿景与战略** | 背景、愿景、用户画像、竞品分析、商业模式 | 全局 |
 | **§2** | **系统架构设计** | 技术选型、架构全景图、技术决策矩阵 | 全局 |
-| §2.1 | 技术选型决策 | JDK21虚拟线程、Spring AI vs LangChain4j、pgvector | 后端 |
+| §2.1 | 技术选型决策 | JDK25虚拟线程、Spring AI vs LangChain4j、pgvector | 后端 |
 | §2.2 | 前端技术栈 | React 19、Vite、Tailwind、Framer Motion | 前端 |
-| §2.3 | 后端技术栈 | Spring Boot 3.4、Spring Security、Spring AI | 后端 |
+| §2.3 | 后端技术栈 | Spring Boot 4.0、Spring Security、Spring AI | 后端 |
 | §2.4 | AI技术栈 | Spring AI、RAG、向量存储、Agent设计 | AI层 |
 | §2.5 | 数据存储架构 | PostgreSQL 17、Redis、Elasticsearch、MinIO | 数据层 |
 | **§3** | **前端详细设计** | 项目结构、组件设计、状态管理、视觉规范 | 前端 |
@@ -107,8 +107,8 @@ trigger: always_on
 - §X.X [章节名] - [引用原因]
 
 【技术规范确认】
-- 框架版本: [如 React 19.x, Spring Boot 3.4.x]
-- 代码规范: [如 TypeScript strict mode, Java 21 features]
+- 框架版本: [如 React 19.x, Spring Boot 4.0.x]
+- 代码规范: [如 TypeScript strict mode, Java 25 features]
 - 设计模式: [如 Glassmorphism, 策略模式]
 
 【核心设计要点】
@@ -385,6 +385,13 @@ pnpm add xxx  # 说明用途
 
 ```markdown
 # CHANGELOG - AetherBlog 设计文档变更记录
+
+## [v2.0.0] - 2026-01-14
+### Changed
+- §2: 升级技术栈至 Spring Boot 4.0 + JDK 25
+- §2.4: 升级 Spring AI 至 2.0.0-M1
+- §Global: 迁移 JSON 库至 Jackson 3.x (tools.jackson)
+
 
 ## [v1.1.0] - YYYY-MM-DD
 ### Changed
