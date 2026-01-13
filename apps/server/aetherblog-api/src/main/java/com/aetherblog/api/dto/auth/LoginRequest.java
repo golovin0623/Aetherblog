@@ -1,28 +1,27 @@
 package com.aetherblog.api.dto.auth;
 
 import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * 登录请求 DTO
+ * 登录请求 DTO (Record)
  */
-@Data
-public class LoginRequest {
-
-    /**
-     * 用户名或邮箱
-     */
+@Schema(description = "登录请求")
+public record LoginRequest(
+    @Schema(description = "用户名或邮箱", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "用户名不能为空")
-    private String username;
+    String username,
 
-    /**
-     * 密码（可能是加密后的）
-     */
+    @Schema(description = "密码", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "密码不能为空")
-    private String password;
+    String password,
 
-    /**
-     * 是否已加密
-     */
-    private Boolean encrypted = false;
+    @Schema(description = "是否已加密")
+    Boolean encrypted
+) {
+    public LoginRequest {
+        if (encrypted == null) {
+            encrypted = false;
+        }
+    }
 }

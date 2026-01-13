@@ -15,7 +15,7 @@ import com.aetherblog.blog.service.PostService;
 import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.exception.BusinessException;
 import com.aetherblog.common.core.utils.SlugUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -207,24 +207,24 @@ public class PostServiceImpl implements PostService {
     @Transactional
     public PostDetailResponse createPost(CreatePostRequest request) {
         Post post = new Post();
-        post.setTitle(request.getTitle());
-        post.setContentMarkdown(request.getContent());
-        post.setSummary(request.getSummary());
-        post.setCoverImage(request.getCoverImage());
-        post.setSlug(generateUniqueSlug(request.getTitle()));
-        post.setStatus(PostStatus.valueOf(request.getStatus()));
+        post.setTitle(request.title());
+        post.setContentMarkdown(request.content());
+        post.setSummary(request.summary());
+        post.setCoverImage(request.coverImage());
+        post.setSlug(generateUniqueSlug(request.title()));
+        post.setStatus(PostStatus.valueOf(request.status()));
         if (post.getStatus() == PostStatus.PUBLISHED) {
             post.setPublishedAt(LocalDateTime.now());
         }
 
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
+        if (request.categoryId() != null) {
+            Category category = categoryRepository.findById(request.categoryId())
                     .orElseThrow(() -> new BusinessException(404, "分类不存在"));
             post.setCategory(category);
         }
 
-        if (request.getTagIds() != null && !request.getTagIds().isEmpty()) {
-            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.getTagIds()));
+        if (request.tagIds() != null && !request.tagIds().isEmpty()) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.tagIds()));
             post.setTags(tags);
         }
 
@@ -237,14 +237,14 @@ public class PostServiceImpl implements PostService {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "文章不存在"));
 
-        post.setTitle(request.getTitle());
-        post.setContentMarkdown(request.getContent());
-        post.setSummary(request.getSummary());
-        post.setCoverImage(request.getCoverImage());
+        post.setTitle(request.title());
+        post.setContentMarkdown(request.content());
+        post.setSummary(request.summary());
+        post.setCoverImage(request.coverImage());
 
         // Update status and set publishedAt if publishing
-        if (request.getStatus() != null) {
-            PostStatus newStatus = PostStatus.valueOf(request.getStatus());
+        if (request.status() != null) {
+            PostStatus newStatus = PostStatus.valueOf(request.status());
             if (newStatus == PostStatus.PUBLISHED && post.getPublishedAt() == null) {
                 post.setPublishedAt(LocalDateTime.now());
             }
@@ -256,14 +256,14 @@ public class PostServiceImpl implements PostService {
             }
         }
 
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
+        if (request.categoryId() != null) {
+            Category category = categoryRepository.findById(request.categoryId())
                     .orElseThrow(() -> new BusinessException(404, "分类不存在"));
             post.setCategory(category);
         }
 
-        if (request.getTagIds() != null) {
-            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.getTagIds()));
+        if (request.tagIds() != null) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.tagIds()));
             post.setTags(tags);
         }
 
@@ -277,36 +277,36 @@ public class PostServiceImpl implements PostService {
                 .orElseThrow(() -> new BusinessException(404, "文章不存在"));
 
         // 更新标题
-        if (request.getTitle() != null) {
-            post.setTitle(request.getTitle());
+        if (request.title() != null) {
+            post.setTitle(request.title());
         }
 
         // 更新摘要
-        if (request.getSummary() != null) {
-            post.setSummary(request.getSummary());
+        if (request.summary() != null) {
+            post.setSummary(request.summary());
         }
 
         // 更新封面图
-        if (request.getCoverImage() != null) {
-            post.setCoverImage(request.getCoverImage());
+        if (request.coverImage() != null) {
+            post.setCoverImage(request.coverImage());
         }
 
         // 更新分类
-        if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
+        if (request.categoryId() != null) {
+            Category category = categoryRepository.findById(request.categoryId())
                     .orElseThrow(() -> new BusinessException(404, "分类不存在"));
             post.setCategory(category);
         }
 
         // 更新标签
-        if (request.getTagIds() != null) {
-            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.getTagIds()));
+        if (request.tagIds() != null) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findAllById(request.tagIds()));
             post.setTags(tags);
         }
 
         // 更新状态
-        if (request.getStatus() != null) {
-            PostStatus newStatus = PostStatus.valueOf(request.getStatus());
+        if (request.status() != null) {
+            PostStatus newStatus = PostStatus.valueOf(request.status());
             if (newStatus == PostStatus.PUBLISHED && post.getPublishedAt() == null) {
                 post.setPublishedAt(LocalDateTime.now());
             }
@@ -314,37 +314,37 @@ public class PostServiceImpl implements PostService {
         }
 
         // 更新置顶状态
-        if (request.getIsPinned() != null) {
-            post.setIsPinned(request.getIsPinned());
+        if (request.isPinned() != null) {
+            post.setIsPinned(request.isPinned());
         }
 
         // 更新置顶优先级
-        if (request.getPinPriority() != null) {
-            post.setPinPriority(request.getPinPriority());
+        if (request.pinPriority() != null) {
+            post.setPinPriority(request.pinPriority());
         }
 
         // 更新是否允许评论
-        if (request.getAllowComment() != null) {
-            post.setAllowComment(request.getAllowComment());
+        if (request.allowComment() != null) {
+            post.setAllowComment(request.allowComment());
         }
 
         // 更新文章密码
-        if (request.getPassword() != null) {
-            post.setPassword(request.getPassword());
+        if (request.password() != null) {
+            post.setPassword(request.password());
         }
 
         // 更新自定义路径名
-        if (request.getSlug() != null && !request.getSlug().isEmpty()) {
+        if (request.slug() != null && !request.slug().isEmpty()) {
             // 检查slug是否已存在（排除当前文章）
-            if (postRepository.existsBySlugAndIdNot(request.getSlug(), id)) {
+            if (postRepository.existsBySlugAndIdNot(request.slug(), id)) {
                 throw new BusinessException(400, "该路径名已被使用");
             }
-            post.setSlug(request.getSlug());
+            post.setSlug(request.slug());
         }
 
         // 更新创建时间
-        if (request.getCreatedAt() != null) {
-            post.setCreatedAt(request.getCreatedAt());
+        if (request.createdAt() != null) {
+            post.setCreatedAt(request.createdAt());
         }
 
         return toDetailResponse(postRepository.save(post));

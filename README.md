@@ -8,9 +8,10 @@
 |------|------|
 | 博客前台 | Next.js 15 + React 19 |
 | 管理后台 | Vite + React 19 |
-| 后端服务 | Spring Boot 3.4 + JDK 21 |
-| AI 能力 | Spring AI 1.0 |
+| 后端服务 | Spring Boot 4.0 + JDK 25 |
+| AI 能力 | Spring AI 2.0.0-M1 |
 | 数据库 | PostgreSQL 17 + pgvector |
+| 序列化 | Jackson 3.x |
 | 缓存 | Redis 7 |
 | 搜索 | Elasticsearch 8 |
 
@@ -51,7 +52,7 @@ AetherBlog/
 
 - Node.js >= 20
 - pnpm >= 9
-- JDK 21
+- JDK 25 (Early Access)
 - Docker & Docker Compose
 - Maven 3.9+
 
