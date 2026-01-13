@@ -13,5 +13,16 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class VectorStoreConfig {
-    // VectorStore bean is auto-configured by spring-ai-pgvector-store-spring-boot-starter
+    @org.springframework.context.annotation.Bean
+    public org.springframework.ai.vectorstore.VectorStore vectorStore(
+            org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
+            org.springframework.ai.embedding.EmbeddingModel embeddingModel) {
+        
+        // Manual configuration required since starter artifact is missing
+        return org.springframework.ai.vectorstore.pgvector.PgVectorStore.builder(jdbcTemplate, embeddingModel)
+                .dimensions(1536) // OpenAI text-embedding-3-small
+                .indexType(org.springframework.ai.vectorstore.pgvector.PgVectorStore.PgIndexType.HNSW)
+                .distanceType(org.springframework.ai.vectorstore.pgvector.PgVectorStore.PgDistanceType.COSINE_DISTANCE)
+                .build();
+    }
 }

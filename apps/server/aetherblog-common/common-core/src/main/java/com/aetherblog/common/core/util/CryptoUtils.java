@@ -6,8 +6,9 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import lombok.extern.slf4j.Slf4j;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * AES 加密解密工具类
@@ -18,7 +19,7 @@ public class CryptoUtils {
 
     // Must match the key used in frontend
     private static final String ENCRYPTION_KEY = "AetherBlog@2026!SecureKey#Auth";
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     /**
      * 解密前端加密的密码
@@ -76,7 +77,7 @@ public class CryptoUtils {
             // Parse JSON to extract password
             JsonNode jsonNode = objectMapper.readTree(decryptedStr);
             if (jsonNode.has("password")) {
-                return jsonNode.get("password").asText();
+                return jsonNode.get("password").asString();
             }
             
             return decryptedStr;
