@@ -429,7 +429,7 @@ public class PostServiceImpl implements PostService {
         response.setTitle(post.getTitle());
         response.setSlug(post.getSlug());
         response.setSummary(post.getSummary());
-        response.setCoverImage(post.getCoverImage());
+        response.setCoverImage(addApiPrefixToImageUrl(post.getCoverImage()));
         response.setStatus(post.getStatus().name());
         response.setCategoryName(post.getCategory() != null ? post.getCategory().getName() : null);
         response.setTagNames(post.getTags().stream().map(Tag::getName).collect(Collectors.toList()));
@@ -446,7 +446,7 @@ public class PostServiceImpl implements PostService {
         response.setSlug(post.getSlug());
         response.setContent(post.getContentMarkdown());
         response.setSummary(post.getSummary());
-        response.setCoverImage(post.getCoverImage());
+        response.setCoverImage(addApiPrefixToImageUrl(post.getCoverImage()));
         response.setStatus(post.getStatus().name());
         response.setViewCount(post.getViewCount());
         response.setCommentCount(post.getCommentCount());
@@ -477,5 +477,16 @@ public class PostServiceImpl implements PostService {
         }
 
         return response;
+    }
+
+    /**
+     * Add /api prefix to image URLs that start with /uploads
+     * This handles the context-path configuration in Spring Boot
+     */
+    private String addApiPrefixToImageUrl(String imageUrl) {
+        if (imageUrl != null && imageUrl.startsWith("/uploads")) {
+            return "/api" + imageUrl;
+        }
+        return imageUrl;
     }
 }

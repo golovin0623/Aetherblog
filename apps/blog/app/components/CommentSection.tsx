@@ -1,10 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Comment, createComment, getComments, SiteSettings } from '../lib/services';
-import { Button, Input, Avatar } from '@aetherblog/ui';
-import { MessageSquare, Send, Reply, Loader2 } from 'lucide-react';
+import { Button, Avatar } from '@aetherblog/ui';
+import { 
+  MessageSquare, 
+  Send, 
+  Reply, 
+  Loader2, 
+  ChevronDown, 
+  ChevronRight,
+  CornerDownRight,
+  ShieldCheck,
+  Globe,
+  Mail,
+  PenLine,
+  ChevronUp
+} from 'lucide-react';
 
 interface CommentSectionProps {
   postId: number;
@@ -16,6 +29,13 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
+  
+  // UX States
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
+  const [isSectionExpanded, setIsSectionExpanded] = useState(true);
+
+  const formRef = useRef<HTMLDivElement>(null);
+  const formTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Form state
   const [nickname, setNickname] = useState('');
@@ -48,6 +68,12 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     e.preventDefault();
     setError('');
     setSuccess('');
+    
+    if (!nickname.trim() || !email.trim() || !content.trim()) {
+      setError('请完善必填信息 (*)');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -59,10 +85,16 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
         parentId: replyTo?.id
       });
 
-      setSuccess('评论提交成功，等待审核中...');
+      setSuccess('评论提交成功，审核通过后显示');
       setContent('');
       setReplyTo(null);
-      // Don't reload comments immediately as it requires approval
+      
+      // Delay closing form to show success message
+      setTimeout(() => {
+        setSuccess('');
+        setIsFormExpanded(false);
+      }, 2000);
+
     } catch (err: any) {
       setError(err.message || '提交失败，请稍后重试');
     } finally {
@@ -70,142 +102,328 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     }
   };
 
+  const handleReply = (comment: Comment) => {
+    setReplyTo(comment);
+    setIsFormExpanded(true);
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Focus textarea logic could go here if checking DOM
+    }, 100);
+  };
+
+  // Close form handler
+  const closeForm = () => {
+    setReplyTo(null);
+    setIsFormExpanded(false);
+    setError('');
+    setSuccess('');
+  };
+
   const isEnabled = settings.comment_enabled === true;
   if (!isEnabled) return null;
 
   return (
-    <section className="mt-16 pt-10 border-t border-white/10">
-      <h3 className="text-2xl font-semibold mb-8 flex items-center gap-2">
-        <MessageSquare className="w-6 h-6 text-indigo-400" />
-        评论 <span className="text-slate-500 text-lg font-normal">({comments.length})</span>
-      </h3>
-
-      {/* Comment Form */}
-      <div className="bg-white/5 rounded-2xl p-6 mb-10 border border-white/10">
-        <h4 className="text-lg font-medium mb-4 text-slate-200">
-          {replyTo ? (
-            <div className="flex items-center justify-between">
-              <span>回复 @{replyTo.nickname}</span>
-              <button
-                onClick={() => setReplyTo(null)}
-                className="text-sm text-slate-400 hover:text-white"
-              >
-                取消回复
-              </button>
-            </div>
-          ) : '发表评论'}
-        </h4>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              placeholder="昵称 *"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              required
-            />
-            <Input
-              placeholder="邮箱 (保密) *"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+    <section className="mt-20 max-w-4xl mx-auto">
+      {/* Header with Collapsible Toggle */}
+      <div 
+        onClick={() => setIsSectionExpanded(!isSectionExpanded)}
+        className="flex items-center justify-between mb-8 pb-4 border-b border-white/5 cursor-pointer group select-none"
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl border border-indigo-500/20 group-hover:bg-indigo-500/30 transition-colors">
+            <MessageSquare className="w-5 h-5 text-indigo-400" />
           </div>
-          <Input
-            placeholder="网站 (可选)"
-            value={website}
-            onChange={(e) => setWebsite(e.target.value)}
-          />
-          <textarea
-            className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-slate-200 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-colors min-h-[120px] resize-y"
-            placeholder="写下你的想法..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            required
-          />
-
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          {success && <p className="text-green-400 text-sm">{success}</p>}
-
-          <div className="flex justify-end">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  提交中...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  提交评论
-                </>
-              )}
-            </Button>
+          <div>
+            <h3 className="text-xl font-bold text-white tracking-tight group-hover:text-indigo-300 transition-colors">评论交流</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Comments ({comments.length})</p>
           </div>
-        </form>
+        </div>
+        <div className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-500">
+          {isSectionExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+        </div>
       </div>
 
-      {/* Comments List */}
-      {loading ? (
-        <div className="text-center py-10 text-slate-500">加载评论中...</div>
-      ) : comments.length === 0 ? (
-        <div className="text-center py-10 text-slate-500 bg-white/5 rounded-2xl border border-white/5 border-dashed">
-          暂无评论，快来抢沙发吧！
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {comments.map((comment) => (
-            <CommentItem
-              key={comment.id}
-              comment={comment}
-              onReply={(c) => {
-                setReplyTo(c);
-                const form = document.querySelector('form');
-                if (form) {
-                  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {isSectionExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            {/* Collapsed Form Trigger */}
+            {!isFormExpanded && (
+              <motion.button
+                ref={formTriggerRef}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                onClick={() => setIsFormExpanded(true)}
+                className="w-full bg-[#0f1117] hover:bg-[#13161c] border border-white/5 hover:border-indigo-500/30 rounded-2xl p-4 flex items-center gap-4 transition-all group mb-12 shadow-lg hover:shadow-indigo-500/10"
+              >
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 border border-white/5 flex items-center justify-center text-slate-500 group-hover:text-indigo-400 group-hover:border-indigo-500/30 transition-colors">
+                  <PenLine className="w-5 h-5" />
+                </div>
+                <div className="flex-1 text-left">
+                  <span className="text-slate-400 group-hover:text-slate-300 transition-colors">写下你的想法...</span>
+                </div>
+                <div className="text-xs text-slate-600 bg-white/5 px-2 py-1 rounded border border-white/5 group-hover:border-indigo-500/20 transition-colors">
+                  点击发表
+                </div>
+              </motion.button>
+            )}
+
+            {/* Expanded Comment Form */}
+            <AnimatePresence>
+              {isFormExpanded && (
+                <motion.div
+                  ref={formRef}
+                  initial={{ opacity: 0, height: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                  exit={{ opacity: 0, height: 0, scale: 0.98 }}
+                  className="bg-[#0f1117] rounded-2xl p-1 border border-white/5 shadow-2xl shadow-indigo-500/5 mb-12 overflow-hidden ring-1 ring-white/5"
+                >
+                  <div className="bg-[#13161c] rounded-xl p-6 sm:p-8 relative overflow-hidden group">
+                    {/* Simplified Decorative Gradients */}
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
+                    
+                    <div className="flex items-center justify-between mb-6">
+                      <h4 className="text-lg font-medium text-white flex items-center gap-2">
+                         {replyTo ? (
+                           <>
+                             <CornerDownRight className="w-5 h-5 text-indigo-400" />
+                             回复 <span className="text-indigo-400 font-bold">@{replyTo.nickname}</span>
+                           </>
+                         ) : '发表评论'}
+                      </h4>
+                      <button onClick={closeForm} className="text-slate-500 hover:text-white transition-colors text-sm">
+                        取消
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="relative z-10 space-y-5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div className="group/input relative">
+                          <ShieldCheck className="absolute left-3 top-3.5 w-4 h-4 text-slate-500 group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                          <input
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                            placeholder="昵称 *"
+                            value={nickname}
+                            onChange={(e) => setNickname(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="group/input relative">
+                          <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-500 group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                          <input
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                            placeholder="邮箱 (保密) *"
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="group/input relative">
+                        <Globe className="absolute left-3 top-3.5 w-4 h-4 text-slate-500 group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                        <input
+                          className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                          placeholder="网站 (https://...)"
+                          value={website}
+                          onChange={(e) => setWebsite(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="relative">
+                        <textarea
+                          className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all min-h-[140px] resize-y leading-relaxed"
+                          placeholder="写点什么吧..."
+                          value={content}
+                          onChange={(e) => setContent(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="text-xs text-slate-500">
+                          {error && <span className="text-red-400">{error}</span>}
+                          {success && <span className="text-green-400">{success}</span>}
+                        </div>
+                        <div className="flex items-center gap-3">
+                           {replyTo && (
+                             <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-slate-500 hover:text-white transition-colors">
+                               改为发表新评论
+                             </button>
+                           )}
+                           <Button 
+                            type="submit" 
+                            disabled={submitting}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-6 py-2.5 text-sm font-medium transition-all shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            {submitting ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                发送中
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4" />
+                                发布
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Comments List */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                <p className="text-slate-500 text-sm">加载评论中...</p>
+              </div>
+            ) : comments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 opacity-60 hover:opacity-100 transition-opacity">
+                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-white/5 to-transparent border border-white/5 flex items-center justify-center rotate-12 group">
+                   <MessageSquare className="w-8 h-8 text-slate-600 group-hover:text-indigo-400 transition-colors" />
+                 </div>
+                 <div>
+                   <p className="text-slate-400 font-medium">还没有人评论</p>
+                   <p className="text-slate-600 text-sm mt-1">来做第一个发言的人吧</p>
+                 </div>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {comments.map((comment) => (
+                  <CommentItem
+                    key={comment.id}
+                    comment={comment}
+                    onReply={handleReply}
+                  />
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
 
-function CommentItem({ comment, onReply }: { comment: Comment, onReply: (c: Comment) => void }) {
+// Recursive Comment Item Component
+function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onReply: (c: Comment) => void, depth?: number }) {
+  const hasChildren = comment.children && comment.children.length > 0;
+  // Default expanded for depth 0 and 1, others collapsed
+  const [isExpanded, setIsExpanded] = useState(depth < 2);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group"
+      transition={{ duration: 0.3 }}
+      className="relative"
     >
       <div className="flex gap-4">
-        <Avatar src={comment.avatar} alt={comment.nickname} fallback={comment.nickname} />
-        <div className="flex-1">
-          <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+        <div className="flex-shrink-0 relative">
+          <Avatar 
+            src={comment.avatar} 
+            alt={comment.nickname} 
+            fallback={comment.nickname.slice(0, 1).toUpperCase()} 
+            className="w-10 h-10 border-2 border-[#1a1d24] ring-2 ring-white/5 shadow-lg"
+          />
+          {/* Connecting Line for Children */}
+          {hasChildren && isExpanded && (
+            <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[2px] h-[calc(100%-48px)] bg-gradient-to-b from-white/10 to-transparent" />
+          )}
+        </div>
+
+        <div className="flex-1 pb-2">
+          {/* Comment Card */}
+          <div className="bg-[#13161c]/80 backdrop-blur-sm border border-white/5 rounded-xl rounded-tl-none p-4 hover:border-white/10 transition-colors group">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-slate-200">{comment.nickname}</span>
-                <span className="text-xs text-slate-500">{new Date(comment.createdAt).toLocaleDateString()}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm text-slate-200 bg-gradient-to-r from-slate-200 to-slate-400 bg-clip-text text-transparent">{comment.nickname}</span>
+                <span className="text-xs text-slate-500 flex items-center gap-1">
+                  <span className="w-1 h-1 bg-slate-600 rounded-full" />
+                  {new Date(comment.createdAt).toLocaleString()}
+                </span>
+                
+                {comment.website && (
+                  <a href={comment.website} target="_blank" rel="noreferrer" className="text-xs text-slate-600 hover:text-indigo-400 transition-colors ml-1">
+                    <Globe className="w-3 h-3" />
+                  </a>
+                )}
               </div>
-              <button
+              
+              <Button 
+                variant="ghost" 
+                size="sm"
                 onClick={() => onReply(comment)}
-                className="text-slate-500 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-7 px-2 text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
               >
-                <Reply className="w-4 h-4" />
-              </button>
+                <Reply className="w-3.5 h-3.5 mr-1" />
+                <span className="text-xs">回复</span>
+              </Button>
             </div>
-            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{comment.content}</p>
+            
+            <div className="text-slate-300 text-sm leading-7 whitespace-pre-wrap">
+              {comment.content}
+            </div>
           </div>
 
-          {/* Nested comments would go here if we had recursive structure in API response */}
-          {comment.children && comment.children.length > 0 && (
-            <div className="mt-4 ml-4 pl-4 border-l-2 border-white/10 space-y-4">
-              {comment.children.map(child => (
-                <CommentItem key={child.id} comment={child} onReply={onReply} />
-              ))}
+          {/* Children / Expand Toggle */}
+          {hasChildren && (
+            <div className="mt-3">
+              {/* Toggle Button */}
+              {!isExpanded && (
+                <button 
+                  onClick={() => setIsExpanded(true)}
+                  className="flex items-center gap-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors ml-2"
+                >
+                  <div className="w-4 h-[1px] bg-indigo-500/30" />
+                  {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  展开 {comment.children?.length} 条回复
+                </button>
+              )}
+
+              {/* Collapsible Content */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden space-y-4 pt-3"
+                  >
+                    {comment.children!.map(child => (
+                      <CommentItem 
+                        key={child.id} 
+                        comment={child} 
+                        onReply={onReply} 
+                        depth={depth + 1}
+                      />
+                    ))}
+                    
+                    {/* Fold up button if long thread */}
+                    {comment.children!.length > 2 && (
+                      <button 
+                        onClick={() => setIsExpanded(false)}
+                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 ml-4 pl-4 border-l border-white/5 h-6"
+                      >
+                       <div className="w-2 h-[1px] bg-slate-700" />
+                        收起回复
+                      </button>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </div>
