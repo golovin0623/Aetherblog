@@ -5,12 +5,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
-
 import javax.sql.DataSource;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLConnection;
 import java.io.File;
 import java.lang.management.ManagementFactory;
-import java.lang.management.MemoryMXBean;
 import java.lang.management.OperatingSystemMXBean;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,11 +38,98 @@ public class SystemMonitorService {
     private final DataSource dataSource;
     private final RedisConnectionFactory redisConnectionFactory;
 
+    // 网络速率计算缓存
+    private static volatile long lastNetworkIn = 0;
+    private static volatile long lastNetworkOut = 0;
+    private static volatile long lastNetworkTime = 0;
+    private static volatile long cachedSpeedIn = 0;  // bytes/s
+    private static volatile long cachedSpeedOut = 0; // bytes/s
+
     @Value("${app.upload.path:./uploads}")
     private String uploadPath;
 
     @Value("${app.log.path:./logs}")
     private String logPath;
+    
+    // 网络带宽配置 (bytes/s)，默认 12Mbps = 1.5MB/s
+    private volatile long networkMaxBandwidth = 1572864;
+
+    private volatile boolean isTestingBandwidth = false;
+
+    @PostConstruct
+    public void init() {
+        // 启动后延迟 10 秒执行自动测速，避免影响启动速度
+        new Thread(() -> {
+            try {
+                Thread.sleep(10000);
+                autoDetectBandwidth();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }).start();
+    }
+
+    /**
+     * 自动检测带宽
+     * 优化方案：下载大文件并分段采样，获取峰值下载速度
+     */
+    public void autoDetectBandwidth() {
+        if (isTestingBandwidth) return;
+        isTestingBandwidth = true;
+        log.info("Starting robust network bandwidth auto-detection...");
+        
+        try {
+            String[] testUrls = {
+                "https://speed.cloudflare.com/__down?bytes=10485760", // 10MB
+                "https://api.github.com/_stats"                      // 备份
+            };
+            
+            long maxPeakBps = 0;
+            
+            for (String testUrl : testUrls) {
+                try {
+                    URL url = URI.create(testUrl).toURL();
+                    URLConnection conn = url.openConnection();
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(15000);
+                    
+                    try (InputStream is = conn.getInputStream()) {
+                        byte[] buffer = new byte[65536]; // 64KB buffer
+                        int read;
+                        long currentBatchBytes = 0;
+                        long batchStartTime = System.currentTimeMillis();
+                        
+                        while ((read = is.read(buffer)) != -1) {
+                            currentBatchBytes += read;
+                            long currentTime = System.currentTimeMillis();
+                            long batchDuration = currentTime - batchStartTime;
+                            
+                            // 每 200ms 采样一次瞬时速率
+                            if (batchDuration >= 200) {
+                                long instantBps = (currentBatchBytes * 1000) / batchDuration;
+                                maxPeakBps = Math.max(maxPeakBps, instantBps);
+                                
+                                // 重置采样窗口
+                                currentBatchBytes = 0;
+                                batchStartTime = currentTime;
+                            }
+                        }
+                    }
+                    log.info("Finished test on: {}, Peak detected: {}", testUrl, formatBandwidth(maxPeakBps));
+                } catch (Exception e) {
+                    log.warn("Bandwidth test failed for {}: {}", testUrl, e.getMessage());
+                }
+            }
+            
+            if (maxPeakBps > 0) {
+                // 自动带宽通常取测得峰值的 90%-100%
+                this.networkMaxBandwidth = maxPeakBps;
+                log.info("Bandwidth detection completed. Max bandwidth set to: {}", formatBandwidth(networkMaxBandwidth));
+            }
+        } finally {
+            isTestingBandwidth = false;
+        }
+    }
 
     // ========== 数据模型 ==========
 
@@ -57,8 +147,12 @@ public class SystemMonitorService {
         private double diskPercent;    // 0-100
         private long networkIn;        // bytes 累计接收
         private long networkOut;       // bytes 累计发送
+        private long networkInSpeed;   // bytes/s 实时接收速率
+        private long networkOutSpeed;  // bytes/s 实时发送速率
         private String networkInRate;  // 接收速率 (格式化)
         private String networkOutRate; // 发送速率 (格式化)
+        private double networkPercent; // 带宽使用率 0-100
+        private long networkMaxSpeed;  // 配置的最大带宽 bytes/s
         private long uptime;           // seconds
         private String osName;         // 操作系统名称
         private String osArch;         // 系统架构
@@ -69,6 +163,7 @@ public class SystemMonitorService {
         private StorageItem uploads;
         private StorageItem database;
         private StorageItem logs;
+        private StorageItem redis;  // Redis 内存占用
         private long totalSize;
         private long usedSize;
         private double usedPercent;
@@ -196,17 +291,65 @@ public class SystemMonitorService {
             metrics.setDiskPercent((double) usedSpace / totalSpace * 100);
         }
 
-        // 网络流量统计
+        // 网络流量统计 - 计算实时速率
         try {
             long[] networkStats = getNetworkStats();
-            metrics.setNetworkIn(networkStats[0]);
-            metrics.setNetworkOut(networkStats[1]);
-            metrics.setNetworkInRate(formatBytes(networkStats[0]) + " 累计接收");
-            metrics.setNetworkOutRate(formatBytes(networkStats[1]) + " 累计发送");
+            long currentIn = networkStats[0];
+            long currentOut = networkStats[1];
+            long currentTime = System.currentTimeMillis();
+            
+            // 计算速率 (需要有上次的数据)
+            if (lastNetworkTime > 0 && currentTime > lastNetworkTime) {
+                long timeDelta = (currentTime - lastNetworkTime); // ms
+                if (timeDelta >= 1000) { // 至少1秒才更新速率
+                    long deltaIn = Math.max(0, currentIn - lastNetworkIn);
+                    long deltaOut = Math.max(0, currentOut - lastNetworkOut);
+                    cachedSpeedIn = (deltaIn * 1000) / timeDelta;  // bytes/s
+                    cachedSpeedOut = (deltaOut * 1000) / timeDelta; // bytes/s
+                    
+                    // 更新缓存
+                    lastNetworkIn = currentIn;
+                    lastNetworkOut = currentOut;
+                    lastNetworkTime = currentTime;
+                }
+            } else {
+                // 首次调用，初始化缓存
+                lastNetworkIn = currentIn;
+                lastNetworkOut = currentOut;
+                lastNetworkTime = currentTime;
+            }
+            
+            metrics.setNetworkIn(currentIn);
+            metrics.setNetworkOut(currentOut);
+            metrics.setNetworkInSpeed(cachedSpeedIn);
+            metrics.setNetworkOutSpeed(cachedSpeedOut);
+            metrics.setNetworkMaxSpeed(networkMaxBandwidth);
+            
+            // 计算带宽使用率（取上传和下载中较大的）
+            long maxSpeed = Math.max(cachedSpeedIn, cachedSpeedOut);
+            if (networkMaxBandwidth > 0) {
+                double percent = (double) maxSpeed / networkMaxBandwidth * 100;
+                metrics.setNetworkPercent(Math.min(100, percent));
+            } else {
+                metrics.setNetworkPercent(0);
+            }
+            
+            // 格式化显示速率
+            if (cachedSpeedIn > 0 || cachedSpeedOut > 0) {
+                metrics.setNetworkInRate(formatBytesPerSecond(cachedSpeedIn));
+                metrics.setNetworkOutRate(formatBytesPerSecond(cachedSpeedOut));
+            } else {
+                metrics.setNetworkInRate("计算中...");
+                metrics.setNetworkOutRate("计算中...");
+            }
         } catch (Exception e) {
             log.debug("Failed to get network stats", e);
             metrics.setNetworkIn(0);
             metrics.setNetworkOut(0);
+            metrics.setNetworkInSpeed(0);
+            metrics.setNetworkOutSpeed(0);
+            metrics.setNetworkPercent(0);
+            metrics.setNetworkMaxSpeed(networkMaxBandwidth);
             metrics.setNetworkInRate("N/A");
             metrics.setNetworkOutRate("N/A");
         }
@@ -558,13 +701,17 @@ public class SystemMonitorService {
         // 日志目录
         details.setLogs(calculateDirectorySize(logPath, "日志文件"));
 
-        // 数据库大小 (尝试查询 PostgreSQL)
+        // 数据库大小 (PostgreSQL)
         details.setDatabase(getDatabaseSize());
+        
+        // Redis 内存占用
+        details.setRedis(getRedisMemory());
 
         // 计算总计
         long totalUsed = details.getUploads().getSize()
             + details.getLogs().getSize()
-            + details.getDatabase().getSize();
+            + details.getDatabase().getSize()
+            + details.getRedis().getSize();
         details.setUsedSize(totalUsed);
 
         // 获取磁盘总容量
@@ -690,6 +837,48 @@ public class SystemMonitorService {
         return new StorageItem("数据库", size, 0);
     }
 
+    /**
+     * 获取 Redis 内存占用
+     * 使用 INFO memory 命令获取 used_memory 和 maxmemory
+     */
+    private StorageItem getRedisMemory() {
+        long usedMemory = 0;
+        long maxMemory = 0;
+        try {
+            var conn = redisConnectionFactory.getConnection();
+            
+            // 获取 INFO memory
+            java.util.Properties info = conn.info("memory");
+            if (info != null) {
+                String usedMemStr = info.getProperty("used_memory");
+                String maxMemStr = info.getProperty("maxmemory");
+                
+                if (usedMemStr != null) {
+                    usedMemory = Long.parseLong(usedMemStr);
+                }
+                if (maxMemStr != null && !maxMemStr.equals("0")) {
+                    maxMemory = Long.parseLong(maxMemStr);
+                }
+            }
+            conn.close();
+            
+            // 如果有 maxmemory，格式化为 "used / max"，否则显示 "used / Unlimited"
+            String formatted;
+            if (maxMemory > 0) {
+                formatted = formatBytes(usedMemory) + " / " + formatBytes(maxMemory);
+            } else {
+                formatted = formatBytes(usedMemory) + " / Unlimited";
+            }
+            
+            StorageItem item = new StorageItem("Redis", usedMemory, 0);
+            item.setFormatted(formatted);
+            return item;
+        } catch (Exception e) {
+            log.warn("Failed to get Redis memory info", e);
+            return new StorageItem("Redis", 0, 0);
+        }
+    }
+
     private ServiceHealth checkPostgreSQL() {
         long start = System.currentTimeMillis();
         try (Connection conn = dataSource.getConnection()) {
@@ -727,5 +916,21 @@ public class SystemMonitorService {
         if (bytes < 1024 * 1024) return df.format(bytes / 1024.0) + " KB";
         if (bytes < 1024 * 1024 * 1024) return df.format(bytes / (1024.0 * 1024)) + " MB";
         return df.format(bytes / (1024.0 * 1024 * 1024)) + " GB";
+    }
+
+    private static String formatBytesPerSecond(long bytesPerSecond) {
+        if (bytesPerSecond < 1024) return bytesPerSecond + " B/s";
+        DecimalFormat df = new DecimalFormat("#.##");
+        if (bytesPerSecond < 1024 * 1024) return df.format(bytesPerSecond / 1024.0) + " KB/s";
+        if (bytesPerSecond < 1024 * 1024 * 1024) return df.format(bytesPerSecond / (1024.0 * 1024)) + " MB/s";
+        return df.format(bytesPerSecond / (1024.0 * 1024 * 1024)) + " GB/s";
+    }
+
+    private static String formatBandwidth(long bps) {
+        double bits = bps * 8.0;
+        if (bits < 1000) return String.format("%.0f bps", bits);
+        if (bits < 1000 * 1000) return String.format("%.0f Kbps", bits / 1000.0);
+        if (bits < 1000 * 1000 * 1000) return String.format("%.0f Mbps", bits / (1000.0 * 1000.0));
+        return String.format("%.0f Gbps", bits / (1000.0 * 1000.0 * 1000.0));
     }
 }

@@ -30,9 +30,18 @@ public class StatsController {
     public R<Map<String, Object>> getDashboardData() {
         Map<String, Object> data = new HashMap<>();
         
-        // 基础统计
-        DashboardStats stats = statsService.getDashboardStats();
-        data.put("stats", stats);
+        // 基础统计 + 趋势
+        DashboardStatsWithTrends statsWithTrends = statsService.getDashboardStatsWithTrends();
+        data.put("stats", statsWithTrends.stats());
+        data.put("trends", Map.of(
+                "posts", statsWithTrends.postsTrend(),
+                "categories", statsWithTrends.categoriesTrend(),
+                "views", statsWithTrends.viewsTrend(),
+                "visitors", statsWithTrends.visitorsTrend(),
+                "comments", statsWithTrends.commentsTrend(),
+                "words", statsWithTrends.wordsTrend(),
+                "postsThisMonth", statsWithTrends.postsThisMonth()
+        ));
         
         // 热门文章
         List<TopPost> topPosts = statsService.getTopPosts(5);
@@ -45,6 +54,10 @@ public class StatsController {
         // 归档统计
         List<ArchiveStats> archiveStats = statsService.getMonthlyArchiveStats();
         data.put("archiveStats", archiveStats);
+        
+        // 设备分布
+        List<DeviceStats> deviceStats = statsService.getDeviceStats();
+        data.put("deviceStats", deviceStats);
         
         return R.ok(data);
     }
