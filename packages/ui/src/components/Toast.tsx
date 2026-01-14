@@ -36,7 +36,7 @@ export function Toast({ message, type = 'info', duration = 3000, onClose }: Toas
   );
 }
 
-// Toast container for managing multiple toasts
+// 用于管理多个 Toast 的容器
 interface ToastItem extends ToastProps {
   id: string;
 }

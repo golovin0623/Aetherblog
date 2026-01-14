@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# AetherBlog Backend - Spring Boot Application
-# Multi-platform: linux/amd64 (CentOS 7), linux/arm64 (Mac M1/M2)
+# AetherBlog 后端 - Spring Boot 应用
+# 多平台: linux/amd64 (CentOS 7), linux/arm64 (Mac M1/M2)
 # =============================================================================
 
 # 第一阶段：构建

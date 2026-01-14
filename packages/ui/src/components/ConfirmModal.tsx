@@ -55,7 +55,7 @@ export function ConfirmModal({
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* 背景遮罩 */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -64,7 +64,7 @@ export function ConfirmModal({
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
           />
           
-          {/* Modal */}
+          {/* 模态框 */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -78,7 +78,7 @@ export function ConfirmModal({
               'border border-white/10',
               'shadow-2xl shadow-black/50'
             )}>
-              {/* Close button */}
+              {/* 关闭按钮 */}
               <button
                 onClick={onCancel}
                 className="absolute right-4 top-4 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -86,16 +86,16 @@ export function ConfirmModal({
                 <X className="w-4 h-4" />
               </button>
 
-              {/* Icon */}
+              {/* 图标 */}
               <div className={cn('w-12 h-12 rounded-full flex items-center justify-center mb-4', styles.icon)}>
                 <AlertTriangle className="w-6 h-6" />
               </div>
 
-              {/* Content */}
+              {/* 内容 */}
               <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
               <p className="text-gray-400 mb-6">{message}</p>
 
-              {/* Actions */}
+              {/* 操作按钮 */}
               <div className="flex gap-3 justify-end">
                 <button
                   onClick={onCancel}

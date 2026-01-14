@@ -28,7 +28,7 @@ const PAGE_SIZE = 6;
 export default function PostsPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
-  // 1. Fetch Featured Post (Always fetch, it's small and cached)
+  // 1. 获取精选文章（总是获取，数据小且已缓存）
   const { 
     data: featuredPost,
     isLoading: isFeaturedLoading 
@@ -55,7 +55,7 @@ export default function PostsPage() {
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       };
 
-      // Fetch content preview
+      // 获取内容预览
       try {
         const contentRes = await fetch(API_ENDPOINTS.postBySlug(item.slug));
         if (contentRes.ok) {
@@ -67,10 +67,10 @@ export default function PostsPage() {
       }
       return post;
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    staleTime: 5 * 60 * 1000, // 5 分钟缓存
   });
 
-  // 2. Fetch Paginated Posts
+  // 2. 获取分页文章
   const { 
     data: postsData,
     isLoading: isPostsLoading,
@@ -78,8 +78,8 @@ export default function PostsPage() {
   } = useQuery({
     queryKey: ['posts', currentPage],
     queryFn: async () => {
-      // Calculate effective page size/offset logic
-      // Original logic: page 1 fetches 10 items (skipped 1), others fetch 9
+      // 计算有效的分页大小/偏移逻辑
+      // 原始逻辑：第 1 页获取 10 条（跳过 1 条），其他获取 9 条
       const effectivePageSize = PAGE_SIZE + (currentPage === 1 ? 1 : 0);
       const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=${currentPage}&pageSize=${effectivePageSize}`);
       if (!res.ok) throw new Error('Network response was not ok');
@@ -99,7 +99,7 @@ export default function PostsPage() {
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       }));
 
-      // If page 1, remove the first item (featured post)
+      // 如果是第 1 页，移除第一条（精选文章）
       if (currentPage === 1 && list.length > 0) {
         list = list.slice(1);
       }
@@ -112,8 +112,8 @@ export default function PostsPage() {
         pages: Math.ceil(total / PAGE_SIZE)
       };
     },
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    placeholderData: (previousData) => previousData, // 在获取新页面时保留旧数据
+    staleTime: 5 * 60 * 1000, // 5 分钟缓存
   });
 
   const handlePageChange = (page: number) => {
@@ -122,7 +122,7 @@ export default function PostsPage() {
     window.scrollTo({ top: 500, behavior: 'smooth' });
   };
 
-  // Initial loading state (only for first load)
+  // 初始加载状态（仅用于首次加载）
   if (isFeaturedLoading || (isPostsLoading && !postsData)) {
     return <PostsLoading />;
   }
@@ -133,9 +133,9 @@ export default function PostsPage() {
 
   return (
     <div className="min-h-screen bg-background text-white selection:bg-primary/30">
-      {/* Main Content */}
+      {/* 主要内容 */}
       <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
-        {/* Background Ambient Light */}
+        {/* 背景环境光 */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
           <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full blur-[120px] opacity-30" />
           <div className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-purple-500/10 rounded-full blur-[100px] opacity-20" />
@@ -152,20 +152,20 @@ export default function PostsPage() {
         ) : (
           <div className="space-y-12">
             
-            {/* Top Section: Featured + Sidebar */}
+            {/* 顶部区域：精选 + 侧边栏 */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* Left: Featured Post (75%) */}
+              {/* 左侧：精选文章 (75%) */}
               <div className="lg:col-span-3 lg:h-[420px] lg:min-h-[420px]">
                 {featuredPost && <FeaturedPost post={featuredPost} />}
               </div>
 
-              {/* Right: Author Profile (25%) */}
+              {/* 右侧：作者资料 (25%) */}
               <div className="lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
                 <AuthorProfileCard className="h-full" />
               </div>
             </div>
 
-            {/* Bottom Section: Remaining Posts Grid */}
+            {/* 底部区域：其余文章网格 */}
             <div>
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -177,7 +177,7 @@ export default function PostsPage() {
                 </h2>
               </div>
 
-              {/* Grid or Pagination Loading Spinner */}
+              {/* 网格或分页加载指示器 */}
               {isPostsLoading && isPlaceholderData ? (
                  <div className="flex items-center justify-center py-20 opacity-50">
                     <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -207,7 +207,7 @@ export default function PostsPage() {
                 </div>
               )}
 
-              {/* Pagination */}
+              {/* 分页 */}
               {pages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-10">
                   <button

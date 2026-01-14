@@ -4,7 +4,7 @@ import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki
 import katex from 'katex';
 import mermaid from 'mermaid';
 
-// Import KaTeX CSS
+// 引入 KaTeX CSS
 import 'katex/dist/katex.min.css';
 
 export interface MarkdownPreviewProps {
@@ -13,7 +13,7 @@ export interface MarkdownPreviewProps {
   style?: React.CSSProperties;
 }
 
-// Supported languages for syntax highlighting
+// 支持语法高亮的语言
 const SUPPORTED_LANGUAGES: BundledLanguage[] = [
   'javascript', 'typescript', 'jsx', 'tsx',
   'python', 'java', 'go', 'rust', 'c', 'cpp',
@@ -24,7 +24,7 @@ const SUPPORTED_LANGUAGES: BundledLanguage[] = [
   'vue', 'svelte', 'astro'
 ];
 
-// Language alias mapping
+// 语言别名映射
 const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'js': 'javascript',
   'ts': 'typescript',
@@ -37,7 +37,7 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'docker': 'dockerfile',
 };
 
-// Global highlighter instance (singleton)
+// 全局高亮实例 (单例)
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighterInstance: Highlighter | null = null;
 
@@ -55,7 +55,7 @@ async function getHighlighter(): Promise<Highlighter> {
   return highlighterInstance;
 }
 
-// Initialize mermaid with dark theme
+// 初始化 mermaid 为暗色主题
 mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
@@ -79,7 +79,7 @@ mermaid.initialize({
   securityLevel: 'loose',
 });
 
-// Normalize language name
+// 标准化语言名称
 function normalizeLanguage(lang: string): BundledLanguage {
   const normalized = lang.toLowerCase().trim();
   if (LANGUAGE_ALIASES[normalized]) {
@@ -91,9 +91,9 @@ function normalizeLanguage(lang: string): BundledLanguage {
   return 'text' as BundledLanguage;
 }
 
-// Render LaTeX math formulas
+// 渲染 LaTeX 数学公式
 function renderMath(text: string): string {
-  // Block math: $$...$$
+  // 块级公式: $$...$$
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula) => {
     try {
       return `<div class="math-block">${katex.renderToString(formula.trim(), {
@@ -105,7 +105,7 @@ function renderMath(text: string): string {
     }
   });
 
-  // Inline math: $...$
+  // 行内公式: $...$
   text = text.replace(/\$([^$\n]+?)\$/g, (_match, formula) => {
     try {
       return `<span class="math-inline">${katex.renderToString(formula.trim(), {
@@ -120,13 +120,13 @@ function renderMath(text: string): string {
   return text;
 }
 
-// Generate unique ID for mermaid diagrams
+// 为 mermaid 图表生成唯一 ID
 let mermaidIdCounter = 0;
 function generateMermaidId(): string {
   return `mermaid-${Date.now()}-${mermaidIdCounter++}`;
 }
 
-// Create a custom renderer that adds line numbers to elements
+// 创建一个向元素添加行号的自定义渲染器
 function createLineTrackingRenderer(
   content: string,
   highlighter: Highlighter | null
@@ -134,7 +134,7 @@ function createLineTrackingRenderer(
   const renderer = new Renderer();
   const lines = content.split('\n');
   
-  // Find line number for a given text
+  // 查找给定文本的行号
   const findLineNumber = (text: string): number => {
     const trimmedText = text.trim().replace(/^#+\s*/, '');
     for (let i = 0; i < lines.length; i++) {
@@ -145,14 +145,14 @@ function createLineTrackingRenderer(
     return -1;
   };
 
-  // Override heading renderer to add data-source-line
+  // 覆盖标题渲染器以添加 data-source-line
   renderer.heading = function(text: string, level: number) {
     const lineNum = findLineNumber(text);
     const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
     return `<h${level}${lineAttr}>${text}</h${level}>\n`;
   };
 
-  // Override paragraph renderer - also process math
+  // 覆盖段落渲染器 - 同时处理数学公式
   renderer.paragraph = function(text: string) {
     const processedText = renderMath(text);
     const lineNum = findLineNumber(text.substring(0, 50));
@@ -160,11 +160,11 @@ function createLineTrackingRenderer(
     return `<p${lineAttr}>${processedText}</p>\n`;
   };
 
-  // Override code block renderer for syntax highlighting and mermaid
+  // 覆盖代码块渲染器以支持语法高亮和 mermaid
   renderer.code = function(code: string, language?: string) {
     const lang = language?.toLowerCase().trim() || 'text';
     
-    // Handle Mermaid diagrams
+    // 处理 Mermaid 图表
     if (lang === 'mermaid') {
       const id = generateMermaidId();
       return `
@@ -186,7 +186,7 @@ function createLineTrackingRenderer(
           theme: 'github-dark',
         });
         
-        // Wrap in custom container with language label
+        // 用带有语言标签的自定义容器包裹
         return `
           <div class="code-block-wrapper">
             <div class="code-block-header">
@@ -202,11 +202,11 @@ function createLineTrackingRenderer(
           </div>
         `;
       } catch {
-        // Fall back to plain code block if highlighting fails
+        // 如果高亮失败，回退到普通代码块
       }
     }
     
-    // Fallback without syntax highlighting
+    // 无语法高亮的回退
     const escapedCode = code
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -229,7 +229,7 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load highlighter on mount
+  // 挂载时加载高亮器
   useEffect(() => {
     getHighlighter().then(setHighlighter);
   }, []);
@@ -248,14 +248,14 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
     }
   }, [content, highlighter]);
 
-  // Render mermaid diagrams after HTML is set
+  // HTML 设置后渲染 mermaid 图表
   useEffect(() => {
     if (!containerRef.current) return;
     
     const mermaidContainers = containerRef.current.querySelectorAll('.mermaid-container');
     if (mermaidContainers.length === 0) return;
 
-    // Reset mermaid to render new diagrams
+    // 重置 mermaid 以渲染新图表
     mermaidIdCounter = 0;
     
     const renderMermaidDiagrams = async () => {
@@ -294,7 +294,7 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
   );
 }
 
-// CSS styles for markdown preview
+// Markdown 预览的 CSS 样式
 export const markdownPreviewStyles = `
   .markdown-preview h1 {
     font-size: 2em;
@@ -342,7 +342,7 @@ export const markdownPreviewStyles = `
     padding: 0;
     font-size: 0.875em;
   }
-  /* Code block wrapper styles */
+  /* 代码块包装器样式 */
   .markdown-preview .code-block-wrapper {
     position: relative;
     margin: 1em 0;
@@ -403,7 +403,7 @@ export const markdownPreviewStyles = `
     border: none;
     border-radius: 0;
   }
-  /* Shiki code styling overrides */
+  /* Shiki 代码样式覆盖 */
   .markdown-preview .shiki {
     background: transparent !important;
     padding: 1em;
@@ -457,7 +457,7 @@ export const markdownPreviewStyles = `
     max-width: 100%;
     border-radius: 8px;
   }
-  /* Math styles */
+  /* 数学公式样式 */
   .markdown-preview .math-block {
     margin: 1em 0;
     padding: 1em;
@@ -473,7 +473,7 @@ export const markdownPreviewStyles = `
     color: #f87171;
     font-family: monospace;
   }
-  /* Mermaid styles */
+  /* Mermaid 样式 */
   .markdown-preview .mermaid-wrapper {
     margin: 1em 0;
     padding: 1em;
@@ -497,7 +497,7 @@ export const markdownPreviewStyles = `
     text-align: center;
     font-family: monospace;
   }
-  /* KaTeX overrides for dark theme */
+  /* 暗色主题的 KaTeX 覆盖 */
   .markdown-preview .katex {
     color: #e2e8f0;
   }
