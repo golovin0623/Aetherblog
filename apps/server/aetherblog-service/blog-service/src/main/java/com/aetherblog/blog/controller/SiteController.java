@@ -4,6 +4,7 @@ import com.aetherblog.blog.repository.CategoryRepository;
 import com.aetherblog.blog.repository.CommentRepository;
 import com.aetherblog.blog.repository.PostRepository;
 import com.aetherblog.blog.repository.TagRepository;
+import com.aetherblog.blog.repository.UserRepository;
 import com.aetherblog.blog.service.SiteSettingService;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,12 +31,16 @@ public class SiteController {
     private final CategoryRepository categoryRepository;
     private final TagRepository tagRepository;
     private final CommentRepository commentRepository;
+    private final com.aetherblog.blog.repository.UserRepository userRepository;
 
     @Operation(summary = "获取站点信息")
     @GetMapping("/info")
     public R<Map<String, Object>> getSiteInfo() {
         // 从数据库获取公开设置
         Map<String, Object> info = siteSettingService.getPublicSettings();
+        
+        // 覆盖为管理员信息
+        injectAdminInfo(info);
         
         // 添加版本信息
         info.put("version", "0.1.0");
@@ -64,6 +69,23 @@ public class SiteController {
     @GetMapping("/author")
     public R<Map<String, Object>> getAuthorInfo() {
         Map<String, Object> author = siteSettingService.getPublicSettingsByGroup("author");
+        injectAdminInfo(author);
         return R.ok(author);
+    }
+
+    private void injectAdminInfo(Map<String, Object> map) {
+        userRepository.findByRole(com.aetherblog.blog.entity.User.UserRole.ADMIN)
+            .stream().findFirst().ifPresent(admin -> {
+                if (admin.getNickname() != null) map.put("authorName", admin.getNickname());
+                if (admin.getAvatar() != null) {
+                    // Add /api prefix to match context-path configuration
+                    String avatarPath = admin.getAvatar();
+                    if (avatarPath.startsWith("/uploads")) {
+                        avatarPath = "/api" + avatarPath;
+                    }
+                    map.put("authorAvatar", avatarPath);
+                }
+                if (admin.getBio() != null) map.put("authorBio", admin.getBio());
+            });
     }
 }
