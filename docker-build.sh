@@ -5,9 +5,10 @@
 # =============================================================================
 # 
 # 用法:
-#   ./docker-build.sh                    # 构建所有镜像 (并行)
+#   ./docker-build.sh                    # 构建所有镜像 (并行, 仅 amd64)
 #   ./docker-build.sh --push             # 构建并推送到 Docker Hub
 #   ./docker-build.sh --version v1.0.0   # 使用指定版本标签
+#   ./docker-build.sh --all              # 构建全平台 (amd64 + arm64)
 #   ./docker-build.sh --parallel         # 并行构建所有镜像 (默认)
 #   ./docker-build.sh --sequential       # 串行构建 (网络不稳定时使用)
 #   ./docker-build.sh --only backend     # 只构建后端
@@ -15,8 +16,8 @@
 #   ./docker-build.sh --only admin       # 只构建管理后台
 #
 # 目标平台:
-#   - linux/amd64 (CentOS 7, 常规服务器)
-#   - linux/arm64 (Mac M1/M2, ARM 服务器)
+#   - 默认: linux/amd64 (CentOS 7, 常规服务器)
+#   - --all: linux/amd64 + linux/arm64 (Mac M1/M2, ARM 服务器)
 #
 # 性能优化:
 #   - 自动检测 CPU 核心数，并行构建充分利用多核
@@ -31,10 +32,11 @@ set -e
 REGISTRY="${DOCKER_REGISTRY:-golovin0623}"
 PROJECT="aetherblog"
 VERSION="${VERSION:-v1.0.0}"
-PLATFORMS="linux/amd64,linux/arm64"
+PLATFORMS="linux/amd64"
 PUSH=false
 PARALLEL=true
 ONLY=""
+ALL_PLATFORMS=false
 
 # 自动检测 CPU 核心数 (macOS 和 Linux 兼容)
 CPU_CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
@@ -68,6 +70,11 @@ while [[ $# -gt 0 ]]; do
             PARALLEL=false
             shift
             ;;
+        --all)
+            ALL_PLATFORMS=true
+            PLATFORMS="linux/amd64,linux/arm64"
+            shift
+            ;;
         --only)
             ONLY="$2"
             shift 2
@@ -82,6 +89,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --push              推送镜像到 Docker Hub"
             echo "  --version VERSION   指定版本标签 (默认: v1.0.0)"
+            echo "  --all               构建全平台镜像 (amd64 + arm64)"
             echo "  --parallel          并行构建所有镜像 (默认)"
             echo "  --sequential        串行构建 (网络不稳定时使用)"
             echo "  --only NAME         只构建指定镜像 (backend/blog/admin)"
@@ -105,6 +113,7 @@ print_header() {
     echo -e "${GREEN}Registry:${NC}     $REGISTRY"
     echo -e "${GREEN}Version:${NC}      $VERSION"
     echo -e "${GREEN}Platforms:${NC}    $PLATFORMS"
+    echo -e "${GREEN}All Platforms:${NC} $ALL_PLATFORMS"
     echo -e "${GREEN}Push:${NC}         $PUSH"
     echo -e "${GREEN}Parallel:${NC}     $PARALLEL"
     echo -e "${CYAN}CPU Cores:${NC}    $CPU_CORES"

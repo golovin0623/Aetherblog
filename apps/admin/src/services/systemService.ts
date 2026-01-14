@@ -22,8 +22,12 @@ export interface SystemMetrics {
   diskPercent: number;    // 0-100
   networkIn: number;      // bytes 累计接收
   networkOut: number;     // bytes 累计发送
+  networkInSpeed: number; // bytes/s 实时接收速率
+  networkOutSpeed: number;// bytes/s 实时发送速率
   networkInRate: string;  // 格式化的接收信息
   networkOutRate: string; // 格式化的发送信息
+  networkPercent: number; // 带宽使用率 0-100
+  networkMaxSpeed: number;// 配置的最大带宽 bytes/s
   uptime: number;         // seconds
   osName: string;         // 操作系统名称
   osArch: string;         // 系统架构
@@ -40,6 +44,7 @@ export interface StorageDetails {
   uploads: StorageItem;
   database: StorageItem;
   logs: StorageItem;
+  redis: StorageItem;    // Redis 内存占用
   totalSize: number;
   usedSize: number;
   usedPercent: number;
@@ -116,6 +121,16 @@ export interface HistoryStats {
   sampleIntervalSeconds: number;
   oldestTimestamp?: string;
   newestTimestamp?: string;
+}
+
+// ========== 日志文件类型 ==========
+
+export interface LogFileInfo {
+  level: string;
+  filename: string;
+  size: number;
+  sizeFormatted: string;
+  exists: boolean;
 }
 
 // ========== 告警类型 ==========
@@ -212,6 +227,27 @@ export const systemService = {
    */
   getContainerLogs: (id: string) => 
     api.get<R<string[]>>(`/v1/admin/system/containers/${id}/logs`).then(res => res.data),
+
+  // ========== 应用日志 ==========
+
+  /**
+   * 按级别获取应用日志
+   * @param level 日志级别 (ALL/INFO/WARN/ERROR/DEBUG)
+   * @param lines 行数限制，默认 2000
+   */
+  getLogs: (level: string = 'ALL', lines: number = 2000) =>
+    api.get<R<string[]>>(`/v1/admin/system/logs?level=${level}&lines=${lines}`).then(res => res.data),
+
+  /**
+   * 获取可用日志文件列表
+   */
+  getLogFiles: () => api.get<R<LogFileInfo[]>>('/v1/admin/system/logs/files'),
+
+  /**
+   * 获取日志文件下载 URL
+   */
+  getLogDownloadUrl: (level: string = 'ALL') => 
+    `/api/v1/admin/system/logs/download?level=${level}`,
 };
 
 // ========== 工具函数 ==========
@@ -245,7 +281,27 @@ export function formatUptime(seconds: number): string {
 }
 
 /**
- * 格式化 CPU 频率 (Hz -> GHz/MHz)
+ * 格式化带宽 (bps -> Mbps/Gbps)
+ */
+export function formatBandwidth(bps: number): string {
+  const bits = bps * 8;
+  if (!Number.isFinite(bits) || bits < 0) return '动态';
+  if (bits === 0) return '0 bps';
+  
+  if (bits >= 1000 * 1000 * 1000) {
+    return Math.round(bits / (1000 * 1000 * 1000)) + ' Gbps';
+  }
+  if (bits >= 1000 * 1000) {
+    return Math.round(bits / (1000 * 1000)) + ' Mbps';
+  }
+  if (bits >= 1000) {
+    return Math.round(bits / 1000) + ' Kbps';
+  }
+  return Math.round(bits) + ' bps';
+}
+
+/**
+ * 格式化频率
  */
 export function formatFrequency(hz: number): string {
   if (!Number.isFinite(hz) || hz <= 0) return '动态';
@@ -255,6 +311,19 @@ export function formatFrequency(hz: number): string {
     return (hz / 1_000_000).toFixed(0) + ' MHz';
   }
   return hz + ' Hz';
+}
+
+/**
+ * 格式化字节速率为可读字符串
+ */
+export function formatBytesPerSecond(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond < 0) return '0 B/s';
+  if (bytesPerSecond === 0) return '0 B/s';
+  const k = 1024;
+  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+  const safeIndex = Math.min(i, sizes.length - 1);
+  return parseFloat((bytesPerSecond / Math.pow(k, safeIndex)).toFixed(2)) + ' ' + sizes[safeIndex];
 }
 
 /**

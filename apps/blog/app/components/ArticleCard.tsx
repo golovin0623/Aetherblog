@@ -108,7 +108,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
           </div>
 
           {/* 标题 - 固定高度 */}
-          <h2 className="mb-3 h-[56px]">
+          <h2 className="mb-1.5 h-[56px]">
             <span
               className="text-lg font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-snug"
               title={title}
@@ -117,21 +117,20 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
             </span>
           </h2>
 
-          {/* 摘要 - 响应式高度：移动端3行(72px)，桌面端2行(48px) */}
-          <div className="h-[72px] md:h-[48px] mb-4 overflow-hidden">
-            {summary ? (
-              <p className="text-gray-400 text-sm leading-relaxed line-clamp-3 md:line-clamp-2">
-                {summary
-                  .replace(/[#*`>\[\]!|_~]/g, '')
-                  .replace(/\n+/g, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim()
-                  .slice(0, 80)}
-                {summary.length > 80 && '...'}
-              </p>
-            ) : (
-              <p className="text-gray-600 text-sm italic">暂无摘要</p>
-            )}
+          {/* 摘要 - 固定3行高度 */}
+          <div className="h-[66px] mb-4 overflow-hidden">
+            <p className="text-gray-400 text-sm leading-relaxed line-clamp-3">
+              {summary
+                ? summary
+                    .replace(/[#*`>\[\]!|_~]/g, '')
+                    .replace(/\n+/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 120) + (summary.length > 120 ? '...' : '')
+                : title.length > 100
+                  ? title.slice(0, 100) + '...'
+                  : `${title} - 探索更多精彩内容，点击阅读全文了解详情。`}
+            </p>
           </div>
 
           {/* 底部区域 - 标签和元信息 */}
