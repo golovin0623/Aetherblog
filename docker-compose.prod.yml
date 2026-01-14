@@ -138,6 +138,7 @@ services:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock:ro  # 容器监控 (只读)
+      - /proc/meminfo:/host_proc/meminfo:ro  # 宿主机内存信息 (最小权限)
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
