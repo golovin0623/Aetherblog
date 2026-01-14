@@ -31,11 +31,28 @@ export interface ArchiveStats {
   count: number;
 }
 
+export interface TrendData {
+  posts: number;
+  categories: number;
+  views: number;
+  visitors: number;
+  comments: number;
+  words: number;
+  postsThisMonth: number;
+}
+
+export interface DeviceStat {
+  name: string;
+  value: number;
+}
+
 export interface DashboardData {
   stats: DashboardStats;
   topPosts: TopPost[];
   visitorTrend: VisitorTrend[];
   archiveStats: ArchiveStats[];
+  deviceStats: DeviceStat[]; // 设备分布
+  trends?: TrendData;  // 趋势数据
 }
 
 class AnalyticsService {

@@ -1,19 +1,32 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 interface DeviceChartProps {
-  data?: { name: string; value: number; color: string }[];
+  data?: { name: string; value: number }[];
   loading?: boolean;
 }
 
+const COLORS: Record<string, string> = {
+  '桌面端': '#8b5cf6', // purple-500
+  '移动端': '#06b6d4', // cyan-500
+  '平板': '#f59e0b',   // amber-500
+  '其他': '#71717a',   // zinc-500
+};
+
 export function DeviceChart({
-  data = [
-    { name: '桌面端', value: 65, color: '#8b5cf6' },
-    { name: '移动端', value: 30, color: '#06b6d4' },
-    { name: '平板', value: 5, color: '#f59e0b' },
-  ],
+  data,
   loading
 }: DeviceChartProps) {
 
+  // Process data to add colors
+  const chartData = (data && data.length > 0) ? data.map(item => ({
+    ...item,
+    color: COLORS[item.name] || '#71717a'
+  })) : [
+    // Empty state or default
+    { name: '暂无数据', value: 1, color: '#27272a' }
+  ];
+
+  // If loading, show skeleton
   if (loading) {
     return (
       <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px]">
@@ -35,7 +48,7 @@ export function DeviceChart({
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data}
+              data={chartData}
               cx="50%"
               cy="50%"
               innerRadius={60}
@@ -43,7 +56,7 @@ export function DeviceChart({
               paddingAngle={5}
               dataKey="value"
             >
-              {data.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
               ))}
             </Pie>
@@ -58,7 +71,9 @@ export function DeviceChart({
                           style={{ backgroundColor: payload[0].payload.color }}
                         />
                         <span className="text-white">
-                          {payload[0].name}: {payload[0].value}%
+                          {payload[0].name}: {payload[0].value} 
+                          {/* Calculate percentage relative to total shown */}
+                           ({payload[0].value && chartData ? (Number(payload[0].value) / chartData.reduce((acc, curr) => acc + (curr.value || 0), 0) * 100).toFixed(1) : 0}%)
                         </span>
                       </div>
                     </div>
