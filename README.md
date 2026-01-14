@@ -238,6 +238,7 @@ cd apps/server
 |------|------|--------|
 | `--push` | 推送镜像到 Docker Hub | 否 |
 | `--version` | 版本标签 | `v1.0.0` |
+| `--all` | 构建全平台镜像 (amd64 + arm64) | 否 (仅 amd64) |
 | `--parallel` | 并行构建所有镜像 | 是 |
 | `--sequential` | 串行构建 | 否 |
 | `--only NAME` | 只构建指定镜像 (backend/blog/admin) | 全部 |
@@ -253,8 +254,8 @@ cd apps/server
 
 #### 支持平台
 
-- `linux/amd64` - 常规 x86 服务器 (CentOS, Ubuntu 等)
-- `linux/arm64` - ARM 服务器、Mac M1/M2/M3
+- **默认**: `linux/amd64` - 常规 x86 服务器 (CentOS, Ubuntu 等)
+- **--all**: `linux/amd64` + `linux/arm64` - 同时支持 ARM 服务器、Mac M1/M2/M3
 
 ---
 

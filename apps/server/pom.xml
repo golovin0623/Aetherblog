@@ -38,11 +38,11 @@
         <springdoc.version>2.7.0</springdoc.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.42</lombok.version>
-        <jjwt.version>0.12.6</jjwt.version>
+        <jjwt.version>0.12.7</jjwt.version>
         <!-- Jackson 3.x (tools.jackson) for Spring Boot 4 -->
         <jackson.version>3.0.3</jackson.version>
         <!-- JDK 25 Testing Support: Override Byte Buddy for Mockito compatibility -->
-        <byte-buddy.version>1.17.5</byte-buddy.version>
+        <byte-buddy.version>1.17.8</byte-buddy.version>
     </properties>
 
     <dependencyManagement>

@@ -213,6 +213,7 @@ public class PostServiceImpl implements PostService {
         post.setCoverImage(request.coverImage());
         post.setSlug(generateUniqueSlug(request.title()));
         post.setStatus(PostStatus.valueOf(request.status()));
+        post.setWordCount(calculateWordCount(request.content()));
         if (post.getStatus() == PostStatus.PUBLISHED) {
             post.setPublishedAt(LocalDateTime.now());
         }
@@ -241,6 +242,7 @@ public class PostServiceImpl implements PostService {
         post.setContentMarkdown(request.content());
         post.setSummary(request.summary());
         post.setCoverImage(request.coverImage());
+        post.setWordCount(calculateWordCount(request.content()));
 
         // Update status and set publishedAt if publishing
         if (request.status() != null) {
@@ -414,6 +416,25 @@ public class PostServiceImpl implements PostService {
             slug = baseSlug + "-" + count++;
         }
         return slug;
+    }
+
+    /**
+     * 计算文章字数
+     * 移除 Markdown 标记后统计字符数
+     */
+    private int calculateWordCount(String content) {
+        if (content == null || content.isBlank()) {
+            return 0;
+        }
+        // 移除 Markdown 标记
+        String text = content
+                .replaceAll("```[\\s\\S]*?```", "")  // 代码块
+                .replaceAll("`[^`]*`", "")           // 行内代码
+                .replaceAll("!?\\[[^\\]]*\\]\\([^)]*\\)", "")  // 链接/图片
+                .replaceAll("#+\\s*", "")            // 标题#
+                .replaceAll("[*_~`>|-]+", "")        // 格式符号
+                .replaceAll("\\s+", "");             // 空白
+        return text.length();
     }
 
     private PageResult<PostListResponse> toPageResult(Page<Post> page, int pageNum, int pageSize) {

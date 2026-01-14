@@ -58,7 +58,13 @@ export default function DashboardPage() {
         uv: Math.floor(Math.random() * 500) + 500
       };
     }),
-    archiveStats: []
+    archiveStats: [],
+    deviceStats: [
+      { name: '桌面端', value: 850 },
+      { name: '移动端', value: 420 },
+      { name: '平板', value: 50 },
+      { name: '其他', value: 30 }
+    ]
   };
 
   useEffect(() => {
@@ -297,15 +303,15 @@ export default function DashboardPage() {
         <StatsCard
           title="文章总数"
           value={data?.stats.posts || 0}
-          change={12}
-          changeLabel="本月新增"
+          change={data?.trends?.posts ?? 0}
+          changeLabel={`本月+${data?.trends?.postsThisMonth ?? 0}`}
           icon={<FileText className="w-5 h-5" />}
           color="primary"
         />
         <StatsCard
           title="独立访客"
           value={data?.stats.visitors || 0}
-          change={8}
+          change={data?.trends?.visitors ?? 0}
           changeLabel="较上周"
           icon={<Users className="w-5 h-5" />}
           color="blue"
@@ -313,7 +319,7 @@ export default function DashboardPage() {
         <StatsCard
           title="总浏览量"
           value={data?.stats.views || 0}
-          change={15}
+          change={data?.trends?.views ?? 0}
           changeLabel="较上周"
           icon={<Eye className="w-5 h-5" />}
           color="green"
@@ -321,15 +327,15 @@ export default function DashboardPage() {
         <StatsCard
           title="评论总数"
           value={data?.stats.comments || 0}
-          change={5}
-          changeLabel="待审核"
+          change={data?.trends?.comments ?? 0}
+          changeLabel="较上周"
           icon={<MessageSquare className="w-5 h-5" />}
           color="orange"
         />
         <StatsCard
           title="分类总数"
           value={data?.stats.categories || 0}
-          change={2}
+          change={data?.trends?.categories ?? 0}
           changeLabel="新增"
           icon={<FolderTree className="w-5 h-5" />}
           color="purple"
@@ -337,7 +343,7 @@ export default function DashboardPage() {
         <StatsCard
           title="总字数"
           value={data?.stats.totalWords || 0}
-          change={8}
+          change={data?.trends?.words ?? 0}
           changeLabel="本月新增"
           icon={<FileType className="w-5 h-5" />}
           color="cyan"
@@ -376,7 +382,7 @@ export default function DashboardPage() {
             onTimeRangeChange={setTimeRange}
           />
         </div>
-        <DeviceChart />
+        <DeviceChart data={data?.deviceStats} loading={loading} />
       </div>
 
       {/* System Monitoring Area */}

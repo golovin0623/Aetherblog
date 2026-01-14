@@ -27,7 +27,9 @@ import {
   MonitorOverview,
   formatBytes,
   formatUptime,
-  formatFrequency
+  formatFrequency,
+  formatBytesPerSecond,
+  formatBandwidth
 } from '@/services/systemService';
 import { logger } from '@/lib/logger';
 
@@ -185,8 +187,12 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
     diskTotal: 0,
     networkIn: 0,
     networkOut: 0,
+    networkInSpeed: 0,
+    networkOutSpeed: 0,
     networkInRate: 'N/A',
     networkOutRate: 'N/A',
+    networkPercent: 0,
+    networkMaxSpeed: 1572864, // 12Mbps default
     uptime: 0,
     osName: 'Unknown',
     osArch: 'Unknown',
@@ -271,10 +277,10 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
           <MetricCard
             icon={Wifi}
             label="网络"
-            value={formatBytes(safeNumber(metrics.networkIn) + safeNumber(metrics.networkOut))}
-            percent={0}  // 网络流量不使用百分比
+            value={formatBandwidth(safeNumber(metrics.networkMaxSpeed))}
+            percent={safeNumber(metrics.networkPercent)}
             color="orange"
-            detail={`↑${formatBytes(safeNumber(metrics.networkOut))} ↓${formatBytes(safeNumber(metrics.networkIn))}`}
+            detail={`↑${metrics.networkOutRate} ↓${metrics.networkInRate}`}
           />
         </div>
 
@@ -311,6 +317,15 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
                 </span>
                 <span className="text-white font-mono">{storage.logs.formatted}</span>
               </div>
+              {storage.redis && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-400 flex items-center gap-1.5">
+                    <Server className="w-3 h-3" />
+                    Redis
+                  </span>
+                  <span className="text-white font-mono">{storage.redis.formatted}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
