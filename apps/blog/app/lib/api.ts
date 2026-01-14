@@ -26,6 +26,7 @@ export const API_ENDPOINTS = {
 
   // Site Settings
   settings: `${API_BASE_URL}/api/v1/public/site/info`,
+  stats: `${API_BASE_URL}/api/v1/public/site/stats`,
 
   // Comments
   comments: (postId: number) => `${API_BASE_URL}/api/v1/public/comments/post/${postId}`,

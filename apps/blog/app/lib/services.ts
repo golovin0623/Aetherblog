@@ -8,6 +8,8 @@ export interface SiteSettings {
   siteKeywords: string;
   siteUrl: string;
   authorName: string;
+  authorAvatar?: string;
+  authorBio?: string;
   icp?: string;
   startYear?: string;
   comment_enabled?: boolean;
@@ -61,7 +63,7 @@ export interface CreateCommentRequest {
 export async function getSiteSettings(): Promise<SiteSettings> {
   try {
     const res = await fetch(API_ENDPOINTS.settings, {
-      next: { revalidate: 3600 }
+      next: { revalidate: 10 }
     });
 
     if (!res.ok) throw new Error('Failed to fetch settings');
@@ -160,4 +162,27 @@ export async function createComment(postId: number, data: CreateCommentRequest):
 
   const json = await res.json();
   return json.data;
+}
+/**
+ * 获取站点统计
+ * Revalidation: 10 minutes (600s)
+ */
+export async function getSiteStats(): Promise<any> {
+  try {
+    const res = await fetch(API_ENDPOINTS.stats, {
+      next: { revalidate: 600 }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch stats');
+
+    const json = await res.json();
+    return json.data || {};
+  } catch (error) {
+    logger.warn('Failed to fetch site stats:', error);
+    return {
+      posts: 0,
+      categories: 0,
+      tags: 0
+    };
+  }
 }
