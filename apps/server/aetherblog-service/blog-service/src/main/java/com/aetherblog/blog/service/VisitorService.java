@@ -127,7 +127,7 @@ public class VisitorService {
     /**
      * 获取真实 IP（处理反向代理）
      */
-    private String getRealIp(HttpServletRequest request) {
+    public String getRealIp(HttpServletRequest request) {
         String ip = request.getHeader("X-Forwarded-For");
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
             ip = request.getHeader("X-Real-IP");
