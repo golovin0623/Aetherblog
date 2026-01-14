@@ -22,17 +22,25 @@ import {
   Wifi
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { 
-  systemService, 
-  MonitorOverview, 
-  formatBytes, 
-  formatUptime 
+import {
+  systemService,
+  MonitorOverview,
+  formatBytes,
+  formatUptime,
+  formatFrequency
 } from '@/services/systemService';
 import { logger } from '@/lib/logger';
 
 // ========== 子组件 ==========
 
+// 安全获取数值，处理 NaN/undefined/null
+function safeNumber(value: number | undefined | null, fallback = 0): number {
+  return Number.isFinite(value) ? value! : fallback;
+}
+
 function ProgressBar({ value, color = 'primary' }: { value: number; color?: string }) {
+  const safeValue = safeNumber(value);
+
   const colorMap: Record<string, string> = {
     primary: 'bg-primary',
     green: 'bg-green-500',
@@ -42,8 +50,8 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
   };
 
   const getBarColor = () => {
-    if (value > 90) return 'bg-red-500';
-    if (value > 75) return 'bg-orange-500';
+    if (safeValue > 90) return 'bg-red-500';
+    if (safeValue > 75) return 'bg-orange-500';
     return colorMap[color] || 'bg-primary';
   };
 
@@ -51,7 +59,7 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
     <div className="h-2 bg-white/5 rounded-full overflow-hidden">
       <motion.div
         initial={{ width: 0 }}
-        animate={{ width: `${Math.min(100, value)}%` }}
+        animate={{ width: `${Math.max(0, Math.min(100, safeValue))}%` }}
         transition={{ duration: 1, ease: "easeOut" }}
         className={cn("h-full rounded-full", getBarColor())}
       />
@@ -166,6 +174,9 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
   // 使用真实数据或回退到默认值
   const metrics = data?.metrics || {
     cpuUsage: 0,
+    cpuCores: 0,
+    cpuModel: 'Unknown',
+    cpuFrequency: 0,
     memoryPercent: 0,
     memoryUsed: 0,
     memoryTotal: 0,
@@ -177,6 +188,8 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
     networkInRate: 'N/A',
     networkOutRate: 'N/A',
     uptime: 0,
+    osName: 'Unknown',
+    osArch: 'Unknown',
   };
 
   const storage = data?.storage;
@@ -234,33 +247,34 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
           <MetricCard
             icon={Cpu}
             label="CPU"
-            value={`${metrics.cpuUsage.toFixed(1)}%`}
-            percent={metrics.cpuUsage}
+            value={`${safeNumber(metrics.cpuUsage).toFixed(1)}%`}
+            percent={safeNumber(metrics.cpuUsage)}
             color="primary"
+            detail={`${safeNumber(metrics.cpuCores)} 核 @ ${formatFrequency(safeNumber(metrics.cpuFrequency))}`}
           />
           <MetricCard
             icon={Activity}
             label="内存"
-            value={`${metrics.memoryPercent.toFixed(1)}%`}
-            percent={metrics.memoryPercent}
+            value={`${safeNumber(metrics.memoryPercent).toFixed(1)}%`}
+            percent={safeNumber(metrics.memoryPercent)}
             color="blue"
-            detail={`${formatBytes(metrics.memoryUsed)} / ${formatBytes(metrics.memoryTotal)}`}
+            detail={`${formatBytes(safeNumber(metrics.memoryUsed))} / ${formatBytes(safeNumber(metrics.memoryTotal))}`}
           />
           <MetricCard
             icon={HardDrive}
             label="磁盘"
-            value={`${metrics.diskPercent.toFixed(1)}%`}
-            percent={metrics.diskPercent}
+            value={`${safeNumber(metrics.diskPercent).toFixed(1)}%`}
+            percent={safeNumber(metrics.diskPercent)}
             color="green"
-            detail={`${formatBytes(metrics.diskUsed)} / ${formatBytes(metrics.diskTotal)}`}
+            detail={`${formatBytes(safeNumber(metrics.diskUsed))} / ${formatBytes(safeNumber(metrics.diskTotal))}`}
           />
           <MetricCard
             icon={Wifi}
             label="网络"
-            value={formatBytes(metrics.networkIn + metrics.networkOut)}
+            value={formatBytes(safeNumber(metrics.networkIn) + safeNumber(metrics.networkOut))}
             percent={0}  // 网络流量不使用百分比
             color="orange"
-            detail={`↑${formatBytes(metrics.networkOut)} ↓${formatBytes(metrics.networkIn)}`}
+            detail={`↑${formatBytes(safeNumber(metrics.networkOut))} ↓${formatBytes(safeNumber(metrics.networkIn))}`}
           />
         </div>
 

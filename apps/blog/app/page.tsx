@@ -1,19 +1,18 @@
 import { ArrowRight, Sparkles, LayoutGrid } from 'lucide-react';
-import { getSiteSettings, getRecentPosts } from './lib/services';
+import { getRecentPosts } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 
 export const revalidate = 300; // 5 minutes ISR for homepage
 
 export default async function HomePage() {
-  const [settings, posts] = await Promise.all([
-    getSiteSettings(),
+  const [posts] = await Promise.all([
     getRecentPosts(6)
   ]);
 
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative flex flex-col items-center justify-center min-h-[80vh] px-4 text-center">
+      <section className="relative flex flex-col items-center justify-center min-h-screen px-4 text-center">
         {/* 背景效果 */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl opacity-60" />
@@ -27,12 +26,14 @@ export default async function HomePage() {
             <span className="text-sm text-gray-300">AI 驱动的智能博客</span>
           </div>
 
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent leading-tight tracking-tight">
-            {settings.siteTitle}
+          <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent leading-tight tracking-tight">
+            AetherBlog
           </h1>
 
           <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto leading-relaxed">
-            {settings.siteDescription}
+            融合 AI 与现代 Web 技术的下一代博客系统
+            <br />
+            智能写作、语义搜索、优雅呈现
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">

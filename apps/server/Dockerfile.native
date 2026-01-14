@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1
+
+# Stage 1: Native Build
+FROM --platform=$BUILDPLATFORM ghcr.io/graalvm/native-image-community:23-musl AS builder
+WORKDIR /app
+
+# Copy Maven files
+COPY apps/server/pom.xml ./
+COPY apps/server/aetherblog-common/pom.xml ./aetherblog-common/
+COPY apps/server/aetherblog-common/common-core/pom.xml ./aetherblog-common/common-core/
+COPY apps/server/aetherblog-common/common-security/pom.xml ./aetherblog-common/common-security/
+COPY apps/server/aetherblog-common/common-redis/pom.xml ./aetherblog-common/common-redis/
+COPY apps/server/aetherblog-common/common-log/pom.xml ./aetherblog-common/common-log/
+COPY apps/server/aetherblog-ai/pom.xml ./aetherblog-ai/
+COPY apps/server/aetherblog-ai/ai-core/pom.xml ./aetherblog-ai/ai-core/
+COPY apps/server/aetherblog-ai/ai-agent/pom.xml ./aetherblog-ai/ai-agent/
+COPY apps/server/aetherblog-ai/ai-prompt/pom.xml ./aetherblog-ai/ai-prompt/
+COPY apps/server/aetherblog-ai/ai-rag/pom.xml ./aetherblog-ai/ai-rag/
+COPY apps/server/aetherblog-service/pom.xml ./aetherblog-service/
+COPY apps/server/aetherblog-service/blog-service/pom.xml ./aetherblog-service/blog-service/
+COPY apps/server/aetherblog-api/pom.xml ./aetherblog-api/
+COPY apps/server/aetherblog-app/pom.xml ./aetherblog-app/
+
+# Copy source code
+COPY apps/server ./
+
+# Build Native Image
+# Note: We skip tests to save time in image build, assuming tests ran in CI
+RUN ./mvnw -Pnative native:compile -pl aetherblog-app -DskipTests
+
+# Stage 2: Distroless Runtime
+FROM gcr.io/distroless/base-debian12 AS runner
+WORKDIR /app
+
+# Copy the native binary
+COPY --from=builder /app/aetherblog-app/target/aetherblog-app .
+
+# Create uploads directory (if needed, though distroless is restrictive with shell/mkdir)
+# Distroless doesn't have mkdir/chown usually. 
+# Apps should be designed to write to volume mounts or external storage.
+# For this demo, we assume volume mounting handles the directory existence.
+
+# Expose port
+EXPOSE 8080
+
+ENTRYPOINT ["/app/aetherblog-app"]

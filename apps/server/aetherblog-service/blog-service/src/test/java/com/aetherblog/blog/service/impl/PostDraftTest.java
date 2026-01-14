@@ -7,7 +7,7 @@ import com.aetherblog.blog.entity.Post.PostStatus;
 import com.aetherblog.blog.repository.CategoryRepository;
 import com.aetherblog.blog.repository.PostRepository;
 import com.aetherblog.blog.repository.TagRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,9 +57,9 @@ public class PostDraftTest {
     @Test
     void testSaveDraft_Success() throws Exception {
         Long postId = 1L;
-        CreatePostRequest request = new CreatePostRequest();
-        request.setTitle("Draft Title");
-        request.setContent("Draft content");
+        CreatePostRequest request = new CreatePostRequest(
+            "Draft Title", "Draft content", null, null, null, null, null
+        );
 
         when(postRepository.existsById(postId)).thenReturn(true);
         when(objectMapper.writeValueAsString(request)).thenReturn("{\"title\":\"Draft Title\"}");
@@ -83,8 +83,9 @@ public class PostDraftTest {
         when(postRepository.findById(postId)).thenReturn(Optional.of(post));
         when(valueOperations.get("post:draft:1")).thenReturn("{\"title\":\"Draft Title\"}");
         
-        CreatePostRequest draftRequest = new CreatePostRequest();
-        draftRequest.setTitle("Draft Title");
+        CreatePostRequest draftRequest = new CreatePostRequest(
+            "Draft Title", null, null, null, null, null, null
+        );
         when(objectMapper.readValue(anyString(), eq(CreatePostRequest.class))).thenReturn(draftRequest);
 
         PostDetailResponse response = postService.getPostById(postId);
@@ -92,7 +93,7 @@ public class PostDraftTest {
         assertNotNull(response);
         assertEquals("Published Title", response.getTitle());
         assertNotNull(response.getDraft());
-        assertEquals("Draft Title", response.getDraft().getTitle());
+        assertEquals("Draft Title", response.getDraft().title());
     }
 
     @Test

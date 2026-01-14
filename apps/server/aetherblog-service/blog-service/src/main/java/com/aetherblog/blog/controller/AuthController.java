@@ -40,18 +40,18 @@ public class AuthController {
      */
     @PostMapping("/login")
     public R<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        log.info("用户登录请求: username={}, encrypted={}", request.getUsername(), request.getEncrypted());
+        log.info("用户登录请求: username={}, encrypted={}", request.username(), request.encrypted());
 
         // 查找用户
-        User user = userService.findByUsernameOrEmail(request.getUsername())
+        User user = userService.findByUsernameOrEmail(request.username())
                 .orElseThrow(() -> new BusinessException("用户名或密码错误"));
 
         // 检查用户状态
         userService.checkUserCanLogin(user);
 
         // 获取密码（如果加密则解密）
-        String password = request.getPassword();
-        if (Boolean.TRUE.equals(request.getEncrypted())) {
+        String password = request.password();
+        if (Boolean.TRUE.equals(request.encrypted())) {
             try {
                 password = com.aetherblog.common.core.util.CryptoUtils.decryptPassword(password);
                 log.debug("密码解密成功");

@@ -53,11 +53,11 @@ trigger: always_on
 
 ```xml
 <!-- 核心框架 -->
-<spring-boot.version>3.4.0</spring-boot.version>
-<java.version>21</java.version>
+<spring-boot.version>4.0.0</spring-boot.version>
+<java.version>25</java.version>
 
 <!-- Spring 生态 -->
-<spring-ai.version>1.0.0-M5</spring-ai.version>
+<spring-ai.version>2.0.0-M1</spring-ai.version>
 <spring-cloud.version>2024.0.0</spring-cloud.version>
 
 <!-- 数据库 -->
@@ -92,7 +92,7 @@ trigger: always_on
 │  必需软件:                                                               │
 │  ├─ Node.js          >= 20.0.0 (LTS)                                    │
 │  ├─ pnpm             >= 8.15.0                                          │
-│  ├─ JDK              == 21 (Eclipse Temurin 推荐)                       │
+│  ├─ JDK              == 25 (Eclipse Temurin 推荐)                       │
 │  ├─ Maven            >= 3.9.0                                           │
 │  ├─ Docker           >= 24.0.0                                          │
 │  ├─ Docker Compose   >= 2.24.0                                          │

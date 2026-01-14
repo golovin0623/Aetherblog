@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
+import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -35,10 +36,12 @@ export default async function RootLayout({
         />
       </head>
       <body className="bg-background text-white antialiased" suppressHydrationWarning>
-        <BlogHeader />
-        <ClientLayout>
-          {children}
-        </ClientLayout>
+        <Providers>
+          <BlogHeader />
+          <ClientLayout>
+            {children}
+          </ClientLayout>
+        </Providers>
       </body>
     </html>
   );

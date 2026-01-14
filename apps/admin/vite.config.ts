@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => ({
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8080/api',
         changeOrigin: true,
       },
     },

@@ -28,6 +28,20 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Spring Boot 4.0 Persistence (包含 @EntityScan 注解) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-persistence</artifactId>
+        </dependency>
+
+        <!-- Spring Boot 4.0 Autoconfigure Classic -->
+        <!-- 解决 Spring Boot 4.0 模块化导致的 RestClientAutoConfiguration ClassNotFoundException -->
+        <!-- 此模块将所有自动配置类打包在一起，提供与 Spring Boot 3.x 类似的体验 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure-classic</artifactId>
+        </dependency>
+
         <!-- Spring Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

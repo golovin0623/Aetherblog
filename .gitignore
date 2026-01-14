@@ -43,6 +43,10 @@ coverage/
 .kilocode/rules/code-rule.md
 apps/blog/.env.local.example
 
+# Git Worktrees
+tree-*
+/tree-*
+
 # 忽略 .kilocode 下的所有内容
 .kilocode/*
 

@@ -3,8 +3,10 @@ import { ArrowLeft } from 'lucide-react';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 import FadeIn from '../../../components/FadeIn';
+import CommentSection from '../../../components/CommentSection';
 import { SERVER_API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
+import { getSiteSettings } from '../../../lib/services';
 
 // Server-side API URL - use internal Docker network URL
 const API_BASE_URL = SERVER_API_URL;
@@ -62,6 +64,7 @@ async function getPost(slug: string): Promise<Post | null> {
 export default async function PostDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const post = await getPost(slug);
+  const settings = await getSiteSettings();
 
   if (!post) {
     return (
@@ -117,6 +120,10 @@ export default async function PostDetailPage({ params }: PageProps) {
             content={post.content}
             className="max-w-none"
           />
+        </FadeIn>
+
+        <FadeIn delay={0.3}>
+          <CommentSection postId={post.id} settings={settings} />
         </FadeIn>
       </article>
     </div>

@@ -2,30 +2,33 @@ package com.aetherblog.api.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import lombok.Data;
 
 import java.util.List;
 
 /**
- * 创建文章请求 DTO
+ * 创建文章请求 DTO (Record)
  */
-@Data
-public class CreatePostRequest {
+public record CreatePostRequest(
+        @NotBlank(message = "标题不能为空")
+        @Size(max = 200, message = "标题最多200字符")
+        String title,
 
-    @NotBlank(message = "标题不能为空")
-    @Size(max = 200, message = "标题最多200字符")
-    private String title;
+        @NotBlank(message = "内容不能为空")
+        String content,
 
-    @NotBlank(message = "内容不能为空")
-    private String content;
+        String summary,
 
-    private String summary;
+        String coverImage,
 
-    private String coverImage;
+        Long categoryId,
 
-    private Long categoryId;
+        List<Long> tagIds,
 
-    private List<Long> tagIds;
-
-    private String status = "DRAFT";
+        String status
+) {
+    public CreatePostRequest {
+        if (status == null) {
+            status = "DRAFT";
+        }
+    }
 }
