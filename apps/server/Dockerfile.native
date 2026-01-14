@@ -1,10 +1,26 @@
-# syntax=docker/dockerfile:1
+# =============================================================================
+# AetherBlog Backend - GraalVM Native Image Build (JDK 25)
+# 
+# 用法:
+#   docker build -f apps/server/Dockerfile.native -t aetherblog-backend:native .
+# =============================================================================
 
-# Stage 1: Native Build
-FROM --platform=$BUILDPLATFORM ghcr.io/graalvm/native-image-community:23-musl AS builder
+# Stage 1: Native Build (GraalVM Community Edition 25)
+FROM ghcr.io/graalvm/native-image-community:25 AS builder
 WORKDIR /app
 
-# Copy Maven files
+# 安装必要的工具和 Maven
+# GraalVM 镜像基于 Oracle Linux，使用 microdnf
+ARG MAVEN_VERSION=3.9.6
+RUN microdnf install -y wget tar gzip findutils && \
+    wget -q https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz && \
+    tar -xzf apache-maven-${MAVEN_VERSION}-bin.tar.gz -C /opt && \
+    ln -s /opt/apache-maven-${MAVEN_VERSION} /opt/maven && \
+    ln -s /opt/maven/bin/mvn /usr/bin/mvn && \
+    rm apache-maven-${MAVEN_VERSION}-bin.tar.gz && \
+    microdnf clean all
+
+# 复制 Maven 配置文件
 COPY apps/server/pom.xml ./
 COPY apps/server/aetherblog-common/pom.xml ./aetherblog-common/
 COPY apps/server/aetherblog-common/common-core/pom.xml ./aetherblog-common/common-core/
@@ -21,26 +37,28 @@ COPY apps/server/aetherblog-service/blog-service/pom.xml ./aetherblog-service/bl
 COPY apps/server/aetherblog-api/pom.xml ./aetherblog-api/
 COPY apps/server/aetherblog-app/pom.xml ./aetherblog-app/
 
-# Copy source code
+# 复制源代码
 COPY apps/server ./
 
-# Build Native Image
-# Note: We skip tests to save time in image build, assuming tests ran in CI
-RUN ./mvnw -Pnative native:compile -pl aetherblog-app -DskipTests
+# 构建 Native Image
+# 1. 安装依赖 (跳过 AOT)
+# 2. 编译 Native Image
+RUN --mount=type=cache,target=/root/.m2 \
+    echo 'Installing dependencies (skipping AOT)...' && \
+    mvn clean install -DskipTests -Dspring-boot.aot.skip=true -B && \
+    echo 'Compiling Native Image...' && \
+    mvn -Pnative native:compile -pl aetherblog-app -DskipTests -B
 
-# Stage 2: Distroless Runtime
-FROM gcr.io/distroless/base-debian12 AS runner
+# Stage 2: 运行时 (使用 alpine 轻量镜像)
+FROM alpine:3.19 AS runner
 WORKDIR /app
 
-# Copy the native binary
-COPY --from=builder /app/aetherblog-app/target/aetherblog-app .
+# 安装必要的运行时库
+RUN apk add --no-cache libc6-compat libstdc++
 
-# Create uploads directory (if needed, though distroless is restrictive with shell/mkdir)
-# Distroless doesn't have mkdir/chown usually. 
-# Apps should be designed to write to volume mounts or external storage.
-# For this demo, we assume volume mounting handles the directory existence.
+# 复制 Native Image 可执行文件
+COPY --from=builder /app/aetherblog-app/target/aetherblog /app/aetherblog
 
-# Expose port
 EXPOSE 8080
 
-ENTRYPOINT ["/app/aetherblog-app"]
+ENTRYPOINT ["/app/aetherblog"]

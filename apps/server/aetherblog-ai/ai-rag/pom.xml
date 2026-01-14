@@ -20,9 +20,6 @@
             <artifactId>ai-core</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-pgvector-store</artifactId>
-        </dependency>
+
     </dependencies>
 </project>

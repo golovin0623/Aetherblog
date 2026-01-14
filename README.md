@@ -191,13 +191,16 @@ cd apps/server
 - ⚡ **并行构建** - 同时构建 backend/blog/admin 三个镜像
 - 📡 **实时进度** - 每个镜像完成后立即通知，可提前在服务器拉取
 - 🔐 **密码加密** - 登录密码 AES 加密传输
-- 🌐 **多平台** - 支持 amd64 和 arm64 架构
+- 🌐 **多平台** - 支持 amd64 和 arm64 架构 (默认仅构建 amd64)
 
 #### 构建命令
 
 ```bash
-# 并行构建并推送到 Docker Hub (推荐)
+# 快速构建并推送 (仅 amd64，推荐日常使用)
 ./docker-build.sh --push --version v1.1.1
+
+# 多平台构建 (amd64 + arm64，发布正式版时使用)
+./docker-build.sh --push --version v1.1.1 --full
 
 # 串行构建 (网络不稳定时)
 ./docker-build.sh --push --sequential --version v1.1.1
@@ -238,6 +241,7 @@ cd apps/server
 |------|------|--------|
 | `--push` | 推送镜像到 Docker Hub | 否 |
 | `--version` | 版本标签 | `v1.0.0` |
+| `--full` | 构建多平台 (amd64 + arm64) | 否 (仅 amd64) |
 | `--parallel` | 并行构建所有镜像 | 是 |
 | `--sequential` | 串行构建 | 否 |
 | `--only NAME` | 只构建指定镜像 (backend/blog/admin) | 全部 |
@@ -253,8 +257,8 @@ cd apps/server
 
 #### 支持平台
 
-- `linux/amd64` - 常规 x86 服务器 (CentOS, Ubuntu 等)
-- `linux/arm64` - ARM 服务器、Mac M1/M2/M3
+- `linux/amd64` - 常规 x86 服务器 (CentOS, Ubuntu 等) **← 默认构建**
+- `linux/arm64` - ARM 服务器、Mac M1/M2/M3 (需 `--full` 参数)
 
 ---
 

@@ -2,7 +2,7 @@ package com.aetherblog.ai.rag.service;
 
 import com.aetherblog.ai.core.service.ChatService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.ai.document.Document;
+// import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -40,6 +40,9 @@ public class RagService {
      * RAG 问答（带参数）
      */
     public String query(String question, int topK, double threshold) {
+        // TODO: Call Go service
+        return "RAG Service is temporarily unavailable.";
+        /*
         // 1. 检索相关文档
         List<Document> documents = embeddingService.similaritySearch(question, topK, threshold);
 
@@ -55,24 +58,31 @@ public class RagService {
         // 3. 生成回答
         String prompt = String.format(RAG_PROMPT_TEMPLATE, context, question);
         return chatService.chat(prompt);
+        */
     }
 
     /**
      * 索引文章内容
      */
     public void indexPost(Long postId, String title, String content) {
+        // TODO: Call Go service
+        /*
         String documentContent = title + "\n\n" + content;
         embeddingService.addDocument(
                 "post_" + postId,
                 documentContent,
                 java.util.Map.of("type", "post", "postId", postId, "title", title)
         );
+        */
     }
 
     /**
      * 删除文章索引
      */
     public void removePostIndex(Long postId) {
+        // TODO: Call Go service
+        /*
         embeddingService.deleteDocuments(List.of("post_" + postId));
+        */
     }
 }

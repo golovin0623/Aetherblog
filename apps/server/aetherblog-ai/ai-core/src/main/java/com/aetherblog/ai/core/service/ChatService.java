@@ -1,8 +1,8 @@
 package com.aetherblog.ai.core.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatResponse;
+// import org.springframework.ai.chat.client.ChatClient;
+// import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Service;
 
 /**
@@ -13,36 +13,48 @@ import org.springframework.stereotype.Service;
 @SuppressWarnings("null")
 public class ChatService {
 
-    private final ChatClient chatClient;
+    // private final ChatClient chatClient;
 
     /**
      * 简单对话
      */
     public String chat(String message) {
+        // TODO: Call Go service
+        return "AI Service is temporarily unavailable due to Native Image migration.";
+        /*
         return chatClient.prompt()
                 .user(message)
                 .call()
                 .content();
+        */
     }
 
     /**
      * 带系统提示词的对话
      */
     public String chatWithSystem(String systemPrompt, String userMessage) {
+        // TODO: Call Go service
+        return "AI Service is temporarily unavailable due to Native Image migration.";
+        /*
         return chatClient.prompt()
                 .system(systemPrompt)
                 .user(userMessage)
                 .call()
                 .content();
+        */
     }
 
     /**
      * 获取完整响应
      */
-    public ChatResponse chatWithResponse(String message) {
+    public Object chatWithResponse(String message) { // Changed return type to Object
+        // TODO: Call Go service
+        return null;
+        /*
         return chatClient.prompt()
                 .user(message)
                 .call()
                 .chatResponse();
+        */
     }
 }

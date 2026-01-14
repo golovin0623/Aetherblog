@@ -35,7 +35,7 @@
 
         <!-- 版本管理 -->
         <spring-ai.version>2.0.0-M1</spring-ai.version>
-        <springdoc.version>2.7.0</springdoc.version>
+        <springdoc.version>3.0.0</springdoc.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.42</lombok.version>
         <jjwt.version>0.12.6</jjwt.version>

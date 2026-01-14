@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class VectorStoreConfig {
+    /*
     @org.springframework.context.annotation.Bean
     public org.springframework.ai.vectorstore.VectorStore vectorStore(
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
@@ -25,4 +26,5 @@ public class VectorStoreConfig {
                 .distanceType(org.springframework.ai.vectorstore.pgvector.PgVectorStore.PgDistanceType.COSINE_DISTANCE)
                 .build();
     }
+    */
 }

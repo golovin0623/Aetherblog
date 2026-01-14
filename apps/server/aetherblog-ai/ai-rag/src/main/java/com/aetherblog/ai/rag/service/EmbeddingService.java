@@ -1,11 +1,12 @@
 package com.aetherblog.ai.rag.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
+// import org.springframework.ai.document.Document;
+// import org.springframework.ai.vectorstore.SearchRequest;
+// import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -17,43 +18,57 @@ import java.util.Map;
 @SuppressWarnings("null")
 public class EmbeddingService {
 
-    private final VectorStore vectorStore;
+    // private final VectorStore vectorStore;
 
     /**
      * 添加文档到向量存储
      */
     public void addDocument(String id, String content, Map<String, Object> metadata) {
+        // TODO: Call Go service
+        /*
         Document document = new Document(id, content, metadata);
         vectorStore.add(List.of(document));
+        */
     }
 
     /**
      * 批量添加文档
      */
-    public void addDocuments(List<Document> documents) {
+    public void addDocuments(List<Object> documents) { // Changed to Object
+        // TODO: Call Go service
+        /*
         vectorStore.add(documents);
+        */
     }
 
     /**
      * 删除文档
      */
     public void deleteDocuments(List<String> ids) {
+        // TODO: Call Go service
+        /*
         vectorStore.delete(ids);
+        */
     }
 
     /**
      * 相似性搜索
      */
-    public List<Document> similaritySearch(String query, int topK) {
+    public List<Object> similaritySearch(String query, int topK) { // Changed to Object
+        return Collections.emptyList();
+        /*
         return vectorStore.similaritySearch(
                 SearchRequest.builder().query(query).topK(topK).build()
         );
+        */
     }
 
     /**
      * 带过滤的相似性搜索
      */
-    public List<Document> similaritySearch(String query, int topK, double threshold) {
+    public List<Object> similaritySearch(String query, int topK, double threshold) { // Changed to Object
+        return Collections.emptyList();
+        /*
         return vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(query)
@@ -61,6 +76,7 @@ public class EmbeddingService {
                         .similarityThreshold(threshold)
                         .build()
         );
+        */
     }
 }
 

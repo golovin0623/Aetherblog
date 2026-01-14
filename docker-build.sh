@@ -5,9 +5,10 @@
 # =============================================================================
 # 
 # 用法:
-#   ./docker-build.sh                    # 构建所有镜像 (并行)
+#   ./docker-build.sh                    # 构建所有镜像 (并行, 仅 amd64)
 #   ./docker-build.sh --push             # 构建并推送到 Docker Hub
 #   ./docker-build.sh --version v1.0.0   # 使用指定版本标签
+#   ./docker-build.sh --full             # 构建多平台 (amd64 + arm64)
 #   ./docker-build.sh --parallel         # 并行构建所有镜像 (默认)
 #   ./docker-build.sh --sequential       # 串行构建 (网络不稳定时使用)
 #   ./docker-build.sh --only backend     # 只构建后端
@@ -15,10 +16,11 @@
 #   ./docker-build.sh --only admin       # 只构建管理后台
 #
 # 目标平台:
-#   - linux/amd64 (CentOS 7, 常规服务器)
-#   - linux/arm64 (Mac M1/M2, ARM 服务器)
+#   - linux/amd64 (默认, CentOS 7, 常规服务器)
+#   - linux/arm64 (--full 启用, Mac M1/M2, ARM 服务器)
 #
 # 性能优化:
+#   - 默认仅构建 amd64 平台，构建时间减少 ~50%
 #   - 自动检测 CPU 核心数，并行构建充分利用多核
 #   - 使用 BuildKit 缓存加速重复构建
 #   - 支持并行构建多个镜像
@@ -31,7 +33,10 @@ set -e
 REGISTRY="${DOCKER_REGISTRY:-golovin0623}"
 PROJECT="aetherblog"
 VERSION="${VERSION:-v1.0.0}"
-PLATFORMS="linux/amd64,linux/arm64"
+# 默认只构建 linux/amd64，使用 --full 启用多平台
+PLATFORMS="linux/amd64"
+FULL_BUILD=false
+NATIVE_BUILD=false
 PUSH=false
 PARALLEL=true
 ONLY=""
@@ -60,6 +65,11 @@ while [[ $# -gt 0 ]]; do
             VERSION="$2"
             shift 2
             ;;
+        --full)
+            FULL_BUILD=true
+            PLATFORMS="linux/amd64,linux/arm64"
+            shift
+            ;;
         --parallel)
             PARALLEL=true
             shift
@@ -76,16 +86,24 @@ while [[ $# -gt 0 ]]; do
             BUILDKIT_PARALLELISM="$2"
             shift 2
             ;;
+        --native)
+            NATIVE_BUILD=true
+            # Native Image 目前仅支持单平台构建
+            PLATFORMS="linux/amd64"
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
             echo "  --push              推送镜像到 Docker Hub"
             echo "  --version VERSION   指定版本标签 (默认: v1.0.0)"
+            echo "  --full              构建多平台 (amd64 + arm64，默认仅 amd64)"
             echo "  --parallel          并行构建所有镜像 (默认)"
             echo "  --sequential        串行构建 (网络不稳定时使用)"
             echo "  --only NAME         只构建指定镜像 (backend/blog/admin)"
             echo "  --cores N           指定构建并行度 (默认: CPU核心数)"
+            echo "  --native            使用 GraalVM Native Image 构建后端 (实验性)"
             echo "  -h, --help          显示帮助信息"
             exit 0
             ;;
@@ -105,6 +123,8 @@ print_header() {
     echo -e "${GREEN}Registry:${NC}     $REGISTRY"
     echo -e "${GREEN}Version:${NC}      $VERSION"
     echo -e "${GREEN}Platforms:${NC}    $PLATFORMS"
+    echo -e "${GREEN}Full Build:${NC}   $FULL_BUILD"
+    echo -e "${GREEN}Native:${NC}       $NATIVE_BUILD"
     echo -e "${GREEN}Push:${NC}         $PUSH"
     echo -e "${GREEN}Parallel:${NC}     $PARALLEL"
     echo -e "${CYAN}CPU Cores:${NC}    $CPU_CORES"
@@ -169,22 +189,29 @@ build_image() {
     
     echo -e "${YELLOW}[${step}] 构建: ${REGISTRY}/${PROJECT}-${name}:${VERSION}${NC}"
     
-    # 构建命令 - 添加并行度优化参数
+    # 确定构建平台
+    local build_platforms="$PLATFORMS"
+    local load_flag=""
+    
+    if [ "$PUSH" = true ]; then
+        load_flag="--push"
+    else
+        # 本地构建时只构建当前架构
+        build_platforms="linux/$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')"
+        load_flag="--load"
+    fi
+    
+    # 构建命令
     BUILD_CMD="docker buildx build \
-        --platform $PLATFORMS \
+        --platform $build_platforms \
         -f ${dockerfile} \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --cache-from type=registry,ref=${REGISTRY}/${PROJECT}-${name}:cache \
         -t ${REGISTRY}/${PROJECT}-${name}:${VERSION} \
         -t ${REGISTRY}/${PROJECT}-${name}:latest \
         --progress=auto \
+        $load_flag \
         ${extra_args}"
-    
-    if [ "$PUSH" = true ]; then
-        BUILD_CMD="$BUILD_CMD --push"
-    else
-        BUILD_CMD="$BUILD_CMD --load --platform linux/$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')"
-    fi
     
     BUILD_CMD="$BUILD_CMD ."
     
@@ -217,7 +244,12 @@ build_parallel() {
     
     # 启动后端构建 (后台)
     (
-        if build_image "backend" "apps/server/Dockerfile" "" "3/5"; then
+        local backend_dockerfile="apps/server/Dockerfile"
+        if [ "$NATIVE_BUILD" = true ]; then
+            echo -e "${YELLOW}🚀 使用 GraalVM Native Image 构建后端...${NC}"
+            backend_dockerfile="apps/server/Dockerfile.native"
+        fi
+        if build_image "backend" "$backend_dockerfile" "" "3/5"; then
             echo "success" > /tmp/aetherblog-status-backend
         else
             echo "failed" > /tmp/aetherblog-status-backend
@@ -308,7 +340,13 @@ build_sequential() {
     echo -e "${CYAN}                   串行构建模式                              ${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    build_image "backend" "apps/server/Dockerfile" "" "3/5"
+    # 构建后端
+    local backend_dockerfile="apps/server/Dockerfile"
+    if [ "$NATIVE_BUILD" = true ]; then
+        echo -e "${YELLOW}🚀 使用 GraalVM Native Image 构建后端...${NC}"
+        backend_dockerfile="apps/server/Dockerfile.native"
+    fi
+    build_image "backend" "$backend_dockerfile" "" "3/5"
     build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/5"
     build_image "admin" "apps/admin/Dockerfile" "" "5/5"
 }
@@ -321,7 +359,12 @@ build_single() {
     
     case "$ONLY" in
         backend)
-            build_image "backend" "apps/server/Dockerfile" "" "1/1"
+            if [ "$NATIVE_BUILD" = true ]; then
+                echo -e "${YELLOW}🚀 使用 GraalVM Native Image 构建...${NC}"
+                build_image "backend" "apps/server/Dockerfile.native" "" "1/1"
+            else
+                build_image "backend" "apps/server/Dockerfile" "" "1/1"
+            fi
             ;;
         blog)
             build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "1/1"

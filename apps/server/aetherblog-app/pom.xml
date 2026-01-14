@@ -21,12 +21,7 @@
             <artifactId>blog-service</artifactId>
         </dependency>
 
-        <!-- AI 模块 -->
-        <dependency>
-            <groupId>com.aetherblog</groupId>
-            <artifactId>ai-agent</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+
 
         <!-- Spring Boot 4.0 Persistence (包含 @EntityScan 注解) -->
         <dependency>
@@ -118,6 +113,34 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                    <!-- Native Image 需要的镜像构建器 -->
+                    <image>
+                        <builder>paketobuildpacks/builder-jammy-base:latest</builder>
+                    </image>
+                </configuration>
+            </plugin>
+            <!-- GraalVM Native Image Plugin -->
+            <plugin>
+                <groupId>org.graalvm.buildtools</groupId>
+                <artifactId>native-maven-plugin</artifactId>
+                <configuration>
+                    <imageName>aetherblog</imageName>
+                    <buildArgs>
+                        <!-- 启用详细错误报告 -->
+                        <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                        <!-- 启用 HTTP/HTTPS 协议 -->
+                        <buildArg>--enable-url-protocols=http,https</buildArg>
+                        <!-- 添加所有字符集支持 -->
+                        <buildArg>-H:+AddAllCharsets</buildArg>
+                        <!-- 允许不完整的类路径 -->
+                        <buildArg>--allow-incomplete-classpath</buildArg>
+                        <!-- 初始化时安装退出处理程序 -->
+                        <buildArg>--install-exit-handlers</buildArg>
+                        <!-- 启用 HTTPS 支持 -->
+                        <buildArg>--enable-https</buildArg>
+                    </buildArgs>
+                    <!-- 快速构建模式 (开发用，生产构建去掉此配置) -->
+                    <quickBuild>false</quickBuild>
                 </configuration>
             </plugin>
         </plugins>

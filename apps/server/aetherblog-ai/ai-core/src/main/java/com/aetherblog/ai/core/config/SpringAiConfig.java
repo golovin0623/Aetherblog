@@ -1,13 +1,10 @@
 package com.aetherblog.ai.core.config;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Description;
 
 /**
  * Spring AI 配置类
@@ -15,9 +12,8 @@ import org.springframework.context.annotation.Configuration;
  * 手动配置 OpenAI 相关 Bean，绕过 Spring AI 自动配置与 Spring Boot 4.0 的兼容性问题
  */
 @Configuration
-@ConditionalOnProperty(name = "spring.ai.openai.api-key")
 public class SpringAiConfig {
-
+/*
     @Value("${spring.ai.openai.api-key:}")
     private String apiKey;
 
@@ -70,4 +66,5 @@ public class SpringAiConfig {
     public ChatClient chatClient(OpenAiChatModel chatModel) {
         return ChatClient.builder(chatModel).build();
     }
+    */
 }
