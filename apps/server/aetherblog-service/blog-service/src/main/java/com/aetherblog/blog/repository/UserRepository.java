@@ -55,6 +55,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
                          @Param("loginIp") String loginIp);
 
     /**
+     * 根据角色查找用户
+     */
+    java.util.List<User> findByRole(User.UserRole role);
+
+    /**
      * 更新用户状态
      */
     @Modifying

@@ -1,7 +1,6 @@
 'use client';
 
 import { TransitionProvider, PageTransition } from './PageTransition';
-import Providers from '../providers';
 import { ReactNode } from 'react';
 
 /**
@@ -12,12 +11,10 @@ import { ReactNode } from 'react';
  */
 export default function ClientLayout({ children }: { children: ReactNode }) {
   return (
-    <Providers>
       <TransitionProvider>
         <PageTransition>
           {children}
         </PageTransition>
       </TransitionProvider>
-    </Providers>
   );
 }

@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { getSiteSettings } from '../lib/services';
 
 /**
  * 移动端导航菜单组件
@@ -17,10 +19,19 @@ export default function MobileMenu() {
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
 
-  // 客户端挂载后才能使用 Portal
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const { data: settings } = useQuery({
+    queryKey: ['siteSettings'],
+    queryFn: getSiteSettings,
+    staleTime: 10 * 60 * 1000 // 10 mins
+  });
+
+  const authorName = settings?.authorName || 'Golovin';
+  const authorAvatar = settings?.authorAvatar || 'https://github.com/shadcn.png';
+  const authorBio = settings?.authorBio || '一只小凉凉';
 
   // 路由变化时自动关闭菜单
   useEffect(() => {
@@ -84,15 +95,15 @@ export default function MobileMenu() {
                 <div className="relative w-14 h-14 mb-2 group">
                   <div className="absolute inset-0 bg-gradient-to-tr from-primary to-purple-500 rounded-full blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
                   <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-white/20 group-hover:border-primary transition-colors">
-                    <img 
-                      src="https://github.com/shadcn.png" 
-                      alt="Golovin" 
+                    <img
+                      src={authorAvatar}
+                      alt={authorName}
                       className="w-full h-full object-cover"
                     />
                   </div>
                 </div>
-                <h3 className="text-white font-bold text-sm mb-0.5">Golovin</h3>
-                <p className="text-[10px] text-gray-400">一只小凉凉</p>
+                <h3 className="text-white font-bold text-sm mb-0.5">{authorName}</h3>
+                <p className="text-[10px] text-gray-400">{authorBio}</p>
               </div>
             </div>
 
@@ -127,14 +138,14 @@ export default function MobileMenu() {
               {navLinks.filter(link => !['/posts', '/timeline'].includes(link.href)).map((link) => {
                 const isActive = pathname === link.href;
                 const Icon = link.icon;
-                
+
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      isActive 
-                        ? 'bg-primary/10 text-primary' 
+                      isActive
+                        ? 'bg-primary/10 text-primary'
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
