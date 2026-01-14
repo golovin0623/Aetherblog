@@ -46,6 +46,9 @@ public class SystemMonitorService {
     @Data
     public static class SystemMetrics {
         private double cpuUsage;       // 0-100
+        private int cpuCores;          // CPU 核心数
+        private String cpuModel;       // CPU 型号
+        private long cpuFrequency;     // CPU 频率 (Hz)
         private long memoryUsed;       // bytes
         private long memoryTotal;      // bytes
         private double memoryPercent;  // 0-100
@@ -57,6 +60,8 @@ public class SystemMonitorService {
         private String networkInRate;  // 接收速率 (格式化)
         private String networkOutRate; // 发送速率 (格式化)
         private long uptime;           // seconds
+        private String osName;         // 操作系统名称
+        private String osArch;         // 系统架构
     }
 
     @Data
@@ -122,6 +127,24 @@ public class SystemMonitorService {
         // 将负载转换为百分比 (近似)
         metrics.setCpuUsage(Math.min(100, Math.max(0, (cpuLoad / processors) * 100)));
 
+        // CPU 核心数
+        metrics.setCpuCores(processors);
+
+        // 操作系统信息
+        metrics.setOsName(osBean.getName());
+        metrics.setOsArch(osBean.getArch());
+
+        // 获取 CPU 型号和频率
+        try {
+            CpuInfo cpuInfo = getCpuInfo();
+            metrics.setCpuModel(cpuInfo.model);
+            metrics.setCpuFrequency(cpuInfo.frequency);
+        } catch (Exception e) {
+            log.debug("Failed to get CPU info", e);
+            metrics.setCpuModel("Unknown");
+            metrics.setCpuFrequency(0);
+        }
+
         // 如果是 com.sun.management.OperatingSystemMXBean，获取更精确的 CPU
         if (osBean instanceof com.sun.management.OperatingSystemMXBean sunOsBean) {
             double cpuUsage = sunOsBean.getCpuLoad() * 100;
@@ -137,11 +160,15 @@ public class SystemMonitorService {
             // 直接使用系统/宿主机内存指标，不进行容器化核减
             // 用户明确要求显示服务器维度数据，而非服务/容器维度
             long availableMem = getAvailableMemory(totalMem);
-            long usedMem = totalMem - availableMem;
+            // 防止 availableMem 超过 totalMem 导致负数
+            availableMem = Math.min(availableMem, totalMem);
+            long usedMem = Math.max(0, totalMem - availableMem);
 
             metrics.setMemoryTotal(totalMem);
             metrics.setMemoryUsed(usedMem);
-            metrics.setMemoryPercent(Math.min(100, (double) usedMem / totalMem * 100));
+            // 防止除零和确保百分比在 0-100 范围内
+            double memPercent = totalMem > 0 ? (double) usedMem / totalMem * 100 : 0;
+            metrics.setMemoryPercent(Math.max(0, Math.min(100, memPercent)));
         }
 
         // 磁盘使用率 - 使用 getUsableSpace 而非 getFreeSpace（更准确）
@@ -176,6 +203,129 @@ public class SystemMonitorService {
         metrics.setUptime(uptime);
 
         return metrics;
+    }
+
+    // CPU 信息内部类
+    private record CpuInfo(String model, long frequency) {}
+
+    /**
+     * 获取 CPU 型号和频率
+     * macOS: 使用 sysctl 命令
+     * Linux: 读取 /proc/cpuinfo
+     */
+    private CpuInfo getCpuInfo() throws Exception {
+        String osName = System.getProperty("os.name").toLowerCase();
+
+        if (osName.contains("mac")) {
+            return getCpuInfoMacOS();
+        } else if (osName.contains("linux")) {
+            return getCpuInfoLinux();
+        }
+
+        return new CpuInfo("Unknown", 0);
+    }
+
+    /**
+     * macOS: 使用 sysctl 获取 CPU 信息
+     */
+    private CpuInfo getCpuInfoMacOS() throws Exception {
+        String model = "Unknown";
+        long frequency = 0;
+
+        // 方案1: 尝试 machdep.cpu.brand_string (Intel Mac)
+        ProcessBuilder pbModel = new ProcessBuilder("sysctl", "-n", "machdep.cpu.brand_string");
+        Process processModel = pbModel.start();
+        String modelOutput = new String(processModel.getInputStream().readAllBytes()).trim();
+        processModel.waitFor();
+
+        if (!modelOutput.isEmpty()) {
+            model = modelOutput;
+            // Intel Mac: 获取频率
+            ProcessBuilder pbFreq = new ProcessBuilder("sysctl", "-n", "hw.cpufrequency");
+            Process processFreq = pbFreq.start();
+            String freqOutput = new String(processFreq.getInputStream().readAllBytes()).trim();
+            processFreq.waitFor();
+            if (!freqOutput.isEmpty()) {
+                try {
+                    frequency = Long.parseLong(freqOutput);
+                } catch (NumberFormatException ignored) {}
+            }
+        } else {
+            // 方案2: Apple Silicon - 使用 system_profiler
+            ProcessBuilder pbProfiler = new ProcessBuilder("system_profiler", "SPHardwareDataType");
+            Process processProfiler = pbProfiler.start();
+            String profilerOutput = new String(processProfiler.getInputStream().readAllBytes());
+            processProfiler.waitFor();
+
+            for (String line : profilerOutput.split("\n")) {
+                line = line.trim();
+                if (line.startsWith("Chip:")) {
+                    model = line.substring(5).trim();
+                } else if (line.startsWith("Processor Name:")) {
+                    model = line.substring(15).trim();
+                }
+            }
+        }
+
+        // 如果获取不到频率，尝试从型号中解析
+        if (frequency == 0 && model.contains("GHz")) {
+            frequency = parseFrequencyFromModel(model);
+        }
+
+        // Apple Silicon 没有固定频率，返回 0 让前端显示 "动态" 或不显示频率
+        return new CpuInfo(model, frequency);
+    }
+
+    /**
+     * Linux: 从 /proc/cpuinfo 读取 CPU 信息
+     */
+    private CpuInfo getCpuInfoLinux() throws Exception {
+        Path cpuinfo = Paths.get("/proc/cpuinfo");
+        String model = "Unknown";
+        long frequency = 0;
+
+        for (String line : Files.readAllLines(cpuinfo)) {
+            if (line.startsWith("model name")) {
+                // 格式: "model name	: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz"
+                String[] parts = line.split(":");
+                if (parts.length >= 2) {
+                    model = parts[1].trim();
+                }
+            } else if (line.startsWith("cpu MHz")) {
+                // 格式: "cpu MHz		: 2600.000"
+                String[] parts = line.split(":");
+                if (parts.length >= 2) {
+                    try {
+                        double mhz = Double.parseDouble(parts[1].trim());
+                        frequency = (long) (mhz * 1_000_000); // 转换为 Hz
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            // 找到两个值后就可以退出
+            if (!model.equals("Unknown") && frequency > 0) {
+                break;
+            }
+        }
+
+        return new CpuInfo(model, frequency);
+    }
+
+    /**
+     * 从 CPU 型号字符串中解析频率
+     * 例如: "Apple M1 Pro" 或 "Intel Core i7 @ 2.6GHz"
+     */
+    private long parseFrequencyFromModel(String model) {
+        // 匹配 "X.XX GHz" 或 "X GHz" 模式
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(\\d+\\.?\\d*)\\s*GHz", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher matcher = pattern.matcher(model);
+        if (matcher.find()) {
+            try {
+                double ghz = Double.parseDouble(matcher.group(1));
+                return (long) (ghz * 1_000_000_000); // 转换为 Hz
+            } catch (NumberFormatException ignored) {}
+        }
+        return 0;
     }
 
     /**

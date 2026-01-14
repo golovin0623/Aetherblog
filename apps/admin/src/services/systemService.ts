@@ -11,6 +11,9 @@ import { R } from '@/types';
 
 export interface SystemMetrics {
   cpuUsage: number;       // 0-100
+  cpuCores: number;       // CPU 核心数
+  cpuModel: string;       // CPU 型号
+  cpuFrequency: number;   // CPU 频率 (Hz)
   memoryUsed: number;     // bytes
   memoryTotal: number;    // bytes
   memoryPercent: number;  // 0-100
@@ -22,6 +25,8 @@ export interface SystemMetrics {
   networkInRate: string;  // 格式化的接收信息
   networkOutRate: string; // 格式化的发送信息
   uptime: number;         // seconds
+  osName: string;         // 操作系统名称
+  osArch: string;         // 系统架构
 }
 
 export interface StorageItem {
@@ -215,11 +220,15 @@ export const systemService = {
  * 格式化字节数为可读字符串
  */
 export function formatBytes(bytes: number): string {
+  // 处理异常值：NaN、负数、非有限数
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  // 防止 i 超出 sizes 数组范围
+  const safeIndex = Math.min(i, sizes.length - 1);
+  return parseFloat((bytes / Math.pow(k, safeIndex)).toFixed(2)) + ' ' + sizes[safeIndex];
 }
 
 /**
@@ -229,10 +238,23 @@ export function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  
+
   if (days > 0) return `${days}天 ${hours}小时`;
   if (hours > 0) return `${hours}小时 ${minutes}分钟`;
   return `${minutes}分钟`;
+}
+
+/**
+ * 格式化 CPU 频率 (Hz -> GHz/MHz)
+ */
+export function formatFrequency(hz: number): string {
+  if (!Number.isFinite(hz) || hz <= 0) return '动态';
+  if (hz >= 1_000_000_000) {
+    return (hz / 1_000_000_000).toFixed(2) + ' GHz';
+  } else if (hz >= 1_000_000) {
+    return (hz / 1_000_000).toFixed(0) + ' MHz';
+  }
+  return hz + ' Hz';
 }
 
 /**
