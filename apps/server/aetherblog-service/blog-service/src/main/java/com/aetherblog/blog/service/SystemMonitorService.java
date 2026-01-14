@@ -153,22 +153,35 @@ public class SystemMonitorService {
             }
         }
 
-        // 系统内存
-        if (osBean instanceof com.sun.management.OperatingSystemMXBean sunOsBean) {
-            long totalMem = sunOsBean.getTotalMemorySize();
+        // 系统内存 - 优先从宿主机 /host_proc 读取 (Docker环境)
+        try {
+            long[] hostMemory = getHostMemoryInfo();
+            if (hostMemory != null && hostMemory[0] > 0) {
+                long totalMem = hostMemory[0];
+                long availableMem = hostMemory[1];
+                long usedMem = Math.max(0, totalMem - availableMem);
+                
+                metrics.setMemoryTotal(totalMem);
+                metrics.setMemoryUsed(usedMem);
+                double memPercent = totalMem > 0 ? (double) usedMem / totalMem * 100 : 0;
+                metrics.setMemoryPercent(Math.max(0, Math.min(100, memPercent)));
+            } else {
+                throw new RuntimeException("Host memory not available");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to get host memory, falling back to container memory", e);
+            // 回退到容器级别内存（作为降级方案）
+            if (osBean instanceof com.sun.management.OperatingSystemMXBean sunOsBean) {
+                long totalMem = sunOsBean.getTotalMemorySize();
+                long availableMem = getAvailableMemory(totalMem);
+                availableMem = Math.min(availableMem, totalMem);
+                long usedMem = Math.max(0, totalMem - availableMem);
 
-            // 直接使用系统/宿主机内存指标，不进行容器化核减
-            // 用户明确要求显示服务器维度数据，而非服务/容器维度
-            long availableMem = getAvailableMemory(totalMem);
-            // 防止 availableMem 超过 totalMem 导致负数
-            availableMem = Math.min(availableMem, totalMem);
-            long usedMem = Math.max(0, totalMem - availableMem);
-
-            metrics.setMemoryTotal(totalMem);
-            metrics.setMemoryUsed(usedMem);
-            // 防止除零和确保百分比在 0-100 范围内
-            double memPercent = totalMem > 0 ? (double) usedMem / totalMem * 100 : 0;
-            metrics.setMemoryPercent(Math.max(0, Math.min(100, memPercent)));
+                metrics.setMemoryTotal(totalMem);
+                metrics.setMemoryUsed(usedMem);
+                double memPercent = totalMem > 0 ? (double) usedMem / totalMem * 100 : 0;
+                metrics.setMemoryPercent(Math.max(0, Math.min(100, memPercent)));
+            }
         }
 
         // 磁盘使用率 - 使用 getUsableSpace 而非 getFreeSpace（更准确）
@@ -482,6 +495,7 @@ public class SystemMonitorService {
      * Linux: 从 /proc/meminfo 读取 MemAvailable
      */
     private long getAvailableMemoryLinux() throws Exception {
+        // 优先从容器级别 /proc/meminfo 读取（作为降级方案）
         Path meminfo = Paths.get("/proc/meminfo");
         for (String line : Files.readAllLines(meminfo)) {
             if (line.startsWith("MemAvailable:")) {
@@ -492,6 +506,44 @@ public class SystemMonitorService {
             }
         }
         throw new RuntimeException("MemAvailable not found in /proc/meminfo");
+    }
+
+    /**
+     * 从宿主机 /host_proc/meminfo 读取内存信息 (Docker环境)
+     * @return [totalMemory, availableMemory] in bytes, or null if not available
+     */
+    private long[] getHostMemoryInfo() {
+        // 直接挂载文件: /proc/meminfo:/host_proc/meminfo:ro
+        Path hostMeminfo = Paths.get("/host_proc/meminfo");
+        if (!Files.exists(hostMeminfo)) {
+            log.debug("/host_proc/meminfo not found, host meminfo not mounted");
+            return null;
+        }
+        
+        try {
+            long totalMem = 0;
+            long availableMem = 0;
+            
+            for (String line : Files.readAllLines(hostMeminfo)) {
+                if (line.startsWith("MemTotal:")) {
+                    String[] parts = line.split("\\s+");
+                    totalMem = Long.parseLong(parts[1]) * 1024; // kB -> bytes
+                } else if (line.startsWith("MemAvailable:")) {
+                    String[] parts = line.split("\\s+");
+                    availableMem = Long.parseLong(parts[1]) * 1024; // kB -> bytes
+                }
+            }
+            
+            if (totalMem > 0) {
+                log.debug("Read host memory: total={}, available={}", 
+                    formatBytes(totalMem), formatBytes(availableMem));
+                return new long[]{totalMem, availableMem};
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read /host_proc/meminfo", e);
+        }
+        
+        return null;
     }
 
     /**
