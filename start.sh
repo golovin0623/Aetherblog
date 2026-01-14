@@ -164,7 +164,7 @@ start_backend() {
             
             if [ -n "$JAR_FILE" ]; then
                 echo -e "${BLUE}   启动后端服务: $JAR_FILE${NC}"
-                nohup java -jar "$JAR_FILE" > "$LOG_DIR/backend.log" 2>&1 &
+                nohup java -Dapp.log.path="$LOG_DIR" -DAPP_LOG_PATH="$LOG_DIR" -Dlogging.file.path="$LOG_DIR" -jar "$JAR_FILE" > "$LOG_DIR/backend.log" 2>&1 &
                 echo $! > "$PID_DIR/backend.pid"
                 sleep 3  # 等待服务启动
                 if ps -p $! > /dev/null 2>&1; then

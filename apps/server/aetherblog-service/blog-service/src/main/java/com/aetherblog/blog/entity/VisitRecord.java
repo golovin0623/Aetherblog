@@ -116,6 +116,12 @@ public class VisitRecord {
     @Column(name = "duration")
     private Integer duration = 0;
 
+    /**
+     * 是否为爬虫/机器人访问
+     */
+    @Column(name = "is_bot")
+    private Boolean isBot = false;
+
     @CreationTimestamp
     @Column(name = "created_at")
     private LocalDateTime createdAt;

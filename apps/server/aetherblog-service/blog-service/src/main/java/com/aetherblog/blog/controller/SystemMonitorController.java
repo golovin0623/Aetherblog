@@ -6,10 +6,16 @@ import com.aetherblog.blog.service.MetricsHistoryService;
 import com.aetherblog.blog.service.MetricsHistoryService.*;
 import com.aetherblog.blog.service.ContainerMonitorService;
 import com.aetherblog.blog.service.ContainerMonitorService.*;
+import com.aetherblog.blog.service.LogViewerService;
+import com.aetherblog.blog.service.LogViewerService.*;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,6 +36,7 @@ public class SystemMonitorController {
     private final SystemMonitorService systemMonitorService;
     private final MetricsHistoryService metricsHistoryService;
     private final ContainerMonitorService containerMonitorService;
+    private final LogViewerService logViewerService;
 
     // ========== 实时指标 ==========
 
@@ -85,6 +92,64 @@ public class SystemMonitorController {
     @GetMapping("/containers/{id}/logs")
     public R<List<String>> getContainerLogs(@PathVariable String id) {
         return R.ok(containerMonitorService.getContainerLogs(id));
+    }
+
+    // ========== 日志管理 ==========
+
+    /**
+     * 按级别获取应用日志
+     * @param level 日志级别 (ALL/INFO/WARN/ERROR/DEBUG)
+     * @param lines 行数限制，默认 2000
+     */
+    @Operation(summary = "按级别获取应用日志")
+    @GetMapping("/logs")
+    public R<List<String>> getLogs(
+            @RequestParam(defaultValue = "ALL") String level,
+            @RequestParam(defaultValue = "2000") int lines) {
+        return R.ok(logViewerService.getLogsByLevel(level, lines));
+    }
+
+    /**
+     * 获取可用日志文件列表
+     */
+    @Operation(summary = "获取可用日志文件列表")
+    @GetMapping("/logs/files")
+    public R<List<LogFileInfo>> getLogFiles() {
+        return R.ok(logViewerService.getAvailableLogFiles());
+    }
+
+    /**
+     * 下载日志文件
+     * @param level 日志级别 (ALL/INFO/WARN/ERROR/DEBUG)
+     */
+    @Operation(summary = "下载日志文件")
+    @GetMapping("/logs/download")
+    public ResponseEntity<Resource> downloadLog(@RequestParam(defaultValue = "ALL") String level) {
+        Resource resource = logViewerService.getLogFileResource(level);
+        if (resource == null || !resource.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        String filename = level.toLowerCase() + ".log";
+        if ("ALL".equalsIgnoreCase(level)) {
+            filename = "aetherblog.log";
+        }
+        
+        return ResponseEntity.ok()
+            .contentType(MediaType.TEXT_PLAIN)
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+            .body(resource);
+    }
+
+    /**
+     * 手动触发网络带宽测速
+     */
+    @Operation(summary = "手动触发网络带宽测速")
+    @PostMapping("/network/test")
+    public R<String> testNetworkBandwidth() {
+        // 异步执行
+        new Thread(systemMonitorService::autoDetectBandwidth).start();
+        return R.ok("带宽测速任务已启动，请稍后刷新查看");
     }
 
     // ========== 历史数据 ==========
@@ -143,4 +208,3 @@ public class SystemMonitorController {
         return R.ok(metricsHistoryService.getConfig());
     }
 }
-
