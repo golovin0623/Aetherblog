@@ -279,16 +279,25 @@ public class SystemMonitorService {
             }
         }
 
-        // 磁盘使用率 - 使用 getUsableSpace 而非 getFreeSpace（更准确）
-        File root = new File("/");
-        if (root.exists()) {
-            long totalSpace = root.getTotalSpace();
-            // getUsableSpace() 返回的是当前用户可实际使用的空间（排除系统保留）
-            long usableSpace = root.getUsableSpace();
-            long usedSpace = totalSpace - usableSpace;
-            metrics.setDiskTotal(totalSpace);
-            metrics.setDiskUsed(usedSpace);
-            metrics.setDiskPercent((double) usedSpace / totalSpace * 100);
+        // 磁盘使用率 - macOS 使用 diskutil 获取准确的 APFS 数据
+        String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("mac")) {
+            try {
+                long[] diskInfo = getDiskInfoMacOS();
+                if (diskInfo != null && diskInfo[0] > 0) {
+                    metrics.setDiskTotal(diskInfo[0]);
+                    metrics.setDiskUsed(diskInfo[1]);
+                    metrics.setDiskPercent((double) diskInfo[1] / diskInfo[0] * 100);
+                } else {
+                    throw new RuntimeException("macOS disk info not available");
+                }
+            } catch (Exception e) {
+                log.debug("Failed to get macOS disk info, falling back to Java API", e);
+                setDiskFromJavaApi(metrics);
+            }
+        } else {
+            // Linux/Windows: 使用标准 Java API
+            setDiskFromJavaApi(metrics);
         }
 
         // 网络流量统计 - 计算实时速率
@@ -482,6 +491,76 @@ public class SystemMonitorService {
             } catch (NumberFormatException ignored) {}
         }
         return 0;
+    }
+
+    /**
+     * macOS: 使用 diskutil 获取准确的 APFS 卷磁盘信息
+     * @return [totalSize, usedSize] in bytes, or null if failed
+     */
+    private long[] getDiskInfoMacOS() throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("diskutil", "info", "/");
+        Process process = pb.start();
+        String output = new String(process.getInputStream().readAllBytes());
+        process.waitFor();
+
+        long totalSize = 0;
+        long freeSize = 0;
+
+        for (String line : output.split("\n")) {
+            line = line.trim();
+            // 匹配: "Container Total Space:      994.7 GB (994662584320 Bytes)"
+            // 或:    "Volume Total Space:        994.7 GB (994662584320 Bytes)"
+            // 或:    "Total Size:                 994.7 GB (994662584320 Bytes)"
+            if (line.contains("Total Space:") || line.contains("Total Size:")) {
+                totalSize = parseDiskutilBytes(line);
+            }
+            // 匹配: "Container Free Space:       510.1 GB (510063190016 Bytes)"
+            // 或:    "Volume Free Space:          510.1 GB (510063190016 Bytes)"
+            // 或:    "Volume Available Space:     510.1 GB (510063190016 Bytes)"
+            if (line.contains("Free Space:") || line.contains("Available Space:")) {
+                freeSize = parseDiskutilBytes(line);
+            }
+        }
+
+        if (totalSize > 0) {
+            long usedSize = totalSize - freeSize;
+            log.debug("macOS disk via diskutil: total={}, free={}, used={}",
+                formatBytes(totalSize), formatBytes(freeSize), formatBytes(usedSize));
+            return new long[]{totalSize, usedSize};
+        }
+
+        return null;
+    }
+
+    /**
+     * 从 diskutil 输出行中解析字节数
+     * 格式: "Container Total Space:      994.7 GB (994662584320 Bytes)"
+     */
+    private long parseDiskutilBytes(String line) {
+        // 查找括号内的字节数
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\((\\d+)\\s*Bytes\\)");
+        java.util.regex.Matcher matcher = pattern.matcher(line);
+        if (matcher.find()) {
+            try {
+                return Long.parseLong(matcher.group(1));
+            } catch (NumberFormatException ignored) {}
+        }
+        return 0;
+    }
+
+    /**
+     * 使用标准 Java API 设置磁盘信息 (Linux/Windows)
+     */
+    private void setDiskFromJavaApi(SystemMetrics metrics) {
+        File root = new File("/");
+        if (root.exists()) {
+            long totalSpace = root.getTotalSpace();
+            long usableSpace = root.getUsableSpace();
+            long usedSpace = totalSpace - usableSpace;
+            metrics.setDiskTotal(totalSpace);
+            metrics.setDiskUsed(usedSpace);
+            metrics.setDiskPercent((double) usedSpace / totalSpace * 100);
+        }
     }
 
     /**
