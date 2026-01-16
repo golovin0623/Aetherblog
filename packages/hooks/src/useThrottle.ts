@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
 
 export function useThrottle<T>(value: T, limit = 300): T {

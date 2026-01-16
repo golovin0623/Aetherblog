@@ -14,10 +14,10 @@ type UIStatus = 'all' | 'pending' | 'approved' | 'spam' | 'deleted';
 
 // Status configuration
 const statusConfig: Record<string, any> = {
-  pending: { label: '待审核', color: 'text-orange-400', bg: 'bg-orange-500/20', icon: Clock },
-  approved: { label: '已通过', color: 'text-green-400', bg: 'bg-green-500/20', icon: Check },
-  spam: { label: '垃圾评论', color: 'text-red-400', bg: 'bg-red-500/20', icon: Flag },
-  deleted: { label: '已删除', color: 'text-gray-400', bg: 'bg-gray-500/20', icon: Trash2 },
+  pending: { label: '待审核', color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-500/10 dark:bg-orange-500/20', icon: Clock },
+  approved: { label: '已通过', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10 dark:bg-green-500/20', icon: Check },
+  spam: { label: '垃圾评论', color: 'text-red-500 dark:text-red-400', bg: 'bg-red-500/10 dark:bg-red-500/20', icon: Flag },
+  deleted: { label: '已删除', color: 'text-gray-500 dark:text-gray-400', bg: 'bg-gray-500/10 dark:bg-gray-500/20', icon: Trash2 },
 };
 
 // Mock data for fallback
@@ -249,8 +249,8 @@ export default function CommentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">评论管理</h1>
-          <p className="text-gray-400 mt-1">审核和管理文章评论</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">评论管理</h1>
+          <p className="text-[var(--text-muted)] mt-1">审核和管理文章评论</p>
         </div>
       </div>
 
@@ -258,18 +258,18 @@ export default function CommentsPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
             type="text"
             placeholder="搜索评论..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary/50 transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50 transition-colors"
           />
         </div>
 
         {/* Status filter */}
-        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-white/5 border border-white/5 overflow-x-auto">
+        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] overflow-x-auto">
           {(['all', 'pending', 'approved', 'spam', 'deleted'] as UIStatus[]).map((status) => (
             <button
               key={status}
@@ -281,7 +281,7 @@ export default function CommentsPage() {
                 "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all touch-manipulation",
                 selectedStatus === status
                   ? 'bg-primary text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-white/10'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               )}
             >
               {status === 'all' ? '全部' : statusConfig[status].label}
@@ -295,7 +295,7 @@ export default function CommentsPage() {
         {loading ? (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="p-5 rounded-xl bg-white/5 border border-white/10 animate-pulse h-40" />
+              <div key={i} className="p-5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] animate-pulse h-40" />
             ))}
           </div>
         ) : (
@@ -319,7 +319,7 @@ export default function CommentsPage() {
                     return (
                       <div
                         key={comment.id}
-                        className="p-4 sm:p-5 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors"
+                        className="p-4 sm:p-5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors"
                       >
                         {/* Comment header */}
                         <div className="flex items-start justify-between gap-3 mb-3">
@@ -328,8 +328,8 @@ export default function CommentsPage() {
                               <User className="w-5 h-5 text-primary" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-medium text-white truncate">{comment.nickname}</p>
-                              <p className="text-xs text-gray-500 truncate">{comment.email}</p>
+                              <p className="font-medium text-[var(--text-primary)] truncate">{comment.nickname}</p>
+                              <p className="text-xs text-[var(--text-secondary)] truncate">{comment.email}</p>
                             </div>
                           </div>
 
@@ -342,7 +342,7 @@ export default function CommentsPage() {
                               <StatusIcon className="w-3 h-3" />
                               <span className="hidden sm:inline">{config.label}</span>
                             </span>
-                            <span className="text-xs text-gray-500">{formatDate(comment.createdAt)}</span>
+                            <span className="text-xs text-[var(--text-muted)]">{formatDate(comment.createdAt)}</span>
                           </div>
                         </div>
 
@@ -351,7 +351,7 @@ export default function CommentsPage() {
                           {comment.post && (
                             <a
                               href={`/posts/${comment.post.slug}`}
-                              className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-primary transition-colors"
+                              className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-primary transition-colors"
                             >
                               <MessageSquare className="w-3 h-3" />
                               Re: {comment.post.title}
@@ -361,7 +361,7 @@ export default function CommentsPage() {
                         </div>
 
                         {/* Comment content */}
-                        <p className="text-gray-300 text-sm leading-relaxed mb-4">
+                        <p className="text-[var(--text-primary)] text-sm leading-relaxed mb-4">
                           {comment.content}
                         </p>
 
@@ -408,7 +408,7 @@ export default function CommentsPage() {
                               {!isSpam && (
                                 <button
                                   onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white text-xs font-medium transition-colors touch-manipulation"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] text-xs font-medium transition-colors touch-manipulation"
                                 >
                                   <Reply className="w-3.5 h-3.5" />
                                   回复
@@ -418,7 +418,7 @@ export default function CommentsPage() {
                               {!isSpam && (
                                 <button
                                   onClick={() => handleMarkSpam(comment.id)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 hover:bg-orange-500/10 hover:text-orange-400 text-xs font-medium transition-colors touch-manipulation"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-orange-500/10 hover:text-orange-400 text-xs font-medium transition-colors touch-manipulation"
                                 >
                                   <Flag className="w-3.5 h-3.5" />
                                   垃圾
@@ -427,7 +427,7 @@ export default function CommentsPage() {
 
                               <button
                                 onClick={() => handleDelete(comment.id, isSpam)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 hover:bg-red-500/10 hover:text-red-400 text-xs font-medium transition-colors touch-manipulation"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 text-xs font-medium transition-colors touch-manipulation"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                                 {isSpam ? '彻底删除' : '删除'}
@@ -445,13 +445,13 @@ export default function CommentsPage() {
                               exit={{ height: 0, opacity: 0 }}
                               className="overflow-hidden"
                             >
-                              <div className="mt-4 pt-4 border-t border-white/10">
+                              <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
                                 <textarea
                                   value={replyContent}
                                   onChange={(e) => setReplyContent(e.target.value)}
                                   placeholder="输入回复内容..."
                                   rows={3}
-                                  className="w-full p-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary/50 resize-none text-sm"
+                                  className="w-full p-3 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50 resize-none text-sm"
                                 />
                                 <div className="flex justify-end gap-2 mt-2">
                                   <button
@@ -481,10 +481,10 @@ export default function CommentsPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="text-center py-12 bg-white/5 border border-white/10 rounded-xl"
+                  className="text-center py-12 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl"
                 >
-                  <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500">暂无评论</p>
+                  <MessageSquare className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
+                  <p className="text-[var(--text-muted)]">暂无评论</p>
                 </motion.div>
               )}
             </AnimatePresence>

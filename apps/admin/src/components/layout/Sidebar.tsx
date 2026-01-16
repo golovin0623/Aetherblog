@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   FileText,
@@ -45,6 +45,8 @@ export function Sidebar() {
   const [searchValue, setSearchValue] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  const openProfile = () => setShowProfileModal(true);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +69,8 @@ export function Sidebar() {
     setSearchValue,
     handleSearch,
     toggle,
-    handleNavigation, // New prop
+    handleNavigation,
+    isProfileOpen: showProfileModal,
   };
 
   return (
@@ -82,7 +85,7 @@ export function Sidebar() {
 
       {/* Mobile Drawer - 缩小宽度以适配移动端 */}
       <div className={cn(
-        "fixed top-0 left-0 h-[100dvh] z-50 w-[75vw] max-w-[280px] bg-background-secondary border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
+        "fixed top-0 left-0 h-[100dvh] z-50 w-[75vw] max-w-[280px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
@@ -95,7 +98,7 @@ export function Sidebar() {
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className={cn(
           'relative h-screen z-40 overflow-hidden flex-shrink-0',
-          'bg-background-secondary border-r border-border',
+          'bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border',
           'hidden md:flex flex-col will-change-[width] transform-gpu'
         )}
       >
@@ -119,6 +122,7 @@ export function Sidebar() {
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
+        sidebarCollapsed={effectiveCollapsed}
       />
     </>
   );
@@ -133,9 +137,10 @@ interface SidebarContentProps {
   setSearchValue: (val: string) => void;
   handleSearch: (e: React.FormEvent) => void;
   toggle: () => void;
-  isMobile: boolean;
+  isMobile?: boolean;
   handleNavigation: () => void;
-  closeMobile: () => void;
+  closeMobile?: () => void;
+  isProfileOpen: boolean;
 }
 
 function SidebarContent({
@@ -149,7 +154,8 @@ function SidebarContent({
   toggle,
   isMobile,
   handleNavigation,
-  closeMobile
+  closeMobile,
+  isProfileOpen,
 }: SidebarContentProps) {
   return (
     <>
@@ -176,7 +182,7 @@ function SidebarContent({
             'overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
-            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-white via-gray-200 to-gray-400 whitespace-nowrap">
+            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap">
               AetherBlog
             </span>
           </div>
@@ -186,7 +192,7 @@ function SidebarContent({
         {isMobile && (
           <button
             onClick={closeMobile}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
             aria-label="关闭菜单"
           >
             <X className="w-5 h-5" />
@@ -206,11 +212,11 @@ function SidebarContent({
             className={cn(
               'flex-shrink-0 flex items-center justify-center rounded-lg',
               'w-8 h-8',
-              'text-gray-400 hover:text-white hover:bg-white/5',
+              'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
               'transition-all duration-200'
             )}
           >
-            <Search className="w-5 h-5 text-gray-400" />
+            <Search className="w-5 h-5 text-[var(--text-muted)]" />
           </button>
           <div className={cn(
             'overflow-hidden transition-all duration-300',
@@ -223,8 +229,8 @@ function SidebarContent({
               placeholder="搜索..."
               className={cn(
                 'w-full px-3 py-1.5 rounded-lg text-sm',
-                'bg-white/5 border border-border',
-                'text-white placeholder-gray-500',
+                'bg-[var(--bg-card)] border border-border',
+                'text-[var(--text-primary)] placeholder-gray-500',
                 'focus:outline-none focus:border-primary/50',
                 'transition-colors duration-200'
               )}
@@ -250,7 +256,7 @@ function SidebarContent({
                     effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
                     isActive
                       ? 'bg-primary text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                   )
                 }
               >
@@ -279,7 +285,7 @@ function SidebarContent({
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            'flex items-center rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200',
+            'flex items-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200',
             effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
           )}
           title="访问主站"
@@ -298,7 +304,7 @@ function SidebarContent({
           className={cn(
             'w-full flex items-center rounded-lg transition-all duration-200 group',
             effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
-            'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+            'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
           )}
           title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
         >
@@ -326,58 +332,57 @@ function SidebarContent({
         <div
           onClick={openProfile}
           className={cn(
-            "flex items-center transition-all duration-300 cursor-pointer group",
-            effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-1"
+            "flex items-center transition-all duration-300 cursor-pointer group rounded-xl hover:bg-[var(--bg-card-hover)] relative z-10",
+            effectiveCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "gap-3 px-2 py-2"
           )}
         >
           <div className="relative flex-shrink-0">
-            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/50 transition-all">
+            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center group-hover:ring-2 group-hover:ring-primary/50 transition-all overflow-hidden">
               {user?.avatar ? (
                 <img
                   src={getMediaUrl(user.avatar)}
                   alt={user.nickname}
-                  className="w-full h-full rounded-full object-cover"
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <User className="w-4 h-4 text-primary" />
               )}
             </div>
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-background-secondary" />
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[var(--bg-primary)]" />
           </div>
 
-          <div className={cn(
-            'flex-1 min-w-0 overflow-hidden transition-all duration-300',
-            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
-          )}>
-            <p className="text-sm font-medium text-white truncate whitespace-nowrap">
-              {user?.nickname || '管理员'}
-            </p>
-            <p className="text-xs text-gray-400 whitespace-nowrap">
-              {user?.role || 'ADMIN'}
-            </p>
-          </div>
+          {!effectiveCollapsed && (
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <p className="text-sm font-medium text-[var(--text-primary)] truncate whitespace-nowrap">
+                {user?.nickname || '管理员'}
+              </p>
+              <p className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                {user?.role || 'ADMIN'}
+              </p>
+            </div>
+          )}
 
-          <div className={cn(
-            'overflow-hidden transition-all duration-300 flex-shrink-0',
-            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
-          )}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                logout();
-              }}
-              className={cn(
-                'p-2 rounded-lg',
-                'text-gray-400 hover:text-red-400 hover:bg-white/5',
-                'transition-all duration-200'
-              )}
-              title="退出登录"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          {!effectiveCollapsed && (
+            <div className="flex-shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  logout();
+                }}
+                className={cn(
+                  'p-2 rounded-lg',
+                  'text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--bg-card-hover)]',
+                  'transition-all duration-200'
+                )}
+                title="退出登录"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
     </>
   );
 }

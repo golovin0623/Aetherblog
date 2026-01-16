@@ -13,3 +13,8 @@ export * from './useWindowSize';
 export * from './usePrevious';
 export * from './useToggle';
 export * from './useScrollPosition';
+export * from './useTheme';
+export * from './ThemeProvider';
+export * from './ThemeToggle';
+
+

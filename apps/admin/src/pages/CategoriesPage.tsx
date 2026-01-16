@@ -119,8 +119,8 @@ export default function CategoriesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">分类标签</h1>
-          <p className="text-gray-400 mt-1">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">分类标签</h1>
+          <p className="text-[var(--text-muted)] mt-1">
             {activeTab === 'categories' ? `共 ${categories.length} 个分类` : `共 ${tags.length} 个标签`}
           </p>
         </div>
@@ -144,7 +144,7 @@ export default function CategoriesPage() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-4 rounded-xl bg-white/5 border border-primary/30"
+          className="p-4 rounded-xl bg-[var(--bg-card)] border border-primary/30"
         >
           <div className="flex items-center gap-4">
             <input
@@ -154,8 +154,8 @@ export default function CategoriesPage() {
               onChange={(e) => setNewName(e.target.value)}
               className={cn(
                 'flex-1 px-4 py-2 rounded-lg',
-                'bg-white/5 border border-white/10',
-                'text-white placeholder-gray-500',
+                'bg-[var(--bg-input)] border border-[var(--border-subtle)]',
+                'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
                 'focus:outline-none focus:border-primary/50'
               )}
               autoFocus
@@ -168,8 +168,8 @@ export default function CategoriesPage() {
                 onChange={(e) => setNewDescription(e.target.value)}
                 className={cn(
                   'flex-1 px-4 py-2 rounded-lg',
-                  'bg-white/5 border border-white/10',
-                  'text-white placeholder-gray-500',
+                  'bg-[var(--bg-input)] border border-[var(--border-subtle)]',
+                  'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
                   'focus:outline-none focus:border-primary/50'
                 )}
               />
@@ -186,7 +186,7 @@ export default function CategoriesPage() {
             </button>
             <button
               onClick={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); }}
-              className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+              className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -195,14 +195,14 @@ export default function CategoriesPage() {
       )}
 
       {/* 标签页切换 */}
-      <div className="flex gap-1 p-1 bg-white/5 rounded-lg w-fit relative">
+      <div className="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-lg w-fit relative">
         <button
           onClick={() => { setActiveTab('categories'); setShowCreateForm(false); }}
           className={cn(
             'relative z-10 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2',
             activeTab === 'categories'
               ? 'text-white'
-              : 'text-gray-400 hover:text-white'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
           )}
         >
           {activeTab === 'categories' && (
@@ -223,7 +223,7 @@ export default function CategoriesPage() {
             'relative z-10 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2',
             activeTab === 'tags'
               ? 'text-white'
-              : 'text-gray-400 hover:text-white'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
           )}
         >
           {activeTab === 'tags' && (
@@ -241,7 +241,7 @@ export default function CategoriesPage() {
       </div>
 
       {/* 内容区域 */}
-      <div className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+      <div className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -250,29 +250,29 @@ export default function CategoriesPage() {
           <div className="p-6 text-center text-red-400">{error}</div>
         ) : activeTab === 'categories' ? (
           categories.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">暂无分类，点击"新建分类"创建</div>
+            <div className="text-center py-12 text-[var(--text-muted)]">暂无分类，点击"新建分类"创建</div>
           ) : (
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-[var(--border-subtle)]">
               {categories.map((cat) => (
-                <div key={cat.id} className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 hover:bg-white/5 transition-colors">
+                <div key={cat.id} className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 hover:bg-[var(--bg-card-hover)] transition-colors">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                       <Folder className="w-5 h-5 text-primary" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-white font-medium truncate">{cat.name}</p>
-                      <p className="text-gray-500 text-sm truncate">{cat.description || '暂无描述'}</p>
+                      <p className="text-[var(--text-primary)] font-medium truncate">{cat.name}</p>
+                      <p className="text-[var(--text-secondary)] text-sm truncate">{cat.description || '暂无描述'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                    <span className="text-gray-400 text-xs sm:text-sm whitespace-nowrap">{cat.postCount || 0} 篇</span>
+                    <span className="text-[var(--text-muted)] text-xs sm:text-sm whitespace-nowrap">{cat.postCount || 0} 篇</span>
                     <div className="flex gap-1 sm:gap-2">
-                      <button className="p-1.5 sm:p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                      <button className="p-1.5 sm:p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => setDeleteTarget({ id: cat.id, name: cat.name, type: 'category' })}
-                        className="p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors"
+                        className="p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -284,7 +284,7 @@ export default function CategoriesPage() {
           )
         ) : (
           tags.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">暂无标签，点击"新建标签"创建</div>
+            <div className="text-center py-12 text-[var(--text-muted)]">暂无标签，点击"新建标签"创建</div>
           ) : (
             <div className="p-4 sm:p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {tags.map((tag, index) => {
@@ -314,15 +314,15 @@ export default function CategoriesPage() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <TagIcon className={`w-4 h-4 shrink-0 ${colorClass.split(' ')[3]}`} />
-                      <span className="text-white font-medium truncate">{tag.name}</span>
+                      <span className="text-[var(--text-primary)] font-medium truncate">{tag.name}</span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-gray-400 bg-black/20 px-2 py-0.5 rounded-full">
+                      <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-overlay)] px-2 py-0.5 rounded-full">
                         {tag.postCount || 0}
                       </span>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: tag.id, name: tag.name, type: 'tag' }); }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/20 text-[var(--text-muted)] hover:text-red-400 transition-all"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

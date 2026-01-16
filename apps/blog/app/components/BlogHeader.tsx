@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Settings2 } from 'lucide-react';
+import { ThemeToggle } from '@aetherblog/hooks';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
 
@@ -143,9 +144,9 @@ export default function BlogHeader() {
           isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
         }`}
         style={{
-          background: 'rgba(10, 10, 15, 0.6)',
+          background: 'var(--bg-overlay)',
           backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+          borderBottom: '1px solid var(--border-subtle)',
         }}
         onMouseMove={updateMousePosition}
         onMouseEnter={() => isArticleDetail && setIsHovering(true)}
@@ -168,7 +169,7 @@ export default function BlogHeader() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow flex-shrink-0">
               A
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent hidden sm:block">
+            <span className="text-xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent hidden sm:block">
               AetherBlog
             </span>
           </Link>
@@ -186,7 +187,7 @@ export default function BlogHeader() {
             {/* Desktop Navigation */}
             <nav className="hidden md:flex gap-6 items-center">
               {/* View Mode Toggle with sliding animation */}
-              <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
+              <div className="flex items-center bg-[var(--bg-card)] rounded-full p-1 border border-[var(--border-default)] relative">
                 {/* Sliding pill indicator */}
                 <div
                   className="absolute top-1 bottom-1 w-[72px] bg-primary/20 rounded-full transition-all duration-300 ease-out"
@@ -199,7 +200,7 @@ export default function BlogHeader() {
                 <Link
                   href="/posts"
                   className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
-                    !isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+                    !isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   首页
@@ -207,25 +208,29 @@ export default function BlogHeader() {
                 <Link
                   href="/timeline"
                   className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
-                    isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+                    isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   时间线
                 </Link>
               </div>
               
-              <div className="h-4 w-px bg-white/10 mx-2"></div>
-              <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
-              <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
-              <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
+              <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
+              <Link href="/archives" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-sm font-medium">归档</Link>
+              <Link href="/friends" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-sm font-medium">友链</Link>
+              <Link href="/about" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-sm font-medium">关于</Link>
               
               {/* 管理后台入口 */}
-              <div className="h-4 w-px bg-white/10 mx-1"></div>
+              <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
+              
+              {/* 主题切换 */}
+              <ThemeToggle size="sm" />
+              
               <a 
                 href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-300 group/admin"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
                 title="管理后台"
               >
                 <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />

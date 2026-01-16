@@ -1,2 +1,1 @@
-export * from './useCopyToClipboard';
-export * from './useDebounce';
+export * from '@aetherblog/hooks';

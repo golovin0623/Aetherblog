@@ -70,10 +70,10 @@ export function MediaGrid({
               }}
               className={cn(
                 'relative aspect-square rounded-xl lg:rounded-2xl overflow-hidden cursor-pointer group',
-                'bg-white/5 border-2 transition-all duration-500',
+                'bg-[var(--bg-card)] border-2 transition-all duration-500',
                 isSelected
                   ? 'border-primary ring-4 ring-primary/20 scale-[0.98]'
-                  : 'border-transparent hover:border-white/20 hover:shadow-2xl hover:shadow-primary/5'
+                  : 'border-transparent shadow-sm hover:border-[var(--border-subtle)] hover:shadow-2xl hover:shadow-primary/10'
               )}
             >
               {/* 媒体内容容器 */}
@@ -92,8 +92,8 @@ export function MediaGrid({
                     muted
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/10 to-transparent">
-                    <Icon className="w-16 h-16 text-gray-400 group-hover:scale-110 transition-transform duration-500" />
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--bg-secondary)] to-transparent">
+                    <Icon className="w-16 h-16 text-[var(--text-muted)] group-hover:scale-110 transition-transform duration-500" />
                   </div>
                 )}
 
@@ -109,7 +109,7 @@ export function MediaGrid({
                   whileTap={{ scale: 0.9 }}
                   className={cn(
                     'w-14 h-14 rounded-full flex items-center justify-center',
-                    'bg-white/10 backdrop-blur-md border border-white/20 text-white',
+                    'bg-[var(--bg-overlay)] backdrop-blur-md border border-[var(--border-subtle)] text-[var(--text-primary)] shadow-lg',
                     'opacity-0 group-hover:opacity-100 transition-all duration-300',
                     'pointer-events-auto cursor-pointer shadow-lg'
                   )}
@@ -134,7 +134,7 @@ export function MediaGrid({
                   'w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all duration-300',
                   isSelected 
                     ? 'bg-primary border-primary scale-110 shadow-lg' 
-                    : 'bg-black/30 backdrop-blur-sm border-white/30 opacity-0 group-hover:opacity-100'
+                    : 'bg-[var(--bg-card)]/80 hover:bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-subtle)] shadow-sm opacity-0 group-hover:opacity-100'
                 )}>
                   {isSelected && <Check className="w-4 h-4 text-white" />}
                 </div>
@@ -144,27 +144,27 @@ export function MediaGrid({
               <div
                 className={cn(
                   'absolute bottom-3 left-3 right-3 h-10 px-2',
-                  'bg-black/40 backdrop-blur-md border border-white/10 rounded-xl',
+                  'bg-[var(--bg-overlay)] backdrop-blur-md border border-[var(--border-subtle)] rounded-xl shadow-lg',
                   'flex items-center justify-between gap-1',
                   'translate-y-12 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 ease-out'
                 )}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex-1 min-w-0 pr-2">
-                  <p className="text-[10px] text-white/80 font-medium truncate">{item.originalName}</p>
+                  <p className="text-[10px] text-[var(--text-primary)] font-medium truncate">{item.originalName}</p>
                 </div>
                 
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => onCopyUrl(fullUrl)}
-                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     title="复制链接"
                   >
                     <Link2 className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => onDownload(fullUrl, item.originalName)}
-                    className="p-1.5 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     title="下载"
                   >
                     <Download className="w-3.5 h-3.5" />

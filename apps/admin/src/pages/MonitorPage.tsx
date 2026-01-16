@@ -18,8 +18,8 @@ export default function MonitorPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">系统监控</h1>
-        <p className="text-gray-400 mt-1">实时监控系统运行状态与资源趋势</p>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">系统监控</h1>
+        <p className="text-[var(--text-muted)] mt-1">实时监控系统运行状态与资源趋势</p>
       </div>
 
       {/* Row 1: System Trends & Status */}

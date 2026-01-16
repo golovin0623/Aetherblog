@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebounce } from '@/hooks';
 import { mediaService, MediaListParams, MediaType, getMediaUrl } from '@/services/mediaService';
 import { MediaGrid } from './media/components/MediaGrid';
 import { MediaList } from './media/components/MediaList';
@@ -118,20 +118,20 @@ export default function MediaPage() {
   // 删除确认处理 - 支持传入回调
   const handleDeleteConfirm = (id: number, onSuccess?: () => void) => {
     toast.custom((t) => (
-      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
             <Trash2 className="w-5 h-5 text-red-500" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-white mb-1">确认删除？</h3>
-            <p className="text-xs text-zinc-400 mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">确认删除？</h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
               此操作无法撤销，文件将被永久删除。
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -274,8 +274,8 @@ export default function MediaPage() {
     >
       <header className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-white mb-0.5 lg:mb-1">媒体库</h1>
-          <p className="text-xs lg:text-sm text-gray-400 hidden sm:block">管理您的图片、视频和文档资源</p>
+          <h1 className="text-xl lg:text-2xl font-bold text-[var(--text-primary)] mb-0.5 lg:mb-1">媒体库</h1>
+          <p className="text-xs lg:text-sm text-[var(--text-secondary)] hidden sm:block">管理您的图片、视频和文档资源</p>
         </div>
 
         <div className="flex items-center gap-2 lg:gap-3">
@@ -296,20 +296,20 @@ export default function MediaPage() {
         </div>
       </header>
 
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 shrink-0 bg-transparent lg:bg-white/5 lg:p-2 lg:rounded-2xl lg:border lg:border-white/10">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 shrink-0 bg-transparent lg:bg-[var(--bg-card)] lg:p-2 lg:rounded-2xl lg:border lg:border-[var(--border-subtle)]">
         <div className="relative w-full lg:flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
             type="text"
             placeholder="搜索文件名..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 lg:py-2 text-sm focus:border-primary/50 transition-all outline-none"
+            className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-secondary)] focus:bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl pl-10 pr-4 py-2.5 lg:py-2 text-sm focus:border-primary/50 text-[var(--text-primary)] transition-all outline-none shadow-sm"
           />
         </div>
 
         <div className="flex items-center justify-between gap-3 overflow-x-auto no-scrollbar lg:contents">
-            <div className="flex items-center gap-1.5 lg:gap-1 p-1 bg-white/5 lg:bg-black/20 rounded-xl overflow-x-auto no-scrollbar flex-1 lg:flex-none">
+            <div className="flex items-center gap-1.5 lg:gap-1 p-1 bg-[var(--bg-secondary)] lg:bg-[var(--bg-secondary)] rounded-xl overflow-x-auto no-scrollbar flex-1 lg:flex-none">
             {typeOptions.map((opt) => {
                 const Icon = opt.icon;
                 return (
@@ -320,7 +320,7 @@ export default function MediaPage() {
                     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 whitespace-nowrap',
                     filterType === opt.value
                         ? 'bg-primary text-white shadow-md'
-                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                     )}
                 >
                     <Icon className="w-3.5 h-3.5" />
@@ -330,14 +330,14 @@ export default function MediaPage() {
             })}
             </div>
 
-            <div className="w-px h-6 bg-white/10 hidden lg:block" />
+            <div className="w-px h-6 bg-[var(--border-subtle)] hidden lg:block" />
 
-            <div className="flex items-center gap-1 p-1 bg-white/5 lg:bg-black/20 rounded-xl shrink-0">
+            <div className="flex items-center gap-1 p-1 bg-[var(--bg-secondary)] lg:bg-[var(--bg-secondary)] rounded-xl shrink-0">
             <button
                 onClick={() => setViewMode('grid')}
                 className={cn(
                 'p-1.5 rounded-lg transition-all',
-                viewMode === 'grid' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
+                viewMode === 'grid' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                 )}
             >
                 <LayoutGrid className="w-4 h-4" />
@@ -346,7 +346,7 @@ export default function MediaPage() {
                 onClick={() => setViewMode('list')}
                 className={cn(
                 'p-1.5 rounded-lg transition-all',
-                viewMode === 'list' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'
+                viewMode === 'list' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                 )}
             >
                 <List className="w-4 h-4" />
@@ -405,12 +405,12 @@ export default function MediaPage() {
               )}
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-dashed border-white/10">
-              <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center mb-4">
-                <ImageIcon className="w-10 h-10 text-gray-400" />
+            <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-card)] rounded-3xl border border-dashed border-[var(--border-subtle)]">
+              <div className="w-20 h-20 rounded-3xl bg-[var(--bg-secondary)] flex items-center justify-center mb-4">
+                <ImageIcon className="w-10 h-10 text-[var(--text-muted)]" />
               </div>
-              <h3 className="text-lg font-medium text-white mb-1">暂无媒体文件</h3>
-              <p className="text-sm text-gray-400">点击上方按钮或拖拽文件到此处上传</p>
+              <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">暂无媒体文件</h3>
+              <p className="text-sm text-[var(--text-secondary)]">点击上方按钮或拖拽文件到此处上传</p>
             </div>
           )}
           </div>
@@ -441,7 +441,7 @@ export default function MediaPage() {
                 }}
                 className="w-96 h-full pl-6"
               >
-                <div className="h-full bg-white/5 backdrop-blur-sm rounded-3xl border border-white/10 p-6 overflow-y-auto no-scrollbar">
+                <div className="h-full bg-[var(--bg-card)] backdrop-blur-sm rounded-3xl border border-[var(--border-subtle)] p-6 overflow-y-auto no-scrollbar">
                   <MediaDetail
                     item={currentMedia}
                     onClose={() => setSelectedMedia(null)}
@@ -480,11 +480,12 @@ export default function MediaPage() {
                     setSelectedMedia(null);
                   }
                 }}
-                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-[#1a1b1e] rounded-t-3xl border-t border-white/10 shadow-2xl overflow-hidden flex flex-col"
+                // Bottom Sheet
+                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-[var(--bg-card)] rounded-t-3xl border-t border-[var(--border-subtle)] shadow-2xl overflow-hidden flex flex-col"
               >
                 {/* 拖拽手柄 */}
                 <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={() => setSelectedMedia(null)}>
-                  <div className="w-12 h-1.5 bg-white/20 rounded-full" />
+                  <div className="w-12 h-1.5 bg-[var(--bg-secondary)] rounded-full" />
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 pb-safe-area">
@@ -535,11 +536,11 @@ export default function MediaPage() {
           >
             <div className={cn(
               "pointer-events-auto flex items-center gap-6 px-8 py-4",
-              "bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+              "bg-[var(--bg-card)]/90 backdrop-blur-2xl border border-[var(--border-subtle)] rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
             )}>
               <div className="flex flex-col">
-                <span className="text-white text-sm font-bold">{selectedIds.size} 项已选中</span>
-                <span className="text-white/40 text-[10px] tracking-widest uppercase">Batch Mode</span>
+                <span className="text-[var(--text-primary)] text-sm font-bold">{selectedIds.size} 项已选中</span>
+                <span className="text-[var(--text-muted)] text-[10px] tracking-widest uppercase">Batch Mode</span>
               </div>
               
               <div className="w-px h-8 bg-white/10 mx-2" />
@@ -554,7 +555,7 @@ export default function MediaPage() {
                     navigator.clipboard.writeText(urls);
                     toast.success('已复制所有选中链接');
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-white transition-all group"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group"
                 >
                   <Link2 className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-semibold">复制全部</span>
@@ -565,20 +566,20 @@ export default function MediaPage() {
                     const count = selectedIds.size;
                     const ids = Array.from(selectedIds);
                     toast.custom((t) => (
-                      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 shadow-2xl w-80">
+                      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl p-4 shadow-2xl w-80">
                         <div className="flex items-start gap-4">
                           <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
                             <Trash2 className="w-5 h-5 text-red-500" />
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-sm font-semibold text-white mb-1">批量删除?</h3>
-                            <p className="text-xs text-zinc-400 mb-4">
+                            <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">批量删除?</h3>
+                            <p className="text-xs text-[var(--text-secondary)] mb-4">
                               确定要删除选中的 {count} 个文件吗？操作无法撤销。
                             </p>
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => toast.dismiss(t)}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors"
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors"
                               >
                                 取消
                               </button>
@@ -605,7 +606,7 @@ export default function MediaPage() {
                 
                 <button
                   onClick={() => setSelectedIds(new Set())}
-                  className="p-2.5 rounded-2xl hover:bg-white/10 text-white/40 hover:text-white transition-all"
+                  className="p-2.5 rounded-2xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
                 >
                   <X className="w-5 h-5" />
                 </button>

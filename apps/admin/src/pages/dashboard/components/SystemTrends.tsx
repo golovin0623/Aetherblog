@@ -192,30 +192,30 @@ export function SystemTrends({ className }: { className?: string }) {
 
   if (showSkeleton) {
     return (
-      <div className={cn("p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col", className)}>
+      <div className={cn("p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col", className)}>
         <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
-          <div className="h-6 w-32 bg-white/10 rounded animate-pulse" />
+          <div className="h-6 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
           <div className="flex gap-2">
-             <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
-             <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
+             <div className="h-8 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+             <div className="h-8 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
           </div>
         </div>
-        <div className="flex-1 bg-white/5 rounded-xl animate-pulse relative overflow-hidden">
+        <div className="flex-1 bg-[var(--bg-secondary)] rounded-xl animate-pulse relative overflow-hidden">
           {/* Shimmer effect */}
-          <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn("p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10 transition-all duration-300 flex flex-col", className)}>
+    <div className={cn("p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] transition-all duration-300 flex flex-col", className)}>
       {/* Unified Header & Controls */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-6 gap-4 shrink-0">
         
         {/* Left: Title & Status */}
         <div className="flex items-center gap-3">
-          <h3 className="text-base sm:text-lg font-semibold text-white">系统负载</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">系统负载</h3>
           {loading && data.length > 0 && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
           {minutes > 1440 && (
              <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-yellow-500/80 bg-yellow-500/10 px-2 py-0.5 rounded-full">
@@ -237,10 +237,10 @@ export function SystemTrends({ className }: { className?: string }) {
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.cpu 
                      ? "bg-primary/10 border-primary/30 text-primary" 
-                     : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
+                     : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.cpu ? "bg-primary" : "bg-gray-600")} />
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.cpu ? "bg-primary" : "bg-[var(--text-muted)]")} />
                  CPU
                </button>
                {/* RAM */}
@@ -250,10 +250,10 @@ export function SystemTrends({ className }: { className?: string }) {
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.memory 
                      ? "bg-blue-500/10 border-blue-500/30 text-blue-400" 
-                     : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
+                     : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.memory ? "bg-blue-400" : "bg-gray-600")} />
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.memory ? "bg-blue-400" : "bg-[var(--text-muted)]")} />
                  内存
                </button>
                {/* 磁盘 */}
@@ -263,22 +263,22 @@ export function SystemTrends({ className }: { className?: string }) {
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.disk 
                      ? "bg-green-500/10 border-green-500/30 text-green-400" 
-                     : "bg-white/5 border-transparent text-gray-500 hover:text-gray-300"
+                     : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.disk ? "bg-green-400" : "bg-gray-600")} />
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.disk ? "bg-green-400" : "bg-[var(--text-muted)]")} />
                  磁盘
                </button>
           </div>
 
-          <div className="w-px h-4 bg-white/10 hidden sm:block" />
+          <div className="w-px h-4 bg-[var(--border-subtle)] hidden sm:block" />
 
           {/* Controls Group */}
-          <div className="flex items-center bg-white/5 rounded-lg border border-white/5 p-0.5 h-7">
+          <div className="flex items-center bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-subtle)] p-0.5 h-7">
              <select
                  value={minutes}
                  onChange={(e) => setMinutes(Number(e.target.value))}
-                 className="bg-transparent text-white text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-primary transition-colors appearance-none text-center h-full min-w-[50px]"
+                 className="bg-transparent text-[var(--text-primary)] text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-primary transition-colors appearance-none text-center h-full min-w-[50px]"
                  title="时间范围"
                >
                  <option value="30">30分</option>
@@ -291,12 +291,12 @@ export function SystemTrends({ className }: { className?: string }) {
                  <option value="43200">30天</option>
              </select>
              
-             <div className="w-px h-3 bg-white/10 mx-0.5" />
+             <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 
              <select
                  value={refreshInterval}
                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                 className="bg-transparent text-gray-400 text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-white transition-colors appearance-none text-center h-full min-w-[40px]"
+                 className="bg-transparent text-[var(--text-muted)] text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors appearance-none text-center h-full min-w-[40px]"
                  title="刷新频率"
                >
                  <option value="5">5s</option>
@@ -306,22 +306,22 @@ export function SystemTrends({ className }: { className?: string }) {
                  <option value="300">5m</option>
              </select>
 
-             <div className="w-px h-3 bg-white/10 mx-0.5" />
+             <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 
              <button
                onClick={() => fetchHistory(true)}
-               className="h-full px-2 text-gray-400 hover:text-white transition-colors flex items-center justify-center"
+               className="h-full px-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center"
                title="刷新数据"
              >
                <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
              </button>
              
-             <div className="w-px h-3 bg-white/10 mx-0.5" />
+             <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 
              <button
                onClick={handleCleanup}
                disabled={isCleaning}
-               className="h-full px-2 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 flex items-center justify-center"
+               className="h-full px-2 text-[var(--text-muted)] hover:text-red-400 transition-colors disabled:opacity-50 flex items-center justify-center"
                title="清理历史数据"
              >
                <Trash2 className="w-3 h-3" />
@@ -352,13 +352,13 @@ export function SystemTrends({ className }: { className?: string }) {
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
               <XAxis 
                 dataKey="time" 
-                stroke="#4b5563" 
+                stroke="var(--text-secondary)" 
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: 10 }}
+                tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
                 ticks={ticks}
                 interval="preserveStartEnd"
                 minTickGap={30}
@@ -366,10 +366,10 @@ export function SystemTrends({ className }: { className?: string }) {
                 height={30}
               />
               <YAxis 
-                stroke="#4b5563" 
+                stroke="var(--text-secondary)" 
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: 10, fill: '#e5e7eb' }}
+                tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
                 tickFormatter={(value) => `${value}%`}
                 domain={[0, 100]}
                 ticks={[0, 25, 50, 75, 100]}
@@ -388,8 +388,8 @@ export function SystemTrends({ className }: { className?: string }) {
                     if (visiblePayload.length === 0) return null;
 
                     return (
-                      <div className="p-2 sm:p-3 bg-zinc-900/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-50 min-w-[120px]">
-                        <p className="text-zinc-500 text-[10px] mb-1.5 uppercase font-medium tracking-wider">
+                      <div className="p-2 sm:p-3 bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-subtle)] rounded-lg shadow-xl z-50 min-w-[120px]">
+                        <p className="text-[var(--text-muted)] text-[10px] mb-1.5 uppercase font-medium tracking-wider">
                           {formatTooltipLabel(label)}
                         </p>
                         {visiblePayload.map((entry: any) => (
@@ -398,8 +398,8 @@ export function SystemTrends({ className }: { className?: string }) {
                               className="w-1.5 h-1.5 rounded-full shadow-[0_0_5px_currentColor]"
                               style={{ backgroundColor: entry.stroke, color: entry.stroke }}
                             />
-                            <span className="text-gray-300 w-10">{entry.name}</span>
-                            <span className="text-white font-mono ml-auto">
+                            <span className="text-[var(--text-secondary)] w-10">{entry.name}</span>
+                            <span className="text-[var(--text-primary)] font-mono ml-auto">
                               {Number(entry.value).toFixed(1)}%
                             </span>
                           </div>
@@ -456,7 +456,7 @@ export function SystemTrends({ className }: { className?: string }) {
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center text-gray-500 text-sm">
+          <div className="flex h-full items-center justify-center text-[var(--text-muted)] text-sm">
              暂无历史数据，请等待采集...
           </div>
         )}

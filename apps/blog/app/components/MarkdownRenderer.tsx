@@ -8,6 +8,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
@@ -73,7 +74,7 @@ async function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     // 仅初始加载核心语言，减少 bundle 体积
     highlighterPromise = createHighlighter({
-      themes: ['github-dark'],  // 只加载一个主题
+      themes: ['github-dark', 'github-light'],
       langs: CORE_LANGUAGES,
     });
   }
@@ -141,8 +142,11 @@ function extractTextContent(children: React.ReactNode): string {
   return '';
 }
 
+// mermaid theme type
+type MermaidTheme = 'dark' | 'default';
+
 // Mermaid 图表组件
-const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
+const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -156,18 +160,25 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
     const renderMermaid = async () => {
       try {
         setIsLoading(true);
+        // Clean up previous svg to force re-render visually (optional)
+        setSvg(''); 
+        
         const mermaid = (await import('mermaid')).default;
+        const mermaidTheme = theme === 'dark' ? 'dark' : 'default';
+        
         mermaid.initialize({
           startOnLoad: false,
-          theme: 'dark',
-          themeVariables: {
+          theme: mermaidTheme as any,
+          // Adjust variables only for dark mode or specific needs
+          themeVariables: theme === 'dark' ? {
             primaryColor: '#6366f1',
             primaryTextColor: '#f1f5f9',
             primaryBorderColor: '#818cf8',
             lineColor: '#64748b',
             secondaryColor: '#1e1b4b',
             tertiaryColor: '#1e293b',
-          },
+          } : undefined,
+          securityLevel: 'loose',
         });
         
         const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
@@ -183,7 +194,7 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
     };
     
     renderMermaid();
-  }, [code]);
+  }, [code, theme]); // Re-render when theme changes
 
   if (!code || !code.trim()) {
     return (
@@ -219,10 +230,11 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
 };
 
 // Shiki 代码块组件 - 带语法高亮
-const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Highlighter | null }> = ({ 
+const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Highlighter | null; theme: string }> = ({ 
   language, 
   code,
-  highlighter
+  highlighter,
+  theme
 }) => {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
@@ -239,9 +251,11 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
           await ensureLanguageLoaded(highlighter, lang);
         }
         
+        const shikiTheme = theme === 'dark' ? 'github-dark' : 'github-light';
+        
         const html = highlighter.codeToHtml(code, {
           lang: lang === 'text' ? 'text' : lang,
-          theme: 'github-dark',
+          theme: shikiTheme,
         });
         setHighlightedHtml(html);
       } catch (e) {
@@ -251,7 +265,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
     };
     
     highlight();
-  }, [highlighter, code, language]);
+  }, [highlighter, code, language, theme]);
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
@@ -261,16 +275,19 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 
   const langDisplay = language?.toUpperCase() || 'TEXT';
 
+  // Background color based on theme
+  const bgClass = theme === 'dark' ? 'bg-[#1a1b26]' : 'bg-gray-50';
+
   return (
-    <div className="code-block-wrapper relative group my-4 rounded-xl overflow-hidden border border-white/10 bg-[#1a1b26]">
+    <div className={`code-block-wrapper relative group my-4 rounded-xl overflow-hidden border border-[var(--border-subtle)] ${bgClass}`}>
       {/* Header */}
-      <div className="code-block-header flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10">
-        <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">
+      <div className="code-block-header flex items-center justify-between px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)]">
+          <span className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-wider">
           {langDisplay}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-transparent hover:bg-white/10 rounded text-gray-400 hover:text-gray-200 transition-all"
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-transparent hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
         >
           {copied ? (
             <>
@@ -309,7 +326,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 };
 
 // 创建自定义组件映射
-function createComponents(highlighter: Highlighter | null): Components {
+function createComponents(highlighter: Highlighter | null, theme: string): Components {
   return {
     // 处理 pre 标签 - 捕获所有代码块
     pre: ({ children, ...props }) => {
@@ -325,12 +342,12 @@ function createComponents(highlighter: Highlighter | null): Components {
         
         // Mermaid 图表
         if (language === 'mermaid') {
-          return <MermaidBlock code={codeContent} />;
+          return <MermaidBlock code={codeContent} theme={theme} />;
         }
         
         // 使用 Shiki 高亮的代码块
         if (language) {
-          return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} />;
+          return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
         }
       }
       
@@ -391,20 +408,20 @@ function createComponents(highlighter: Highlighter | null): Components {
     // 表格
     table: ({ children }) => (
       <div className="overflow-x-auto my-4">
-        <table className="w-full border-collapse border border-white/10 rounded-lg overflow-hidden">
+        <table className="w-full border-collapse border border-[var(--border-subtle)] rounded-lg overflow-hidden">
           {children}
         </table>
       </div>
     ),
     
     th: ({ children }) => (
-      <th className="bg-white/5 px-4 py-2 text-left font-semibold text-gray-200 border border-white/10">
+      <th className="bg-[var(--bg-secondary)] px-4 py-2 text-left font-semibold text-[var(--text-primary)] border border-[var(--border-subtle)]">
         {children}
       </th>
     ),
     
     td: ({ children }) => (
-      <td className="px-4 py-2 text-gray-300 border border-white/10">
+      <td className="px-4 py-2 text-[var(--text-secondary)] border border-[var(--border-subtle)]">
         {children}
       </td>
     ),
@@ -450,8 +467,10 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     }
   }, [content]);
 
-  // 基于 highlighter 状态创建组件
-  const components = useMemo(() => createComponents(highlighter), [highlighter]);
+  const { resolvedTheme } = useTheme();
+
+  // 基于 highlighter 状态和主题创建组件
+  const components = useMemo(() => createComponents(highlighter, resolvedTheme || 'dark'), [highlighter, resolvedTheme]);
 
   if (!content) return null;
 
@@ -476,7 +495,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           display: block;
         }
       `}</style>
-      <div className={`markdown-body prose prose-invert max-w-none ${className}`}>
+      <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex, rehypeRaw]}

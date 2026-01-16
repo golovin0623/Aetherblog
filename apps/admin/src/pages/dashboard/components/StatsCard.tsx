@@ -53,25 +53,25 @@ export function StatsCard({
 
   const iconColorStyles = {
     primary: 'bg-primary/20 text-primary',
-    green: 'bg-green-500/20 text-green-400',
-    blue: 'bg-blue-500/20 text-blue-400',
-    orange: 'bg-orange-500/20 text-orange-400',
-    pink: 'bg-pink-500/20 text-pink-400',
-    purple: 'bg-purple-500/20 text-purple-400',
-    cyan: 'bg-cyan-500/20 text-cyan-400',
-    indigo: 'bg-indigo-500/20 text-indigo-400',
-    emerald: 'bg-emerald-500/20 text-emerald-400',
+    green: 'bg-green-500/20 text-green-600 dark:text-green-400',
+    blue: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
+    orange: 'bg-orange-500/20 text-orange-600 dark:text-orange-400',
+    pink: 'bg-pink-500/20 text-pink-600 dark:text-pink-400',
+    purple: 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
+    cyan: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400',
+    indigo: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
+    emerald: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400',
   };
 
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-white/5 border border-white/10 animate-pulse h-[140px]">
+      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] animate-pulse h-[140px]">
         <div className="flex justify-between">
-          <div className="w-24 h-4 bg-white/10 rounded" />
-          <div className="w-10 h-10 bg-white/10 rounded-lg" />
+          <div className="w-24 h-4 bg-[var(--bg-secondary)] rounded" />
+          <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-lg" />
         </div>
-        <div className="mt-4 w-32 h-8 bg-white/10 rounded" />
-        <div className="mt-2 w-16 h-4 bg-white/10 rounded" />
+        <div className="mt-4 w-32 h-8 bg-[var(--bg-secondary)] rounded" />
+        <div className="mt-2 w-16 h-4 bg-[var(--bg-secondary)] rounded" />
       </div>
     );
   }
@@ -88,8 +88,8 @@ export function StatsCard({
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-gray-400 text-sm font-medium">{title}</p>
-          <p className="text-3xl font-bold text-white mt-2 tabular-nums">
+          <p className="text-[var(--text-secondary)] text-sm font-medium">{title}</p>
+          <p className="text-3xl font-bold text-[var(--text-primary)] mt-2 tabular-nums">
             {typeof value === 'string' ? (
               value
             ) : (
@@ -102,9 +102,9 @@ export function StatsCard({
               {change !== undefined && (
                 <div className={cn(
                   "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium",
-                  change > 0 ? "bg-green-500/10 text-green-400" :
-                  change < 0 ? "bg-red-500/10 text-red-400" :
-                  "bg-white/5 text-gray-400"
+                  change > 0 ? "bg-green-500/10 text-green-600 dark:text-green-400" :
+                  change < 0 ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                  "bg-[var(--bg-secondary)] text-[var(--text-muted)]"
                 )}>
                   {change > 0 ? <TrendingUp className="w-3 h-3" /> :
                    change < 0 ? <TrendingDown className="w-3 h-3" /> :
@@ -112,7 +112,7 @@ export function StatsCard({
                   <span>{Math.abs(change)}%</span>
                 </div>
               )}
-              {changeLabel && <span className="text-gray-500 text-xs">{changeLabel}</span>}
+              {changeLabel && <span className="text-[var(--text-muted)] text-xs">{changeLabel}</span>}
             </div>
           )}
         </div>

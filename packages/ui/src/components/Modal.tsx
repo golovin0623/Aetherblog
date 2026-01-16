@@ -12,6 +12,8 @@ interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   showCloseButton?: boolean;
+  /** Hide the backdrop overlay - useful for popup-style modals */
+  hideBackdrop?: boolean;
 }
 
 export function Modal({
@@ -21,6 +23,7 @@ export function Modal({
   children,
   size = 'md',
   showCloseButton = true,
+  hideBackdrop = false,
 }: ModalProps) {
   React.useEffect(() => {
     if (isOpen) {
@@ -53,15 +56,21 @@ export function Modal({
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/70 backdrop-blur-md"
-            onClick={onClose}
-          />
+          {/* Backdrop - conditionally rendered */}
+          {!hideBackdrop && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-md"
+              onClick={onClose}
+            />
+          )}
+          {/* Invisible click-away layer when backdrop is hidden */}
+          {hideBackdrop && (
+            <div className="absolute inset-0" onClick={onClose} />
+          )}
           
           {/* Modal */}
           <motion.div
@@ -72,19 +81,16 @@ export function Modal({
             className={cn('relative w-full', sizeClasses[size])}
           >
             {/* Card with glassmorphism */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900/95 to-gray-950/95 border border-white/10 shadow-2xl">
-              {/* Subtle gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] to-transparent pointer-events-none" />
-              
+            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl">
               {/* Header */}
               {(title || showCloseButton) && (
-                <div className="relative flex items-center justify-between px-6 py-4 border-b border-white/5">
+                <div className="relative flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
                   {title && (
                     <motion.h2 
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.1 }}
-                      className="text-lg font-semibold text-white"
+                      className="text-lg font-semibold text-[var(--text-primary)]"
                     >
                       {title}
                     </motion.h2>
@@ -94,7 +100,7 @@ export function Modal({
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={onClose}
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                      className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
                     >
                       <X className="w-5 h-5" />
                     </motion.button>

@@ -18,7 +18,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
   const pillInset = compact ? '2px' : '4px';
 
   return (
-    <div className={`flex items-center bg-white/5 rounded-full ${paddingClass} border border-white/5 relative`}>
+    <div className={`flex items-center bg-[var(--bg-secondary)] rounded-full ${paddingClass} border border-[var(--border-subtle)] relative`}>
       {/* Sliding pill indicator */}
       <div
         className={`absolute top-0.5 bottom-0.5 ${widthClass} bg-primary/20 rounded-full transition-all duration-300 ease-out`}
@@ -31,7 +31,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       <Link
         href="/posts"
         className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
-          !isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+          !isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
       >
         首页
@@ -39,7 +39,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       <Link
         href="/timeline"
         className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
-          isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+          isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
       >
         时间线
