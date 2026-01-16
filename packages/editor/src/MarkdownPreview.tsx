@@ -11,6 +11,7 @@ export interface MarkdownPreviewProps {
   content: string;
   className?: string;
   style?: React.CSSProperties;
+  theme?: 'light' | 'dark';
 }
 
 // Supported languages for syntax highlighting
@@ -46,7 +47,7 @@ async function getHighlighter(): Promise<Highlighter> {
   
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
-      themes: ['github-dark', 'github-dark-dimmed'],
+      themes: ['github-dark', 'github-dark-dimmed', 'github-light'],
       langs: SUPPORTED_LANGUAGES,
     });
   }
@@ -129,7 +130,8 @@ function generateMermaidId(): string {
 // Create a custom renderer that adds line numbers to elements
 function createLineTrackingRenderer(
   content: string,
-  highlighter: Highlighter | null
+  highlighter: Highlighter | null,
+  theme: 'light' | 'dark' = 'dark'
 ): Renderer {
   const renderer = new Renderer();
   const lines = content.split('\n');
@@ -163,7 +165,7 @@ function createLineTrackingRenderer(
   // Override code block renderer for syntax highlighting and mermaid
   renderer.code = function(code: string, language?: string) {
     const lang = language?.toLowerCase().trim() || 'text';
-    
+
     // Handle Mermaid diagrams
     if (lang === 'mermaid') {
       const id = generateMermaidId();
@@ -175,18 +177,33 @@ function createLineTrackingRenderer(
         </div>
       `;
     }
-    
+
     const normalizedLang = normalizeLanguage(lang);
     const langDisplay = language?.toUpperCase() || 'TEXT';
-    
+
     if (highlighter) {
       try {
         const highlightedCode = highlighter.codeToHtml(code, {
           lang: normalizedLang,
-          theme: 'github-dark',
+          theme: theme === 'light' ? 'github-light' : 'github-dark',
+          transformers: [
+            {
+              name: 'compact-line-spacing',
+              // postprocess 在 HTML 生成后处理
+              postprocess(html) {
+                // 移除所有 line-height 和 height 相关的内联样式
+                return html
+                  .replace(/\s*line-height:\s*[^;]+;?/gi, '')
+                  .replace(/\s*height:\s*[^;]+;?/gi, '')
+                  // 移除 pre 和 code 标签上的 style 属性（如果只剩下空白）
+                  .replace(/\s*style=""\s*/g, ' ')
+                  .replace(/\s*style="\s*"\s*/g, ' ');
+              },
+            },
+          ],
         });
-        
-        // Wrap in custom container with language label
+
+        // Wrap in custom container with language label - using CSS variables
         return `
           <div class="code-block-wrapper">
             <div class="code-block-header">
@@ -205,13 +222,13 @@ function createLineTrackingRenderer(
         // Fall back to plain code block if highlighting fails
       }
     }
-    
-    // Fallback without syntax highlighting
+
+    // Fallback without syntax highlighting - using CSS variables
     const escapedCode = code
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    
+
     return `
       <div class="code-block-wrapper">
         <div class="code-block-header">
@@ -225,7 +242,7 @@ function createLineTrackingRenderer(
   return renderer;
 }
 
-export function MarkdownPreview({ content, className = '', style }: MarkdownPreviewProps) {
+export function MarkdownPreview({ content, className = '', style, theme = 'dark' }: MarkdownPreviewProps) {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -237,7 +254,7 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
   const html = useMemo(() => {
     if (!content) return '';
     try {
-      const renderer = createLineTrackingRenderer(content, highlighter);
+      const renderer = createLineTrackingRenderer(content, highlighter, theme);
       return marked.parse(content, {
         gfm: true,
         breaks: true,
@@ -246,7 +263,7 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
     } catch {
       return content;
     }
-  }, [content, highlighter]);
+  }, [content, highlighter, theme]);
 
   // Render mermaid diagrams after HTML is set
   useEffect(() => {
@@ -256,6 +273,41 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
     if (mermaidContainers.length === 0) return;
 
     // Reset mermaid to render new diagrams
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: theme === 'light' ? 'default' : 'dark',
+      themeVariables: theme === 'light' ? {
+        primaryColor: '#6366f1',
+        primaryTextColor: '#1e293b',
+        primaryBorderColor: '#4f46e5',
+        lineColor: '#64748b',
+        secondaryColor: '#f1f5f9',
+        tertiaryColor: '#ffffff',
+        background: '#ffffff',
+        mainBkg: '#ffffff',
+        nodeBorder: '#cbd5e1',
+        titleColor: '#0f172a',
+        edgeLabelBackground: '#f8fafc',
+        nodeTextColor: '#1e293b',
+      } : {
+        primaryColor: '#6366f1',
+        primaryTextColor: '#e2e8f0',
+        primaryBorderColor: '#4f46e5',
+        lineColor: '#64748b',
+        secondaryColor: '#1e293b',
+        tertiaryColor: '#0f172a',
+        background: '#1a1b26',
+        mainBkg: '#1a1b26',
+        nodeBorder: '#4f46e5',
+        clusterBkg: 'rgba(99, 102, 241, 0.1)',
+        clusterBorder: '#4f46e5',
+        titleColor: '#f1f5f9',
+        edgeLabelBackground: '#1e293b',
+        nodeTextColor: '#e2e8f0',
+      },
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+      securityLevel: 'loose',
+    });
     mermaidIdCounter = 0;
     
     const renderMermaidDiagrams = async () => {
@@ -282,10 +334,10 @@ export function MarkdownPreview({ content, className = '', style }: MarkdownPrev
   return (
     <div
       ref={containerRef}
-      className={`markdown-preview ${className}`}
+      className={`markdown-preview ${theme === 'light' ? 'light-mode' : ''} ${className}`}
       dangerouslySetInnerHTML={{ __html: html }}
       style={{
-        color: '#e2e8f0',
+        color: theme === 'light' ? '#334155' : '#e2e8f0',
         lineHeight: 1.75,
         fontSize: '16px',
         ...style,
@@ -305,6 +357,13 @@ export const markdownPreviewStyles = `
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 0.3em;
   }
+  .markdown-preview > :first-child {
+    margin-top: 0 !important;
+  }
+  .markdown-preview.light-mode h1 {
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+  }
   .markdown-preview h2 {
     font-size: 1.5em;
     font-weight: 600;
@@ -312,12 +371,18 @@ export const markdownPreviewStyles = `
     margin-bottom: 0.5em;
     color: #f1f5f9;
   }
+  .markdown-preview.light-mode h2 {
+    color: #0f172a;
+  }
   .markdown-preview h3 {
     font-size: 1.25em;
     font-weight: 600;
     margin-top: 1em;
     margin-bottom: 0.5em;
     color: #f1f5f9;
+  }
+  .markdown-preview.light-mode h3 {
+    color: #0f172a;
   }
   .markdown-preview p {
     margin: 0.75em 0;
@@ -328,6 +393,11 @@ export const markdownPreviewStyles = `
     border-radius: 4px;
     font-size: 0.9em;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: inherit;
+  }
+  .markdown-preview.light-mode code {
+    background: #f1f5f9;
+    color: #0f172a;
   }
   .markdown-preview pre {
     background: rgba(0, 0, 0, 0.4);
@@ -336,6 +406,10 @@ export const markdownPreviewStyles = `
     overflow-x: auto;
     margin: 1em 0;
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .markdown-preview.light-mode pre {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
   }
   .markdown-preview pre code {
     background: transparent;
@@ -351,6 +425,10 @@ export const markdownPreviewStyles = `
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: #1a1b26;
   }
+  .markdown-preview.light-mode .code-block-wrapper {
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+  }
   .markdown-preview .code-block-header {
     display: flex;
     align-items: center;
@@ -358,6 +436,10 @@ export const markdownPreviewStyles = `
     padding: 0.5em 1em;
     background: rgba(255, 255, 255, 0.05);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .markdown-preview.light-mode .code-block-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
   }
   .markdown-preview .code-block-lang {
     font-size: 0.75em;
@@ -381,6 +463,10 @@ export const markdownPreviewStyles = `
   .markdown-preview .code-block-copy:hover {
     background: rgba(255, 255, 255, 0.1);
     color: #e2e8f0;
+  }
+  .markdown-preview.light-mode .code-block-copy:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #334155;
   }
   .markdown-preview .code-block-content {
     overflow-x: auto;
@@ -439,6 +525,9 @@ export const markdownPreviewStyles = `
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     margin: 2em 0;
   }
+  .markdown-preview.light-mode hr {
+    border-top: 1px solid #e2e8f0;
+  }
   .markdown-preview table {
     width: 100%;
     border-collapse: collapse;
@@ -449,9 +538,15 @@ export const markdownPreviewStyles = `
     padding: 0.5em 1em;
     text-align: left;
   }
+  .markdown-preview.light-mode th, .markdown-preview.light-mode td {
+    border: 1px solid #e2e8f0;
+  }
   .markdown-preview th {
     background: rgba(255, 255, 255, 0.05);
     font-weight: 600;
+  }
+  .markdown-preview.light-mode th {
+    background: #f8fafc;
   }
   .markdown-preview img {
     max-width: 100%;
@@ -465,6 +560,9 @@ export const markdownPreviewStyles = `
     border-radius: 8px;
     overflow-x: auto;
     text-align: center;
+  }
+  .markdown-preview.light-mode .math-block {
+    background: rgba(99, 102, 241, 0.05); /* Same tint works for light mode */
   }
   .markdown-preview .math-inline {
     padding: 0 0.2em;
@@ -481,6 +579,10 @@ export const markdownPreviewStyles = `
     border-radius: 12px;
     border: 1px solid rgba(99, 102, 241, 0.2);
     overflow-x: auto;
+  }
+  .markdown-preview.light-mode .mermaid-wrapper {
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid rgba(99, 102, 241, 0.2);
   }
   .markdown-preview .mermaid-container {
     display: flex;
@@ -500,6 +602,9 @@ export const markdownPreviewStyles = `
   /* KaTeX overrides for dark theme */
   .markdown-preview .katex {
     color: #e2e8f0;
+  }
+  .markdown-preview.light-mode .katex {
+    color: #334155;
   }
 `;
 

@@ -93,11 +93,11 @@ export default function TimelinePage() {
     }
 
     return (
-        <div className="min-h-screen bg-background text-white selection:bg-primary/30">
+        <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
             <main className="max-w-4xl mx-auto px-4 pt-32 pb-12">
                 <div className="relative mb-8 pl-4">
-                    <h1 className="text-3xl font-bold text-white mb-2">时间轴</h1>
-                    <p className="text-gray-500 text-sm">共 {posts.length} 篇文章，好事多磨</p>
+                    <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">时间轴</h1>
+                    <p className="text-[var(--text-muted)] text-sm">共 {posts.length} 篇文章，好事多磨</p>
                     <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-purple-600 rounded-full" />
                 </div>
                 

@@ -68,7 +68,7 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
   };
 
   return (
-    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden flex-1">
+    <div className="h-1.5 bg-[var(--bg-secondary)] rounded-full overflow-hidden flex-1">
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.min(100, value)}%` }}
@@ -99,7 +99,7 @@ function ContainerIcon({ type }: { type: string }) {
   };
 
   return (
-    <div className={cn("p-2 rounded-lg", colorMap[type] || 'bg-white/10 text-gray-400')}>
+    <div className={cn("p-2 rounded-lg", colorMap[type] || 'bg-[var(--bg-secondary)] text-[var(--text-muted)]')}>
       {iconMap[type] || <Box className="w-4 h-4" />}
     </div>
   );
@@ -124,7 +124,7 @@ function ContainerCard({
         "p-3 rounded-lg border transition-all cursor-pointer",
         isSelected 
           ? "bg-primary/10 border-primary/30" 
-          : "bg-white/5 border-white/5 hover:border-white/10 hover:bg-white/10"
+          : "bg-[var(--bg-card)] border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--bg-card-hover)]"
       )}
     >
       <div className="flex items-center gap-3">
@@ -132,17 +132,17 @@ function ContainerCard({
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <span className={cn("text-sm font-medium truncate", isSelected ? "text-primary" : "text-white")}>
+            <span className={cn("text-sm font-medium truncate", isSelected ? "text-primary" : "text-[var(--text-primary)]")}>
               {container.displayName}
             </span>
-            <span className="text-[10px] text-gray-500 font-mono ml-2">
+            <span className="text-[10px] text-[var(--text-muted)] font-mono ml-2">
               CPU {container.cpuPercent.toFixed(1)}%
             </span>
           </div>
           
           <div className="flex items-center gap-2">
             <ProgressBar value={container.memoryPercent} color="blue" />
-            <span className="text-[10px] text-gray-400 font-mono whitespace-nowrap">
+            <span className="text-[10px] text-[var(--text-muted)] font-mono whitespace-nowrap">
               {formatBytes(container.memoryUsed)} / {formatBytes(container.memoryLimit)}
             </span>
           </div>
@@ -291,7 +291,7 @@ export function ContainerStatus({
 
   if (!data?.dockerAvailable) {
     return (
-      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-gray-500 h-[200px]", className)}>
+      <div className={cn("p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col items-center justify-center text-[var(--text-muted)] h-[200px]", className)}>
         <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
         <span className="text-sm">Docker API 不可用</span>
       </div>
@@ -299,13 +299,13 @@ export function ContainerStatus({
   }
 
   return (
-    <div className={cn("rounded-xl bg-white/5 border border-white/10 flex flex-col min-h-0", className)}>
+    <div className={cn("rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col min-h-0", className)}>
       {/* 头部 */}
-      <div className="p-4 sm:p-6 border-b border-white/5 flex items-center justify-between shrink-0">
+      <div className="p-4 sm:p-6 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <h3 className="text-base sm:text-lg font-semibold text-white">容器监控</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">容器监控</h3>
           {data && (
-            <span className="text-xs text-gray-400 bg-white/5 px-2 py-0.5 rounded">
+            <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-0.5 rounded">
                {data.runningContainers}/{data.totalContainers}
             </span>
           )}
@@ -315,14 +315,14 @@ export function ContainerStatus({
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
           </button>
           
           <div className="flex items-center gap-1 px-2 py-1 rounded border bg-green-500/10 border-green-500/20">
-            <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-            <span className="text-[10px] font-medium text-green-400">正常</span>
+            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+            <span className="text-[10px] font-medium text-green-600 dark:text-green-400">正常</span>
           </div>
         </div>
       </div>
@@ -342,8 +342,9 @@ export function ContainerStatus({
       </div>
 
       {/* 汇总信息 */}
+      {/* 汇总信息 */}
       {data && data.containers.length > 0 && (
-        <div className="p-3 border-t border-white/5 flex items-center justify-between text-[10px] text-gray-500 shrink-0">
+        <div className="p-3 border-t border-[var(--border-subtle)] flex items-center justify-between text-[10px] text-[var(--text-muted)] shrink-0">
           <span>
             内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
           </span>

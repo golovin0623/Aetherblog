@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -11,7 +12,8 @@ import {
   EyeOff,
   Mail,
   UserCircle,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 import { Modal } from '@aetherblog/ui';
 import { toast } from 'sonner';
@@ -34,14 +36,16 @@ const encryptPassword = (password: string): string => {
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  sidebarCollapsed: boolean;
 }
 
 type TabType = 'profile' | 'security';
 
-export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
+export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProfileModalProps) {
   const { user, updateUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Profile State
@@ -77,7 +81,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
       return;
     }
 
-    setIsLoading(true);
+    setIsUploadingAvatar(true);
     try {
       const mediaItem = await mediaService.upload(file);
       const res = await authService.updateAvatar(mediaItem.fileUrl);
@@ -91,7 +95,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
     } catch (err: any) {
       toast.error(err.message || '头像上传失败');
     } finally {
-      setIsLoading(false);
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -157,225 +161,324 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
     }
   };
 
+  // Close on Escape key
+  React.useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleEsc);
+    }
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
+  // Prevent body scroll when open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  // Remove early return to allow AnimatePresence to handle exit
+  // if (!isOpen) return null;
+
+  // Dynamic positioning
+  const leftPosition = sidebarCollapsed ? '70px' : '265px';
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="个人面板" size="md">
-      <div className="flex flex-col gap-6">
-        {/* Tabs */}
-        <div className="flex p-1 bg-white/5 rounded-xl border border-white/10">
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
-              activeTab === 'profile'
-                ? "bg-primary text-white shadow-lg"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            )}
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Invisible click-away layer */}
+          <motion.div 
+            key="overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100]" 
+            onClick={onClose} 
+          />
+          
+          {/* Premium Popover - Mac OS Dock Style Animation */}
+          <motion.div
+            key="modal"
+            initial={{ opacity: 0, scale: 0.5, y: 100, x: -50 }}
+            animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: 100, x: -50 }}
+            transition={{ 
+              type: "spring", 
+              damping: 25, 
+              stiffness: 300,
+              mass: 0.8
+            }}
+            className="fixed bottom-4 z-[101] w-[380px] h-[650px] max-h-[calc(100vh-80px)] overflow-hidden rounded-2xl flex flex-col"
+            style={{ 
+              left: leftPosition,
+              background: 'var(--bg-primary)',
+              boxShadow: '0 32px 64px -12px rgba(0, 0, 0, 0.14), 0 16px 32px -8px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--border-subtle)',
+              backdropFilter: 'blur(20px)',
+              transformOrigin: 'bottom left'
+            }}
           >
-            <UserCircle className="w-4 h-4" />
-            基本信息
-          </button>
-          <button
-            onClick={() => setActiveTab('security')}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
-              activeTab === 'security'
-                ? "bg-primary text-white shadow-lg"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            )}
-          >
-            <Lock className="w-4 h-4" />
-            安全设置
-          </button>
-        </div>
-
-        <AnimatePresence mode="wait">
-          {activeTab === 'profile' ? (
-            <motion.div
-              key="profile"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
-              {/* Avatar Section */}
-              <div className="flex flex-col items-center gap-3">
-                <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-                  <div className="w-24 h-24 rounded-full border-2 border-white/10 overflow-hidden bg-white/5 flex items-center justify-center group-hover:border-primary/50 transition-all">
-                    {avatar ? (
-                      <img src={getMediaUrl(avatar)} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <User className="w-10 h-10 text-gray-500" />
-                    )}
-                  </div>
-                  <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    <Camera className="w-6 h-6 text-white" />
-                  </div>
-                  {isLoading && (
-                    <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
-                      <Loader2 className="w-6 h-6 text-primary animate-spin" />
-                    </div>
-                  )}
+            {/* Gradient Top Border Accent */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary via-secondary to-primary/50" />
+            
+            {/* Header */}
+            <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                  <UserCircle className="w-4 h-4 text-primary" />
                 </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  className="hidden"
-                  accept="image/*"
-                />
-                <p className="text-xs text-gray-500">点击更换头像，支持 JPG/PNG，最大 2MB</p>
+                <h2 className="text-base font-semibold text-[var(--text-primary)]">个人面板</h2>
               </div>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {/* Profile Form */}
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 ml-1">用户名</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                    <input
-                      type="text"
-                      value={user?.username}
-                      disabled
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-gray-500 text-sm cursor-not-allowed"
-                    />
-                  </div>
+            {/* Content */}
+            <div className="flex-1 p-6 overflow-y-auto min-h-0 custom-scrollbar">
+              <div className="flex flex-col gap-6">
+                {/* Premium Tabs - Segmented Control */}
+                <div className="flex p-1 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-subtle)] relative isolate">
+                  {/* Sliding indicator - absolute positioned */}
+                  <motion.div
+                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)]"
+                    animate={{ 
+                      x: activeTab === 'profile' ? 4 : 'calc(100% + 4px)'
+                    }}
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                  />
+                  
+                  <button
+                    onClick={() => setActiveTab('profile')}
+                    className={cn(
+                      "flex-1 relative z-10 flex items-center justify-center gap-2.5 py-2.5 text-sm font-medium rounded-xl transition-colors duration-200",
+                      activeTab === 'profile'
+                        ? "text-primary"
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    )}
+                  >
+                    <UserCircle className="w-4 h-4" />
+                    <span>基本信息</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setActiveTab('security')}
+                    className={cn(
+                      "flex-1 relative z-10 flex items-center justify-center gap-2.5 py-2.5 text-sm font-medium rounded-xl transition-colors duration-200",
+                      activeTab === 'security'
+                        ? "text-primary"
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    )}
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>安全设置</span>
+                  </button>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 ml-1">昵称</label>
-                  <div className="relative group">
-                    <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                    <input
-                      type="text"
-                      value={nickname}
-                      onChange={(e) => setNickname(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                      placeholder="输入昵称"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 ml-1">邮箱</label>
-                  <div className="relative group">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                      placeholder="输入邮箱"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  保存修改
-                </button>
-              </form>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="security"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-6"
-            >
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 ml-1">当前密码</label>
-                  <div className="relative group">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                    <input
-                      type={showCurrentPassword ? "text" : "password"}
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                      placeholder="输入当前密码"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                <AnimatePresence mode="wait">
+                  {activeTab === 'profile' ? (
+                    <motion.div
+                      key="profile"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="space-y-6"
                     >
-                      {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+                      {/* Avatar Section - Premium Design */}
+                      <div className="flex flex-col items-center gap-4 py-2">
+                        <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
+                          <div className="w-24 h-24 rounded-2xl border-2 border-[var(--border-subtle)] overflow-hidden bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] flex items-center justify-center group-hover:border-primary/50 transition-all duration-300 shadow-lg">
+                            {avatar ? (
+                              <img src={getMediaUrl(avatar)} alt="Avatar" className="w-full h-full object-cover" />
+                            ) : (
+                              <User className="w-10 h-10 text-[var(--text-muted)]" />
+                            )}
+                          </div>
+                          <div className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300">
+                            <Camera className="w-6 h-6 text-white" />
+                          </div>
+                          {isUploadingAvatar && (
+                            <div className="absolute inset-0 rounded-2xl bg-black/60 flex items-center justify-center">
+                              <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                            </div>
+                          )}
+                        </div>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          className="hidden"
+                          accept="image/*"
+                        />
+                        <p className="text-xs text-[var(--text-muted)]">点击更换头像</p>
+                      </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 ml-1">新密码</label>
-                  <div className="relative group">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                    <input
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                      placeholder="输入新密码 (至少8位)"
-                      required
-                      minLength={8}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                      {/* Profile Form */}
+                      <form onSubmit={handleUpdateProfile} className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">用户名</label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+                            <input
+                              type="text"
+                              value={user?.username}
+                              disabled
+                              className="w-full pl-10 pr-4 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-muted)] text-sm cursor-not-allowed opacity-70"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">昵称</label>
+                          <div className="relative group">
+                            <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                            <input
+                              type="text"
+                              value={nickname}
+                              onChange={(e) => setNickname(e.target.value)}
+                              className="w-full pl-10 pr-4 py-2 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                              placeholder="输入昵称"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">邮箱</label>
+                          <div className="relative group">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                            <input
+                              type="email"
+                              value={email}
+                              onChange={(e) => setEmail(e.target.value)}
+                              className="w-full pl-10 pr-4 py-2 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                              placeholder="输入邮箱"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isLoading}
+                          className="w-full py-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                          保存修改
+                        </button>
+                      </form>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="security"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="space-y-5"
                     >
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+                      <form onSubmit={handleChangePassword} className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">当前密码</label>
+                          <div className="relative group">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                            <input
+                              type={showCurrentPassword ? "text" : "password"}
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                              className="w-full pl-10 pr-10 py-2 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                              placeholder="输入当前密码"
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            >
+                              {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 ml-1">确认新密码</label>
-                  <div className="relative group">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                    <input
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                      placeholder="再次输入新密码"
-                      required
-                      minLength={8}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">新密码</label>
+                          <div className="relative group">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                            <input
+                              type={showNewPassword ? "text" : "password"}
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              className="w-full pl-10 pr-10 py-2 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                              placeholder="输入新密码 (至少8位)"
+                              required
+                              minLength={8}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            >
+                              {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
 
-                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-200/80 leading-relaxed">
-                    修改密码后，您的当前会话将保持有效。为了安全，建议定期更换密码。
-                  </p>
-                </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">确认新密码</label>
+                          <div className="relative group">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                            <input
+                              type={showConfirmPassword ? "text" : "password"}
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              className="w-full pl-10 pr-10 py-2 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                              placeholder="再次输入新密码"
+                              required
+                              minLength={8}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            >
+                              {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  修改密码
-                </button>
-              </form>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </Modal>
+                        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <p className="text-xs text-amber-600 dark:text-amber-200/80 leading-relaxed">
+                            修改密码后，当前会话保持有效。建议定期更换密码。
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isLoading}
+                          className="w-full py-2 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                          修改密码
+                        </button>
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
+

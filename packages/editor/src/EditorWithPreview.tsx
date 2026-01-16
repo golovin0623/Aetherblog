@@ -37,7 +37,10 @@ export interface EditorWithPreviewProps {
   /**粘贴事件处理 */
   onPaste?: (e: React.ClipboardEvent) => void;
   /** 是否正在拖拽文件 */
+  /** 是否正在拖拽文件 */
   isDragging?: boolean;
+  /** Editor theme */
+  theme?: 'light' | 'dark';
 }
 
 export function EditorWithPreview({
@@ -56,7 +59,9 @@ export function EditorWithPreview({
   onDrop,
   onDragOver,
   onDragLeave,
-  onPaste,isDragging = false,
+  onPaste,
+  isDragging = false,
+  theme = 'dark',
 }: EditorWithPreviewProps) {
   // Resolve actual font sizes (individual overrides base)
   const actualEditorFontSize = editorFontSize ?? fontSize;
@@ -211,11 +216,11 @@ export function EditorWithPreview({
     <div className={`flex flex-col h-full ${className}`}>
       {/* Internal Toolbar - only show if not hidden */}
       {!hideToolbar && (
-        <div className="flex items-center gap-2 p-2 border-b border-white/10 bg-white/5">
+        <div className="flex items-center gap-2 p-2 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
           <button
             onClick={() => setViewMode('edit')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10'
+              viewMode === 'edit' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             <Edit className="w-4 h-4" />
@@ -224,7 +229,7 @@ export function EditorWithPreview({
           <button
             onClick={() => setViewMode('preview')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10'
+              viewMode === 'preview' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             <Eye className="w-4 h-4" />
@@ -233,7 +238,7 @@ export function EditorWithPreview({
           <button
             onClick={() => setViewMode('split')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'split' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10'
+              viewMode === 'split' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             <Columns className="w-4 h-4" />
@@ -247,7 +252,7 @@ export function EditorWithPreview({
         {(viewMode === 'edit' || viewMode === 'split') && (
           <div
             ref={viewMode === 'split' ? editorScrollRef : null}
-            className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-white/10' : ''}`}
+            className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-[var(--border-subtle)]' : ''}`}
           >
             <MarkdownEditor
               value={value}
@@ -256,24 +261,27 @@ export function EditorWithPreview({
               fontSize={actualEditorFontSize}
               showLineNumbers={showLineNumbers}
               contentCentered={viewMode === 'edit'}
-              editorViewRef={editorViewRef}onDrop={onDrop}
+              editorViewRef={editorViewRef}
+              onDrop={onDrop}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onPaste={onPaste}
               isDragging={isDragging}
+              theme={theme}
             />
           </div>
         )}
         
         {viewMode === 'preview' && (
-          <div className="flex-1 overflow-y-auto bg-[#0a0a0c]">
+          <div className="flex-1 overflow-y-auto bg-[var(--bg-primary)]">
             <div
-              className="w-full py-12 px-6 min-h-full"
+              className="w-full pt-4 pb-12 px-6 min-h-full"
               style={{ maxWidth: '800px', margin: '0 auto' }}
             >
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}
+                theme={theme}
               />
             </div>
           </div>
@@ -282,12 +290,13 @@ export function EditorWithPreview({
         {viewMode === 'split' && (
           <div
             ref={previewScrollRef}
-            className="flex-1 overflow-y-auto bg-[#0a0a0c]"
+            className="flex-1 overflow-y-auto bg-[var(--bg-primary)]"
           >
-            <div className="max-w-[90%] mx-auto w-full py-10 px-6 min-h-full">
+            <div className="max-w-[90%] mx-auto w-full pt-4 pb-10 px-6 min-h-full">
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}
+                theme={theme}
               />
             </div>
           </div>

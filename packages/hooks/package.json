@@ -13,8 +13,21 @@
   "dependencies": {
     "react": "^19.0.0"
   },
+  "peerDependencies": {
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.344.0"
+  },
+  "peerDependenciesMeta": {
+    "framer-motion": {
+      "optional": true
+    },
+    "lucide-react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/react": "^19.0.2",
     "typescript": "^5.7.2"
   }
 }
+

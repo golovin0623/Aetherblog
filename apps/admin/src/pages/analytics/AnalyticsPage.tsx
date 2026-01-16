@@ -102,11 +102,11 @@ export function AnalyticsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">统计分析</h1>
-          <p className="text-gray-400 mt-1">深入了解访客行为和内容表现</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">统计分析</h1>
+          <p className="text-[var(--text-muted)] mt-1">深入了解访客行为和内容表现</p>
         </div>
         {/* Date range toggle - responsive */}
-        <div className="flex items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-white/5 border border-white/5">
+        <div className="flex items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           {(['7d', '30d', '90d'] as const).map((range) => (
             <button
               key={range}
@@ -115,7 +115,7 @@ export function AnalyticsPage() {
                 "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all touch-manipulation",
                 dateRange === range
                   ? 'bg-primary text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                  : 'text-[var(--text-muted)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
               )}
             >
               {range === '7d' ? '7天' : range === '30d' ? '30天' : '90天'}
@@ -135,15 +135,15 @@ export function AnalyticsPage() {
           <motion.div 
             key={i} 
             variants={item}
-            className="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors"
+            className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/20">
                 <stat.icon className="w-5 h-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-gray-400 truncate">{stat.label}</p>
-                <p className="text-lg sm:text-xl font-bold text-white">{stat.value}</p>
+                <p className="text-xs sm:text-sm text-[var(--text-muted)] truncate">{stat.label}</p>
+                <p className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">{stat.value}</p>
               </div>
             </div>
             <p className={cn(
@@ -162,10 +162,10 @@ export function AnalyticsPage() {
           variants={item}
           initial="hidden"
           animate="show"
-          className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+          className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">访问趋势</h3>
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">访问趋势</h3>
             {loading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
           </div>
           {loading ? (
@@ -182,9 +182,9 @@ export function AnalyticsPage() {
           initial="hidden"
           animate="show"
           transition={{ delay: 0.1 }}
-          className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+          className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
         >
-          <h3 className="text-lg font-semibold text-white mb-4">设备分布</h3>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">设备分布</h3>
           <PieChart data={mockDeviceData} />
         </motion.div>
       </div>
@@ -195,9 +195,9 @@ export function AnalyticsPage() {
         initial="hidden"
         animate="show"
         transition={{ delay: 0.2 }}
-        className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+        className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
       >
-        <h3 className="text-lg font-semibold text-white mb-4">流量来源</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">流量来源</h3>
         <BarChart data={mockTrafficSources} height={200} horizontal />
       </motion.div>
     </div>

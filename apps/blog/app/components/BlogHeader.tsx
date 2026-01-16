@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Settings2 } from 'lucide-react';
+import { ThemeToggle } from '@aetherblog/hooks';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
 
@@ -138,37 +139,43 @@ export default function BlogHeader() {
         />
       )}
 
-      <header 
+      <header
         className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-500 ease-out group ${
           isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
         }`}
         style={{
-          background: 'rgba(10, 10, 15, 0.6)',
-          backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+          background: 'var(--bg-overlay)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid var(--border-subtle)',
+          boxShadow: '0 4px 24px -8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05)',
         }}
         onMouseMove={updateMousePosition}
         onMouseEnter={() => isArticleDetail && setIsHovering(true)}
         onMouseLeave={() => isArticleDetail && setIsHovering(false)}
       >
-        {/* 聚光灯效果层 */}
-        <div 
+        {/* 聚光灯效果层 - 使用 CSS 变量 */}
+        <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(99, 102, 241, 0.15), transparent 40%)`,
-            opacity: isHovering || !isArticleDetail ? 1 : 0,
+            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            opacity: isHovering || !isArticleDetail ? 'var(--spotlight-opacity)' : 0,
           }}
         />
-        
-        {/* 顶部高亮线条 - 增强立体感 */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+        {/* 顶部高亮线条 - 使用 CSS 变量增强立体感 */}
+        <div
+          className="absolute top-0 left-0 right-0 h-px"
+          style={{
+            background: `linear-gradient(to right, transparent, var(--highlight-line), transparent)`
+          }}
+        />
 
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between relative z-10">
           <Link href="/" className="flex items-center gap-2 group/logo">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[0_0_20px_rgba(124,58,237,0.5)] transition-shadow flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
               A
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent hidden sm:block">
+            <span className="text-xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent hidden sm:block">
               AetherBlog
             </span>
           </Link>
@@ -185,47 +192,108 @@ export default function BlogHeader() {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex gap-6 items-center">
-              {/* View Mode Toggle with sliding animation */}
-              <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 relative">
-                {/* Sliding pill indicator */}
+              {/* iOS 21 Style Segmented Control */}
+              <div className="relative flex items-center rounded-[14px] p-[3px] backdrop-blur-2xl bg-black/[0.08] dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]">
+                {/* Animated Pill - True iOS Style */}
                 <div
-                  className="absolute top-1 bottom-1 w-[72px] bg-primary/20 rounded-full transition-all duration-300 ease-out"
+                  className="absolute top-[3px] bottom-[3px] w-[76px] rounded-[11px] transition-all duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)]"
                   style={{
-                    left: isTimeline ? 'calc(50% + 2px)' : '4px',
+                    left: isTimeline ? 'calc(50% - 3px)' : '3px',
                   }}
-                />
-                
-                {/* Links - fixed width to prevent layout shift */}
+                >
+                  {/* Light theme pill - Pure white with subtle shadow */}
+                  <div
+                    className="absolute inset-0 rounded-[11px] dark:opacity-0 opacity-100 transition-opacity duration-200"
+                    style={{
+                      background: 'linear-gradient(180deg, #ffffff 0%, #fafafa 100%)',
+                      boxShadow: '0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.04)',
+                    }}
+                  />
+                  {/* Dark theme pill - Subtle white glow */}
+                  <div
+                    className="absolute inset-0 rounded-[11px] opacity-0 dark:opacity-100 transition-opacity duration-200"
+                    style={{
+                      background: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 100%)',
+                      boxShadow: '0 3px 8px rgba(0,0,0,0.24), 0 1px 1px rgba(0,0,0,0.16), inset 0 0 0 0.5px rgba(255,255,255,0.1)',
+                    }}
+                  />
+                </div>
+
+                {/* Segment Buttons */}
                 <Link
                   href="/posts"
-                  className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
-                    !isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 ${
+                    !isTimeline
+                      ? 'text-black dark:text-white'
+                      : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                   }`}
                 >
                   首页
                 </Link>
                 <Link
                   href="/timeline"
-                  className={`relative z-10 w-[72px] text-center py-1.5 rounded-full text-sm font-medium transition-colors duration-300 ${
-                    isTimeline ? 'text-primary' : 'text-gray-400 hover:text-white'
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 ${
+                    isTimeline
+                      ? 'text-black dark:text-white'
+                      : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                   }`}
                 >
                   时间线
                 </Link>
               </div>
-              
-              <div className="h-4 w-px bg-white/10 mx-2"></div>
-              <Link href="/archives" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">归档</Link>
-              <Link href="/friends" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">友链</Link>
-              <Link href="/about" className="text-gray-400 hover:text-white transition-colors text-sm font-medium">关于</Link>
+
+              <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
+              <Link
+                href="/archives"
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary ${
+                  pathname === '/archives'
+                    ? 'text-primary'
+                    : 'text-[var(--text-secondary)]'
+                }`}
+              >
+                归档
+                {pathname === '/archives' && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </Link>
+              <Link
+                href="/friends"
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary ${
+                  pathname === '/friends'
+                    ? 'text-primary'
+                    : 'text-[var(--text-secondary)]'
+                }`}
+              >
+                友链
+                {pathname === '/friends' && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </Link>
+              <Link
+                href="/about"
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary ${
+                  pathname === '/about'
+                    ? 'text-primary'
+                    : 'text-[var(--text-secondary)]'
+                }`}
+              >
+                关于
+                {pathname === '/about' && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </Link>
               
               {/* 管理后台入口 */}
-              <div className="h-4 w-px bg-white/10 mx-1"></div>
+              <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
+              
+              {/* 主题切换 */}
+              <ThemeToggle size="sm" />
+              
               <a 
                 href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-300 group/admin"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
                 title="管理后台"
               >
                 <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
