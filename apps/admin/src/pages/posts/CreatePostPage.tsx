@@ -1885,7 +1885,7 @@ export function CreatePostPage() {
                         style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         title={item.text}
                       >
-                        {/* Elegant Hover Indicator */}
+                        {/* 优雅的悬停指示器 */}
                         <div className="absolute left-1 w-0.5 h-0 bg-primary group-hover:h-3/5 transition-all duration-400 ease-out-expo rounded-full opacity-0 group-hover:opacity-100 shadow-[0_0_8px_#8b5cf6]" />
                         
                         <span className={cn(
@@ -1906,7 +1906,7 @@ export function CreatePostPage() {
         </AnimatePresence>
       </div>
 
-      {/* Editor Footer - Updated to match image */}
+      {/* 编辑器页脚 - 更新以匹配图像 */}
       <div className="flex items-center justify-between px-4 py-1.5 border-t border-white/10 bg-[#0a0a0c] text-[12px] text-gray-400">
         <div className="flex items-center gap-4">
           <span>字数: <span className="text-gray-200 font-medium">{stats.words.toLocaleString()}</span></span>
@@ -1947,7 +1947,7 @@ export function CreatePostPage() {
         </div>
       </div>
 
-      {/* Settings Modal */}
+      {/* 设置模态框 */}
         <Modal 
           isOpen={showSettings} 
           onClose={() => setShowSettings(false)}
@@ -1956,7 +1956,7 @@ export function CreatePostPage() {
         >
           <div className="space-y-6">
             <div className="space-y-4">
-              {/* Cover Image */}
+              {/* 封面图片 */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">封面图片</label>
                 <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
@@ -1965,7 +1965,7 @@ export function CreatePostPage() {
                 </div>
               </div>
 
-              {/* Publish Time */}
+              {/* 发布时间 */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                   <Clock className="w-4 h-4" />
@@ -1980,7 +1980,7 @@ export function CreatePostPage() {
                 <p className="text-xs text-gray-500 mt-1">设置文章的发布时间，支持精确到分钟</p>
               </div>
 
-              {/* Summary */}
+              {/* 摘要 */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">摘要</label>
                 <textarea
@@ -2004,7 +2004,7 @@ export function CreatePostPage() {
           </div>
         </Modal>
 
-        {/* AI Assistant Modal */}
+        {/* AI 助手模态框 */}
         <Modal 
           isOpen={showAI} 
           onClose={() => setShowAI(false)}
@@ -2045,7 +2045,7 @@ export function CreatePostPage() {
           </div>
         </Modal>
 
-        {/* Create Category Modal */}
+        {/* 创建分类模态框 */}
         <AnimatePresence>
           {showCreateCategoryModal && (
             <motion.div

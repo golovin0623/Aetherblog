@@ -501,8 +501,8 @@ public class PostServiceImpl implements PostService {
     }
 
     /**
-     * Add /api prefix to image URLs that start with /uploads
-     * This handles the context-path configuration in Spring Boot
+     * 为以 /uploads 开头的图片 URL 添加 /api 前缀
+     * 这处理了 Spring Boot 中的 context-path 配置
      */
     private String addApiPrefixToImageUrl(String imageUrl) {
         if (imageUrl != null && imageUrl.startsWith("/uploads")) {

@@ -1,5 +1,5 @@
 /**
- * API Configuration
+ * API 配置
  * 
  * 服务端渲染 (SSR): 使用 API_URL (Docker 内部网络 http://backend:8080)
  * 客户端浏览器: 使用相对路径 /api (通过 nginx 网关代理)
