@@ -50,7 +50,7 @@ export interface UpdatePostInput extends Partial<CreatePostInput> {
   id: number;
 }
 
-// Forward declarations
+// 前向声明
 export interface Category {
   id: number;
   name: string;

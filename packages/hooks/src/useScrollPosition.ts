@@ -27,7 +27,7 @@ export function useScrollPosition(): ScrollPosition {
   return position;
 }
 
-// Percentage-based scroll progress
+// 基于百分比的滚动进度
 export function useScrollProgress(): number {
   const [progress, setProgress] = useState(0);
 

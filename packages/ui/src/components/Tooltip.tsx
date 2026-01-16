@@ -5,7 +5,7 @@ import { cn } from '../utils';
 interface TooltipProps {
   content: React.ReactNode;
   children: React.ReactNode;
-  // Map 'position' to Radix 'side' for backward compatibility
+  // 将 'position' 映射到 Radix 'side' 以保持向后兼容
   position?: 'top' | 'bottom' | 'left' | 'right';
   side?: 'top' | 'bottom' | 'left' | 'right';
   align?: 'start' | 'center' | 'end';
@@ -20,7 +20,7 @@ export function Tooltip({
   align = 'center', 
   delay = 200 
 }: TooltipProps) {
-  // Use 'side' if provided, otherwise fallback to 'position', default to 'top'
+  // 如果提供 'side' 则使用，否则回退到 'position'，默认为 'top'
   const finalSide = side || position || 'top';
 
   return (

@@ -19,7 +19,7 @@ export function EditPostPage() {
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-white/10">
         <div className="flex items-center gap-4">
           <button className="p-2 rounded-lg hover:bg-white/10 text-gray-400">
@@ -57,7 +57,7 @@ export function EditPostPage() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* 内容 */}
       <div className="flex-1 flex">
         <div className="flex-1 p-6 overflow-auto">
           <textarea

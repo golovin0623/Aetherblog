@@ -28,7 +28,7 @@ export function useKeyPress(targetKey: string): boolean {
   return keyPressed;
 }
 
-// Hook for key combinations
+// 按键组合 Hook
 export function useKeyCombo(keys: string[], callback: () => void): void {
   useEffect(() => {
     const pressedKeys = new Set<string>();
