@@ -53,7 +53,7 @@ export function Modal({
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
+          {/* 背景遮罩 */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -63,7 +63,7 @@ export function Modal({
             onClick={onClose}
           />
           
-          {/* Modal */}
+          {/* 模态框 */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -71,12 +71,12 @@ export function Modal({
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
             className={cn('relative w-full', sizeClasses[size])}
           >
-            {/* Card with glassmorphism */}
+            {/* 毛玻璃效果卡片 */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900/95 to-gray-950/95 border border-white/10 shadow-2xl">
-              {/* Subtle gradient overlay */}
+              {/* 微妙渐变覆盖 */}
               <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] to-transparent pointer-events-none" />
               
-              {/* Header */}
+              {/* 头部 */}
               {(title || showCloseButton) && (
                 <div className="relative flex items-center justify-between px-6 py-4 border-b border-white/5">
                   {title && (
@@ -102,7 +102,7 @@ export function Modal({
                 </div>
               )}
               
-              {/* Content */}
+              {/* 内容 */}
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

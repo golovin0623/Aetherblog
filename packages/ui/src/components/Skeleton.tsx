@@ -44,7 +44,7 @@ export function Skeleton({
   );
 }
 
-// Preset skeleton components
+// 预设骨架屏组件
 export function SkeletonText({ lines = 3 }: { lines?: number }) {
   return (
     <div className="space-y-2">

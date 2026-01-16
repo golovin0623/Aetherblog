@@ -38,7 +38,7 @@ export function updateQueryString(
   const params = parseQueryString(qs || '');
   Object.assign(params, updates);
   
-  // Remove undefined values
+  // 移除未定义的值
   Object.keys(params).forEach((key) => {
     if (params[key] === undefined || params[key] === '') {
       delete params[key];

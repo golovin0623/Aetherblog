@@ -7,14 +7,14 @@ export function useScrollLock(lock: boolean = true): void {
     if (typeof document === 'undefined') return;
 
     if (lock) {
-      // Store original overflow
+      // 保存原始 overflow
       originalStyle.current = document.body.style.overflow;
-      // Prevent scrolling
+      // 禁止滚动
       document.body.style.overflow = 'hidden';
     }
 
     return () => {
-      // Restore original overflow
+      // 恢复原始 overflow
       document.body.style.overflow = originalStyle.current;
     };
   }, [lock]);
