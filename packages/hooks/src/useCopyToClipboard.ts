@@ -1,3 +1,4 @@
+'use client';
 import { useState, useCallback } from 'react';
 
 export function useCopyToClipboard(): [boolean, (text: string) => Promise<void>] {

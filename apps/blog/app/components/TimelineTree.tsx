@@ -174,7 +174,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
             {/* 年份节点 */}
             <button
               onClick={() => toggleYear(yearData.year)}
-              className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10"
+              className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10"
             >
               {/* Node with pulse animation when expanded */}
               <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary group-hover:bg-primary/30 transition-colors">
@@ -188,15 +188,15 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
                   <ChevronRight className="h-5 w-5 relative z-10" />
                 )}
               </div>
-              <span className="text-xl font-bold text-white group-hover:text-primary/90 transition-colors">{yearData.year}</span>
-              <span className="ml-auto px-2 py-0.5 rounded-full text-xs bg-white/10 text-gray-400 group-hover:bg-primary/20 group-hover:text-primary/80 transition-colors">
+              <span className="text-xl font-bold text-[var(--text-primary)] group-hover:text-primary/90 transition-colors">{yearData.year}</span>
+              <span className="ml-auto px-2 py-0.5 rounded-full text-xs bg-[var(--bg-secondary)] text-[var(--text-muted)] group-hover:bg-primary/20 group-hover:text-primary/80 transition-colors">
                 {yearData.totalPosts} 篇
               </span>
             </button>
 
             {/* 月份列表 */}
             {isYearExpanded && (
-              <div className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-white/10 space-y-2">
+              <div className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-[var(--border-subtle)] space-y-2">
                 {yearData.months.map((monthData) => {
                   const yearMonth = `${yearData.year}-${monthData.month}`;
                   const isMonthExpanded = expandedMonths.has(yearMonth);
@@ -212,18 +212,18 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
                       {/* 月份节点 */}
                       <button
                         onClick={() => toggleMonth(yearMonth)}
-                        className="group flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-md hover:bg-white/5 transition-colors"
+                        className="group flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-md hover:bg-[var(--bg-card-hover)] transition-colors"
                       >
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors">
+                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-hover)] transition-colors">
                           {isMonthExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-gray-400" />
+                            <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 text-gray-400" />
+                            <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />
                           )}
                         </div>
-                        <Calendar className="h-4 w-4 text-gray-500" />
-                        <span className="text-gray-300">{MONTH_NAMES[monthData.month - 1]}</span>
-                        <span className="ml-auto text-xs text-gray-500">
+                        <Calendar className="h-4 w-4 text-[var(--text-muted)]" />
+                        <span className="text-[var(--text-secondary)]">{MONTH_NAMES[monthData.month - 1]}</span>
+                        <span className="ml-auto text-xs text-[var(--text-muted)]">
                           {monthData.posts.length} 篇
                         </span>
                       </button>
@@ -261,18 +261,18 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
                                       className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all transform ${
                                         highlightedPostId === post.id 
                                           ? `${isHighlightFading ? 'duration-1000 bg-transparent ring-0 opacity-100 translate-x-0' : 'duration-300 bg-primary/15 ring-1 ring-primary/40 translate-x-1'}` 
-                                          : `duration-200 hover:bg-white/5 hover:translate-x-1 ${fadeOpacity}`
+                                          : `duration-200 hover:bg-[var(--bg-card-hover)] hover:translate-x-1 ${fadeOpacity}`
                                       }`}
                                     >
                                       <FileText className={`h-4 w-4 transition-colors ${
-                                        highlightedPostId === post.id ? 'text-primary' : 'text-gray-500 group-hover:text-primary'
+                                        highlightedPostId === post.id ? 'text-primary' : 'text-[var(--text-muted)] group-hover:text-primary'
                                       }`} />
                                       <span className={`flex-1 text-sm truncate transition-colors ${
-                                        highlightedPostId === post.id ? 'text-white' : 'text-gray-400 group-hover:text-white'
+                                        highlightedPostId === post.id ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'
                                       }`}>
                                         {post.title}
                                       </span>
-                                      <span className="text-xs text-gray-600">
+                                      <span className="text-xs text-[var(--text-muted)]">
                                         {new Date(post.publishedAt).getDate()}日
                                       </span>
                                     </Link>
@@ -290,7 +290,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
                                 >
                                   <button
                                     onClick={() => toggleShowAllPosts(yearMonth)}
-                                    className="group p-1.5 rounded-full hover:bg-white/5 transition-colors duration-300"
+                                    className="group p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors duration-300"
                                     title={showAllPosts ? '收起' : `还有 ${hiddenCount} 篇`}
                                   >
                                     <motion.div
@@ -317,8 +317,8 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
 
       {archives.length === 0 && (
         <div className="text-center py-12">
-          <Calendar className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500">暂无归档文章</p>
+          <Calendar className="h-12 w-12 text-[var(--text-muted)] mx-auto mb-4" />
+          <p className="text-[var(--text-secondary)]">暂无归档文章</p>
         </div>
       )}
     </div>

@@ -142,25 +142,25 @@ export default function DashboardPage() {
         {/* Header Skeleton */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="space-y-2">
-            <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
-            <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
+            <div className="h-8 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
+            <div className="h-4 w-48 bg-[var(--bg-secondary)] rounded animate-pulse" />
           </div>
-          <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
+          <div className="h-8 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
         </div>
 
         {/* Stats Cards Skeleton */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="p-6 rounded-xl bg-white/5 border border-white/10 h-[140px] relative overflow-hidden">
+            <div key={i} className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[140px] relative overflow-hidden">
               {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
               <div className="flex justify-between items-start">
                 <div className="space-y-3 flex-1">
-                  <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
-                  <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
-                  <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
+                  <div className="h-4 w-20 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-8 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-3 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 </div>
-                <div className="w-10 h-10 bg-white/10 rounded-lg animate-pulse" />
+                <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
               </div>
             </div>
           ))}
@@ -169,37 +169,37 @@ export default function DashboardPage() {
         {/* Content & Activity Skeleton */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Posts Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-6">
-              <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
-              <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+              <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+              <div className="h-4 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
             </div>
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4 p-3">
-                  <div className="w-8 h-8 bg-white/10 rounded-lg animate-pulse" />
-                  <div className="flex-1 h-4 bg-white/10 rounded animate-pulse" />
-                  <div className="w-12 h-4 bg-white/10 rounded animate-pulse" />
+                  <div className="w-8 h-8 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
+                  <div className="flex-1 h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="w-12 h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 </div>
               ))}
             </div>
           </div>
 
           {/* Recent Activity Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-4">
-              <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
-              <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+              <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+              <div className="h-4 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
             </div>
             <div className="space-y-4 ml-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="flex items-start gap-4">
-                  <div className="w-6 h-6 bg-white/10 rounded-full animate-pulse" />
+                  <div className="w-6 h-6 bg-[var(--bg-secondary)] rounded-full animate-pulse" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-white/10 rounded w-3/4 animate-pulse" />
-                    <div className="h-3 bg-white/10 rounded w-1/2 animate-pulse" />
+                    <div className="h-4 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse" />
+                    <div className="h-3 bg-[var(--bg-secondary)] rounded w-1/2 animate-pulse" />
                   </div>
                 </div>
               ))}
@@ -210,63 +210,63 @@ export default function DashboardPage() {
         {/* Charts Area Skeleton */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Visitor Chart Skeleton */}
-          <div className="lg:col-span-2 p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          <div className="lg:col-span-2 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-6">
               <div className="space-y-2">
-                <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
-                <div className="h-4 w-32 bg-white/10 rounded animate-pulse" />
+                <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                <div className="h-4 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
               </div>
               <div className="flex gap-2">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="w-12 h-8 bg-white/10 rounded animate-pulse" />
+                  <div key={i} className="w-12 h-8 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 ))}
               </div>
             </div>
-            <div className="h-[300px] bg-white/5 rounded-lg animate-pulse" />
+            <div className="h-[300px] bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
           </div>
 
           {/* Device Chart Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            <div className="h-6 w-24 bg-white/10 rounded animate-pulse mb-4" />
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
+            <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse mb-4" />
             <div className="h-[340px] flex items-center justify-center">
-              <div className="w-48 h-48 rounded-full bg-white/10 animate-pulse" />
+              <div className="w-48 h-48 rounded-full bg-[var(--bg-secondary)] animate-pulse" />
             </div>
           </div>
         </div>
 
         {/* System Monitoring Area Skeleton */}
-        <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)] pt-4">系统监控</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* System Trends Skeleton */}
-          <div className="lg:col-span-2 p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          <div className="lg:col-span-2 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between mb-6">
-              <div className="h-6 w-32 bg-white/10 rounded animate-pulse" />
+              <div className="h-6 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
               <div className="flex gap-2">
-                <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
-                <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
+                <div className="h-8 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                <div className="h-8 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
               </div>
             </div>
-            <div className="h-[300px] bg-white/5 rounded-xl animate-pulse" />
+            <div className="h-[300px] bg-[var(--bg-secondary)] rounded-xl animate-pulse" />
           </div>
 
           {/* System Status Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            <div className="h-6 w-24 bg-white/10 rounded mb-6 animate-pulse" />
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
+            <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded mb-6 animate-pulse" />
             <div className="grid grid-cols-2 gap-4 mb-6">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="space-y-2">
-                  <div className="h-4 bg-white/10 rounded animate-pulse" />
-                  <div className="h-2 bg-white/10 rounded animate-pulse" />
+                  <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-2 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 </div>
               ))}
             </div>
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse" />
+                <div key={i} className="h-12 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
               ))}
             </div>
           </div>
@@ -289,10 +289,10 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white">仪表盘</h1>
-          <p className="text-gray-400 text-sm sm:text-base mt-0.5 sm:mt-1">欢迎回来，查看您的博客数据概览</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">仪表盘</h1>
+          <p className="text-[var(--text-secondary)] text-sm sm:text-base mt-0.5 sm:mt-1">欢迎回来，查看您的博客数据概览</p>
         </div>
-        <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 bg-white/5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-white/5 self-start sm:self-auto">
+        <div className="flex items-center gap-2 text-xs sm:text-sm text-[var(--text-muted)] bg-[var(--bg-card)] px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-[var(--border-subtle)] self-start sm:self-auto">
           <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span><span className="hidden sm:inline">上次更新: </span>{new Date().toLocaleTimeString()}</span>
         </div>
@@ -387,7 +387,7 @@ export default function DashboardPage() {
 
       {/* System Monitoring Area */}
       <div className="space-y-6 pt-4">
-        <h2 className="text-lg font-semibold text-white">系统监控</h2>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">系统监控</h2>
         
         {/* Row 1: Trends + Status */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -89,13 +89,13 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
             <Icon className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-xs text-white/40 uppercase tracking-wider">{typeLabels[media.fileType]}</p>
-            <p className="text-sm font-semibold text-white">文件详情</p>
+            <p className="text-xs text-[var(--text-muted)] uppercase tracking-wider">{typeLabels[media.fileType]}</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">文件详情</p>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="p-2 rounded-xl hover:bg-white/10 text-white/40 hover:text-white transition-all"
+          className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
         >
           <X className="w-5 h-5" />
         </button>
@@ -105,7 +105,7 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative aspect-video rounded-2xl overflow-hidden bg-black/40 backdrop-blur-sm border border-white/10 mb-4 group"
+        className="relative aspect-video rounded-2xl overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-subtle)] mb-4 group"
       >
         {media.fileType === 'IMAGE' ? (
           <img
@@ -126,14 +126,14 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Icon className="w-16 h-16 text-white/20" />
+            <Icon className="w-16 h-16 text-[var(--text-muted)]" />
           </div>
         )}
         
         {/* 悬停放大按钮 */}
         <button
           onClick={handleOpenInNewTab}
-          className="absolute top-2 right-2 p-2 rounded-lg bg-black/40 backdrop-blur-md text-white/60 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+          className="absolute top-2 right-2 p-2 rounded-lg bg-[var(--bg-card)]/80 backdrop-blur-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-all"
           title="在新窗口打开"
         >
           <Maximize2 className="w-4 h-4" />
@@ -147,7 +147,7 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
         transition={{ delay: 0.05 }}
         className="mb-4"
       >
-        <p className="text-sm font-medium text-white break-all leading-relaxed">
+        <p className="text-sm font-medium text-[var(--text-primary)] break-all leading-relaxed">
           {media.originalName}
         </p>
       </motion.div>
@@ -159,19 +159,19 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
         transition={{ delay: 0.1 }}
         className="grid grid-cols-2 gap-3 mb-4"
       >
-        <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+        <div className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           <div className="flex items-center gap-2 mb-1">
-            <HardDrive className="w-3 h-3 text-white/30" />
-            <span className="text-[10px] text-white/40 uppercase">大小</span>
+            <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
+            <span className="text-[10px] text-[var(--text-secondary)] uppercase">大小</span>
           </div>
-          <p className="text-sm text-white font-medium">{formatFileSize(media.fileSize)}</p>
+          <p className="text-sm text-[var(--text-primary)] font-medium">{formatFileSize(media.fileSize)}</p>
         </div>
-        <div className="p-3 rounded-xl bg-white/5 border border-white/5">
+        <div className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           <div className="flex items-center gap-2 mb-1">
-            <Calendar className="w-3 h-3 text-white/30" />
-            <span className="text-[10px] text-white/40 uppercase">上传时间</span>
+            <Calendar className="w-3 h-3 text-[var(--text-muted)]" />
+            <span className="text-[10px] text-[var(--text-secondary)] uppercase">上传时间</span>
           </div>
-          <p className="text-sm text-white font-medium">{format(new Date(media.createdAt), 'MM/dd HH:mm')}</p>
+          <p className="text-sm text-[var(--text-primary)] font-medium">{format(new Date(media.createdAt), 'MM/dd HH:mm')}</p>
         </div>
       </motion.div>
 
@@ -181,10 +181,10 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.15 }}
-          className="p-3 rounded-xl bg-white/5 border border-white/5 mb-4"
+          className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] mb-4"
         >
-          <p className="text-[10px] text-white/40 uppercase mb-1">MIME 类型</p>
-          <p className="text-xs text-white/70 font-mono">{media.mimeType}</p>
+          <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">MIME 类型</p>
+          <p className="text-xs text-[var(--text-primary)] font-mono">{media.mimeType}</p>
         </motion.div>
       )}
 
@@ -194,10 +194,10 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="p-3 rounded-xl bg-white/5 border border-white/5 mb-4"
+          className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] mb-4"
         >
-          <p className="text-[10px] text-white/40 uppercase mb-1">尺寸</p>
-          <p className="text-sm text-white font-medium">{media.width} × {media.height} px</p>
+          <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">尺寸</p>
+          <p className="text-sm text-[var(--text-primary)] font-medium">{media.width} × {media.height} px</p>
         </motion.div>
       )}
 
@@ -208,17 +208,17 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
         transition={{ delay: 0.25 }}
         className="mb-4"
       >
-        <p className="text-[10px] text-white/40 uppercase mb-2">文件地址</p>
+        <p className="text-[10px] text-[var(--text-muted)] uppercase mb-2">文件地址</p>
         <div className="flex items-center gap-2">
           <input
             type="text"
             value={fullUrl}
             readOnly
-            className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-black/30 border border-white/10 text-white/60 font-mono truncate focus:outline-none focus:border-primary/50"
+            className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-mono truncate focus:outline-none focus:border-primary/50"
           />
           <button
             onClick={handleOpenInNewTab}
-            className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all"
+            className="p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
             title="新窗口打开"
           >
             <ExternalLink className="w-4 h-4" />
@@ -243,7 +243,7 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
               'flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-medium transition-all',
               copied 
                 ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                : 'bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 hover:text-white'
+                : 'bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
             )}
           >
             {copied ? (

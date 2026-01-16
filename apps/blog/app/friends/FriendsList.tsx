@@ -65,12 +65,24 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
   const displayFriends = initialFriends.length > 0 ? initialFriends : MOCK_FRIENDS;
 
   return (
-    <div className="min-h-screen bg-background text-white selection:bg-primary/30">
+    <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
       <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">
         {/* Background Ambient Light */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
-          <div className="absolute top-[-100px] right-1/4 w-[600px] h-[500px] bg-primary/10 rounded-full blur-[120px] opacity-20" />
-          <div className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[100px] opacity-20" />
+          <div
+            className="absolute top-[-100px] right-1/4 w-[600px] h-[500px] bg-primary/10 rounded-full"
+            style={{
+              filter: 'blur(var(--ambient-glow-blur))',
+              opacity: 'var(--ambient-glow-opacity)'
+            }}
+          />
+          <div
+            className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-blue-500/10 rounded-full"
+            style={{
+              filter: 'blur(var(--ambient-glow-blur))',
+              opacity: 'var(--ambient-glow-opacity)'
+            }}
+          />
         </div>
         
         {/* Page Header */}
@@ -80,11 +92,11 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           transition={{ duration: 0.5 }}
           className="mb-10"
         >
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3 mb-3">
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] flex items-center gap-3 mb-3">
             <Users className="w-8 h-8 text-primary" />
             友情链接
           </h1>
-          <p className="text-gray-400 text-lg">
+          <p className="text-[var(--text-muted)] text-lg">
             这里是我的朋友们，欢迎交换友链！
           </p>
         </motion.div>
@@ -119,7 +131,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           transition={{ delay: 0.8 }}
           className="mt-16 text-center"
         >
-          <p className="text-gray-500 text-sm">
+          <p className="text-[var(--text-muted)] text-sm">
             想要交换友链？请在
             <a 
               href="https://github.com" 

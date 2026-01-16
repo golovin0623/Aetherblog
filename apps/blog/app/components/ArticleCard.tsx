@@ -52,23 +52,28 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   return (
     <Link href={`/posts/${slug}`} className="block h-full">
       <article
-        className="group relative flex flex-col overflow-hidden rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:-translate-y-1 cursor-pointer min-h-[280px] h-full"
+        className="group relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]"
         style={{ animationDelay: `${index * 100}ms` }}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
         {/* 聚光灯效果层 */}
-        <div 
+        <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(99, 102, 241, 0.1), transparent 40%)`,
-            opacity: isHovering ? 1 : 0,
+            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
           }}
         />
 
         {/* 顶部高亮线条 */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent z-10" />
+        <div
+          className="absolute top-0 left-0 right-0 h-px z-10"
+          style={{
+            background: `linear-gradient(to right, transparent, var(--highlight-line), transparent)`
+          }}
+        />
 
         {/* 封面图片 */}
         {coverImage && (
@@ -101,7 +106,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
                 <span className="w-1" />
              )}
              
-             <span className="flex items-center gap-1 text-gray-500 font-mono">
+             <span className="flex items-center gap-1 text-[var(--text-muted)] font-mono">
                 <Calendar className="h-3 w-3" />
                 {publishedAt}
              </span>
@@ -110,7 +115,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
           {/* 标题 - 固定高度 */}
           <h2 className="mb-1.5 h-[56px]">
             <span
-              className="text-lg font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-snug"
+              className="text-lg font-bold text-[var(--text-primary)] group-hover:text-primary transition-colors line-clamp-2 leading-snug"
               title={title}
             >
               {title}
@@ -119,12 +124,12 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
 
           {/* 摘要 - 固定3行高度 */}
           <div className="h-[66px] mb-4 overflow-hidden">
-            <p className="text-gray-400 text-sm leading-relaxed line-clamp-3">
+            <p className="text-[var(--text-secondary)] text-sm leading-relaxed line-clamp-3">
               {summary
                 ? summary
-                    .replace(/[#*`>\[\]!|_~]/g, '')
-                    .replace(/\n+/g, ' ')
-                    .replace(/\s+/g, ' ')
+                    .replace(/[#*`>\\[\\]!|_~]/g, '')
+                    .replace(/\\n+/g, ' ')
+                    .replace(/\\s+/g, ' ')
                     .trim()
                     .slice(0, 120) + (summary.length > 120 ? '...' : '')
                 : title.length > 100
@@ -134,7 +139,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
           </div>
 
           {/* 底部区域 - 标签和元信息 */}
-          <div className="mt-auto pt-3 border-t border-white/5">
+          <div className="mt-auto pt-3 border-t border-[var(--border-subtle)]">
             {/* 标签 - 固定高度，优化显示 */}
             <div className="flex items-center gap-1.5 h-[24px] mb-2 overflow-hidden">
               {visibleTags.length > 0 ? (
@@ -142,24 +147,24 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
                   {visibleTags.map((tag) => (
                     <span
                       key={tag.slug}
-                      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] bg-white/5 text-gray-500 border border-white/5 font-mono whitespace-nowrap"
+                      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)] font-mono whitespace-nowrap"
                     >
                       #{tag.name}
                     </span>
                   ))}
                   {remainingTagCount > 0 && (
-                    <span className="text-[10px] text-gray-600 font-mono">
+                    <span className="text-[10px] text-[var(--text-muted)] font-mono">
                       +{remainingTagCount}
                     </span>
                   )}
                 </>
               ) : (
-                <span className="text-[10px] text-gray-600 italic">无标签</span>
+                <span className="text-[10px] text-[var(--text-muted)] italic">无标签</span>
               )}
             </div>
     
             {/* 底部元信息 */}
-            <div className="flex items-center justify-between text-xs text-gray-600 h-[20px]">
+            <div className="flex items-center justify-between text-xs text-[var(--text-muted)] h-[20px]">
                <span className="flex items-center gap-1">
                   {readingTime && <span>{readingTime}m 阅读</span>}
                </span>
@@ -179,3 +184,4 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
 };
 
 export default ArticleCard;
+

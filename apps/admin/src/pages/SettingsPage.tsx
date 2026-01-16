@@ -156,8 +156,8 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">系统设置</h1>
-          <p className="text-gray-400 mt-1">配置博客系统参数</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">系统设置</h1>
+          <p className="text-[var(--text-muted)] mt-1">配置博客系统参数</p>
         </div>
         <div className="flex items-center gap-3">
            <AnimatePresence>
@@ -170,7 +170,7 @@ export default function SettingsPage() {
                >
                  <button
                     onClick={handleReset}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors text-sm"
                  >
                    <RefreshCw className="w-4 h-4" /> 重置
                  </button>
@@ -202,7 +202,7 @@ export default function SettingsPage() {
                   'transition-all duration-200',
                   activeTab === key
                     ? 'bg-primary text-white shadow-md'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                 )}
               >
                 <Icon className="w-4 h-4" />
@@ -219,14 +219,14 @@ export default function SettingsPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="p-6 rounded-xl bg-white/5 border border-white/10 space-y-6"
+            className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-6"
           >
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
-                <activeGroup.icon className="w-5 h-5 text-gray-400" />
+              <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2 mb-1">
+                <activeGroup.icon className="w-5 h-5 text-[var(--text-muted)]" />
                 {activeGroup.label}
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-[var(--text-muted)]">
                 管理您的{activeGroup.label}。所有更改需点击右上角保存按钮生效。
               </p>
             </div>
@@ -235,7 +235,7 @@ export default function SettingsPage() {
               {activeGroup.fields.map((field) => (
                 <div key={field.key} className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-gray-300">
+                    <label className="text-sm font-medium text-[var(--text-secondary)]">
                       {field.label}
                     </label>
                   </div>
@@ -247,7 +247,7 @@ export default function SettingsPage() {
                       value={formData[field.key] || ''}
                       onChange={(e) => handleInputChange(field.key, e.target.value)}
                       placeholder={field.placeholder}
-                      className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-gray-600 transition-all"
+                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
                     />
                   ) : field.type === 'textarea' ? (
                     <textarea
@@ -255,7 +255,7 @@ export default function SettingsPage() {
                       value={formData[field.key] || ''}
                       onChange={(e) => handleInputChange(field.key, e.target.value)}
                       placeholder={field.placeholder}
-                      className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-gray-600 transition-all resize-none font-mono"
+                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none font-mono"
                     />
                   ) : field.type === 'boolean' ? (
                     <div className="flex items-center gap-3">
@@ -263,7 +263,7 @@ export default function SettingsPage() {
                         onClick={() => handleInputChange(field.key, !formData[field.key])}
                         className={cn(
                           "w-11 h-6 rounded-full transition-colors relative",
-                          formData[field.key] === 'true' || formData[field.key] === true ? "bg-primary" : "bg-white/10"
+                          formData[field.key] === 'true' || formData[field.key] === true ? "bg-primary" : "bg-[var(--bg-input)]"
                         )}
                       >
                         <motion.div
@@ -271,7 +271,7 @@ export default function SettingsPage() {
                           className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
                         />
                       </button>
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-[var(--text-muted)]">
                         {formData[field.key] === 'true' || formData[field.key] === true ? '已开启' : '已关闭'}
                       </span>
                     </div>
@@ -287,13 +287,13 @@ export default function SettingsPage() {
                         type="text"
                         value={formData[field.key] || ''}
                         onChange={(e) => handleInputChange(field.key, e.target.value)}
-                        className="w-32 px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none font-mono"
+                        className="w-32 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none font-mono"
                       />
                     </div>
                   ) : null}
 
                   {field.description && (
-                    <p className="text-xs text-gray-500">{field.description}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{field.description}</p>
                   )}
                 </div>
               ))}

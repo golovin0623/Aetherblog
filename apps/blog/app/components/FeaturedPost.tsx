@@ -51,27 +51,32 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
         : 'text-2xl md:text-3xl';
 
   return (
-    <div 
-        className="relative group rounded-3xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-xl transition-all hover:border-white/20 min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300"
+    <div
+        className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)]"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
     > 
         {/* 聚光灯效果层 */}
-        <div 
+        <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            background: `radial-gradient(1000px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(99, 102, 241, 0.08), transparent 40%)`,
-            opacity: isHovering ? 1 : 0,
+            background: `radial-gradient(1000px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
           }}
         />
 
         {/* 顶部高亮线条 */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent z-10" />
+        <div
+          className="absolute top-0 left-0 right-0 h-px z-10"
+          style={{
+            background: `linear-gradient(to right, transparent, var(--highlight-line), transparent)`
+          }}
+        />
 
         <div className="grid lg:grid-cols-3 h-full max-h-full overflow-hidden relative z-20">
             {/* Left Content Section (1/3 width on desktop, 100% on mobile) */}
-            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-white/5 overflow-hidden">
+            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] overflow-hidden">
                 <div className="flex flex-col items-start min-h-0 flex-1 overflow-hidden">
                      {/* Meta Info: Category, Date */}
                     <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-3">
@@ -81,7 +86,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                                 <span>{post.category.name}</span>
                             </Link>
                         )}
-                        <div className="flex items-center gap-1 text-gray-400 font-mono">
+                        <div className="flex items-center gap-1 text-[var(--text-muted)] font-mono">
                             <Calendar className="w-3 h-3" />
                             <span>{post.publishedAt}</span>
                         </div>
@@ -89,7 +94,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
                     {/* Title */}
                     {/* Title */}
-                    <h1 className={`${titleSizeClass} font-bold text-white mb-3 leading-tight group-hover:text-primary transition-colors cursor-pointer`}>
+                    <h1 className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:text-primary transition-colors cursor-pointer`}>
                         <Link href={`/posts/${post.slug}`}>
                             {post.title}
                         </Link>
@@ -99,12 +104,12 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     {post.tags && post.tags.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                             {post.tags.slice(0, 2).map(tag => (
-                                <span key={tag.slug} className="text-xs font-medium text-gray-400 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full hover:text-white hover:border-primary/50 hover:bg-white/10 transition-all duration-300 backdrop-blur-sm">
+                                <span key={tag.slug} className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg-card)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full hover:text-[var(--text-primary)] hover:border-primary/50 hover:bg-[var(--bg-card-hover)] transition-all duration-300 backdrop-blur-sm">
                                     #{tag.name}
                                 </span>
                             ))}
                             {post.tags.length > 2 && (
-                                <span className="text-xs font-medium text-gray-500 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full cursor-default backdrop-blur-sm">
+                                <span className="text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-card)] border border-[var(--border-subtle)] px-2 py-0.5 rounded-full cursor-default backdrop-blur-sm">
                                     +{post.tags.length - 2}
                                 </span>
                             )}
@@ -113,7 +118,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
                     {/* Summary - Adaptive height with fade mask */}
                     <div 
-                      className="text-gray-400 text-sm leading-relaxed mb-4 flex-1 min-h-0 overflow-y-auto"
+                      className="text-[var(--text-secondary)] text-sm leading-relaxed mb-4 flex-1 min-h-0 overflow-y-auto"
                       style={{
                         scrollbarWidth: 'none',
                         msOverflowStyle: 'none',
@@ -128,29 +133,29 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                 {/* Read More Button */}
                 <Link 
                     href={`/posts/${post.slug}`}
-                    className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-primary hover:border-primary text-xs shrink-0"
+                    className="inline-flex items-center gap-2 text-[var(--text-primary)] font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:bg-primary hover:border-primary hover:text-white text-xs shrink-0"
                 >
                     <span>阅读全文</span>
                     <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-1 transition-transform" />
                 </Link>
             </div>
 
-            {/* Right Preview Section (2/3 width) - Rendered Markdown */}
-            <div className="hidden lg:block lg:col-span-2 bg-black/20 overflow-hidden relative">
+             {/* Right Preview Section (2/3 width) - Rendered Markdown */}
+            <div className="hidden lg:block lg:col-span-2 bg-[var(--preview-bg)] overflow-hidden relative">
                 <div className="p-8 h-full overflow-hidden mask-image-b">
                     {post.contentPreview ? (
                          <div className="opacity-70 group-hover:opacity-100 transition-opacity duration-500 text-sm">
                             <MiniMarkdownPreview content={post.contentPreview} maxLength={2000} />
                          </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2">
+                        <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
                             <span className="animate-pulse">Loading preview...</span>
                         </div>
                     )}
                 </div>
 
                  {/* Fade Out Overlay - Stronger gradient for better masking */}
-                 <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0f] to-transparent pointer-events-none" />
+                 <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--bg-primary)] to-transparent pointer-events-none" />
             </div>
         </div>
     </div>

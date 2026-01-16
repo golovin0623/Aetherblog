@@ -79,7 +79,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="w-full min-h-screen flex bg-[#09090b] text-white selection:bg-indigo-500/30 overflow-hidden font-sans">
+    <div className="w-full min-h-screen flex bg-[var(--bg-page)] text-[var(--text-primary)] selection:bg-primary/30 overflow-hidden font-sans">
       {/* Left: Brand/Art Section */}
       <motion.div 
         initial={{ opacity: 0, x: -20 }}
@@ -127,12 +127,12 @@ export function LoginPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.2 }}
-        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-black/40 backdrop-blur-sm border-l border-white/5"
+        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-[var(--bg-card)]/40 backdrop-blur-sm border-l border-[var(--border-subtle)]"
       >
         <div className="w-full max-w-[420px] space-y-8">
           <div className="text-center lg:text-left">
-            <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">Welcome back</h1>
-            <p className="text-slate-400 text-sm">Enter your credentials to access the admin panel.</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)] mb-2">Welcome back</h1>
+            <p className="text-[var(--text-secondary)] text-sm">Enter your credentials to access the admin panel.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -140,7 +140,7 @@ export function LoginPage() {
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-2"
+                className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm flex items-center gap-2"
               >
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
                 {error}
@@ -149,14 +149,14 @@ export function LoginPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300 ml-1">Username</label>
+                <label className="text-sm font-medium text-[var(--text-primary)] ml-1">Username</label>
                 <div className="relative group">
-                  <UserIcon className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                  <UserIcon className="absolute left-3.5 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-11 pr-4 py-3 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-[var(--bg-card-hover)]"
                     placeholder="Enter your username"
                     required
                   />
@@ -165,16 +165,16 @@ export function LoginPage() {
 
               <div className="space-y-2">
                  <div className="flex items-center justify-between ml-1">
-                   <label className="text-sm font-medium text-slate-300">Password</label>
-                   <a href="#" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">Forgot password?</a>
+                   <label className="text-sm font-medium text-[var(--text-primary)]">Password</label>
+                   <a href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">Forgot password?</a>
                  </div>
                 <div className="relative group">
-                  <Lock className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                  <Lock className="absolute left-3.5 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
                   <input
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-11 pr-12 py-3 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-[var(--bg-card-hover)]"
                     placeholder="Enter your password"
                     required
                   />
@@ -182,7 +182,7 @@ export function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-3.5 w-5 h-5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                    className="absolute right-3.5 top-3.5 w-5 h-5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
                     tabIndex={-1}
                   >
                     {showPassword ? (
@@ -199,7 +199,7 @@ export function LoginPage() {
               type="submit"
               disabled={isLoading}
               className={cn(
-                "w-full py-3.5 rounded-xl bg-white text-black font-bold text-sm tracking-wide shadow-xl shadow-white/5 flex items-center justify-center gap-2 transition-all hover:bg-slate-200 active:scale-[0.98]",
+                "w-full py-3.5 rounded-xl bg-[var(--text-primary)] text-[var(--bg-page)] font-bold text-sm tracking-wide shadow-xl shadow-black/5 flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.98]",
                 isLoading && "opacity-70 cursor-not-allowed"
               )}
             >
@@ -217,8 +217,8 @@ export function LoginPage() {
             </button>
           </form>
 
-          <p className="px-8 text-center text-xs text-slate-500">
-            By clicking continue, you agree to our <a href="#" className="underline hover:text-slate-400">Terms of Service</a> and <a href="#" className="underline hover:text-slate-400">Privacy Policy</a>.
+          <p className="px-8 text-center text-xs text-[var(--text-muted)]">
+            By clicking continue, you agree to our <a href="#" className="underline hover:text-[var(--text-secondary)]">Terms of Service</a> and <a href="#" className="underline hover:text-[var(--text-secondary)]">Privacy Policy</a>.
           </p>
         </div>
       </motion.div>

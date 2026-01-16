@@ -22,6 +22,7 @@ import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { useSidebarStore } from '@/stores';
+import { useTheme } from '@aetherblog/hooks';
 import { logger } from '@/lib/logger';
 
 // Instant tooltip button component for toolbar
@@ -59,7 +60,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setShowTooltip(false)}
       className={cn(
-        'relative p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors',
+        'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
         isActive && activeColor === 'primary' && 'bg-indigo-500/90 text-white',
         isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
         className
@@ -71,8 +72,8 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       {showTooltip && (
         <span
           className={cn(
-            "fixed z-[9999] px-2.5 py-1.5 text-xs text-white bg-[#1e1e20] rounded-md border border-white/20 whitespace-nowrap -translate-x-1/2 pointer-events-none shadow-lg",
-            tooltipPosition === 'bottom' ? 'mt-1' : '-translate-y-full -mt-1'
+            "fixed z-[9999] px-2.5 py-1.5 text-xs text-white bg-[var(--bg-tooltip)] rounded-md border border-[var(--border-subtle)] whitespace-nowrap -translate-x-1/2 pointer-events-none shadow-lg",
+             tooltipPosition === 'bottom' ? 'mt-1' : '-translate-y-full -mt-1'
           )}
           style={{ left: position.x, top: position.y }}
         >
@@ -85,6 +86,8 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
 
 export function CreatePostPage() {
   const navigate = useNavigate();
+  // Use resolvedTheme to ensure we always pass 'light' or 'dark' to the editor, handling 'system' preference
+  const { resolvedTheme } = useTheme();
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
   const postId = id ? parseInt(id, 10) : null;
@@ -899,43 +902,43 @@ export function CreatePostPage() {
 
 
 
-  // Loading skeleton
+  // Loading skeleton - Theme-aware
   if (_loadingPost || loadingCategories || loadingTags) {
     return (
-      <div className="flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-50 overflow-hidden">
+      <div className="flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-50 overflow-hidden">
         {/* Header Skeleton */}
-        <div className="h-14 flex-shrink-0 border-b border-white/10 bg-[#0a0a0c] flex items-center justify-between px-6 gap-4">
+        <div className="h-14 flex-shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-6 gap-4">
            {/* Left */}
            <div className="flex items-center gap-3 flex-1">
-             <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse flex-shrink-0" /> {/* Back */}
-             <div className="h-8 rounded-lg bg-zinc-800 animate-pulse flex-1 max-w-md" />   {/* Title */}
-             <div className="w-px h-6 bg-white/10 flex-shrink-0 mx-1" />
+             <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-shrink-0" /> {/* Back */}
+             <div className="h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-1 max-w-md" />   {/* Title */}
+             <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0 mx-1" />
              <div className="flex gap-2">
-                <div className="w-24 h-7 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-16 h-7 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-24 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-16 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
            </div>
            
            {/* Right */}
            <div className="flex items-center gap-2">
-              <div className="w-20 h-8 rounded-lg bg-zinc-800 animate-pulse" /> {/* AI */}
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse" />  {/* Settings */}
-              <div className="w-[90px] h-8 rounded-lg bg-zinc-800 animate-pulse" /> {/* Save */}
+              <div className="w-20 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* AI */}
+              <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />  {/* Settings */}
+              <div className="w-[90px] h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* Save */}
               <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* Publish */}
            </div>
         </div>
 
         {/* Toolbar Skeleton */}
-        <div className="flex-shrink-0 h-10 border-b border-white/10 bg-[#0a0a0c]/80 flex items-center px-4 gap-4 overflow-hidden">
-             <div className="flex items-center gap-1 pr-3 border-r border-white/10">
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+        <div className="flex-shrink-0 h-10 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 flex items-center px-4 gap-4 overflow-hidden">
+             <div className="flex items-center gap-1 pr-3 border-r border-[var(--border-subtle)]">
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
              <div className="flex items-center gap-1 px-3">
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
              <div className="flex-1" />
         </div>
@@ -943,36 +946,36 @@ export function CreatePostPage() {
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
              {/* Editor */}
-             <div className="flex-1 p-8 space-y-6">
-                <div className="w-3/4 h-10 rounded-lg bg-zinc-800 animate-pulse" /> {/* H1 title-like */}
+             <div className="flex-1 p-8 space-y-6 bg-[var(--bg-primary)]">
+                <div className="w-3/4 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* H1 title-like */}
                 <div className="space-y-4">
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-11/12 h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-4/5 h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-11/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-4/5 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                 </div>
                 <div className="space-y-4 pt-4">
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                 </div>
              </div>
              
              {/* Preview */}
-             <div className="flex-1 border-l border-white/10 bg-black/20 p-8 space-y-6 hidden lg:block">
-                <div className="w-2/3 h-10 rounded-lg bg-zinc-800 animate-pulse" />
+             <div className="flex-1 border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-8 space-y-6 hidden lg:block">
+                <div className="w-2/3 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
                 <div className="space-y-4">
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                 </div>
-                <div className="w-full h-48 rounded-lg bg-zinc-800 animate-pulse" />
+                <div className="w-full h-48 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
         </div>
         
         {/* Footer (Status Bar) */}
-        <div className="h-8 flex-shrink-0 border-t border-white/10 bg-[#0a0a0c] flex items-center justify-between px-4">
-             <div className="w-24 h-3 rounded bg-zinc-800 animate-pulse" />
-             <div className="w-16 h-3 rounded bg-zinc-800 animate-pulse" />
+        <div className="h-8 flex-shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-4">
+             <div className="w-24 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+             <div className="w-16 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
         </div>
       </div>
     );
@@ -980,7 +983,7 @@ export function CreatePostPage() {
   // @ts-ignore
   return (
     <div className={cn(
-      "flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-10 transition-all duration-300 overflow-hidden"
+      "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden"
     )}>
       {/* Top Header Section - With fold-up animation */}
       <AnimatePresence initial={false}>
@@ -991,14 +994,14 @@ export function CreatePostPage() {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="border-b border-white/10 bg-[#0a0a0c] z-20"
+            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] z-20"
           >
             <div className="flex items-center justify-between px-6 py-3.5 gap-4">
               {/* Left Block: Back + Title + Metadata */}
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <button 
                   onClick={() => navigate('/posts')}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors flex-shrink-0"
                   title="返回列表"
                 >
                   <ArrowLeft className="w-5 h-5" />
@@ -1011,12 +1014,12 @@ export function CreatePostPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="请输入文章标题..."
-                    className="w-full bg-transparent text-xl font-bold text-white placeholder-gray-600 focus:outline-none min-w-0"
+                    className="w-full bg-transparent text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none min-w-0"
                   />
                 </motion.div>
 
                 {/* Divider */}
-                <div className="w-px h-6 bg-white/10 flex-shrink-0" />
+                <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0" />
 
                 {/* Metadata: Category & Tags */}
                 <div className="flex items-center gap-3 flex-shrink-0">
@@ -1031,7 +1034,7 @@ export function CreatePostPage() {
                         }
                         setShowCategoryDropdown(!showCategoryDropdown);
                       }}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-white/10 transition-colors text-sm"
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
                     >
                       <span className={selectedCategory ? 'text-primary font-medium' : 'text-gray-500'}>
                         {selectedCategory?.name || '选择分类'}
@@ -1045,16 +1048,16 @@ export function CreatePostPage() {
                           initial={{ opacity: 0, y: 5, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                          className="absolute top-full left-0 mt-2 w-60 z-50 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                          className="absolute top-full left-0 mt-2 w-60 z-50 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden"
                         >
-                          <div className="p-2 border-b border-white/10">
+                          <div className="p-2 border-b border-[var(--border-subtle)]">
                             <input
                               type="text"
                               value={categorySearch}
                               onChange={(e) => setCategorySearch(e.target.value)}
                               placeholder="搜索分类..."
                               autoFocus
-                              className="w-full px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50"
+                              className="w-full px-2 py-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                             />
                           </div>
                           <div className="max-h-48 overflow-auto py-1">
@@ -1063,7 +1066,7 @@ export function CreatePostPage() {
                                 key={cat.id}
                                 onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
                                 className={cn(
-                                  'w-full px-3 py-1.5 text-left text-sm hover:bg-white/10',
+                                  'w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-card-hover)]',
                                   selectedCategory?.id === cat.id ? 'text-primary' : 'text-gray-300'
                                 )}
                               >
@@ -1072,7 +1075,7 @@ export function CreatePostPage() {
                             ))}
                             <button
                               onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
-                              className="w-full px-3 py-1.5 text-left text-xs text-primary hover:bg-white/10 flex items-center gap-2 border-t border-white/10 mt-1 pt-2"
+                              className="w-full px-3 py-1.5 text-left text-xs text-primary hover:bg-[var(--bg-card-hover)] flex items-center gap-2 border-t border-[var(--border-subtle)] mt-1 pt-2"
                             >
                               <Plus className="w-3 h-3" /> 新建分类
                             </button>
@@ -1106,7 +1109,7 @@ export function CreatePostPage() {
                              }
                              setShowAllTags(!showAllTags);
                            }}
-                           className="flex items-center justify-center gap-0.5 w-14 py-0.5 bg-white/5 text-gray-400 rounded text-xs border border-white/10 hover:bg-white/10 transition-colors z-10"
+                           className="flex items-center justify-center gap-0.5 w-14 py-0.5 bg-[var(--bg-secondary)] text-[var(--text-muted)] rounded text-xs border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
                          >
                            <span>{showAllTags ? '收起' : `+${selectedTags.length - 2}`}</span>
                            <ChevronDown className={cn("w-3 h-3 transition-transform", showAllTags && "rotate-180")} />
@@ -1118,7 +1121,7 @@ export function CreatePostPage() {
                               initial={{ opacity: 0, y: 5, scale: 0.95 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
                               exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                              className="absolute top-full right-0 mt-2 p-2 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl z-50 grid grid-cols-3 gap-2 w-[340px] origin-top-right"
+                              className="absolute top-full right-0 mt-2 p-2 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl z-50 grid grid-cols-3 gap-2 w-[340px] origin-top-right"
                             >
                                {selectedTags.slice(2).map((tag) => (
                                 <span
@@ -1146,8 +1149,8 @@ export function CreatePostPage() {
                         setShowTagDropdown(!showTagDropdown);
                       }}
                       className={cn(
-                        "p-1 rounded hover:bg-white/10 text-gray-400 hover:text-primary transition-colors",
-                         showTagDropdown && "bg-white/10 text-primary"
+                        "p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-colors",
+                         showTagDropdown && "bg-[var(--bg-secondary)] text-primary"
                       )}
                     >
                       <Plus className="w-4 h-4" />
@@ -1159,9 +1162,9 @@ export function CreatePostPage() {
                           initial={{ opacity: 0, y: 5, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-2 w-64 z-50 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                          className="absolute top-full right-0 mt-2 w-64 z-50 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden"
                         >
-                          <div className="p-2 border-b border-white/10">
+                          <div className="p-2 border-b border-[var(--border-subtle)]">
                             <input
                               type="text"
                               value={tagSearch}
@@ -1169,7 +1172,7 @@ export function CreatePostPage() {
                               onKeyDown={handleTagKeyDown}
                               placeholder="搜索或新建标签..."
                               autoFocus
-                              className="w-full px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50"
+                              className="w-full px-2 py-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                             />
                           </div>
                           <div className="max-h-48 overflow-auto py-1">
@@ -1184,7 +1187,7 @@ export function CreatePostPage() {
                                     setTagSearch('');
                                   }}
                                   className={cn(
-                                    'w-full px-3 py-1.5 text-left text-sm hover:bg-white/10 flex justify-between items-center',
+                                    'w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-card-hover)] flex justify-between items-center',
                                     isSelected ? 'text-primary' : 'text-gray-300'
                                   )}
                                 >
@@ -1207,7 +1210,7 @@ export function CreatePostPage() {
               </div>
               
               {/* Right Buttons */}
-              <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[#0a0a0c]">
+              <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[var(--bg-card)]">
                 
                 <motion.button
                   whileHover={{ scale: 1.02 }}
@@ -1215,7 +1218,7 @@ export function CreatePostPage() {
                   onClick={() => setShowAI(true)}
                   className={cn(
                     'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
-                    showAI ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    showAI ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -1228,7 +1231,7 @@ export function CreatePostPage() {
                   onClick={() => setShowSettings(true)}
                   className={cn(
                     'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
-                    showSettings ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    showSettings ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   <Settings className="w-3.5 h-3.5" />
@@ -1241,7 +1244,7 @@ export function CreatePostPage() {
                   disabled={isSaving || isPublishing}
                   className={cn(
                     'flex h-8 items-center justify-center gap-1.5 px-3 min-w-[90px] rounded-lg transition-colors text-sm',
-                    isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -1288,10 +1291,10 @@ export function CreatePostPage() {
       </AnimatePresence>
 
       {/* Formatting Toolbar - outer container with overflow-visible for tooltips */}
-      <div className="relative border-b border-white/10 bg-[#0a0a0c]/80">
+      <div className="relative border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 backdrop-blur-sm">
         <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto">
         {/* Undo/Redo */}
-        <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
             <Undo2 className="w-4 h-4" />
           </ToolbarButton>
@@ -1300,7 +1303,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
         {/* Headings */}
-        <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
             <Heading1 className="w-4 h-4" />
           </ToolbarButton>
@@ -1313,7 +1316,7 @@ export function CreatePostPage() {
         </div>
         
         {/* Text Formatting */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
             <Bold className="w-4 h-4" />
           </ToolbarButton>
@@ -1329,7 +1332,7 @@ export function CreatePostPage() {
         </div>
 
         {/* Code */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
             <Code className="w-4 h-4" />
           </ToolbarButton>
@@ -1339,7 +1342,7 @@ export function CreatePostPage() {
         </div>
         
         {/* Lists */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
             <List className="w-4 h-4" />
           </ToolbarButton>
@@ -1352,7 +1355,7 @@ export function CreatePostPage() {
         </div>
 
         {/* Insert */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
             <Link2 className="w-4 h-4" />
           </ToolbarButton>
@@ -1384,7 +1387,7 @@ export function CreatePostPage() {
         <div className="flex-1" />
         
         {/* Zoom Controls with Domain Toggle */}
-        <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
           <ToolbarButton
             onClick={() => {
               if (zoomTarget === 'editor') {
@@ -1406,7 +1409,7 @@ export function CreatePostPage() {
             onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
             className={cn(
               "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
-              "hover:bg-white/10",
+              "hover:bg-[var(--bg-card-hover)]",
               zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
               zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
               zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
@@ -1546,6 +1549,7 @@ export function CreatePostPage() {
               onDragLeave={handleDragLeave}
               onPaste={handlePaste}
               isDragging={isDragging}
+              theme={resolvedTheme}
             />
 
             {/* Upload Progress Overlay */}
@@ -1810,20 +1814,20 @@ export function CreatePostPage() {
                 damping: 32,
                 mass: 0.6
               }}
-              className="h-full border-l border-white/10 bg-[#0d0d0f]/85 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative"
+              className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
             >
               {/* Cinematic Edge Highlight */}
               <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
 
               {/* TOC Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-white/[0.02]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-                  <span className="text-sm font-semibold text-white/90 tracking-wide uppercase">目录索引</span>
+                  <span className="text-sm font-semibold text-[var(--text-primary)] tracking-wide uppercase">目录索引</span>
                 </div>
                 <button
                   onClick={() => setShowToc(false)}
-                  className="p-1.5 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-all duration-300"
+                  className="p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1837,11 +1841,11 @@ export function CreatePostPage() {
                     animate={{ opacity: 1 }}
                     className="px-6 py-12 text-center"
                   >
-                    <div className="inline-flex p-3 rounded-full bg-white/[0.03] mb-3">
-                      <ListTree className="w-5 h-5 text-gray-600" />
+                    <div className="inline-flex p-3 rounded-full bg-[var(--bg-secondary)] mb-3">
+                      <ListTree className="w-5 h-5 text-[var(--text-muted)]" />
                     </div>
-                    <p className="text-sm font-medium text-gray-500">空空如也</p>
-                    <p className="mt-1 text-xs text-gray-600 px-4">
+                    <p className="text-sm font-medium text-[var(--text-secondary)]">空空如也</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)] px-4">
                       在编辑器中输入 # 标题 即可自动生成目录
                     </p>
                   </motion.div>
@@ -1880,7 +1884,7 @@ export function CreatePostPage() {
                         onClick={() => scrollToHeading(item.text, item.line)}
                         className={cn(
                           'w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-300 group relative flex items-center gap-3',
-                          'hover:bg-white/[0.06] text-gray-400 hover:text-white'
+                          'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         )}
                         style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         title={item.text}
@@ -1890,9 +1894,9 @@ export function CreatePostPage() {
                         
                         <span className={cn(
                           "truncate transition-all duration-500",
-                          item.level === 1 ? "font-bold text-gray-100 tracking-tight" : 
-                          item.level === 2 ? "font-semibold text-gray-300" : 
-                          "font-normal text-gray-400"
+                          item.level === 1 ? "font-bold text-[var(--text-primary)] tracking-tight" : 
+                          item.level === 2 ? "font-semibold text-[var(--text-secondary)]" : 
+                          "font-normal text-[var(--text-muted)]"
                         )}>
                           {item.text}
                         </span>
@@ -1906,11 +1910,11 @@ export function CreatePostPage() {
         </AnimatePresence>
       </div>
 
-      {/* Editor Footer - Updated to match image */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-t border-white/10 bg-[#0a0a0c] text-[12px] text-gray-400">
+      {/* Editor Footer */}
+      <div className="flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] text-[var(--text-muted)]">
         <div className="flex items-center gap-4">
-          <span>字数: <span className="text-gray-200 font-medium">{stats.words.toLocaleString()}</span></span>
-          <span>行数: <span className="text-gray-200 font-medium">{stats.lines.toLocaleString()}</span></span>
+          <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
+          <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
         </div>
         
         <div className="flex items-center gap-4">
@@ -1920,7 +1924,7 @@ export function CreatePostPage() {
                 type="checkbox" 
                 checked={showLineNumbers} 
                 onChange={(e) => setShowLineNumbers(e.target.checked)}
-                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
+                className="w-3.5 h-3.5 rounded border-[var(--border-subtle)] bg-[var(--bg-card)] text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
               />
               <span className="group-hover:text-gray-200 transition-colors">显示行号</span>
             </label>
@@ -1939,7 +1943,7 @@ export function CreatePostPage() {
           )}
           <button 
             onClick={scrollToTop} 
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-gray-200 transition-all ml-2"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all ml-2"
           >
             <ArrowUp className="w-3.5 h-3.5" />
             回到顶部
@@ -1947,62 +1951,118 @@ export function CreatePostPage() {
         </div>
       </div>
 
-      {/* Settings Modal */}
-        <Modal 
-          isOpen={showSettings} 
-          onClose={() => setShowSettings(false)}
-          title="设置"
-          size="md"
-        >
-          <div className="space-y-6">
-            <div className="space-y-4">
-              {/* Cover Image */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">封面图片</label>
-                <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                  <Image className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                  <p className="text-gray-400 text-sm">点击或拖拽上传</p>
+      {/* Settings Panel (Replaces Modal) */}
+      <AnimatePresence>
+        {showSettings && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettings(false)}
+              className="absolute inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
+            />
+            
+            {/* Slide-over Panel */}
+            <motion.div
+              initial={{ x: '100%', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="absolute right-0 top-0 bottom-0 w-[400px] z-50 bg-[var(--bg-primary)] border-l border-[var(--border-default)] shadow-2xl flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-primary" />
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">文章设置</h2>
+                </div>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* Cover Image */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-[var(--text-secondary)]">封面图片</label>
+                  <div className="border-2 border-dashed border-[var(--border-default)] rounded-xl p-8 text-center hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-[var(--bg-input)] flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <Image className="w-6 h-6 text-[var(--text-muted)] group-hover:text-primary transition-colors" />
+                    </div>
+                    <p className="text-[var(--text-secondary)] font-medium text-sm">点击或拖拽上传</p>
+                    <p className="text-[var(--text-muted)] text-xs mt-1">支持 JPG, PNG, WebP (Max 5MB)</p>
+                  </div>
+                </div>
+
+                {/* Publish Time */}
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+                    <Clock className="w-4 h-4 text-primary" />
+                    发布时间
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={publishTime}
+                    onChange={(e) => setPublishTime(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    style={{ colorScheme: resolvedTheme }}
+                  />
+                  <p className="text-xs text-[var(--text-muted)]">预设发布时间，即刻发布请留空</p>
+                </div>
+
+                {/* Summary */}
+                <div className="space-y-3">
+                   <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
+                    <button 
+                      onClick={() => setShowAI(true)}
+                      className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      AI 生成
+                    </button>
+                   </div>
+                  <textarea
+                    rows={4}
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    placeholder="输入文章摘要，或让 AI 为你生成..."
+                    className="w-full px-4 py-3 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
+                  />
+                </div>
+                
+                {/* Advanced Settings Divider */}
+                <div className="pt-4 border-t border-[var(--border-subtle)]">
+                   <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">高级设置</h3>
+                   {/* SEO Settings could go here */}
+                   <div className="opacity-50 pointer-events-none filter blur-[1px]">
+                      <div className="space-y-3">
+                        <label className="block text-sm font-medium text-[var(--text-secondary)]">SEO 标题 (即将上线)</label>
+                        <input type="text" disabled className="w-full px-4 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-muted)]" placeholder="默认使用文章标题" />
+                      </div>
+                   </div>
                 </div>
               </div>
 
-              {/* Publish Time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  发布时间
-                </label>
-                <input
-                  type="datetime-local"
-                  value={publishTime}
-                  onChange={(e) => setPublishTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary/50 [color-scheme:dark]"
-                />
-                <p className="text-xs text-gray-500 mt-1">设置文章的发布时间，支持精确到分钟</p>
+              {/* Footer */}
+              <div className="p-6 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
+                 <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-full py-3 text-sm font-semibold text-white bg-gradient-to-r from-primary to-primary/90 rounded-xl hover:from-primary/90 hover:to-primary/80 transition-all shadow-lg shadow-primary/25 active:scale-[0.98]"
+                 >
+                   完成设置
+                 </button>
               </div>
-
-              {/* Summary */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">摘要</label>
-                <textarea
-                  rows={3}
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  placeholder="文章摘要，为空将自动截取..."
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-primary/50"
-                />
-              </div>
-            </div>
-            
-            <div className="flex justify-end pt-4 border-t border-white/10">
-               <button
-                onClick={() => setShowSettings(false)}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
-               >
-                 确认
-               </button>
-            </div>
-          </div>
-        </Modal>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
         {/* AI Assistant Modal */}
         <Modal 
@@ -2027,7 +2087,7 @@ export function CreatePostPage() {
               ].map((item) => (
                 <button 
                   key={item.title}
-                  className="w-full p-4 rounded-xl bg-white/5 hover:bg-white/10 text-left transition-colors border border-white/5 hover:border-primary/30 group"
+                  className="w-full p-4 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-left transition-colors border border-[var(--border-subtle)] hover:border-primary/30 group"
                   onClick={() => {/* Implement AI action */}}
                 >
                   <div className="flex items-center gap-3">
@@ -2069,7 +2129,7 @@ export function CreatePostPage() {
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
                   placeholder="输入分类名称..."
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50 mb-4"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50 mb-4"
                   autoFocus
                 />
                 <div className="flex justify-end gap-3">

@@ -10,6 +10,7 @@
     "clean": "rm -rf .next node_modules"
   },
   "dependencies": {
+    "@aetherblog/hooks": "workspace:*",
     "@aetherblog/ui": "workspace:*",
     "@aetherblog/utils": "workspace:*",
     "@tanstack/react-query": "^5.62.8",

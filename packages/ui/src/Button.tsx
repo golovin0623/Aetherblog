@@ -15,8 +15,8 @@ interface ButtonProps {
 
 const variants = {
   primary: 'bg-primary text-white hover:bg-primary/90',
-  secondary: 'bg-white/10 text-white hover:bg-white/20',
-  ghost: 'text-gray-400 hover:text-white hover:bg-white/5',
+  secondary: 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-default)]',
+  ghost: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]',
   danger: 'bg-red-500 text-white hover:bg-red-600',
 };
 
