@@ -51,7 +51,7 @@ export function MarkdownEditor({
   onPaste,
   isDragging = false,
 }: MarkdownEditorProps) {
-  // Internal ref for CodeMirror component
+  // CodeMirror 组件的内部引用
   const cmRef = useCallback((ref: ReactCodeMirrorRef | null) => {
     if (editorViewRef && ref?.view) {
       editorViewRef.current = ref.view;
@@ -66,7 +66,7 @@ export function MarkdownEditor({
 
   const extensions = useMemo(
     () => [
-      // Markdown with code block syntax highlighting
+      // 带有代码块语法高亮的 Markdown
       markdown({ codeLanguages: languages }),
       EditorView.lineWrapping,
       EditorView.theme({
@@ -87,7 +87,7 @@ export function MarkdownEditor({
           maxWidth: contentCentered ? '800px' : 'none',
           margin: contentCentered ? '0 auto' : '0',
         },
-        // Baseline at text start position (left edge of first character)
+        // 文本起始位置的基线 (第一个字符的左边缘)
         '.cm-line': {
           padding: '0 4px',
           borderLeft: '1px solid rgba(139, 92, 246, 0.3)',
@@ -98,7 +98,7 @@ export function MarkdownEditor({
           borderRight: '1px solid rgba(255, 255, 255, 0.08)',
           paddingLeft: '12px',
           paddingRight: '8px',
-          display: showLineNumbers ? 'flex' : 'none', // Hide entire gutter if line numbers are off
+          display: showLineNumbers ? 'flex' : 'none', // 如果行号关闭，则隐藏整个装订线
         },
         '.cm-lineNumbers': {
           minWidth: '32px',
@@ -118,14 +118,14 @@ export function MarkdownEditor({
         '&.cm-focused .cm-cursor': {
           borderLeftColor: '#8b5cf6',
         },
-        // Style for fenced code blocks
-        '.ͼb': { // Markdown code marker color
+        // 围栏代码块的样式
+        '.ͼb': { // Markdown 代码标记颜色
           color: '#94a3b8',
         },
-        '.ͼc': { // Code block content
+        '.ͼc': { // 代码块内容
           color: '#e2e8f0',
         },
-        // Syntax highlighting colors for code blocks
+        // 代码块的语法高亮颜色
         '.tok-keyword': { color: '#c792ea' },
         '.tok-string': { color: '#c3e88d' },
         '.tok-number': { color: '#f78c6c' },

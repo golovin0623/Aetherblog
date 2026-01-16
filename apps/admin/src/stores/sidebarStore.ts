@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 interface SidebarState {
-  isCollapsed: boolean; // Persistent user preference
-  isAutoCollapsed: boolean; // Temporary override (e.g. Focus Mode)
-  isMobileOpen: boolean; // Mobile Drawer state
+  isCollapsed: boolean; // 持久化用户偏好
+  isAutoCollapsed: boolean; // 临时覆盖 (例如：专注模式)
+  isMobileOpen: boolean; // 移动端抽屉状态
   toggle: () => void;
   toggleMobile: () => void;
   setCollapsed: (collapsed: boolean) => void;
@@ -17,14 +17,14 @@ export const useSidebarStore = create<SidebarState>()(
     (set) => ({
       isCollapsed: false,
       isAutoCollapsed: false,
-      isMobileOpen: false, // Mobile Drawer default closed
+      isMobileOpen: false, // 移动端抽屉默认关闭
       
       toggle: () => set((state) => {
-        // Current visible state is a combination of preference and auto-override
+        // 当前可见状态是偏好和自动覆盖的组合
         const isCurrentlyCollapsed = state.isCollapsed || state.isAutoCollapsed;
         return { 
           isCollapsed: !isCurrentlyCollapsed,
-          // Once user manually toggles, we clear the auto-override for this session
+          // 用户手动切换后，清除当前会话的自动覆盖
           isAutoCollapsed: false 
         };
       }),
@@ -37,7 +37,7 @@ export const useSidebarStore = create<SidebarState>()(
     }),
     {
       name: 'sidebar-storage',
-      // Only persist manual user preference
+      // 仅持久化手动用户偏好
       partialize: (state) => ({ isCollapsed: state.isCollapsed }),
     }
   )
