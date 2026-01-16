@@ -82,16 +82,16 @@ export function useTableCommands(
     const currentLine = doc.lineAt(from);
     const lineText = currentLine.text;
 
-    // Check if current line looks like a table row (starts with |)
+    // 检查当前行是否像表格行 (以 | 开头)
     if (!lineText.trim().startsWith('|')) {
       return DEFAULT_TABLE_INFO;
     }
 
-    // Find table boundaries by scanning up and down
+    // 通过向上和向下扫描查找表格边界
     let tableStartLine = currentLine.number;
     let tableEndLine = currentLine.number;
 
-    // Scan upward
+    // 向上扫描
     for (let i = currentLine.number - 1; i >= 1; i--) {
       const line = doc.line(i);
       if (line.text.trim().startsWith('|')) {
@@ -101,7 +101,7 @@ export function useTableCommands(
       }
     }
 
-    // Scan downward
+    // 向下扫描
     for (let i = currentLine.number + 1; i <= doc.lines; i++) {
       const line = doc.line(i);
       if (line.text.trim().startsWith('|')) {
@@ -114,17 +114,17 @@ export function useTableCommands(
     const rowCount = tableEndLine - tableStartLine + 1;
     const currentRowIndex = currentLine.number - tableStartLine;
 
-    // Parse columns from current line
+    // 解析当前行的列
     const cells = lineText.split('|').filter((c, i, arr) => i > 0 && i < arr.length - 1);
     const columnCount = cells.length;
 
-    // Calculate current column index based on cursor position within line
+    // 根据行内光标位置计算当前列索引
     let currentColumnIndex = 0;
     let charCount = 0;
     const cursorPosInLine = from - currentLine.from;
     const parts = lineText.split('|');
     for (let i = 1; i < parts.length - 1; i++) {
-      charCount += parts[i].length + 1; // +1 for the pipe
+      charCount += parts[i].length + 1; // +1 为了管道符
       if (cursorPosInLine <= charCount) {
         currentColumnIndex = i - 1;
         break;
@@ -132,7 +132,7 @@ export function useTableCommands(
       currentColumnIndex = i - 1;
     }
 
-    // Parse alignments from separator row (row index 1)
+    // 从分隔行 (索引 1) 解析对齐方式
     const alignments: TableAlignment[] = [];
     if (rowCount >= 2) {
       const separatorLine = doc.line(tableStartLine + 1);
@@ -151,7 +151,7 @@ export function useTableCommands(
       }
     }
 
-    // Calculate viewport positions for UI triggers
+    // 计算 UI 触发器的视口位置
     let tableBounds: TableInfo['tableBounds'];
     let rowPositions: number[] = [];
     let columnPositions: number[] = [];
@@ -161,7 +161,7 @@ export function useTableCommands(
       const endLineCoords = view.coordsAtPos(doc.line(tableEndLine).to);
       
       if (startLineCoords && endLineCoords) {
-        // Get left/right from the first row
+        // 获取第一行的左/右位置
         const firstRowText = doc.line(tableStartLine).text;
         const firstPipePos = doc.line(tableStartLine).from + firstRowText.indexOf('|');
         const lastPipePos = doc.line(tableStartLine).from + firstRowText.lastIndexOf('|');
@@ -175,7 +175,7 @@ export function useTableCommands(
           right: rightCoords?.right ?? endLineCoords.right,
         };
 
-        // Calculate row positions
+        // 计算行位置
         for (let i = tableStartLine; i <= tableEndLine; i++) {
           const lineCoords = view.coordsAtPos(doc.line(i).from);
           if (lineCoords) {
@@ -183,7 +183,7 @@ export function useTableCommands(
           }
         }
 
-        // Calculate column positions (pipe character positions in first row)
+        // 计算列位置 (第一行的管道符位置)
         const headerLine = doc.line(tableStartLine);
         let pipeIndex = headerLine.text.indexOf('|');
         while (pipeIndex !== -1) {
@@ -195,7 +195,7 @@ export function useTableCommands(
         }
       }
     } catch {
-      // Ignore coordinate calculation errors
+      // 忽略坐标计算错误
     }
 
     return {
@@ -216,13 +216,13 @@ export function useTableCommands(
     if (!view) return;
 
     const info = getTableInfo();
-    if (!info.isInTable || info.currentRowIndex <= 1) return; // Can't insert above header or separator
+    if (!info.isInTable || info.currentRowIndex <= 1) return; // 无法在表头或分隔行上方插入
 
     const doc = view.state.doc;
     const { from } = view.state.selection.main;
     const currentLine = doc.lineAt(from);
     
-    // Create new row with same column count
+    // 创建具有相同列数的新行
     const newRow = '|' + ' '.repeat(3) + (' |' + ' '.repeat(3)).repeat(info.columnCount - 1) + ' |\n';
     
     view.dispatch({
@@ -241,7 +241,7 @@ export function useTableCommands(
     const { from } = view.state.selection.main;
     const currentLine = doc.lineAt(from);
     
-    // Create new row with same column count
+    // 创建具有相同列数的新行
     const newRow = '\n|' + ' '.repeat(3) + (' |' + ' '.repeat(3)).repeat(info.columnCount - 1) + ' |';
     
     view.dispatch({
@@ -320,7 +320,7 @@ export function useTableCommands(
     if (!view) return;
 
     const info = getTableInfo();
-    if (!info.isInTable || info.currentRowIndex <= 1 || info.rowCount <= 3) return; // Can't delete header/separator or last data row
+    if (!info.isInTable || info.currentRowIndex <= 1 || info.rowCount <= 3) return; // 无法删除表头/分隔行或最后一行数据
 
     const doc = view.state.doc;
     const { from } = view.state.selection.main;
@@ -372,7 +372,7 @@ export function useTableCommands(
     const currentLine = doc.lineAt(from);
     const tableStartLine = currentLine.number - info.currentRowIndex;
     
-    // Modify separator row (row index 1)
+    // 修改分隔行 (索引 1)
     const separatorLine = doc.line(tableStartLine + 1);
     const parts = separatorLine.text.split('|');
     const colIndex = info.currentColumnIndex + 1;

@@ -1910,7 +1910,7 @@ export function CreatePostPage() {
         </AnimatePresence>
       </div>
 
-      {/* Editor Footer */}
+      {/* 编辑器页脚 */}
       <div className="flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] text-[var(--text-muted)]">
         <div className="flex items-center gap-4">
           <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
@@ -1951,11 +1951,11 @@ export function CreatePostPage() {
         </div>
       </div>
 
-      {/* Settings Panel (Replaces Modal) */}
+      {/* 设置面板（替代模态框） */}
       <AnimatePresence>
         {showSettings && (
           <>
-            {/* Backdrop */}
+            {/* 背景遮罩 */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1964,7 +1964,7 @@ export function CreatePostPage() {
               className="absolute inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
             />
             
-            {/* Slide-over Panel */}
+            {/* 侧滑面板 */}
             <motion.div
               initial={{ x: '100%', opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}

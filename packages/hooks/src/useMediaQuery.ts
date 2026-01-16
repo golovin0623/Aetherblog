@@ -13,10 +13,10 @@ export function useMediaQuery(query: string): boolean {
     const mediaQuery = window.matchMedia(query);
     const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
 
-    // Set initial value
+    // 设置初始值
     setMatches(mediaQuery.matches);
 
-    // Modern browsers
+    // 现代浏览器
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handler);
       return () => mediaQuery.removeEventListener('change', handler);
@@ -28,7 +28,7 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-// Preset media queries
+// 预设媒体查询
 export const useIsMobile = () => useMediaQuery('(max-width: 768px)');
 export const useIsTablet = () => useMediaQuery('(min-width: 769px) and (max-width: 1024px)');
 export const useIsDesktop = () => useMediaQuery('(min-width: 1025px)');

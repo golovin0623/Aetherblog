@@ -19,7 +19,7 @@ export function EditPostPage() {
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-4">
           <button className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]">
