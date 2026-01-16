@@ -165,7 +165,7 @@ function createLineTrackingRenderer(
   // Override code block renderer for syntax highlighting and mermaid
   renderer.code = function(code: string, language?: string) {
     const lang = language?.toLowerCase().trim() || 'text';
-    
+
     // Handle Mermaid diagrams
     if (lang === 'mermaid') {
       const id = generateMermaidId();
@@ -177,18 +177,33 @@ function createLineTrackingRenderer(
         </div>
       `;
     }
-    
+
     const normalizedLang = normalizeLanguage(lang);
     const langDisplay = language?.toUpperCase() || 'TEXT';
-    
+
     if (highlighter) {
       try {
         const highlightedCode = highlighter.codeToHtml(code, {
           lang: normalizedLang,
           theme: theme === 'light' ? 'github-light' : 'github-dark',
+          transformers: [
+            {
+              name: 'compact-line-spacing',
+              // postprocess 在 HTML 生成后处理
+              postprocess(html) {
+                // 移除所有 line-height 和 height 相关的内联样式
+                return html
+                  .replace(/\s*line-height:\s*[^;]+;?/gi, '')
+                  .replace(/\s*height:\s*[^;]+;?/gi, '')
+                  // 移除 pre 和 code 标签上的 style 属性（如果只剩下空白）
+                  .replace(/\s*style=""\s*/g, ' ')
+                  .replace(/\s*style="\s*"\s*/g, ' ');
+              },
+            },
+          ],
         });
-        
-        // Wrap in custom container with language label
+
+        // Wrap in custom container with language label - using CSS variables
         return `
           <div class="code-block-wrapper">
             <div class="code-block-header">
@@ -207,13 +222,13 @@ function createLineTrackingRenderer(
         // Fall back to plain code block if highlighting fails
       }
     }
-    
-    // Fallback without syntax highlighting
+
+    // Fallback without syntax highlighting - using CSS variables
     const escapedCode = code
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    
+
     return `
       <div class="code-block-wrapper">
         <div class="code-block-header">
@@ -341,6 +356,9 @@ export const markdownPreviewStyles = `
     color: #f1f5f9;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 0.3em;
+  }
+  .markdown-preview > :first-child {
+    margin-top: 0 !important;
   }
   .markdown-preview.light-mode h1 {
     color: #0f172a;

@@ -52,12 +52,15 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   return (
     <Link href={`/posts/${slug}`} className="block h-full">
       <article
-        className="group relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]"
+        className="group relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-primary)]"
         style={{ animationDelay: `${index * 100}ms` }}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
+        {/* 顶部装饰条 - 品牌色渐变 */}
+        <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
+
         {/* 聚光灯效果层 */}
         <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
@@ -98,24 +101,24 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
           {/* 分类 & 日期 - 固定高度 */}
           <div className="flex items-center justify-between mb-3 text-xs h-[20px]">
              {category ? (
-                <span className="flex items-center gap-1.5 text-primary">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-purple-500 text-white text-[10px] font-medium shadow-sm">
                   <Folder className="h-3 w-3" />
                   {category.name}
                 </span>
              ) : (
                 <span className="w-1" />
              )}
-             
+
              <span className="flex items-center gap-1 text-[var(--text-muted)] font-mono">
                 <Calendar className="h-3 w-3" />
                 {publishedAt}
              </span>
           </div>
 
-          {/* 标题 - 固定高度 */}
+          {/* 标题 - 固定高度，悬停时渐变 */}
           <h2 className="mb-1.5 h-[56px]">
             <span
-              className="text-lg font-bold text-[var(--text-primary)] group-hover:text-primary transition-colors line-clamp-2 leading-snug"
+              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent transition-all line-clamp-2 leading-snug"
               title={title}
             >
               {title}

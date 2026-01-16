@@ -181,9 +181,8 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                   initial={{ opacity: 0, height: 0, scale: 0.98 }}
                   animate={{ opacity: 1, height: 'auto', scale: 1 }}
                   exit={{ opacity: 0, height: 0, scale: 0.98 }}
-                  className="bg-[#0f1117] rounded-2xl p-1 border border-white/5 shadow-2xl shadow-indigo-500/5 mb-12 overflow-hidden ring-1 ring-white/5"
+                  className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-8 relative overflow-hidden border border-[var(--border-default)] shadow-2xl shadow-indigo-500/5 mb-12"
                 >
-                  <div className="bg-[var(--bg-card)] rounded-xl p-6 sm:p-8 relative overflow-hidden group border border-[var(--border-subtle)]">
                     {/* Simplified Decorative Gradients */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
                     
@@ -278,7 +277,6 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         </div>
                       </div>
                     </form>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

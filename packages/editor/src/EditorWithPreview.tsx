@@ -275,7 +275,7 @@ export function EditorWithPreview({
         {viewMode === 'preview' && (
           <div className="flex-1 overflow-y-auto bg-[var(--bg-primary)]">
             <div
-              className="w-full py-12 px-6 min-h-full"
+              className="w-full pt-4 pb-12 px-6 min-h-full"
               style={{ maxWidth: '800px', margin: '0 auto' }}
             >
               <MarkdownPreview
@@ -292,7 +292,7 @@ export function EditorWithPreview({
             ref={previewScrollRef}
             className="flex-1 overflow-y-auto bg-[var(--bg-primary)]"
           >
-            <div className="max-w-[90%] mx-auto w-full py-10 px-6 min-h-full">
+            <div className="max-w-[90%] mx-auto w-full pt-4 pb-10 px-6 min-h-full">
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}
