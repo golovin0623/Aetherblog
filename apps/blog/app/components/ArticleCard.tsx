@@ -52,7 +52,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   return (
     <Link href={`/posts/${slug}`} className="block h-full">
       <article
-        className="group relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-primary)]"
+        className="group relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-lg)]"
         style={{ animationDelay: `${index * 100}ms` }}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}

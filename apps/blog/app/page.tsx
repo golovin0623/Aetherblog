@@ -66,17 +66,52 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Elegant Divider with Gradient Line */}
+      <div className="relative max-w-7xl mx-auto px-4 py-16">
+        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+          <div className="w-full border-t border-[var(--border-subtle)]"></div>
+        </div>
+        <div className="relative flex justify-center">
+          <div className="px-8 py-3 bg-[var(--bg-primary)] rounded-full border border-[var(--border-default)] backdrop-blur-xl shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-primary to-purple-500 animate-pulse"></div>
+              <span className="text-sm font-medium bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
+                精选内容
+              </span>
+              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-primary to-purple-500 animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Latest Posts Section */}
       {posts.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 py-20">
-          <div className="flex items-center justify-between mb-12">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-3">
-              <LayoutGrid className="w-6 h-6 text-primary" />
-              最新发布
-            </h2>
-            <a href="/posts" className="text-sm text-[var(--text-muted)] hover:text-primary transition-colors">
-              查看全部 →
-            </a>
+        <section className="max-w-7xl mx-auto px-4 pb-20">
+          {/* Section Header with Decorative Elements */}
+          <div className="relative mb-12">
+            {/* Background Glow */}
+            <div className="absolute -top-8 left-0 w-64 h-32 bg-gradient-to-r from-primary/10 to-purple-500/10 blur-3xl rounded-full"></div>
+
+            <div className="relative flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-purple-500 shadow-lg shadow-primary/30">
+                  <LayoutGrid className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-secondary)] bg-clip-text text-transparent">
+                    最新发布
+                  </h2>
+                  <p className="text-sm text-[var(--text-muted)] mt-1">共 {posts.length} 篇文章</p>
+                </div>
+              </div>
+              <a
+                href="/posts"
+                className="group flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)] hover:border-primary/50 text-[var(--text-secondary)] hover:text-primary transition-all hover:shadow-lg hover:shadow-primary/10"
+              >
+                <span className="text-sm font-medium">查看全部</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </a>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

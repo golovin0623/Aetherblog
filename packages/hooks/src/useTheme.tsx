@@ -7,7 +7,7 @@
  * @created 2026-01-16
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 
 export type Theme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
@@ -71,27 +71,31 @@ export interface UseThemeReturn {
   toggleTheme: () => void;
 }
 
+// 创建 Context
+const ThemeContext = createContext<UseThemeReturn | undefined>(undefined);
+
 /**
- * 主题切换 Hook
- * 
+ * 主题 Provider 组件
+ *
  * @example
  * ```tsx
- * const { theme, resolvedTheme, isDark, setTheme, toggleTheme } = useTheme();
- * 
- * // 切换主题
- * <button onClick={toggleTheme}>
- *   {isDark ? '🌙' : '☀️'}
- * </button>
- * 
- * // 设置特定主题
- * <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
- *   <option value="light">亮色</option>
- *   <option value="dark">暗色</option>
- *   <option value="system">跟随系统</option>
- * </select>
+ * // app/layout.tsx
+ * import { ThemeProvider } from '@aetherblog/hooks';
+ *
+ * export default function RootLayout({ children }) {
+ *   return (
+ *     <html>
+ *       <body>
+ *         <ThemeProvider>
+ *           {children}
+ *         </ThemeProvider>
+ *       </body>
+ *     </html>
+ *   );
+ * }
  * ```
  */
-export function useTheme(): UseThemeReturn {
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // 1. 初始化状态为 'system' 以确保服务端和客户端初次渲染一致
   const [theme, setThemeState] = useState<Theme>('system');
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>('light'); // 默认假设 light，避免 mismatch
@@ -163,14 +167,50 @@ export function useTheme(): UseThemeReturn {
   
   // 为避免UI闪烁或错误图标，未挂载时可以返回一个安全状态
   // 但为了 API 兼容性，我们返回计算值
-  
-  return {
+
+  const value = useMemo<UseThemeReturn>(() => ({
     theme,
     resolvedTheme,
     isDark,
     setTheme,
     toggleTheme,
-  };
+  }), [theme, resolvedTheme, isDark, setTheme, toggleTheme]);
+
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+/**
+ * 主题切换 Hook
+ *
+ * @example
+ * ```tsx
+ * const { theme, resolvedTheme, isDark, setTheme, toggleTheme } = useTheme();
+ *
+ * // 切换主题
+ * <button onClick={toggleTheme}>
+ *   {isDark ? '🌙' : '☀️'}
+ * </button>
+ *
+ * // 设置特定主题
+ * <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
+ *   <option value="light">亮色</option>
+ *   <option value="dark">暗色</option>
+ *   <option value="system">跟随系统</option>
+ * </select>
+ * ```
+ */
+export function useTheme(): UseThemeReturn {
+  const context = useContext(ThemeContext);
+
+  if (!context) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+
+  return context;
 }
 
 /**

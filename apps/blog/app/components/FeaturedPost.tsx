@@ -52,7 +52,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
   return (
     <div
-        className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-primary-lg)]"
+        className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.15)] cursor-pointer"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
@@ -144,9 +144,15 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
              {/* Right Preview Section (2/3 width) - Rendered Markdown */}
             <div className="hidden lg:block lg:col-span-2 bg-[var(--preview-bg)] overflow-hidden relative">
-                <div className="p-8 h-full overflow-hidden mask-image-b">
+                <div className="p-8 h-full overflow-hidden">
                     {post.contentPreview ? (
-                         <div className="opacity-70 group-hover:opacity-100 transition-opacity duration-500 text-sm">
+                         <div
+                           className="h-full text-sm antialiased"
+                           style={{
+                             maskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)',
+                             WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)'
+                           }}
+                         >
                             <MiniMarkdownPreview content={post.contentPreview} maxLength={2000} />
                          </div>
                     ) : (
@@ -156,8 +162,8 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     )}
                 </div>
 
-                 {/* Fade Out Overlay - Stronger gradient for better masking */}
-                 <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--bg-primary)] to-transparent pointer-events-none" />
+                 {/* Subtle Fade Out Overlay - Lighter gradient */}
+                 <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[var(--bg-card)] via-[var(--bg-card)]/50 to-transparent pointer-events-none" />
             </div>
         </div>
     </div>

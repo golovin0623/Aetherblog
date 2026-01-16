@@ -23,13 +23,13 @@
   --color-accent-purple: #8b5cf6;     /* Purple 500 */
 
   /* === 背景色系统（丰富的层次）=== */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;            /* Slate 50 */
-  --bg-tertiary: #f1f5f9;             /* Slate 100 */
-  --bg-quaternary: #e2e8f0;           /* Slate 200 */
+  --bg-primary: #f8fafc;              /* Slate 50 - 略微暗淡的背景，形成层次对比 */
+  --bg-secondary: #f1f5f9;            /* Slate 100 */
+  --bg-tertiary: #e2e8f0;             /* Slate 200 */
+  --bg-quaternary: #cbd5e1;           /* Slate 300 */
 
-  --bg-card: rgba(255, 255, 255, 0.9);  /* 更高的不透明度 */
-  --bg-card-hover: rgba(248, 250, 252, 1);  /* 纯色，无透明 */
+  --bg-card: #ffffff;                 /* 纯白卡片，与背景形成对比 */
+  --bg-card-hover: #fafbfc;           /* 微妙的灰 */
   --bg-overlay: rgba(255, 255, 255, 0.95);
   --bg-code: #f1f5f9;
   --bg-code-block: #1e293b;
