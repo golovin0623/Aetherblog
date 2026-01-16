@@ -14,9 +14,9 @@ interface ButtonProps {
 }
 
 const variants = {
-  primary: 'bg-primary text-white hover:bg-primary/90',
-  secondary: 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-default)]',
-  ghost: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]',
+  primary: 'bg-gradient-to-r from-primary to-purple-500 text-white hover:shadow-[var(--shadow-primary-lg)] shadow-[var(--shadow-primary)]',
+  secondary: 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] border-2 border-transparent bg-clip-padding relative before:absolute before:inset-0 before:bg-gradient-to-r before:from-primary before:to-purple-500 before:rounded-lg before:-z-10 before:m-[-2px]',
+  ghost: 'text-[var(--text-secondary)] hover:text-white hover:bg-gradient-to-r hover:from-primary/10 hover:to-purple-500/10',
   danger: 'bg-red-500 text-white hover:bg-red-600',
 };
 

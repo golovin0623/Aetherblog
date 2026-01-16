@@ -199,7 +199,7 @@ export function LoginPage() {
               type="submit"
               disabled={isLoading}
               className={cn(
-                "w-full py-3.5 rounded-xl bg-[var(--text-primary)] text-[var(--bg-page)] font-bold text-sm tracking-wide shadow-xl shadow-black/5 flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.98]",
+                "w-full py-3.5 rounded-xl bg-primary text-white font-bold text-sm tracking-wide shadow-xl shadow-primary/20 flex items-center justify-center gap-2 transition-all hover:bg-primary/90 active:scale-[0.98]",
                 isLoading && "opacity-70 cursor-not-allowed"
               )}
             >

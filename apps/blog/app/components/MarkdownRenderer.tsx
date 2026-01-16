@@ -198,7 +198,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
 
   if (!code || !code.trim()) {
     return (
-      <div className="my-4 p-4 bg-slate-800/30 border border-white/5 rounded-lg text-center text-gray-600">
+      <div className="my-4 p-4 bg-[var(--markdown-bg-code)] border border-[var(--markdown-border-code)] rounded-lg text-center text-[var(--text-muted)]">
         📊 空流程图
       </div>
     );
@@ -206,8 +206,8 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
 
   if (isLoading) {
     return (
-      <div className="my-4 flex justify-center bg-slate-900/50 rounded-lg p-8">
-        <div className="text-gray-500 animate-pulse">加载流程图...</div>
+      <div className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-8">
+        <div className="text-[var(--text-muted)] animate-pulse">加载流程图...</div>
       </div>
     );
   }
@@ -216,54 +216,83 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
     return (
       <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
         <div>{error}</div>
-        <pre className="mt-2 text-xs text-gray-500 overflow-x-auto whitespace-pre-wrap">{code}</pre>
+        <pre className="mt-2 text-xs text-[var(--text-muted)] overflow-x-auto whitespace-pre-wrap">{code}</pre>
       </div>
     );
   }
 
   return (
-    <div 
-      className="my-4 flex justify-center bg-slate-900/50 rounded-lg p-4 overflow-x-auto"
+    <div
+      className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
 };
 
-// Shiki 代码块组件 - 带语法高亮
-const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Highlighter | null; theme: string }> = ({ 
-  language, 
+// Shiki 代码块组件 - 带语法高亮和折叠功能
+const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Highlighter | null; theme: string }> = ({
+  language,
   code,
   highlighter,
   theme
 }) => {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // 计算代码行数
+  const lineCount = code.split('\n').length;
+  const shouldShowToggle = lineCount > 15; // 超过15行显示折叠按钮
+
+  // 初始状态：超过15行自动折叠
+  useEffect(() => {
+    if (shouldShowToggle) {
+      setIsCollapsed(true);
+    }
+  }, [shouldShowToggle]);
 
   useEffect(() => {
     if (!highlighter || !code) return;
-    
+
     const highlight = async () => {
       try {
         const lang = normalizeLanguage(language);
-        
+
         // 动态加载语言（如果未加载）
         if (lang !== 'text') {
           await ensureLanguageLoaded(highlighter, lang);
         }
-        
+
         const shikiTheme = theme === 'dark' ? 'github-dark' : 'github-light';
-        
+
+        // 使用 Shiki 的 transformers API 优雅地自定义输出
         const html = highlighter.codeToHtml(code, {
           lang: lang === 'text' ? 'text' : lang,
           theme: shikiTheme,
+          transformers: [
+            {
+              name: 'compact-line-spacing',
+              // postprocess 在 HTML 生成后处理
+              postprocess(html) {
+                // 移除所有 line-height 和 height 相关的内联样式
+                return html
+                  .replace(/\s*line-height:\s*[^;]+;?/gi, '')
+                  .replace(/\s*height:\s*[^;]+;?/gi, '')
+                  // 移除 pre 和 code 标签上的 style 属性（如果只剩下空白）
+                  .replace(/\s*style=""\s*/g, ' ')
+                  .replace(/\s*style="\s*"\s*/g, ' ');
+              },
+            },
+          ],
         });
+
         setHighlightedHtml(html);
       } catch (e) {
         logger.error('Shiki highlight error:', e);
         setHighlightedHtml(null);
       }
     };
-    
+
     highlight();
   }, [highlighter, code, language, theme]);
 
@@ -275,14 +304,11 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 
   const langDisplay = language?.toUpperCase() || 'TEXT';
 
-  // Background color based on theme
-  const bgClass = theme === 'dark' ? 'bg-[#1a1b26]' : 'bg-gray-50';
-
   return (
-    <div className={`code-block-wrapper relative group my-4 rounded-xl overflow-hidden border border-[var(--border-subtle)] ${bgClass}`}>
+    <div className={`code-block-wrapper relative group my-4 rounded-xl overflow-hidden border border-[var(--markdown-border-code)] bg-[var(--markdown-bg-code)] ${isCollapsed ? 'collapsed' : ''}`}>
       {/* Header */}
-      <div className="code-block-header flex items-center justify-between px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)]">
-          <span className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-wider">
+      <div className="code-block-header flex items-center justify-between px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--markdown-border-code)]">
+        <span className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-wider">
           {langDisplay}
         </span>
         <button
@@ -307,20 +333,37 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
           )}
         </button>
       </div>
-      
+
       {/* Code content */}
       <div className="code-block-content overflow-x-auto">
         {highlightedHtml ? (
-          <div 
+          <div
             className="shiki-wrapper"
             dangerouslySetInnerHTML={{ __html: highlightedHtml }}
           />
         ) : (
-          <pre className="p-4 m-0 bg-transparent">
-            <code className={`language-${language}`}>{code}</code>
-          </pre>
+          <div className="shiki-wrapper">
+            <pre className="shiki" style={{ background: 'transparent', padding: '1em', margin: 0 }}>
+              <code style={{ background: 'transparent', padding: 0, fontSize: '0.875em', lineHeight: 0.9, display: 'block' }}>
+                {code}
+              </code>
+            </pre>
+          </div>
         )}
       </div>
+
+      {/* 折叠/展开按钮 */}
+      {shouldShowToggle && (
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="code-block-toggle"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          {isCollapsed ? `展开全部 (${lineCount} 行)` : '收起代码'}
+        </button>
+      )}
     </div>
   );
 };
@@ -361,7 +404,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         return <code className={className} {...props}>{children}</code>;
       }
       return (
-        <code className="bg-primary/15 text-primary px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+        <code className="bg-[var(--markdown-bg-code-inline)] text-[var(--markdown-text-code)] px-[0.25em] py-[0.5em] rounded text-sm font-mono" {...props}>
           {children}
         </code>
       );
@@ -396,11 +439,14 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
             src={src}
             alt={displayAlt}
             loading="lazy"
-            className="max-w-full rounded-lg border border-white/10 shadow-lg inline-block transition-all duration-300"
-            style={{ width: width }}
+            className="max-w-full rounded-lg border border-[var(--border-subtle)] inline-block transition-all duration-300"
+            style={{
+              width: width,
+              boxShadow: 'var(--shadow-md)'
+            }}
             {...props}
           />
-          {displayAlt && <span className="block text-center text-sm text-gray-500 mt-2">{displayAlt}</span>}
+          {displayAlt && <span className="block text-center text-sm text-[var(--text-muted)] mt-2">{displayAlt}</span>}
         </span>
       );
     },
@@ -428,7 +474,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
     
     // 引用
     blockquote: ({ children }) => (
-      <blockquote className="border-l-4 border-primary pl-4 my-4 text-gray-400 italic bg-primary/5 py-2 pr-4 rounded-r">
+      <blockquote className="border-l-[3px] border-[var(--markdown-border-quote)] pl-4 my-4 text-[var(--text-secondary)] bg-[var(--markdown-bg-quote)] py-2 pr-4 rounded-r">
         {children}
       </blockquote>
     ),
@@ -439,7 +485,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         href={href}
         target={href?.startsWith('http') ? '_blank' : undefined}
         rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-        className="text-primary hover:text-primary/80 underline underline-offset-2"
+        className="text-primary hover:text-primary/80 no-underline border-b border-transparent hover:border-primary transition-colors"
         {...props}
       >
         {children}
@@ -475,36 +521,15 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   if (!content) return null;
 
   return (
-    <>
-      {/* Shiki 代码块样式 */}
-      <style jsx global>{`
-        /* Shiki code styling */
-        .shiki-wrapper .shiki {
-          background: transparent !important;
-          padding: 1em;
-          margin: 0;
-        }
-        .shiki-wrapper .shiki code {
-          background: transparent !important;
-          padding: 0;
-          font-size: 0.875em;
-          line-height: 1.7;
-          tab-size: 2;
-        }
-        .shiki-wrapper .shiki .line {
-          display: block;
-        }
-      `}</style>
-      <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex, rehypeRaw]}
-          components={components}
-        >
-          {content}
-        </ReactMarkdown>
-      </div>
-    </>
+    <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex, rehypeRaw]}
+        components={components}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 

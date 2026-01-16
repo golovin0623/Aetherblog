@@ -52,11 +52,14 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
   return (
     <div
-        className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)]"
+        className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-primary-lg)]"
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
-    > 
+    >
+        {/* 顶部装饰条 - 品牌色渐变 */}
+        <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
+
         {/* 聚光灯效果层 */}
         <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
@@ -81,7 +84,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                      {/* Meta Info: Category, Date */}
                     <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-3">
                         {post.category && (
-                            <Link href={`/categories/${post.category.slug}`} className="flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-full hover:bg-primary/20 transition-colors">
+                            <Link href={`/categories/${post.category.slug}`} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-purple-500 text-white shadow-sm hover:shadow-md transition-all">
                                 <Folder className="w-3 h-3" />
                                 <span>{post.category.name}</span>
                             </Link>
@@ -93,8 +96,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     </div>
 
                     {/* Title */}
-                    {/* Title */}
-                    <h1 className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:text-primary transition-colors cursor-pointer`}>
+                    <h1 className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent transition-all cursor-pointer`}>
                         <Link href={`/posts/${post.slug}`}>
                             {post.title}
                         </Link>
@@ -104,7 +106,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     {post.tags && post.tags.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                             {post.tags.slice(0, 2).map(tag => (
-                                <span key={tag.slug} className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg-card)] border border-[var(--border-subtle)] px-2.5 py-0.5 rounded-full hover:text-[var(--text-primary)] hover:border-primary/50 hover:bg-[var(--bg-card-hover)] transition-all duration-300 backdrop-blur-sm">
+                                <span key={tag.slug} className="text-xs font-medium text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded-full hover:bg-primary/20 hover:border-primary/30 transition-all duration-300 backdrop-blur-sm">
                                     #{tag.name}
                                 </span>
                             ))}
@@ -131,9 +133,9 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                 </div>
 
                 {/* Read More Button */}
-                <Link 
+                <Link
                     href={`/posts/${post.slug}`}
-                    className="inline-flex items-center gap-2 text-[var(--text-primary)] font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:bg-primary hover:border-primary hover:text-white text-xs shrink-0"
+                    className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 shadow-[var(--shadow-primary)] hover:shadow-[var(--shadow-primary-lg)] text-xs shrink-0"
                 >
                     <span>阅读全文</span>
                     <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-1 transition-transform" />

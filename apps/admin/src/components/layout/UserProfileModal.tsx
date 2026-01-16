@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -248,6 +249,15 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               <div className="flex flex-col gap-6">
                 {/* Premium Tabs - Segmented Control */}
                 <div className="flex p-1 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-subtle)] relative isolate">
+                  {/* Sliding indicator - absolute positioned */}
+                  <motion.div
+                    className="absolute top-1 bottom-1 w-[calc(50%-4px)] bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)]"
+                    animate={{ 
+                      x: activeTab === 'profile' ? 4 : 'calc(100% + 4px)'
+                    }}
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                  />
+                  
                   <button
                     onClick={() => setActiveTab('profile')}
                     className={cn(
@@ -257,15 +267,8 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     )}
                   >
-                    {activeTab === 'profile' && (
-                      <motion.div
-                        layoutId="active-tab-indicator"
-                        className="absolute inset-0 bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)] -z-10"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
                     <UserCircle className="w-4 h-4" />
-                    <span className="relative z-10">基本信息</span>
+                    <span>基本信息</span>
                   </button>
                   
                   <button
@@ -277,15 +280,8 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     )}
                   >
-                    {activeTab === 'security' && (
-                      <motion.div
-                        layoutId="active-tab-indicator"
-                        className="absolute inset-0 bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)] -z-10"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
                     <Lock className="w-4 h-4" />
-                    <span className="relative z-10">安全设置</span>
+                    <span>安全设置</span>
                   </button>
                 </div>
 
@@ -486,6 +482,3 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
   );
 }
 
-// Add React import for useEffect
-import * as React from 'react';
-// Move the X icon import to top - just add it to existing lucide imports
