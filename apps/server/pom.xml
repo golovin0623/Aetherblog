@@ -39,9 +39,9 @@
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.42</lombok.version>
         <jjwt.version>0.12.7</jjwt.version>
-        <!-- Jackson 3.x (tools.jackson) for Spring Boot 4 -->
+        <!-- 适用于 Spring Boot 4 的 Jackson 3.x (tools.jackson) -->
         <jackson.version>3.0.3</jackson.version>
-        <!-- JDK 25 Testing Support: Override Byte Buddy for Mockito compatibility -->
+        <!-- JDK 25 测试支持：覆盖 Byte Buddy 以兼容 Mockito -->
         <byte-buddy.version>1.17.8</byte-buddy.version>
     </properties>
 
@@ -186,7 +186,7 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
-            <!-- Note: spring-boot-maven-plugin is configured in aetherblog-app only -->
+            <!-- 注意：spring-boot-maven-plugin 仅在 aetherblog-app 中配置 -->
         </plugins>
     </build>
 

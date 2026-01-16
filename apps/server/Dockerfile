@@ -1,57 +1,57 @@
 # =============================================================================
-# AetherBlog Backend - Spring Boot Application
-# Multi-platform: linux/amd64 (CentOS 7), linux/arm64 (Mac M1/M2)
+# AetherBlog 后端 - Spring Boot 应用程序
+# 多平台支持：linux/amd64 (CentOS 7), linux/arm64 (Mac M1/M2)
 # =============================================================================
 
-# Stage 1: Build (JDK 25 + Spring Boot 3.5.0-M2)
+# 第一阶段：构建 (JDK 25 + Spring Boot 3.5.0-M2)
 FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-25 AS builder
 WORKDIR /app
 
-# Copy Maven files first for dependency caching (all submodule pom.xml files)
+# 优先复制 Maven 文件以利用依赖缓存 (所有子模块的 pom.xml 文件)
 COPY apps/server/pom.xml ./
-# aetherblog-common and its submodules
+# aetherblog-common 及其子模块
 COPY apps/server/aetherblog-common/pom.xml ./aetherblog-common/
 COPY apps/server/aetherblog-common/common-core/pom.xml ./aetherblog-common/common-core/
 COPY apps/server/aetherblog-common/common-security/pom.xml ./aetherblog-common/common-security/
 COPY apps/server/aetherblog-common/common-redis/pom.xml ./aetherblog-common/common-redis/
 COPY apps/server/aetherblog-common/common-log/pom.xml ./aetherblog-common/common-log/
-# aetherblog-ai and its submodules
+# aetherblog-ai 及其子模块
 COPY apps/server/aetherblog-ai/pom.xml ./aetherblog-ai/
 COPY apps/server/aetherblog-ai/ai-core/pom.xml ./aetherblog-ai/ai-core/
 COPY apps/server/aetherblog-ai/ai-agent/pom.xml ./aetherblog-ai/ai-agent/
 COPY apps/server/aetherblog-ai/ai-prompt/pom.xml ./aetherblog-ai/ai-prompt/
 COPY apps/server/aetherblog-ai/ai-rag/pom.xml ./aetherblog-ai/ai-rag/
-# aetherblog-service and its submodules
+# aetherblog-service 及其子模块
 COPY apps/server/aetherblog-service/pom.xml ./aetherblog-service/
 COPY apps/server/aetherblog-service/blog-service/pom.xml ./aetherblog-service/blog-service/
-# aetherblog-api and aetherblog-app
+# aetherblog-api 和 aetherblog-app
 COPY apps/server/aetherblog-api/pom.xml ./aetherblog-api/
 COPY apps/server/aetherblog-app/pom.xml ./aetherblog-app/
 
-# Copy source code
+# 复制源代码
 COPY apps/server ./
 
-# Build the application with optimal settings (with retry for network issues)
+# 使用优化设置构建应用程序 (针对网络问题包含重试机制)
 RUN --mount=type=cache,target=/root/.m2 \
     mvn clean package -DskipTests -B -T 1C || \
     (sleep 5 && mvn clean package -DskipTests -B -T 1C) || \
     (sleep 10 && mvn clean package -DskipTests -B -T 1C)
 
-# Stage 2: Production
+# 第二阶段：生产环境
 FROM eclipse-temurin:25-jre-alpine AS runner
 WORKDIR /app
 
-# Install required packages for health checks and container monitoring
+# 安装健康检查和容器监控所需的软件包
 RUN apk add --no-cache curl docker-cli
 
-# Add non-root user
+# 添加非 root 用户
 RUN addgroup --system --gid 1001 spring && \
     adduser --system --uid 1001 --ingroup spring spring
 
-# Copy the built jar
+# 复制构建好的 jar 包
 COPY --from=builder /app/aetherblog-app/target/*.jar app.jar
 
-# Create uploads directory and change ownership
+# 创建上传目录并更改所有权
 RUN mkdir -p /app/uploads && \
     chown -R spring:spring /app/uploads && \
     chown spring:spring app.jar
@@ -60,24 +60,24 @@ RUN mkdir -p /app/uploads && \
 
 EXPOSE 8080
 
-# JDK 25 Optimized JVM Settings:
-# === Memory Management ===
-# - UseContainerSupport: Auto-detect container memory limits
-# - MaxRAMPercentage: Use up to 75% of container memory for heap
-# - InitialRAMPercentage: Start with 50% of max for faster startup
-# - UseCompactObjectHeaders: JDK 25 Lilliput project (10-15% memory savings)
+# JDK 25 优化的 JVM 设置：
+# === 内存管理 ===
+# - UseContainerSupport: 自动检测容器内存限制
+# - MaxRAMPercentage: 使用高达 75% 的容器内存作为堆内存
+# - InitialRAMPercentage: 初始堆内存为最大值的 50% 以加快启动速度
+# - UseCompactObjectHeaders: JDK 25 Lilliput 项目 (节省 10-15% 内存)
 #
-# === Garbage Collection ===
-# - UseZGC: Z Garbage Collector (generational by default in JDK 25)
+# === 垃圾回收 ===
+# - UseZGC: Z 垃圾回收器 (JDK 25 中默认为分代)
 #
-# === Startup Optimization ===
-# - TieredStopAtLevel=1: Quick C1 compilation only for faster startup
+# === 启动优化 ===
+# - TieredStopAtLevel=1: 仅使用快速 C1 编译以加快启动速度
 #
-# === Security & Reliability ===
-# - ExitOnOutOfMemoryError: Fail fast on OOM for container orchestration
+# === 安全与可靠性 ===
+# - ExitOnOutOfMemoryError: OOM 时快速失败，以便容器编排
 #
-# NOTE: CDS disabled - incompatible with UseCompactObjectHeaders + UseZGC
-# NOTE: ZGenerational removed - now default in JDK 25, flag deprecated
+# 注意：CDS 已禁用 - 与 UseCompactObjectHeaders + UseZGC 不兼容
+# 注意：ZGenerational 已移除 - JDK 25 中已成为默认值，标志已弃用
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
     -XX:InitialRAMPercentage=50.0 \

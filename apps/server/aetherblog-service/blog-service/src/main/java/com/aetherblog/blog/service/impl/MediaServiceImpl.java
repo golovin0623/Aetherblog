@@ -261,18 +261,18 @@ public class MediaServiceImpl implements MediaService {
         if (ALLOWED_VIDEO_TYPES.contains(contentType)) return FileType.VIDEO;
         if (ALLOWED_AUDIO_TYPES.contains(contentType)) return FileType.AUDIO;
         if (contentType.startsWith("application/") || contentType.startsWith("text/")) {
-            // Check extension for specific document types that might be text/* or application/*
+            // 检查可能是 text/* 或 application/* 的特定文档类型的扩展名
             String extension = getFileExtension(originalFilename);
             if (DOCUMENT_EXTENSIONS.contains(extension)) {
                 return FileType.DOCUMENT;
             }
-            // Fallback for standard application types (pdf, office, etc)
+            // 标准应用程序类型 (pdf, office 等) 的回退
             if (contentType.startsWith("application/") && !contentType.equals("application/octet-stream")) {
                 return FileType.DOCUMENT;
             }
         }
 
-        // Final check on extension just in case MIME type was generic binary
+        // 最后检查扩展名，以防 MIME 类型是通用二进制
         String extension = getFileExtension(originalFilename);
         if (DOCUMENT_EXTENSIONS.contains(extension)) {
             return FileType.DOCUMENT;

@@ -56,7 +56,7 @@ export function Modal({
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop - conditionally rendered */}
+          {/* 背景遮罩 - 条件渲染 */}
           {!hideBackdrop && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -67,12 +67,12 @@ export function Modal({
               onClick={onClose}
             />
           )}
-          {/* Invisible click-away layer when backdrop is hidden */}
+          {/* 隐藏背景时的隐形点击层 */}
           {hideBackdrop && (
             <div className="absolute inset-0" onClick={onClose} />
           )}
           
-          {/* Modal */}
+          {/* 模态框 */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -80,9 +80,9 @@ export function Modal({
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
             className={cn('relative w-full', sizeClasses[size])}
           >
-            {/* Card with glassmorphism */}
+            {/* 毛玻璃效果卡片 */}
             <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl">
-              {/* Header */}
+              {/* 头部 */}
               {(title || showCloseButton) && (
                 <div className="relative flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
                   {title && (

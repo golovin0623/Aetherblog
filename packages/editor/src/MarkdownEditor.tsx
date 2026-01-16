@@ -54,7 +54,7 @@ export function MarkdownEditor({
   isDragging = false,
   theme = 'dark',
 }: MarkdownEditorProps) {
-  // Internal ref for CodeMirror component
+  // CodeMirror 组件的内部引用
   const cmRef = useCallback((ref: ReactCodeMirrorRef | null) => {
     if (editorViewRef && ref?.view) {
       editorViewRef.current = ref.view;
@@ -69,7 +69,7 @@ export function MarkdownEditor({
 
   const extensions = useMemo(
     () => [
-      // Markdown with code block syntax highlighting
+      // Markdown 代码块语法高亮
       markdown({ codeLanguages: languages }),
       EditorView.lineWrapping,
       EditorView.theme({
@@ -104,7 +104,7 @@ export function MarkdownEditor({
           paddingLeft: '12px',
           paddingRight: '8px',
           color: theme === 'light' ? '#94a3b8' : 'rgba(255, 255, 255, 0.35)',
-          display: showLineNumbers ? 'flex' : 'none', // Hide entire gutter if line numbers are off
+          display: showLineNumbers ? 'flex' : 'none', // 如果行号关闭，则隐藏整个装订线
         },
         '.cm-lineNumbers': {
           minWidth: '32px',

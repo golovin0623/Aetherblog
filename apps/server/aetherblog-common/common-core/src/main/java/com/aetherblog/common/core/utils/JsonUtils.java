@@ -10,15 +10,15 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * JSON工具类
  * 
- * Jackson 3.x (tools.jackson) migration:
+ * Jackson 3.x (tools.jackson) 迁移:
  * - JsonProcessingException → JacksonException
  * - ObjectMapper.configure() → JsonMapper.builder().enable/disable()
- * - SerializationFeature.WRITE_DATES_AS_TIMESTAMPS removed (use JavaTimeModule default)
+ * - SerializationFeature.WRITE_DATES_AS_TIMESTAMPS 已移除 (使用 JavaTimeModule 默认值)
  */
 public class JsonUtils {
 
     private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
-            // FIXME: JavaTimeModule dependency (jackson-datatype-jsr310) 3.0.3 is missing locally. 
+            // 修复: 本地缺少 JavaTimeModule 依赖 (jackson-datatype-jsr310) 3.0.3
             // .addModule(new JavaTimeModule())
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
