@@ -56,15 +56,15 @@ function SettingsSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+    <div className="rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] overflow-hidden">
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-gray-400" />
-          <span className="text-sm font-medium text-white">{title}</span>
+          <Icon className="w-4 h-4 text-[var(--text-muted)]" />
+          <span className="text-sm font-medium text-[var(--text-primary)]">{title}</span>
           {badge !== undefined && (
             <span className="px-1.5 py-0.5 text-xs rounded-full bg-primary/20 text-primary">
               {badge}
@@ -72,9 +72,9 @@ function SettingsSection({
           )}
         </div>
         {isOpen ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
         )}
       </button>
       
@@ -86,7 +86,7 @@ function SettingsSection({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="px-4 pb-4 border-t border-white/5">
+            <div className="px-4 pb-4 border-t border-[var(--border-subtle)]">
               {children}
             </div>
           </motion.div>
@@ -167,13 +167,13 @@ export function EditorSettingsPanel({
         <div className="pt-3 space-y-2">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
             <input
               type="text"
               value={categorySearch}
               onChange={e => setCategorySearch(e.target.value)}
               placeholder="搜索分类..."
-              className="w-full pl-9 pr-3 py-2 bg-black/30 border border-white/10 rounded-lg text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
+              className="w-full pl-9 pr-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50"
             />
           </div>
           
@@ -195,7 +195,7 @@ export function EditorSettingsPanel({
                     'w-full px-3 py-2 rounded-lg text-left text-sm transition-colors',
                     selectedCategory?.id === cat.id
                       ? 'bg-primary/20 text-primary border border-primary/30'
-                      : 'text-gray-300 hover:bg-white/5'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   {cat.name}
@@ -208,7 +208,7 @@ export function EditorSettingsPanel({
           <button
             type="button"
             onClick={onCreateCategory}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-white/5 rounded-lg transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             新建分类
@@ -246,16 +246,16 @@ export function EditorSettingsPanel({
           
           {/* Tag input */}
           <div className="relative">
-            <input
-              type="text"
-              value={tagSearch}
-              onChange={e => { setTagSearch(e.target.value); setShowTagDropdown(true); }}
-              onFocus={() => setShowTagDropdown(true)}
-              onKeyDown={handleTagKeyDown}
-              placeholder="搜索或输入新标签，回车添加"
-              className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
-              disabled={creatingTag}
-            />
+              <input
+                type="text"
+                value={tagSearch}
+                onChange={e => { setTagSearch(e.target.value); setShowTagDropdown(true); }}
+                onFocus={() => setShowTagDropdown(true)}
+                onKeyDown={handleTagKeyDown}
+                placeholder="搜索或输入新标签，回车添加"
+                className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50"
+                disabled={creatingTag}
+              />
             {creatingTag && (
               <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />
             )}
@@ -267,11 +267,11 @@ export function EditorSettingsPanel({
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="absolute z-20 w-full mt-1 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl max-h-40 overflow-y-auto"
+                  className="absolute z-20 w-full mt-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg shadow-xl max-h-40 overflow-y-auto"
                 >
                   {loadingTags ? (
                     <div className="py-4 text-center">
-                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-500" />
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--text-muted)]" />
                     </div>
                   ) : (
                     <>
@@ -284,7 +284,7 @@ export function EditorSettingsPanel({
                             setTagSearch('');
                             setShowTagDropdown(false);
                           }}
-                          className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 transition-colors"
+                          className="w-full px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
                         >
                           {tag.name}
                         </button>
@@ -311,10 +311,10 @@ export function EditorSettingsPanel({
       {/* Cover Image Section */}
       <SettingsSection title="封面图片" icon={Image} defaultOpen={false}>
         <div className="pt-3">
-          <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-            <Image className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-            <p className="text-gray-400 text-sm">点击或拖拽上传</p>
-            <p className="text-gray-500 text-xs mt-1">支持 JPG、PNG、WebP (最大 5MB)</p>
+          <div className="border-2 border-dashed border-[var(--border-subtle)] rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
+            <Image className="w-8 h-8 mx-auto mb-2 text-[var(--text-muted)]" />
+            <p className="text-[var(--text-muted)] text-sm">点击或拖拽上传</p>
+            <p className="text-[var(--text-muted)] text-xs mt-1">支持 JPG、PNG、WebP (最大 5MB)</p>
           </div>
         </div>
       </SettingsSection>
@@ -340,7 +340,7 @@ export function EditorSettingsPanel({
             onChange={e => onSummaryChange(e.target.value)}
             maxLength={200}
             placeholder="文章摘要，为空将自动截取前200字..."
-            className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-sm text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-primary/50"
+            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:border-primary/50"
           />
         </div>
       </SettingsSection>

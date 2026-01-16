@@ -1,5 +1,6 @@
 import { Eye, TrendingUp, ArrowUpRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
 
 export interface TopPost {
   id: number;
@@ -36,46 +37,37 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
   }
 
   return (
-    <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          热门文章
-        </h3>
-        <button className="text-sm text-primary hover:text-primary/80 transition-colors flex items-center gap-1">
-          查看全部 <ArrowUpRight className="w-4 h-4" />
+    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">热门文章</h3>
+        <button className="text-[var(--text-muted)] hover:text-primary transition-colors">
+          <ArrowUpRight className="w-5 h-5" />
         </button>
       </div>
       <div className="space-y-2 flex-1 overflow-y-auto">
         {posts.map((post, index) => (
-          <motion.div
-            key={post.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: index * 0.05 }}
-            className="flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 transition-colors group cursor-pointer"
-          >
-            <div className={`
-              w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shadow-sm
-              ${index === 0 ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' :
-                index === 1 ? 'bg-gray-400/10 text-gray-400 border border-gray-400/20' :
-                index === 2 ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
-                'bg-white/5 text-gray-500 border border-white/10'}
-            `}>
-              {index + 1}
+            <div
+              key={post.id}
+              className="flex items-center gap-4 p-3 rounded-lg hover:bg-[var(--bg-card-hover)] transition-colors group cursor-pointer"
+            >
+              <div className={cn(
+                "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm",
+                index < 3
+                  ? "bg-primary/20 text-primary border border-primary/20"
+                  : "bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-subtle)]"
+              )}>
+                {index + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-medium text-[var(--text-primary)] truncate group-hover:text-primary transition-colors">
+                  {post.title}
+                </h4>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors">
+                <Eye className="w-3.5 h-3.5" />
+                <span>{post.viewCount.toLocaleString()}</span>
+              </div>
             </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-200 truncate group-hover:text-white transition-colors">
-                {post.title}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 group-hover:text-primary transition-colors">
-              <Eye className="w-3.5 h-3.5" />
-              <span>{(post.viewCount || 0).toLocaleString()}</span>
-            </div>
-          </motion.div>
         ))}
 
         {posts.length === 0 && (

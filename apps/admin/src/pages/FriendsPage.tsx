@@ -153,8 +153,8 @@ export default function FriendsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">友情链接</h1>
-          <p className="text-gray-400 mt-1">管理和排序您的友情链接</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">友情链接</h1>
+          <p className="text-[var(--text-muted)] mt-1">管理和排序您的友情链接</p>
         </div>
         <motion.button
           whileHover={{ scale: 1.02 }}
@@ -169,15 +169,15 @@ export default function FriendsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* List Area */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 min-h-[500px]">
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[500px]">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <p>加载中...</p>
               </div>
             ) : friends.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-4">
-                <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center h-64 text-[var(--text-muted)] gap-4">
+                <div className="w-16 h-16 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center">
                   <Globe className="w-8 h-8 opacity-50" />
                 </div>
                 <p>暂无友链，点击右上角添加</p>
@@ -222,14 +222,14 @@ export default function FriendsPage() {
               exit={{ opacity: 0, x: 20 }}
               className="lg:col-span-1"
             >
-              <div className="sticky top-6 p-6 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+              <div className="sticky top-6 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] backdrop-blur-md">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                     {editingId ? '编辑友链' : '添加友链'}
                   </h3>
                   <button 
                     onClick={handleCloseForm}
-                    className="p-1 text-gray-400 hover:text-white transition-colors"
+                    className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -238,10 +238,10 @@ export default function FriendsPage() {
                 <form onSubmit={form.handleSubmit((data) => saveMutation.mutate(data))} className="space-y-4">
                   {/* Name */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-400">网站名称 *</label>
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">网站名称 *</label>
                     <input
                       {...form.register('name')}
-                      className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-gray-600 transition-all"
+                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
                       placeholder="例如: AetherBlog"
                     />
                     {form.formState.errors.name && (
@@ -251,10 +251,10 @@ export default function FriendsPage() {
 
                   {/* URL */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-400">网站地址 *</label>
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">网站地址 *</label>
                     <input
                       {...form.register('url')}
-                      className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-gray-600 transition-all"
+                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
                       placeholder="https://..."
                     />
                     {form.formState.errors.url && (
@@ -264,16 +264,16 @@ export default function FriendsPage() {
 
                   {/* Logo */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-400">Logo 链接</label>
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">Logo 链接</label>
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <input
                           {...form.register('logo')}
-                          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-gray-600 transition-all"
+                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
                           placeholder="https://..."
                         />
                       </div>
-                      <div className="w-9 h-9 rounded bg-black/20 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
+                      <div className="w-9 h-9 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-center overflow-hidden shrink-0">
                         {form.watch('logo') ? (
                           <img src={form.watch('logo')} alt="preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
                         ) : (
@@ -285,21 +285,21 @@ export default function FriendsPage() {
 
                   {/* Description */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-400">描述</label>
+                    <label className="text-xs font-medium text-[var(--text-secondary)]">描述</label>
                     <textarea
                       {...form.register('description')}
                       rows={3}
-                      className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-gray-600 transition-all resize-none"
+                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none"
                       placeholder="简短介绍..."
                     />
                   </div>
 
                   {/* Advanced - Email/RSS/Color */}
-                  <div className="pt-2 border-t border-white/5 space-y-4">
+                  <div className="pt-2 border-t border-[var(--border-subtle)] space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       {/* Theme Color */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-400">主题色</label>
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">主题色</label>
                         <div className="flex items-center gap-2">
                           <input
                             type="color"
@@ -308,17 +308,17 @@ export default function FriendsPage() {
                           />
                           <input
                             {...form.register('themeColor')}
-                            className="flex-1 px-2 py-1.5 bg-black/20 border border-white/10 rounded-lg text-white text-xs font-mono"
+                            className="flex-1 px-2 py-1.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-xs font-mono"
                           />
                         </div>
                       </div>
                       
                       {/* Email */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-gray-400">联系邮箱</label>
+                        <label className="text-xs font-medium text-[var(--text-secondary)]">联系邮箱</label>
                         <input
                           {...form.register('email')}
-                          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none placeholder:text-gray-600"
+                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none placeholder:text-[var(--text-muted)]"
                           placeholder="admin@..."
                         />
                       </div>
@@ -326,10 +326,10 @@ export default function FriendsPage() {
 
                     {/* RSS */}
                     <div className="space-y-1.5">
-                       <label className="text-xs font-medium text-gray-400">RSS 地址</label>
+                       <label className="text-xs font-medium text-[var(--text-secondary)]">RSS 地址</label>
                        <input
                           {...form.register('rssUrl')}
-                          className="w-full px-3 py-2 bg-black/20 border border-white/10 rounded-lg text-white text-sm focus:border-primary/50 focus:outline-none placeholder:text-gray-600"
+                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none placeholder:text-[var(--text-muted)]"
                           placeholder="https://.../feed"
                         />
                     </div>
@@ -339,7 +339,7 @@ export default function FriendsPage() {
                     <button
                       type="button"
                       onClick={handleCloseForm}
-                      className="flex-1 px-4 py-2 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 transition-colors text-sm"
+                      className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
                     >
                       取消
                     </button>

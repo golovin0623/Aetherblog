@@ -43,21 +43,21 @@ export function DataTable<T extends { id: number | string }>({
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden">
+    <div className="bg-[var(--bg-card)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-white/10">
+            <tr className="border-b border-[var(--border-subtle)]">
               {columns.map((column) => (
                 <th
                   key={String(column.key)}
-                  className="px-6 py-4 text-left text-sm font-medium text-gray-400"
+                  className="px-6 py-4 text-left text-sm font-medium text-[var(--text-muted)]"
                   style={{ width: column.width }}
                 >
                   {column.sortable ? (
                     <button
                       onClick={() => handleSort(String(column.key))}
-                      className="flex items-center gap-1 hover:text-white transition-colors"
+                      className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors"
                     >
                       {column.title}
                       {sortKey === column.key ? (
@@ -78,21 +78,21 @@ export function DataTable<T extends { id: number | string }>({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-8 text-center text-gray-400">
+                <td colSpan={columns.length} className="px-6 py-8 text-center text-[var(--text-muted)]">
                   加载中...
                 </td>
               </tr>
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-8 text-center text-gray-400">
+                <td colSpan={columns.length} className="px-6 py-8 text-center text-[var(--text-muted)]">
                   暂无数据
                 </td>
               </tr>
             ) : (
               data.map((item) => (
-                <tr key={item.id} className="border-b border-white/5 hover:bg-white/5">
+                <tr key={item.id} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]">
                   {columns.map((column) => (
-                    <td key={String(column.key)} className="px-6 py-4 text-white">
+                    <td key={String(column.key)} className="px-6 py-4 text-[var(--text-primary)]">
                       {column.render
                         ? column.render(item)
                         : String(item[column.key as keyof T] ?? '')}
@@ -107,24 +107,24 @@ export function DataTable<T extends { id: number | string }>({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/10">
-          <span className="text-sm text-gray-400">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)]">
+          <span className="text-sm text-[var(--text-muted)]">
             共 {total} 条，第 {page}/{totalPages} 页
           </span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => onPageChange?.(page - 1)}
               disabled={page <= 1}
-              className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              <ChevronLeft className="w-4 h-4 text-gray-400" />
+              <ChevronLeft className="w-4 h-4 text-[var(--text-muted)]" />
             </button>
             <button
               onClick={() => onPageChange?.(page + 1)}
               disabled={page >= totalPages}
-              className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              <ChevronRight className="w-4 h-4 text-gray-400" />
+              <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
             </button>
           </div>
         </div>
