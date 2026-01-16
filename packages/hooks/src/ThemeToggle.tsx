@@ -54,13 +54,15 @@ export function ThemeToggle({
   // 简单模式：点击切换
   if (!showSystem) {
     return (
-      <button
+      <motion.button
         onClick={toggleTheme}
+        whileHover={{ scale: 1.1, rotate: 15 }}
+        whileTap={{ scale: 0.9 }}
         className={`
           relative flex items-center justify-center rounded-full
-          bg-transparent hover:bg-[var(--bg-card)] 
+          bg-transparent hover:bg-[var(--bg-card)]
           border border-transparent hover:border-[var(--border-default)]
-          transition-all duration-300 ease-out
+          transition-colors duration-300 ease-out
           ${buttonSize} ${className}
         `}
         title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
@@ -70,26 +72,40 @@ export function ThemeToggle({
           {isDark ? (
             <motion.div
               key="moon"
-              initial={{ rotate: -90, opacity: 0, scale: 0.5 }}
-              animate={{ rotate: 0, opacity: 1, scale: 1 }}
-              exit={{ rotate: 90, opacity: 0, scale: 0.5 }}
-              transition={{ duration: 0.2 }}
+              initial={{ rotate: -180, opacity: 0, scale: 0.3 }}
+              animate={{
+                rotate: 0,
+                opacity: 1,
+                scale: 1,
+              }}
+              exit={{ rotate: 180, opacity: 0, scale: 0.3 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.34, 1.56, 0.64, 1]
+              }}
             >
-              <Moon className={`${iconSize} text-[var(--text-secondary)] hover:text-[var(--color-primary)]`} />
+              <Moon className={`${iconSize} text-[var(--text-secondary)]`} />
             </motion.div>
           ) : (
             <motion.div
               key="sun"
-              initial={{ rotate: 90, opacity: 0, scale: 0.5 }}
-              animate={{ rotate: 0, opacity: 1, scale: 1 }}
-              exit={{ rotate: -90, opacity: 0, scale: 0.5 }}
-              transition={{ duration: 0.2 }}
+              initial={{ rotate: 180, opacity: 0, scale: 0.3 }}
+              animate={{
+                rotate: 0,
+                opacity: 1,
+                scale: 1,
+              }}
+              exit={{ rotate: -180, opacity: 0, scale: 0.3 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.34, 1.56, 0.64, 1]
+              }}
             >
-              <Sun className={`${iconSize} text-[var(--text-secondary)] hover:text-[var(--color-primary)]`} />
+              <Sun className={`${iconSize} text-[var(--text-secondary)]`} />
             </motion.div>
           )}
         </AnimatePresence>
-      </button>
+      </motion.button>
     );
   }
   
