@@ -16,9 +16,9 @@ export interface MarkdownEditorProps {
   style?: React.CSSProperties;
   showLineNumbers?: boolean;
   contentCentered?: boolean;
-  /** Font size in pixels for the editor content */
+  /** 编辑器内容的字体大小（像素） */
   fontSize?: number;
-  /** Ref to expose the CodeMirror EditorView for external control */
+  /** 用于暴露 CodeMirror EditorView 以供外部控制的 Ref */
   editorViewRef?: React.MutableRefObject<EditorView | null>;
   /** 拖放事件处理 */
   onDrop?: (e: React.DragEvent) => void;
@@ -30,7 +30,7 @@ export interface MarkdownEditorProps {
   onPaste?: (e: React.ClipboardEvent) => void;
   /** 是否正在拖拽文件 */
   isDragging?: boolean;
-  /** Editor theme */
+  /** 编辑器主题 */
   theme?: 'light' | 'dark';
 }
 
@@ -92,7 +92,7 @@ export function MarkdownEditor({
           maxWidth: contentCentered ? '800px' : 'none',
           margin: contentCentered ? '0 auto' : '0',
         },
-        // Baseline at text start position (left edge of first character)
+        // 基线位于文本起始位置（第一个字符的左边缘）
         '.cm-line': {
           padding: '0 4px',
           borderLeft: '1px solid rgba(139, 92, 246, 0.3)',
@@ -124,25 +124,25 @@ export function MarkdownEditor({
         '&.cm-focused .cm-cursor': {
           borderLeftColor: '#8b5cf6',
         },
-        // Style for fenced code blocks
-        '.ͼb': { // Markdown code marker color
+        // 代码块样式
+        '.ͼb': { // Markdown 代码标记颜色
           color: theme === 'light' ? '#94a3b8' : '#94a3b8',
         },
-        '.ͼc': { // Code block content
+        '.ͼc': { // 代码块内容
           color: theme === 'light' ? '#475569' : '#e2e8f0',
         },
-        // Syntax highlighting colors for code blocks (using different colors for light mode)
-        '.tok-keyword': { color: theme === 'light' ? '#7c3aed' : '#c792ea' }, // violet-600 vs purple
-        '.tok-string': { color: theme === 'light' ? '#16a34a' : '#c3e88d' }, // green-600 vs light green
-        '.tok-number': { color: theme === 'light' ? '#ea580c' : '#f78c6c' }, // orange-600 vs orange
-        '.tok-comment': { color: theme === 'light' ? '#64748b' : '#546e7a', fontStyle: 'italic' }, // slate-500 vs blue-grey
-        '.tok-variableName': { color: theme === 'light' ? '#0284c7' : '#82aaff' }, // sky-600 vs blue
+        // 代码块的语法高亮颜色（明亮模式使用不同颜色）
+        '.tok-keyword': { color: theme === 'light' ? '#7c3aed' : '#c792ea' }, // violet-600 对比 purple
+        '.tok-string': { color: theme === 'light' ? '#16a34a' : '#c3e88d' }, // green-600 对比 light green
+        '.tok-number': { color: theme === 'light' ? '#ea580c' : '#f78c6c' }, // orange-600 对比 orange
+        '.tok-comment': { color: theme === 'light' ? '#64748b' : '#546e7a', fontStyle: 'italic' }, // slate-500 对比 blue-grey
+        '.tok-variableName': { color: theme === 'light' ? '#0284c7' : '#82aaff' }, // sky-600 对比 blue
         '.tok-definition': { color: theme === 'light' ? '#0284c7' : '#82aaff' },
-        '.tok-propertyName': { color: theme === 'light' ? '#db2777' : '#f07178' }, // pink-600 vs red
-        '.tok-typeName': { color: theme === 'light' ? '#d97706' : '#ffcb6b' }, // amber-600 vs yellow
-        '.tok-operator': { color: theme === 'light' ? '#0ea5e9' : '#89ddff' }, // sky-500 vs cyan
+        '.tok-propertyName': { color: theme === 'light' ? '#db2777' : '#f07178' }, // pink-600 对比 red
+        '.tok-typeName': { color: theme === 'light' ? '#d97706' : '#ffcb6b' }, // amber-600 对比 yellow
+        '.tok-operator': { color: theme === 'light' ? '#0ea5e9' : '#89ddff' }, // sky-500 对比 cyan
         '.tok-punctuation': { color: theme === 'light' ? '#64748b' : '#89ddff' },
-        '.tok-function': { color: theme === 'light' ? '#2563eb' : '#82aaff' }, // blue-600 vs blue
+        '.tok-function': { color: theme === 'light' ? '#2563eb' : '#82aaff' }, // blue-600 对比 blue
         '.tok-bool': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
         '.tok-null': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
         '.tok-className': { color: theme === 'light' ? '#d97706' : '#ffcb6b' },

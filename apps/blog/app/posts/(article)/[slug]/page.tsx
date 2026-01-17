@@ -8,7 +8,7 @@ import { SERVER_API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { getSiteSettings } from '../../../lib/services';
 
-// Server-side API URL - use internal Docker network URL
+// 服务端 API URL - 使用内部 Docker 网络 URL
 const API_BASE_URL = SERVER_API_URL;
 
 interface Post {
@@ -82,7 +82,7 @@ export default async function PostDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Article with fade-in animation */}
+      {/* 带有淡入动画的文章 */}
       <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
         <FadeIn>
           <BackButton fallbackHref="/posts" className="mb-8" />
