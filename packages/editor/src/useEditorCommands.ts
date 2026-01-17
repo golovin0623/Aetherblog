@@ -1,7 +1,7 @@
 /**
  * @file useEditorCommands.ts
- * @description Hook for programmatic text manipulation in CodeMirror editor
- * @ref §3.2.3 - Editor Package Development
+ * @description 用于在 CodeMirror 编辑器中以编程方式操作文本的 Hook
+ * @ref §3.2.3 - 编辑器包开发
  */
 
 import { useCallback } from 'react';
@@ -32,31 +32,31 @@ export interface ImageInfo {
 }
 
 export interface EditorCommands {
-  /** Insert text at current cursor position */
+  /** 在当前光标位置插入文本 */
   insertText: (text: string) => void;
-  /** Wrap selected text with prefix and suffix, or insert both at cursor if no selection */
+  /** 用前缀和后缀包裹选中的文本，如果没有选中则在光标处同时插入两者 */
   wrapSelection: (prefix: string, suffix: string) => void;
-  /** Toggle wrap: if selection already has prefix/suffix, remove them; otherwise add them */
+  /** 切换包裹：如果选中项已有前缀/后缀则移除，否则添加 */
   toggleWrap: (prefix: string, suffix: string) => void;
-  /** Insert prefix at the beginning of the current line */
+  /** 在当前行开头插入前缀 */
   insertAtLineStart: (prefix: string) => void;
-  /** Toggle line start prefix: if line starts with prefix, remove it; otherwise add it */
+  /** 切换行首前缀：如果行以前缀开头则移除，否则添加 */
   toggleLineStart: (prefix: string) => void;
-  /** Get the currently selected text */
+  /** 获取当前选中的文本 */
   getSelection: () => string;
-  /** Focus the editor */
+  /** 聚焦编辑器 */
   focus: () => void;
-  /** Undo the last change */
+  /** 撤销最后的更改 */
   undo: () => void;
-  /** Redo the last undone change */
+  /** 重做最后撤销的更改 */
   redo: () => void;
-  /** Insert image markdown at cursor position */
+  /** 在光标位置插入图片 markdown */
   insertImage: (url: string, alt?: string, size?: string) => void;
-  /** Update image size at given position */
+  /** 更新指定位置的图片大小 */
   updateImageSize: (imageInfo: ImageInfo, newSize: string | null) => void;
-  /** Find image at current cursor position */
+  /** 查找当前光标位置的图片 */
   getImageAtCursor: () => ImageInfo | null;
-  /** Get current cursor position */
+  /** 获取当前光标位置 */
   getCursorPosition: () => number;
 }
 
@@ -70,10 +70,10 @@ export interface EditorCommands {
  * const editorViewRef = useRef<EditorView | null>(null);
  * const commands = useEditorCommands(editorViewRef);
  * 
- * // Toggle bold on selection
+ * // 切换选中项的粗体
  * commands.toggleWrap('**', '**');
  * 
- * // Insert heading at line start
+ * // 在行首插入标题
  * commands.insertAtLineStart('# ');
  */
 export function useEditorCommands(
@@ -102,7 +102,7 @@ export function useEditorCommands(
     
     view.dispatch({
       changes: { from, to, insert: newText },
-      // Place cursor after prefix if no selection, or select the wrapped text
+      // 如果没有选中，将光标放在前缀之后，或者选中包裹的文本
       selection: selectedText
         ? { anchor: from + prefix.length, head: from + prefix.length + selectedText.length }
         : { anchor: from + prefix.length },
@@ -116,14 +116,14 @@ export function useEditorCommands(
     const { from, to } = view.state.selection.main;
     const selectedText = view.state.sliceDoc(from, to);
     
-    // Check if selection is already wrapped (look at surrounding text)
+    // 检查选中项是否已被包裹（查看周围的文本）
     const beforeStart = Math.max(0, from - prefix.length);
     const afterEnd = Math.min(view.state.doc.length, to + suffix.length);
     
     const textBefore = view.state.sliceDoc(beforeStart, from);
     const textAfter = view.state.sliceDoc(to, afterEnd);
     
-    // If already wrapped, remove the wrapping
+    // 如果已被包裹，移除包裹
     if (textBefore === prefix && textAfter === suffix) {
       view.dispatch({
         changes: [
@@ -133,14 +133,14 @@ export function useEditorCommands(
         selection: { anchor: beforeStart, head: beforeStart + selectedText.length },
       });
     } else if (selectedText.startsWith(prefix) && selectedText.endsWith(suffix) && selectedText.length >= prefix.length + suffix.length) {
-      // If the selection itself contains the markers, unwrap
+      // 如果选中项本身包含标记，则解包
       const unwrapped = selectedText.slice(prefix.length, selectedText.length - suffix.length);
       view.dispatch({
         changes: { from, to, insert: unwrapped },
         selection: { anchor: from, head: from + unwrapped.length },
       });
     } else {
-      // Not wrapped, add wrapping
+      // 未包裹，添加包裹
       const newText = prefix + selectedText + suffix;
       view.dispatch({
         changes: { from, to, insert: newText },
@@ -174,15 +174,15 @@ export function useEditorCommands(
     const lineStart = line.from;
     const lineText = line.text;
     
-    // Check if line already starts with prefix
+    // 检查行是否已以前缀开头
     if (lineText.startsWith(prefix)) {
-      // Remove prefix
+      // 移除前缀
       view.dispatch({
         changes: { from: lineStart, to: lineStart + prefix.length, insert: '' },
         selection: { anchor: Math.max(lineStart, from - prefix.length) },
       });
     } else {
-      // Add prefix
+      // 添加前缀
       view.dispatch({
         changes: { from: lineStart, to: lineStart, insert: prefix },
         selection: { anchor: from + prefix.length },
