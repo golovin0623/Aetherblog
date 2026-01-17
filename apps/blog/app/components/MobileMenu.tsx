@@ -5,9 +5,10 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info } from 'lucide-react';
+import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Sun, Moon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings } from '../lib/services';
+import { useTheme } from '@aetherblog/hooks';
 
 /**
  * 移动端导航菜单组件
@@ -18,6 +19,7 @@ export default function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
@@ -156,8 +158,18 @@ export default function MobileMenu() {
               })}
             </nav>
 
-            {/* 5. 底部固定区域：管理后台 */}
-            <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
+            {/* 5. 底部固定区域：主题切换 + 管理后台 */}
+            <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] space-y-2">
+              {/* 主题切换按钮 */}
+              <button
+                onClick={toggleTheme}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+              >
+                {isDark ? <Moon size={16} /> : <Sun size={16} />}
+                主题切换
+              </button>
+
+              {/* 管理后台 */}
               <a
                 href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"}
                 target="_blank"
