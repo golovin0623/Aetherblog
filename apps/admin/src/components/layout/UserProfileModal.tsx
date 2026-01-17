@@ -187,66 +187,72 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
   // Remove early return to allow AnimatePresence to handle exit
   // if (!isOpen) return null;
 
-  // Dynamic positioning
-  const leftPosition = sidebarCollapsed ? '70px' : '265px';
+  // Dynamic positioning - desktop only
+  const leftPosition = sidebarCollapsed ? '70px' : '209px';
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           {/* Invisible click-away layer */}
-          <motion.div 
+          <motion.div
             key="overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100]" 
-            onClick={onClose} 
+            className="fixed inset-0 z-[100]"
+            onClick={onClose}
           />
-          
+
           {/* Premium Popover - Mac OS Dock Style Animation */}
           <motion.div
             key="modal"
             initial={{ opacity: 0, scale: 0.5, y: 100, x: -50 }}
             animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
             exit={{ opacity: 0, scale: 0.5, y: 100, x: -50 }}
-            transition={{ 
-              type: "spring", 
-              damping: 25, 
+            transition={{
+              type: "spring",
+              damping: 25,
               stiffness: 300,
               mass: 0.8
             }}
-            className="fixed bottom-4 z-[101] w-[380px] h-[650px] max-h-[calc(100vh-80px)] overflow-hidden rounded-2xl flex flex-col"
-            style={{ 
-              left: leftPosition,
+            className={cn(
+              "fixed z-[101] overflow-hidden rounded-2xl flex flex-col",
+              // 移动端：全屏居中，留边距
+              "inset-4 max-w-[calc(100vw-32px)] max-h-[calc(100vh-32px)]",
+              // 桌面端：固定尺寸，左下角定位
+              "md:bottom-4 md:inset-auto md:w-[380px] md:h-[650px] md:max-h-[calc(100vh-80px)]"
+            )}
+            style={{
+              left: window.innerWidth >= 768 ? leftPosition : undefined,
               background: 'var(--bg-primary)',
               boxShadow: '0 32px 64px -12px rgba(0, 0, 0, 0.14), 0 16px 32px -8px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--border-subtle)',
               backdropFilter: 'blur(20px)',
-              transformOrigin: 'bottom left'
+              transformOrigin: window.innerWidth >= 768 ? 'bottom left' : 'center'
             }}
           >
             {/* Gradient Top Border Accent */}
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary via-secondary to-primary/50" />
             
             {/* Header */}
-            <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
-                  <UserCircle className="w-4 h-4 text-primary" />
+            <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                  <UserCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary" />
                 </div>
-                <h2 className="text-base font-semibold text-[var(--text-primary)]">个人面板</h2>
+                <h2 className="text-sm md:text-base font-semibold text-[var(--text-primary)]">个人面板</h2>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200"
+                className="p-1.5 md:p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 p-6 overflow-y-auto min-h-0 custom-scrollbar">
-              <div className="flex flex-col gap-6">
+            <div className="flex-1 p-4 md:p-6 overflow-y-auto min-h-0 custom-scrollbar">
+              <div className="flex flex-col gap-4 md:gap-6">
                 {/* Premium Tabs - Segmented Control */}
                 <div className="flex p-1 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-subtle)] relative isolate">
                   {/* Sliding indicator - absolute positioned */}
@@ -257,30 +263,30 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                     }}
                     transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
                   />
-                  
+
                   <button
                     onClick={() => setActiveTab('profile')}
                     className={cn(
-                      "flex-1 relative z-10 flex items-center justify-center gap-2.5 py-2.5 text-sm font-medium rounded-xl transition-colors duration-200",
+                      "flex-1 relative z-10 flex items-center justify-center gap-1.5 md:gap-2.5 py-2 md:py-2.5 text-xs md:text-sm font-medium rounded-xl transition-colors duration-200",
                       activeTab === 'profile'
                         ? "text-primary"
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     )}
                   >
-                    <UserCircle className="w-4 h-4" />
+                    <UserCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />
                     <span>基本信息</span>
                   </button>
-                  
+
                   <button
                     onClick={() => setActiveTab('security')}
                     className={cn(
-                      "flex-1 relative z-10 flex items-center justify-center gap-2.5 py-2.5 text-sm font-medium rounded-xl transition-colors duration-200",
+                      "flex-1 relative z-10 flex items-center justify-center gap-1.5 md:gap-2.5 py-2 md:py-2.5 text-xs md:text-sm font-medium rounded-xl transition-colors duration-200",
                       activeTab === 'security'
                         ? "text-primary"
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     )}
                   >
-                    <Lock className="w-4 h-4" />
+                    <Lock className="w-3.5 h-3.5 md:w-4 md:h-4" />
                     <span>安全设置</span>
                   </button>
                 </div>
@@ -293,20 +299,20 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.2 }}
-                      className="space-y-6"
+                      className="space-y-4 md:space-y-6"
                     >
                       {/* Avatar Section - Premium Design */}
-                      <div className="flex flex-col items-center gap-4 py-2">
+                      <div className="flex flex-col items-center gap-3 md:gap-4 py-2">
                         <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-                          <div className="w-24 h-24 rounded-2xl border-2 border-[var(--border-subtle)] overflow-hidden bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] flex items-center justify-center group-hover:border-primary/50 transition-all duration-300 shadow-lg">
+                          <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-2 border-[var(--border-subtle)] overflow-hidden bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] flex items-center justify-center group-hover:border-primary/50 transition-all duration-300 shadow-lg">
                             {avatar ? (
                               <img src={getMediaUrl(avatar)} alt="Avatar" className="w-full h-full object-cover" />
                             ) : (
-                              <User className="w-10 h-10 text-[var(--text-muted)]" />
+                              <User className="w-8 h-8 md:w-10 md:h-10 text-[var(--text-muted)]" />
                             )}
                           </div>
                           <div className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300">
-                            <Camera className="w-6 h-6 text-white" />
+                            <Camera className="w-5 h-5 md:w-6 md:h-6 text-white" />
                           </div>
                           {isUploadingAvatar && (
                             <div className="absolute inset-0 rounded-2xl bg-black/60 flex items-center justify-center">
@@ -383,7 +389,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="space-y-5"
+                      className="space-y-4 md:space-y-5"
                     >
                       <form onSubmit={handleChangePassword} className="space-y-4">
                         <div className="space-y-1.5">
