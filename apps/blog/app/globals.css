@@ -633,6 +633,8 @@ body {
 @media (max-width: 768px) {
   .markdown-body {
     font-size: 15px;  /* 从 16px 减小 */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   .markdown-body h1 {
@@ -653,6 +655,20 @@ body {
 
   .markdown-body table {
     display: block;
+    overflow-x: auto;
+  }
+
+  /* 图片等比例缩放 */
+  .markdown-body img {
+    max-width: 100%;
+    height: auto !important;
+    width: auto !important;
+  }
+
+  /* 代码块横向滚动 */
+  .markdown-body pre,
+  .markdown-body .code-block-content {
+    max-width: 100%;
     overflow-x: auto;
   }
 }
@@ -715,8 +731,86 @@ body {
 }
 .mini-preview img {
   max-width: 100%;
+  width: auto;
+  height: auto;
+  display: block;
   border-radius: 4px;
   margin: 0.4em 0;
+}
+/* 强制mini-preview容器宽度约束 */
+.mini-preview {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.mini-preview video {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.4em 0;
+}
+/* 列表样式 - 修复小圆点和内容同行显示 */
+.mini-preview ul {
+  list-style-type: disc;
+  list-style-position: outside;
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.mini-preview ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.mini-preview li {
+  display: list-item;
+  margin: 0.15em 0;
+  padding-left: 0.2em;
+}
+/* 文字换行 */
+.mini-preview p,
+.mini-preview li {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+/* 暗色模式代码块文字颜色修复 */
+.mini-preview pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.mini-preview pre code {
+  color: var(--text-secondary);
+}
+/* 亮色模式代码块适配 */
+:root.light .mini-preview pre {
+  background: var(--bg-secondary);
+}
+:root.light .mini-preview pre code {
+  color: var(--text-secondary);
+}
+/* 暗色模式代码块适配 */
+:root.dark .mini-preview pre code {
+  color: #e2e8f0;
+}
+/* 新增列表类名样式 */
+.mini-preview-list-ul {
+  list-style-type: disc;
+  list-style-position: outside;
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.mini-preview-list-ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.mini-preview-list-li {
+  display: list-item;
+  margin: 0.15em 0;
+  padding-left: 0.2em;
+  color: var(--text-muted);
+  font-size: 0.75rem;
 }
 .mini-preview video {
   max-width: 100%;

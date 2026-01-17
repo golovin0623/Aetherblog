@@ -93,7 +93,7 @@ const components: Components = {
     );
   },
   
-  // 图片 - 实际渲染图片
+  // 图片 - 实际渲染图片 (修复移动端等比例缩放)
   img: ({ src, alt }) => {
     if (!src) {
       return (
@@ -103,16 +103,16 @@ const components: Components = {
       );
     }
     return (
-      <span className="block my-2">
+      <span className="block my-2 w-full">
         <img 
           src={src} 
           alt={alt || ''} 
-          className="max-w-full h-auto rounded-lg border border-white/10"
+          className="rounded-lg border border-white/10 block"
           loading="lazy"
-          style={{ maxHeight: '300px', objectFit: 'contain' }}
+          style={{ maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: '300px', objectFit: 'contain' }}
         />
         {alt && (
-          <span className="block text-center text-xs text-gray-500 mt-1">{alt}</span>
+          <span className="block text-center text-xs text-gray-500 mt-1" style={{ wordBreak: 'break-word' }}>{alt}</span>
         )}
       </span>
     );
@@ -151,9 +151,9 @@ const components: Components = {
     </blockquote>
   ),
   
-  // 段落
+  // 段落 - 添加换行支持
   p: ({ children }) => (
-    <p className="my-1">{children}</p>
+    <p className="my-1" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{children}</p>
   ),
   
   // 标题 - 统一样式
@@ -162,10 +162,10 @@ const components: Components = {
   h3: ({ children }) => <h5 className="text-xs font-semibold text-[var(--text-secondary)] my-1">{children}</h5>,
   h4: ({ children }) => <h6 className="text-xs font-medium text-[var(--text-secondary)] my-1">{children}</h6>,
   
-  // 列表
-  ul: ({ children }) => <ul className="list-disc list-inside my-1 pl-2">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside my-1 pl-2">{children}</ol>,
-  li: ({ children }) => <li className="text-gray-400 text-xs">{children}</li>,
+  // 列表 - 修复小圆点和内容同行显示
+  ul: ({ children }) => <ul className="mini-preview-list-ul">{children}</ul>,
+  ol: ({ children }) => <ol className="mini-preview-list-ol">{children}</ol>,
+  li: ({ children }) => <li className="mini-preview-list-li">{children}</li>,
   
   // 水平线
   hr: () => <hr className="my-2 border-t border-white/10" />,
@@ -178,7 +178,7 @@ export function MiniMarkdownPreview({ content, maxLength = 2000 }: MiniPreviewPr
   const truncatedContent = content.slice(0, maxLength);
 
   return (
-    <div className="mini-preview text-sm leading-relaxed text-[var(--text-secondary)]">
+    <div className="mini-preview text-sm leading-relaxed text-[var(--text-secondary)] w-full" style={{ maxWidth: '100%', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
