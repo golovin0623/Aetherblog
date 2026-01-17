@@ -16,9 +16,12 @@ import {
   User,
   ChevronsLeft,
   ChevronsRight,
-  X,
+  Sun,
+  Moon,
+  PanelLeftClose,
 } from 'lucide-react';
 import { useSidebarStore, useAuthStore } from '@/stores';
+import { useTheme } from '@/hooks';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
@@ -83,9 +86,9 @@ export function Sidebar() {
         />
       )}
 
-      {/* Mobile Drawer - 缩小宽度以适配移动端 */}
+      {/* Mobile Drawer - 优化宽度 (reducted by ~1/3, target ~65vw or ~220px) */}
       <div className={cn(
-        "fixed top-0 left-0 h-[100dvh] z-50 w-[75vw] max-w-[280px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
+        "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
@@ -157,6 +160,8 @@ function SidebarContent({
   closeMobile,
   isProfileOpen,
 }: SidebarContentProps) {
+  const { isDark, toggleTheme } = useTheme();
+
   return (
     <>
       {/* Logo + Mobile Close Button */}
@@ -188,14 +193,14 @@ function SidebarContent({
           </div>
         </div>
         
-        {/* Mobile: Close button in header */}
+        {/* Mobile: Elegant Close button */}
         {isMobile && (
           <button
             onClick={closeMobile}
-            className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
             aria-label="关闭菜单"
           >
-            <X className="w-5 h-5" />
+            <PanelLeftClose className="w-5 h-5" />
           </button>
         )}
       </div>
@@ -260,7 +265,6 @@ function SidebarContent({
                   )
                 }
               >
-              
                 <item.icon className="w-5 h-5 flex-shrink-0" />
                 <span className={cn(
                   'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
@@ -319,7 +323,7 @@ function SidebarContent({
             )}
           </div>
           <span className={cn(
-            'text-xs font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
+            'text-sm font-normal tracking-wide overflow-hidden whitespace-nowrap transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
             收起导航
@@ -328,12 +332,15 @@ function SidebarContent({
       </div>
 
       {/* User Info */}
-      <div className="border-t border-border p-3">
+      <div className={cn(
+        "border-t border-border",
+        isMobile ? "p-3" : "p-1"
+      )}>
         <div
           onClick={openProfile}
           className={cn(
-            "flex items-center transition-all duration-300 cursor-pointer group rounded-xl hover:bg-[var(--bg-card-hover)] relative z-10",
-            effectiveCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "gap-3 px-2 py-2"
+            "flex items-center transition-all duration-300 cursor-pointer group rounded-lg hover:bg-[var(--bg-card-hover)] relative z-10",
+            effectiveCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : isMobile ? "gap-2 px-2 py-2" : "gap-1.5 px-1 py-1"
           )}
         >
           <div className="relative flex-shrink-0">
@@ -348,7 +355,7 @@ function SidebarContent({
                 <User className="w-4 h-4 text-primary" />
               )}
             </div>
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[var(--bg-primary)]" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[var(--bg-primary)]" />
           </div>
 
           {!effectiveCollapsed && (
@@ -357,26 +364,43 @@ function SidebarContent({
                 {user?.nickname || '管理员'}
               </p>
               <p className="text-xs text-[var(--text-muted)] whitespace-nowrap">
-                {user?.role || 'ADMIN'}
+                {user?.role || 'USER'}
               </p>
             </div>
           )}
 
           {!effectiveCollapsed && (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 flex items-center gap-0.5">
+              {/* 主题切换按钮 - 30% larger */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTheme();
+                }}
+                className={cn(
+                  'p-1.5 rounded-md',
+                  'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+                  'transition-all duration-200'
+                )}
+                title={isDark ? '切换亮色模式' : '切换暗色模式'}
+              >
+                {isDark ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
+              </button>
+
+              {/* 退出登录按钮 - 30% larger */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   logout();
                 }}
                 className={cn(
-                  'p-2 rounded-lg',
+                  'p-1.5 rounded-md',
                   'text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--bg-card-hover)]',
                   'transition-all duration-200'
                 )}
                 title="退出登录"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-4.5 h-4.5" />
               </button>
             </div>
           )}
