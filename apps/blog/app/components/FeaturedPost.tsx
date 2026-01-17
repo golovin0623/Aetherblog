@@ -79,8 +79,8 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
         <div className="grid lg:grid-cols-3 h-full max-h-full overflow-hidden relative z-20">
             {/* Left Content Section (1/3 width on desktop, 100% on mobile) */}
-            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] overflow-hidden">
-                <div className="flex flex-col items-start min-h-0 flex-1 overflow-hidden">
+            <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] overflow-hidden min-w-0">
+                <div className="flex flex-col items-start min-h-0 flex-1 overflow-hidden min-w-0 w-full">
                      {/* Meta Info: Category, Date */}
                     <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-3">
                         {post.category && (
@@ -120,7 +120,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
                     {/* Summary - Adaptive height with fade mask */}
                     <div 
-                      className="text-[var(--text-secondary)] text-sm leading-relaxed mb-4 flex-1 min-h-0 overflow-y-auto"
+                      className="text-[var(--text-secondary)] text-sm leading-relaxed mb-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full min-w-0"
                       style={{
                         scrollbarWidth: 'none',
                         msOverflowStyle: 'none',
