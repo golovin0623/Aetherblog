@@ -42,8 +42,8 @@ public class SystemMonitorService {
     private static volatile long lastNetworkIn = 0;
     private static volatile long lastNetworkOut = 0;
     private static volatile long lastNetworkTime = 0;
-    private static volatile long cachedSpeedIn = 0;  // bytes/s
-    private static volatile long cachedSpeedOut = 0; // bytes/s
+    private static volatile long cachedSpeedIn = 0;  // 字节/秒
+    private static volatile long cachedSpeedOut = 0; // 字节/秒
 
     @Value("${app.upload.path:./uploads}")
     private String uploadPath;
@@ -139,21 +139,21 @@ public class SystemMonitorService {
         private int cpuCores;          // CPU 核心数
         private String cpuModel;       // CPU 型号
         private long cpuFrequency;     // CPU 频率 (Hz)
-        private long memoryUsed;       // bytes
-        private long memoryTotal;      // bytes
+        private long memoryUsed;       // 字节
+        private long memoryTotal;      // 字节
         private double memoryPercent;  // 0-100
-        private long diskUsed;         // bytes
-        private long diskTotal;        // bytes
+        private long diskUsed;         // 字节
+        private long diskTotal;        // 字节
         private double diskPercent;    // 0-100
-        private long networkIn;        // bytes 累计接收
-        private long networkOut;       // bytes 累计发送
-        private long networkInSpeed;   // bytes/s 实时接收速率
-        private long networkOutSpeed;  // bytes/s 实时发送速率
+        private long networkIn;        // 字节 累计接收
+        private long networkOut;       // 字节 累计发送
+        private long networkInSpeed;   // 字节/秒 实时接收速率
+        private long networkOutSpeed;  // 字节/秒 实时发送速率
         private String networkInRate;  // 接收速率 (格式化)
         private String networkOutRate; // 发送速率 (格式化)
         private double networkPercent; // 带宽使用率 0-100
-        private long networkMaxSpeed;  // 配置的最大带宽 bytes/s
-        private long uptime;           // seconds
+        private long networkMaxSpeed;  // 配置的最大带宽 字节/秒
+        private long uptime;           // 秒
         private String osName;         // 操作系统名称
         private String osArch;         // 系统架构
     }
@@ -172,7 +172,7 @@ public class SystemMonitorService {
     @Data
     public static class StorageItem {
         private String name;
-        private long size;          // bytes
+        private long size;          // 字节
         private long fileCount;
         private String formatted;   // "2.5 GB"
 
@@ -188,7 +188,7 @@ public class SystemMonitorService {
     public static class ServiceHealth {
         private String name;
         private String status;      // "up" | "down" | "warning"
-        private long latency;       // ms
+        private long latency;       // 毫秒
         private String message;
         private Map<String, Object> details;
 

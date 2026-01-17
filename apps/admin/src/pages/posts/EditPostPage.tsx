@@ -11,7 +11,7 @@ export function EditPostPage() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    // Simulate save
+    // 模拟保存
     setTimeout(() => {
       setIsSaving(false);
     }, 1000);
@@ -57,7 +57,7 @@ export function EditPostPage() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* 内容 */}
       <div className="flex-1 flex">
         <div className="flex-1 p-6 overflow-auto">
           <textarea
