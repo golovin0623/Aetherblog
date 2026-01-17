@@ -97,7 +97,7 @@ export function Sidebar() {
       {/* Desktop Sidebar */}
       <motion.aside
         initial={false}
-        animate={{ width: effectiveCollapsed ? 64 : 200 }}
+        animate={{ width: effectiveCollapsed ? 64 : 256 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className={cn(
           'relative h-screen z-40 overflow-hidden flex-shrink-0',
@@ -167,10 +167,10 @@ function SidebarContent({
       {/* Logo + Mobile Close Button */}
       <div className={cn(
         "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
-        effectiveCollapsed ? "px-4" : isMobile ? "px-4" : "px-3"
+        effectiveCollapsed ? "px-4" : "px-3"
       )}>
-        <div className="flex items-center gap-2.5">
-          {/* Glossy Logo - 与主页保持一致 w-8 h-8 */}
+        <div className="flex items-center gap-3">
+          {/* Glossy Logo */}
           <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
             {/* Base gradient */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
@@ -187,7 +187,7 @@ function SidebarContent({
             'overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
-            <span className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap">
+            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap">
               AetherBlog
             </span>
           </div>
@@ -207,56 +207,48 @@ function SidebarContent({
 
       {/* Search Bar */}
       <div className={cn(
-        "py-2 border-b border-border transition-all duration-300",
-        effectiveCollapsed ? "px-4" : isMobile ? "px-4" : "px-1.6"
+        "py-3 border-b border-border transition-all duration-300",
+        effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <form onSubmit={handleSearch} className="flex items-center">
-          {!isMobile && (
-            <button
-              type="button"
-              onClick={() => !isMobile && effectiveCollapsed && toggle()}
-              className={cn(
-                'flex-shrink-0 flex items-center justify-center rounded-lg',
-                'w-8 h-8',
-                'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
-                'transition-all duration-200'
-              )}
-            >
-              <Search className="w-5 h-5 text-[var(--text-muted)]" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => !isMobile && effectiveCollapsed && toggle()}
+            className={cn(
+              'flex-shrink-0 flex items-center justify-center rounded-lg',
+              'w-8 h-8',
+              'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+              'transition-all duration-200'
+            )}
+          >
+            <Search className="w-5 h-5 text-[var(--text-muted)]" />
+          </button>
           <div className={cn(
-            'transition-all duration-300',
-            effectiveCollapsed ? 'w-0 opacity-0 ml-0 overflow-hidden' : isMobile ? 'w-full opacity-100' : 'flex-1 opacity-100 ml-1.5'
+            'overflow-hidden transition-all duration-300',
+            effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
           )}>
-            <div className="relative">
-              {isMobile && (
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              placeholder="搜索..."
+              className={cn(
+                'w-full px-3 py-1.5 rounded-lg text-sm',
+                'bg-[var(--bg-card)] border border-border',
+                'text-[var(--text-primary)] placeholder-gray-500',
+                'focus:outline-none focus:border-primary/50',
+                'transition-colors duration-200'
               )}
-              <input
-                type="text"
-                value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
-                placeholder="搜索..."
-                className={cn(
-                  'rounded-lg text-sm',
-                  'bg-[var(--bg-card)] border border-border',
-                  'text-[var(--text-primary)] placeholder-gray-500',
-                  'focus:outline-none focus:border-primary/50',
-                  'transition-colors duration-200',
-                  isMobile ? 'w-full px-10 py-2' : 'w-[100px] px-3 py-1.5'
-                )}
-              />
-            </div>
+            />
           </div>
         </form>
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 py-2 overflow-y-auto">
+      <nav className="flex-1 py-3 overflow-y-auto">
         <ul className={cn(
           "space-y-0.5 transition-all duration-300",
-          effectiveCollapsed ? "px-4" : isMobile ? "px-4" : "px-1.6"
+          effectiveCollapsed ? "px-4" : "px-3"
         )}>
           {navItems.map((item) => (
             <li key={item.path}>
@@ -266,17 +258,16 @@ function SidebarContent({
                 className={({ isActive }) =>
                   cn(
                     'flex items-center rounded-lg transition-all duration-200',
-                    effectiveCollapsed ? 'justify-center py-1.5 px-0' : isMobile ? 'gap-3 px-3 py-2.5' : 'gap-2.5 px-2 py-2',
+                    effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
                     isActive
                       ? 'bg-primary text-white'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                   )
                 }
               >
-
-                <item.icon className="w-6 h-6 flex-shrink-0" />
+                <item.icon className="w-5 h-5 flex-shrink-0" />
                 <span className={cn(
-                  'text-base font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
+                  'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
                   effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
                 )}>
                   {item.label}
@@ -290,7 +281,7 @@ function SidebarContent({
       {/* Quick Links + Collapse Toggle (Desktop only) */}
       <div className={cn(
         "border-t border-border py-2 space-y-0.5 transition-all duration-300",
-        effectiveCollapsed ? "px-4" : isMobile ? "px-4" : "px-1.6",
+        effectiveCollapsed ? "px-4" : "px-3",
         isMobile && "hidden" // 移动端隐藏收起按钮，因为已有顶部X按钮
       )}>
         <a
@@ -299,13 +290,13 @@ function SidebarContent({
           rel="noopener noreferrer"
           className={cn(
             'flex items-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200',
-            effectiveCollapsed ? 'justify-center py-1.5 px-0' : isMobile ? 'gap-3 px-3 py-2.5' : 'gap-2.5 px-2 py-2'
+            effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
           )}
           title="访问主站"
         >
-          <Home className="w-6 h-6 flex-shrink-0" />
+          <Home className="w-5 h-5 flex-shrink-0" />
           <span className={cn(
-            'text-base overflow-hidden whitespace-nowrap transition-all duration-300',
+            'text-sm overflow-hidden whitespace-nowrap transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-0'
           )}>
             主站
@@ -316,19 +307,19 @@ function SidebarContent({
           onClick={toggle}
           className={cn(
             'w-full flex items-center rounded-lg transition-all duration-200 group',
-            effectiveCollapsed ? 'justify-center py-2 px-0' : isMobile ? 'gap-3 px-3 py-2.5' : 'gap-2.5 px-2 py-2',
+            effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
             'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
           )}
           title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
         >
           <div className={cn(
-            'flex items-center justify-center w-6 h-6 transition-transform duration-300',
+            'flex items-center justify-center w-5 h-5 transition-transform duration-300',
             !effectiveCollapsed ? 'group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'
           )}>
             {effectiveCollapsed ? (
-              <ChevronsRight className="w-6 h-6" />
+              <ChevronsRight className="w-5 h-5" />
             ) : (
-              <ChevronsLeft className="w-6 h-6" />
+              <ChevronsLeft className="w-5 h-5" />
             )}
           </div>
           <span className={cn(
