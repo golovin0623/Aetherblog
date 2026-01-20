@@ -4,7 +4,7 @@
  * @ref §3.2.4 - 媒体管理模块
  */
 
-import { Image, Video, Music, FileText, Download, Trash2, Eye, Link2 } from 'lucide-react';
+import { Image, Video, Music, FileText, Download, Trash2, Eye, Link2, FolderInput } from 'lucide-react';
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
 import { format } from 'date-fns';
@@ -19,6 +19,7 @@ interface MediaListProps {
   onDelete: (id: number) => void;
   onCopyUrl: (url: string) => void;
   onDownload: (url: string, filename: string) => void;
+  onMove?: (id: number, name: string) => void;
 }
 
 const typeIcons: Record<MediaType, typeof Image> = {
@@ -38,16 +39,17 @@ const typeLabels: Record<MediaType, string> = {
 /**
  * 媒体列表视图组件
  */
-export function MediaList({ 
-  items, 
-  selectedId, 
+export function MediaList({
+  items,
+  selectedId,
   selectedIds,
-  onSelect, 
+  onSelect,
   onToggleSelect,
   onPreview,
   onDelete,
   onCopyUrl,
-  onDownload 
+  onDownload,
+  onMove,
 }: MediaListProps) {
   return (
     <div className="rounded-xl overflow-hidden">
@@ -152,6 +154,15 @@ export function MediaList({
                     >
                       <Download className="w-4 h-4" />
                     </button>
+                    {onMove && (
+                      <button
+                        onClick={() => onMove(item.id, item.originalName)}
+                        className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                        title="移动到文件夹"
+                      >
+                        <FolderInput className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => onDelete(item.id)}
                       className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-400 transition-colors"
@@ -246,6 +257,14 @@ export function MediaList({
                   >
                     <Download className="w-4 h-4" />
                   </button>
+                  {onMove && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(item.id, item.originalName); }}
+                      className="p-2 text-gray-400 active:text-white"
+                    >
+                      <FolderInput className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
                     className="p-2 text-gray-400 active:text-red-400"

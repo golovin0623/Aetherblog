@@ -42,8 +42,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-jackson</artifactId>
         </dependency>
+        <!-- Jackson JSR310 for Java 8 date/time support -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
 
         <!-- Spring Data JPA -->
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -87,6 +93,35 @@
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
+        </dependency>
+
+        <!-- Image Processing -->
+        <dependency>
+            <groupId>net.coobird</groupId>
+            <artifactId>thumbnailator</artifactId>
+            <version>0.4.20</version>
+        </dependency>
+        <dependency>
+            <groupId>com.drewnoakes</groupId>
+            <artifactId>metadata-extractor</artifactId>
+            <version>2.19.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.trbl</groupId>
+            <artifactId>blurhash</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
+        <!-- Storage Providers -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.7</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.21.0</version>
         </dependency>
 
         <!-- Test -->
