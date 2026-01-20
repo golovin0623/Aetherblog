@@ -16,7 +16,8 @@ import java.time.LocalDateTime;
 @Table(name = "media_files", indexes = {
     @Index(name = "idx_media_files_type", columnList = "file_type"),
     @Index(name = "idx_media_files_uploader", columnList = "uploader_id"),
-    @Index(name = "idx_media_files_created", columnList = "createdAt")
+    @Index(name = "idx_media_files_created", columnList = "createdAt"),
+    @Index(name = "idx_media_files_folder", columnList = "folder_id")
 })
 public class MediaFile {
 
@@ -91,6 +92,14 @@ public class MediaFile {
     private String altText;
 
     /**
+     * 所属文件夹
+     * @ref 媒体库深度优化方案 - Phase 1
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "folder_id")
+    private MediaFolder folder;
+
+    /**
      * 上传者
      */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -100,6 +109,18 @@ public class MediaFile {
     @CreationTimestamp
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    /**
+     * 是否已删除（软删除/回收站）
+     */
+    @Column(name = "deleted", nullable = false)
+    private Boolean deleted = false;
+
+    /**
+     * 删除时间（移入回收站的时间）
+     */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     public enum FileType {
         IMAGE, VIDEO, AUDIO, DOCUMENT, OTHER

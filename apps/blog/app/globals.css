@@ -905,3 +905,42 @@ body {
   line-height: inherit !important;
 }
 
+/* ========================================
+   View Transitions API - Theme Switch Animation
+   圆形扩散/收缩主题切换动画
+   ======================================== */
+
+/* 禁用根元素的默认 View Transition 动画，由 JS 控制 clip-path */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* 默认：新视图在上层 (暗→亮时使用) */
+::view-transition-new(root) {
+  z-index: 1;
+}
+
+::view-transition-old(root) {
+  z-index: 0;
+}
+
+/* 亮→暗：旧视图在上层，这样才能看到亮色收缩消失 */
+html[data-theme-transition="to-dark"]::view-transition-old(root) {
+  z-index: 1;
+}
+
+html[data-theme-transition="to-dark"]::view-transition-new(root) {
+  z-index: 0;
+}
+
+/* 减少动画模式时禁用 View Transition */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
