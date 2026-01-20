@@ -22,6 +22,7 @@ import { authService } from '@/services/authService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { cn } from '@/lib/utils';
 import CryptoJS from 'crypto-js';
+import { useMediaQuery } from '@/hooks';
 
 // Encryption key - must match backend
 const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
@@ -43,6 +44,8 @@ type TabType = 'profile' | 'security';
 
 export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProfileModalProps) {
   const { user, updateUser } = useAuthStore();
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -184,9 +187,6 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     };
   }, [isOpen]);
 
-  // Remove early return to allow AnimatePresence to handle exit
-  // if (!isOpen) return null;
-
   // Dynamic positioning - desktop only
   const leftPosition = sidebarCollapsed ? '70px' : '209px';
 
@@ -207,9 +207,26 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
           {/* Premium Popover - Mac OS Dock Style Animation */}
           <motion.div
             key="modal"
-            initial={{ opacity: 0, scale: 0.5, y: 100, x: -50 }}
-            animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, scale: 0.5, y: 100, x: -50 }}
+            initial={{ 
+              opacity: 0, 
+              scale: 0.9, 
+              // Desktop: Slide from bottom-left (Genie). Mobile: Start slightly "dropped" from center
+              y: isDesktop ? 20 : "-45%", 
+              x: isDesktop ? -20 : "-50%" 
+            }}
+            animate={{ 
+              opacity: 1, 
+              scale: 1, 
+              // Desktop: specific 0 positions. Mobile: strict centering (-50%)
+              y: isDesktop ? 0 : "-50%", 
+              x: isDesktop ? 0 : "-50%" 
+            }}
+            exit={{ 
+              opacity: 0, 
+              scale: 0.9, 
+              y: isDesktop ? 20 : "-45%", 
+              x: isDesktop ? -20 : "-50%" 
+            }}
             transition={{
               type: "spring",
               damping: 25,
@@ -217,18 +234,24 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               mass: 0.8
             }}
             className={cn(
-              "fixed z-[101] overflow-hidden rounded-2xl flex flex-col",
-              // 移动端：全屏居中，留边距
-              "inset-4 max-w-[calc(100vw-32px)] max-h-[calc(100vh-32px)]",
-              // 桌面端：固定尺寸，左下角定位
-              "md:bottom-4 md:inset-auto md:w-[380px] md:h-[650px] md:max-h-[calc(100vh-80px)]"
+              "fixed z-[101] overflow-hidden rounded-3xl flex flex-col",
+              "border border-[var(--border-subtle)] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2),0_16px_32px_-8px_rgba(0,0,0,0.1)]",
+              
+              // Conditional Layout based on isDesktop hook
+              isDesktop 
+                ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // Desktop
+                : "w-[calc(100vw-32px)] max-w-[420px] h-[650px] max-h-[85dvh]" // Mobile: Fixed height (capped by screen) for consistency
             )}
             style={{
-              left: window.innerWidth >= 768 ? leftPosition : undefined,
-              background: 'var(--bg-primary)',
-              boxShadow: '0 32px 64px -12px rgba(0, 0, 0, 0.14), 0 16px 32px -8px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--border-subtle)',
-              backdropFilter: 'blur(20px)',
-              transformOrigin: window.innerWidth >= 768 ? 'bottom left' : 'center'
+              // Positioning logic
+              left: isDesktop ? leftPosition : '50%',
+              top: isDesktop ? 'auto' : '50%',
+              bottom: isDesktop ? '16px' : 'auto',
+              // Transform handled by Framer Motion 'animate' prop now to avoid conflicts
+              
+              background: 'var(--bg-primary/80)',
+              backdropFilter: 'blur(24px)',
+              transformOrigin: isDesktop ? 'bottom left' : 'center'
             }}
           >
             {/* Gradient Top Border Accent */}
@@ -487,4 +510,3 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     </AnimatePresence>
   );
 }
-

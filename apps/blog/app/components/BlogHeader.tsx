@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { Settings2 } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
@@ -13,33 +13,84 @@ import MobileNavSwitch from './MobileNavSwitch';
  * - 在所有页面显示统一样式
  * - 在文章详情页 (/posts/[slug]) 自动隐藏，鼠标靠近顶部时显示
  * - 响应式设计：桌面端显示完整导航，移动端显示汉堡菜单
+ * - 乐观更新：点击切换按钮立即更新 UI，不等待路由完成
  */
 export default function BlogHeader() {
   const pathname = usePathname();
+  const router = useRouter();
+
   const isTimelinePage = pathname === '/timeline';
   const isPostsPage = pathname === '/posts';
   const isArticleDetail = pathname.startsWith('/posts/') && pathname !== '/posts';
-  
-  // 使用 sessionStorage 记住用户的来源页面
-  // 当从时间线进入文章详情时，切换器仍显示"时间线"为选中状态
+
+  // 导航页面类型
+  type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
+
+  // 当前激活的导航页面（用于乐观更新）
+  const [activePage, setActivePage] = useState<NavPage>(() => {
+    if (pathname === '/timeline') return 'timeline';
+    if (pathname === '/posts') return 'posts';
+    if (pathname === '/archives') return 'archives';
+    if (pathname === '/friends') return 'friends';
+    if (pathname === '/about') return 'about';
+    return null;
+  });
+
+  // 使用 sessionStorage 记住用户的来源页面（首页/时间线切换器专用）
   const [activeTab, setActiveTab] = useState<'posts' | 'timeline'>('posts');
-  
+
+  // 同步 pathname 到状态（用于浏览器前进/后退等情况）
   useEffect(() => {
-    if (isTimelinePage) {
-      // 用户在时间线页面，记住这个状态
-      sessionStorage.setItem('blogNavSource', 'timeline');
+    // 更新 activePage
+    if (pathname === '/timeline') {
+      setActivePage('timeline');
       setActiveTab('timeline');
-    } else if (isPostsPage) {
-      // 用户在首页/文章列表页面
-      sessionStorage.setItem('blogNavSource', 'posts');
+      sessionStorage.setItem('blogNavSource', 'timeline');
+    } else if (pathname === '/posts') {
+      setActivePage('posts');
       setActiveTab('posts');
+      sessionStorage.setItem('blogNavSource', 'posts');
+    } else if (pathname === '/archives') {
+      setActivePage('archives');
+    } else if (pathname === '/friends') {
+      setActivePage('friends');
+    } else if (pathname === '/about') {
+      setActivePage('about');
     } else if (isArticleDetail) {
-      // 在文章详情页，使用之前记住的状态
+      setActivePage(null);
       const source = sessionStorage.getItem('blogNavSource');
       setActiveTab(source === 'timeline' ? 'timeline' : 'posts');
+    } else {
+      setActivePage(null);
     }
-  }, [pathname, isTimelinePage, isPostsPage, isArticleDetail]);
-  
+  }, [pathname, isArticleDetail]);
+
+  // 乐观更新：点击时立即切换 UI 状态，然后触发路由导航
+  const handleNavClick = useCallback((target: NavPage) => {
+    if (!target) return;
+
+    // 立即更新 UI 状态（乐观更新）
+    setActivePage(target);
+
+    // 首页/时间线切换器状态同步
+    if (target === 'posts' || target === 'timeline') {
+      setActiveTab(target);
+      sessionStorage.setItem('blogNavSource', target);
+    }
+
+    // 路由映射
+    const routes: Record<NonNullable<NavPage>, string> = {
+      posts: '/posts',
+      timeline: '/timeline',
+      archives: '/archives',
+      friends: '/friends',
+      about: '/about',
+    };
+
+    // 直接导航（不使用 startTransition，确保立即触发）
+    router.push(routes[target]);
+  }, [router]);
+
   const isTimeline = activeTab === 'timeline';
   
   // 鼠标位置状态
@@ -219,69 +270,69 @@ export default function BlogHeader() {
                   />
                 </div>
 
-                {/* Segment Buttons */}
-                <Link
-                  href="/posts"
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 ${
+                {/* Segment Buttons - 使用 button + handleNavClick 实现乐观更新 */}
+                <button
+                  onClick={() => handleNavClick('posts')}
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${
                     !isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                   }`}
                 >
                   首页
-                </Link>
-                <Link
-                  href="/timeline"
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 ${
+                </button>
+                <button
+                  onClick={() => handleNavClick('timeline')}
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${
                     isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                   }`}
                 >
                   时间线
-                </Link>
+                </button>
               </div>
 
               <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
-              <Link
-                href="/archives"
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary ${
-                  pathname === '/archives'
+              <button
+                onClick={() => handleNavClick('archives')}
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${
+                  activePage === 'archives'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
                 }`}
               >
                 归档
-                {pathname === '/archives' && (
+                {activePage === 'archives' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </Link>
-              <Link
-                href="/friends"
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary ${
-                  pathname === '/friends'
+              </button>
+              <button
+                onClick={() => handleNavClick('friends')}
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${
+                  activePage === 'friends'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
                 }`}
               >
                 友链
-                {pathname === '/friends' && (
+                {activePage === 'friends' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </Link>
-              <Link
-                href="/about"
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary ${
-                  pathname === '/about'
+              </button>
+              <button
+                onClick={() => handleNavClick('about')}
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${
+                  activePage === 'about'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
                 }`}
               >
                 关于
-                {pathname === '/about' && (
+                {activePage === 'about' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </Link>
+              </button>
               
               {/* 管理后台入口 */}
               <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 export function Header() {
   const { user, logout } = useAuthStore();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleThemeWithAnimation } = useTheme();
 
   return (
     <header className="hidden md:flex h-16 items-center justify-between px-6 border-b border-border bg-[var(--bg-overlay)] backdrop-blur-md sticky top-0 z-30">
@@ -31,7 +31,7 @@ export function Header() {
       <div className="flex items-center gap-4">
         {/* Theme Toggle */}
         <button
-          onClick={toggleTheme}
+          onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
           className={cn(
             'p-2 rounded-lg',
             'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',

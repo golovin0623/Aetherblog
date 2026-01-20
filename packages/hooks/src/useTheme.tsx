@@ -58,6 +58,116 @@ function applyTheme(resolvedTheme: ResolvedTheme): void {
   root.style.colorScheme = resolvedTheme;
 }
 
+/**
+ * 执行圆形遮罩主题切换动画
+ * 使用 View Transitions API，从点击位置开始扩散/收缩
+ * 
+ * 动画逻辑：
+ * - 暗→亮: 新视图(亮色)从点击位置扩散出来
+ * - 亮→暗: 旧视图(亮色)向点击位置收缩消失，暴露下面的暗色
+ */
+async function performCircularTransition(
+  x: number,
+  y: number,
+  isDarkToLight: boolean,
+  callback: () => void
+): Promise<void> {
+  // 检查浏览器是否支持 View Transitions API
+  if (
+    typeof document === 'undefined' ||
+    !document.startViewTransition ||
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+    // 不支持则直接切换
+    callback();
+    return;
+  }
+
+  // 计算最大半径（从点击位置到最远角落的距离）
+  const endRadius = Math.hypot(
+    Math.max(x, window.innerWidth - x),
+    Math.max(y, window.innerHeight - y)
+  );
+
+  // 设置动画方向，用于 CSS z-index 控制
+  document.documentElement.dataset.themeTransition = isDarkToLight ? 'to-light' : 'to-dark';
+
+  // 开始 View Transition
+  const transition = document.startViewTransition(() => {
+    callback();
+  });
+
+  try {
+    await transition.ready;
+
+    // 根据切换方向选择动画目标和方向
+    // 暗→亮: 动画新视图(亮色)从0扩散到全屏，新视图在上层
+    // 亮→暗: 动画旧视图(亮色)从全屏收缩到0，旧视图在上层
+    
+    if (isDarkToLight) {
+      // 暗→亮: 新的亮色视图从点击处扩散
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${endRadius}px at ${x}px ${y}px)`,
+          ],
+        },
+        {
+          duration: 500,
+          easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+          pseudoElement: '::view-transition-new(root)',
+        }
+      );
+    } else {
+      // 亮→暗: 旧的亮色视图向点击处收缩消失
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(${endRadius}px at ${x}px ${y}px)`,
+            `circle(0px at ${x}px ${y}px)`,
+          ],
+        },
+        {
+          duration: 500,
+          easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+          pseudoElement: '::view-transition-old(root)',
+          fill: 'forwards', // 保持最终状态，防止闪烁
+        }
+      );
+    }
+
+    // 动画完成后清理
+    await transition.finished;
+  } catch {
+    // 动画失败时静默处理
+  } finally {
+    // 使用 requestAnimationFrame 延迟清理，避免闪烁
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        delete document.documentElement.dataset.themeTransition;
+      });
+    });
+  }
+}
+
+// 存储最后一次点击位置（用于主题切换动画）
+let lastClickPosition = { x: 0, y: 0 };
+
+/**
+ * 更新点击位置（供 ThemeToggle 组件调用）
+ */
+export function setThemeTransitionOrigin(x: number, y: number): void {
+  lastClickPosition = { x, y };
+}
+
+/**
+ * 获取当前点击位置
+ */
+export function getThemeTransitionOrigin(): { x: number; y: number } {
+  return lastClickPosition;
+}
+
 export interface UseThemeReturn {
   /** 当前主题设置 (light | dark | system) */
   theme: Theme;
@@ -67,8 +177,10 @@ export interface UseThemeReturn {
   isDark: boolean;
   /** 设置主题 */
   setTheme: (theme: Theme) => void;
-  /** 切换亮/暗主题 */
+  /** 切换亮/暗主题（支持圆形动画，需先调用 setThemeTransitionOrigin） */
   toggleTheme: () => void;
+  /** 带动画的主题切换（传入点击位置） */
+  toggleThemeWithAnimation: (x: number, y: number) => void;
 }
 
 // 创建 Context
@@ -159,10 +271,26 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
   
-  // 切换主题
+  // 切换主题（使用存储的点击位置触发动画）
   const toggleTheme = useCallback(() => {
-    const newTheme = resolvedTheme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
+    const { x, y } = getThemeTransitionOrigin();
+    const newTheme: Theme = resolvedTheme === 'dark' ? 'light' : 'dark';
+    const isDarkToLight = resolvedTheme === 'dark';
+    
+    performCircularTransition(x, y, isDarkToLight, () => {
+      setTheme(newTheme);
+    });
+  }, [resolvedTheme, setTheme]);
+  
+  // 带动画的主题切换（传入点击位置）
+  const toggleThemeWithAnimation = useCallback((x: number, y: number) => {
+    setThemeTransitionOrigin(x, y);
+    const newTheme: Theme = resolvedTheme === 'dark' ? 'light' : 'dark';
+    const isDarkToLight = resolvedTheme === 'dark';
+    
+    performCircularTransition(x, y, isDarkToLight, () => {
+      setTheme(newTheme);
+    });
   }, [resolvedTheme, setTheme]);
   
   // 为避免UI闪烁或错误图标，未挂载时可以返回一个安全状态
@@ -174,7 +302,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     isDark,
     setTheme,
     toggleTheme,
-  }), [theme, resolvedTheme, isDark, setTheme, toggleTheme]);
+    toggleThemeWithAnimation,
+  }), [theme, resolvedTheme, isDark, setTheme, toggleTheme, toggleThemeWithAnimation]);
 
   return (
     <ThemeContext.Provider value={value}>

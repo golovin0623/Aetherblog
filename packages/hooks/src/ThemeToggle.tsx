@@ -1,6 +1,6 @@
 /**
  * @file ThemeToggle.tsx
- * @description 主题切换按钮组件 - 太阳/月亮图标切换
+ * @description 主题切换按钮组件 - 太阳/月亮图标切换，带圆形扩散动画
  * @author AI Assistant
  * @created 2026-01-16
  */
@@ -47,15 +47,22 @@ export function ThemeToggle({
   showSystem = false,
   className = '' 
 }: ThemeToggleProps) {
-  const { theme, resolvedTheme, isDark, setTheme, toggleTheme } = useTheme();
+  const { theme, isDark, setTheme, toggleThemeWithAnimation } = useTheme();
   const [isOpen, setIsOpen] = React.useState(false);
   const { button: buttonSize, icon: iconSize } = sizeMap[size];
+  
+  // 处理主题切换（带圆形动画）
+  const handleToggle = (e: React.MouseEvent) => {
+    const x = e.clientX;
+    const y = e.clientY;
+    toggleThemeWithAnimation(x, y);
+  };
   
   // 简单模式：点击切换
   if (!showSystem) {
     return (
       <motion.button
-        onClick={toggleTheme}
+        onClick={handleToggle}
         whileHover={{ scale: 1.1, rotate: 15 }}
         whileTap={{ scale: 0.9 }}
         className={`
