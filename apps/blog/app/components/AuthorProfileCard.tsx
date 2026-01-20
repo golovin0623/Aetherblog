@@ -6,6 +6,134 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings, getSiteStats } from '../lib/services';
 import { useTheme } from '@aetherblog/hooks';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// 社交链接数据
+const socialLinks = [
+  { id: 'github', href: 'https://github.com', label: 'Github', icon: Github, isExternal: true },
+  { id: 'email', href: 'mailto:example@email.com', label: 'Email', icon: Mail, isExternal: false },
+  { id: 'wechat', href: '#', label: 'Wechat', icon: MessageCircle, isExternal: false },
+  { id: 'bilibili', href: 'https://bilibili.com', label: 'Bilibili', icon: MonitorPlay, isExternal: true },
+  { id: 'gitee', href: 'https://gitee.com', label: 'Gitee', icon: MousePointer2, isExternal: true },
+];
+
+// 社交链接分页轮播组件
+const SocialLinksCarousel: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const linksPerPage = 4;
+  const totalPages = Math.ceil(socialLinks.length / linksPerPage);
+  
+  // 分页数据
+  const paginatedLinks = [];
+  for (let i = 0; i < socialLinks.length; i += linksPerPage) {
+    const page = socialLinks.slice(i, i + linksPerPage);
+    paginatedLinks.push(page);
+  }
+
+  const handlePrev = () => {
+    setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentPage((prev) => (prev < totalPages - 1 ? prev + 1 : 0));
+  };
+
+  const linkClass = "group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 rounded-xl bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-primary/30 antialiased w-full h-[42px]";
+
+  return (
+    <div className="w-full mt-2 relative pb-4">
+      {/* 轮播容器 - 固定高度避免跳动 (42px * 2行 + 8px gap = 92px) */}
+      <div className="relative h-[92px] w-full">
+        
+        {/* 左箭头 - 绝对定位靠左，极淡透明，大角度 */}
+        {totalPages > 1 && (
+          <div className="absolute left-0 top-0 bottom-0 flex items-center justify-start z-10 w-6">
+            <button
+              onClick={handlePrev}
+              className="p-1 opacity-[0.08] hover:opacity-[0.25] transition-opacity cursor-pointer active:scale-95"
+              aria-label="上一页"
+            >
+              <svg className="w-5 h-5 text-black dark:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 4L6 12L14 20" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* 内容显示窗口 - 左右留出空间给箭头 */}
+        <div className="h-full px-7 overflow-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentPage}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="grid grid-cols-2 gap-2"
+            >
+              {paginatedLinks[currentPage]?.map((link) => {
+                const IconComponent = link.icon;
+                const content = (
+                  <>
+                    <IconComponent className="w-4 h-4 group-hover/link:scale-110 group-hover/link:text-primary transition-all duration-300" />
+                    <span className="font-medium text-xs truncate max-w-[80px]">{link.label}</span>
+                  </>
+                );
+
+                if (link.isExternal) {
+                  return (
+                    <Link key={link.id} href={link.href} target="_blank" className={linkClass}>
+                      {content}
+                    </Link>
+                  );
+                }
+
+                return (
+                  <div key={link.id} className={`${linkClass} cursor-pointer`}>
+                    {content}
+                  </div>
+                );
+              })}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* 右箭头 - 绝对定位靠右，极淡透明，大角度 */}
+        {totalPages > 1 && (
+          <div className="absolute right-0 top-0 bottom-0 flex items-center justify-end z-10 w-6">
+            <button
+              onClick={handleNext}
+              className="p-1 opacity-[0.08] hover:opacity-[0.25] transition-opacity cursor-pointer active:scale-95"
+              aria-label="下一页"
+            >
+              <svg className="w-5 h-5 text-black dark:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 4L18 12L10 20" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 分页指示器 - 绝对定位在底部，不占用流空间 */}
+      {totalPages > 1 && (
+        <div className="absolute bottom-[-2px] left-0 right-0 flex items-center justify-center gap-1.5 h-2">
+          {Array.from({ length: totalPages }).map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setCurrentPage(index)}
+              className={`transition-all duration-300 rounded-full ${
+                index === currentPage
+                  ? 'bg-primary w-3 h-1'
+                  : 'bg-[var(--text-muted)]/10 hover:bg-[var(--text-muted)]/30 w-1 h-1'
+              }`}
+              aria-label={`Go to page ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export interface AuthorProfile {
   name: string;
@@ -165,10 +293,9 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         </div>
 
         {/* Name & Bio with Better Typography */}
-        <h2 className="text-xl font-bold text-[var(--text-primary)] mb-1 tracking-tight antialiased">
-          {name}
+        <h2 className="text-lg font-bold text-[var(--text-primary)] mb-5 tracking-tight antialiased">
+          {bio}
         </h2>
-        <p className="text-sm text-[var(--text-secondary)] mb-5 antialiased">{bio}</p>
 
         {/* Stats with Cleaner Design */}
         <div className="w-full mb-6">
@@ -177,7 +304,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
               <span className="text-2xl font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.posts || 0}
               </span>
-              <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-1 antialiased">日志</span>
+              <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-1 antialiased">文章</span>
             </div>
             <div className="flex flex-col items-center group/stat cursor-pointer border-x border-[var(--border-subtle)]">
               <span className="text-2xl font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
@@ -194,52 +321,8 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           </div>
         </div>
 
-        {/* Social Links with Refined Hover */}
-        <div className="space-y-2 w-full">
-          <div className="grid grid-cols-2 gap-2">
-            <Link
-              href="https://github.com"
-              target="_blank"
-              className="group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 p-3 rounded-xl bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/60 border border-[var(--border-subtle)] hover:border-primary/30 antialiased"
-            >
-              <Github className="w-4 h-4 group-hover/link:scale-110 transition-transform duration-200" />
-              <span className="font-medium">Github</span>
-            </Link>
-
-            <Link
-              href="mailto:example@email.com"
-              className="group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 p-3 rounded-xl bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/60 border border-[var(--border-subtle)] hover:border-primary/30 antialiased"
-            >
-              <Mail className="w-4 h-4 group-hover/link:scale-110 transition-transform duration-200" />
-              <span className="font-medium">Email</span>
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 p-3 rounded-xl bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/60 border border-[var(--border-subtle)] hover:border-primary/30 cursor-pointer antialiased">
-              <MessageCircle className="w-4 h-4 group-hover/link:scale-110 transition-transform duration-200" />
-              <span className="font-medium">Wechat</span>
-            </div>
-
-            <Link
-              href="https://bilibili.com"
-              target="_blank"
-              className="group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 p-3 rounded-xl bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/60 border border-[var(--border-subtle)] hover:border-primary/30 antialiased"
-            >
-              <MonitorPlay className="w-4 h-4 group-hover/link:scale-110 transition-transform duration-200" />
-              <span className="font-medium">Bilibili</span>
-            </Link>
-          </div>
-
-          <Link
-            href="https://gitee.com"
-            target="_blank"
-            className="group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 p-3 rounded-xl bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/60 border border-[var(--border-subtle)] hover:border-primary/30 w-full antialiased"
-          >
-            <MousePointer2 className="w-4 h-4 group-hover/link:scale-110 transition-transform duration-200" />
-            <span className="font-medium">Gitee</span>
-          </Link>
-        </div>
+        {/* Social Links with Paginated Carousel */}
+        <SocialLinksCarousel />
       </div>
     </div>
   );

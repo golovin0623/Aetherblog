@@ -2,10 +2,11 @@
  * @file MediaDetail.tsx
  * @description 媒体详情侧边栏组件 - 高级玻璃态设计
  * @ref §3.2.4 - 媒体管理模块
+ * @ref 媒体库深度优化方案 - Phase 2-5 组件集成
  */
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   Copy,
@@ -20,15 +21,25 @@ import {
   Calendar,
   HardDrive,
   Maximize2,
+  Share2,
+  Edit3,
+  History,
+  Tag,
+  Move,
 } from 'lucide-react';
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
 import { format } from 'date-fns';
+import { TagManager } from './TagManager';
+import { ShareDialog } from './ShareDialog';
+import { ImageEditor } from './ImageEditor';
+import { VersionHistory } from './VersionHistory';
 
 interface MediaDetailProps {
   item: MediaItem;
   onClose: () => void;
   onDelete: (id: number) => void;
+  onMove?: (fileId: number, fileName: string) => void;
 }
 
 const typeIcons: Record<MediaType, typeof Image> = {
@@ -45,11 +56,16 @@ const typeLabels: Record<MediaType, string> = {
   DOCUMENT: '文档',
 };
 
+type DetailTab = 'info' | 'tags' | 'versions';
+
 /**
  * 媒体详情侧边栏组件 - 高级玻璃态设计
  */
-export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps) {
+export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDetailProps) {
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<DetailTab>('info');
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [imageEditorOpen, setImageEditorOpen] = useState(false);
 
   const handleCopyUrl = async () => {
     if (media?.fileUrl) {
@@ -79,6 +95,13 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
 
   const Icon = typeIcons[media.fileType] || FileText;
   const fullUrl = getMediaUrl(media.fileUrl);
+  const isImage = media.fileType === 'IMAGE';
+
+  const tabs: { id: DetailTab; label: string; icon: typeof Tag }[] = [
+    { id: 'info', label: '详情', icon: FileText },
+    { id: 'tags', label: '标签', icon: Tag },
+    { id: 'versions', label: '版本', icon: History },
+  ];
 
   return (
     <div className="h-full flex flex-col">
@@ -101,11 +124,11 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
         </button>
       </div>
 
-      {/* 预览区 - 高级玻璃态 */}
+      {/* 预览区 */}
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative aspect-video rounded-2xl overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-subtle)] mb-4 group"
+        className="relative aspect-video rounded-2xl overflow-hidden bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 mb-4 group"
       >
         {media.fileType === 'IMAGE' ? (
           <img
@@ -140,101 +163,162 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
         </button>
       </motion.div>
 
-      {/* 文件名 */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.05 }}
-        className="mb-4"
-      >
-        <p className="text-sm font-medium text-[var(--text-primary)] break-all leading-relaxed">
-          {media.originalName}
-        </p>
-      </motion.div>
-
-      {/* 元信息网格 */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-2 gap-3 mb-4"
-      >
-        <div className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-          <div className="flex items-center gap-2 mb-1">
-            <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
-            <span className="text-[10px] text-[var(--text-secondary)] uppercase">大小</span>
-          </div>
-          <p className="text-sm text-[var(--text-primary)] font-medium">{formatFileSize(media.fileSize)}</p>
-        </div>
-        <div className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-          <div className="flex items-center gap-2 mb-1">
-            <Calendar className="w-3 h-3 text-[var(--text-muted)]" />
-            <span className="text-[10px] text-[var(--text-secondary)] uppercase">上传时间</span>
-          </div>
-          <p className="text-sm text-[var(--text-primary)] font-medium">{format(new Date(media.createdAt), 'MM/dd HH:mm')}</p>
-        </div>
-      </motion.div>
-
-      {/* MIME 类型 */}
-      {media.mimeType && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.15 }}
-          className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] mb-4"
-        >
-          <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">MIME 类型</p>
-          <p className="text-xs text-[var(--text-primary)] font-mono">{media.mimeType}</p>
-        </motion.div>
-      )}
-
-      {/* 尺寸 (如果是图片/视频) */}
-      {(media.width && media.height) && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] mb-4"
-        >
-          <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">尺寸</p>
-          <p className="text-sm text-[var(--text-primary)] font-medium">{media.width} × {media.height} px</p>
-        </motion.div>
-      )}
-
-      {/* URL 复制区 */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.25 }}
-        className="mb-4"
-      >
-        <p className="text-[10px] text-[var(--text-muted)] uppercase mb-2">文件地址</p>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={fullUrl}
-            readOnly
-            className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-mono truncate focus:outline-none focus:border-primary/50"
-          />
+      {/* 快捷操作按钮 */}
+      <div className="flex items-center gap-2 mb-4">
+        {isImage && (
           <button
-            onClick={handleOpenInNewTab}
-            className="p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
-            title="新窗口打开"
+            onClick={() => setImageEditorOpen(true)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
           >
-            <ExternalLink className="w-4 h-4" />
+            <Edit3 className="w-3.5 h-3.5" />
+            编辑
           </button>
-        </div>
-      </motion.div>
+        )}
+        <button
+          onClick={() => setShareDialogOpen(true)}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+        >
+          <Share2 className="w-3.5 h-3.5" />
+          分享
+        </button>
+        {onMove && (
+          <button
+            onClick={() => onMove(media.id, media.originalName)}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+          >
+            <Move className="w-3.5 h-3.5" />
+            移动
+          </button>
+        )}
+      </div>
 
-      {/* 弹性填充 */}
-      <div className="flex-1" />
+      {/* Tab 导航 */}
+      <div className="flex items-center gap-1 p-1 bg-gray-100/50 dark:bg-white/5 rounded-xl mb-4">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+              activeTab === tab.id
+                ? 'bg-primary text-white shadow-md'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+            )}
+          >
+            <tab.icon className="w-3.5 h-3.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {/* 操作按钮组 */}
+      {/* Tab 内容 */}
+      <div className="flex-1 overflow-y-auto no-scrollbar">
+        <AnimatePresence mode="wait">
+          {activeTab === 'info' && (
+            <motion.div
+              key="info"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.15 }}
+              className="space-y-4"
+            >
+              {/* 文件名 */}
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">文件名</p>
+                <p className="text-sm font-medium text-[var(--text-primary)] break-all leading-relaxed">
+                  {media.originalName}
+                </p>
+              </div>
+
+              {/* 元信息网格 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
+                    <span className="text-[10px] text-[var(--text-secondary)] uppercase">大小</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-primary)] font-medium">{formatFileSize(media.fileSize)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Calendar className="w-3 h-3 text-[var(--text-muted)]" />
+                    <span className="text-[10px] text-[var(--text-secondary)] uppercase">上传时间</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-primary)] font-medium">{format(new Date(media.createdAt), 'MM/dd HH:mm')}</p>
+                </div>
+              </div>
+
+              {/* MIME 类型 */}
+              {media.mimeType && (
+                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">MIME 类型</p>
+                  <p className="text-xs text-[var(--text-primary)] font-mono">{media.mimeType}</p>
+                </div>
+              )}
+
+              {/* 尺寸 */}
+              {(media.width && media.height) && (
+                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                  <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">尺寸</p>
+                  <p className="text-sm text-[var(--text-primary)] font-medium">{media.width} × {media.height} px</p>
+                </div>
+              )}
+
+              {/* URL 复制区 */}
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] uppercase mb-2">文件地址</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={fullUrl}
+                    readOnly
+                    className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-gray-100/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] font-mono truncate focus:outline-none focus:border-primary/50"
+                  />
+                  <button
+                    onClick={handleOpenInNewTab}
+                    className="p-2.5 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all"
+                    title="新窗口打开"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'tags' && (
+            <motion.div
+              key="tags"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.15 }}
+            >
+              <TagManager fileId={media.id} mode="manage" />
+            </motion.div>
+          )}
+
+          {activeTab === 'versions' && (
+            <motion.div
+              key="versions"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.15 }}
+            >
+              <VersionHistory fileId={media.id} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* 底部操作按钮 */}
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="space-y-2"
+        className="space-y-2 pt-4 border-t border-[var(--border-subtle)] mt-4"
       >
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -243,7 +327,7 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
               'flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-medium transition-all',
               copied 
                 ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                : 'bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                : 'bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:bg-gray-200/50 dark:hover:bg-white/10 hover:text-[var(--text-primary)]'
             )}
           >
             {copied ? (
@@ -274,6 +358,27 @@ export function MediaDetail({ item: media, onClose, onDelete }: MediaDetailProps
           删除文件
         </button>
       </motion.div>
+
+      {/* 分享对话框 */}
+      <AnimatePresence>
+        {shareDialogOpen && (
+          <ShareDialog
+            fileId={media.id}
+            onClose={() => setShareDialogOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* 图片编辑器 */}
+      <AnimatePresence>
+        {imageEditorOpen && isImage && (
+          <ImageEditor
+            fileId={media.id}
+            imageUrl={fullUrl}
+            onClose={() => setImageEditorOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

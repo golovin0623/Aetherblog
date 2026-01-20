@@ -160,7 +160,7 @@ function SidebarContent({
   closeMobile,
   isProfileOpen,
 }: SidebarContentProps) {
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleThemeWithAnimation } = useTheme();
 
   return (
     <>
@@ -375,7 +375,7 @@ function SidebarContent({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  toggleTheme();
+                  toggleThemeWithAnimation(e.clientX, e.clientY);
                 }}
                 className={cn(
                   'p-1.5 rounded-md',

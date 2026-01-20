@@ -1,25 +1,39 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Sun, Moon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings } from '../lib/services';
 import { useTheme } from '@aetherblog/hooks';
 
+// 导航页面类型
+type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
+
 /**
  * 移动端导航菜单组件
  * - 汉堡菜单按钮
  * - 使用 Portal 将菜单抽屉渲染到 body，避免被 header overflow 裁剪
+ * - 乐观更新：点击立即切换高亮状态，不等待路由完成
  */
 export default function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
-  const { isDark, toggleTheme } = useTheme();
+  const router = useRouter();
+  const { isDark, toggleThemeWithAnimation } = useTheme();
+
+  // 当前激活的导航页面（用于乐观更新）
+  const [activePage, setActivePage] = useState<NavPage>(() => {
+    if (pathname === '/timeline') return 'timeline';
+    if (pathname === '/posts') return 'posts';
+    if (pathname === '/archives') return 'archives';
+    if (pathname === '/friends') return 'friends';
+    if (pathname === '/about') return 'about';
+    return null;
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -34,6 +48,23 @@ export default function MobileMenu() {
   const authorName = settings?.authorName || 'Golovin';
   const authorAvatar = settings?.authorAvatar || 'https://github.com/shadcn.png';
   const authorBio = settings?.authorBio || '一只小凉凉';
+
+  // 同步 pathname 到 activePage（用于浏览器前进/后退等情况）
+  useEffect(() => {
+    if (pathname === '/timeline') {
+      setActivePage('timeline');
+    } else if (pathname === '/posts') {
+      setActivePage('posts');
+    } else if (pathname === '/archives') {
+      setActivePage('archives');
+    } else if (pathname === '/friends') {
+      setActivePage('friends');
+    } else if (pathname === '/about') {
+      setActivePage('about');
+    } else {
+      setActivePage(null);
+    }
+  }, [pathname]);
 
   // 路由变化时自动关闭菜单
   useEffect(() => {
@@ -52,12 +83,35 @@ export default function MobileMenu() {
     };
   }, [isOpen]);
 
+  // 乐观更新：点击时立即切换 UI 状态，然后触发路由导航
+  const handleNavClick = useCallback((target: NavPage) => {
+    if (!target) return;
+
+    // 立即更新 UI 状态（乐观更新）
+    setActivePage(target);
+
+    // 路由映射
+    const routes: Record<NonNullable<NavPage>, string> = {
+      posts: '/posts',
+      timeline: '/timeline',
+      archives: '/archives',
+      friends: '/friends',
+      about: '/about',
+    };
+
+    // 关闭菜单
+    setIsOpen(false);
+
+    // 直接导航（不使用 startTransition，确保立即触发）
+    router.push(routes[target]);
+  }, [router]);
+
   const navLinks = [
-    { href: '/posts', label: '首页', icon: Home },
-    { href: '/timeline', label: '时间线', icon: Clock },
-    { href: '/archives', label: '归档', icon: Archive },
-    { href: '/friends', label: '友链', icon: LinkIcon },
-    { href: '/about', label: '关于', icon: Info },
+    { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
+    { href: '/timeline', label: '时间线', icon: Clock, key: 'timeline' as NavPage },
+    { href: '/archives', label: '归档', icon: Archive, key: 'archives' as NavPage },
+    { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
+    { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
   ];
 
   // 菜单抽屉内容 - 使用 Portal 渲染到 body
@@ -129,14 +183,14 @@ export default function MobileMenu() {
             {/* 4. 导航链接 */}
             <nav className="flex-1 flex flex-col gap-1 p-4">
               {navLinks.filter(link => !['/posts', '/timeline'].includes(link.href)).map((link) => {
-                const isActive = pathname === link.href;
+                const isActive = activePage === link.key;
                 const Icon = link.icon;
 
                 return (
-                  <Link
+                  <button
                     key={link.href}
-                    href={link.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    onClick={() => handleNavClick(link.key)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${
                       isActive
                         ? 'bg-black/10 dark:bg-[var(--primary-light)]/10 text-black dark:text-[var(--color-primary)]'
                         : 'text-black dark:text-[var(--text-muted)] hover:text-black dark:hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-[var(--bg-card-hover)]'
@@ -144,7 +198,7 @@ export default function MobileMenu() {
                   >
                     <Icon size={16} />
                     {link.label}
-                  </Link>
+                  </button>
                 );
               })}
             </nav>
@@ -153,7 +207,7 @@ export default function MobileMenu() {
             <div className="p-4 space-y-2 mt-auto">
               {/* 主题切换按钮 */}
               <button
-                onClick={toggleTheme}
+                onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm"
               >
                 {isDark ? <Moon size={16} /> : <Sun size={16} />}
