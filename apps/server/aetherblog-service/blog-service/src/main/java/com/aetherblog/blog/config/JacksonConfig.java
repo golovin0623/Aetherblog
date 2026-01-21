@@ -23,11 +23,11 @@ public class JacksonConfig {
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
 
-        // Register JavaTimeModule for Java 8 date/time support
+        // 注册 JavaTimeModule 以支持 Java 8 日期/时间
         mapper.registerModule(new JavaTimeModule());
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-        // Disable failing on empty beans (for Hibernate proxies)
+        // 禁用对空 Bean 报错（针对 Hibernate 代理）
         mapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
 
         log.info("ObjectMapper configured with JavaTimeModule");

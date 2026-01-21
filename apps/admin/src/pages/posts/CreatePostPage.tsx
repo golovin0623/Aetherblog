@@ -25,7 +25,7 @@ import { useSidebarStore } from '@/stores';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '@/lib/logger';
 
-// Instant tooltip button component for toolbar
+// 工具栏的即时提示按钮组件
 interface ToolbarButtonProps {
   onClick: () => void;
   tooltip: string;
@@ -33,7 +33,7 @@ interface ToolbarButtonProps {
   isActive?: boolean;
   activeColor?: 'primary' | 'emerald';
   className?: string;
-  /** Tooltip position: 'top' (default) or 'bottom' */
+  /** 提示框位置: 'top' (默认) 或 'bottom' */
   tooltipPosition?: 'top' | 'bottom';
 }
 
@@ -86,7 +86,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
 
 export function CreatePostPage() {
   const navigate = useNavigate();
-  // Use resolvedTheme to ensure we always pass 'light' or 'dark' to the editor, handling 'system' preference
+  // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
   const { resolvedTheme } = useTheme();
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
@@ -100,7 +100,7 @@ export function CreatePostPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
-  // Font size control - separate editor and preview font sizes
+  // 字号控制 - 分离编辑器和预览字号
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [previewFontSize, setPreviewFontSize] = useState(16);
   const [zoomTarget, setZoomTarget] = useState<'editor' | 'preview' | 'both'>('both');
@@ -114,19 +114,19 @@ export function CreatePostPage() {
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
   const [autoSaveFlash, setAutoSaveFlash] = useState(false); // 自动保存时的微妙闪烁
   const [publishTime, setPublishTime] = useState<string>('');
-  // Quick create category modal
+  // 快速创建分类模态框
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
 
-  // Category state
+  // 分类状态
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(true);
 
-  // Tag state
+  // 标签状态
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState('');
@@ -141,19 +141,19 @@ export function CreatePostPage() {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
 
-  // Sidebar auto-collapse
+  // 侧边栏自动折叠
   const { setAutoCollapse } = useSidebarStore();
 
-  // Auto-collapse sidebar on mount, restore on unmount
-  // Use requestAnimationFrame + setTimeout to delay collapse until page is rendered
+  // 挂载时自动折叠侧边栏，卸载时恢复
+  // 使用 requestAnimationFrame + setTimeout 延迟折叠，直到页面渲染完成
   useEffect(() => {
-    // Delay collapse to avoid animation competing with page render
+    // 延迟折叠以避免动画与页面渲染冲突
     const rafId = requestAnimationFrame(() => {
       const timerId = setTimeout(() => {
         setAutoCollapse(true);
-      }, 100); // Small delay for smoother transition
+      }, 100); // 小延迟以获得更平滑的过渡
       
-      // Store timerId in a ref-like closure for cleanup
+      // 在类似 ref 的闭包中存储 timerId 以便清理
       return () => clearTimeout(timerId);
     });
     
@@ -163,7 +163,7 @@ export function CreatePostPage() {
     };
   }, [setAutoCollapse]);
 
-  // Auto-save logic
+  // 自动保存逻辑
   const latestDataRef = useRef({ title, content, summary, selectedCategory, selectedTags });
   useEffect(() => {
     latestDataRef.current = { title, content, summary, selectedCategory, selectedTags };
@@ -174,10 +174,10 @@ export function CreatePostPage() {
 
     const timer = setInterval(() => {
       const data = latestDataRef.current;
-      // Only auto-save if content exists
+      // 仅当内容存在时自动保存
       if (!data.title && !data.content) return;
 
-      // Automatically save to draft cache (Redis)
+      // 自动保存到草稿缓存 (Redis)
       postService.autoSave(postId, {
         title: data.title,
         content: data.content,
@@ -195,7 +195,7 @@ export function CreatePostPage() {
     return () => clearInterval(timer);
   }, [isEditMode, postId, _postStatus, isAutoSaveEnabled]);
 
-  // View configuration automation
+  // 视图配置自动化
   useEffect(() => {
     if (viewMode === 'edit') {
       setShowToc(true);
@@ -204,13 +204,13 @@ export function CreatePostPage() {
       setIsFullscreen(true);
       setShowToc(false);
     } else {
-      // Split mode defaults
+      // 分屏模式默认值
       setIsFullscreen(false);
       setShowToc(false);
     }
   }, [viewMode]);
 
-  // Fetch categories, tags, and server time on mount
+  // 挂载时获取分类、标签和服务器时间
   useEffect(() => {
     const fetchData = async () => {
       setLoadingCategories(true);
@@ -219,14 +219,14 @@ export function CreatePostPage() {
         const [catRes, tagRes, timeRes] = await Promise.all([
           categoryService.getList(),
           tagService.getList(),
-          postService.getServerTime().catch(() => null) // Gracefully handle if API not available
+          postService.getServerTime().catch(() => null) // API 不可用时优雅处理
         ]);
         if (catRes.data) setCategories(catRes.data);
         if (tagRes.data) setTags(tagRes.data);
         
-        // Set publish time from server time, fallback to local time if API fails
+        // 从服务器时间设置发布时间，如果 API 失败则回退到本地时间
         if (timeRes?.data?.timestamp) {
-          // Server returns ISO timestamp, convert to local datetime-local format
+          // 服务器返回 ISO 时间戳，转换为本地 datetime-local 格式
           const serverDate = new Date(timeRes.data.timestamp);
           const year = serverDate.getFullYear();
           const month = String(serverDate.getMonth() + 1).padStart(2, '0');
@@ -235,7 +235,7 @@ export function CreatePostPage() {
           const minutes = String(serverDate.getMinutes()).padStart(2, '0');
           setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
         } else {
-          // Fallback to local time
+          // 回退到本地时间
           const now = new Date();
           const year = now.getFullYear();
           const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -246,7 +246,7 @@ export function CreatePostPage() {
         }
       } catch (error) {
         logger.error('Failed to fetch categories/tags:', error);
-        // Still set a default publish time on error
+        // 出错时仍设置默认发布时间
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -262,7 +262,7 @@ export function CreatePostPage() {
     fetchData();
   }, []);
 
-  // Handle Esc to exit full screen
+  // 按 Esc 退出全屏
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
@@ -273,7 +273,7 @@ export function CreatePostPage() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isFullscreen]);
 
-  // Handle Ctrl+S / Cmd+S to save
+  // 处理 Ctrl+S / Cmd+S 保存
   useEffect(() => {
     const handleSaveShortcut = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -283,9 +283,9 @@ export function CreatePostPage() {
     };
     window.addEventListener('keydown', handleSaveShortcut);
     return () => window.removeEventListener('keydown', handleSaveShortcut);
-  }, [content, title, selectedCategory, selectedTags, summary]); // Use relevant states for saving
+  }, [content, title, selectedCategory, selectedTags, summary]); // 使用相关状态进行保存
 
-  // Load existing post when in edit mode
+  // 编辑模式下加载现有文章
   useEffect(() => {
     if (isEditMode && postId) {
       const loadPost = async () => {
@@ -297,7 +297,7 @@ export function CreatePostPage() {
             const draft = post.draft;
             const useDraft = !!draft;
 
-            // Prefer draft content if available
+            // 如果可用，优先使用草稿内容
             setTitle(useDraft ? draft.title : post.title);
             setContent(useDraft ? draft.content : post.content);
             setSummary((useDraft ? draft.summary : post.summary) || '');
@@ -308,8 +308,8 @@ export function CreatePostPage() {
               setTimeout(() => setSaveMessage(null), 3000);
             }
             
-            // For relations, we prioritize DB values initially to ensure we have full objects
-            // Future improvement: Hydrate Category/Tags from draft IDs if possible
+            // 对于关系，我们最初优先考虑数据库值，以确保拥有完整的对象
+            // 未来改进：如果可能，从草稿 ID 中恢复分类/标签
             if (post.category) {
               setSelectedCategory(post.category as Category);
             }
@@ -330,7 +330,7 @@ export function CreatePostPage() {
     }
   }, [isEditMode, postId]);
 
-  // Click outside to close dropdowns
+  // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
@@ -347,7 +347,7 @@ export function CreatePostPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filtered categories based on search
+  // 基于搜索过滤分类
   const filteredCategories = useMemo(() => {
     if (!categorySearch) return categories;
     return categories.filter(c => 
@@ -355,7 +355,7 @@ export function CreatePostPage() {
     );
   }, [categories, categorySearch]);
 
-  // Filtered tags based on search
+  // 基于搜索过滤标签
   const filteredTags = useMemo(() => {
     if (!tagSearch) return tags.filter(t => !selectedTags.find(s => s.id === t.id));
     return tags.filter(t => 
@@ -364,7 +364,7 @@ export function CreatePostPage() {
     );
   }, [tags, tagSearch, selectedTags]);
 
-  // Character, word, and line count
+  // 字符、单词和行数统计
   const stats = useMemo(() => {
     const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
     const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
@@ -376,7 +376,7 @@ export function CreatePostPage() {
     };
   }, [content]);
 
-  // Extract headings for TOC
+  // 提取 TOC 标题
   interface TocItem {
     level: number;
     text: string;
@@ -411,15 +411,15 @@ export function CreatePostPage() {
     return items;
   }, [content]);
 
-  // Ref to store original sync scroll state during TOC navigation
+  // 用于在 TOC 导航期间存储原始同步滚动状态的 Ref
   const syncScrollBeforeNavRef = useRef(false);
 
-  // Scroll to heading - Two-phase approach for virtual DOM accuracy
+  // 滚动到标题 - 虚拟 DOM 准确性的两阶段方法
   const scrollToHeading = useCallback((headingText: string, lineNumber: number) => {
     const editorContainer = editorContainerRef.current;
     if (!editorContainer) return;
     
-    // Temporarily disable sync scroll to prevent interference
+    // 暂时禁用同步滚动以防止干扰
     syncScrollBeforeNavRef.current = isSyncScroll;
     if (isSyncScroll) {
       setIsSyncScroll(false);
@@ -428,9 +428,9 @@ export function CreatePostPage() {
     const cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
     const cmContent = editorContainer.querySelector('.cm-content') as HTMLElement | null;
 
-    // Wrap execution in setTimeout to ensure setIsSyncScroll(false) has propagated to children
+    // 将执行包装在 setTimeout 中，以确保 setIsSyncScroll(false) 已传播到子组件
     setTimeout(() => {
-    // Helper: Find heading in editor DOM
+    // 辅助函数：在编辑器 DOM 中查找标题
     const findHeadingInEditor = (): HTMLElement | null => {
       if (!cmContent) return null;
       const lines = cmContent.querySelectorAll('.cm-line');
@@ -444,14 +444,14 @@ export function CreatePostPage() {
       return null;
     };
 
-    // Helper: Scroll editor to element
+    // 辅助函数：将编辑器滚动到元素
     const scrollEditorToElement = (element: HTMLElement) => {
       if (!cmScroller || !cmContent) return;
       const lineTop = element.offsetTop - cmContent.offsetTop;
       cmScroller.scrollTo({ top: Math.max(0, lineTop - 50), behavior: 'smooth' });
     };
 
-    // Helper: Scroll preview to heading
+    // 辅助函数：将预览滚动到标题
     const scrollPreviewToHeading = () => {
       const previewPanels = editorContainer.querySelectorAll('[class*="overflow-y-auto"]');
       previewPanels.forEach(panel => {
@@ -472,47 +472,47 @@ export function CreatePostPage() {
       });
     };
 
-    // Phase 1: Try direct text match first
+    // 阶段 1：首先尝试直接文本匹配
     let foundLine = findHeadingInEditor();
     
     if (foundLine) {
-      // Heading is in visible DOM - scroll directly (both smooth)
+      // 标题在可见 DOM 中 - 直接滚动（均平滑）
       scrollEditorToElement(foundLine);
-      scrollPreviewToHeading(); // Preview always has DOM, so this works
+      scrollPreviewToHeading(); // 预览总是有 DOM，所以这行得通
     } else if (cmScroller && cmContent) {
-      // Phase 2: Heading not in DOM - use "Seek & Lock" approach
+      // 阶段 2：标题不在 DOM 中 - 使用 "Seek & Lock" 方法
       
-      // 2a: Launch smooth scroll to estimated position for Editor
+      // 2a: 启动平滑滚动到编辑器的估计位置
       const lineHeight = 24;
       const estimatedTop = (lineNumber - 1) * lineHeight;
       cmScroller.scrollTo({ top: Math.max(0, estimatedTop - 50), behavior: 'smooth' });
       
-      // 2b: Preview is NOT virtualized, so we can always find and scroll to it directly & smoothly
-      // We don't need estimation for preview, just force a search
+      // 2b: 预览没有虚拟化，所以我们总是可以直接且平滑地找到并滚动到它
+      // 我们不需要预览的估计，只需强制搜索
       scrollPreviewToHeading();
       
-      // 2c: MutationObserver (Zero Overhead)
-      // Instead of polling every frame, we wait for the browser to notify us of DOM updates
+      // 2c: MutationObserver (零开销)
+      // 我们不每帧轮询，而是等待浏览器通知我们 DOM 更新
       
       const observerTimeout = setTimeout(() => {
         observer.disconnect();
-      }, 2000); // Safety timeout
+      }, 2000); // 安全超时
 
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           if (mutation.type === 'childList') {
-            // Only check newly added nodes
+            // 仅检查新添加的节点
             mutation.addedNodes.forEach((node) => {
-              if (node.nodeType === 1) { // Element node
+              if (node.nodeType === 1) { // 元素节点
                 const el = node as HTMLElement;
-                // Check if this new node is a line containing our heading
+                // 检查这个新节点是否包含我们的标题的行
                 if (el.classList.contains('cm-line')) {
                   const text = el.textContent || '';
                   if (text.includes(headingText) && /^#+\s/.test(text)) {
-                    // Target acquired!
-                    // Only correct if deviation is significant (> 50px) to avoid visual jitter
-                    // Only correct if deviation between ESTIMATED target and ACTUAL target is significant
-                    // This prevents interrupting the smooth scroll if we are already going to the right place
+                    // 目标已获取！
+                    // 仅当偏差显著 (> 50px) 时才更正，以避免视觉抖动
+                    // 仅当估计目标和实际目标之间的偏差显著时才更正
+                    // 如果我们已经去了正确的地方，这可以防止中断平滑滚动
                     const targetTop = el.offsetTop - (cmContent?.offsetTop || 0) - 50;
                     if (Math.abs(estimatedTop - targetTop) > 50) {
                        scrollEditorToElement(el);
@@ -528,10 +528,10 @@ export function CreatePostPage() {
       });
 
       if (cmContent) {
-        // Start observing for line additions
+        // 开始观察行添加
         observer.observe(cmContent, { childList: true, subtree: true });
         
-        // Final check: in case it appeared just before observation started
+        // 最终检查：以防它在观察开始前刚刚出现
         const finalLine = findHeadingInEditor();
         if (finalLine) {
           scrollEditorToElement(finalLine);
@@ -541,8 +541,8 @@ export function CreatePostPage() {
       }
     }
 
-    // Restore sync scroll after enough time for all animations to complete
-    // Increased to 1500ms to cover long scrolls and polling time
+    // 在足够的时间让所有动画完成后恢复同步滚动
+    // 增加到 1500ms 以覆盖长滚动和轮询时间
     setTimeout(() => {
       if (syncScrollBeforeNavRef.current) {
         setIsSyncScroll(true);
@@ -551,35 +551,35 @@ export function CreatePostPage() {
     }, 10);
   }, [isSyncScroll, stats.lines]);
 
-  // Scroll to top function - targets CodeMirror's internal scroller
+  // 滚动到顶部函数 - 针对 CodeMirror 的内部滚动条
   const scrollToTop = useCallback(() => {
-    // Find all scroll containers within the editor
+    // 查找编辑器内的所有滚动容器
     const editorContainer = editorContainerRef.current;
     if (!editorContainer) return;
     
-    // Scroll the CodeMirror scroller
+    // 滚动 CodeMirror 滚动条
     const cmScroller = editorContainer.querySelector('.cm-scroller');
     if (cmScroller) {
       cmScroller.scrollTo({ top: 0, behavior: 'smooth' });
     }
     
-    // Also scroll the preview panel (look for the container with bg-[#0a0a0c])
+    // 同时滚动预览面板 (寻找带有 bg-[#0a0a0c] 的容器)
     const previewPanels = editorContainer.querySelectorAll('.overflow-y-auto, [class*="overflow-y-auto"]');
     previewPanels.forEach(panel => {
       panel.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }, []);
 
-  // Editor commands for toolbar
+  // 工具栏的编辑器命令
   const editorCommands = useEditorCommands(editorViewRef);
   
-  // Table commands for table operations
+  // 表格操作的表格命令
   const tableCommands = useTableCommands(editorViewRef);
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
   const [showTableToolbar, setShowTableToolbar] = useState(false);
   const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Image upload hook
+  // 图片上传 Hook
   const handleUploadFn = useCallback(async (file: File, onProgress?: (percent: number) => void): Promise<UploadResult> => {
     const result = await mediaService.upload(file, onProgress);
     return {
@@ -610,17 +610,17 @@ export function CreatePostPage() {
       logger.error('图片上传失败:', error, file.name);
     },
   });
-  // Check table state on selection change and scroll
+  // 在选择更改和滚动时检查表格状态
   useEffect(() => {
     const checkTable = () => {
       const info = tableCommands.getTableInfo();
       setTableInfo(info);
     };
     
-    // Check on content change
+    // 检查内容更改
     const interval = setInterval(checkTable, 100);
     
-    // Also update on scroll
+    // 滚动时也更新
     const editorContainer = editorContainerRef.current;
     if (editorContainer) {
       const scroller = editorContainer.querySelector('.cm-scroller');
@@ -640,7 +640,7 @@ export function CreatePostPage() {
     };
   }, [tableCommands]);
   
-  // Table toolbar hover handlers
+  // 表格工具栏悬停处理程序
   const handleTableTriggerEnter = useCallback(() => {
     if (tableToolbarTimeoutRef.current) {
       clearTimeout(tableToolbarTimeoutRef.current);
@@ -650,13 +650,13 @@ export function CreatePostPage() {
   }, []);
   
   const handleTableTriggerLeave = useCallback(() => {
-    // Delay hiding to allow moving to toolbar
+    // 延迟隐藏以允许移动到工具栏
     tableToolbarTimeoutRef.current = setTimeout(() => {
       setShowTableToolbar(false);
     }, 200);
   }, []);
   
-  // Cleanup timeout on unmount
+  // 卸载时清理超时
   useEffect(() => {
     return () => {
       if (tableToolbarTimeoutRef.current) {
@@ -678,24 +678,25 @@ export function CreatePostPage() {
     editorCommands.focus();
   }, [editorCommands]);
 
-  // Handle formatting keyboard shortcuts (Ctrl+B, Ctrl+I, Ctrl+K, etc.)
+  // 处理格式化键盘快捷键 (Ctrl+B, Ctrl+I, Ctrl+K 等)
   useEffect(() => {
     const handleFormatShortcut = (e: KeyboardEvent) => {
+      // 仅在按下 Ctrl/Cmd 时处理
       // Only handle if Ctrl/Cmd is pressed
       if (!(e.ctrlKey || e.metaKey)) return;
       
       switch (e.key.toLowerCase()) {
-        case 'b': // Bold
+        case 'b': // 粗体
           e.preventDefault();
           editorCommands.toggleWrap('**', '**');
           editorCommands.focus();
           break;
-        case 'i': // Italic
+        case 'i': // 斜体
           e.preventDefault();
           editorCommands.toggleWrap('*', '*');
           editorCommands.focus();
           break;
-        case 'k': // Link (Ctrl+K) or Code Block (Ctrl+Shift+K)
+        case 'k': // 链接 (Ctrl+K) 或代码块 (Ctrl+Shift+K)
           e.preventDefault();
           if (e.shiftKey) {
             editorCommands.toggleWrap('```\n', '\n```');
@@ -704,12 +705,12 @@ export function CreatePostPage() {
           }
           editorCommands.focus();
           break;
-        case '`': // Inline code
+        case '`': // 行内代码
           e.preventDefault();
           editorCommands.toggleWrap('`', '`');
           editorCommands.focus();
           break;
-        case 'u': // Underline
+        case 'u': // 下划线
           e.preventDefault();
           editorCommands.toggleWrap('<u>', '</u>');
           editorCommands.focus();
@@ -720,7 +721,7 @@ export function CreatePostPage() {
     return () => window.removeEventListener('keydown', handleFormatShortcut);
   }, [editorCommands]);
 
-  // Validation check
+  // 验证检查
   const validatePost = (forPublish = false) => {
     if (!title.trim()) {
       setSaveMessage({ type: 'error', text: '请输入文章标题' });
@@ -730,10 +731,10 @@ export function CreatePostPage() {
       setSaveMessage({ type: 'error', text: '请输入文章内容' });
       return false;
     }
-    // Category required for publishing
+    // 发布需要分类
     if (forPublish && !selectedCategory) {
       setSaveMessage({ type: 'error', text: '发布文章请先选择分类' });
-      // Open settings panel and show category dropdown
+      // 打开设置面板并显示分类下拉菜单
       setShowSettings(true);
       setShowCategoryDropdown(true);
       return false;
@@ -741,7 +742,7 @@ export function CreatePostPage() {
     return true;
   };
 
-  // Create new category
+  // 创建新分类
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) return;
     
@@ -763,7 +764,7 @@ export function CreatePostPage() {
     }
   };
 
-  // Save as draft
+  // 保存为草稿
   const handleSave = async () => {
     if (!validatePost()) return;
     
@@ -771,8 +772,8 @@ export function CreatePostPage() {
     setSaveMessage(null);
     
     try {
-      // If editing a PUBLISHED post, "Save" only updates the Draft Cache
-      // Un-published (DRAFT) posts update the DB directly
+      // 如果正在编辑已发布的文章，"保存" 仅更新草稿缓存
+      // 未发布 (草稿) 文章直接更新数据库
       if (isEditMode && postId && _postStatus === 'PUBLISHED') {
          await postService.autoSave(postId, {
             title: title.trim(),
@@ -784,7 +785,7 @@ export function CreatePostPage() {
          });
          setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
       } else {
-        // Normal save to DB
+        // 正常保存到数据库
         const res = isEditMode && postId
           ? await postService.update(postId, {
               title: title.trim(),
@@ -805,7 +806,7 @@ export function CreatePostPage() {
         
         if (res.code === 200 && res.data) {
           setSaveMessage({ type: 'success', text: '保存成功！' });
-          // If it was a new post, navigate to edit page
+          // 如果是新文章，导航到编辑页面
           if (!isEditMode && res.data.id) {
             setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
           }
@@ -821,9 +822,9 @@ export function CreatePostPage() {
     }
   };
 
-  // Publish post
+  // 发布文章
   const handlePublish = async () => {
-    if (!validatePost(true)) return; // true = forPublish, requires category
+    if (!validatePost(true)) return; // true = 用于发布，需要分类
     
     setIsPublishing(true);
     setSaveMessage(null);
@@ -861,7 +862,7 @@ export function CreatePostPage() {
     }
   };
 
-  // Clear message after 3 seconds
+  // 3 秒后清除消息
   useEffect(() => {
     if (saveMessage) {
       const timer = setTimeout(() => setSaveMessage(null), 3000);
@@ -872,14 +873,14 @@ export function CreatePostPage() {
   const handleTagKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && tagSearch.trim()) {
       e.preventDefault();
-      // Check if tag already exists
+      // 检查标签是否已存在
       const existing = tags.find(t => t.name.toLowerCase() === tagSearch.toLowerCase());
       if (existing) {
         if (!selectedTags.find(s => s.id === existing.id)) {
           setSelectedTags([...selectedTags, existing]);
         }
       } else {
-        // Create new tag
+        // 创建新标签
         try {
           const res = await tagService.create({ name: tagSearch.trim() });
           if (res.data) {
@@ -902,16 +903,16 @@ export function CreatePostPage() {
 
 
 
-  // Loading skeleton - Theme-aware
+  // 加载骨架屏 - 感知主题
   if (_loadingPost || loadingCategories || loadingTags) {
     return (
       <div className="flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-50 overflow-hidden">
-        {/* Header Skeleton */}
+        {/* 头部骨架 */}
         <div className="h-14 flex-shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-6 gap-4">
-           {/* Left */}
+           {/* 左侧 */}
            <div className="flex items-center gap-3 flex-1">
-             <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-shrink-0" /> {/* Back */}
-             <div className="h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-1 max-w-md" />   {/* Title */}
+             <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-shrink-0" /> {/* 返回 */}
+             <div className="h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-1 max-w-md" />   {/* 标题 */}
              <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0 mx-1" />
              <div className="flex gap-2">
                 <div className="w-24 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
@@ -919,16 +920,16 @@ export function CreatePostPage() {
              </div>
            </div>
            
-           {/* Right */}
+           {/* 右侧 */}
            <div className="flex items-center gap-2">
               <div className="w-20 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* AI */}
-              <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />  {/* Settings */}
-              <div className="w-[90px] h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* Save */}
-              <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* Publish */}
+              <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />  {/* 设置 */}
+              <div className="w-[90px] h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* 保存 */}
+              <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* 发布 */}
            </div>
         </div>
 
-        {/* Toolbar Skeleton */}
+        {/* 工具栏骨架 */}
         <div className="flex-shrink-0 h-10 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 flex items-center px-4 gap-4 overflow-hidden">
              <div className="flex items-center gap-1 pr-3 border-r border-[var(--border-subtle)]">
                 <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
@@ -943,11 +944,11 @@ export function CreatePostPage() {
              <div className="flex-1" />
         </div>
 
-        {/* Content Area */}
+        {/* 内容区域 */}
         <div className="flex-1 flex overflow-hidden">
-             {/* Editor */}
+             {/* 编辑器 */}
              <div className="flex-1 p-8 space-y-6 bg-[var(--bg-primary)]">
-                <div className="w-3/4 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* H1 title-like */}
+                <div className="w-3/4 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* H1 标题样式 */}
                 <div className="space-y-4">
                     <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                     <div className="w-11/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
@@ -960,7 +961,7 @@ export function CreatePostPage() {
                 </div>
              </div>
              
-             {/* Preview */}
+             {/* 预览 */}
              <div className="flex-1 border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-8 space-y-6 hidden lg:block">
                 <div className="w-2/3 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
                 <div className="space-y-4">
@@ -972,7 +973,7 @@ export function CreatePostPage() {
              </div>
         </div>
         
-        {/* Footer (Status Bar) */}
+        {/* 页脚 (状态栏) */}
         <div className="h-8 flex-shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-4">
              <div className="w-24 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              <div className="w-16 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
@@ -985,7 +986,7 @@ export function CreatePostPage() {
     <div className={cn(
       "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden"
     )}>
-      {/* Top Header Section - With fold-up animation */}
+      {/* 顶部头部区域 - 带折叠动画 */}
       <AnimatePresence initial={false}>
         {!isFullscreen && (
           <motion.div 
@@ -997,7 +998,7 @@ export function CreatePostPage() {
             className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] z-20"
           >
             <div className="flex items-center justify-between px-6 py-3.5 gap-4">
-              {/* Left Block: Back + Title + Metadata */}
+              {/* 左侧块：返回 + 标题 + 元数据 */}
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <button 
                   onClick={() => navigate('/posts')}
@@ -1007,7 +1008,7 @@ export function CreatePostPage() {
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 
-                {/* Title Input */}
+                {/* 标题输入 */}
                 <motion.div className="flex-1 min-w-[150px]">
                   <input
                     type="text"
@@ -1018,12 +1019,12 @@ export function CreatePostPage() {
                   />
                 </motion.div>
 
-                {/* Divider */}
+                {/* 分隔线 */}
                 <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0" />
 
-                {/* Metadata: Category & Tags */}
+                {/* 元数据：分类和标签 */}
                 <div className="flex items-center gap-3 flex-shrink-0">
-                  {/* Category Selector */}
+                  {/* 分类选择器 */}
                   <div ref={categoryDropdownRef} className="relative">
                     <button
                       onMouseDown={(e) => e.stopPropagation()}
@@ -1085,9 +1086,9 @@ export function CreatePostPage() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Tag Selector */}
+                  {/* 标签选择器 */}
                   <div ref={tagDropdownRef} className="relative flex items-center gap-1.5">
-                     {/* Stable tags - first 2 always rendered if exist */}
+                     {/* 稳定标签 - 如果存在，前 2 个始终渲染 */}
                        {selectedTags.slice(0, 2).map((tag) => (
                         <motion.span
                           key={tag.id}
@@ -1098,7 +1099,7 @@ export function CreatePostPage() {
                         </motion.span>
                       ))}
 
-                     {/* Hidden Tags Floating Panel */}
+                     {/* 隐藏标签浮动面板 */}
                      {selectedTags.length > 2 && (
                        <div ref={expandedTagsRef} className="relative">
                          <button
@@ -1209,7 +1210,7 @@ export function CreatePostPage() {
                 </div>
               </div>
               
-              {/* Right Buttons */}
+              {/* 右侧按钮 */}
               <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[var(--bg-card)]">
                 
                 <motion.button
@@ -1266,7 +1267,7 @@ export function CreatePostPage() {
                   {isPublishing ? '发布中...' : '发布'}
                 </motion.button>
                 
-                {/* Save message toast */}
+                {/* 保存消息提示 */}
                 <AnimatePresence>
                   {saveMessage && (
                     <motion.div

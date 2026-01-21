@@ -241,13 +241,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   
   // 解析实际主题
   const resolvedTheme = useMemo<ResolvedTheme>(() => {
-    // 如果未挂载，返回 'light' 或默认值以匹配服务端 (SRR usually defaults to light in CSS if no class)
+    // 如果未挂载，返回 'light' 或默认值以匹配服务端 (SSR 通常在没有类名时默认为 light 样式)
     // 但我们的 themeInitScript 可能已经设置了 dark class。
-    // 为了避免 react hydration 报错，React 渲染的内容必须匹配。
-    // 如果 content 依赖于 isDark (例如图标)，我们应该在 mounted 前不渲染或者渲染占位符，
-    // 或者接受 hydration mismatch 然后用 suppressHydrationWarning。
-    // 这里我们选择 consistent rendering ('system' -> 'light') then update.
-    if (!mounted) return 'light'; // Server default
+    // 为了避免 React 水合 (hydration) 报错，React 渲染的内容必须匹配。
+    // 如果内容依赖于 isDark (例如图标)，我们应该在挂载前不渲染或者渲染占位符，
+    // 或者接受水合不匹配 (hydration mismatch) 然后使用 suppressHydrationWarning。
+    // 这里我们选择一致性渲染 ('system' -> 'light') 然后更新。
+    if (!mounted) return 'light'; // 服务端默认值
     return theme === 'system' ? systemTheme : theme;
   }, [theme, systemTheme, mounted]);
   
