@@ -10,9 +10,9 @@ export default function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Data is considered fresh for 5 minutes
+            // 数据在5分钟内被认为是新鲜的
             staleTime: 5 * 60 * 1000,
-            // Keep unused data in cache for 10 minutes
+            // 将未使用的数据在缓存中保留10分钟
             gcTime: 10 * 60 * 1000,
             refetchOnWindowFocus: false,
             retry: 1,
