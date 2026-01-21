@@ -61,13 +61,13 @@ interface FriendsListProps {
 }
 
 export default function FriendsList({ initialFriends }: FriendsListProps) {
-  // Use server data if available, otherwise fallback to MOCK
+  // 如果服务器数据可用则使用，否则回退到 MOCK 数据
   const displayFriends = initialFriends.length > 0 ? initialFriends : MOCK_FRIENDS;
 
   return (
     <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
       <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">
-        {/* Background Ambient Light */}
+        {/* 背景环境光 */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
           <div
             className="absolute top-[-100px] right-1/4 w-[600px] h-[500px] bg-primary/10 rounded-full"
@@ -85,7 +85,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           />
         </div>
         
-        {/* Page Header */}
+        {/* 页面头部 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -115,16 +115,16 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 avatar={friend.logo || ''}
                 description={friend.description}
                 themeColor={friend.themeColor}
-                // email/rss not in service interface yet, but defined in mocked data
-                // service FriendLink interface is subset. 
-                // We can cast or ignore for now.
+                // email/rss 尚未在服务接口中，但在模拟数据中定义
+                // 服务 FriendLink 接口是子集。
+                // 我们暂时可以转换或忽略。
                 index={index}
               />
             </motion.div>
           ))}
         </div>
 
-        {/* Friend Link Application CTA */}
+        {/* 友链申请行动号召 */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

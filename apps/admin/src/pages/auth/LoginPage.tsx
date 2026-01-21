@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import CryptoJS from 'crypto-js';
 
-// Encryption key - in production this should come from server or env
+// 加密密钥 - 在生产环境中应来自服务器或环境变量
 const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
 
-// Encrypt password before sending
+// 发送前加密密码
 const encryptPassword = (password: string): string => {
   const timestamp = Date.now().toString();
   const data = JSON.stringify({ password, timestamp });
@@ -33,19 +33,19 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Encrypt password before sending
+      // 发送前加密密码
       const encryptedPassword = encryptPassword(password);
       
       const res = await authService.login({ 
         username, 
         password: encryptedPassword,
-        encrypted: true // Flag to tell backend this is encrypted
+        encrypted: true // 告知后端此密码已加密的标志
       });
       
       if (res.code === 200 && res.data) {
          const { accessToken, userInfo, mustChangePassword } = res.data;
          const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
-         // Validate role is one of the allowed values
+         // 验证角色是否为允许值之一
          const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
          const role = validRoles.includes(roleStr as typeof validRoles[number]) 
            ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER') 
@@ -61,7 +61,7 @@ export function LoginPage() {
          
          login(user, accessToken);
          
-         // Check if user must change password on first login
+         // 检查用户是否需要在首次登录时更改密码
          if (mustChangePassword) {
             navigate('/change-password', { state: { firstLogin: true } });
          } else {
@@ -80,23 +80,23 @@ export function LoginPage() {
 
   return (
     <div className="w-full min-h-screen flex bg-black text-white selection:bg-primary/30 overflow-hidden font-sans relative">
-      {/* Background Layer - Shared for all views */}
+      {/* 背景层 - 所有视图共享 */}
       <div className="absolute inset-0 z-0">
         <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/15 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
         <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-purple-600/10 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
-        {/* Grid Pattern */}
+        {/* 网格图案 */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
       </div>
 
-      {/* Left: Brand/Art Section (Desktop only) */}
+      {/* 左侧：品牌/艺术区域 (仅桌面端) */}
       <motion.div 
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-white/5"
       >
-        {/* Brand Content */}
+        {/* 品牌内容 */}
         <div className="relative z-10">
            <div className="inline-flex items-center gap-3">
              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
@@ -122,7 +122,7 @@ export function LoginPage() {
         </div>
       </motion.div>
 
-      {/* Right: Login Form Section */}
+      {/* 右侧：登录表单区域 */}
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -130,7 +130,7 @@ export function LoginPage() {
         className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 relative z-10"
       >
         <div className="w-full max-w-[420px] space-y-8">
-          {/* Mobile Branding */}
+          {/* 移动端品牌 */}
           <div className="lg:hidden flex flex-col items-center mb-8 text-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mb-4">
               <Sparkles className="w-8 h-8 text-white" />
@@ -239,7 +239,7 @@ export function LoginPage() {
             By continuing, you agree to our <a href="#" className="underline text-slate-400 hover:text-white">Terms</a> and <a href="#" className="underline text-slate-400 hover:text-white">Privacy</a>.
           </p>
 
-          {/* Mobile System Status */}
+          {/* 移动端系统状态 */}
           <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-50">
             <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
             <span className="text-[10px] text-slate-500 font-medium tracking-tight">System Operational v1.0.0</span>
