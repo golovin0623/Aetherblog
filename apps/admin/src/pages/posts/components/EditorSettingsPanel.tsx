@@ -15,14 +15,14 @@ import { Category } from '@/services/categoryService';
 import { Tag as TagType } from '@/services/tagService';
 
 interface EditorSettingsPanelProps {
-  // Category
+  // 分类
   categories: Category[];
   selectedCategory: Category | null;
   onCategorySelect: (category: Category | null) => void;
   onCreateCategory: () => void;
   loadingCategories: boolean;
   
-  // Tags
+  // 标签
   tags: TagType[];
   selectedTags: TagType[];
   onTagAdd: (tag: TagType) => void;
@@ -30,16 +30,16 @@ interface EditorSettingsPanelProps {
   onTagCreate: (name: string) => Promise<void>;
   loadingTags: boolean;
   
-  // Summary
+  // 摘要
   summary: string;
   onSummaryChange: (value: string) => void;
   
-  // Cover image (placeholder for future implementation)
+  // 封面图片 (未来实现的占位符)
   coverUrl?: string;
   onCoverChange?: (url: string) => void;
 }
 
-// Collapsible section wrapper
+// 可折叠区块包装器
 function SettingsSection({ 
   title, 
   icon: Icon, 

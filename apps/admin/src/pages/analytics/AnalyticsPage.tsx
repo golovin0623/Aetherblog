@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Mock data for fallback
+// 模拟数据用于回退
 const mockVisitorData = [
   { label: '周一', value: 1200 },
   { label: '周二', value: 1400 },
@@ -36,7 +36,7 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [visitorData, setVisitorData] = useState(mockVisitorData);
 
-  // Fetch visitor trend data when date range changes
+  // 日期范围改变时获取访客趋势数据
   useEffect(() => {
     const fetchData = async () => {
       const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
@@ -44,14 +44,14 @@ export function AnalyticsPage() {
         setLoading(true);
         const res = await analyticsService.getVisitorTrend(days);
         if (res.code === 200 && res.data && res.data.length > 0) {
-          // Transform API data to chart format
+          // 将 API 数据转换为图表格式
           const transformed = res.data.map((item: VisitorTrend) => ({
             label: item.date.slice(5), // MM-DD format
             value: item.pv,
           }));
           setVisitorData(transformed);
         } else {
-          // Generate mock data for demo
+          // 生成演示用的模拟数据
           const mockData = generateMockData(days);
           setVisitorData(mockData);
         }
@@ -67,7 +67,7 @@ export function AnalyticsPage() {
     fetchData();
   }, [dateRange]);
 
-  // Generate mock data based on day count
+  // 基于天数生成模拟数据
   const generateMockData = (days: number) => {
     const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     return Array.from({ length: Math.min(days, 14) }, (_, i) => {
@@ -99,13 +99,13 @@ export function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">统计分析</h1>
           <p className="text-[var(--text-muted)] mt-1">深入了解访客行为和内容表现</p>
         </div>
-        {/* Date range toggle - responsive */}
+        {/* 日期范围切换 - 响应式 */}
         <div className="flex items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           {(['7d', '30d', '90d'] as const).map((range) => (
             <button
@@ -124,7 +124,7 @@ export function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Overview Cards - responsive grid */}
+      {/* 概览卡片 - 响应式网格 */}
       <motion.div 
         variants={container}
         initial="hidden"
@@ -156,7 +156,7 @@ export function AnalyticsPage() {
         ))}
       </motion.div>
 
-      {/* Charts - responsive grid */}
+      {/* 图表 - 响应式网格 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <motion.div 
           variants={item}
@@ -189,7 +189,7 @@ export function AnalyticsPage() {
         </motion.div>
       </div>
 
-      {/* Traffic Sources - full width */}
+      {/* 流量来源 - 全宽 */}
       <motion.div 
         variants={item}
         initial="hidden"
