@@ -50,7 +50,7 @@ const EXTENDED_LANGUAGES: BundledLanguage[] = [
 // 所有支持的语言 (用于判断是否可加载)
 const ALL_SUPPORTED_LANGUAGES = [...CORE_LANGUAGES, ...EXTENDED_LANGUAGES];
 
-// Language alias mapping
+// 语言别名映射
 const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'js': 'javascript',
   'ts': 'typescript',
@@ -62,7 +62,7 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'docker': 'dockerfile',
 };
 
-// Global highlighter instance (singleton)
+// 全局高亮实例 (单例)
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighterInstance: Highlighter | null = null;
 // 已加载的语言集合
@@ -112,7 +112,7 @@ async function ensureLanguageLoaded(highlighter: Highlighter, lang: BundledLangu
   }
 }
 
-// Normalize language name
+// 标准化语言名称
 function normalizeLanguage(lang: string): BundledLanguage | 'text' {
   const normalized = lang.toLowerCase().trim();
   if (LANGUAGE_ALIASES[normalized]) {
@@ -142,7 +142,7 @@ function extractTextContent(children: React.ReactNode): string {
   return '';
 }
 
-// mermaid theme type
+// mermaid 主题类型
 type MermaidTheme = 'dark' | 'default';
 
 // Mermaid 图表组件
@@ -160,7 +160,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
     const renderMermaid = async () => {
       try {
         setIsLoading(true);
-        // Clean up previous svg to force re-render visually (optional)
+        // 清理之前的 svg 以强制视觉重绘 (可选)
         setSvg(''); 
         
         const mermaid = (await import('mermaid')).default;
@@ -194,7 +194,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
     };
     
     renderMermaid();
-  }, [code, theme]); // Re-render when theme changes
+  }, [code, theme]); // 主题变更时重新渲染
 
   if (!code || !code.trim()) {
     return (
