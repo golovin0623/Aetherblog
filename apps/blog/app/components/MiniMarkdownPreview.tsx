@@ -7,7 +7,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { Components } from 'react-markdown';
 
-// Import KaTeX CSS (shared with MarkdownRenderer)
+// 引入 KaTeX CSS (与 MarkdownRenderer 共享)
 import 'katex/dist/katex.min.css';
 
 interface MiniPreviewProps {
