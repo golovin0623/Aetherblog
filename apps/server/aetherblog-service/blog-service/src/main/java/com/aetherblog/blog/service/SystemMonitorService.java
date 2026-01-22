@@ -632,8 +632,8 @@ public class SystemMonitorService {
                 // 只统计 en 开头的物理网络接口
                 if (iface.startsWith("en")) {
                     try {
-                        totalIn += Long.parseLong(parts[6]);   // Ibytes
-                        totalOut += Long.parseLong(parts[9]);  // Obytes
+                        totalIn += Long.parseLong(parts[6]);   // 接收字节
+                        totalOut += Long.parseLong(parts[9]);  // 发送字节
                     } catch (NumberFormatException ignored) {}
                 }
             }
