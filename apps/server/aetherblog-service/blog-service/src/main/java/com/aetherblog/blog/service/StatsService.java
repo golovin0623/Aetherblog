@@ -249,7 +249,7 @@ public class StatsService {
                 .toList();
     }
 
-    // DTO Records
+    // DTO 记录
     public record DashboardStats(
             long posts,
             long categories,

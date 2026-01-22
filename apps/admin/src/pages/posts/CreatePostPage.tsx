@@ -682,7 +682,7 @@ export function CreatePostPage() {
   useEffect(() => {
     const handleFormatShortcut = (e: KeyboardEvent) => {
       // 仅在按下 Ctrl/Cmd 时处理
-      // Only handle if Ctrl/Cmd is pressed
+      // 仅在按下 Ctrl/Cmd 时处理
       if (!(e.ctrlKey || e.metaKey)) return;
       
       switch (e.key.toLowerCase()) {
@@ -1570,12 +1570,12 @@ export function CreatePostPage() {
                                    tableInfo.tableBounds.top <= containerRect.bottom + 100;
               if (!isInViewport) return null;
               
-              // Calculate accurate line height
+              // 计算准确的行高
               const lineHeight = tableInfo.rowPositions.length > 1
                 ? tableInfo.rowPositions[1] - tableInfo.rowPositions[0]
                 : 24;
 
-              // Generate extended row positions to include the bottom of the last row
+              // 生成扩展的行位置以包含最后一行的底部
               const extendedRowPositions = [...tableInfo.rowPositions, tableInfo.rowPositions[tableInfo.rowPositions.length - 1] + lineHeight];
 
               return (
@@ -1616,7 +1616,7 @@ export function CreatePostPage() {
                            key={`col-dot-${i}`}
                            className="absolute top-1/2 -translate-y-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
                            style={{
-                             left: x - tableInfo.tableBounds!.left - 3, // Center 6px dot: -3px offset
+                             left: x - tableInfo.tableBounds!.left - 3, // 居中 6px 圆点：偏移 -3px
                            }}
                          />
                        ))}
@@ -1640,7 +1640,7 @@ export function CreatePostPage() {
                       {extendedRowPositions.slice(0, -1).map((y, i) => {
                         const nextY = extendedRowPositions[i + 1];
                         const height = nextY - y;
-                        // Start exactly at the row top (gap position)
+                        // 准确从行顶部开始（间隙位置）
                         const startY = y - tableInfo.tableBounds!.top;
                         
                         return (
@@ -1662,7 +1662,7 @@ export function CreatePostPage() {
                           key={`row-dot-${i}`}
                           className="absolute left-1/2 -translate-x-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
                           style={{
-                            top: y - tableInfo.tableBounds!.top - 3, // Center 6px dot at line gap: -3px offset
+                            top: y - tableInfo.tableBounds!.top - 3, // 在行间隙处居中 6px 圆点：偏移 -3px
                           }}
                         />
                       ))}
@@ -1682,7 +1682,7 @@ export function CreatePostPage() {
                   transition={{ duration: 0.1, ease: 'easeOut' }}
                   className="fixed z-50 flex items-center gap-1 px-1 py-0.5 bg-[#2b2b2d] border border-[#3d3d40] rounded-md shadow-xl"
                   style={{
-                    // Positioned above and slightly to the right
+                    // 定位于上方并略微向右
                     top: tableInfo.tableBounds.top - 50,
                     left: tableInfo.tableBounds.left + 20,
                   }}

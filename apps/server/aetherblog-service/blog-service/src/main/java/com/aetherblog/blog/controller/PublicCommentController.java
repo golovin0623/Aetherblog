@@ -42,11 +42,11 @@ public class PublicCommentController {
         comment.setWebsite(request.getWebsite());
         comment.setContent(request.getContent());
 
-        // Set IP and UserAgent
+        // 设置 IP 和 UserAgent
         comment.setIp(getClientIp(servletRequest));
         comment.setUserAgent(servletRequest.getHeader("User-Agent"));
 
-        // Handle parentId if present
+        // 如果存在 parentId 则处理
         if (request.getParentId() != null) {
              return R.ok(commentService.reply(request.getParentId(), comment));
         } else {
