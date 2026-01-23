@@ -15,20 +15,20 @@ export function MobileHeader() {
       </button>
       
       <div className="ml-3 flex items-center gap-2.5">
-        {/* Glossy Logo */}
+        {/* 光泽 Logo */}
         <div className="relative w-7 h-7 rounded-lg overflow-hidden flex-shrink-0 shadow-md shadow-primary/20">
-          {/* Base gradient */}
+          {/* 基础渐变 */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
-          {/* Glass shine overlay */}
+          {/* 玻璃光泽叠加 */}
           <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
-          {/* Inner glow */}
+          {/* 内部发光 */}
           <div className="absolute inset-[1px] rounded-[6px] bg-gradient-to-br from-white/20 to-transparent" />
-          {/* Letter */}
+          {/* 字母 */}
           <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm drop-shadow-sm">
             A
           </span>
         </div>
-        {/* Gradient Text */}
+        {/* 渐变文本 */}
         <span className="font-semibold text-lg text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] tracking-tight">
           AetherBlog
         </span>

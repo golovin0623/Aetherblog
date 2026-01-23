@@ -11,7 +11,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
   const pathname = usePathname();
   const isTimeline = pathname === '/timeline';
 
-  // Dimensions based on compact mode
+  // 基于紧凑模式的尺寸
   const widthClass = compact ? 'w-[64px]' : 'w-[72px]';
   const paddingClass = compact ? 'p-0.5' : 'p-1';
   const textClass = compact ? 'text-xs' : 'text-sm';

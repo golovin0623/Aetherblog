@@ -55,12 +55,12 @@ export function Sidebar() {
     e.preventDefault();
     if (searchValue.trim()) {
       navigate(`/posts?search=${encodeURIComponent(searchValue.trim())}`);
-      setMobileOpen(false); // Close mobile drawer on search
+      setMobileOpen(false); // 搜索时关闭移动端抽屉
     }
   };
 
   const handleNavigation = () => {
-     setMobileOpen(false); // Close mobile drawer on navigation
+     setMobileOpen(false); // 导航时关闭移动端抽屉
   };
 
   const contentProps = {
