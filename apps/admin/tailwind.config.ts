@@ -4,7 +4,7 @@ const config: Config = {
   content: [
     './index.html', 
     './src/**/*.{js,ts,jsx,tsx}',
-    '../../packages/ui/src/**/*.{js,ts,jsx,tsx}' // Ensure shared UI components are scanned
+    '../../packages/ui/src/**/*.{js,ts,jsx,tsx}' // 确保扫描共享 UI 组件
   ],
   darkMode: 'class',
   theme: {

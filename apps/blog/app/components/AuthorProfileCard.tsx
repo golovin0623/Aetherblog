@@ -169,7 +169,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     queryKey: ['siteSettings'],
     queryFn: getSiteSettings,
     enabled: !profile,
-    staleTime: 10 * 60 * 1000 // 10 mins
+    staleTime: 10 * 60 * 1000 // 10 分钟
   });
 
   const { data: siteStats } = useQuery({
@@ -179,7 +179,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     staleTime: 10 * 60 * 1000
   });
 
-  // Merge profile data: Props > Fetched > Default
+  // 合并资料数据: Props > 获取的数据 > 默认值
   const name = profile?.name || settings?.authorName || 'Golovin';
   const avatar = profile?.avatar || settings?.authorAvatar;
   const bio = profile?.bio || settings?.authorBio || '一只小凉凉';
@@ -207,7 +207,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      {/* Top Decoration Bar */}
+      {/* 顶部装饰条 */}
       <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
 
       {/* 聚光灯效果层 */}
@@ -227,7 +227,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         }}
       />
 
-      {/* Marble Vein Texture - Very Subtle Irregular Cracks (Light theme only) */}
+      {/* 大理石纹理 - 非常微妙的不规则裂纹 (仅亮色模式) */}
       {!isDark && (
         <>
           <div
@@ -245,7 +245,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
             }}
           />
 
-          {/* Fine Crack Details - Extremely Subtle */}
+          {/* 细微的裂纹细节 - 极度微妙 */}
           <div
             className="absolute inset-0 opacity-8 pointer-events-none mix-blend-overlay"
             style={{
@@ -260,7 +260,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         </>
       )}
 
-      {/* Subtle Background Gradient Glow */}
+      {/* 微妙的背景渐变光晕 */}
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
         style={{
@@ -269,15 +269,15 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
       />
 
       <div className="relative p-6 flex flex-col items-center text-center">
-        {/* Avatar with Enhanced Background and Glow */}
+        {/* 头像 - 带有增强的背景和光晕 */}
         <div className="relative w-24 h-24 mb-4 group/avatar cursor-pointer">
-          {/* White Background Circle for Contrast */}
+          {/* 白色背景圆圈增加对比度 */}
           <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
 
-          {/* Colorful Glow */}
+          {/* 多彩光晕 */}
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-purple-500/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
 
-          {/* Avatar Container with Enhanced Ring */}
+          {/* 头像容器 - 带有增强的圆环 */}
           <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg">
             <img
               src={avatar || "https://github.com/shadcn.png"}
@@ -286,18 +286,18 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
             />
           </div>
 
-          {/* Sparkle Badge */}
+          {/* 闪光徽章 */}
           <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/30">
             <Sparkles className="w-3 h-3 text-white" />
           </div>
         </div>
 
-        {/* Name & Bio with Better Typography */}
+        {/* 姓名与简介 - 更好的排版 */}
         <h2 className="text-lg font-bold text-[var(--text-primary)] mb-5 tracking-tight antialiased">
           {bio}
         </h2>
 
-        {/* Stats with Cleaner Design */}
+        {/* 统计数据 - 更简洁的设计 */}
         <div className="w-full mb-6">
           <div className="grid grid-cols-3 gap-4 p-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
             <div className="flex flex-col items-center group/stat cursor-pointer">
@@ -321,7 +321,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           </div>
         </div>
 
-        {/* Social Links with Paginated Carousel */}
+        {/* 社交链接 - 分页轮播 */}
         <SocialLinksCarousel />
       </div>
     </div>
