@@ -12,7 +12,7 @@ export function AdminLayout() {
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const isMobile = useMediaQuery('(max-width: 768px)');
   const location = useLocation();
-  const isAppPage = location.pathname.startsWith('/media'); // Pages that manage their own layout/scroll
+  const isAppPage = location.pathname.startsWith('/media'); // 管理自身布局/滚动的页面
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
