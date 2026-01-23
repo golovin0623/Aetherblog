@@ -14,12 +14,12 @@ interface FeaturedPostProps {
     publishedAt: string;
     category?: { name: string; slug: string };
     tags?: { name: string; slug: string }[];
-    contentPreview?: string; // Optional raw content for preview
+    contentPreview?: string; // 可选的原始内容用于预览
   };
 }
 
 export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
-  // Logic to generate summary from content if summary is missing
+  // 如果摘要缺失，从内容生成摘要的逻辑
   const displaySummary = post.summary 
     ? post.summary 
     : post.contentPreview 

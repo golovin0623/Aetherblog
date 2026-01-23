@@ -11,7 +11,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
+      {/* 顶部展示区 */}
       <section className="relative flex flex-col items-center justify-center min-h-screen px-4 text-center">
         {/* 背景效果 */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -66,7 +66,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Elegant Divider with Gradient Line */}
+      {/* 带有渐变线条的分割线 */}
       <div className="relative max-w-7xl mx-auto px-4 py-16">
         <div className="absolute inset-0 flex items-center" aria-hidden="true">
           <div className="w-full border-t border-[var(--border-subtle)]"></div>
@@ -84,12 +84,12 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* Latest Posts Section */}
+      {/* 最新文章区域 */}
       {posts.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 pb-20">
-          {/* Section Header with Decorative Elements */}
+          {/* 带有装饰元素的区域标题 */}
           <div className="relative mb-12">
-            {/* Background Glow */}
+            {/* 背景光晕 */}
             <div className="absolute -top-8 left-0 w-64 h-32 bg-gradient-to-r from-primary/10 to-purple-500/10 blur-3xl rounded-full"></div>
 
             <div className="relative flex items-center justify-between">
