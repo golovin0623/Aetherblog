@@ -30,7 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [backend, blog, admin]
+        include:
+          - service: backend
+            dockerfile: ./apps/server/Dockerfile
+          - service: blog
+            dockerfile: ./apps/blog/Dockerfile
+          - service: admin
+            dockerfile: ./apps/admin/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,7 +54,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./apps/${{ matrix.service }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:${{ github.event.inputs.version }}
@@ -59,6 +65,8 @@ jobs:
   build-single:
     if: ${{ github.event.inputs.service != 'all' }}
     runs-on: ubuntu-latest
+    env:
+      DOCKERFILE: ${{ fromJSON('{"backend":"./apps/server/Dockerfile","blog":"./apps/blog/Dockerfile","admin":"./apps/admin/Dockerfile"}')[github.event.inputs.service] }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,7 +84,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./apps/${{ github.event.inputs.service }}/Dockerfile
+          file: ${{ env.DOCKERFILE }}
           push: true
           tags: |
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:${{ github.event.inputs.version }}
