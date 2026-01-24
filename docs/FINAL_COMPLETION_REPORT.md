@@ -331,7 +331,7 @@ public CompletableFuture<List<MediaVariant>> generateAllVariantsAsync(MediaFile 
 
 ### 低优先级 (可选功能)
 
-- [ ] AI自动标签 (Spring AI集成)
+- [ ] AI自动标签 (独立 AI 服务对接)
 - [ ] 键盘快捷键 (react-hotkeys-hook)
 - [ ] 拖拽上传增强 (@dnd-kit)
 - [ ] 国际化支持

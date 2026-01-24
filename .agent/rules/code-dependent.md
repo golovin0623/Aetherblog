@@ -49,6 +49,36 @@ trigger: always_on
 }
 ```
 
+### AI 服务依赖 (requirements.txt)
+
+```text
+# Web 框架
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# AI 模型与路由
+litellm>=1.30.0
+openai>=1.14.0
+tiktoken>=0.6.0
+
+# RAG & 数据处理
+llama-index>=0.10.0
+langchain>=0.1.0  # 可选，视具体 Agent 需求
+
+# 数据库
+asyncpg>=0.29.0
+sqlalchemy>=2.0.0
+pgvector>=0.2.0
+redis>=5.0.0
+
+# 工具
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+httpx>=0.27.0
+tenacity>=8.2.0
+```
+
 ### 后端依赖 (pom.xml)
 
 ```xml
@@ -57,7 +87,6 @@ trigger: always_on
 <java.version>25</java.version>
 
 <!-- Spring 生态 -->
-<spring-ai.version>2.0.0-M1</spring-ai.version>
 <spring-cloud.version>2024.0.0</spring-cloud.version>
 
 <!-- 数据库 -->
@@ -93,6 +122,7 @@ trigger: always_on
 │  ├─ Node.js          >= 20.0.0 (LTS)                                    │
 │  ├─ pnpm             >= 8.15.0                                          │
 │  ├─ JDK              == 25 (Eclipse Temurin 推荐)                       │
+│  ├─ Python           >= 3.12 (AI Service)                               │
 │  ├─ Maven            >= 3.9.0                                           │
 │  ├─ Docker           >= 24.0.0                                          │
 │  ├─ Docker Compose   >= 2.24.0                                          │

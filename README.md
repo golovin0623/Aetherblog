@@ -9,7 +9,7 @@
 | 博客前台 | Next.js 15 + React 19 |
 | 管理后台 | Vite + React 19 |
 | 后端服务 | Spring Boot 4.0 + JDK 25 |
-| AI 能力 | Spring AI 2.0.0-M1 |
+| AI 能力 | 独立 AI 服务 (FastAPI + LiteLLM) |
 | 数据库 | PostgreSQL 17 + pgvector |
 | 序列化 | Jackson 3.x |
 | 缓存 | Redis 7 |
@@ -22,6 +22,7 @@ AetherBlog/
 ├── apps/
 │   ├── blog/                    # 博客前台 (Next.js)
 │   ├── admin/                   # 管理后台 (Vite + React)
+│   ├── ai-service/              # 🤖 AI 服务 (独立，FastAPI + LiteLLM)
 │   └── server/                  # 后端服务 (Spring Boot)
 │       ├── aetherblog-app/      # 🚀 应用启动模块（可执行 JAR 入口）
 │       ├── aetherblog-api/      # 📦 API 接口定义、DTO、VO
@@ -32,7 +33,7 @@ AetherBlog/
 │       │   └── common-log/      #    └─ 日志管理
 │       ├── aetherblog-service/  # 💼 业务服务模块
 │       │   └── blog-service/    #    └─ 博客核心服务
-│       └── aetherblog-ai/       # 🤖 AI 模块
+│       └── aetherblog-ai/       # 🤖 AI 模块（已弃用，Spring AI）
 │           ├── ai-core/         #    ├─ AI 核心
 │           ├── ai-rag/          #    ├─ RAG 检索增强
 │           ├── ai-agent/        #    └─ AI Agent
