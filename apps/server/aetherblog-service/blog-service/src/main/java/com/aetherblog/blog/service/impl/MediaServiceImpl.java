@@ -92,13 +92,20 @@ public class MediaServiceImpl implements MediaService {
         String filename = UUID.randomUUID() + "." + extension;
         String relativePath = datePath + "/" + filename;
 
+        MediaFolder folder = null;
+        if (folderId != null) {
+            folder = mediaFolderRepository.findById(folderId)
+                    .orElseThrow(() -> new BusinessException(404, "目标文件夹不存在: " + folderId));
+        }
+
+        Path filePath = null;
         try {
             // 创建目录
             Path uploadPath = Paths.get(uploadBasePath, datePath);
             Files.createDirectories(uploadPath);
 
             // 保存文件
-            Path filePath = uploadPath.resolve(filename);
+            filePath = uploadPath.resolve(filename);
             Files.copy(file.getInputStream(), filePath);
 
             // 构建实体
@@ -118,9 +125,7 @@ public class MediaServiceImpl implements MediaService {
             }
 
             // @ref Phase 1: 设置文件夹关联
-            if (folderId != null) {
-                MediaFolder folder = mediaFolderRepository.findById(folderId)
-                        .orElseThrow(() -> new BusinessException(404, "目标文件夹不存在: " + folderId));
+            if (folder != null) {
                 mediaFile.setFolder(folder);
             }
 
@@ -128,8 +133,24 @@ public class MediaServiceImpl implements MediaService {
             return mediaFileRepository.save(mediaFile);
 
         } catch (IOException e) {
+            if (filePath != null) {
+                try {
+                    Files.deleteIfExists(filePath);
+                } catch (IOException deleteException) {
+                    log.warn("清理上传失败的文件失败: path={}, reason={}", filePath, deleteException.getMessage());
+                }
+            }
             log.error("文件上传失败", e);
             throw new BusinessException(500, "文件上传失败: " + e.getMessage());
+        } catch (RuntimeException e) {
+            if (filePath != null) {
+                try {
+                    Files.deleteIfExists(filePath);
+                } catch (IOException deleteException) {
+                    log.warn("清理上传失败的文件失败: path={}, reason={}", filePath, deleteException.getMessage());
+                }
+            }
+            throw e;
         }
     }
 
