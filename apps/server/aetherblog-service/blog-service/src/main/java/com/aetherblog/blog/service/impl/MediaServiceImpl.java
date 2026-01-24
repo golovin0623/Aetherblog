@@ -119,7 +119,8 @@ public class MediaServiceImpl implements MediaService {
 
             // @ref Phase 1: 设置文件夹关联
             if (folderId != null) {
-                MediaFolder folder = mediaFolderRepository.findById(folderId).orElse(null);
+                MediaFolder folder = mediaFolderRepository.findById(folderId)
+                        .orElseThrow(() -> new BusinessException(404, "目标文件夹不存在: " + folderId));
                 mediaFile.setFolder(folder);
             }
 
