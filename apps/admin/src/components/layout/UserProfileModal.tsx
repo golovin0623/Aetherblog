@@ -239,7 +239,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               
               // 基于 isDesktop hook 的条件布局
               isDesktop 
-                ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // Desktop
+                ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // 桌面端
                 : "w-[calc(100vw-32px)] max-w-[420px] h-[650px] max-h-[85dvh]" // 移动端：固定高度 (受屏幕限制) 以保持一致性
             )}
             style={{
