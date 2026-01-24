@@ -2,7 +2,7 @@ import { ArrowRight, Sparkles, LayoutGrid } from 'lucide-react';
 import { getRecentPosts } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 
-export const revalidate = 300; // 5 minutes ISR for homepage
+export const revalidate = 300; // 首页 5 分钟 ISR (增量静态再生)
 
 export default async function HomePage() {
   const [posts] = await Promise.all([

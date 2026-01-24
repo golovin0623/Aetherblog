@@ -12,7 +12,7 @@ interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   showCloseButton?: boolean;
-  /** Hide the backdrop overlay - useful for popup-style modals */
+  /** 隐藏背景遮罩 - 适用于弹出式模态框 */
   hideBackdrop?: boolean;
 }
 
