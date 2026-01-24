@@ -32,6 +32,7 @@ import {
   formatBandwidth
 } from '@/services/systemService';
 import { logger } from '@/lib/logger';
+import { useSmartPolling } from '@/hooks/useSmartPolling';
 
 // ========== 子组件 ==========
 
@@ -58,7 +59,7 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
   };
 
   return (
-    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+    <div className="h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.max(0, Math.min(100, safeValue))}%` }}
@@ -87,15 +88,15 @@ function MetricCard({
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-xs">
-        <span className="text-gray-400 flex items-center gap-1">
+        <span className="text-[var(--text-muted)] flex items-center gap-1">
           <Icon className="w-3.5 h-3.5" />
           {label}
         </span>
-        <span className="text-white font-mono">{value}</span>
+        <span className="text-[var(--text-primary)] font-mono">{value}</span>
       </div>
       <ProgressBar value={percent} color={color} />
       {detail && (
-        <div className="text-[10px] text-gray-500 text-right">{detail}</div>
+        <div className="text-[10px] text-[var(--text-muted)] text-right">{detail}</div>
       )}
     </div>
   );
@@ -134,12 +135,16 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
     }
   }, []);
 
-  // 初始加载和定时刷新
+  // 初始加载
   useEffect(() => {
     fetchData();
-    const timer = setInterval(() => fetchData(false), refreshInterval * 1000);
-    return () => clearInterval(timer);
-  }, [fetchData, refreshInterval]);
+  }, [fetchData]);
+
+  // 智能轮询
+  useSmartPolling({
+    callback: () => fetchData(false),
+    interval: refreshInterval
+  });
 
   // 手动刷新
   const handleRefresh = () => {
@@ -149,23 +154,23 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
   // 加载状态
   if (loading && !data) {
     return (
-      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col", className)}>
-        <div className="h-6 w-24 bg-white/10 rounded mb-6 animate-pulse" />
+      <div className={cn("p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col", className)}>
+        <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded mb-6 animate-pulse" />
         <div className="grid grid-cols-2 gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="space-y-2 animate-pulse relative overflow-hidden">
               {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-              <div className="h-4 bg-white/10 rounded" />
-              <div className="h-2 bg-white/10 rounded" />
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
+              <div className="h-4 bg-[var(--bg-secondary)] rounded" />
+              <div className="h-2 bg-[var(--bg-secondary)] rounded" />
             </div>
           ))}
         </div>
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse relative overflow-hidden">
+            <div key={i} className="h-12 bg-[var(--bg-secondary)] rounded-lg animate-pulse relative overflow-hidden">
               {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             </div>
           ))}
         </div>
@@ -202,14 +207,14 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
   const services = data?.services || [];
 
   return (
-    <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col", className)}>
+    <div className={cn("p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col", className)}>
       {/* 头部 - Fixed */}
       <div className="flex items-center justify-between mb-6 shrink-0">
-        <h3 className="text-lg font-semibold text-white">系统状态</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">系统状态</h3>
         <div className="flex items-center gap-3">
           {/* 运行时间 */}
           {metrics.uptime > 0 && (
-            <div className="flex items-center gap-1 text-[10px] text-gray-500">
+            <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
               <Clock className="w-3 h-3" />
               <span>已运行 {formatUptime(metrics.uptime)}</span>
             </div>
@@ -219,7 +224,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
           </button>
@@ -286,44 +291,44 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
 
         {/* 存储明细 */}
         {storage && (
-          <div className="mb-6 pt-4 border-t border-white/5">
-            <h4 className="text-[10px] uppercase tracking-wider font-semibold text-gray-600 mb-3">
+          <div className="mb-6 pt-4 border-t border-[var(--border-subtle)]">
+            <h4 className="text-[10px] uppercase tracking-wider font-semibold text-[var(--text-secondary)] mb-3">
               存储明细
             </h4>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400 flex items-center gap-1.5">
+                <span className="text-[var(--text-muted)] flex items-center gap-1.5">
                   <Upload className="w-3 h-3" />
                   上传文件
                 </span>
-                <span className="text-white font-mono">
+                <span className="text-[var(--text-primary)] font-mono">
                   {storage.uploads.formatted}
-                  <span className="text-gray-500 ml-1">
+                  <span className="text-[var(--text-muted)] ml-1">
                     ({storage.uploads.fileCount.toLocaleString()} 个)
                   </span>
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400 flex items-center gap-1.5">
+                <span className="text-[var(--text-muted)] flex items-center gap-1.5">
                   <Database className="w-3 h-3" />
                   数据库
                 </span>
-                <span className="text-white font-mono">{storage.database.formatted}</span>
+                <span className="text-[var(--text-primary)] font-mono">{storage.database.formatted}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400 flex items-center gap-1.5">
+                <span className="text-[var(--text-muted)] flex items-center gap-1.5">
                   <FileText className="w-3 h-3" />
                   日志
                 </span>
-                <span className="text-white font-mono">{storage.logs.formatted}</span>
+                <span className="text-[var(--text-primary)] font-mono">{storage.logs.formatted}</span>
               </div>
               {storage.redis && (
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-400 flex items-center gap-1.5">
+                  <span className="text-[var(--text-muted)] flex items-center gap-1.5">
                     <Server className="w-3 h-3" />
                     Redis
                   </span>
-                  <span className="text-white font-mono">{storage.redis.formatted}</span>
+                  <span className="text-[var(--text-primary)] font-mono">{storage.redis.formatted}</span>
                 </div>
               )}
             </div>
@@ -331,7 +336,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
         )}
 
         {/* 服务健康 */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-4 border-t border-white/5">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-4 border-t border-[var(--border-subtle)]">
           <AnimatePresence mode="popLayout">
             {services.map((service) => (
               <motion.div
@@ -343,13 +348,13 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
               >
                 <div className="flex items-center gap-1.5">
                   {service.status === 'up' ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
                   ) : service.status === 'warning' ? (
-                    <AlertCircle className="w-3.5 h-3.5 text-yellow-400" />
+                    <AlertCircle className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
                   ) : (
-                    <XCircle className="w-3.5 h-3.5 text-red-400" />
+                    <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
                   )}
-                  <span className="text-gray-300 truncate max-w-[80px] sm:max-w-none">{service.name}</span>
+                  <span className="text-[var(--text-secondary)] truncate max-w-[80px] sm:max-w-none">{service.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {/* ES 黄色状态说明 */}

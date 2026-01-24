@@ -6,7 +6,7 @@ export { useTableCommands } from './useTableCommands';
 export { useImageUpload } from './useImageUpload';
 export { EditorView } from '@codemirror/view';
 
-// Components
+// 组件
 export { UploadProgress, ImageSizePopover } from './components';
 
 export type { MarkdownEditorProps } from './MarkdownEditor';

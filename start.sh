@@ -20,7 +20,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m' # 无颜色
 
 # 默认参数
 PROD_MODE=false
@@ -92,8 +92,31 @@ start_middleware() {
     if [ -f "docker-compose.yml" ]; then
         # 检查 Docker 是否在运行
         if ! docker info &> /dev/null; then
-            echo -e "${RED}❌ Docker 未运行，请先启动 Docker Desktop${NC}"
-            exit 1
+            echo -e "${YELLOW}⏳ Docker 未运行，正在启动 Docker Desktop...${NC}"
+            
+            # 尝试启动 Docker Desktop (macOS)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                open -a Docker
+            else
+                echo -e "${RED}❌ 请手动启动 Docker${NC}"
+                exit 1
+            fi
+            
+            # 等待 Docker 就绪 (最多 60 秒)
+            echo -e "${BLUE}   等待 Docker daemon 启动...${NC}"
+            local max_wait=60
+            local waited=0
+            while ! docker info &> /dev/null; do
+                if [ $waited -ge $max_wait ]; then
+                    echo -e "${RED}❌ Docker 启动超时 (${max_wait}s)，请检查 Docker Desktop${NC}"
+                    exit 1
+                fi
+                sleep 2
+                waited=$((waited + 2))
+                echo -ne "\r${BLUE}   等待 Docker daemon 启动... ${waited}s${NC}"
+            done
+            echo ""
+            echo -e "${GREEN}✅ Docker Desktop 已就绪${NC}"
         fi
         
         # 检查并清理异常退出的容器（防止端口残留）

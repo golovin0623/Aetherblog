@@ -28,7 +28,7 @@ const PAGE_SIZE = 6;
 export default function PostsPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
-  // 1. Fetch Featured Post (Always fetch, it's small and cached)
+  // 1. 获取推荐文章 (始终获取，体积小且已缓存)
   const { 
     data: featuredPost,
     isLoading: isFeaturedLoading 
@@ -55,7 +55,7 @@ export default function PostsPage() {
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       };
 
-      // Fetch content preview
+      // 获取内容预览
       try {
         const contentRes = await fetch(API_ENDPOINTS.postBySlug(item.slug));
         if (contentRes.ok) {
@@ -67,10 +67,10 @@ export default function PostsPage() {
       }
       return post;
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    staleTime: 5 * 60 * 1000, // 缓存 5 分钟
   });
 
-  // 2. Fetch Paginated Posts
+  // 2. 获取分页文章
   const { 
     data: postsData,
     isLoading: isPostsLoading,
@@ -78,8 +78,8 @@ export default function PostsPage() {
   } = useQuery({
     queryKey: ['posts', currentPage],
     queryFn: async () => {
-      // Calculate effective page size/offset logic
-      // Original logic: page 1 fetches 10 items (skipped 1), others fetch 9
+      // 计算有效分页大小/偏移逻辑
+      // 原始逻辑：第 1 页获取 10 条（跳过 1 条），其他页获取 9 条
       const effectivePageSize = PAGE_SIZE + (currentPage === 1 ? 1 : 0);
       const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=${currentPage}&pageSize=${effectivePageSize}`);
       if (!res.ok) throw new Error('Network response was not ok');
@@ -99,7 +99,7 @@ export default function PostsPage() {
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
       }));
 
-      // If page 1, remove the first item (featured post)
+      // 如果是第 1 页，移除第一条（推荐文章）
       if (currentPage === 1 && list.length > 0) {
         list = list.slice(1);
       }
@@ -112,8 +112,8 @@ export default function PostsPage() {
         pages: Math.ceil(total / PAGE_SIZE)
       };
     },
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    placeholderData: (previousData) => previousData, // 在获取新页面时保留先前数据
+    staleTime: 5 * 60 * 1000, // 缓存 5 分钟
   });
 
   const handlePageChange = (page: number) => {
@@ -122,7 +122,7 @@ export default function PostsPage() {
     window.scrollTo({ top: 500, behavior: 'smooth' });
   };
 
-  // Initial loading state (only for first load)
+  // 初始加载状态（仅用于首次加载）
   if (isFeaturedLoading || (isPostsLoading && !postsData)) {
     return <PostsLoading />;
   }
@@ -132,52 +132,64 @@ export default function PostsPage() {
   const pages = postsData?.pages || 0;
 
   return (
-    <div className="min-h-screen bg-background text-white selection:bg-primary/30">
-      {/* Main Content */}
+    <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
+      {/* 主要内容 */}
       <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
-        {/* Background Ambient Light */}
+        {/* 背景环境光 */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
-          <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full blur-[120px] opacity-30" />
-          <div className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-purple-500/10 rounded-full blur-[100px] opacity-20" />
+          <div
+            className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full"
+            style={{
+              filter: 'blur(var(--ambient-glow-blur))',
+              opacity: 'var(--ambient-glow-opacity)'
+            }}
+          />
+          <div
+            className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-purple-500/10 rounded-full"
+            style={{
+              filter: 'blur(var(--ambient-glow-blur))',
+              opacity: 'calc(var(--ambient-glow-opacity) * 0.67)'
+            }}
+          />
         </div>
 
         {!featuredPost && posts.length === 0 ? (
-          <div className="text-center py-32 bg-white/5 rounded-3xl border border-white/5 backdrop-blur-sm">
-            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
-              <List className="w-10 h-10 text-gray-500" />
+          <div className="text-center py-32 bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] backdrop-blur-sm">
+            <div className="w-20 h-20 bg-[var(--bg-secondary)] rounded-full flex items-center justify-center mx-auto mb-6">
+              <List className="w-10 h-10 text-[var(--text-muted)]" />
             </div>
-            <p className="text-gray-300 text-xl font-medium">暂无文章</p>
-            <p className="text-gray-500 text-sm mt-2">精彩内容即将呈现...</p>
+            <p className="text-[var(--text-secondary)] text-xl font-medium">暂无文章</p>
+            <p className="text-[var(--text-muted)] text-sm mt-2">精彩内容即将呈现...</p>
           </div>
         ) : (
           <div className="space-y-12">
             
-            {/* Top Section: Featured + Sidebar */}
+            {/* 顶部区域：推荐 + 侧边栏 */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* Left: Featured Post (75%) */}
+              {/* 左侧：推荐文章 (75%) */}
               <div className="lg:col-span-3 lg:h-[420px] lg:min-h-[420px]">
                 {featuredPost && <FeaturedPost post={featuredPost} />}
               </div>
 
-              {/* Right: Author Profile (25%) - Hidden on mobile, moved to sidebar */}
-              <div className="hidden lg:block lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
+              {/* 右侧：作者简介 (25%) - 响应式布局 */}
+              <div className="lg:col-span-1 lg:h-[420px] lg:min-h-[420px]">
                 <AuthorProfileCard className="h-full" />
               </div>
             </div>
 
-            {/* Bottom Section: Remaining Posts Grid */}
+            {/* 底部区域：其余文章网格 */}
             <div>
               <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
                   <LayoutGrid className="w-6 h-6 text-primary" />
                   最新发布
-                  <span className="text-sm font-normal text-gray-400 ml-2">
+                  <span className="text-sm font-normal text-[var(--text-muted)] ml-2">
                     （共 {total} 篇）
                   </span>
                 </h2>
               </div>
 
-              {/* Grid or Pagination Loading Spinner */}
+              {/* 网格或分页加载微调器 */}
               {isPostsLoading && isPlaceholderData ? (
                  <div className="flex items-center justify-center py-20 opacity-50">
                     <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -200,14 +212,14 @@ export default function PostsPage() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-20 border border-dashed border-white/10 rounded-2xl">
+                <div className="text-center py-20 border border-dashed border-[var(--border-subtle)] rounded-2xl">
                   <p className="text-gray-500">
                     {total === 0 ? '没有更多文章了' : '加载中...'}
                   </p>
                 </div>
               )}
 
-              {/* Pagination */}
+              {/* 分页 */}
               {pages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-10">
                   <button
@@ -216,7 +228,7 @@ export default function PostsPage() {
                     className={`flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
                       currentPage <= 1
                         ? 'text-gray-600 cursor-not-allowed'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                     }`}
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -233,7 +245,7 @@ export default function PostsPage() {
                       className={`w-10 h-10 rounded-lg transition-colors ${
                         page === currentPage
                           ? 'bg-primary text-white'
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                       }`}
                     >
                       {page}
@@ -246,7 +258,7 @@ export default function PostsPage() {
                     className={`flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
                       currentPage >= pages
                         ? 'text-gray-600 cursor-not-allowed'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                     }`}
                   >
                     下一页

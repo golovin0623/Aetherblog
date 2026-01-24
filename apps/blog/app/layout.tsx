@@ -4,6 +4,7 @@ import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
+import { themeInitScript } from '@aetherblog/hooks';
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
@@ -26,7 +27,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className="dark" suppressHydrationWarning data-scroll-behavior="smooth">
+    <html lang="zh-CN" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -34,8 +35,10 @@ export default async function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
+        {/* 主题初始化脚本 - 防止 FOUC */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="bg-background text-white antialiased" suppressHydrationWarning>
+      <body className="bg-background text-foreground antialiased" suppressHydrationWarning>
         <Providers>
           <BlogHeader />
           <ClientLayout>
@@ -46,3 +49,4 @@ export default async function RootLayout({
     </html>
   );
 }
+

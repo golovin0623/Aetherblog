@@ -51,11 +51,16 @@ git status --short
 大功能新增（如 v1.1.3 -> v1.2.1）
 大版本迭代（如 v1.1.3 -> v2.0.0）：
 
-请分析修改代码的涉及模块，从而决定是部分构建迭代推送，还是全面的的构建推送？
+请分析修改代码的涉及模块，从而决定是部分构建迭代推送，还是全面的的构建推送
 例如，所有模块代码均存在变更，则执行下述全面构建指令：
 
 ```bash
 ./docker-build.sh --push --version VERSION
+```
+
+分析认定为部分构建，例如：
+```bash
+./docker-build.sh --only admin --only blog --push --version v2.3.2
 ```
 
 此命令会：

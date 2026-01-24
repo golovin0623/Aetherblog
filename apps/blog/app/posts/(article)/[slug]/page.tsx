@@ -8,7 +8,7 @@ import { SERVER_API_URL } from '../../../lib/api';
 import { logger } from '../../../lib/logger';
 import { getSiteSettings } from '../../../lib/services';
 
-// Server-side API URL - use internal Docker network URL
+// 服务端 API URL - 使用内部 Docker 网络 URL
 const API_BASE_URL = SERVER_API_URL;
 
 interface Post {
@@ -71,8 +71,8 @@ export default async function PostDetailPage({ params }: PageProps) {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <FadeIn>
           <div className="text-center">
-            <h1 className="text-4xl font-bold text-white mb-4">404</h1>
-            <p className="text-gray-400 mb-6">文章不存在</p>
+            <h1 className="text-4xl font-bold text-[var(--text-primary)] mb-4">404</h1>
+            <p className="text-[var(--text-muted)] mb-6">文章不存在</p>
             <BackButton fallbackHref="/posts" />
           </div>
         </FadeIn>
@@ -82,18 +82,18 @@ export default async function PostDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Article with fade-in animation */}
+      {/* 带有淡入动画的文章 */}
       <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
         <FadeIn>
           <BackButton fallbackHref="/posts" className="mb-8" />
         </FadeIn>
 
         <FadeIn delay={0.1}>
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">{post.title}</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4">{post.title}</h1>
         </FadeIn>
 
         <FadeIn delay={0.15}>
-          <div className="flex items-center gap-4 text-sm text-gray-400 mb-8">
+          <div className="flex items-center gap-4 text-sm text-[var(--text-muted)] mb-8">
             <time>{post.publishedAt}</time>
             {post.categoryName && <span>{post.categoryName}</span>}
             <span>{post.viewCount} 阅读</span>

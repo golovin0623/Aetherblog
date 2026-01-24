@@ -3,8 +3,10 @@ package com.aetherblog.blog.service.impl;
 import com.aetherblog.blog.entity.MediaFile;
 import com.aetherblog.blog.entity.MediaFile.FileType;
 import com.aetherblog.blog.entity.MediaFile.StorageType;
+import com.aetherblog.blog.entity.MediaFolder;
 import com.aetherblog.blog.entity.User;
 import com.aetherblog.blog.repository.MediaFileRepository;
+import com.aetherblog.blog.repository.MediaFolderRepository;
 import com.aetherblog.blog.repository.UserRepository;
 import com.aetherblog.blog.service.MediaService;
 import com.aetherblog.common.core.domain.PageResult;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,12 +28,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
  * 媒体文件服务实现
- * 
+ *
  * @author AI Assistant
  * @since 1.0.0
  * @ref §8.2-4 - 媒体管理模块
@@ -41,6 +45,7 @@ import java.util.*;
 public class MediaServiceImpl implements MediaService {
 
     private final MediaFileRepository mediaFileRepository;
+    private final MediaFolderRepository mediaFolderRepository;
     private final UserRepository userRepository;
 
     @Value("${aetherblog.upload.path:./uploads}")
@@ -48,6 +53,9 @@ public class MediaServiceImpl implements MediaService {
 
     @Value("${aetherblog.upload.url-prefix:/uploads}")
     private String uploadUrlPrefix;
+
+    @Value("${aetherblog.media.trash-cleanup-days:120}")
+    private int trashCleanupDays;
 
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/svg+xml", "image/avif"
@@ -67,7 +75,7 @@ public class MediaServiceImpl implements MediaService {
 
     @Override
     @Transactional
-    public MediaFile upload(MultipartFile file, Long uploaderId) {
+    public MediaFile upload(MultipartFile file, Long uploaderId, Long folderId) {
         Objects.requireNonNull(file, "上传文件不能为空");
         if (file.isEmpty()) {
             throw new BusinessException(400, "上传文件不能为空");
@@ -109,7 +117,13 @@ public class MediaServiceImpl implements MediaService {
                 mediaFile.setUploader(uploader);
             }
 
-            log.info("上传文件成功: filename={}, size={}", filename, file.getSize());
+            // @ref Phase 1: 设置文件夹关联
+            if (folderId != null) {
+                MediaFolder folder = mediaFolderRepository.findById(folderId).orElse(null);
+                mediaFile.setFolder(folder);
+            }
+
+            log.info("上传文件成功: filename={}, size={}, folderId={}", filename, file.getSize(), folderId);
             return mediaFileRepository.save(mediaFile);
 
         } catch (IOException e) {
@@ -120,12 +134,12 @@ public class MediaServiceImpl implements MediaService {
 
     @Override
     @Transactional
-    public List<MediaFile> uploadBatch(List<MultipartFile> files, Long uploaderId) {
+    public List<MediaFile> uploadBatch(List<MultipartFile> files, Long uploaderId, Long folderId) {
         Objects.requireNonNull(files, "文件列表不能为空");
         List<MediaFile> results = new ArrayList<>();
         for (MultipartFile file : files) {
             try {
-                results.add(upload(file, uploaderId));
+                results.add(upload(file, uploaderId, folderId));
             } catch (Exception e) {
                 log.warn("批量上传中单个文件失败: {}", e.getMessage());
             }
@@ -141,9 +155,10 @@ public class MediaServiceImpl implements MediaService {
     }
 
     @Override
-    public PageResult<MediaFile> listPage(String fileTypeStr, String keyword, int pageNum, int pageSize) {
-        log.info("查询媒体列表: fileType={}, keyword={}, pageNum={}, pageSize={}", fileTypeStr, keyword, pageNum, pageSize);
-        
+    public PageResult<MediaFile> listPage(String fileTypeStr, String keyword, Long folderId, int pageNum, int pageSize) {
+        log.info("查询媒体列表: fileType={}, keyword={}, folderId={}, pageNum={}, pageSize={}",
+                fileTypeStr, keyword, folderId, pageNum, pageSize);
+
         FileType fileType = null;
         if (StringUtils.hasText(fileTypeStr)) {
             try {
@@ -158,15 +173,34 @@ public class MediaServiceImpl implements MediaService {
 
         boolean hasFileType = fileType != null;
         boolean hasKeyword = StringUtils.hasText(keyword);
+        boolean hasFolderId = folderId != null;
 
-        if (hasFileType && hasKeyword) {
-            page = mediaFileRepository.findByFileTypeAndKeyword(fileType, keyword, pageRequest);
-        } else if (hasFileType) {
-            page = mediaFileRepository.findByFileType(fileType, pageRequest);
-        } else if (hasKeyword) {
-            page = mediaFileRepository.searchByKeyword(keyword, pageRequest);
+        // @ref Phase 1: 支持按文件夹过滤
+        if (hasFolderId) {
+            if (hasFileType && hasKeyword) {
+                // 文件夹 + 类型 + 关键词
+                page = mediaFileRepository.findByFolderIdAndFileTypeAndKeyword(folderId, fileType, keyword, pageRequest);
+            } else if (hasFileType) {
+                // 文件夹 + 类型
+                page = mediaFileRepository.findByFolderIdAndFileType(folderId, fileType, pageRequest);
+            } else if (hasKeyword) {
+                // 文件夹 + 关键词
+                page = mediaFileRepository.findByFolderIdAndKeyword(folderId, keyword, pageRequest);
+            } else {
+                // 仅文件夹
+                page = mediaFileRepository.findByFolderId(folderId, pageRequest);
+            }
         } else {
-            page = mediaFileRepository.findAll(pageRequest);
+            // 原有逻辑：不按文件夹过滤（排除已删除文件）
+            if (hasFileType && hasKeyword) {
+                page = mediaFileRepository.findByFileTypeAndKeyword(fileType, keyword, pageRequest);
+            } else if (hasFileType) {
+                page = mediaFileRepository.findByFileType(fileType, pageRequest);
+            } else if (hasKeyword) {
+                page = mediaFileRepository.searchByKeyword(keyword, pageRequest);
+            } else {
+                page = mediaFileRepository.findAllNotDeleted(pageRequest);
+            }
         }
 
         return new PageResult<>(page.getContent(), page.getTotalElements(), pageNum, pageSize);
@@ -183,40 +217,15 @@ public class MediaServiceImpl implements MediaService {
     @Override
     @Transactional
     public void delete(Long id) {
-        Objects.requireNonNull(id, "文件ID不能为空");
-        MediaFile mediaFile = getById(id);
-
-        // 删除物理文件
-        try {
-            String filePath = mediaFile.getFilePath();
-            if (filePath != null) {
-                Path path = Paths.get(uploadBasePath, filePath);
-                Files.deleteIfExists(path);
-            }
-        } catch (IOException e) {
-            log.warn("删除物理文件失败: {}", e.getMessage());
-        }
-
-        mediaFileRepository.deleteById(id);
-        log.info("删除文件: id={}", id);
+        // 改为软删除（移入回收站）
+        softDelete(id);
     }
 
     @Override
     @Transactional
     public void batchDelete(List<Long> ids) {
-        Objects.requireNonNull(ids, "ID列表不能为空");
-        if (ids.isEmpty()) {
-            return;
-        }
-        for (Long id : ids) {
-            if (id != null) {
-                try {
-                    delete(id);
-                } catch (Exception e) {
-                    log.warn("批量删除中单个文件失败: id={}, error={}", id, e.getMessage());
-                }
-            }
-        }
+        // 改为批量软删除（移入回收站）
+        batchSoftDelete(ids);
     }
 
     @Override
@@ -253,6 +262,212 @@ public class MediaServiceImpl implements MediaService {
             mediaFile.setOriginalName(originalName);
         }
         return Objects.requireNonNull(mediaFileRepository.save(mediaFile), "保存媒体文件失败");
+    }
+
+    @Override
+    @Transactional
+    public MediaFile moveToFolder(Long id, Long folderId) {
+        Objects.requireNonNull(id, "文件ID不能为空");
+        MediaFile mediaFile = getById(id);
+
+        if (folderId != null) {
+            MediaFolder folder = mediaFolderRepository.findById(folderId)
+                    .orElseThrow(() -> new BusinessException(404, "目标文件夹不存在: " + folderId));
+            mediaFile.setFolder(folder);
+        } else {
+            // 移动到根目录
+            mediaFile.setFolder(null);
+        }
+
+        log.info("移动文件: id={}, targetFolderId={}", id, folderId);
+        return mediaFileRepository.save(mediaFile);
+    }
+
+    @Override
+    @Transactional
+    public void batchMoveToFolder(List<Long> ids, Long folderId) {
+        Objects.requireNonNull(ids, "文件ID列表不能为空");
+        if (ids.isEmpty()) {
+            return;
+        }
+
+        MediaFolder folder = null;
+        if (folderId != null) {
+            folder = mediaFolderRepository.findById(folderId)
+                    .orElseThrow(() -> new BusinessException(404, "目标文件夹不存在: " + folderId));
+        }
+
+        for (Long id : ids) {
+            if (id != null) {
+                try {
+                    MediaFile mediaFile = getById(id);
+                    mediaFile.setFolder(folder);
+                    mediaFileRepository.save(mediaFile);
+                } catch (Exception e) {
+                    log.warn("批量移动中单个文件失败: id={}, error={}", id, e.getMessage());
+                }
+            }
+        }
+        log.info("批量移动文件: count={}, targetFolderId={}", ids.size(), folderId);
+    }
+
+    @Override
+    @Transactional
+    public void softDelete(Long id) {
+        Objects.requireNonNull(id, "文件ID不能为空");
+        MediaFile mediaFile = getById(id);
+        mediaFile.setDeleted(true);
+        mediaFile.setDeletedAt(LocalDateTime.now());
+        mediaFileRepository.save(mediaFile);
+        log.info("软删除文件（移入回收站）: id={}", id);
+    }
+
+    @Override
+    @Transactional
+    public void batchSoftDelete(List<Long> ids) {
+        Objects.requireNonNull(ids, "ID列表不能为空");
+        if (ids.isEmpty()) {
+            return;
+        }
+        for (Long id : ids) {
+            if (id != null) {
+                try {
+                    softDelete(id);
+                } catch (Exception e) {
+                    log.warn("批量软删除中单个文件失败: id={}, error={}", id, e.getMessage());
+                }
+            }
+        }
+        log.info("批量软删除文件: count={}", ids.size());
+    }
+
+    @Override
+    public PageResult<MediaFile> listTrash(int pageNum, int pageSize) {
+        PageRequest pageRequest = PageRequest.of(pageNum - 1, pageSize);
+        Page<MediaFile> page = mediaFileRepository.findAllDeleted(pageRequest);
+        return new PageResult<>(page.getContent(), page.getTotalElements(), pageNum, pageSize);
+    }
+
+    @Override
+    @Transactional
+    public MediaFile restore(Long id) {
+        Objects.requireNonNull(id, "文件ID不能为空");
+        MediaFile mediaFile = mediaFileRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(404, "文件不存在: " + id));
+
+        if (!Boolean.TRUE.equals(mediaFile.getDeleted())) {
+            throw new BusinessException(400, "文件不在回收站中");
+        }
+
+        mediaFile.setDeleted(false);
+        mediaFile.setDeletedAt(null);
+        log.info("从回收站恢复文件: id={}", id);
+        return mediaFileRepository.save(mediaFile);
+    }
+
+    @Override
+    @Transactional
+    public void batchRestore(List<Long> ids) {
+        Objects.requireNonNull(ids, "ID列表不能为空");
+        if (ids.isEmpty()) {
+            return;
+        }
+        for (Long id : ids) {
+            if (id != null) {
+                try {
+                    restore(id);
+                } catch (Exception e) {
+                    log.warn("批量恢复中单个文件失败: id={}, error={}", id, e.getMessage());
+                }
+            }
+        }
+        log.info("批量恢复文件: count={}", ids.size());
+    }
+
+    @Override
+    @Transactional
+    public void permanentDelete(Long id) {
+        Objects.requireNonNull(id, "文件ID不能为空");
+        MediaFile mediaFile = mediaFileRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(404, "文件不存在: " + id));
+
+        // 删除物理文件
+        try {
+            String filePath = mediaFile.getFilePath();
+            if (filePath != null) {
+                Path path = Paths.get(uploadBasePath, filePath);
+                Files.deleteIfExists(path);
+            }
+        } catch (IOException e) {
+            log.warn("删除物理文件失败: {}", e.getMessage());
+        }
+
+        mediaFileRepository.deleteById(id);
+        log.info("彻底删除文件: id={}", id);
+    }
+
+    @Override
+    @Transactional
+    public void batchPermanentDelete(List<Long> ids) {
+        Objects.requireNonNull(ids, "ID列表不能为空");
+        if (ids.isEmpty()) {
+            return;
+        }
+        for (Long id : ids) {
+            if (id != null) {
+                try {
+                    permanentDelete(id);
+                } catch (Exception e) {
+                    log.warn("批量彻底删除中单个文件失败: id={}, error={}", id, e.getMessage());
+                }
+            }
+        }
+        log.info("批量彻底删除文件: count={}", ids.size());
+    }
+
+    @Override
+    @Transactional
+    public void emptyTrash() {
+        List<MediaFile> deletedFiles = mediaFileRepository.findAllDeleted(PageRequest.of(0, Integer.MAX_VALUE)).getContent();
+        for (MediaFile mediaFile : deletedFiles) {
+            try {
+                permanentDelete(mediaFile.getId());
+            } catch (Exception e) {
+                log.warn("清空回收站时删除文件失败: id={}, error={}", mediaFile.getId(), e.getMessage());
+            }
+        }
+        log.info("清空回收站: count={}", deletedFiles.size());
+    }
+
+    @Override
+    public long getTrashCount() {
+        return mediaFileRepository.countDeleted();
+    }
+
+    /**
+     * 自动清理回收站任务
+     * 每天凌晨 2 点执行
+     */
+    @Scheduled(cron = "0 0 2 * * ?")
+    @Transactional
+    public void autoCleanupTrash() {
+        log.info("开始执行回收站自动清理任务 (保留天数: {})...", trashCleanupDays);
+        LocalDateTime cutoffTime = LocalDateTime.now().minusDays(trashCleanupDays);
+        List<MediaFile> expiredFiles = mediaFileRepository.findDeletedBefore(cutoffTime);
+
+        if (!expiredFiles.isEmpty()) {
+            log.info("发现 {} 个已过期文件，准备彻底删除", expiredFiles.size());
+            for (MediaFile file : expiredFiles) {
+                try {
+                    permanentDelete(file.getId());
+                } catch (Exception e) {
+                    log.error("自动清理文件失败: id={}, error={}", file.getId(), e.getMessage());
+                }
+            }
+            log.info("回收站自动清理任务完成");
+        } else {
+            log.info("没有发现过期的已删除文件");
+        }
     }
 
     private FileType determineFileType(String contentType, String originalFilename) {

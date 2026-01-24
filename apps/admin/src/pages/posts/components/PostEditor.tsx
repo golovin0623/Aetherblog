@@ -24,7 +24,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
     
     onChange(newText);
     
-    // Reset cursor position
+    // 重置光标位置
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + before.length, end + before.length);
@@ -36,7 +36,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
     { icon: Italic, action: () => insertText('*', '*'), title: '斜体' },
     { icon: Strikethrough, action: () => insertText('~~', '~~'), title: '删除线' },
     { icon: Code, action: () => insertText('`', '`'), title: '代码' },
-    null, // Divider
+    null, // 分隔线
     { icon: Heading1, action: () => insertText('# '), title: '标题1' },
     { icon: Heading2, action: () => insertText('## '), title: '标题2' },
     { icon: Heading3, action: () => insertText('### '), title: '标题3' },
@@ -51,19 +51,19 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
   ];
 
   return (
-    <div className="flex flex-col h-full border border-white/10 rounded-xl overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
+    <div className="flex flex-col h-full border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+      {/* 工具栏 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
         <div className="flex items-center gap-0.5">
           {toolbarButtons.map((btn, i) =>
             btn === null ? (
-              <div key={i} className="w-px h-5 bg-white/20 mx-1" />
+              <div key={i} className="w-px h-5 bg-[var(--border-subtle)] mx-1" />
             ) : (
               <button
                 key={i}
                 onClick={btn.action}
                 title={btn.title}
-                className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <btn.icon className="w-4 h-4" />
               </button>
@@ -73,24 +73,24 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowPreview(false)}
-            className={`p-1.5 rounded ${!showPreview ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/10'}`}
+            className={`p-1.5 rounded ${!showPreview ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowPreview(true)}
-            className={`p-1.5 rounded ${showPreview ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/10'}`}
+            className={`p-1.5 rounded ${showPreview ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}
           >
             <Eye className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Editor / Preview */}
+      {/* 编辑器 / 预览 */}
       <div className="flex-1 overflow-auto">
         {showPreview ? (
-          <div className="p-4 prose prose-invert max-w-none">
-            {/* Simple preview - in real app use markdown parser */}
+          <div className="p-4 prose dark:prose-invert max-w-none text-[var(--text-primary)]">
+            {/* 简单预览 - 实际应用中使用 markdown 解析器 */}
             <pre className="whitespace-pre-wrap">{value}</pre>
           </div>
         ) : (
@@ -99,13 +99,13 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="使用 Markdown 开始写作..."
-            className="w-full h-full p-4 bg-transparent text-white placeholder:text-gray-500 focus:outline-none resize-none font-mono text-sm leading-relaxed"
+            className="w-full h-full p-4 bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none resize-none font-mono text-sm leading-relaxed"
           />
         )}
       </div>
 
-      {/* Status Bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-white/10 bg-white/5 text-xs text-gray-500">
+      {/* 状态栏 */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-xs text-[var(--text-muted)]">
         <span>Markdown</span>
         <span>{value.length} 字符</span>
       </div>

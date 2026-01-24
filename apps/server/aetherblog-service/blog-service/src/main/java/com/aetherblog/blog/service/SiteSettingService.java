@@ -122,6 +122,26 @@ public class SiteSettingService {
         List<SiteSetting> commentSettings = settingRepository.findByGroupName("comment");
         result.putAll(convertToMap(commentSettings));
 
+        // 获取社交信息组
+        List<SiteSetting> socialSettings = settingRepository.findByGroupName("social");
+        result.putAll(convertToMap(socialSettings));
+
+        // 获取外观设置组
+        List<SiteSetting> appearanceSettings = settingRepository.findByGroupName("appearance");
+        result.putAll(convertToMap(appearanceSettings));
+
+        // 获取SEO设置组
+        List<SiteSetting> seoSettings = settingRepository.findByGroupName("seo");
+        result.putAll(convertToMap(seoSettings));
+
+        // 获取作者信息组
+        List<SiteSetting> authorSettings = settingRepository.findByGroupName("author");
+        result.putAll(convertToMap(authorSettings));
+
+        // 获取欢迎页设置组
+        List<SiteSetting> welcomeSettings = settingRepository.findByGroupName("welcome");
+        result.putAll(convertToMap(welcomeSettings));
+
         // 兼容旧代码，尝试获取 'site' 组（如果存在）
         List<SiteSetting> siteSettings = settingRepository.findByGroupName("site");
         if (!siteSettings.isEmpty()) {
@@ -155,8 +175,32 @@ public class SiteSettingService {
             settingRepository.save(setting);
             log.info("Updated site setting: key={}", key);
         } else {
-            log.warn("Setting not found: key={}", key);
+            // Auto-create missing setting with heuristics
+            log.info("Creating new site setting: key={}", key);
+            
+            String groupName = determineGroup(key);
+            SettingType type = determineType(key);
+            String description = "Auto-created setting";
+            
+            saveOrUpdate(key, value, type, groupName, description);
         }
+    }
+
+    private String determineGroup(String key) {
+        if (key.startsWith("social_")) return "social";
+        if (key.startsWith("author_")) return "author";
+        if (key.startsWith("welcome_")) return "welcome";
+        if (key.startsWith("seo_") || key.endsWith("_analytics_id")) return "seo";
+        if (key.startsWith("site_")) return "general"; // Matches frontend 'general' group
+        if (key.startsWith("theme_") || key.equals("show_banner") || key.equals("custom_css") || key.equals("post_page_size")) return "appearance";
+        if (key.startsWith("enable_") || key.equals("comment_need_audit") || key.equals("upload_max_size")) return "advanced";
+        return "other";
+    }
+
+    private SettingType determineType(String key) {
+        if (key.startsWith("enable_") || key.equals("show_banner") || key.equals("comment_need_audit")) return SettingType.BOOLEAN;
+        if (key.endsWith("_size") || key.endsWith("_count") || key.endsWith("_limit")) return SettingType.NUMBER;
+        return SettingType.STRING;
     }
 
     /**
