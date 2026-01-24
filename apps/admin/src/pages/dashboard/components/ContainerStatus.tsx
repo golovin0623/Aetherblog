@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { systemService, formatBytes } from '@/services/systemService';
 import { logger } from '@/lib/logger';
+import { useSmartPolling } from '@/hooks/useSmartPolling';
 
 // ========== 类型定义 ==========
 
@@ -266,11 +267,16 @@ export function ContainerStatus({
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchData();
-    const timer = setInterval(() => fetchData(false), refreshInterval * 1000);
-    return () => clearInterval(timer);
-  }, [fetchData, refreshInterval]);
+  }, [fetchData]);
+
+  // Smart polling
+  useSmartPolling({
+    callback: () => fetchData(false),
+    interval: refreshInterval
+  });
 
   // Auto-select first container if none selected and data loaded
   useEffect(() => {
@@ -283,41 +289,29 @@ export function ContainerStatus({
     if (!isRefreshing) fetchData(true);
   };
 
-  if (loading && !data) {
-    return (
-      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 animate-pulse h-[400px]", className)} />
-    );
-  }
-
-  if (!data?.dockerAvailable) {
-    return (
-      <div className={cn("p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col items-center justify-center text-[var(--text-muted)] h-[200px]", className)}>
-        <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
-        <span className="text-sm">Docker API 不可用</span>
-      </div>
-    );
-  }
-
+  // Render main structure always, handle loading state inside
   return (
     <div className={cn("rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col min-h-0", className)}>
-      {/* 头部 */}
+      {/* 头部 - 始终显示 */}
       <div className="p-4 sm:p-6 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">容器监控</h3>
-          {data && (
+          {data ? (
             <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-0.5 rounded">
                {data.runningContainers}/{data.totalContainers}
             </span>
+          ) : (
+             <div className="h-5 w-10 bg-[var(--bg-secondary)] rounded animate-pulse" />
           )}
         </div>
         
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || (loading && !data)}
             className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            <RefreshCw className={cn("w-4 h-4", (isRefreshing || (loading && !data)) && "animate-spin")} />
           </button>
           
           <div className="flex items-center gap-1 px-2 py-1 rounded border bg-green-500/10 border-green-500/20">
@@ -327,32 +321,64 @@ export function ContainerStatus({
         </div>
       </div>
 
-      {/* 容器列表 */}
+      {/* 容器列表 or Skeleton or Error */}
       <div className="p-4 space-y-2 overflow-y-auto custom-scrollbar flex-1 min-h-0">
-        <AnimatePresence mode="popLayout">
-          {data?.containers.map((container) => (
-            <ContainerCard 
-              key={container.id} 
-              container={container} 
-              onClick={() => onSelectContainer?.(container.id, container.displayName)}
-              isSelected={selectedId === container.id}
-            />
-          ))}
-        </AnimatePresence>
+        {loading && !data ? (
+          // Skeleton List
+          [1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] animate-pulse shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex justify-between">
+                  <div className="h-4 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-3 w-12 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 flex-1 bg-[var(--bg-secondary)] rounded-full animate-pulse" />
+                  <div className="h-3 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : !data?.dockerAvailable ? (
+          // Error State
+          <div className="flex flex-col items-center justify-center text-[var(--text-muted)] h-full">
+            <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
+            <span className="text-sm">Docker API 不可用</span>
+          </div>
+        ) : (
+          // Actual List
+          <AnimatePresence mode="popLayout">
+            {data.containers.map((container) => (
+              <ContainerCard 
+                key={container.id} 
+                container={container} 
+                onClick={() => onSelectContainer?.(container.id, container.displayName)}
+                isSelected={selectedId === container.id}
+              />
+            ))}
+          </AnimatePresence>
+        )}
       </div>
 
-      {/* 汇总信息 */}
-      {/* 汇总信息 */}
-      {data && data.containers.length > 0 && (
-        <div className="p-3 border-t border-[var(--border-subtle)] flex items-center justify-between text-[10px] text-[var(--text-muted)] shrink-0">
-          <span>
-            内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
-          </span>
-          <span>
-            CPU: {data.avgCpuPercent.toFixed(1)}%
-          </span>
-        </div>
-      )}
+      {/* 汇总信息 or Skeleton Footer */}
+      <div className="shrink-0 p-3 border-t border-[var(--border-subtle)]">
+        {loading && !data ? (
+            <div className="flex justify-between">
+               <div className="h-3 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+               <div className="h-3 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
+            </div>
+        ) : data && data.containers.length > 0 ? (
+            <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+              <span>
+                内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
+              </span>
+              <span>
+                CPU: {data.avgCpuPercent.toFixed(1)}%
+              </span>
+            </div>
+        ) : null}
+      </div>
     </div>
   );
 }

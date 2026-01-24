@@ -32,6 +32,7 @@ import {
   formatBandwidth
 } from '@/services/systemService';
 import { logger } from '@/lib/logger';
+import { useSmartPolling } from '@/hooks/useSmartPolling';
 
 // ========== 子组件 ==========
 
@@ -134,12 +135,16 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
     }
   }, []);
 
-  // 初始加载和定时刷新
+  // 初始加载
   useEffect(() => {
     fetchData();
-    const timer = setInterval(() => fetchData(false), refreshInterval * 1000);
-    return () => clearInterval(timer);
-  }, [fetchData, refreshInterval]);
+  }, [fetchData]);
+
+  // 智能轮询
+  useSmartPolling({
+    callback: () => fetchData(false),
+    interval: refreshInterval
+  });
 
   // 手动刷新
   const handleRefresh = () => {

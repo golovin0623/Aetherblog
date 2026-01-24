@@ -1,12 +1,13 @@
 import { ArrowRight, Sparkles, LayoutGrid } from 'lucide-react';
-import { getRecentPosts } from './lib/services';
+import { getRecentPosts, getSiteSettings } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 
 export const revalidate = 300; // 5 minutes ISR for homepage
 
 export default async function HomePage() {
-  const [posts] = await Promise.all([
-    getRecentPosts(6)
+  const [posts, settings] = await Promise.all([
+    getRecentPosts(6),
+    getSiteSettings()
   ]);
 
   return (
@@ -39,28 +40,31 @@ export default async function HomePage() {
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-tight tracking-tight">
-            AetherBlog
+            {settings?.welcome_title || 'AetherBlog'}
           </h1>
 
-          <p className="text-xl text-[var(--text-secondary)] mb-8 max-w-2xl mx-auto leading-relaxed">
-            融合 AI 与现代 Web 技术的下一代博客系统
-            <br />
-            智能写作、语义搜索、优雅呈现
-          </p>
+          <div className="text-xl text-[var(--text-secondary)] mb-8 max-w-2xl mx-auto leading-relaxed space-y-2">
+            <p className="font-medium text-[var(--text-primary)]">
+              {settings?.welcome_subtitle || '融合 AI 与现代 Web 技术的下一代博客系统'}
+            </p>
+            <p className="text-lg text-[var(--text-muted)]">
+              {settings?.welcome_description || '智能写作、语义搜索、优雅呈现'}
+            </p>
+          </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <a
-              href="/posts"
+              href={settings?.welcome_primary_btn_link || '/posts'}
               className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 transition-all hover:scale-105 shadow-lg shadow-primary/20 w-36"
             >
-              浏览文章
+              {settings?.welcome_primary_btn_text || '浏览文章'}
               <ArrowRight className="w-4 h-4" />
             </a>
             <a
-              href="/about"
+              href={settings?.welcome_secondary_btn_link || '/about'}
               className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card-hover)] transition-all hover:scale-105 backdrop-blur-sm w-36"
             >
-              关于我
+              {settings?.welcome_secondary_btn_text || '关于我'}
             </a>
           </div>
         </div>

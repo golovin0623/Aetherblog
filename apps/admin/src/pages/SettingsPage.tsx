@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Shield, Database, Loader2 } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
 import { toast } from 'sonner';
+import { SocialLinksEditor, type SocialLink } from '@/components/settings/SocialLinksEditor';
 
 // Setting Metadata Definition
 // Helps mapping raw keys to UI labels and input types
-type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url';
+type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links';
 
 interface SettingField {
   key: string;
@@ -23,13 +24,38 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '基本设置',
     icon: Globe,
     fields: [
-      { key: 'site_title', label: '站点标题', type: 'text', placeholder: '我的博客' },
-      { key: 'site_subtitle', label: '副标题', type: 'text', placeholder: '分享技术与生活' },
+      { key: 'site_name', label: '站点名称', type: 'text', placeholder: 'AetherBlog' },
       { key: 'site_description', label: '站点描述', type: 'textarea', description: '用于 SEO 和首页展示' },
       { key: 'site_url', label: '站点地址', type: 'url', placeholder: 'https://example.com' },
       { key: 'site_keywords', label: '关键词', type: 'text', description: '逗号分隔，如: tech, blog, react' },
-      { key: 'site_author', label: '博主名称', type: 'text', placeholder: 'Admin' },
-      { key: 'site_email', label: '联系邮箱', type: 'text' },
+      { key: 'footer_text', label: '页脚文字', type: 'text' },
+      { key: 'footer_signature', label: '个性签名', type: 'text' },
+      { key: 'icp_number', label: 'ICP备案号', type: 'text' },
+    ]
+  },
+  author: {
+    label: '博主信息',
+    icon: User,
+    fields: [
+      { key: 'author_name', label: '博主名称', type: 'text', placeholder: 'Admin' },
+      { key: 'author_bio', label: '博主简介', type: 'textarea' },
+      { key: 'author_avatar', label: '头像URL', type: 'url' },
+      { key: 'author_email', label: '联系邮箱', type: 'text' },
+      { key: 'social_links', label: '社交链接', type: 'social-links', description: '添加您的社交媒体账号' },
+    ]
+  },
+  welcome: {
+    label: '欢迎页设置',
+    icon: Sparkles,
+    fields: [
+      { key: 'welcome_enabled', label: '启用欢迎页', type: 'boolean' },
+      { key: 'welcome_title', label: '欢迎标题', type: 'text' },
+      { key: 'welcome_subtitle', label: '欢迎副标题', type: 'text' },
+      { key: 'welcome_description', label: '欢迎描述', type: 'textarea', placeholder: '智能写作、语义搜索、优雅呈现' },
+      { key: 'welcome_primary_btn_text', label: '主按钮文案', type: 'text', placeholder: '浏览文章' },
+      { key: 'welcome_primary_btn_link', label: '主按钮链接', type: 'text', placeholder: '/posts' },
+      { key: 'welcome_secondary_btn_text', label: '副按钮文案', type: 'text', placeholder: '关于我' },
+      { key: 'welcome_secondary_btn_link', label: '副按钮链接', type: 'text', placeholder: '/about' },
     ]
   },
   appearance: {
@@ -53,14 +79,12 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
       { key: 'google_analytics_id', label: 'Google Analytics ID', type: 'text' },
     ]
   },
-  social: {
-    label: '社交信息',
-    icon: Shield,
+  comment: {
+    label: '评论设置',
+    icon: MessageSquare,
     fields: [
-      { key: 'social_github', label: 'GitHub', type: 'url' },
-      { key: 'social_twitter', label: 'Twitter / X', type: 'url' },
-      { key: 'social_linkedin', label: 'LinkedIn', type: 'url' },
-      { key: 'social_weibo', label: 'Weibo', type: 'url' },
+      { key: 'comment_enabled', label: '启用评论', type: 'boolean' },
+      { key: 'comment_audit', label: '评论需审核', type: 'boolean' },
     ]
   },
   advanced: {
@@ -68,9 +92,10 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     icon: Database,
     fields: [
       { key: 'enable_registrations', label: '允许用户注册', type: 'boolean' },
-      { key: 'enable_comments', label: '全局开启评论', type: 'boolean' },
-      { key: 'comment_need_audit', label: '评论需要审核', type: 'boolean' },
       { key: 'upload_max_size', label: '最大上传 (MB)', type: 'number', placeholder: '10' },
+      { key: 'storage_type', label: '存储类型', type: 'text', description: 'LOCAL, MINIO, COS' },
+      { key: 'ai_enabled', label: '启用AI功能', type: 'boolean' },
+      { key: 'ai_provider', label: 'AI服务商', type: 'text' },
     ]
   }
 };
@@ -110,7 +135,12 @@ export default function SettingsPage() {
       const stringMap: Record<string, string> = {};
       Object.keys(data).forEach(key => {
         if (data[key] !== undefined && data[key] !== null) {
-          stringMap[key] = String(data[key]);
+          // 对于对象/数组类型（如 social_links），转换为 JSON 字符串
+          if (typeof data[key] === 'object') {
+            stringMap[key] = JSON.stringify(data[key]);
+          } else {
+            stringMap[key] = String(data[key]);
+          }
         }
       });
       return settingsService.batchUpdate(stringMap);
@@ -290,6 +320,21 @@ export default function SettingsPage() {
                         className="w-32 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none font-mono"
                       />
                     </div>
+                  ) : field.type === 'social-links' ? (
+                    <SocialLinksEditor
+                      value={(() => {
+                        // 解析 social_links，可能是 JSON 字符串或已解析的数组
+                        const raw = formData[field.key];
+                        if (!raw) return [];
+                        if (Array.isArray(raw)) return raw;
+                        try {
+                          return JSON.parse(raw);
+                        } catch {
+                          return [];
+                        }
+                      })()}
+                      onChange={(links) => handleInputChange(field.key, links)}
+                    />
                   ) : null}
 
                   {field.description && (
