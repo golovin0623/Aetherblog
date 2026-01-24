@@ -30,6 +30,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
+COPY --from=deps /app/apps/blog/node_modules ./apps/blog/node_modules
 COPY . .
 
 # Set environment variables for build
