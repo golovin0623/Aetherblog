@@ -21,7 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [backend, blog, admin]
+        include:
+          - service: backend
+            dockerfile: ./apps/server/Dockerfile
+          - service: blog
+            dockerfile: ./apps/blog/Dockerfile
+          - service: admin
+            dockerfile: ./apps/admin/Dockerfile
 
     steps:
       - name: Checkout code
@@ -56,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./apps/${{ matrix.service }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:${{ steps.version.outputs.version }}
