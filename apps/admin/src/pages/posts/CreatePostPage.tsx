@@ -22,9 +22,10 @@ import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { useSidebarStore } from '@/stores';
+import { useTheme } from '@aetherblog/hooks';
 import { logger } from '@/lib/logger';
 
-// Instant tooltip button component for toolbar
+// 工具栏的即时提示按钮组件
 interface ToolbarButtonProps {
   onClick: () => void;
   tooltip: string;
@@ -32,7 +33,7 @@ interface ToolbarButtonProps {
   isActive?: boolean;
   activeColor?: 'primary' | 'emerald';
   className?: string;
-  /** Tooltip position: 'top' (default) or 'bottom' */
+  /** 提示框位置: 'top' (默认) 或 'bottom' */
   tooltipPosition?: 'top' | 'bottom';
 }
 
@@ -59,7 +60,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setShowTooltip(false)}
       className={cn(
-        'relative p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors',
+        'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
         isActive && activeColor === 'primary' && 'bg-indigo-500/90 text-white',
         isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
         className
@@ -71,8 +72,8 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       {showTooltip && (
         <span
           className={cn(
-            "fixed z-[9999] px-2.5 py-1.5 text-xs text-white bg-[#1e1e20] rounded-md border border-white/20 whitespace-nowrap -translate-x-1/2 pointer-events-none shadow-lg",
-            tooltipPosition === 'bottom' ? 'mt-1' : '-translate-y-full -mt-1'
+            "fixed z-[9999] px-2.5 py-1.5 text-xs text-white bg-[var(--bg-tooltip)] rounded-md border border-[var(--border-subtle)] whitespace-nowrap -translate-x-1/2 pointer-events-none shadow-lg",
+             tooltipPosition === 'bottom' ? 'mt-1' : '-translate-y-full -mt-1'
           )}
           style={{ left: position.x, top: position.y }}
         >
@@ -85,6 +86,8 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
 
 export function CreatePostPage() {
   const navigate = useNavigate();
+  // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
+  const { resolvedTheme } = useTheme();
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
   const postId = id ? parseInt(id, 10) : null;
@@ -97,7 +100,7 @@ export function CreatePostPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
-  // Font size control - separate editor and preview font sizes
+  // 字号控制 - 分离编辑器和预览字号
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [previewFontSize, setPreviewFontSize] = useState(16);
   const [zoomTarget, setZoomTarget] = useState<'editor' | 'preview' | 'both'>('both');
@@ -111,19 +114,19 @@ export function CreatePostPage() {
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
   const [autoSaveFlash, setAutoSaveFlash] = useState(false); // 自动保存时的微妙闪烁
   const [publishTime, setPublishTime] = useState<string>('');
-  // Quick create category modal
+  // 快速创建分类模态框
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
 
-  // Category state
+  // 分类状态
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(true);
 
-  // Tag state
+  // 标签状态
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState('');
@@ -138,19 +141,19 @@ export function CreatePostPage() {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
 
-  // Sidebar auto-collapse
+  // 侧边栏自动折叠
   const { setAutoCollapse } = useSidebarStore();
 
-  // Auto-collapse sidebar on mount, restore on unmount
-  // Use requestAnimationFrame + setTimeout to delay collapse until page is rendered
+  // 挂载时自动折叠侧边栏，卸载时恢复
+  // 使用 requestAnimationFrame + setTimeout 延迟折叠，直到页面渲染完成
   useEffect(() => {
-    // Delay collapse to avoid animation competing with page render
+    // 延迟折叠以避免动画与页面渲染冲突
     const rafId = requestAnimationFrame(() => {
       const timerId = setTimeout(() => {
         setAutoCollapse(true);
-      }, 100); // Small delay for smoother transition
+      }, 100); // 小延迟以获得更平滑的过渡
       
-      // Store timerId in a ref-like closure for cleanup
+      // 在类似 ref 的闭包中存储 timerId 以便清理
       return () => clearTimeout(timerId);
     });
     
@@ -160,7 +163,7 @@ export function CreatePostPage() {
     };
   }, [setAutoCollapse]);
 
-  // Auto-save logic
+  // 自动保存逻辑
   const latestDataRef = useRef({ title, content, summary, selectedCategory, selectedTags });
   useEffect(() => {
     latestDataRef.current = { title, content, summary, selectedCategory, selectedTags };
@@ -171,10 +174,10 @@ export function CreatePostPage() {
 
     const timer = setInterval(() => {
       const data = latestDataRef.current;
-      // Only auto-save if content exists
+      // 仅当内容存在时自动保存
       if (!data.title && !data.content) return;
 
-      // Automatically save to draft cache (Redis)
+      // 自动保存到草稿缓存 (Redis)
       postService.autoSave(postId, {
         title: data.title,
         content: data.content,
@@ -192,7 +195,7 @@ export function CreatePostPage() {
     return () => clearInterval(timer);
   }, [isEditMode, postId, _postStatus, isAutoSaveEnabled]);
 
-  // View configuration automation
+  // 视图配置自动化
   useEffect(() => {
     if (viewMode === 'edit') {
       setShowToc(true);
@@ -201,13 +204,13 @@ export function CreatePostPage() {
       setIsFullscreen(true);
       setShowToc(false);
     } else {
-      // Split mode defaults
+      // 分屏模式默认值
       setIsFullscreen(false);
       setShowToc(false);
     }
   }, [viewMode]);
 
-  // Fetch categories, tags, and server time on mount
+  // 挂载时获取分类、标签和服务器时间
   useEffect(() => {
     const fetchData = async () => {
       setLoadingCategories(true);
@@ -216,14 +219,14 @@ export function CreatePostPage() {
         const [catRes, tagRes, timeRes] = await Promise.all([
           categoryService.getList(),
           tagService.getList(),
-          postService.getServerTime().catch(() => null) // Gracefully handle if API not available
+          postService.getServerTime().catch(() => null) // API 不可用时优雅处理
         ]);
         if (catRes.data) setCategories(catRes.data);
         if (tagRes.data) setTags(tagRes.data);
         
-        // Set publish time from server time, fallback to local time if API fails
+        // 从服务器时间设置发布时间，如果 API 失败则回退到本地时间
         if (timeRes?.data?.timestamp) {
-          // Server returns ISO timestamp, convert to local datetime-local format
+          // 服务器返回 ISO 时间戳，转换为本地 datetime-local 格式
           const serverDate = new Date(timeRes.data.timestamp);
           const year = serverDate.getFullYear();
           const month = String(serverDate.getMonth() + 1).padStart(2, '0');
@@ -232,7 +235,7 @@ export function CreatePostPage() {
           const minutes = String(serverDate.getMinutes()).padStart(2, '0');
           setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
         } else {
-          // Fallback to local time
+          // 回退到本地时间
           const now = new Date();
           const year = now.getFullYear();
           const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -243,7 +246,7 @@ export function CreatePostPage() {
         }
       } catch (error) {
         logger.error('Failed to fetch categories/tags:', error);
-        // Still set a default publish time on error
+        // 出错时仍设置默认发布时间
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -259,7 +262,7 @@ export function CreatePostPage() {
     fetchData();
   }, []);
 
-  // Handle Esc to exit full screen
+  // 按 Esc 退出全屏
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
@@ -270,7 +273,7 @@ export function CreatePostPage() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isFullscreen]);
 
-  // Handle Ctrl+S / Cmd+S to save
+  // 处理 Ctrl+S / Cmd+S 保存
   useEffect(() => {
     const handleSaveShortcut = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -280,9 +283,9 @@ export function CreatePostPage() {
     };
     window.addEventListener('keydown', handleSaveShortcut);
     return () => window.removeEventListener('keydown', handleSaveShortcut);
-  }, [content, title, selectedCategory, selectedTags, summary]); // Use relevant states for saving
+  }, [content, title, selectedCategory, selectedTags, summary]); // 使用相关状态进行保存
 
-  // Load existing post when in edit mode
+  // 编辑模式下加载现有文章
   useEffect(() => {
     if (isEditMode && postId) {
       const loadPost = async () => {
@@ -294,7 +297,7 @@ export function CreatePostPage() {
             const draft = post.draft;
             const useDraft = !!draft;
 
-            // Prefer draft content if available
+            // 如果可用，优先使用草稿内容
             setTitle(useDraft ? draft.title : post.title);
             setContent(useDraft ? draft.content : post.content);
             setSummary((useDraft ? draft.summary : post.summary) || '');
@@ -305,8 +308,8 @@ export function CreatePostPage() {
               setTimeout(() => setSaveMessage(null), 3000);
             }
             
-            // For relations, we prioritize DB values initially to ensure we have full objects
-            // Future improvement: Hydrate Category/Tags from draft IDs if possible
+            // 对于关系，我们最初优先考虑数据库值，以确保拥有完整的对象
+            // 未来改进：如果可能，从草稿 ID 中恢复分类/标签
             if (post.category) {
               setSelectedCategory(post.category as Category);
             }
@@ -327,7 +330,7 @@ export function CreatePostPage() {
     }
   }, [isEditMode, postId]);
 
-  // Click outside to close dropdowns
+  // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
@@ -344,7 +347,7 @@ export function CreatePostPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filtered categories based on search
+  // 基于搜索过滤分类
   const filteredCategories = useMemo(() => {
     if (!categorySearch) return categories;
     return categories.filter(c => 
@@ -352,7 +355,7 @@ export function CreatePostPage() {
     );
   }, [categories, categorySearch]);
 
-  // Filtered tags based on search
+  // 基于搜索过滤标签
   const filteredTags = useMemo(() => {
     if (!tagSearch) return tags.filter(t => !selectedTags.find(s => s.id === t.id));
     return tags.filter(t => 
@@ -361,7 +364,7 @@ export function CreatePostPage() {
     );
   }, [tags, tagSearch, selectedTags]);
 
-  // Character, word, and line count
+  // 字符、单词和行数统计
   const stats = useMemo(() => {
     const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
     const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
@@ -373,7 +376,7 @@ export function CreatePostPage() {
     };
   }, [content]);
 
-  // Extract headings for TOC
+  // 提取 TOC 标题
   interface TocItem {
     level: number;
     text: string;
@@ -408,15 +411,15 @@ export function CreatePostPage() {
     return items;
   }, [content]);
 
-  // Ref to store original sync scroll state during TOC navigation
+  // 用于在 TOC 导航期间存储原始同步滚动状态的 Ref
   const syncScrollBeforeNavRef = useRef(false);
 
-  // Scroll to heading - Two-phase approach for virtual DOM accuracy
+  // 滚动到标题 - 虚拟 DOM 准确性的两阶段方法
   const scrollToHeading = useCallback((headingText: string, lineNumber: number) => {
     const editorContainer = editorContainerRef.current;
     if (!editorContainer) return;
     
-    // Temporarily disable sync scroll to prevent interference
+    // 暂时禁用同步滚动以防止干扰
     syncScrollBeforeNavRef.current = isSyncScroll;
     if (isSyncScroll) {
       setIsSyncScroll(false);
@@ -425,9 +428,9 @@ export function CreatePostPage() {
     const cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
     const cmContent = editorContainer.querySelector('.cm-content') as HTMLElement | null;
 
-    // Wrap execution in setTimeout to ensure setIsSyncScroll(false) has propagated to children
+    // 将执行包装在 setTimeout 中，以确保 setIsSyncScroll(false) 已传播到子组件
     setTimeout(() => {
-    // Helper: Find heading in editor DOM
+    // 辅助函数：在编辑器 DOM 中查找标题
     const findHeadingInEditor = (): HTMLElement | null => {
       if (!cmContent) return null;
       const lines = cmContent.querySelectorAll('.cm-line');
@@ -441,14 +444,14 @@ export function CreatePostPage() {
       return null;
     };
 
-    // Helper: Scroll editor to element
+    // 辅助函数：将编辑器滚动到元素
     const scrollEditorToElement = (element: HTMLElement) => {
       if (!cmScroller || !cmContent) return;
       const lineTop = element.offsetTop - cmContent.offsetTop;
       cmScroller.scrollTo({ top: Math.max(0, lineTop - 50), behavior: 'smooth' });
     };
 
-    // Helper: Scroll preview to heading
+    // 辅助函数：将预览滚动到标题
     const scrollPreviewToHeading = () => {
       const previewPanels = editorContainer.querySelectorAll('[class*="overflow-y-auto"]');
       previewPanels.forEach(panel => {
@@ -469,47 +472,47 @@ export function CreatePostPage() {
       });
     };
 
-    // Phase 1: Try direct text match first
+    // 阶段 1：首先尝试直接文本匹配
     let foundLine = findHeadingInEditor();
     
     if (foundLine) {
-      // Heading is in visible DOM - scroll directly (both smooth)
+      // 标题在可见 DOM 中 - 直接滚动（均平滑）
       scrollEditorToElement(foundLine);
-      scrollPreviewToHeading(); // Preview always has DOM, so this works
+      scrollPreviewToHeading(); // 预览总是有 DOM，所以这行得通
     } else if (cmScroller && cmContent) {
-      // Phase 2: Heading not in DOM - use "Seek & Lock" approach
+      // 阶段 2：标题不在 DOM 中 - 使用 "Seek & Lock" 方法
       
-      // 2a: Launch smooth scroll to estimated position for Editor
+      // 2a: 启动平滑滚动到编辑器的估计位置
       const lineHeight = 24;
       const estimatedTop = (lineNumber - 1) * lineHeight;
       cmScroller.scrollTo({ top: Math.max(0, estimatedTop - 50), behavior: 'smooth' });
       
-      // 2b: Preview is NOT virtualized, so we can always find and scroll to it directly & smoothly
-      // We don't need estimation for preview, just force a search
+      // 2b: 预览没有虚拟化，所以我们总是可以直接且平滑地找到并滚动到它
+      // 我们不需要预览的估计，只需强制搜索
       scrollPreviewToHeading();
       
-      // 2c: MutationObserver (Zero Overhead)
-      // Instead of polling every frame, we wait for the browser to notify us of DOM updates
+      // 2c: MutationObserver (零开销)
+      // 我们不每帧轮询，而是等待浏览器通知我们 DOM 更新
       
       const observerTimeout = setTimeout(() => {
         observer.disconnect();
-      }, 2000); // Safety timeout
+      }, 2000); // 安全超时
 
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           if (mutation.type === 'childList') {
-            // Only check newly added nodes
+            // 仅检查新添加的节点
             mutation.addedNodes.forEach((node) => {
-              if (node.nodeType === 1) { // Element node
+              if (node.nodeType === 1) { // 元素节点
                 const el = node as HTMLElement;
-                // Check if this new node is a line containing our heading
+                // 检查这个新节点是否包含我们的标题的行
                 if (el.classList.contains('cm-line')) {
                   const text = el.textContent || '';
                   if (text.includes(headingText) && /^#+\s/.test(text)) {
-                    // Target acquired!
-                    // Only correct if deviation is significant (> 50px) to avoid visual jitter
-                    // Only correct if deviation between ESTIMATED target and ACTUAL target is significant
-                    // This prevents interrupting the smooth scroll if we are already going to the right place
+                    // 目标已获取！
+                    // 仅当偏差显著 (> 50px) 时才更正，以避免视觉抖动
+                    // 仅当估计目标和实际目标之间的偏差显著时才更正
+                    // 如果我们已经去了正确的地方，这可以防止中断平滑滚动
                     const targetTop = el.offsetTop - (cmContent?.offsetTop || 0) - 50;
                     if (Math.abs(estimatedTop - targetTop) > 50) {
                        scrollEditorToElement(el);
@@ -525,10 +528,10 @@ export function CreatePostPage() {
       });
 
       if (cmContent) {
-        // Start observing for line additions
+        // 开始观察行添加
         observer.observe(cmContent, { childList: true, subtree: true });
         
-        // Final check: in case it appeared just before observation started
+        // 最终检查：以防它在观察开始前刚刚出现
         const finalLine = findHeadingInEditor();
         if (finalLine) {
           scrollEditorToElement(finalLine);
@@ -538,8 +541,8 @@ export function CreatePostPage() {
       }
     }
 
-    // Restore sync scroll after enough time for all animations to complete
-    // Increased to 1500ms to cover long scrolls and polling time
+    // 在足够的时间让所有动画完成后恢复同步滚动
+    // 增加到 1500ms 以覆盖长滚动和轮询时间
     setTimeout(() => {
       if (syncScrollBeforeNavRef.current) {
         setIsSyncScroll(true);
@@ -548,35 +551,35 @@ export function CreatePostPage() {
     }, 10);
   }, [isSyncScroll, stats.lines]);
 
-  // Scroll to top function - targets CodeMirror's internal scroller
+  // 滚动到顶部函数 - 针对 CodeMirror 的内部滚动条
   const scrollToTop = useCallback(() => {
-    // Find all scroll containers within the editor
+    // 查找编辑器内的所有滚动容器
     const editorContainer = editorContainerRef.current;
     if (!editorContainer) return;
     
-    // Scroll the CodeMirror scroller
+    // 滚动 CodeMirror 滚动条
     const cmScroller = editorContainer.querySelector('.cm-scroller');
     if (cmScroller) {
       cmScroller.scrollTo({ top: 0, behavior: 'smooth' });
     }
     
-    // Also scroll the preview panel (look for the container with bg-[#0a0a0c])
+    // 同时滚动预览面板 (寻找带有 bg-[#0a0a0c] 的容器)
     const previewPanels = editorContainer.querySelectorAll('.overflow-y-auto, [class*="overflow-y-auto"]');
     previewPanels.forEach(panel => {
       panel.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }, []);
 
-  // Editor commands for toolbar
+  // 工具栏的编辑器命令
   const editorCommands = useEditorCommands(editorViewRef);
   
-  // Table commands for table operations
+  // 表格操作的表格命令
   const tableCommands = useTableCommands(editorViewRef);
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
   const [showTableToolbar, setShowTableToolbar] = useState(false);
   const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Image upload hook
+  // 图片上传 Hook
   const handleUploadFn = useCallback(async (file: File, onProgress?: (percent: number) => void): Promise<UploadResult> => {
     const result = await mediaService.upload(file, onProgress);
     return {
@@ -607,17 +610,17 @@ export function CreatePostPage() {
       logger.error('图片上传失败:', error, file.name);
     },
   });
-  // Check table state on selection change and scroll
+  // 在选择更改和滚动时检查表格状态
   useEffect(() => {
     const checkTable = () => {
       const info = tableCommands.getTableInfo();
       setTableInfo(info);
     };
     
-    // Check on content change
+    // 检查内容更改
     const interval = setInterval(checkTable, 100);
     
-    // Also update on scroll
+    // 滚动时也更新
     const editorContainer = editorContainerRef.current;
     if (editorContainer) {
       const scroller = editorContainer.querySelector('.cm-scroller');
@@ -637,7 +640,7 @@ export function CreatePostPage() {
     };
   }, [tableCommands]);
   
-  // Table toolbar hover handlers
+  // 表格工具栏悬停处理程序
   const handleTableTriggerEnter = useCallback(() => {
     if (tableToolbarTimeoutRef.current) {
       clearTimeout(tableToolbarTimeoutRef.current);
@@ -647,13 +650,13 @@ export function CreatePostPage() {
   }, []);
   
   const handleTableTriggerLeave = useCallback(() => {
-    // Delay hiding to allow moving to toolbar
+    // 延迟隐藏以允许移动到工具栏
     tableToolbarTimeoutRef.current = setTimeout(() => {
       setShowTableToolbar(false);
     }, 200);
   }, []);
   
-  // Cleanup timeout on unmount
+  // 卸载时清理超时
   useEffect(() => {
     return () => {
       if (tableToolbarTimeoutRef.current) {
@@ -675,24 +678,25 @@ export function CreatePostPage() {
     editorCommands.focus();
   }, [editorCommands]);
 
-  // Handle formatting keyboard shortcuts (Ctrl+B, Ctrl+I, Ctrl+K, etc.)
+  // 处理格式化键盘快捷键 (Ctrl+B, Ctrl+I, Ctrl+K 等)
   useEffect(() => {
     const handleFormatShortcut = (e: KeyboardEvent) => {
-      // Only handle if Ctrl/Cmd is pressed
+      // 仅在按下 Ctrl/Cmd 时处理
+      // 仅在按下 Ctrl/Cmd 时处理
       if (!(e.ctrlKey || e.metaKey)) return;
       
       switch (e.key.toLowerCase()) {
-        case 'b': // Bold
+        case 'b': // 粗体
           e.preventDefault();
           editorCommands.toggleWrap('**', '**');
           editorCommands.focus();
           break;
-        case 'i': // Italic
+        case 'i': // 斜体
           e.preventDefault();
           editorCommands.toggleWrap('*', '*');
           editorCommands.focus();
           break;
-        case 'k': // Link (Ctrl+K) or Code Block (Ctrl+Shift+K)
+        case 'k': // 链接 (Ctrl+K) 或代码块 (Ctrl+Shift+K)
           e.preventDefault();
           if (e.shiftKey) {
             editorCommands.toggleWrap('```\n', '\n```');
@@ -701,12 +705,12 @@ export function CreatePostPage() {
           }
           editorCommands.focus();
           break;
-        case '`': // Inline code
+        case '`': // 行内代码
           e.preventDefault();
           editorCommands.toggleWrap('`', '`');
           editorCommands.focus();
           break;
-        case 'u': // Underline
+        case 'u': // 下划线
           e.preventDefault();
           editorCommands.toggleWrap('<u>', '</u>');
           editorCommands.focus();
@@ -717,7 +721,7 @@ export function CreatePostPage() {
     return () => window.removeEventListener('keydown', handleFormatShortcut);
   }, [editorCommands]);
 
-  // Validation check
+  // 验证检查
   const validatePost = (forPublish = false) => {
     if (!title.trim()) {
       setSaveMessage({ type: 'error', text: '请输入文章标题' });
@@ -727,10 +731,10 @@ export function CreatePostPage() {
       setSaveMessage({ type: 'error', text: '请输入文章内容' });
       return false;
     }
-    // Category required for publishing
+    // 发布需要分类
     if (forPublish && !selectedCategory) {
       setSaveMessage({ type: 'error', text: '发布文章请先选择分类' });
-      // Open settings panel and show category dropdown
+      // 打开设置面板并显示分类下拉菜单
       setShowSettings(true);
       setShowCategoryDropdown(true);
       return false;
@@ -738,7 +742,7 @@ export function CreatePostPage() {
     return true;
   };
 
-  // Create new category
+  // 创建新分类
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) return;
     
@@ -760,7 +764,7 @@ export function CreatePostPage() {
     }
   };
 
-  // Save as draft
+  // 保存为草稿
   const handleSave = async () => {
     if (!validatePost()) return;
     
@@ -768,8 +772,8 @@ export function CreatePostPage() {
     setSaveMessage(null);
     
     try {
-      // If editing a PUBLISHED post, "Save" only updates the Draft Cache
-      // Un-published (DRAFT) posts update the DB directly
+      // 如果正在编辑已发布的文章，"保存" 仅更新草稿缓存
+      // 未发布 (草稿) 文章直接更新数据库
       if (isEditMode && postId && _postStatus === 'PUBLISHED') {
          await postService.autoSave(postId, {
             title: title.trim(),
@@ -781,7 +785,7 @@ export function CreatePostPage() {
          });
          setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
       } else {
-        // Normal save to DB
+        // 正常保存到数据库
         const res = isEditMode && postId
           ? await postService.update(postId, {
               title: title.trim(),
@@ -802,7 +806,7 @@ export function CreatePostPage() {
         
         if (res.code === 200 && res.data) {
           setSaveMessage({ type: 'success', text: '保存成功！' });
-          // If it was a new post, navigate to edit page
+          // 如果是新文章，导航到编辑页面
           if (!isEditMode && res.data.id) {
             setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
           }
@@ -818,9 +822,9 @@ export function CreatePostPage() {
     }
   };
 
-  // Publish post
+  // 发布文章
   const handlePublish = async () => {
-    if (!validatePost(true)) return; // true = forPublish, requires category
+    if (!validatePost(true)) return; // true = 用于发布，需要分类
     
     setIsPublishing(true);
     setSaveMessage(null);
@@ -858,7 +862,7 @@ export function CreatePostPage() {
     }
   };
 
-  // Clear message after 3 seconds
+  // 3 秒后清除消息
   useEffect(() => {
     if (saveMessage) {
       const timer = setTimeout(() => setSaveMessage(null), 3000);
@@ -869,14 +873,14 @@ export function CreatePostPage() {
   const handleTagKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && tagSearch.trim()) {
       e.preventDefault();
-      // Check if tag already exists
+      // 检查标签是否已存在
       const existing = tags.find(t => t.name.toLowerCase() === tagSearch.toLowerCase());
       if (existing) {
         if (!selectedTags.find(s => s.id === existing.id)) {
           setSelectedTags([...selectedTags, existing]);
         }
       } else {
-        // Create new tag
+        // 创建新标签
         try {
           const res = await tagService.create({ name: tagSearch.trim() });
           if (res.data) {
@@ -899,80 +903,80 @@ export function CreatePostPage() {
 
 
 
-  // Loading skeleton
+  // 加载骨架屏 - 感知主题
   if (_loadingPost || loadingCategories || loadingTags) {
     return (
-      <div className="flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-50 overflow-hidden">
-        {/* Header Skeleton */}
-        <div className="h-14 flex-shrink-0 border-b border-white/10 bg-[#0a0a0c] flex items-center justify-between px-6 gap-4">
-           {/* Left */}
+      <div className="flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-50 overflow-hidden">
+        {/* 头部骨架 */}
+        <div className="h-14 flex-shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-6 gap-4">
+           {/* 左侧 */}
            <div className="flex items-center gap-3 flex-1">
-             <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse flex-shrink-0" /> {/* Back */}
-             <div className="h-8 rounded-lg bg-zinc-800 animate-pulse flex-1 max-w-md" />   {/* Title */}
-             <div className="w-px h-6 bg-white/10 flex-shrink-0 mx-1" />
+             <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-shrink-0" /> {/* 返回 */}
+             <div className="h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-1 max-w-md" />   {/* 标题 */}
+             <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0 mx-1" />
              <div className="flex gap-2">
-                <div className="w-24 h-7 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-16 h-7 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-24 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-16 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
            </div>
            
-           {/* Right */}
+           {/* 右侧 */}
            <div className="flex items-center gap-2">
-              <div className="w-20 h-8 rounded-lg bg-zinc-800 animate-pulse" /> {/* AI */}
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse" />  {/* Settings */}
-              <div className="w-[90px] h-8 rounded-lg bg-zinc-800 animate-pulse" /> {/* Save */}
-              <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* Publish */}
+              <div className="w-20 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* AI */}
+              <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />  {/* 设置 */}
+              <div className="w-[90px] h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* 保存 */}
+              <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* 发布 */}
            </div>
         </div>
 
-        {/* Toolbar Skeleton */}
-        <div className="flex-shrink-0 h-10 border-b border-white/10 bg-[#0a0a0c]/80 flex items-center px-4 gap-4 overflow-hidden">
-             <div className="flex items-center gap-1 pr-3 border-r border-white/10">
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+        {/* 工具栏骨架 */}
+        <div className="flex-shrink-0 h-10 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 flex items-center px-4 gap-4 overflow-hidden">
+             <div className="flex items-center gap-1 pr-3 border-r border-[var(--border-subtle)]">
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
              <div className="flex items-center gap-1 px-3">
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
-                <div className="w-6 h-6 rounded bg-zinc-800 animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
              <div className="flex-1" />
         </div>
 
-        {/* Content Area */}
+        {/* 内容区域 */}
         <div className="flex-1 flex overflow-hidden">
-             {/* Editor */}
-             <div className="flex-1 p-8 space-y-6">
-                <div className="w-3/4 h-10 rounded-lg bg-zinc-800 animate-pulse" /> {/* H1 title-like */}
+             {/* 编辑器 */}
+             <div className="flex-1 p-8 space-y-6 bg-[var(--bg-primary)]">
+                <div className="w-3/4 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* H1 标题样式 */}
                 <div className="space-y-4">
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-11/12 h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-4/5 h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-11/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-4/5 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                 </div>
                 <div className="space-y-4 pt-4">
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                 </div>
              </div>
              
-             {/* Preview */}
-             <div className="flex-1 border-l border-white/10 bg-black/20 p-8 space-y-6 hidden lg:block">
-                <div className="w-2/3 h-10 rounded-lg bg-zinc-800 animate-pulse" />
+             {/* 预览 */}
+             <div className="flex-1 border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-8 space-y-6 hidden lg:block">
+                <div className="w-2/3 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
                 <div className="space-y-4">
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-zinc-800 animate-pulse" />
-                    <div className="w-full h-4 rounded bg-zinc-800 animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
                 </div>
-                <div className="w-full h-48 rounded-lg bg-zinc-800 animate-pulse" />
+                <div className="w-full h-48 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
              </div>
         </div>
         
-        {/* Footer (Status Bar) */}
-        <div className="h-8 flex-shrink-0 border-t border-white/10 bg-[#0a0a0c] flex items-center justify-between px-4">
-             <div className="w-24 h-3 rounded bg-zinc-800 animate-pulse" />
-             <div className="w-16 h-3 rounded bg-zinc-800 animate-pulse" />
+        {/* 页脚 (状态栏) */}
+        <div className="h-8 flex-shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-4">
+             <div className="w-24 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+             <div className="w-16 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
         </div>
       </div>
     );
@@ -980,9 +984,9 @@ export function CreatePostPage() {
   // @ts-ignore
   return (
     <div className={cn(
-      "flex flex-col absolute inset-0 h-full bg-[#0a0a0c] z-10 transition-all duration-300 overflow-hidden"
+      "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden"
     )}>
-      {/* Top Header Section - With fold-up animation */}
+      {/* 顶部头部区域 - 带折叠动画 */}
       <AnimatePresence initial={false}>
         {!isFullscreen && (
           <motion.div 
@@ -991,36 +995,36 @@ export function CreatePostPage() {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="border-b border-white/10 bg-[#0a0a0c] z-20"
+            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] z-20"
           >
             <div className="flex items-center justify-between px-6 py-3.5 gap-4">
-              {/* Left Block: Back + Title + Metadata */}
+              {/* 左侧块：返回 + 标题 + 元数据 */}
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <button 
                   onClick={() => navigate('/posts')}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors flex-shrink-0"
                   title="返回列表"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
                 
-                {/* Title Input */}
+                {/* 标题输入 */}
                 <motion.div className="flex-1 min-w-[150px]">
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="请输入文章标题..."
-                    className="w-full bg-transparent text-xl font-bold text-white placeholder-gray-600 focus:outline-none min-w-0"
+                    className="w-full bg-transparent text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none min-w-0"
                   />
                 </motion.div>
 
-                {/* Divider */}
-                <div className="w-px h-6 bg-white/10 flex-shrink-0" />
+                {/* 分隔线 */}
+                <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0" />
 
-                {/* Metadata: Category & Tags */}
+                {/* 元数据：分类和标签 */}
                 <div className="flex items-center gap-3 flex-shrink-0">
-                  {/* Category Selector */}
+                  {/* 分类选择器 */}
                   <div ref={categoryDropdownRef} className="relative">
                     <button
                       onMouseDown={(e) => e.stopPropagation()}
@@ -1031,7 +1035,7 @@ export function CreatePostPage() {
                         }
                         setShowCategoryDropdown(!showCategoryDropdown);
                       }}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-white/10 transition-colors text-sm"
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
                     >
                       <span className={selectedCategory ? 'text-primary font-medium' : 'text-gray-500'}>
                         {selectedCategory?.name || '选择分类'}
@@ -1045,16 +1049,16 @@ export function CreatePostPage() {
                           initial={{ opacity: 0, y: 5, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                          className="absolute top-full left-0 mt-2 w-60 z-50 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                          className="absolute top-full left-0 mt-2 w-60 z-50 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden"
                         >
-                          <div className="p-2 border-b border-white/10">
+                          <div className="p-2 border-b border-[var(--border-subtle)]">
                             <input
                               type="text"
                               value={categorySearch}
                               onChange={(e) => setCategorySearch(e.target.value)}
                               placeholder="搜索分类..."
                               autoFocus
-                              className="w-full px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50"
+                              className="w-full px-2 py-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                             />
                           </div>
                           <div className="max-h-48 overflow-auto py-1">
@@ -1063,7 +1067,7 @@ export function CreatePostPage() {
                                 key={cat.id}
                                 onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
                                 className={cn(
-                                  'w-full px-3 py-1.5 text-left text-sm hover:bg-white/10',
+                                  'w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-card-hover)]',
                                   selectedCategory?.id === cat.id ? 'text-primary' : 'text-gray-300'
                                 )}
                               >
@@ -1072,7 +1076,7 @@ export function CreatePostPage() {
                             ))}
                             <button
                               onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
-                              className="w-full px-3 py-1.5 text-left text-xs text-primary hover:bg-white/10 flex items-center gap-2 border-t border-white/10 mt-1 pt-2"
+                              className="w-full px-3 py-1.5 text-left text-xs text-primary hover:bg-[var(--bg-card-hover)] flex items-center gap-2 border-t border-[var(--border-subtle)] mt-1 pt-2"
                             >
                               <Plus className="w-3 h-3" /> 新建分类
                             </button>
@@ -1082,9 +1086,9 @@ export function CreatePostPage() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Tag Selector */}
+                  {/* 标签选择器 */}
                   <div ref={tagDropdownRef} className="relative flex items-center gap-1.5">
-                     {/* Stable tags - first 2 always rendered if exist */}
+                     {/* 稳定标签 - 如果存在，前 2 个始终渲染 */}
                        {selectedTags.slice(0, 2).map((tag) => (
                         <motion.span
                           key={tag.id}
@@ -1095,7 +1099,7 @@ export function CreatePostPage() {
                         </motion.span>
                       ))}
 
-                     {/* Hidden Tags Floating Panel */}
+                     {/* 隐藏标签浮动面板 */}
                      {selectedTags.length > 2 && (
                        <div ref={expandedTagsRef} className="relative">
                          <button
@@ -1106,7 +1110,7 @@ export function CreatePostPage() {
                              }
                              setShowAllTags(!showAllTags);
                            }}
-                           className="flex items-center justify-center gap-0.5 w-14 py-0.5 bg-white/5 text-gray-400 rounded text-xs border border-white/10 hover:bg-white/10 transition-colors z-10"
+                           className="flex items-center justify-center gap-0.5 w-14 py-0.5 bg-[var(--bg-secondary)] text-[var(--text-muted)] rounded text-xs border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
                          >
                            <span>{showAllTags ? '收起' : `+${selectedTags.length - 2}`}</span>
                            <ChevronDown className={cn("w-3 h-3 transition-transform", showAllTags && "rotate-180")} />
@@ -1118,7 +1122,7 @@ export function CreatePostPage() {
                               initial={{ opacity: 0, y: 5, scale: 0.95 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
                               exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                              className="absolute top-full right-0 mt-2 p-2 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl z-50 grid grid-cols-3 gap-2 w-[340px] origin-top-right"
+                              className="absolute top-full right-0 mt-2 p-2 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl z-50 grid grid-cols-3 gap-2 w-[340px] origin-top-right"
                             >
                                {selectedTags.slice(2).map((tag) => (
                                 <span
@@ -1146,8 +1150,8 @@ export function CreatePostPage() {
                         setShowTagDropdown(!showTagDropdown);
                       }}
                       className={cn(
-                        "p-1 rounded hover:bg-white/10 text-gray-400 hover:text-primary transition-colors",
-                         showTagDropdown && "bg-white/10 text-primary"
+                        "p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-colors",
+                         showTagDropdown && "bg-[var(--bg-secondary)] text-primary"
                       )}
                     >
                       <Plus className="w-4 h-4" />
@@ -1159,9 +1163,9 @@ export function CreatePostPage() {
                           initial={{ opacity: 0, y: 5, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-2 w-64 z-50 bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl overflow-hidden"
+                          className="absolute top-full right-0 mt-2 w-64 z-50 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden"
                         >
-                          <div className="p-2 border-b border-white/10">
+                          <div className="p-2 border-b border-[var(--border-subtle)]">
                             <input
                               type="text"
                               value={tagSearch}
@@ -1169,7 +1173,7 @@ export function CreatePostPage() {
                               onKeyDown={handleTagKeyDown}
                               placeholder="搜索或新建标签..."
                               autoFocus
-                              className="w-full px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50"
+                              className="w-full px-2 py-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                             />
                           </div>
                           <div className="max-h-48 overflow-auto py-1">
@@ -1184,7 +1188,7 @@ export function CreatePostPage() {
                                     setTagSearch('');
                                   }}
                                   className={cn(
-                                    'w-full px-3 py-1.5 text-left text-sm hover:bg-white/10 flex justify-between items-center',
+                                    'w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-card-hover)] flex justify-between items-center',
                                     isSelected ? 'text-primary' : 'text-gray-300'
                                   )}
                                 >
@@ -1206,8 +1210,8 @@ export function CreatePostPage() {
                 </div>
               </div>
               
-              {/* Right Buttons */}
-              <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[#0a0a0c]">
+              {/* 右侧按钮 */}
+              <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[var(--bg-card)]">
                 
                 <motion.button
                   whileHover={{ scale: 1.02 }}
@@ -1215,7 +1219,7 @@ export function CreatePostPage() {
                   onClick={() => setShowAI(true)}
                   className={cn(
                     'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
-                    showAI ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    showAI ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -1228,7 +1232,7 @@ export function CreatePostPage() {
                   onClick={() => setShowSettings(true)}
                   className={cn(
                     'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
-                    showSettings ? 'bg-primary text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    showSettings ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   <Settings className="w-3.5 h-3.5" />
@@ -1241,7 +1245,7 @@ export function CreatePostPage() {
                   disabled={isSaving || isPublishing}
                   className={cn(
                     'flex h-8 items-center justify-center gap-1.5 px-3 min-w-[90px] rounded-lg transition-colors text-sm',
-                    isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   )}
                 >
                   {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -1263,7 +1267,7 @@ export function CreatePostPage() {
                   {isPublishing ? '发布中...' : '发布'}
                 </motion.button>
                 
-                {/* Save message toast */}
+                {/* 保存消息提示 */}
                 <AnimatePresence>
                   {saveMessage && (
                     <motion.div
@@ -1288,10 +1292,10 @@ export function CreatePostPage() {
       </AnimatePresence>
 
       {/* Formatting Toolbar - outer container with overflow-visible for tooltips */}
-      <div className="relative border-b border-white/10 bg-[#0a0a0c]/80">
+      <div className="relative border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 backdrop-blur-sm">
         <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto">
         {/* Undo/Redo */}
-        <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
             <Undo2 className="w-4 h-4" />
           </ToolbarButton>
@@ -1300,7 +1304,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
         {/* Headings */}
-        <div className="flex items-center gap-0.5 pr-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
             <Heading1 className="w-4 h-4" />
           </ToolbarButton>
@@ -1313,7 +1317,7 @@ export function CreatePostPage() {
         </div>
         
         {/* Text Formatting */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
             <Bold className="w-4 h-4" />
           </ToolbarButton>
@@ -1329,7 +1333,7 @@ export function CreatePostPage() {
         </div>
 
         {/* Code */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
             <Code className="w-4 h-4" />
           </ToolbarButton>
@@ -1339,7 +1343,7 @@ export function CreatePostPage() {
         </div>
         
         {/* Lists */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
             <List className="w-4 h-4" />
           </ToolbarButton>
@@ -1352,7 +1356,7 @@ export function CreatePostPage() {
         </div>
 
         {/* Insert */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
             <Link2 className="w-4 h-4" />
           </ToolbarButton>
@@ -1384,7 +1388,7 @@ export function CreatePostPage() {
         <div className="flex-1" />
         
         {/* Zoom Controls with Domain Toggle */}
-        <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
+        <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
           <ToolbarButton
             onClick={() => {
               if (zoomTarget === 'editor') {
@@ -1406,7 +1410,7 @@ export function CreatePostPage() {
             onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
             className={cn(
               "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
-              "hover:bg-white/10",
+              "hover:bg-[var(--bg-card-hover)]",
               zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
               zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
               zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
@@ -1546,6 +1550,7 @@ export function CreatePostPage() {
               onDragLeave={handleDragLeave}
               onPaste={handlePaste}
               isDragging={isDragging}
+              theme={resolvedTheme}
             />
 
             {/* Upload Progress Overlay */}
@@ -1565,12 +1570,12 @@ export function CreatePostPage() {
                                    tableInfo.tableBounds.top <= containerRect.bottom + 100;
               if (!isInViewport) return null;
               
-              // Calculate accurate line height
+              // 计算准确的行高
               const lineHeight = tableInfo.rowPositions.length > 1
                 ? tableInfo.rowPositions[1] - tableInfo.rowPositions[0]
                 : 24;
 
-              // Generate extended row positions to include the bottom of the last row
+              // 生成扩展的行位置以包含最后一行的底部
               const extendedRowPositions = [...tableInfo.rowPositions, tableInfo.rowPositions[tableInfo.rowPositions.length - 1] + lineHeight];
 
               return (
@@ -1611,7 +1616,7 @@ export function CreatePostPage() {
                            key={`col-dot-${i}`}
                            className="absolute top-1/2 -translate-y-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
                            style={{
-                             left: x - tableInfo.tableBounds!.left - 3, // Center 6px dot: -3px offset
+                             left: x - tableInfo.tableBounds!.left - 3, // 居中 6px 圆点：偏移 -3px
                            }}
                          />
                        ))}
@@ -1635,7 +1640,7 @@ export function CreatePostPage() {
                       {extendedRowPositions.slice(0, -1).map((y, i) => {
                         const nextY = extendedRowPositions[i + 1];
                         const height = nextY - y;
-                        // Start exactly at the row top (gap position)
+                        // 准确从行顶部开始（间隙位置）
                         const startY = y - tableInfo.tableBounds!.top;
                         
                         return (
@@ -1657,7 +1662,7 @@ export function CreatePostPage() {
                           key={`row-dot-${i}`}
                           className="absolute left-1/2 -translate-x-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
                           style={{
-                            top: y - tableInfo.tableBounds!.top - 3, // Center 6px dot at line gap: -3px offset
+                            top: y - tableInfo.tableBounds!.top - 3, // 在行间隙处居中 6px 圆点：偏移 -3px
                           }}
                         />
                       ))}
@@ -1677,7 +1682,7 @@ export function CreatePostPage() {
                   transition={{ duration: 0.1, ease: 'easeOut' }}
                   className="fixed z-50 flex items-center gap-1 px-1 py-0.5 bg-[#2b2b2d] border border-[#3d3d40] rounded-md shadow-xl"
                   style={{
-                    // Positioned above and slightly to the right
+                    // 定位于上方并略微向右
                     top: tableInfo.tableBounds.top - 50,
                     left: tableInfo.tableBounds.left + 20,
                   }}
@@ -1810,20 +1815,20 @@ export function CreatePostPage() {
                 damping: 32,
                 mass: 0.6
               }}
-              className="h-full border-l border-white/10 bg-[#0d0d0f]/85 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative"
+              className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
             >
               {/* Cinematic Edge Highlight */}
               <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
 
               {/* TOC Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-white/[0.02]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-                  <span className="text-sm font-semibold text-white/90 tracking-wide uppercase">目录索引</span>
+                  <span className="text-sm font-semibold text-[var(--text-primary)] tracking-wide uppercase">目录索引</span>
                 </div>
                 <button
                   onClick={() => setShowToc(false)}
-                  className="p-1.5 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-all duration-300"
+                  className="p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1837,11 +1842,11 @@ export function CreatePostPage() {
                     animate={{ opacity: 1 }}
                     className="px-6 py-12 text-center"
                   >
-                    <div className="inline-flex p-3 rounded-full bg-white/[0.03] mb-3">
-                      <ListTree className="w-5 h-5 text-gray-600" />
+                    <div className="inline-flex p-3 rounded-full bg-[var(--bg-secondary)] mb-3">
+                      <ListTree className="w-5 h-5 text-[var(--text-muted)]" />
                     </div>
-                    <p className="text-sm font-medium text-gray-500">空空如也</p>
-                    <p className="mt-1 text-xs text-gray-600 px-4">
+                    <p className="text-sm font-medium text-[var(--text-secondary)]">空空如也</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)] px-4">
                       在编辑器中输入 # 标题 即可自动生成目录
                     </p>
                   </motion.div>
@@ -1880,19 +1885,19 @@ export function CreatePostPage() {
                         onClick={() => scrollToHeading(item.text, item.line)}
                         className={cn(
                           'w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-300 group relative flex items-center gap-3',
-                          'hover:bg-white/[0.06] text-gray-400 hover:text-white'
+                          'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         )}
                         style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         title={item.text}
                       >
-                        {/* 优雅的悬停指示器 */}
+                        {/* Elegant Hover Indicator */}
                         <div className="absolute left-1 w-0.5 h-0 bg-primary group-hover:h-3/5 transition-all duration-400 ease-out-expo rounded-full opacity-0 group-hover:opacity-100 shadow-[0_0_8px_#8b5cf6]" />
                         
                         <span className={cn(
                           "truncate transition-all duration-500",
-                          item.level === 1 ? "font-bold text-gray-100 tracking-tight" : 
-                          item.level === 2 ? "font-semibold text-gray-300" : 
-                          "font-normal text-gray-400"
+                          item.level === 1 ? "font-bold text-[var(--text-primary)] tracking-tight" : 
+                          item.level === 2 ? "font-semibold text-[var(--text-secondary)]" : 
+                          "font-normal text-[var(--text-muted)]"
                         )}>
                           {item.text}
                         </span>
@@ -1906,11 +1911,11 @@ export function CreatePostPage() {
         </AnimatePresence>
       </div>
 
-      {/* 编辑器页脚 - 更新以匹配图像 */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-t border-white/10 bg-[#0a0a0c] text-[12px] text-gray-400">
+      {/* 编辑器页脚 */}
+      <div className="flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] text-[var(--text-muted)]">
         <div className="flex items-center gap-4">
-          <span>字数: <span className="text-gray-200 font-medium">{stats.words.toLocaleString()}</span></span>
-          <span>行数: <span className="text-gray-200 font-medium">{stats.lines.toLocaleString()}</span></span>
+          <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
+          <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
         </div>
         
         <div className="flex items-center gap-4">
@@ -1920,7 +1925,7 @@ export function CreatePostPage() {
                 type="checkbox" 
                 checked={showLineNumbers} 
                 onChange={(e) => setShowLineNumbers(e.target.checked)}
-                className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
+                className="w-3.5 h-3.5 rounded border-[var(--border-subtle)] bg-[var(--bg-card)] text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
               />
               <span className="group-hover:text-gray-200 transition-colors">显示行号</span>
             </label>
@@ -1939,7 +1944,7 @@ export function CreatePostPage() {
           )}
           <button 
             onClick={scrollToTop} 
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/10 hover:text-gray-200 transition-all ml-2"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all ml-2"
           >
             <ArrowUp className="w-3.5 h-3.5" />
             回到顶部
@@ -1947,64 +1952,120 @@ export function CreatePostPage() {
         </div>
       </div>
 
-      {/* 设置模态框 */}
-        <Modal 
-          isOpen={showSettings} 
-          onClose={() => setShowSettings(false)}
-          title="设置"
-          size="md"
-        >
-          <div className="space-y-6">
-            <div className="space-y-4">
-              {/* 封面图片 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">封面图片</label>
-                <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                  <Image className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                  <p className="text-gray-400 text-sm">点击或拖拽上传</p>
+      {/* 设置面板（替代模态框） */}
+      <AnimatePresence>
+        {showSettings && (
+          <>
+            {/* 背景遮罩 */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettings(false)}
+              className="absolute inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
+            />
+            
+            {/* 侧滑面板 */}
+            <motion.div
+              initial={{ x: '100%', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="absolute right-0 top-0 bottom-0 w-[400px] z-50 bg-[var(--bg-primary)] border-l border-[var(--border-default)] shadow-2xl flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-primary" />
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">文章设置</h2>
+                </div>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* Cover Image */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-[var(--text-secondary)]">封面图片</label>
+                  <div className="border-2 border-dashed border-[var(--border-default)] rounded-xl p-8 text-center hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-[var(--bg-input)] flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <Image className="w-6 h-6 text-[var(--text-muted)] group-hover:text-primary transition-colors" />
+                    </div>
+                    <p className="text-[var(--text-secondary)] font-medium text-sm">点击或拖拽上传</p>
+                    <p className="text-[var(--text-muted)] text-xs mt-1">支持 JPG, PNG, WebP (Max 5MB)</p>
+                  </div>
+                </div>
+
+                {/* Publish Time */}
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+                    <Clock className="w-4 h-4 text-primary" />
+                    发布时间
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={publishTime}
+                    onChange={(e) => setPublishTime(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    style={{ colorScheme: resolvedTheme }}
+                  />
+                  <p className="text-xs text-[var(--text-muted)]">预设发布时间，即刻发布请留空</p>
+                </div>
+
+                {/* Summary */}
+                <div className="space-y-3">
+                   <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
+                    <button 
+                      onClick={() => setShowAI(true)}
+                      className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      AI 生成
+                    </button>
+                   </div>
+                  <textarea
+                    rows={4}
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    placeholder="输入文章摘要，或让 AI 为你生成..."
+                    className="w-full px-4 py-3 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
+                  />
+                </div>
+                
+                {/* Advanced Settings Divider */}
+                <div className="pt-4 border-t border-[var(--border-subtle)]">
+                   <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">高级设置</h3>
+                   {/* SEO Settings could go here */}
+                   <div className="opacity-50 pointer-events-none filter blur-[1px]">
+                      <div className="space-y-3">
+                        <label className="block text-sm font-medium text-[var(--text-secondary)]">SEO 标题 (即将上线)</label>
+                        <input type="text" disabled className="w-full px-4 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-muted)]" placeholder="默认使用文章标题" />
+                      </div>
+                   </div>
                 </div>
               </div>
 
-              {/* 发布时间 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  发布时间
-                </label>
-                <input
-                  type="datetime-local"
-                  value={publishTime}
-                  onChange={(e) => setPublishTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary/50 [color-scheme:dark]"
-                />
-                <p className="text-xs text-gray-500 mt-1">设置文章的发布时间，支持精确到分钟</p>
+              {/* Footer */}
+              <div className="p-6 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
+                 <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-full py-3 text-sm font-semibold text-white bg-gradient-to-r from-primary to-primary/90 rounded-xl hover:from-primary/90 hover:to-primary/80 transition-all shadow-lg shadow-primary/25 active:scale-[0.98]"
+                 >
+                   完成设置
+                 </button>
               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-              {/* 摘要 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">摘要</label>
-                <textarea
-                  rows={3}
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  placeholder="文章摘要，为空将自动截取..."
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-primary/50"
-                />
-              </div>
-            </div>
-            
-            <div className="flex justify-end pt-4 border-t border-white/10">
-               <button
-                onClick={() => setShowSettings(false)}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
-               >
-                 确认
-               </button>
-            </div>
-          </div>
-        </Modal>
-
-        {/* AI 助手模态框 */}
+        {/* AI Assistant Modal */}
         <Modal 
           isOpen={showAI} 
           onClose={() => setShowAI(false)}
@@ -2027,7 +2088,7 @@ export function CreatePostPage() {
               ].map((item) => (
                 <button 
                   key={item.title}
-                  className="w-full p-4 rounded-xl bg-white/5 hover:bg-white/10 text-left transition-colors border border-white/5 hover:border-primary/30 group"
+                  className="w-full p-4 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-left transition-colors border border-[var(--border-subtle)] hover:border-primary/30 group"
                   onClick={() => {/* Implement AI action */}}
                 >
                   <div className="flex items-center gap-3">
@@ -2045,7 +2106,7 @@ export function CreatePostPage() {
           </div>
         </Modal>
 
-        {/* 创建分类模态框 */}
+        {/* Create Category Modal */}
         <AnimatePresence>
           {showCreateCategoryModal && (
             <motion.div
@@ -2069,7 +2130,7 @@ export function CreatePostPage() {
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
                   placeholder="输入分类名称..."
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50 mb-4"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50 mb-4"
                   autoFocus
                 />
                 <div className="flex justify-end gap-3">

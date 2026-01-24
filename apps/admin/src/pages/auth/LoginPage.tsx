@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import CryptoJS from 'crypto-js';
 
-// Encryption key - in production this should come from server or env
+// 加密密钥 - 在生产环境中应来自服务器或环境变量
 const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
 
-// Encrypt password before sending
+// 发送前加密密码
 const encryptPassword = (password: string): string => {
   const timestamp = Date.now().toString();
   const data = JSON.stringify({ password, timestamp });
@@ -33,19 +33,19 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Encrypt password before sending
+      // 发送前加密密码
       const encryptedPassword = encryptPassword(password);
       
       const res = await authService.login({ 
         username, 
         password: encryptedPassword,
-        encrypted: true // Flag to tell backend this is encrypted
+        encrypted: true // 告知后端此密码已加密的标志
       });
       
       if (res.code === 200 && res.data) {
          const { accessToken, userInfo, mustChangePassword } = res.data;
          const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
-         // Validate role is one of the allowed values
+         // 验证角色是否为允许值之一
          const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
          const role = validRoles.includes(roleStr as typeof validRoles[number]) 
            ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER') 
@@ -61,7 +61,7 @@ export function LoginPage() {
          
          login(user, accessToken);
          
-         // Check if user must change password on first login
+         // 检查用户是否需要在首次登录时更改密码
          if (mustChangePassword) {
             navigate('/change-password', { state: { firstLogin: true } });
          } else {
@@ -79,24 +79,24 @@ export function LoginPage() {
   };
 
   return (
-    <div className="w-full min-h-screen flex bg-[#09090b] text-white selection:bg-indigo-500/30 overflow-hidden font-sans">
-      {/* Left: Brand/Art Section */}
+    <div className="w-full min-h-screen flex bg-black text-white selection:bg-primary/30 overflow-hidden font-sans relative">
+      {/* 背景层 - 所有视图共享 */}
+      <div className="absolute inset-0 z-0">
+        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/15 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-purple-600/10 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
+        {/* 网格图案 */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
+      </div>
+
+      {/* 左侧：品牌/艺术区域 (仅桌面端) */}
       <motion.div 
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-black"
+        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-white/5"
       >
-        {/* Animated Background Mesh */}
-        <div className="absolute inset-0 z-0">
-          <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-purple-600/10 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
-          {/* Grid Pattern */}
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
-        </div>
-
-        {/* Brand Content */}
+        {/* 品牌内容 */}
         <div className="relative z-10">
            <div className="inline-flex items-center gap-3">
              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
@@ -122,41 +122,57 @@ export function LoginPage() {
         </div>
       </motion.div>
 
-      {/* Right: Login Form Section */}
+      {/* 右侧：登录表单区域 */}
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.2 }}
-        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 bg-black/40 backdrop-blur-sm border-l border-white/5"
+        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 relative z-10"
       >
         <div className="w-full max-w-[420px] space-y-8">
+          {/* 移动端品牌 */}
+          <div className="lg:hidden flex flex-col items-center mb-8 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mb-4">
+              <Sparkles className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">AetherBlog</h1>
+            <p className="text-slate-400 text-xs mt-1 font-medium tracking-widest uppercase">Cognitive Elegance</p>
+          </div>
+
           <div className="text-center lg:text-left">
             <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">Welcome back</h1>
             <p className="text-slate-400 text-sm">Enter your credentials to access the admin panel.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <AnimatePresence mode="wait">
             {error && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-2"
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: "auto", marginBottom: 24 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                className="overflow-hidden"
               >
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                {error}
+                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                  {error}
+                </div>
               </motion.div>
             )}
+          </AnimatePresence>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300 ml-1">Username</label>
                 <div className="relative group">
-                  <UserIcon className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                  <UserIcon className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                     placeholder="Enter your username"
                     required
                   />
@@ -166,30 +182,25 @@ export function LoginPage() {
               <div className="space-y-2">
                  <div className="flex items-center justify-between ml-1">
                    <label className="text-sm font-medium text-slate-300">Password</label>
-                   <a href="#" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">Forgot password?</a>
+                   <a href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">Forgot password?</a>
                  </div>
                 <div className="relative group">
-                  <Lock className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                  <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all hover:bg-white/[0.07]"
+                    className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                     placeholder="Enter your password"
                     required
                   />
-                  {/* Password visibility toggle button */}
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-3.5 w-5 h-5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                    className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
                     tabIndex={-1}
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
@@ -199,27 +210,40 @@ export function LoginPage() {
               type="submit"
               disabled={isLoading}
               className={cn(
-                "w-full py-3.5 rounded-xl bg-white text-black font-bold text-sm tracking-wide shadow-xl shadow-white/5 flex items-center justify-center gap-2 transition-all hover:bg-slate-200 active:scale-[0.98]",
+                "w-full py-4 rounded-xl bg-primary text-white font-bold text-sm tracking-widest shadow-2xl shadow-primary/30 flex items-center justify-center gap-2 transition-all hover:bg-primary/90 active:scale-[0.98]",
                 isLoading && "opacity-70 cursor-not-allowed"
               )}
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   <span>Verifying...</span>
                 </>
               ) : (
                 <>
-                  <span>Sign In</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>SIGN IN</span>
+                  <ArrowRight className="w-5 h-5" />
                 </>
               )}
             </button>
           </form>
 
-          <p className="px-8 text-center text-xs text-slate-500">
-            By clicking continue, you agree to our <a href="#" className="underline hover:text-slate-400">Terms of Service</a> and <a href="#" className="underline hover:text-slate-400">Privacy Policy</a>.
+          <div className="pt-4">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-transparent px-2 text-slate-500">Secure Access</span></div>
+            </div>
+          </div>
+
+          <p className="text-center text-[10px] text-slate-500 tracking-wider">
+            By continuing, you agree to our <a href="#" className="underline text-slate-400 hover:text-white">Terms</a> and <a href="#" className="underline text-slate-400 hover:text-white">Privacy</a>.
           </p>
+
+          {/* 移动端系统状态 */}
+          <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-50">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-[10px] text-slate-500 font-medium tracking-tight">System Operational v1.0.0</span>
+          </div>
         </div>
       </motion.div>
     </div>

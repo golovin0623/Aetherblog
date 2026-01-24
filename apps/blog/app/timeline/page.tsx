@@ -18,7 +18,7 @@ interface Post {
     tags?: { name: string; slug: string }[];
 }
 
-// Client-side helper to group posts
+// 客户端辅助函数：按日期分组文章
 function groupPostsByDate(posts: Post[]): any[] {
   const groups: { [year: number]: { [month: number]: any[] } } = {};
 
@@ -61,13 +61,13 @@ function groupPostsByDate(posts: Post[]): any[] {
 }
 
 export default function TimelinePage() {
-    // Fetch all posts for timeline (or a large page size)
+    // 获取时间轴的所有文章（或较大的分页大小）
     const { data: posts = [], isLoading } = useQuery({
         queryKey: ['timelinePosts'],
         queryFn: async () => {
-             // In a real app we might want a specific endpoint for timeline or fetch all
-             // Reusing the public posts API, picking a large size to get most recent ones
-             // For a full timeline, we'd need pagination or a light-weight list endpoint
+             // 在实际应用中，我们可能需要一个专门的时间轴端点或获取全部
+             // 重用公共文章 API，选择较大的大小以获取最新的文章
+             // 对于完整的时间轴，我们需要分页或轻量级列表端点
              const res = await fetch(`${API_ENDPOINTS.posts}?pageSize=100`);
              if (!res.ok) throw new Error('Network response was not ok');
              const json = await res.json();
@@ -83,7 +83,7 @@ export default function TimelinePage() {
                 tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : []
              })) as Post[];
         },
-        staleTime: 5 * 60 * 1000, // 5 minutes cache
+        staleTime: 5 * 60 * 1000, // 缓存 5 分钟
     });
 
     const archives = useMemo(() => groupPostsByDate(posts), [posts]);
@@ -93,11 +93,11 @@ export default function TimelinePage() {
     }
 
     return (
-        <div className="min-h-screen bg-background text-white selection:bg-primary/30">
+        <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
             <main className="max-w-4xl mx-auto px-4 pt-32 pb-12">
                 <div className="relative mb-8 pl-4">
-                    <h1 className="text-3xl font-bold text-white mb-2">时间轴</h1>
-                    <p className="text-gray-500 text-sm">共 {posts.length} 篇文章，好事多磨</p>
+                    <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">时间轴</h1>
+                    <p className="text-[var(--text-muted)] text-sm">共 {posts.length} 篇文章，好事多磨</p>
                     <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-purple-600 rounded-full" />
                 </div>
                 

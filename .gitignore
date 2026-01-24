@@ -43,6 +43,10 @@ coverage/
 .kilocode/rules/code-rule.md
 apps/blog/.env.local.example
 
+# GitHub Actions secrets (local testing)
+.secrets
+.github/.secrets
+
 # Git Worktrees
 tree-*
 /tree-*
