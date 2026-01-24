@@ -7,6 +7,7 @@ export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
 export interface MediaItem {
   id: number;
+  filename: string;
   originalName: string;
   fileUrl: string;
   fileType: MediaType;

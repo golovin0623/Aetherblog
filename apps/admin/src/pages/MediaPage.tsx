@@ -727,7 +727,7 @@ export default function MediaPage() {
                 }}
                 className="w-96 h-full pl-6"
               >
-                <div className="h-full bg-[var(--bg-card)] backdrop-blur-sm rounded-3xl border border-[var(--border-subtle)] p-6 overflow-y-auto no-scrollbar">
+                <div className="h-full bg-[var(--bg-card)] backdrop-blur-sm rounded-3xl border border-[var(--border-subtle)] p-6 overflow-hidden">
                   <MediaDetail
                     item={currentMedia}
                     onClose={() => setSelectedMedia(null)}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Share2, Copy, Lock, Calendar, Hash, X, Check } from 'lucide-react';
 import { Button } from '@aetherblog/ui';
@@ -78,12 +79,14 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
     }
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.div
@@ -91,7 +94,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--bg-card)] border border-white/10 rounded-2xl p-6 max-w-lg w-full"
+        className="bg-[var(--bg-card)] border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -314,6 +317,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
           </div>
         )}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }

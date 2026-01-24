@@ -221,13 +221,16 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
               transition={{ duration: 0.15 }}
-              className="space-y-4"
+              className="space-y-4 pb-8"
             >
               {/* 文件名 */}
               <div>
                 <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">文件名</p>
-                <p className="text-sm font-medium text-[var(--text-primary)] break-all leading-relaxed">
-                  {media.originalName}
+                <p 
+                  className="text-sm font-medium text-[var(--text-primary)] break-all leading-relaxed hover:text-primary transition-colors cursor-help"
+                  title={media.originalName || media.filename}
+                >
+                  {media.originalName || media.filename || '未知文件名'}
                 </p>
               </div>
 
@@ -294,6 +297,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
               transition={{ duration: 0.15 }}
+              className="pb-4"
             >
               <TagManager fileId={media.id} mode="manage" />
             </motion.div>
@@ -318,45 +322,41 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="space-y-2 pt-4 border-t border-[var(--border-subtle)] mt-4"
+        className="pt-4 border-t border-[var(--border-subtle)] mt-auto"
       >
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={handleCopyUrl}
             className={cn(
-              'flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-medium transition-all',
+              'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-all',
               copied 
                 ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
                 : 'bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:bg-gray-200/50 dark:hover:bg-white/10 hover:text-[var(--text-primary)]'
             )}
+            title="复制链接"
           >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4" />
-                已复制
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4" />
-                复制链接
-              </>
-            )}
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            <span className="hidden sm:inline">{copied ? '已复制' : '复制'}</span>
           </button>
+          
           <button
             onClick={handleDownload}
-            className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-medium bg-primary/20 border border-primary/30 text-primary hover:bg-primary/30 transition-all"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-primary/20 border border-primary/30 text-primary hover:bg-primary/30 transition-all"
+            title="下载文件"
           >
             <Download className="w-4 h-4" />
-            下载
+            <span className="hidden sm:inline">下载</span>
+          </button>
+
+          <button
+            onClick={() => onDelete(media.id)}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all"
+            title="删除文件"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span className="hidden sm:inline">删除</span>
           </button>
         </div>
-        <button
-          onClick={() => onDelete(media.id)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-          删除文件
-        </button>
       </motion.div>
 
       {/* 分享对话框 */}

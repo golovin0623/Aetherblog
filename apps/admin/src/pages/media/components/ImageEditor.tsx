@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
   RotateCw,
@@ -158,12 +159,14 @@ export function ImageEditor({ fileId, imageUrl, onClose, onSave }: ImageEditorPr
     saveMutation.mutate();
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex flex-col"
+      className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex flex-col"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -315,6 +318,7 @@ export function ImageEditor({ fileId, imageUrl, onClose, onSave }: ImageEditorPr
           )}
         </div>
       </div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }

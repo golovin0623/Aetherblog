@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { useSidebarStore } from '@/stores';
 import { MobileHeader } from './MobileHeader';
-import { Header } from './Header';
+
 import { useMediaQuery } from '@/hooks';
 import { cn } from '@/lib/utils';
 
@@ -22,7 +22,7 @@ export function AdminLayout() {
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
         <MobileHeader />
-        <Header />
+
 
         {/* 页面内容 */}
         <main className={cn(

@@ -23,10 +23,10 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, Long> {
     @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.uploader.id = :uploaderId")
     Page<MediaFile> findByUploaderId(Long uploaderId, Pageable pageable);
 
-    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.fileType = :fileType AND (m.filename LIKE %:keyword% OR m.originalName LIKE %:keyword%)")
+    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.fileType = :fileType AND (LOWER(m.filename) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(m.originalName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<MediaFile> findByFileTypeAndKeyword(FileType fileType, String keyword, Pageable pageable);
 
-    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND (m.filename LIKE %:keyword% OR m.originalName LIKE %:keyword%)")
+    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND (LOWER(m.filename) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(m.originalName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<MediaFile> searchByKeyword(String keyword, Pageable pageable);
 
     @Query("SELECT m FROM MediaFile m WHERE m.deleted = false")
@@ -66,14 +66,14 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, Long> {
      * 根据文件夹ID和关键词查找文件（排除已删除）
      */
     @EntityGraph(attributePaths = {"folder", "uploader"})
-    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.folder.id = :folderId AND (m.filename LIKE %:keyword% OR m.originalName LIKE %:keyword%)")
+    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.folder.id = :folderId AND (LOWER(m.filename) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(m.originalName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<MediaFile> findByFolderIdAndKeyword(Long folderId, String keyword, Pageable pageable);
 
     /**
      * 根据文件夹ID、文件类型和关键词查找文件（排除已删除）
      */
     @EntityGraph(attributePaths = {"folder", "uploader"})
-    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.folder.id = :folderId AND m.fileType = :fileType AND (m.filename LIKE %:keyword% OR m.originalName LIKE %:keyword%)")
+    @Query("SELECT m FROM MediaFile m WHERE m.deleted = false AND m.folder.id = :folderId AND m.fileType = :fileType AND (LOWER(m.filename) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(m.originalName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<MediaFile> findByFolderIdAndFileTypeAndKeyword(Long folderId, FileType fileType, String keyword, Pageable pageable);
 
     // ========== 回收站相关查询 ==========

@@ -1,7 +1,4 @@
-import * as ReactWindow from 'react-window';
-
-// @ts-ignore - Handle Vite/CJS interop where named exports might be missing
-const Grid = (ReactWindow.FixedSizeGrid || (ReactWindow as any).default?.FixedSizeGrid) as any;
+import { FixedSizeGrid as Grid, GridChildComponentProps } from 'react-window';
 import { useCallback, useMemo } from 'react';
 import type { MediaItem } from '@/services/mediaService';
 

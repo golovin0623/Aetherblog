@@ -149,14 +149,13 @@ export function TagManager({
         </div>
 
         {mode === 'manage' && (
-          <Button
+          <button
             onClick={() => setIsCreating(!isCreating)}
-            variant="secondary"
-            size="sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors"
           >
             <Plus className="w-4 h-4" />
             新建
-          </Button>
+          </button>
         )}
       </div>
 
@@ -215,7 +214,7 @@ export function TagManager({
                 exit={{ opacity: 0, scale: 0.9 }}
                 onClick={() => handleToggleTag(tag.id)}
                 className={cn(
-                  'group relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all',
+                  'group relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all',
                   'border backdrop-blur-sm',
                   selected
                     ? 'bg-white/10 border-white/20 text-white shadow-lg'
@@ -226,7 +225,7 @@ export function TagManager({
                   backgroundColor: selected ? tag.color + '20' : undefined,
                 }}
               >
-                <TagIcon className="w-3.5 h-3.5" style={{ color: tag.color }} />
+                <TagIcon className="w-3 h-3" style={{ color: tag.color }} />
                 <span>{tag.name}</span>
 
                 {tag.usageCount > 0 && (

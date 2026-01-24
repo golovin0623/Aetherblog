@@ -75,14 +75,16 @@ for repo in "${REPOSITORIES[@]}"; do
     # 删除每个标签
     for tag in $tags; do
         echo "  🗑️  删除标签: ${tag}"
-        response=$(curl -s -X DELETE \
+        http_code=$(curl -s -o /tmp/docker-delete-response.json -w "%{http_code}" -X DELETE \
             -H "Authorization: JWT ${TOKEN}" \
             "https://hub.docker.com/v2/repositories/${DOCKER_USERNAME}/${repo}/tags/${tag}/")
 
-        if [[ $? -eq 0 ]]; then
-            echo "    ✅ 已删除"
+        if [[ "$http_code" == "204" || "$http_code" == "200" ]]; then
+            echo "    ✅ 已删除 (HTTP $http_code)"
         else
-            echo "    ❌ 删除失败"
+            echo "    ❌ 删除失败 (HTTP $http_code)"
+            cat /tmp/docker-delete-response.json 2>/dev/null | head -c 200
+            echo ""
         fi
     done
 
