@@ -78,7 +78,7 @@ public class SiteController {
             .stream().findFirst().ifPresent(admin -> {
                 if (admin.getNickname() != null) map.put("authorName", admin.getNickname());
                 if (admin.getAvatar() != null) {
-                    // Add /api prefix to match context-path configuration
+                    // 添加 /api 前缀以匹配 context-path 配置
                     String avatarPath = admin.getAvatar();
                     if (avatarPath.startsWith("/uploads")) {
                         avatarPath = "/api" + avatarPath;

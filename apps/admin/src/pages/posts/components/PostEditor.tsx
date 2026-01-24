@@ -24,7 +24,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
     
     onChange(newText);
     
-    // Reset cursor position
+    // 重置光标位置
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + before.length, end + before.length);
@@ -36,7 +36,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
     { icon: Italic, action: () => insertText('*', '*'), title: '斜体' },
     { icon: Strikethrough, action: () => insertText('~~', '~~'), title: '删除线' },
     { icon: Code, action: () => insertText('`', '`'), title: '代码' },
-    null, // Divider
+    null, // 分隔线
     { icon: Heading1, action: () => insertText('# '), title: '标题1' },
     { icon: Heading2, action: () => insertText('## '), title: '标题2' },
     { icon: Heading3, action: () => insertText('### '), title: '标题3' },
@@ -52,7 +52,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
 
   return (
     <div className="flex flex-col h-full border border-[var(--border-subtle)] rounded-xl overflow-hidden">
-      {/* Toolbar */}
+      {/* 工具栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
         <div className="flex items-center gap-0.5">
           {toolbarButtons.map((btn, i) =>
@@ -86,11 +86,11 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
         </div>
       </div>
 
-      {/* Editor / Preview */}
+      {/* 编辑器 / 预览 */}
       <div className="flex-1 overflow-auto">
         {showPreview ? (
           <div className="p-4 prose dark:prose-invert max-w-none text-[var(--text-primary)]">
-            {/* Simple preview - in real app use markdown parser */}
+            {/* 简单预览 - 实际应用中使用 markdown 解析器 */}
             <pre className="whitespace-pre-wrap">{value}</pre>
           </div>
         ) : (
@@ -104,7 +104,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
         )}
       </div>
 
-      {/* Status Bar */}
+      {/* 状态栏 */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-xs text-[var(--text-muted)]">
         <span>Markdown</span>
         <span>{value.length} 字符</span>

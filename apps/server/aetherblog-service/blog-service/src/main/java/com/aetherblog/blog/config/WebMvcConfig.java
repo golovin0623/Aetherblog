@@ -39,7 +39,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void configureMessageConverters(@NonNull List<HttpMessageConverter<?>> converters) {
-        // Add our custom Jackson converter first
+        // 首先添加我们自定义的 Jackson 转换器
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         converter.setObjectMapper(objectMapper);
         converters.add(0, converter);
@@ -48,7 +48,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void extendMessageConverters(@NonNull List<HttpMessageConverter<?>> converters) {
-        // Also replace any existing Jackson converters
+        // 同时替换任何现有的 Jackson 转换器
         for (int i = 0; i < converters.size(); i++) {
             HttpMessageConverter<?> converter = converters.get(i);
             if (converter instanceof MappingJackson2HttpMessageConverter) {

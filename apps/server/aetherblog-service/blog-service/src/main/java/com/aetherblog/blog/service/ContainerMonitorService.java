@@ -137,7 +137,7 @@ public class ContainerMonitorService {
     // ========== 私有方法 ==========
 
     private List<String> getContainerLogsViaCommand(String containerId) throws Exception {
-        // limit to last 200 lines
+        // 限制为最后 200 行
         // 简单防注入: 确保 id 只包含字母数字
         if (!containerId.matches("^[a-zA-Z0-9]+$")) {
             throw new IllegalArgumentException("Invalid container ID");

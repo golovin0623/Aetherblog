@@ -30,14 +30,14 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   const [submitting, setSubmitting] = useState(false);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   
-  // UX States
+  // 交互状态
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [isSectionExpanded, setIsSectionExpanded] = useState(true);
 
   const formRef = useRef<HTMLDivElement>(null);
   const formTriggerRef = useRef<HTMLButtonElement>(null);
 
-  // Form state
+  // 表单状态
   const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [website, setWebsite] = useState('');
@@ -46,7 +46,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    // Check if comment_enabled is true
+    // 检查 comment_enabled 是否为 true
     const isEnabled = settings.comment_enabled === true;
     if (isEnabled) {
       loadComments();
@@ -89,7 +89,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
       setContent('');
       setReplyTo(null);
       
-      // Delay closing form to show success message
+      // 延迟关闭表单以显示成功消息
       setTimeout(() => {
         setSuccess('');
         setIsFormExpanded(false);
@@ -107,11 +107,11 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     setIsFormExpanded(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Focus textarea logic could go here if checking DOM
+      // 如果检查 DOM，聚焦 textarea 的逻辑可以放在这里
     }, 100);
   };
 
-  // Close form handler
+  // 关闭表单处理器
   const closeForm = () => {
     setReplyTo(null);
     setIsFormExpanded(false);
@@ -315,10 +315,10 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   );
 }
 
-// Recursive Comment Item Component
+// 递归评论项组件
 function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onReply: (c: Comment) => void, depth?: number }) {
   const hasChildren = comment.children && comment.children.length > 0;
-  // Default expanded for depth 0 and 1, others collapsed
+  // 深度 0 和 1 默认展开，其他折叠
   const [isExpanded, setIsExpanded] = useState(depth < 2);
 
   return (

@@ -31,7 +31,7 @@ interface TimelineTreeProps {
 const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 const DEFAULT_VISIBLE_POSTS = 5;
 
-// SessionStorage keys
+// SessionStorage 键
 const STORAGE_KEYS = {
   EXPANDED_YEARS: 'timeline_expanded_years',
   EXPANDED_MONTHS: 'timeline_expanded_months',
@@ -40,7 +40,7 @@ const STORAGE_KEYS = {
 };
 
 export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
-  // Default: all years expanded
+  // 默认：展开所有年份
   const allYears = useMemo(() => new Set(archives.map(a => a.year)), [archives]);
   const allMonths = useMemo(() => {
     const set = new Set<string>();

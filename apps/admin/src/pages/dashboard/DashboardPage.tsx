@@ -22,14 +22,14 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
   
-  // Container Logs State
+  // 容器日志状态
   const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
 
   const handleContainerSelect = (id: string, name: string) => {
     setSelectedContainer({id, name});
   };
 
-  // Mock data for fallback or initial dev
+  // 模拟数据用于回退或初始开发
   const mockData: DashboardData = {
     stats: {
       posts: 128,
@@ -71,19 +71,19 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Call real API
+        // 调用真实 API
         const res = await analyticsService.getDashboard();
         if (res.code === 200 && res.data) {
           setData(res.data);
         } else {
-          // Fallback to mock data if API fails
+          // 如果 API 失败，回退到模拟数据
           logger.warn('Dashboard API returned non-200, using mock data');
           setData(mockData);
         }
       } catch (err) {
         logger.error('Failed to fetch dashboard data:', err);
         toast.error('加载仪表盘数据失败，显示演示数据');
-        setData(mockData); // Fallback
+        setData(mockData); // 回退
       } finally {
         setLoading(false);
       }
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  // Refetch visitor trend when time range changes
+  // 当时间范围改变时重新获取访客趋势
   const [trendLoading, setTrendLoading] = useState(false);
   const [visitorTrend, setVisitorTrend] = useState<typeof mockData.visitorTrend | null>(null);
 
@@ -104,7 +104,7 @@ export default function DashboardPage() {
         if (res.code === 200 && res.data) {
           setVisitorTrend(res.data);
         } else {
-          // Generate fallback mock data for selected range
+          // 为选定范围生成回退模拟数据
           const fallbackData = Array.from({ length: days }, (_, i) => {
             const date = new Date();
             date.setDate(date.getDate() - (days - 1 - i));
@@ -118,7 +118,7 @@ export default function DashboardPage() {
         }
       } catch (err) {
         logger.error(`Failed to fetch ${days}-day visitor trend:`, err);
-        // Generate fallback mock data
+        // 生成回退模拟数据
         const fallbackData = Array.from({ length: days }, (_, i) => {
           const date = new Date();
           date.setDate(date.getDate() - (days - 1 - i));
@@ -139,7 +139,7 @@ export default function DashboardPage() {
   if (loading && !data) {
     return (
       <div className="space-y-6">
-        {/* Header Skeleton */}
+        {/* 头部骨架 */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="space-y-2">
             <div className="h-8 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
@@ -148,11 +148,11 @@ export default function DashboardPage() {
           <div className="h-8 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
         </div>
 
-        {/* Stats Cards Skeleton */}
+        {/* 统计网格骨架 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[140px] relative overflow-hidden">
-              {/* Shimmer effect */}
+              {/* 闪光效果 */}
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
               <div className="flex justify-between items-start">
                 <div className="space-y-3 flex-1">
@@ -166,9 +166,9 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Content & Activity Skeleton */}
+        {/* 内容和活动骨架 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Posts Skeleton */}
+          {/* 热门文章骨架 */}
           <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-6">
@@ -186,7 +186,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Recent Activity Skeleton */}
+          {/* 最近活动骨架 */}
           <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-4">
@@ -207,9 +207,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Charts Area Skeleton */}
+        {/* 图表区域骨架 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Visitor Chart Skeleton */}
+          {/* 访客图表骨架 */}
           <div className="lg:col-span-2 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-6">
@@ -226,7 +226,7 @@ export default function DashboardPage() {
             <div className="h-[300px] bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
           </div>
 
-          {/* Device Chart Skeleton */}
+          {/* 设备图表骨架 */}
           <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse mb-4" />
@@ -236,10 +236,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* System Monitoring Area Skeleton */}
+        {/* 系统监控区域骨架 */}
         <h2 className="text-lg font-semibold text-[var(--text-primary)] pt-4">系统监控</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* System Trends Skeleton */}
+          {/* 系统趋势骨架 */}
           <div className="lg:col-span-2 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between mb-6">
@@ -252,7 +252,7 @@ export default function DashboardPage() {
             <div className="h-[300px] bg-[var(--bg-secondary)] rounded-xl animate-pulse" />
           </div>
 
-          {/* System Status Skeleton */}
+          {/* 系统状态骨架 */}
           <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] relative overflow-hidden">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded mb-6 animate-pulse" />
@@ -275,7 +275,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Use visitorTrend from dedicated fetch, fallback to data.visitorTrend, then mockData
+  // 使用专用获取的 visitorTrend，回退到 data.visitorTrend，然后是 mockData
   const chartData = visitorTrend || data?.visitorTrend || mockData.visitorTrend;
   const topPostsData = data?.topPosts || mockData.topPosts;
 
@@ -286,7 +286,7 @@ export default function DashboardPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">仪表盘</h1>
@@ -298,7 +298,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* 统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         <StatsCard
           title="文章总数"
@@ -366,13 +366,13 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Content & Activity - Moved up */}
+      {/* 内容和活动 - 上移 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TopPosts posts={topPostsData} />
         <RecentActivity />
       </div>
 
-      {/* Charts Area */}
+      {/* 图表区域 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <VisitorChart
@@ -385,11 +385,11 @@ export default function DashboardPage() {
         <DeviceChart data={data?.deviceStats} loading={loading} />
       </div>
 
-      {/* System Monitoring Area */}
+      {/* 系统监控区域 */}
       <div className="space-y-6 pt-4">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">系统监控</h2>
         
-        {/* Row 1: Trends + Status */}
+        {/* 第 1 行：趋势 + 状态 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
            <div className="lg:col-span-2">
              <SystemTrends className="h-[500px]" />
@@ -399,7 +399,7 @@ export default function DashboardPage() {
            </div>
         </div>
 
-        {/* Row 2: Logs + Container */}
+        {/* 第 2 行：日志 + 容器 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
            <div className="lg:col-span-2">
              <RealtimeLogViewer 

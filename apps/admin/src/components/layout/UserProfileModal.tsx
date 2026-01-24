@@ -24,10 +24,10 @@ import { cn } from '@/lib/utils';
 import CryptoJS from 'crypto-js';
 import { useMediaQuery } from '@/hooks';
 
-// Encryption key - must match backend
+// 加密密钥 - 必须与后端匹配
 const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
 
-// Encrypt password before sending
+// 发送前加密密码
 const encryptPassword = (password: string): string => {
   const timestamp = Date.now().toString();
   const data = JSON.stringify({ password, timestamp });
@@ -51,12 +51,12 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Profile State
+  // 个人资料状态
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [email, setEmail] = useState(user?.email || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
 
-  // Security State
+  // 安全状态
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -72,13 +72,13 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
+    // 验证文件类型
     if (!file.type.startsWith('image/')) {
       toast.error('请上传图片文件');
       return;
     }
 
-    // Validate file size (max 2MB)
+    // 验证文件大小 (最大 2MB)
     if (file.size > 2 * 1024 * 1024) {
       toast.error('图片大小不能超过 2MB');
       return;
@@ -164,7 +164,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     }
   };
 
-  // Close on Escape key
+  // 按 Escape 键关闭
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -175,7 +175,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when open
+  // 打开时阻止 body 滚动
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -187,14 +187,14 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     };
   }, [isOpen]);
 
-  // Dynamic positioning - desktop only
+  // 动态定位 - 仅桌面端
   const leftPosition = sidebarCollapsed ? '70px' : '209px';
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Invisible click-away layer */}
+          {/* 隐形点击关闭层 */}
           <motion.div
             key="overlay"
             initial={{ opacity: 0 }}
@@ -204,20 +204,20 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
             onClick={onClose}
           />
 
-          {/* Premium Popover - Mac OS Dock Style Animation */}
+          {/* 高级弹出框 - Mac OS Dock 风格动画 */}
           <motion.div
             key="modal"
             initial={{ 
               opacity: 0, 
               scale: 0.9, 
-              // Desktop: Slide from bottom-left (Genie). Mobile: Start slightly "dropped" from center
+              // 桌面端：从左下角滑出 (Genie 效果)。移动端：从中心稍微下落开始
               y: isDesktop ? 20 : "-45%", 
               x: isDesktop ? -20 : "-50%" 
             }}
             animate={{ 
               opacity: 1, 
               scale: 1, 
-              // Desktop: specific 0 positions. Mobile: strict centering (-50%)
+              // 桌面端：特定的 0 位置。移动端：严格居中 (-50%)
               y: isDesktop ? 0 : "-50%", 
               x: isDesktop ? 0 : "-50%" 
             }}
@@ -237,27 +237,27 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               "fixed z-[101] overflow-hidden rounded-3xl flex flex-col",
               "border border-[var(--border-subtle)] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2),0_16px_32px_-8px_rgba(0,0,0,0.1)]",
               
-              // Conditional Layout based on isDesktop hook
+              // 基于 isDesktop hook 的条件布局
               isDesktop 
-                ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // Desktop
-                : "w-[calc(100vw-32px)] max-w-[420px] h-[650px] max-h-[85dvh]" // Mobile: Fixed height (capped by screen) for consistency
+                ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // 桌面端
+                : "w-[calc(100vw-32px)] max-w-[420px] h-[650px] max-h-[85dvh]" // 移动端：固定高度 (受屏幕限制) 以保持一致性
             )}
             style={{
-              // Positioning logic
+              // 定位逻辑
               left: isDesktop ? leftPosition : '50%',
               top: isDesktop ? 'auto' : '50%',
               bottom: isDesktop ? '16px' : 'auto',
-              // Transform handled by Framer Motion 'animate' prop now to avoid conflicts
+              // 变换现在由 Framer Motion 'animate' prop 处理以避免冲突
               
               background: 'var(--bg-primary/80)',
               backdropFilter: 'blur(24px)',
               transformOrigin: isDesktop ? 'bottom left' : 'center'
             }}
           >
-            {/* Gradient Top Border Accent */}
+            {/* 渐变顶部边框强调 */}
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary via-secondary to-primary/50" />
             
-            {/* Header */}
+            {/* 头部 */}
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-2 md:gap-3">
                 <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
@@ -273,12 +273,12 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               </button>
             </div>
 
-            {/* Content */}
+            {/* 内容 */}
             <div className="flex-1 p-4 md:p-6 overflow-y-auto min-h-0 custom-scrollbar">
               <div className="flex flex-col gap-4 md:gap-6">
-                {/* Premium Tabs - Segmented Control */}
+                {/* 高级选项卡 - 分段控制 */}
                 <div className="flex p-1 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-subtle)] relative isolate">
-                  {/* Sliding indicator - absolute positioned */}
+                  {/* 滑动指示器 - 绝对定位 */}
                   <motion.div
                     className="absolute top-1 bottom-1 w-[calc(50%-4px)] bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)]"
                     animate={{ 
@@ -324,7 +324,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                       transition={{ duration: 0.2 }}
                       className="space-y-4 md:space-y-6"
                     >
-                      {/* Avatar Section - Premium Design */}
+                      {/* 头像部分 - 高级设计 */}
                       <div className="flex flex-col items-center gap-3 md:gap-4 py-2">
                         <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
                           <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-2 border-[var(--border-subtle)] overflow-hidden bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] flex items-center justify-center group-hover:border-primary/50 transition-all duration-300 shadow-lg">
@@ -353,7 +353,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                         <p className="text-xs text-[var(--text-muted)]">点击更换头像</p>
                       </div>
 
-                      {/* Profile Form */}
+                      {/* 个人资料表单 */}
                       <form onSubmit={handleUpdateProfile} className="space-y-4">
                         <div className="space-y-1.5">
                           <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">用户名</label>

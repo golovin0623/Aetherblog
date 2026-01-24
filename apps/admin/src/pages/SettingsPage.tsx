@@ -102,36 +102,36 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
-  // Local state form data (for editing before save)
+  // 本地状态表单数据（用于保存前编辑）
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
   const queryClient = useQueryClient();
 
-  // Query: Get All Settings
+  // 查询：获取所有设置
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: () => settingsService.getAll(),
   });
 
-  // Sync server data to local form data
+  // 同步服务器数据到本地表单数据
   useEffect(() => {
     if (settings) {
       setFormData(prev => ({
         ...settings,
-        ...prev // Keep local changes if any (simple approach)
+        ...prev // 保留本地更改（如果存在）（简单方法）
       }));
-       // If clean load, reset changes
+       // 如果是全新加载，重置更改
        if (!hasChanges) {
           setFormData(settings);
        }
     }
-  }, [settings]); // Only sync when settings fetch updates, careful with loop
+  }, [settings]); // 仅在设置获取更新时同步，小心循环
 
-  // Mutation: Batch Update
+  // 变更：批量更新
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, any>) => {
-      // Convert all values to strings for backend
+      // 将所有值转换为字符串以供后端使用
       const stringMap: Record<string, string> = {};
       Object.keys(data).forEach(key => {
         if (data[key] !== undefined && data[key] !== null) {
@@ -219,7 +219,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar Nav */}
+        {/* 侧边栏导航 */}
         <div className="w-full lg:w-48 flex lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
           {Object.entries(SETTING_GROUPS).map(([key, group]) => {
             const Icon = group.icon;
@@ -242,7 +242,7 @@ export default function SettingsPage() {
           })}
         </div>
 
-        {/* Main Content Area */}
+        {/* 主要内容区域 */}
         <div className="flex-1">
           <motion.div
             key={activeTab}
@@ -270,7 +270,7 @@ export default function SettingsPage() {
                     </label>
                   </div>
                   
-                  {/* Dynamic Field Rendering */}
+                  {/* 动态字段渲染 */}
                   {field.type === 'text' || field.type === 'url' || field.type === 'number' ? (
                     <input
                       type={field.type}

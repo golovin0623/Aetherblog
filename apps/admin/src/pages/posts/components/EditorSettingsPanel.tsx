@@ -15,14 +15,14 @@ import { Category } from '@/services/categoryService';
 import { Tag as TagType } from '@/services/tagService';
 
 interface EditorSettingsPanelProps {
-  // Category
+  // 分类
   categories: Category[];
   selectedCategory: Category | null;
   onCategorySelect: (category: Category | null) => void;
   onCreateCategory: () => void;
   loadingCategories: boolean;
   
-  // Tags
+  // 标签
   tags: TagType[];
   selectedTags: TagType[];
   onTagAdd: (tag: TagType) => void;
@@ -30,16 +30,16 @@ interface EditorSettingsPanelProps {
   onTagCreate: (name: string) => Promise<void>;
   loadingTags: boolean;
   
-  // Summary
+  // 摘要
   summary: string;
   onSummaryChange: (value: string) => void;
   
-  // Cover image (placeholder for future implementation)
+  // 封面图片 (未来实现的占位符)
   coverUrl?: string;
   onCoverChange?: (url: string) => void;
 }
 
-// Collapsible section wrapper
+// 可折叠区块包装器
 function SettingsSection({ 
   title, 
   icon: Icon, 
@@ -118,7 +118,7 @@ export function EditorSettingsPanel({
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [creatingTag, setCreatingTag] = useState(false);
 
-  // Filtered categories
+  // 筛选的分类
   const filteredCategories = useMemo(() => {
     if (!categorySearch) return categories;
     return categories.filter(c =>
@@ -126,7 +126,7 @@ export function EditorSettingsPanel({
     );
   }, [categories, categorySearch]);
 
-  // Filtered tags (exclude already selected)
+  // 筛选的标签（排除已选中的）
   const filteredTags = useMemo(() => {
     const unselected = tags.filter(t => !selectedTags.find(s => s.id === t.id));
     if (!tagSearch) return unselected;
@@ -162,10 +162,10 @@ export function EditorSettingsPanel({
       animate={{ opacity: 1, x: 0 }}
       className="w-[340px] flex-shrink-0 space-y-3 overflow-y-auto max-h-[calc(100vh-8rem)]"
     >
-      {/* Category Section */}
+      {/* 分类部分 */}
       <SettingsSection title="分类" icon={Folder}>
         <div className="pt-3 space-y-2">
-          {/* Search */}
+          {/* 搜索 */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
             <input
@@ -177,7 +177,7 @@ export function EditorSettingsPanel({
             />
           </div>
           
-          {/* Category list */}
+          {/* 分类列表 */}
           <div className="max-h-40 overflow-y-auto space-y-1">
             {loadingCategories ? (
               <div className="py-4 text-center">
@@ -204,7 +204,7 @@ export function EditorSettingsPanel({
             )}
           </div>
           
-          {/* Create new category */}
+          {/* 创建新分类 */}
           <button
             type="button"
             onClick={onCreateCategory}
@@ -216,14 +216,14 @@ export function EditorSettingsPanel({
         </div>
       </SettingsSection>
 
-      {/* Tags Section */}
+      {/* 标签部分 */}
       <SettingsSection 
         title="标签" 
         icon={Tag} 
         badge={selectedTags.length > 0 ? selectedTags.length : undefined}
       >
         <div className="pt-3 space-y-3">
-          {/* Selected tags */}
+          {/* 已选标签 */}
           {selectedTags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {selectedTags.map(tag => (
@@ -244,7 +244,7 @@ export function EditorSettingsPanel({
             </div>
           )}
           
-          {/* Tag input */}
+          {/* 标签输入 */}
           <div className="relative">
               <input
                 type="text"
@@ -260,7 +260,7 @@ export function EditorSettingsPanel({
               <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />
             )}
             
-            {/* Tag dropdown */}
+            {/* 标签下拉框 */}
             <AnimatePresence>
               {showTagDropdown && (tagSearch || filteredTags.length > 0) && (
                 <motion.div
@@ -308,7 +308,7 @@ export function EditorSettingsPanel({
         </div>
       </SettingsSection>
 
-      {/* Cover Image Section */}
+      {/* 封面图片部分 */}
       <SettingsSection title="封面图片" icon={Image} defaultOpen={false}>
         <div className="pt-3">
           <div className="border-2 border-dashed border-[var(--border-subtle)] rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
@@ -319,7 +319,7 @@ export function EditorSettingsPanel({
         </div>
       </SettingsSection>
 
-      {/* Summary Section */}
+      {/* 摘要部分 */}
       <SettingsSection title="摘要" icon={FileText}>
         <div className="pt-3 space-y-2">
           <div className="flex items-center justify-between mb-1">

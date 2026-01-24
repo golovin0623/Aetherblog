@@ -311,7 +311,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     queryKey: ['siteSettings'],
     queryFn: getSiteSettings,
     enabled: !profile,
-    staleTime: 10 * 60 * 1000 // 10 mins
+    staleTime: 10 * 60 * 1000 // 10 分钟
   });
 
   const { data: siteStats } = useQuery({
@@ -352,7 +352,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      {/* Top Decoration Bar */}
+      {/* 顶部装饰条 */}
       <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
 
       {/* 聚光灯效果层 */}
@@ -372,7 +372,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         }}
       />
 
-      {/* Marble Vein Texture - Very Subtle Irregular Cracks (Light theme only) */}
+      {/* 大理石纹理 - 非常微妙的不规则裂纹 (仅亮色模式) */}
       {!isDark && (
         <>
           <div
@@ -390,7 +390,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
             }}
           />
 
-          {/* Fine Crack Details - Extremely Subtle */}
+          {/* 细微的裂纹细节 - 极度微妙 */}
           <div
             className="absolute inset-0 opacity-8 pointer-events-none mix-blend-overlay"
             style={{
@@ -405,7 +405,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         </>
       )}
 
-      {/* Subtle Background Gradient Glow */}
+      {/* 微妙的背景渐变光晕 */}
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
         style={{
@@ -419,10 +419,10 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           {/* White Background Circle for Contrast */}
           <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
 
-          {/* Colorful Glow */}
+          {/* 多彩光晕 */}
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-purple-500/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
 
-          {/* Avatar Container with Enhanced Ring */}
+          {/* 头像容器 - 带有增强的圆环 */}
           <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg">
             <img
               src={avatar || "https://github.com/shadcn.png"}
@@ -431,7 +431,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
             />
           </div>
 
-          {/* Sparkle Badge */}
+          {/* 闪光徽章 */}
           <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/30">
             <Sparkles className="w-3 h-3 text-white" />
           </div>
