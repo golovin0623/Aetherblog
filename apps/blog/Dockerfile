@@ -39,6 +39,9 @@ ARG NEXT_PUBLIC_ADMIN_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
 ENV NEXT_PUBLIC_ADMIN_URL=${NEXT_PUBLIC_ADMIN_URL:-/admin/}
 
+# Ensure public folder exists for runtime copy even if repo has none
+RUN mkdir -p /app/apps/blog/public
+
 # Build the application with memory limit
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN pnpm --filter @aetherblog/blog build
