@@ -349,7 +349,7 @@ export function useTheme(): UseThemeReturn {
  * 
  * @example
  * ```tsx
- * // Next.js layout.tsx
+ * // Next.js 布局文件 (layout.tsx)
  * <head>
  *   <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
  * </head>

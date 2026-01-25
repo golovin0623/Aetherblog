@@ -1,6 +1,6 @@
 /**
  * @file useImageUpload.ts
- * @description Hook for handling image upload with progress tracking in the editor
+ * @description 用于处理编辑器中带有进度跟踪的图片上传的 Hook
  */
 
 import { useState, useCallback, useRef } from 'react';

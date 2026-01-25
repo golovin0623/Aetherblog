@@ -16,7 +16,7 @@ export interface SiteSettings {
   icp?: string;
   startYear?: string;
   comment_enabled?: boolean;
-  // Welcome Screen
+  // 欢迎屏幕
   welcome_title?: string;
   welcome_subtitle?: string;
   welcome_description?: string;
@@ -69,7 +69,7 @@ export interface CreateCommentRequest {
 
 /**
  * 获取站点全量配置
- * Revalidation: 1 hour (3600s)
+ * 重新验证: 1 小时 (3600s)
  */
 export async function getSiteSettings(): Promise<SiteSettings> {
   try {
@@ -97,7 +97,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
 /**
  * 获取最新发布文章
  * @param limit 数量限制
- * Revalidation: 5 minutes (300s)
+ * 重新验证: 5 分钟 (300s)
  */
 export async function getRecentPosts(limit: number = 6): Promise<Post[]> {
   try {
@@ -117,7 +117,7 @@ export async function getRecentPosts(limit: number = 6): Promise<Post[]> {
 
 /**
  * 获取友链列表
- * Revalidation: 1 hour (3600s)
+ * 重新验证: 1 小时 (3600s)
  */
 export async function getFriendLinks(): Promise<FriendLink[]> {
   try {
@@ -176,7 +176,7 @@ export async function createComment(postId: number, data: CreateCommentRequest):
 }
 /**
  * 获取站点统计
- * Revalidation: 10 minutes (600s)
+ * 重新验证: 10 分钟 (600s)
  */
 export async function getSiteStats(): Promise<any> {
   try {

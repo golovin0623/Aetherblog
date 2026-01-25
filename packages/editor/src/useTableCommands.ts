@@ -1,7 +1,7 @@
 /**
  * @file useTableCommands.ts
- * @description Hook for Markdown table manipulation in CodeMirror editor
- * @ref §3.2.3 - Editor Package Development
+ * @description CodeMirror 编辑器中用于操作 Markdown 表格的 Hook
+ * @ref §3.2.3 - 编辑器包开发
  */
 
 import { useCallback } from 'react';
@@ -10,47 +10,47 @@ import { EditorView } from '@codemirror/view';
 export type TableAlignment = 'left' | 'center' | 'right' | 'none';
 
 export interface TableInfo {
-  /** Whether the cursor is currently inside a table */
+  /** 光标当前是否在表格内 */
   isInTable: boolean;
-  /** Current row index (0 = header, 1 = separator, 2+ = data rows) */
+  /** 当前行索引 (0 = 表头, 1 = 分隔符, 2+ = 数据行) */
   currentRowIndex: number;
-  /** Current column index (0-based) */
+  /** 当前列索引 (从 0 开始) */
   currentColumnIndex: number;
-  /** Total number of rows in the table */
+  /** 表格总行数 */
   rowCount: number;
-  /** Total number of columns in the table */
+  /** 表格总列数 */
   columnCount: number;
-  /** Alignments for each column */
+  /** 每列的对齐方式 */
   alignments: TableAlignment[];
-  /** Bounding rect of the table in viewport coordinates */
+  /** 表格在视口坐标系中的边界矩形 */
   tableBounds?: {
     top: number;
     bottom: number;
     left: number;
     right: number;
   };
-  /** Y positions of each row top edge in viewport coordinates */
+  /** 每行顶部边缘在视口坐标系中的 Y 轴位置 */
   rowPositions?: number[];
-  /** X positions of each column separator in viewport coordinates */
+  /** 每个列分隔符在视口坐标系中的 X 轴位置 */
   columnPositions?: number[];
 }
 
 export interface TableCommands {
-  /** Get information about the table at cursor position */
+  /** 获取光标位置的表格信息 */
   getTableInfo: () => TableInfo;
-  /** Insert a new row above the current row */
+  /** 在当前行上方插入新行 */
   insertRowAbove: () => void;
-  /** Insert a new row below the current row */
+  /** 在当前行下方插入新行 */
   insertRowBelow: () => void;
-  /** Insert a new column to the left of the current column */
+  /** 在当前列左侧插入新列 */
   insertColumnLeft: () => void;
-  /** Insert a new column to the right of the current column */
+  /** 在当前列右侧插入新列 */
   insertColumnRight: () => void;
-  /** Delete the current row */
+  /** 删除当前行 */
   deleteRow: () => void;
-  /** Delete the current column */
+  /** 删除当前列 */
   deleteColumn: () => void;
-  /** Set alignment for the current column */
+  /** 设置当前列的对齐方式 */
   setColumnAlignment: (alignment: TableAlignment) => void;
 }
 
@@ -64,10 +64,10 @@ const DEFAULT_TABLE_INFO: TableInfo = {
 };
 
 /**
- * Hook that provides Markdown table manipulation commands for CodeMirror.
+ * 用于在 CodeMirror 中操作 Markdown 表格的 Hook。
  *
- * @param editorViewRef - React ref containing the CodeMirror EditorView instance
- * @returns TableCommands object with table manipulation methods
+ * @param editorViewRef - 包含 CodeMirror EditorView 实例的 React 引用
+ * @returns 包含表格操作方法的 TableCommands 对象
  */
 export function useTableCommands(
   editorViewRef: React.RefObject<EditorView | null>

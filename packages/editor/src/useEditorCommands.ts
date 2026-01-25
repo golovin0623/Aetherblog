@@ -61,10 +61,10 @@ export interface EditorCommands {
 }
 
 /**
- * Hook that provides programmatic text manipulation commands for CodeMirror.
+ * 用于以编程方式操作 CodeMirror 文本的 Hook。
  * 
- * @param editorViewRef - React ref containing the CodeMirror EditorView instance
- * @returns EditorCommands object with text manipulation methods
+ * @param editorViewRef - 包含 CodeMirror EditorView 实例的 React 引用
+ * @returns 包含文本操作方法的 EditorCommands 对象
  * 
  * @example
  * const editorViewRef = useRef<EditorView | null>(null);
