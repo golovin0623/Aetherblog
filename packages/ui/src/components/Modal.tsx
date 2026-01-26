@@ -108,7 +108,7 @@ export function Modal({
                 </div>
               )}
               
-              {/* Content */}
+              {/* 内容 */}
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

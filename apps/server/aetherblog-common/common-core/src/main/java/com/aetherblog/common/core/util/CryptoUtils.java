@@ -88,8 +88,8 @@ public class CryptoUtils {
     }
     
     /**
-     * OpenSSL EVP_BytesToKey implementation
-     * Used by CryptoJS for key derivation
+     * OpenSSL EVP_BytesToKey 实现
+     * 用于 CryptoJS 的密钥派生
      */
     private static byte[][] evpBytesToKey(int keyLen, int ivLen, byte[] salt, byte[] password) {
         try {
