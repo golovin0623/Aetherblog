@@ -27,24 +27,23 @@ export function useSmartPolling({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const idleCheckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // Ref for callback to avoid effect dependencies
+  // 缓存 callback 引用以避免副作用依赖
   const callbackRef = useRef(callback);
   useEffect(() => {
     callbackRef.current = callback;
   }, [callback]);
 
-  // Handle visibility change
+  // 处理可见性变化
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Tab hidden: modify nothing, just let interval pause logic pick it up if needed, 
-        // actually simplest is to clear interval on hide and restart on show
+        // 页面隐藏：清除定时器，页面重新显示时重启
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
       } else {
-        // Tab visible: trigger immediate update and restart timer if not idle
+        // 页面可见：如果未闲置，立即触发更新并重启定时器
         if (!isIdle && enabled) {
           callbackRef.current();
           startPolling();
@@ -58,13 +57,13 @@ export function useSmartPolling({
     };
   }, [isIdle, enabled]);
 
-  // Handle user activity to reset idle timer
+  // 处理用户活动以重置闲置定时器
   useEffect(() => {
     const handleActivity = () => {
       lastActivityRef.current = Date.now();
       if (isIdle) {
         setIsIdle(false);
-        // Resume polling immediately
+        // 立即恢复轮询
         if (enabled && !document.hidden) {
           callbackRef.current();
           startPolling();
@@ -72,10 +71,10 @@ export function useSmartPolling({
       }
     };
 
-    // Events to track activity
+    // 需要监听的活动事件
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
     
-    // Throttle event listeners
+    // 节流事件监听器
     let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
     const throttledHandler = () => {
       if (!throttleTimeout) {
@@ -94,26 +93,26 @@ export function useSmartPolling({
     };
   }, [isIdle, enabled]);
 
-  // Polling logic
+  // 轮询逻辑
   const startPolling = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     
     timerRef.current = setInterval(() => {
-      // Create a safety check only specific for polling
+      // 轮询时的安全检查
       if (!document.hidden && !isIdle && enabled) {
         callbackRef.current();
       }
     }, interval * 1000);
   }, [interval, isIdle, enabled]);
 
-  // Check for idle status
+  // 检查闲置状态
   useEffect(() => {
     const checkIdle = () => {
       const now = Date.now();
       if (now - lastActivityRef.current > idleTimeout) {
         if (!isIdle) {
           setIsIdle(true);
-          // Stop polling when idle
+          // 闲置时停止轮询
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
@@ -129,7 +128,7 @@ export function useSmartPolling({
     };
   }, [idleTimeout, isIdle]);
 
-  // Start initial polling
+  // 启动初始轮询
   useEffect(() => {
     if (enabled && !isIdle && !document.hidden) {
       startPolling();

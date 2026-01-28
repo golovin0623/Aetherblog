@@ -231,28 +231,28 @@ export default function BlogHeader() {
             </span>
           </Link>
 
-          {/* Mobile View Toggle - Centered */}
+          {/* 移动端视图切换 - 居中 */}
 
           
-          {/* Desktop Navigation */}
+          {/* 桌面端导航 */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 ml-auto">
-            {/* Mobile View Toggle - Right Aligned & Stable */}
+            {/* 移动端视图切换 - 右对齐且稳定 */}
             <div className="md:hidden flex items-center justify-center">
               <MobileNavSwitch />
             </div>
 
-            {/* Desktop Navigation */}
+            {/* 桌面端导航 */}
             <nav className="hidden md:flex gap-6 items-center">
-              {/* iOS 21 Style Segmented Control */}
+              {/* iOS 21 风格分段控制器 */}
               <div className="relative flex items-center rounded-[14px] p-[3px] backdrop-blur-2xl bg-black/[0.08] dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]">
-                {/* Animated Pill - True iOS Style */}
+                {/* 动画胶囊 - 真实 iOS 风格 */}
                 <div
                   className="absolute top-[3px] bottom-[3px] w-[76px] rounded-[11px] transition-all duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)]"
                   style={{
                     left: isTimeline ? 'calc(50% - 3px)' : '3px',
                   }}
                 >
-                  {/* Light theme pill - Pure white with subtle shadow */}
+                  {/* 亮色模式胶囊 - 纯白带微阴影 */}
                   <div
                     className="absolute inset-0 rounded-[11px] dark:opacity-0 opacity-100 transition-opacity duration-200"
                     style={{
@@ -260,7 +260,7 @@ export default function BlogHeader() {
                       boxShadow: '0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.08), inset 0 0 0 0.5px rgba(0,0,0,0.04)',
                     }}
                   />
-                  {/* Dark theme pill - Subtle white glow */}
+                  {/* 暗色模式胶囊 - 微白光晕 */}
                   <div
                     className="absolute inset-0 rounded-[11px] opacity-0 dark:opacity-100 transition-opacity duration-200"
                     style={{
@@ -351,7 +351,7 @@ export default function BlogHeader() {
               </a>
             </nav>
 
-            {/* Mobile Navigation */}
+            {/* 移动端导航 */}
             <MobileMenu />
           </div>
         </div>
