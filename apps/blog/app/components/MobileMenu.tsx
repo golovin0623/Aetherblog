@@ -131,13 +131,13 @@ export default function MobileMenu() {
             onClick={() => setIsOpen(false)}
           />
 
-          {/* 菜单抽屉 - 高级通透玻璃质感 (主题自适应) */}
+          {/* 菜单抽屉 - 高级通透玻璃质感 (主题自适应) + GPU加速 */}
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto"
+            className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform"
           >
             {/* 1. 顶部区域：个人资料 (去除了强分割线) */}
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
@@ -225,10 +225,12 @@ export default function MobileMenu() {
 
             {/* 5. 底部固定区域：清爽无边框设计 */}
             <div className="p-4 space-y-2 mt-auto">
-              {/* 主题切换按钮 */}
+              {/* 主题切换按钮 - 性能优化版 */}
               <button
+                type="button"
                 onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-colors duration-150 shadow-sm transform-gpu will-change-transform"
+                aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
               >
                 {isDark ? <Moon size={16} /> : <Sun size={16} />}
                 主题切换
