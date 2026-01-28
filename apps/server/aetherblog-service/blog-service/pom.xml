@@ -31,6 +31,10 @@
             <groupId>com.aetherblog</groupId>
             <artifactId>aetherblog-api</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.aetherblog</groupId>
+            <artifactId>ai-client</artifactId>
+        </dependency>
 
         <!-- Spring Web 模块 -->
         <dependency>

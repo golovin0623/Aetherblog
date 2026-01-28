@@ -39,6 +39,7 @@ services:
       - blog
       - admin
       - backend
+      - ai-service
     networks:
       - aetherblog-network
     healthcheck:
@@ -131,6 +132,7 @@ services:
       SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-redis}
       SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      AI_SERVICE_URL: http://ai-service:8000
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
       LOGGING_FILE_NAME: /app/logs/server.log
       APP_LOG_PATH: /app/logs
@@ -158,6 +160,52 @@ services:
           memory: 1536M
         reservations:
           memory: 512M
+
+  ai-service:
+    image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-ai-service:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/ai-service/Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: aetherblog-ai-service
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      AI_ENV: prod
+      AI_HOST: 0.0.0.0
+      AI_PORT: 8000
+      AI_LOG_LEVEL: info
+      AI_MOCK_MODE: ${AI_MOCK_MODE:-false}
+      AI_JWT_MODE: ${AI_JWT_MODE:-HMAC}
+      AI_JWT_SECRET: ${AI_JWT_SECRET:-change-me}
+      AI_JWT_JWKS_URL: ${AI_JWT_JWKS_URL:-}
+      AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
+      AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
+      REDIS_URL: ${AI_REDIS_URL:-redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0}
+      POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:-aetherblog123}@postgres:5432/aetherblog
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
+      OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-}
+      OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aetherblog-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 256M
 
   blog:
     image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-blog:${VERSION:-latest}

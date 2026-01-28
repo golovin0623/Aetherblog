@@ -4,9 +4,10 @@
 # 启动后端服务、前端博客和管理后台
 # 
 # 用法:
-#   ./start.sh            # 开发模式 (直接访问各端口)
-#   ./start.sh --gateway  # 开发网关模式 (测试网关路由，保留热更新)
-#   ./start.sh --prod     # 生产模式 (通过网关统一入口)
+#   ./start.sh                 # 开发模式 (直接访问各端口)
+#   ./start.sh --gateway       # 开发网关模式 (测试网关路由，保留热更新)
+#   ./start.sh --prod          # 生产模式 (通过网关统一入口)
+#   ./start.sh --with-middleware  # 同时启动中间件 (PostgreSQL/Redis/ES)
 
 set -e
 
@@ -25,17 +26,22 @@ NC='\033[0m' # 无颜色
 # 默认参数
 PROD_MODE=false
 GATEWAY_MODE=false
+START_MIDDLEWARE=false
 
 # 解析参数
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --prod) PROD_MODE=true ;;
         --gateway) GATEWAY_MODE=true ;;
+        --with-middleware) START_MIDDLEWARE=true ;;
+        --no-middleware) START_MIDDLEWARE=false ;;
         -h|--help) 
             echo "用法: ./start.sh [选项]"
             echo "选项:"
             echo "  --gateway 开发网关模式 (测试网关路由，保留热更新)"
             echo "  --prod    生产模式 (通过网关统一入口 :7899)"
+            echo "  --with-middleware 启动中间件 (PostgreSQL/Redis/ES)"
+            echo "  --no-middleware   不启动中间件 (默认)"
             echo "  -h,--help 显示帮助"
             exit 0
             ;;
@@ -64,11 +70,13 @@ echo ""
 
 # 检查依赖
 check_dependencies() {
-    echo -e "${YELLOW}[1/6] 检查依赖...${NC}"
+    echo -e "${YELLOW}[1/7] 检查依赖...${NC}"
     
-    if ! command -v docker &> /dev/null; then
-        echo -e "${RED}❌ Docker 未安装，无法启动中间件${NC}"
-        exit 1
+    if [ "$START_MIDDLEWARE" = true ] || [ "$PROD_MODE" = true ] || [ "$GATEWAY_MODE" = true ]; then
+        if ! command -v docker &> /dev/null; then
+            echo -e "${RED}❌ Docker 未安装，无法启动中间件/网关${NC}"
+            exit 1
+        fi
     fi
     
     if ! command -v node &> /dev/null; then
@@ -81,14 +89,28 @@ check_dependencies() {
         npm install -g pnpm
     fi
     
+    if command -v python3 &> /dev/null; then
+        PYTHON_BIN="python3"
+    elif command -v python &> /dev/null; then
+        PYTHON_BIN="python"
+    else
+        echo -e "${RED}❌ Python 未安装 (AI 服务需要)${NC}"
+        exit 1
+    fi
+
     echo -e "${GREEN}✅ 依赖检查通过${NC}"
 }
 
 # 启动中间件 (Docker)
 start_middleware() {
-    echo -e "${YELLOW}[2/6] 启动中间件服务 (Docker)...${NC}"
+    echo -e "${YELLOW}[2/7] 启动中间件服务 (Docker)...${NC}"
     cd "$PROJECT_ROOT"
     
+    if [ "$START_MIDDLEWARE" != true ]; then
+        echo -e "${YELLOW}⚠️  默认不启动中间件 (如需请添加 --with-middleware)${NC}"
+        return
+    fi
+
     if [ -f "docker-compose.yml" ]; then
         # 检查 Docker 是否在运行
         if ! docker info &> /dev/null; then
@@ -146,7 +168,7 @@ start_middleware() {
 
 # 安装依赖
 install_deps() {
-    echo -e "${YELLOW}[3/6] 安装项目依赖...${NC}"
+    echo -e "${YELLOW}[3/7] 安装项目依赖...${NC}"
     cd "$PROJECT_ROOT"
     
     if [ ! -d "node_modules" ] || [ ! -f "pnpm-lock.yaml" ]; then
@@ -158,7 +180,7 @@ install_deps() {
 
 # 启动后端 (如果存在 Maven 项目)
 start_backend() {
-    echo -e "${YELLOW}[4/6] 启动后端服务...${NC}"
+    echo -e "${YELLOW}[4/7] 启动后端服务...${NC}"
     
     BACKEND_DIR="$PROJECT_ROOT/apps/server"
     
@@ -207,9 +229,55 @@ start_backend() {
     fi
 }
 
+# 启动 AI 服务
+start_ai_service() {
+    echo -e "${YELLOW}[5/7] 启动 AI 服务...${NC}"
+
+    AI_DIR="$PROJECT_ROOT/apps/ai-service"
+
+    if [ -f "$AI_DIR/requirements.txt" ]; then
+        if [ -f "$PID_DIR/ai-service.pid" ]; then
+            PID=$(cat "$PID_DIR/ai-service.pid")
+            if ps -p $PID > /dev/null 2>&1; then
+                echo -e "${YELLOW}⚠️  AI 服务已在运行 (PID: $PID)${NC}"
+                return
+            fi
+        fi
+
+        cd "$AI_DIR"
+
+        if [ ! -d ".venv" ]; then
+            echo -e "${BLUE}   创建 AI 服务虚拟环境...${NC}"
+            $PYTHON_BIN -m venv .venv
+        fi
+
+        if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+            cp .env.example .env
+        fi
+
+        if [ ! -x ".venv/bin/uvicorn" ]; then
+            echo -e "${BLUE}   安装 AI 服务依赖...${NC}"
+            .venv/bin/pip install -r requirements.txt
+        fi
+
+        nohup .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "$LOG_DIR/ai-service.log" 2>&1 &
+        echo $! > "$PID_DIR/ai-service.pid"
+        sleep 2
+
+        if ps -p $! > /dev/null 2>&1; then
+            echo -e "${GREEN}✅ AI 服务已启动 (PID: $!)${NC}"
+        else
+            echo -e "${YELLOW}⚠️  AI 服务启动后退出，请检查日志: $LOG_DIR/ai-service.log${NC}"
+            tail -10 "$LOG_DIR/ai-service.log" 2>/dev/null || true
+        fi
+    else
+        echo -e "${YELLOW}⚠️  未找到 AI 服务，跳过${NC}"
+    fi
+}
+
 # 启动前端博客
 start_blog() {
-    echo -e "${YELLOW}[5/6] 启动博客前台...${NC}"
+    echo -e "${YELLOW}[6/7] 启动博客前台...${NC}"
     
     BLOG_DIR="$PROJECT_ROOT/apps/blog"
     
@@ -237,7 +305,7 @@ start_blog() {
 
 # 启动管理后台
 start_admin() {
-    echo -e "${YELLOW}[6/6] 启动管理后台...${NC}"
+    echo -e "${YELLOW}[7/7] 启动管理后台...${NC}"
     
     ADMIN_DIR="$PROJECT_ROOT/apps/admin"
     
@@ -267,7 +335,7 @@ start_admin() {
 # 参数: $1 - 配置文件 (nginx.dev.conf 或 nginx.conf)
 start_gateway() {
     local config_file="${1:-nginx.conf}"
-    echo -e "${YELLOW}[7/7] 启动 Nginx 网关...${NC}"
+    echo -e "${YELLOW}[8/8] 启动 Nginx 网关...${NC}"
     cd "$PROJECT_ROOT"
     
     # 停止已有网关容器
@@ -322,6 +390,7 @@ show_status() {
     echo -e "  📝 博客前台: ${GREEN}http://localhost:3000${NC}"
     echo -e "  ⚙️  管理后台: ${GREEN}http://localhost:5173${NC}"
     echo -e "  🔧 后端 API: ${GREEN}http://localhost:8080${NC}"
+    echo -e "  🤖 AI 服务: ${GREEN}http://localhost:8000${NC}"
     echo ""
     echo -e "  📁 日志目录: $LOG_DIR"
     echo -e "  🛑 停止命令: ./stop.sh"
@@ -334,6 +403,7 @@ main() {
     start_middleware
     install_deps
     start_backend
+    start_ai_service
     start_blog
     start_admin
     
