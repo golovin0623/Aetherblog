@@ -188,6 +188,12 @@ const ThemeContext = createContext<UseThemeReturn | undefined>(undefined);
 
 /**
  * 主题 Provider 组件
+ * 
+ * 功能特性:
+ * - 支持亮色/暗色/跟随系统三种主题模式
+ * - 自动持久化到 localStorage
+ * - 支持 View Transitions API 的圆形动画切换
+ * - **跨标签页同步**: 在 Blog 修改主题后，Admin 后台会自动同步，反之亦然
  *
  * @example
  * ```tsx
@@ -229,6 +235,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
+  }, []);
+
+  // 监听跨标签页的主题变化（实现 Blog ↔ Admin 主题同步）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      // 只处理主题相关的变化
+      if (e.key === THEME_STORAGE_KEY && e.newValue) {
+        const newTheme = e.newValue as Theme;
+        if (newTheme === 'light' || newTheme === 'dark' || newTheme === 'system') {
+          setThemeState(newTheme);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // 初始化用户主题设置 (在挂载后执行，避免 hydration error)

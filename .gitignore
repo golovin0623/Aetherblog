@@ -20,6 +20,7 @@ target/
 .env
 .env.local
 .env.*.local
+.venv/
 
 # Logs
 *.log
@@ -34,6 +35,8 @@ coverage/
 .nyc_output/
 
 # Misc
+__pycache__/
+*.pyc
 *.tgz
 *.tar.gz
 *.zip
@@ -63,3 +66,22 @@ packages/**/src/**/*.jpg
 packages/**/src/**/*.jpeg
 packages/**/src/**/*.gif
 packages/**/src/**/*.webp
+.pids/ai-service.pid
+apps/ai-service/tests/conftest.py
+apps/ai-service/tests/test_ai_endpoints.py
+apps/ai-service/tests/test_auth.py
+apps/ai-service/tests/test_cache.py
+apps/ai-service/tests/test_content_limit.py
+apps/ai-service/tests/test_error_handlers.py
+apps/ai-service/tests/test_health.py
+apps/ai-service/tests/test_index_endpoint.py
+apps/ai-service/tests/test_llm_router.py
+apps/ai-service/tests/test_metrics_endpoint.py
+apps/ai-service/tests/test_metrics.py
+apps/ai-service/tests/test_ndjson.py
+apps/ai-service/tests/test_rate_limit.py
+apps/ai-service/tests/test_search.py
+apps/ai-service/tests/test_streaming.py
+apps/ai-service/tests/test_usage_logger.py
+apps/ai-service/tests/test_vector_store.py
+apps/ai-service/tests/e2e/test_summary_flow.py

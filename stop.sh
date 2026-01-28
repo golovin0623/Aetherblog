@@ -83,7 +83,7 @@ stop_by_port() {
 
 # 停止网关
 stop_gateway() {
-    echo -e "${BLUE}[5/6] 停止网关...${NC}"
+    echo -e "${BLUE}[6/6] 停止网关...${NC}"
     
     # 停止通过 docker-compose 启动的网关
     if docker ps --filter "name=aetherblog-gateway" --format '{{.Names}}' | grep -q "aetherblog-gateway"; then
@@ -100,7 +100,7 @@ stop_gateway() {
 
 # 停止中间件 (Docker)
 stop_middleware() {
-    echo -e "${BLUE}[6/6] 停止中间件服务...${NC}"
+    echo -e "${BLUE}[7/7] 停止中间件服务...${NC}"
     cd "$PROJECT_ROOT"
     
     if [ -f "docker-compose.yml" ]; then
@@ -126,22 +126,27 @@ main() {
         shift
     done
 
-    echo -e "${BLUE}[1/5] 停止后端服务...${NC}"
+    echo -e "${BLUE}[1/6] 停止后端服务...${NC}"
     stop_service "backend"
     stop_by_port 8080 "后端 API"
     
     echo ""
-    echo -e "${BLUE}[2/5] 停止博客前台...${NC}"
+    echo -e "${BLUE}[2/6] 停止 AI 服务...${NC}"
+    stop_service "ai-service"
+    stop_by_port 8000 "AI 服务"
+
+    echo ""
+    echo -e "${BLUE}[3/6] 停止博客前台...${NC}"
     stop_service "blog"
     stop_by_port 3000 "博客前台"
     
     echo ""
-    echo -e "${BLUE}[3/5] 停止管理后台...${NC}"
+    echo -e "${BLUE}[4/6] 停止管理后台...${NC}"
     stop_service "admin"
     stop_by_port 5173 "管理后台"
     
     echo ""
-    echo -e "${BLUE}[4/6] 清理 Node 进程...${NC}"
+    echo -e "${BLUE}[5/6] 清理 Node 进程...${NC}"
     pkill -f "next dev" 2>/dev/null || true
     pkill -f "vite" 2>/dev/null || true
     echo -e "${GREEN}✅ 清理完成${NC}"
@@ -165,4 +170,3 @@ main() {
 }
 
 main "$@"
-
