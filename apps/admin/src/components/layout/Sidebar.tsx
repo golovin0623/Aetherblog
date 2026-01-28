@@ -78,7 +78,7 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile Backdrop */}
+      {/* 移动端背景遮罩 */}
       {isMobileOpen && (
         <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
@@ -86,7 +86,7 @@ export function Sidebar() {
         />
       )}
 
-      {/* Mobile Drawer - 优化宽度 (reducted by ~1/3, target ~65vw or ~220px) */}
+      {/* 移动端抽屉 - 优化宽度 (减少约1/3，目标 ~65vw 或 ~220px) */}
       <div className={cn(
         "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform transition-transform duration-300 ease-in-out md:hidden flex flex-col",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
@@ -94,7 +94,7 @@ export function Sidebar() {
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
       </div>
 
-      {/* Desktop Sidebar */}
+      {/* 桌面端侧边栏 */}
       <motion.aside
         initial={false}
         animate={{ width: effectiveCollapsed ? 64 : 256 }}
@@ -164,21 +164,21 @@ function SidebarContent({
 
   return (
     <>
-      {/* Logo + Mobile Close Button */}
+      {/* Logo + 移动端关闭按钮 */}
       <div className={cn(
         "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
         <div className="flex items-center gap-3">
-          {/* Glossy Logo */}
+          {/* 光泽感 Logo */}
           <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
-            {/* Base gradient */}
+            {/* 基础渐变 */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
-            {/* Glass shine overlay */}
+            {/* 玻璃光泽叠加 */}
             <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
-            {/* Inner glow */}
+            {/* 内部发光 */}
             <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
-            {/* Letter */}
+            {/* 字母 */}
             <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg drop-shadow-md">
               A
             </span>
@@ -193,7 +193,7 @@ function SidebarContent({
           </div>
         </div>
         
-        {/* Mobile: Elegant Close button */}
+        {/* 移动端：优雅关闭按钮 */}
         {isMobile && (
           <button
             onClick={closeMobile}
@@ -205,7 +205,7 @@ function SidebarContent({
         )}
       </div>
 
-      {/* Search Bar */}
+      {/* 搜索栏 */}
       <div className={cn(
         "py-3 border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
@@ -278,7 +278,7 @@ function SidebarContent({
         </ul>
       </nav>
 
-      {/* Quick Links + Collapse Toggle (Desktop only) */}
+      {/* 快速链接 + 折叠切换 (仅桌面端) */}
       <div className={cn(
         "border-t border-border py-2 space-y-0.5 transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3",
@@ -331,7 +331,7 @@ function SidebarContent({
         </button>
       </div>
 
-      {/* User Info */}
+      {/* 用户信息 */}
       <div className={cn(
         "border-t border-border",
         isMobile ? "p-3" : "p-1"
@@ -371,7 +371,7 @@ function SidebarContent({
 
           {!effectiveCollapsed && (
             <div className="flex-shrink-0 flex items-center gap-0.5">
-              {/* 主题切换按钮 - 30% larger */}
+              {/* 主题切换按钮 */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -387,7 +387,7 @@ function SidebarContent({
                 {isDark ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
               </button>
 
-              {/* 退出登录按钮 - 30% larger */}
+              {/* 退出登录按钮 */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
