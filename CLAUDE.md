@@ -115,11 +115,12 @@ AetherBlog/
 │       │   └── common-log/      # Logging
 │       ├── aetherblog-service/  # Business services (POM aggregator)
 │       │   └── blog-service/    # Blog core service
-│       └── aetherblog-ai/       # AI modules (deprecated, Spring AI)
-│           ├── ai-core/
-│           ├── ai-rag/
-│           ├── ai-agent/
-│           └── ai-prompt/
+│       └── aetherblog-ai/       # AI modules
+│           ├── ai-client/       # 🆕 HTTP Client for external AI service
+│           ├── ai-core/         # (Deprecated) Spring AI core
+│           ├── ai-rag/          # (Deprecated) RAG module
+│           ├── ai-agent/        # (Deprecated) Agent module
+│           └── ai-prompt/       # (Deprecated) Prompt module
 └── packages/          # Shared frontend packages
     ├── ui/            # Shared UI components
     ├── hooks/         # Shared React hooks

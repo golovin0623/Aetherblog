@@ -14,6 +14,7 @@
 #   ./docker-build.sh --only backend     # 只构建后端
 #   ./docker-build.sh --only blog        # 只构建博客前端
 #   ./docker-build.sh --only admin       # 只构建管理后台
+#   ./docker-build.sh --only ai-service  # 只构建 AI 服务
 #
 # 目标平台:
 #   - 默认: linux/amd64 (CentOS 7, 常规服务器)
@@ -92,7 +93,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --all               构建全平台镜像 (amd64 + arm64)"
             echo "  --parallel          并行构建所有镜像 (默认)"
             echo "  --sequential        串行构建 (网络不稳定时使用)"
-            echo "  --only NAME         只构建指定镜像 (backend/blog/admin)"
+            echo "  --only NAME         只构建指定镜像 (backend/blog/admin/ai-service)"
             echo "  --cores N           指定构建并行度 (默认: CPU核心数)"
             echo "  -h, --help          显示帮助信息"
             exit 0
@@ -213,7 +214,7 @@ build_parallel() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
     local pids=()
-    local names=("backend" "blog" "admin")
+    local names=("backend" "blog" "admin" "ai-service")
     local status_files=()
     local completed=0
     local failed=0
@@ -226,7 +227,7 @@ build_parallel() {
     
     # 启动后端构建 (后台)
     (
-        if build_image "backend" "apps/server/Dockerfile" "" "3/5"; then
+        if build_image "backend" "apps/server/Dockerfile" "" "3/6"; then
             echo "success" > /tmp/aetherblog-status-backend
         else
             echo "failed" > /tmp/aetherblog-status-backend
@@ -236,7 +237,7 @@ build_parallel() {
     
     # 启动博客前端构建 (后台)
     (
-        if build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/5"; then
+        if build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/6"; then
             echo "success" > /tmp/aetherblog-status-blog
         else
             echo "failed" > /tmp/aetherblog-status-blog
@@ -246,10 +247,20 @@ build_parallel() {
     
     # 启动管理后台构建 (后台)
     (
-        if build_image "admin" "apps/admin/Dockerfile" "" "5/5"; then
+        if build_image "admin" "apps/admin/Dockerfile" "" "5/6"; then
             echo "success" > /tmp/aetherblog-status-admin
         else
             echo "failed" > /tmp/aetherblog-status-admin
+        fi
+    ) &
+    pids+=($!)
+
+    # 启动 AI 服务构建 (后台)
+    (
+        if build_image "ai-service" "apps/ai-service/Dockerfile" "" "6/6"; then
+            echo "success" > /tmp/aetherblog-status-ai-service
+        else
+            echo "failed" > /tmp/aetherblog-status-ai-service
         fi
     ) &
     pids+=($!)
@@ -259,7 +270,7 @@ build_parallel() {
     
     # 实时监控完成状态
     local all_done=false
-    local checked=("" "" "")
+    local checked=("" "" "" "")
     
     while [ "$all_done" = false ]; do
         all_done=true
@@ -317,9 +328,10 @@ build_sequential() {
     echo -e "${CYAN}                   串行构建模式                              ${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    build_image "backend" "apps/server/Dockerfile" "" "3/5"
-    build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/5"
-    build_image "admin" "apps/admin/Dockerfile" "" "5/5"
+    build_image "backend" "apps/server/Dockerfile" "" "3/6"
+    build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/6"
+    build_image "admin" "apps/admin/Dockerfile" "" "5/6"
+    build_image "ai-service" "apps/ai-service/Dockerfile" "" "6/6"
 }
 
 # 只构建单个镜像
@@ -338,9 +350,12 @@ build_single() {
         admin)
             build_image "admin" "apps/admin/Dockerfile" "" "1/1"
             ;;
+        ai-service)
+            build_image "ai-service" "apps/ai-service/Dockerfile" "" "1/1"
+            ;;
         *)
             echo -e "${RED}Unknown image: $ONLY${NC}"
-            echo "Available: backend, blog, admin"
+            echo "Available: backend, blog, admin, ai-service"
             exit 1
             ;;
     esac
@@ -367,6 +382,9 @@ print_summary() {
     fi
     if [ -z "$ONLY" ] || [ "$ONLY" = "admin" ]; then
         echo "  - ${REGISTRY}/${PROJECT}-admin:${VERSION}"
+    fi
+    if [ -z "$ONLY" ] || [ "$ONLY" = "ai-service" ]; then
+        echo "  - ${REGISTRY}/${PROJECT}-ai-service:${VERSION}"
     fi
     echo ""
     
