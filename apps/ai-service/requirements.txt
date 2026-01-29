@@ -9,3 +9,5 @@ PyJWT>=2.8
 httpx>=0.26
 litellm>=1.0
 pgvector>=0.2
+cryptography>=42.0
+sqlalchemy>=2.0

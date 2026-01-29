@@ -1,48 +1,97 @@
-import { Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { Sparkles, BrainCircuit, Wand2, ListTree, Languages, PenLine, FileEdit } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AIToolsWorkspace } from '@/components/ai/AIToolsWorkspace';
+import { apiClient as api } from '@/services/api';
+import { toast } from 'sonner';
 
 const tools = [
-  { id: 'summary', label: '智能摘要', desc: '自动生成文章摘要' },
-  { id: 'tags', label: '智能标签', desc: '推荐相关标签' },
-  { id: 'title', label: '标题优化', desc: '优化文章标题' },
-  { id: 'outline', label: '大纲生成', desc: '生成文章大纲' },
-  { id: 'polish', label: '内容润色', desc: '润色文章内容' },
-  { id: 'translate', label: '智能翻译', desc: '多语言翻译' },
+  { id: 'summary', label: '智能摘要', desc: '自动生成文章摘要', icon: BrainCircuit },
+  { id: 'tags', label: '智能标签', desc: '推荐相关标签', icon: Wand2 },
+  { id: 'titles', label: '标题优化', desc: '优化文章标题', icon: FileEdit },
+  { id: 'outline', label: '大纲生成', desc: '生成文章大纲', icon: ListTree },
+  { id: 'polish', label: '内容润色', desc: '润色文章内容', icon: PenLine },
+  { id: 'translate', label: '智能翻译', desc: '多语言翻译', icon: Languages },
 ];
 
 export default function AIToolsPage() {
+  const [selectedToolId, setSelectedToolId] = useState('summary');
+  const [promptConfigs, setPromptConfigs] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchAllConfigs = async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get<any>('/v1/admin/ai/prompts');
+      if (res.success) {
+        setPromptConfigs(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch prompt configs:', err);
+      toast.error('获取配置失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useState(() => {
+    fetchAllConfigs();
+  });
+
+  const selectedTool = tools.find(t => t.id === selectedToolId) || tools[0];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">AI 工具</h1>
-        <p className="text-[var(--text-muted)] mt-1">AI 驱动的智能写作助手</p>
+    <div className="space-y-8 pb-20">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold text-[var(--text-primary)] tracking-tight">AI 工具箱</h1>
+          <p className="text-[var(--text-muted)] mt-2 font-light">
+            通过 AI 增强您的创作流程。您可以直接在此测试各种模型效果并调整 Prompt 模板。
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            className={cn(
-              'p-6 rounded-xl text-left',
-              'bg-[var(--bg-card)] border border-[var(--border-subtle)]',
-              'hover:border-primary/50 hover:bg-[var(--bg-card-hover)]',
-              'transition-all duration-300'
-            )}
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Sparkles className="w-5 h-5 text-primary" />
+      {/* Tools Selector Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {tools.map((tool) => {
+          const Icon = tool.icon;
+          const isSelected = selectedToolId === tool.id;
+          return (
+            <button
+              key={tool.id}
+              onClick={() => setSelectedToolId(tool.id)}
+              className={cn(
+                'group relative p-4 rounded-2xl text-left transition-all duration-300',
+                'bg-[var(--bg-card)] border border-[var(--border-subtle)]',
+                'hover:shadow-xl hover:shadow-primary/5 hover:border-primary/30',
+                isSelected ? 'ring-2 ring-primary/50 border-primary shadow-lg shadow-primary/10 bg-primary/[0.02]' : 'hover:scale-[1.02]'
+              )}
+            >
+              <div className={cn(
+                "p-2 w-fit rounded-xl mb-3 transition-colors",
+                isSelected ? "bg-primary text-white" : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white"
+              )}>
+                <Icon className="w-5 h-5" />
               </div>
-              <span className="font-medium text-[var(--text-primary)]">{tool.label}</span>
-            </div>
-            <p className="text-sm text-[var(--text-muted)]">{tool.desc}</p>
-          </button>
-        ))}
+              <div className="font-semibold text-sm text-[var(--text-primary)] leading-none mb-1.5">{tool.label}</div>
+              <p className="text-[10px] text-[var(--text-muted)] leading-tight line-clamp-1 opacity-70">{tool.desc}</p>
+              
+            </button>
+          );
+        })}
       </div>
 
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-        <div className="text-center py-12 text-[var(--text-muted)]">
-          AI 工具工作区（待实现）
+      {/* Workspace Area */}
+      <div className="relative group p-[1px] rounded-[32px] overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/30 via-[var(--border-subtle)] to-emerald-500/30 opacity-70 group-hover:opacity-100 transition-opacity duration-1000" />
+        <div className="relative bg-[var(--bg-card)]/40 backdrop-blur-3xl rounded-[31px] p-8 md:p-12 min-h-[700px] border border-white/5 shadow-2xl">
+          <div className="absolute top-0 left-1/4 w-1/2 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+          <AIToolsWorkspace 
+            selectedTool={selectedTool} 
+            allConfigs={promptConfigs}
+            onConfigUpdated={fetchAllConfigs}
+            isGlobalLoading={isLoading}
+          />
         </div>
       </div>
     </div>

@@ -12,6 +12,9 @@ from app.core.config import get_settings
 from app.core.jwt import UserClaims, decode_token, extract_user
 from app.services.cache import CacheStore
 from app.services.llm_router import LlmRouter
+from app.services.model_router import ModelRouter
+from app.services.provider_registry import ProviderRegistry
+from app.services.credential_resolver import CredentialResolver
 from app.services.metrics import MetricsStore, get_metrics_store
 from app.services.rate_limiter import RateLimiter
 from app.services.usage_logger import UsageLogger
@@ -22,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 _redis: Redis | None = None
 _router: LlmRouter | None = None
+_model_router: ModelRouter | None = None
+_provider_registry: ProviderRegistry | None = None
+_credential_resolver: CredentialResolver | None = None
 _vector_store: VectorStoreService | None = None
 _pg_pool: asyncpg.Pool | None = None
 _usage_logger: UsageLogger | None = None
@@ -53,10 +59,37 @@ def get_rate_limiter() -> RateLimiter:
     return RateLimiter(_get_redis())
 
 
-def get_llm_router() -> LlmRouter:
+async def get_provider_registry() -> ProviderRegistry:
+    global _provider_registry
+    if _provider_registry is None:
+        pool = await get_pg_pool()
+        _provider_registry = ProviderRegistry(pool)
+    return _provider_registry
+
+
+async def get_credential_resolver() -> CredentialResolver:
+    global _credential_resolver
+    if _credential_resolver is None:
+        pool = await get_pg_pool()
+        _credential_resolver = CredentialResolver(pool)
+    return _credential_resolver
+
+
+async def get_model_router() -> ModelRouter:
+    global _model_router
+    if _model_router is None:
+        pool = await get_pg_pool()
+        registry = await get_provider_registry()
+        resolver = await get_credential_resolver()
+        _model_router = ModelRouter(pool, registry, resolver)
+    return _model_router
+
+
+async def get_llm_router() -> LlmRouter:
     global _router
     if _router is None:
-        _router = LlmRouter()
+        model_router = await get_model_router()
+        _router = LlmRouter(model_router)
     return _router
 
 
@@ -64,7 +97,8 @@ async def get_vector_store() -> VectorStoreService:
     global _vector_store
     if _vector_store is None:
         pool = await get_pg_pool()
-        _vector_store = VectorStoreService(pool, get_llm_router())
+        llm = await get_llm_router()
+        _vector_store = VectorStoreService(pool, llm)
     return _vector_store
 
 
@@ -108,3 +142,19 @@ async def rate_limit(
     await limiter.enforce_global_limit(endpoint)
     await limiter.enforce_user_limit(user.user_id, endpoint)
     return user
+
+
+async def get_current_user(authorization: str | None = Header(default=None)) -> dict | None:
+    """
+    Optional user extraction - returns None if no valid token.
+    Use for endpoints that work for both authenticated and unauthenticated users.
+    """
+    if not authorization:
+        return None
+    token = authorization.replace("Bearer ", "", 1).strip()
+    try:
+        claims = decode_token(token)
+        user = extract_user(claims)
+        return {"sub": user.user_id, "role": user.role}
+    except Exception:
+        return None

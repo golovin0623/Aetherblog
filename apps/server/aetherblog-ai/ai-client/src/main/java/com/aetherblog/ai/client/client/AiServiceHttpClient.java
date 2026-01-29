@@ -36,19 +36,21 @@ public class AiServiceHttpClient implements AiServiceClient {
     private final StreamParser streamParser;
     
     @Override
-    public Mono<AiResponse<SummaryResponse>> generateSummary(SummaryRequest request) {
+    public Mono<AiResponse<SummaryResponse>> generateSummary(SummaryRequest request, String token) {
         return performRequest(
             "/api/v1/ai/summary",
             request,
+            token,
             new ParameterizedTypeReference<AiResponse<SummaryResponse>>() {}
         );
     }
     
     @Override
-    public Flux<StreamEvent> generateSummaryStream(SummaryRequest request) {
+    public Flux<StreamEvent> generateSummaryStream(SummaryRequest request, String token) {
         return aiWebClient.post()
             .uri("/api/v1/ai/summary/stream")
             .contentType(MediaType.APPLICATION_JSON)
+            .header("Authorization", token)
             .accept(MediaType.parseMediaType("application/x-ndjson"))
             .bodyValue(request)
             .retrieve()
@@ -61,39 +63,84 @@ public class AiServiceHttpClient implements AiServiceClient {
     }
     
     @Override
-    public Mono<AiResponse<TagsResponse>> extractTags(TagsRequest request) {
+    public Mono<AiResponse<TagsResponse>> extractTags(TagsRequest request, String token) {
         return performRequest(
             "/api/v1/ai/tags",
             request,
+            token,
             new ParameterizedTypeReference<AiResponse<TagsResponse>>() {}
         );
     }
     
     @Override
-    public Mono<AiResponse<TitlesResponse>> suggestTitles(TitlesRequest request) {
+    public Mono<AiResponse<TitlesResponse>> suggestTitles(TitlesRequest request, String token) {
         return performRequest(
             "/api/v1/ai/titles",
             request,
+            token,
             new ParameterizedTypeReference<AiResponse<TitlesResponse>>() {}
         );
     }
     
     @Override
-    public Mono<AiResponse<PolishResponse>> polishContent(PolishRequest request) {
+    public Mono<AiResponse<PolishResponse>> polishContent(PolishRequest request, String token) {
         return performRequest(
             "/api/v1/ai/polish",
             request,
+            token,
             new ParameterizedTypeReference<AiResponse<PolishResponse>>() {}
         );
     }
     
     @Override
-    public Mono<AiResponse<OutlineResponse>> generateOutline(OutlineRequest request) {
+    public Mono<AiResponse<OutlineResponse>> generateOutline(OutlineRequest request, String token) {
         return performRequest(
             "/api/v1/ai/outline",
             request,
+            token,
             new ParameterizedTypeReference<AiResponse<OutlineResponse>>() {}
         );
+    }
+
+    @Override
+    public Mono<AiResponse<PromptConfigResponse>> getPromptConfig(String taskType, String token) {
+        return aiWebClient.get()
+            .uri("/api/v1/admin/ai/prompts/{taskType}", taskType)
+            .header("Authorization", token)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<PromptConfigResponse>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to get prompt config: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
+    }
+
+    @Override
+    public Mono<AiResponse<java.util.List<PromptConfigResponse>>> listPromptConfigs(String token) {
+        return aiWebClient.get()
+            .uri("/api/v1/admin/ai/prompts")
+            .header("Authorization", token)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<java.util.List<PromptConfigResponse>>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to list prompt configs: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
+    }
+
+    @Override
+    public Mono<AiResponse<Boolean>> updatePromptConfig(String taskType, PromptUpdateRequest request, String token) {
+        return aiWebClient.put()
+            .uri("/api/v1/admin/ai/prompts/{taskType}", taskType)
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Authorization", token)
+            .bodyValue(request)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<Boolean>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to update prompt config: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
     }
 
     
@@ -103,11 +150,13 @@ public class AiServiceHttpClient implements AiServiceClient {
     private <T, R> Mono<AiResponse<R>> performRequest(
         String uri,
         T request,
+        String token,
         ParameterizedTypeReference<AiResponse<R>> responseType
     ) {
         return aiWebClient.post()
             .uri(uri)
             .contentType(MediaType.APPLICATION_JSON)
+            .header("Authorization", token)
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
