@@ -1,8 +1,8 @@
 /**
- * View Transitions API Type Declarations
+ * View Transitions API 类型声明
  * 
- * The View Transitions API is a relatively new browser feature.
- * This file adds TypeScript type declarations for the API.
+ * View Transitions API 是一个相对较新的浏览器特性。
+ * 此文件添加该 API 的 TypeScript 类型声明。
  */
 
 interface ViewTransition {
