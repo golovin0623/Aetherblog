@@ -129,8 +129,16 @@ async def summary(
             response_text = cached_data.get("summary", "")
             return ApiResponse(data=SummaryData(**cached_data))
 
-        prompt = f"请为以下内容生成摘要（{req.maxLength}字以内）：\n{req.content}"
-        response_text = await llm.chat(prompt, "summary")
+        prompt_variables = {
+            "content": req.content,
+            "max_length": req.maxLength
+        }
+        response_text = await llm.chat(
+            prompt_variables=prompt_variables,
+            model_alias="summary",
+            user_id=user.user_id,
+            custom_prompt=req.promptTemplate
+        )
         data = SummaryData(summary=response_text, characterCount=len(response_text))
         await cache.set_json(cache_key, data.model_dump(), SUMMARY_TTL)
         return ApiResponse(data=data)
@@ -174,8 +182,17 @@ async def summary_stream(
 
     async def event_stream():
         nonlocal response_chars, error_code
+        prompt_variables = {
+            "content": req.content,
+            "max_length": req.maxLength
+        }
         try:
-            async for chunk in llm.stream_chat(prompt, "summary"):
+            async for chunk in llm.stream_chat(
+                prompt_variables=prompt_variables,
+                model_alias="summary",
+                user_id=user.user_id,
+                custom_prompt=req.promptTemplate
+            ):
                 response_chars += len(chunk)
                 yield ndjson_line({"type": "delta", "content": chunk})
             yield ndjson_line({"type": "done"})
@@ -229,8 +246,16 @@ async def tags(
             response_text = ",".join(cached_data.get("tags", []))
             return ApiResponse(data=TagsData(**cached_data))
 
-        prompt = f"请为以下内容推荐{req.maxTags}个标签，逗号分隔：\n{req.content}"
-        response_text = await llm.chat(prompt, "tags")
+        prompt_variables = {
+            "content": req.content,
+            "max_tags": req.maxTags
+        }
+        response_text = await llm.chat(
+            prompt_variables=prompt_variables,
+            model_alias="tags",
+            user_id=user.user_id,
+            custom_prompt=req.promptTemplate
+        )
         data = TagsData(tags=_split_list(response_text)[: req.maxTags])
         await cache.set_json(cache_key, data.model_dump(), TAGS_TTL)
         return ApiResponse(data=data)
@@ -284,8 +309,16 @@ async def titles(
             response_text = ",".join(cached_data.get("titles", []))
             return ApiResponse(data=TitlesData(**cached_data))
 
-        prompt = f"请为以下内容生成{req.maxTitles}个标题，逗号分隔：\n{req.content}"
-        response_text = await llm.chat(prompt, "titles")
+        prompt_variables = {
+            "content": req.content,
+            "max_titles": req.maxTitles
+        }
+        response_text = await llm.chat(
+            prompt_variables=prompt_variables,
+            model_alias="titles",
+            user_id=user.user_id,
+            custom_prompt=req.promptTemplate
+        )
         data = TitlesData(titles=_split_list(response_text)[: req.maxTitles])
         await cache.set_json(cache_key, data.model_dump(), TITLES_TTL)
         return ApiResponse(data=data)
@@ -327,9 +360,16 @@ async def polish(
     response_text = ""
 
     try:
-        tone = f"，语气:{req.tone}" if req.tone else ""
-        prompt = f"请润色以下内容{tone}：\n{req.content}"
-        response_text = await llm.chat(prompt, "polish")
+        prompt_variables = {
+            "content": req.content,
+            "tone": req.tone or "专业"
+        }
+        response_text = await llm.chat(
+            prompt_variables=prompt_variables,
+            model_alias="polish",
+            user_id=user.user_id,
+            custom_prompt=req.promptTemplate
+        )
         return ApiResponse(data=PolishData(content=response_text))
     except HTTPException as exc:
         error_code = str(exc.detail)
@@ -362,15 +402,25 @@ async def outline(
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[OutlineData]:
-    _enforce_content_limit(req.content)
+    # Change from req.content to req.topic
     start_time = time.perf_counter()
     error_code = None
     model = llm.resolve_model("outline")
     response_text = ""
 
     try:
-        prompt = f"请为以下内容生成层级为{req.depth}的大纲：\n{req.content}"
-        response_text = await llm.chat(prompt, "outline")
+        prompt_variables = {
+            "topic": req.topic,
+            "depth": req.depth,
+            "style": req.style,
+            "context": f"\n现有内容参考：\n{req.existingContent}" if req.existingContent else ""
+        }
+        response_text = await llm.chat(
+            prompt_variables=prompt_variables,
+            model_alias="outline",
+            user_id=user.user_id,
+            custom_prompt=req.promptTemplate
+        )
         return ApiResponse(data=OutlineData(outline=response_text))
     except HTTPException as exc:
         error_code = str(exc.detail)
@@ -385,7 +435,7 @@ async def outline(
             usage_logger=usage_logger,
             user_id=user.user_id,
             model=model,
-            request_text=req.content,
+            request_text=req.topic,
             response_text=response_text,
             start_time=start_time,
             success=error_code is None,

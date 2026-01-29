@@ -57,7 +57,12 @@ async def request_context(request: Request, call_next):
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    payload = ApiResponse(code=exc.status_code, message=str(exc.detail), data=None)
+    payload = ApiResponse(
+        success=False,
+        errorMessage=str(exc.detail),
+        errorCode=f"HTTP_{exc.status_code}",
+        requestId=getattr(request.state, "request_id", None)
+    )
     return JSONResponse(
         status_code=exc.status_code, content=payload.model_dump(), headers=exc.headers
     )
@@ -66,7 +71,11 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     payload = ApiResponse(
-        code=400, message="Validation failed", data={"errors": exc.errors()}
+        success=False,
+        errorMessage="Validation failed",
+        errorCode="VALIDATION_ERROR",
+        data={"errors": exc.errors()},
+        requestId=getattr(request.state, "request_id", None)
     )
     return JSONResponse(status_code=400, content=payload.model_dump())
 
@@ -74,5 +83,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("unhandled_exception", extra={"error": str(exc)})
-    payload = ApiResponse(code=500, message="Internal server error", data=None)
+    payload = ApiResponse(
+        success=False,
+        errorMessage="Internal server error",
+        errorCode="INTERNAL_ERROR",
+        requestId=getattr(request.state, "request_id", None)
+    )
     return JSONResponse(status_code=500, content=payload.model_dump())

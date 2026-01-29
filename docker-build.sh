@@ -179,9 +179,24 @@ build_image() {
     
     echo -e "${YELLOW}[${step}] 构建: ${REGISTRY}/${PROJECT}-${name}:${VERSION}${NC}"
     
+    local build_platform="$PLATFORMS"
+    local host_platform="linux/$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')"
+
+    if [ "$PUSH" = true ]; then
+        build_platform="$PLATFORMS"
+    else
+        if [[ "$PLATFORMS" == *","* ]]; then
+            echo -e "${RED}Error: --load 不支持多平台镜像，请使用 --push 或移除 --all${NC}"
+            return 1
+        fi
+        if [ -z "$build_platform" ]; then
+            build_platform="$host_platform"
+        fi
+    fi
+
     # 构建命令 - 添加并行度优化参数
     BUILD_CMD="docker buildx build \
-        --platform $PLATFORMS \
+        --platform $build_platform \
         -f ${dockerfile} \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --cache-from type=registry,ref=${REGISTRY}/${PROJECT}-${name}:cache \
@@ -193,7 +208,7 @@ build_image() {
     if [ "$PUSH" = true ]; then
         BUILD_CMD="$BUILD_CMD --push"
     else
-        BUILD_CMD="$BUILD_CMD --load --platform linux/$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')"
+        BUILD_CMD="$BUILD_CMD --load"
     fi
     
     BUILD_CMD="$BUILD_CMD ."

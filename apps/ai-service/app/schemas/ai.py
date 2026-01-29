@@ -9,30 +9,37 @@ class SummaryRequest(BaseModel):
     content: str = Field(..., min_length=1)
     maxLength: int = Field(default=200, ge=10, le=2000)
     promptVersion: Optional[str] = None
+    promptTemplate: Optional[str] = None
 
 
 class TagsRequest(BaseModel):
     content: str = Field(..., min_length=1)
     maxTags: int = Field(default=5, ge=1, le=20)
     promptVersion: Optional[str] = None
+    promptTemplate: Optional[str] = None
 
 
 class TitlesRequest(BaseModel):
     content: str = Field(..., min_length=1)
     maxTitles: int = Field(default=5, ge=1, le=10)
     promptVersion: Optional[str] = None
+    promptTemplate: Optional[str] = None
 
 
 class PolishRequest(BaseModel):
     content: str = Field(..., min_length=1)
     tone: Optional[str] = None
     promptVersion: Optional[str] = None
+    promptTemplate: Optional[str] = None
 
 
 class OutlineRequest(BaseModel):
-    content: str = Field(..., min_length=1)
-    depth: int = Field(default=3, ge=1, le=6)
+    topic: str = Field(..., min_length=1)
+    existingContent: Optional[str] = None
+    depth: int = Field(default=2, ge=1, le=6)
+    style: str = Field(default="professional")
     promptVersion: Optional[str] = None
+    promptTemplate: Optional[str] = None
 
 
 class SummaryData(BaseModel):

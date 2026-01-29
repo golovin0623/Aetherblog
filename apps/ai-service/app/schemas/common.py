@@ -8,6 +8,11 @@ T = TypeVar("T")
 
 
 class ApiResponse(BaseModel, Generic[T]):
-    code: int = 0
-    message: str = "ok"
+    """
+    Matched with Java AiResponse structure.
+    """
+    success: bool = True
     data: Optional[T] = None
+    errorCode: Optional[str] = None
+    errorMessage: Optional[str] = None
+    requestId: Optional[str] = None

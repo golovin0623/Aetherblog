@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     jwt_mode: Literal["HMAC", "JWKS"] = Field(default="HMAC", alias="AI_JWT_MODE")
     jwt_secret: str = Field(default="change-me", alias="AI_JWT_SECRET")
-    jwt_jwks_url: str = Field(default="", alias="AI_JWT_JWKS_URL")
+    jwt_jwks_url: str | None = Field(default=None, alias="AI_JWT_JWKS_URL")
     jwt_issuer: str | None = Field(default=None, alias="AI_JWT_ISSUER")
     jwt_audience: str | None = Field(default=None, alias="AI_JWT_AUDIENCE")
 
@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     model_outline: str = Field(default="gpt-4o-mini", alias="MODEL_OUTLINE")
     model_embedding: str = Field(default="text-embedding-3-small", alias="MODEL_EMBEDDING")
     max_input_chars: int = Field(default=20000, alias="AI_MAX_INPUT_CHARS")
+
+    @field_validator("jwt_jwks_url", "jwt_issuer", "jwt_audience", mode="before")
+    @classmethod
+    def _empty_str_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 _settings: Settings | None = None
