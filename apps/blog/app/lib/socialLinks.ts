@@ -1,7 +1,7 @@
 import { Mail, MousePointer2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-// 社交平台图标映射 (One-to-one mapping with Admin)
+// 社交平台图标映射 (与 Admin 后台一一对应)
 export const PLATFORM_ICON_URLS: Record<string, string> = {
   // 国内主流
   wechat: 'https://api.iconify.design/logos:wechat.svg',

@@ -274,7 +274,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                   exit={{ opacity: 0, scale: 0.95, y: 20 }}
                   className="relative w-full max-w-4xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
                 >
-                  {/* Modal Header */}
+                  {/* 模态框头部 */}
                   <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-white/10">
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4 text-gray-400 dark:text-gray-500" />
@@ -349,7 +349,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                     )}
                   </div>
                   
-                  {/* Footer Tip */}
+                  {/* 底部提示 */}
                   <div className="p-3 bg-gray-50 dark:bg-white/5 border-t border-gray-100 dark:border-white/10 text-center">
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       图标来源 Simple Icons • 支持自定义链接

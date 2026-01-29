@@ -51,11 +51,11 @@ class SettingsService {
    * 更新单个
    */
   async update(key: string, value: string): Promise<void> {
-    await api.put(`${this.BASE_URL}/${key}`, value); // Backend accepts raw string body? Check controller.
-    // Controller: @RequestBody String value. Correct. 
-    // But axios might send JSON string "value" instead of raw. 
-    // Safer to use batchUpdate for consistent JSON body.
-    // Let's rely on batchUpdate mostly.
+    await api.put(`${this.BASE_URL}/${key}`, value); // 后端是否接受原始字符串作为请求体？检查 Controller。
+    // Controller: @RequestBody String value。正确。
+    // 但 axios 可能会发送 JSON 字符串 "value" 而不是原始字符串。
+    // 使用 batchUpdate 以保持一致的 JSON 请求体更安全。
+    // 我们主要依赖 batchUpdate。
   }
 }
 
