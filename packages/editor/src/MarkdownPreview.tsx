@@ -562,7 +562,7 @@ export const markdownPreviewStyles = `
     text-align: center;
   }
   .markdown-preview.light-mode .math-block {
-    background: rgba(99, 102, 241, 0.05); /* Same tint works for light mode */
+    background: rgba(99, 102, 241, 0.05); /* 同样的色调也适用于亮色模式 */
   }
   .markdown-preview .math-inline {
     padding: 0 0.2em;
