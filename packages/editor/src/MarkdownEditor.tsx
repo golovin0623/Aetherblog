@@ -132,17 +132,17 @@ export function MarkdownEditor({
           color: theme === 'light' ? '#475569' : '#e2e8f0',
         },
         // 代码块的语法高亮颜色（明亮模式使用不同颜色）
-        '.tok-keyword': { color: theme === 'light' ? '#7c3aed' : '#c792ea' }, // violet-600 对比 purple
-        '.tok-string': { color: theme === 'light' ? '#16a34a' : '#c3e88d' }, // green-600 对比 light green
-        '.tok-number': { color: theme === 'light' ? '#ea580c' : '#f78c6c' }, // orange-600 对比 orange
-        '.tok-comment': { color: theme === 'light' ? '#64748b' : '#546e7a', fontStyle: 'italic' }, // slate-500 对比 blue-grey
-        '.tok-variableName': { color: theme === 'light' ? '#0284c7' : '#82aaff' }, // sky-600 对比 blue
+        '.tok-keyword': { color: theme === 'light' ? '#7c3aed' : '#c792ea' }, // violet-600 对比紫色 (purple)
+        '.tok-string': { color: theme === 'light' ? '#16a34a' : '#c3e88d' }, // green-600 对比浅绿色 (light green)
+        '.tok-number': { color: theme === 'light' ? '#ea580c' : '#f78c6c' }, // orange-600 对比橙色 (orange)
+        '.tok-comment': { color: theme === 'light' ? '#64748b' : '#546e7a', fontStyle: 'italic' }, // slate-500 对比蓝灰色 (blue-grey)
+        '.tok-variableName': { color: theme === 'light' ? '#0284c7' : '#82aaff' }, // sky-600 对比蓝色 (blue)
         '.tok-definition': { color: theme === 'light' ? '#0284c7' : '#82aaff' },
-        '.tok-propertyName': { color: theme === 'light' ? '#db2777' : '#f07178' }, // pink-600 对比 red
-        '.tok-typeName': { color: theme === 'light' ? '#d97706' : '#ffcb6b' }, // amber-600 对比 yellow
-        '.tok-operator': { color: theme === 'light' ? '#0ea5e9' : '#89ddff' }, // sky-500 对比 cyan
+        '.tok-propertyName': { color: theme === 'light' ? '#db2777' : '#f07178' }, // pink-600 对比红色 (red)
+        '.tok-typeName': { color: theme === 'light' ? '#d97706' : '#ffcb6b' }, // amber-600 对比黄色 (yellow)
+        '.tok-operator': { color: theme === 'light' ? '#0ea5e9' : '#89ddff' }, // sky-500 对比青色 (cyan)
         '.tok-punctuation': { color: theme === 'light' ? '#64748b' : '#89ddff' },
-        '.tok-function': { color: theme === 'light' ? '#2563eb' : '#82aaff' }, // blue-600 对比 blue
+        '.tok-function': { color: theme === 'light' ? '#2563eb' : '#82aaff' }, // blue-600 对比蓝色 (blue)
         '.tok-bool': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
         '.tok-null': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
         '.tok-className': { color: theme === 'light' ? '#d97706' : '#ffcb6b' },

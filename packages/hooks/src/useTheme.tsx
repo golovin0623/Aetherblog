@@ -191,7 +191,7 @@ const ThemeContext = createContext<UseThemeReturn | undefined>(undefined);
  *
  * @example
  * ```tsx
- * // app/layout.tsx
+ * // app/layout.tsx (示例)
  * import { ThemeProvider } from '@aetherblog/hooks';
  *
  * export default function RootLayout({ children }) {
@@ -349,7 +349,7 @@ export function useTheme(): UseThemeReturn {
  * 
  * @example
  * ```tsx
- * // Next.js layout.tsx
+ * // Next.js 布局文件 layout.tsx
  * <head>
  *   <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
  * </head>
