@@ -113,8 +113,8 @@ public class MetricsHistoryService {
 
     @Data
     public static class Alert {
-        private String metric;       // cpu, memory, disk
-        private String level;        // warning, critical
+        private String metric;       // 指标类型: cpu, memory, disk
+        private String level;        // 告警级别: warning, critical
         private double currentValue;
         private double threshold;
         private LocalDateTime triggeredAt;
