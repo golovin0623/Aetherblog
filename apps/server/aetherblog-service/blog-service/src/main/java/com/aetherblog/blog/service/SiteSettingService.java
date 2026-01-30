@@ -175,7 +175,7 @@ public class SiteSettingService {
             settingRepository.save(setting);
             log.info("Updated site setting: key={}", key);
         } else {
-            // Auto-create missing setting with heuristics
+            // 根据启发式规则自动创建缺失的设置
             log.info("Creating new site setting: key={}", key);
             
             String groupName = determineGroup(key);
@@ -191,7 +191,7 @@ public class SiteSettingService {
         if (key.startsWith("author_")) return "author";
         if (key.startsWith("welcome_")) return "welcome";
         if (key.startsWith("seo_") || key.endsWith("_analytics_id")) return "seo";
-        if (key.startsWith("site_")) return "general"; // Matches frontend 'general' group
+        if (key.startsWith("site_")) return "general"; // 对应前端 'general' 分组
         if (key.startsWith("theme_") || key.equals("show_banner") || key.equals("custom_css") || key.equals("post_page_size")) return "appearance";
         if (key.startsWith("enable_") || key.equals("comment_need_audit") || key.equals("upload_max_size")) return "advanced";
         return "other";
