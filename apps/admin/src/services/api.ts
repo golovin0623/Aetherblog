@@ -42,7 +42,9 @@ class ApiClient {
             authStore.logout();
             
             // 使用 replace 避免后退时回到已失效的页面
-            window.location.replace('/login');
+            // 注意：因为应用部署在 /admin/ 下，所以必须跳转到 /admin/login
+            const loginPath = import.meta.env.BASE_URL === '/' ? '/login' : `${import.meta.env.BASE_URL}login`;
+            window.location.replace(loginPath);
           }
         }
         
