@@ -24,6 +24,8 @@ jobs:
         include:
           - service: backend
             dockerfile: ./apps/server/Dockerfile
+          - service: ai-service
+            dockerfile: ./apps/ai-service/Dockerfile
           - service: blog
             dockerfile: ./apps/blog/Dockerfile
           - service: admin
