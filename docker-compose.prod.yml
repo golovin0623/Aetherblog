@@ -150,6 +150,7 @@ services:
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AI_SERVICE_URL: http://ai-service:8000
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
+      JWT_SECRET: ${JWT_SECRET:-aetherblog-secret-key-for-jwt-token-generation-2024}
       LOGGING_FILE_NAME: /app/logs/server.log
       APP_LOG_PATH: /app/logs
     volumes:
@@ -196,7 +197,7 @@ services:
       AI_LOG_LEVEL: info
       AI_MOCK_MODE: ${AI_MOCK_MODE:-false}
       AI_JWT_MODE: ${AI_JWT_MODE:-HMAC}
-      AI_JWT_SECRET: ${AI_JWT_SECRET:-change-me}
+      AI_JWT_SECRET: ${JWT_SECRET:-aetherblog-secret-key-for-jwt-token-generation-2024}
       AI_JWT_JWKS_URL: ${AI_JWT_JWKS_URL:-}
       AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
