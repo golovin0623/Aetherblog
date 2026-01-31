@@ -173,7 +173,7 @@ export function SystemTrends({ className }: { className?: string }) {
         return format(date, 'MM-dd');
       }
       return format(date, 'HH:mm');
-    } catch (e) {
+    } catch (_e) {
       return '';
     }
   };
@@ -181,7 +181,7 @@ export function SystemTrends({ className }: { className?: string }) {
   const formatTooltipLabel = (isoTime: string) => {
     try {
       return format(parseISO(isoTime), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN });
-    } catch (e) {
+    } catch (_e) {
       return isoTime;
     }
   };

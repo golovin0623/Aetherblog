@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Send, Loader2, Code, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Sparkles, Send, Loader2, Code, FileText, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@aetherblog/ui';
 import { PromptEditor } from './PromptEditor';
@@ -75,6 +75,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
       } else {
         toast.error(res.errorMessage || '生成失败');
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       toast.error(err.response?.data?.message || '请求服务出错');
     } finally {
@@ -91,7 +92,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         toast.success('Prompt 配置已更新');
         onConfigUpdated();
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error('保存失败');
     }
   };
@@ -262,7 +263,7 @@ function renderResult(taskId: string, data: any) {
           </div>
         </div>
       );
-    case 'outline':
+    case 'outline': {
       const lines = data.outline?.split('\n') || [];
       return (
         <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-700">
@@ -283,6 +284,7 @@ function renderResult(taskId: string, data: any) {
           })}
         </div>
       );
+    }
     default:
       return <pre className="text-xs text-[var(--text-primary)] opacity-50 font-mono p-4 rounded-xl bg-black/10">{JSON.stringify(data, null, 2)}</pre>;
   }

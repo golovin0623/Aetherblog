@@ -10,7 +10,7 @@ export interface SiteSetting {
   description?: string;
 }
 
-export type SettingsMap = Record<string, any>;
+export type SettingsMap = Record<string, unknown>;
 
 class SettingsService {
   private readonly BASE_URL = '/v1/admin/settings';

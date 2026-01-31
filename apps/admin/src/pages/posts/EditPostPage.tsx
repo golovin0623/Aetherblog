@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Save, Eye, ArrowLeft, Settings, Sparkles } from 'lucide-react';
+import { Save, Eye, ArrowLeft, Settings } from 'lucide-react';
 
 export function EditPostPage() {
-  const { id } = useParams<{ id: string }>();
+  useParams();
   const [title, setTitle] = useState('示例文章标题');
   const [content, setContent] = useState('这是文章的内容...');
   const [showSettings, setShowSettings] = useState(false);

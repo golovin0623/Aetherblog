@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Wand2, Lightbulb, RefreshCw, Tags, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Sparkles, Wand2, Lightbulb, RefreshCw, Tags, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface AiAssistantProps {
   content: string;
