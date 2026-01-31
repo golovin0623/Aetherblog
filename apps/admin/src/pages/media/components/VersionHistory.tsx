@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { History, RotateCcw, Trash2, Clock, User, FileText } from 'lucide-react';
 import { Button } from '@aetherblog/ui';
-import type { MediaVersion } from '@aetherblog/types';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -44,6 +43,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
       queryClient.invalidateQueries({ queryKey: ['media'] });
       toast.success('版本已恢复');
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
       toast.error(error.response?.data?.msg || '恢复版本失败');
     },
@@ -58,6 +58,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
       queryClient.invalidateQueries({ queryKey: ['media-versions', fileId] });
       toast.success('版本已删除');
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
       toast.error(error.response?.data?.msg || '删除版本失败');
     },

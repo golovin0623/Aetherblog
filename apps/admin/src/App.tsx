@@ -12,8 +12,10 @@ import CommentsPage from './pages/CommentsPage';
 import FriendsPage from './pages/FriendsPage';
 import SettingsPage from './pages/SettingsPage';
 import AIToolsPage from './pages/AIToolsPage';
+import { AiTestPage } from './pages/AiTestPage';
 import MonitorPage from './pages/MonitorPage';
 import FolderPermissionsPage from './pages/media/FolderPermissionsPage';
+import AiConfigPage from './pages/ai-config/AiConfigPage';
 import { Toaster } from 'sonner';
 
 /**
@@ -64,6 +66,8 @@ function App() {
           <Route path="friends" element={<FriendsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="ai-tools" element={<AIToolsPage />} />
+          <Route path="ai-test" element={<AiTestPage />} />
+          <Route path="ai-config" element={<AiConfigPage />} />
           <Route path="monitor" element={<MonitorPage />} />
         </Route>
       </Routes>

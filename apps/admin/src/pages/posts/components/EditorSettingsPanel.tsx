@@ -110,8 +110,8 @@ export function EditorSettingsPanel({
   loadingTags,
   summary,
   onSummaryChange,
-  coverUrl,
-  onCoverChange,
+  coverUrl: _coverUrl,
+  onCoverChange: _onCoverChange,
 }: EditorSettingsPanelProps) {
   const [categorySearch, setCategorySearch] = useState('');
   const [tagSearch, setTagSearch] = useState('');

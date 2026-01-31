@@ -16,7 +16,7 @@ trigger: always_on
 
 **项目信息**:
 - **项目名称**: AetherBlog（以太博客）
-- **技术栈**: React 19 + Spring Boot 4.0 + JDK 25 + PostgreSQL 17 + Spring AI
+- **技术栈**: React 19 + Spring Boot 4.0 + JDK 25 + PostgreSQL 17 + Python 3.12 (AI Service)
 - **设计理念**: 认知优雅（Cognitive Elegance）- 融合 Apple/Microsoft 设计语言
 
 ---
@@ -29,10 +29,10 @@ trigger: always_on
 |:-----|:-----|:---------|:---------|
 | **§1** | **产品愿景与战略** | 背景、愿景、用户画像、竞品分析、商业模式 | 全局 |
 | **§2** | **系统架构设计** | 技术选型、架构全景图、技术决策矩阵 | 全局 |
-| §2.1 | 技术选型决策 | JDK25虚拟线程、Spring AI vs LangChain4j、pgvector | 后端 |
+| §2.1 | 技术选型决策 | JDK25虚拟线程、Python AI Service、pgvector | 后端/AI |
 | §2.2 | 前端技术栈 | React 19、Vite、Tailwind、Framer Motion | 前端 |
-| §2.3 | 后端技术栈 | Spring Boot 4.0、Spring Security、Spring AI | 后端 |
-| §2.4 | AI技术栈 | Spring AI、RAG、向量存储、Agent设计 | AI层 |
+| §2.3 | 后端技术栈 | Spring Boot 4.0、Spring Security | 后端 |
+| §2.4 | AI技术栈 | FastAPI、LiteLLM、LlamaIndex、OpenTelemetry | AI层 |
 | §2.5 | 数据存储架构 | PostgreSQL 17、Redis、Elasticsearch、MinIO | 数据层 |
 | **§3** | **前端详细设计** | 项目结构、组件设计、状态管理、视觉规范 | 前端 |
 | §3.1 | 前端架构设计 | Monorepo结构、目录规范、包管理 | 前端 |
@@ -44,23 +44,23 @@ trigger: always_on
 | §4.2 | 核心代码实现 | 统一响应R、全局异常、JWT服务 | 后端 |
 | §4.3 | 业务服务实现 | PostService、CategoryService、TagService | 后端 |
 | §4.4 | 安全架构实现 | SecurityConfig、JwtService、RateLimit | 后端 |
-| **§5** | **AI服务详细设计** | Agent设计、RAG实现、Prompt管理 | AI层 |
-| §5.1 | AI Agent设计 | WritingAgent、TaggingAgent、SummaryAgent | AI层 |
-| §5.2 | RAG服务实现 | 混合检索、RRF重排序、向量索引 | AI层 |
-| §5.3 | Prompt管理 | 模板设计、动态加载、版本管理 | AI层 |
+| **§5** | **AI服务详细设计** | 独立服务架构、FastAPI实现、模型路由 | AI层 |
+| §5.1 | AI Service架构 | Python/FastAPI、LiteLLM路由、Redis缓存 | AI层 |
+| §5.2 | RAG服务实现 | LlamaIndex、pgvector检索、混合排序 | AI层 |
+| §5.3 | Prompt管理 | 模板版本控制、动态加载 | AI层 |
 | **§6** | **数据库详细设计** | ER图、表结构、索引策略、向量存储 | 数据层 |
 | §6.1 | 核心表结构 | users、posts、categories、tags等 | 数据层 |
-| §6.2 | 向量存储设计 | post_embeddings、HNSW索引 | 数据层 |
+| §6.2 | 向量存储设计 | vector_store表、HNSW索引 | 数据层 |
 | §6.3 | 索引与优化 | 索引策略、查询优化、分区表 | 数据层 |
 | **§7** | **API接口设计** | RESTful规范、接口定义、错误码 | API层 |
 | §7.1 | 接口规范 | URL设计、响应格式、认证方式 | API层 |
 | §7.2 | 博客接口 | 文章CRUD、分类、标签、归档 | API层 |
-| §7.3 | AI接口 | 重写、摘要、标签、语义搜索 | API层 |
+| §7.3 | AI接口 | 独立AI服务API、流式响应、语义搜索 | API层 |
 | §7.4 | 管理接口 | 用户、媒体、统计、设置 | API层 |
 | **§8** | **功能模块设计** | 前台模块、后台模块、AI模块 | 功能层 |
 | §8.1 | 博客前台模块 | 首页、文章、归档、搜索、友链 | 功能层 |
 | §8.2 | 管理后台模块 | 仪表盘、文章管理、媒体、设置 | 功能层 |
-| §8.3 | AI功能模块 | 写作助手、智能标签、语义搜索 | 功能层 |
+| §8.3 | AI功能模块 | 写作助手、智能标签、语义搜索（调用AI服务） | 功能层 |
 | **§9** | **DevOps设计** | Docker、K8s、CI/CD、监控告警 | 运维层 |
 | **§10** | **项目实施计划** | 阶段规划、里程碑、风险评估 | 管理 |
 | **§99** | **术语表** | 专有名词定义、缩写说明 | 全局 |
@@ -385,6 +385,12 @@ pnpm add xxx  # 说明用途
 
 ```markdown
 # CHANGELOG - AetherBlog 设计文档变更记录
+
+## [v2.1.0] - 2026-01-25
+### Changed
+- §2, §5: 架构重大变更，AI 服务从 Spring Boot 剥离，迁移至独立 Python 服务 (FastAPI + LiteLLM)
+- §2.4: 移除 Spring AI，引入 FastAPI, LiteLLM, LlamaIndex
+- §5: 重构 AI 服务设计，采用网关路由模式
 
 ## [v2.0.0] - 2026-01-14
 ### Changed

@@ -981,7 +981,7 @@ export function CreatePostPage() {
       </div>
     );
   }
-  // @ts-ignore
+
   return (
     <div className={cn(
       "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden"

@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Tech Stack:**
 - Frontend: React 19, Next.js 15 (blog), Vite (admin)
 - Backend: Spring Boot 3.4, JDK 21
-- AI: Spring AI 1.0
+- AI: 独立 AI 服务 (FastAPI + LiteLLM)
 - Database: PostgreSQL 17 with pgvector
 - Cache: Redis 7
 - Search: Elasticsearch 8
@@ -104,6 +104,7 @@ AetherBlog/
 ├── apps/
 │   ├── blog/          # Next.js 15 blog frontend
 │   ├── admin/         # Vite + React 19 admin dashboard
+│   ├── ai-service/    # 🤖 External AI service (FastAPI + LiteLLM)
 │   └── server/        # Spring Boot backend (multi-module Maven)
 │       ├── aetherblog-app/      # 🚀 Executable entry point (main class)
 │       ├── aetherblog-api/      # API interfaces, DTOs, VOs
@@ -114,11 +115,12 @@ AetherBlog/
 │       │   └── common-log/      # Logging
 │       ├── aetherblog-service/  # Business services (POM aggregator)
 │       │   └── blog-service/    # Blog core service
-│       └── aetherblog-ai/       # AI modules (POM aggregator)
-│           ├── ai-core/
-│           ├── ai-rag/
-│           ├── ai-agent/
-│           └── ai-prompt/
+│       └── aetherblog-ai/       # AI modules
+│           ├── ai-client/       # 🆕 HTTP Client for external AI service
+│           ├── ai-core/         # (Deprecated) Spring AI core
+│           ├── ai-rag/          # (Deprecated) RAG module
+│           ├── ai-agent/        # (Deprecated) Agent module
+│           └── ai-prompt/       # (Deprecated) Prompt module
 └── packages/          # Shared frontend packages
     ├── ui/            # Shared UI components
     ├── hooks/         # Shared React hooks
@@ -182,7 +184,7 @@ import { cn } from '@aetherblog/utils';
 | Auth | `/v1/auth/*` | `/v1/auth/login` |
 | Public | `/v1/public/*` | `/v1/public/posts` |
 | Admin | `/v1/admin/*` | `/v1/admin/posts` |
-| AI | `/v1/admin/ai/*` | `/v1/admin/ai/summary` |
+| AI | `/api/v1/ai/*` | `/api/v1/ai/summary` |
 | Stats | `/v1/admin/stats/*` | `/v1/admin/stats/dashboard` |
 
 ### Frontend Service Layer

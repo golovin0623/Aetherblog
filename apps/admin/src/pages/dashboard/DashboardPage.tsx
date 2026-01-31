@@ -9,7 +9,6 @@ import {
   SystemStatus,
   RecentActivity,
   SystemTrends,
-  ActivityItem,
   ContainerStatus,
   RealtimeLogViewer
 } from './components';

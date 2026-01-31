@@ -4,7 +4,6 @@ import com.aetherblog.blog.repository.CategoryRepository;
 import com.aetherblog.blog.repository.CommentRepository;
 import com.aetherblog.blog.repository.PostRepository;
 import com.aetherblog.blog.repository.TagRepository;
-import com.aetherblog.blog.repository.UserRepository;
 import com.aetherblog.blog.service.SiteSettingService;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;

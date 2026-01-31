@@ -17,6 +17,10 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
     allowedHosts: true, // 允许所有主机访问 (Vite 6.x 安全要求)
     proxy: {
+      '/api/v1/admin/providers': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,

@@ -1,5 +1,4 @@
-import { Eye, TrendingUp, ArrowUpRight } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Eye, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TopPost {
