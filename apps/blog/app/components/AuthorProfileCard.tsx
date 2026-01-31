@@ -195,13 +195,13 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     staleTime: 10 * 60 * 1000
   });
 
-  // Merge profile data: Props > Fetched (snake_case prioritized) > Fetched (legacy) > Default
+  // 合并资料数据: Props > 已获取数据(snake_case 优先) > 已获取数据(旧版) > 默认
   const name = profile?.name || settings?.author_name || settings?.authorName || 'Golovin';
   const avatar = profile?.avatar || settings?.author_avatar || settings?.authorAvatar;
   const bio = profile?.bio || settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const stats = profile?.stats || siteStats || { posts: 70, categories: 11, tags: 13 };
 
-  // Extract social links from settings
+  // 从设置中提取社交链接
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);
 
   return (
@@ -288,9 +288,9 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
       />
 
       <div className="relative p-6 flex flex-col items-center text-center">
-        {/* Avatar with Enhanced Background and Glow */}
+        {/* 头像带有增强背景和光晕 */}
         <div className="relative w-24 h-24 mb-3 group/avatar cursor-pointer">
-          {/* White Background Circle for Contrast */}
+          {/* 白色背景圆圈用于增加对比度 */}
           <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
 
           {/* 多彩光晕 */}
@@ -311,7 +311,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           </div>
         </div>
 
-        {/* Name & Bio with Better Typography */}
+        {/* 名字和简介使用更好的排版 */}
         <h2 className="text-lg font-bold text-[var(--text-primary)] mb-1 tracking-tight antialiased truncate w-full px-4" title={name}>
           {name}
         </h2>
@@ -319,7 +319,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           {bio}
         </p>
 
-        {/* Stats with Cleaner Design - Compressed */}
+        {/* 统计数据使用更简洁的设计 - 压缩版 */}
         <div className="w-full mb-3">
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
             <div className="flex flex-col items-center group/stat cursor-pointer">
@@ -343,7 +343,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           </div>
         </div>
 
-        {/* Social Links with Paginated Carousel */}
+        {/* 带分页轮播的社交链接 */}
         <SocialLinksCarousel socialLinks={socialLinks} />
       </div>
     </div>

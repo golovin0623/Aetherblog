@@ -46,7 +46,7 @@ export function AnalyticsPage() {
         if (res.code === 200 && res.data && res.data.length > 0) {
           // 将 API 数据转换为图表格式
           const transformed = res.data.map((item: VisitorTrend) => ({
-            label: item.date.slice(5), // MM-DD format
+            label: item.date.slice(5), // MM-DD 格式
             value: item.pv,
           }));
           setVisitorData(transformed);

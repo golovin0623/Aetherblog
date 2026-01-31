@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ========================================
-   Theme CSS Variables (Light/Dark)
+   主题 CSS 变量 (亮色/暗色)
    ======================================== */
 
 /* 亮色主题 (默认) */
@@ -131,7 +131,7 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Form Elements Base Styles - Ensures theme variables override browser defaults */
+/* 表单元素基础样式 - 确保主题变量覆盖浏览器默认值 */
 input,
 textarea,
 select {
@@ -152,7 +152,7 @@ input[type="time"] {
   color: var(--text-primary);
 }
 
-/* Fix for webkit datetime picker icons in light mode */
+/* 修复亮色模式下 WebKit 日期时间选择器图标 */
 input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: none;
@@ -163,7 +163,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
 
-/* Select dropdown arrow styling */
+/* 选择下拉箭头样式 */
 select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
@@ -173,7 +173,7 @@ select {
   padding-right: 2.5rem;
 }
 
-/* Focus states */
+/* 聚焦状态 */
 input:focus,
 textarea:focus,
 select:focus {
@@ -234,7 +234,7 @@ select:focus {
   background: var(--scrollbar-thumb-hover);
 }
 
-/* Shimmer loading animation */
+/* 闪光加载动画 */
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
@@ -244,7 +244,7 @@ select:focus {
   }
 }
 
-/* Shimmer utility class for easier reuse */
+/* 闪光工具类以便复用 */
 .shimmer-effect {
   position: absolute;
   inset: 0;
@@ -268,7 +268,7 @@ select:focus {
 }
 
 /* ========================================
-   View Transitions API - Theme Switch Animation
+   View Transitions API - 主题切换动画
    圆形扩散/收缩主题切换动画
    ======================================== */
 

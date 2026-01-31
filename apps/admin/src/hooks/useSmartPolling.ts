@@ -2,8 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 
 interface UseSmartPollingOptions {
   callback: () => void | Promise<void>;
-  interval: number; // seconds
-  idleTimeout?: number; // milliseconds, default 5 minutes
+  interval: number; // 秒
+  idleTimeout?: number; // 毫秒，默认 5 分钟
   enabled?: boolean;
 }
 
@@ -19,7 +19,7 @@ interface UseSmartPollingOptions {
 export function useSmartPolling({
   callback,
   interval,
-  idleTimeout = 5 * 60 * 1000, // 5 minutes
+  idleTimeout = 5 * 60 * 1000, // 5 分钟
   enabled = true
 }: UseSmartPollingOptions) {
   const [isIdle, setIsIdle] = useState(false);
@@ -121,7 +121,7 @@ export function useSmartPolling({
       }
     };
 
-    idleCheckTimerRef.current = setInterval(checkIdle, 10000); // Check every 10s
+    idleCheckTimerRef.current = setInterval(checkIdle, 10000); // 每 10 秒检查一次
     
     return () => {
       if (idleCheckTimerRef.current) clearInterval(idleCheckTimerRef.current);

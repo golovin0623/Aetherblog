@@ -169,7 +169,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                     ) : (
                       <LinkIcon className="w-4 h-4 text-[var(--text-muted)]" />
                     )}
-                    {/* Fallback for broken custom icons */}
+                    {/* 自定义图标损坏时的回退 */}
                     <div className="hidden absolute inset-0 items-center justify-center bg-[var(--bg-secondary)] text-[var(--text-muted)]">
                         <LinkIcon className="w-4 h-4" />
                     </div>
