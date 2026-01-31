@@ -41,6 +41,8 @@ export interface AiCredential {
   provider_code: string;
   provider_name?: string | null;
   base_url_override?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extra_config?: Record<string, any> | null;
   is_default: boolean;
   is_enabled: boolean;
   last_used_at?: string | null;
@@ -131,6 +133,11 @@ export interface RoutingUpdateRequest {
   config_override?: Record<string, any> | null;
 }
 
+export interface ModelSortItem {
+  id: number;
+  sort: number;
+}
+
 export const aiProviderService = {
   listProviders: (enabledOnly = false): Promise<R<AiProvider[]>> =>
     api.get('/v1/admin/providers', { params: { enabled_only: enabledOnly } }),
@@ -170,7 +177,7 @@ export const aiProviderService = {
     api.delete(`/v1/admin/providers/credentials/${id}`),
 
   testCredential: (id: number, modelId?: string): Promise<R<{ success: boolean; message: string; latency_ms?: number }>> =>
-    api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'gpt-4o-mini' }),
+    api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'claude-haiku-4-5-20251001' }),
 
   listTasks: (): Promise<R<AiTaskType[]>> =>
     api.get('/v1/admin/providers/tasks'),
@@ -180,4 +187,36 @@ export const aiProviderService = {
 
   updateRouting: (taskType: string, data: RoutingUpdateRequest): Promise<R<boolean>> =>
     api.put(`/v1/admin/providers/routing/${taskType}`, data),
+
+  syncRemoteModels: (
+    providerCode: string,
+    credentialId?: number | null
+  ): Promise<R<{ inserted: number; total: number }>> =>
+    api.post(`/v1/admin/providers/${providerCode}/models/remote`, {
+      credential_id: credentialId ?? null,
+    }),
+
+  clearProviderModels: (
+    providerCode: string,
+    source?: string
+  ): Promise<R<{ deleted: number }>> =>
+    api.delete(`/v1/admin/providers/${providerCode}/models`, {
+      params: { source },
+    }),
+
+  batchToggleModels: (
+    providerCode: string,
+    ids: number[],
+    enabled: boolean
+  ): Promise<R<{ updated: number }>> =>
+    api.put(`/v1/admin/providers/${providerCode}/models/batch-toggle`, {
+      ids,
+      enabled,
+    }),
+
+  updateModelSort: (
+    providerCode: string,
+    items: ModelSortItem[]
+  ): Promise<R<{ updated: number }>> =>
+    api.put(`/v1/admin/providers/${providerCode}/models/sort`, { items }),
 };

@@ -106,6 +106,32 @@ class ModelUpdate(BaseModel):
     is_enabled: bool | None = None
 
 
+class ModelSyncRequest(BaseModel):
+    """Request to fetch remote models."""
+    credential_id: int | None = None
+
+
+class ModelSyncResponse(BaseModel):
+    """Response for remote model sync."""
+    inserted: int
+    total: int
+
+
+class ModelBatchToggleRequest(BaseModel):
+    """Batch toggle models."""
+    ids: list[int]
+    enabled: bool
+
+
+class ModelSortItem(BaseModel):
+    id: int
+    sort: int
+
+
+class ModelSortRequest(BaseModel):
+    items: list[ModelSortItem]
+
+
 class CredentialResponse(BaseModel):
     """Credential information response (without API key)."""
     id: int
@@ -114,6 +140,7 @@ class CredentialResponse(BaseModel):
     provider_code: str
     provider_name: str | None
     base_url_override: str | None
+    extra_config: dict[str, Any] | None = None
     is_default: bool
     is_enabled: bool
     last_used_at: datetime | None
@@ -123,7 +150,7 @@ class CredentialResponse(BaseModel):
 
 class CredentialTestRequest(BaseModel):
     """Request to test a credential."""
-    model_id: str = Field(default="gpt-4o-mini", description="Model to test")
+    model_id: str = Field(default="claude-haiku-4-5-20251001", description="Model to test")
 
 
 class CredentialTestResponse(BaseModel):

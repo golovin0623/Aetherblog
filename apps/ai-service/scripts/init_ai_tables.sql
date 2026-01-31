@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS ai_providers (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    CONSTRAINT chk_ai_provider_api_type CHECK (api_type IN ('openai_compat', 'anthropic', 'google', 'custom'))
+    CONSTRAINT chk_ai_provider_api_type CHECK (
+        api_type IN ('openai_compat', 'anthropic', 'google', 'azure', 'custom')
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_providers_code ON ai_providers(code);
@@ -52,7 +54,20 @@ CREATE TABLE IF NOT EXISTS ai_models (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     UNIQUE(provider_id, model_id),
-    CONSTRAINT chk_ai_model_type CHECK (model_type IN ('chat', 'embedding', 'image', 'audio', 'reasoning'))
+    CONSTRAINT chk_ai_model_type CHECK (
+        model_type IN (
+            'chat',
+            'embedding',
+            'image',
+            'audio',
+            'reasoning',
+            'tts',
+            'stt',
+            'realtime',
+            'text2video',
+            'text2music'
+        )
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider_id);
@@ -182,7 +197,7 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_window, max_output_tokens, input_cost_per_1k, output_cost_per_1k, capabilities) VALUES
     -- OpenAI
     ((SELECT id FROM ai_providers WHERE code = 'openai'), 'gpt-4o', 'GPT-4o', 'chat', 128000, 16384, 0.0025, 0.01, '{"vision": true, "function_call": true}'),
-    ((SELECT id FROM ai_providers WHERE code = 'openai'), 'gpt-4o-mini', 'GPT-4o Mini', 'chat', 128000, 16384, 0.00015, 0.0006, '{"vision": true, "function_call": true}'),
+    ((SELECT id FROM ai_providers WHERE code = 'openai'), 'gpt-5-mini', 'GPT-4o Mini', 'chat', 128000, 16384, 0.00015, 0.0006, '{"vision": true, "function_call": true}'),
     ((SELECT id FROM ai_providers WHERE code = 'openai'), 'text-embedding-3-small', 'Embedding 3 Small', 'embedding', 8191, NULL, 0.00002, 0, '{}'),
     ((SELECT id FROM ai_providers WHERE code = 'openai'), 'text-embedding-3-large', 'Embedding 3 Large', 'embedding', 8191, NULL, 0.00013, 0, '{}'),
     -- DeepSeek
@@ -220,13 +235,13 @@ SELECT
     fm.id,
     cfg::jsonb
 FROM (VALUES
-    ('summary', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.3}'),
-    ('tags', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.2}'),
-    ('titles', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.7}'),
+    ('summary', 'gpt-5-mini', 'deepseek-chat', '{"temperature": 0.3}'),
+    ('tags', 'gpt-5-mini', 'deepseek-chat', '{"temperature": 0.2}'),
+    ('titles', 'gpt-5-mini', 'deepseek-chat', '{"temperature": 0.7}'),
     ('polish', 'gpt-4o', 'deepseek-chat', '{"temperature": 0.5}'),
-    ('outline', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.5}'),
+    ('outline', 'gpt-5-mini', 'deepseek-chat', '{"temperature": 0.5}'),
     ('embedding', 'text-embedding-3-small', NULL, '{}'),
-    ('qa', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.3}')
+    ('qa', 'gpt-5-mini', 'deepseek-chat', '{"temperature": 0.3}')
 ) AS v(task_code, primary_model, fallback_model, cfg)
 JOIN ai_task_types tt ON tt.code = v.task_code
 LEFT JOIN ai_models pm ON pm.model_id = v.primary_model

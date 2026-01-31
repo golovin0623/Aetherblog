@@ -35,6 +35,7 @@ class ApiType(str, Enum):
     OPENAI_COMPAT = "openai_compat"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
+    AZURE = "azure"
     CUSTOM = "custom"
 
 
@@ -45,6 +46,11 @@ class ModelType(str, Enum):
     IMAGE = "image"
     AUDIO = "audio"
     REASONING = "reasoning"
+    TTS = "tts"
+    STT = "stt"
+    REALTIME = "realtime"
+    TEXT2VIDEO = "text2video"
+    TEXT2MUSIC = "text2music"
 
 
 class AiProvider(Base):

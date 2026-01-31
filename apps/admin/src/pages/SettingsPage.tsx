@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
 import { toast } from 'sonner';
-import { SocialLinksEditor, type SocialLink } from '@/components/settings/SocialLinksEditor';
+import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 
 // Setting Metadata Definition
 // Helps mapping raw keys to UI labels and input types

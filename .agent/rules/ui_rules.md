@@ -11,6 +11,7 @@
 - **样式**: Tailwind CSS v3.4+ (尽量少用 `[]` 任意值，优先使用主题变量)。
 - **动画**: Framer Motion (`framer-motion`)。使用 `layout` 属性实现自动布局动画。
 - **图标**: Lucide React (`lucide-react`)。默认 `strokeWidth={1.5}` 或 `{2}`。
+- **AI 品牌图标**: 必须使用 `@lobehub/icons` (官方 SVG)。禁止使用 Emoji 代表 AI 供应商。
 - **工具**: 必须使用 `cn()` (clsx + tailwind-merge) 进行类名合并。
 
 ## 3. 配色方案 (暗色主题)

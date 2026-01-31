@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Send, RefreshCw } from 'lucide-react';
+import { Sparkles, RefreshCw } from 'lucide-react';
 
 export function TextCleanerPage() {
   const [input, setInput] = useState('');
