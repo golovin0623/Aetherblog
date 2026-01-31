@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import {
   Bold, Italic, Strikethrough, Code, Link, Image, List, ListOrdered,
-  Quote, Heading1, Heading2, Heading3, Minus, Eye, Edit, MoreHorizontal
+  Quote, Heading1, Heading2, Heading3, Minus, Eye, Edit
 } from 'lucide-react';
 
 interface PostEditorProps {

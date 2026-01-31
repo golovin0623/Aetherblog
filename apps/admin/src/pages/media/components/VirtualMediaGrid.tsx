@@ -1,5 +1,5 @@
-import { FixedSizeGrid as Grid, GridChildComponentProps } from 'react-window';
-import { useCallback, useMemo } from 'react';
+import { FixedSizeGrid as Grid } from 'react-window';
+import { useCallback } from 'react';
 import type { MediaItem } from '@/services/mediaService';
 
 /**
@@ -35,15 +35,16 @@ export function VirtualMediaGrid({
   onSelect,
   onToggleSelect,
   onPreview,
-  onDelete, // Currently unused in UI but added to fix interface compatibility
-  onCopyUrl, // Currently unused in UI but added to fix interface compatibility
-  onDownload, // Currently unused in UI but added to fix interface compatibility
+  onDelete: _onDelete,
+  onCopyUrl: _onCopyUrl,
+  onDownload: _onDownload,
 }: VirtualMediaGridProps) {
   // 计算行数
   const rowCount = Math.ceil(items.length / columnCount);
 
   // 渲染单个单元格
   const Cell = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ({ columnIndex, rowIndex, style }: any) => {
       const index = rowIndex * columnCount + columnIndex;
       const item = items[index];

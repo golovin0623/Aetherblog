@@ -12,7 +12,9 @@ export interface AiProvider {
   icon?: string | null;
   is_enabled: boolean;
   priority: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   capabilities: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config_schema?: Record<string, any> | null;
 }
 
@@ -27,6 +29,7 @@ export interface AiModel {
   max_output_tokens?: number | null;
   input_cost_per_1k?: number | null;
   output_cost_per_1k?: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   capabilities: Record<string, any>;
   is_enabled: boolean;
 }
@@ -58,6 +61,7 @@ export interface AiRouting {
   task_type: string;
   primary_model: AiModel | null;
   fallback_model: AiModel | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
 }
 

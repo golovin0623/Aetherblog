@@ -6,10 +6,9 @@ import {
   Sparkles,
   ListTree,
   Loader2,
-  ChevronDown,
   X,
 } from 'lucide-react';
-import { aiService, type SummaryResponse, type TagsResponse, type TitlesResponse, type PolishResponse, type OutlineResponse } from '@/services/aiService';
+import { aiService } from '@/services/aiService';
 import { toast } from 'sonner';
 
 interface AiToolbarProps {
@@ -39,6 +38,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
       } else {
         toast.error(res.message || '生成摘要失败');
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       toast.error(error.message || '生成摘要失败');
     } finally {

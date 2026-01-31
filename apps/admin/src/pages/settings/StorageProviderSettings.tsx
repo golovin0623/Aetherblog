@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Server, Check, X, Settings, Trash2, TestTube } from 'lucide-react';
+import { Plus, Server, Check, Trash2, TestTube } from 'lucide-react';
 import { Button } from '@aetherblog/ui';
 import { storageProviderService, CreateStorageProviderRequest } from '@/services/storageProviderService';
-import type { StorageProvider, StorageProviderType } from '@aetherblog/types';
+import type { StorageProviderType } from '@aetherblog/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@aetherblog/utils';
 import { toast } from 'sonner';
 
 /**
@@ -25,7 +24,6 @@ const PROVIDER_TYPES: { value: StorageProviderType; label: string; description: 
 export default function StorageProviderSettings() {
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
 
   // 获取所有存储提供商
   const { data: providersResponse, isLoading } = useQuery({
@@ -42,6 +40,7 @@ export default function StorageProviderSettings() {
       queryClient.invalidateQueries({ queryKey: ['storage-providers'] });
       toast.success('删除成功');
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
       toast.error(error.response?.data?.msg || '删除失败');
     },
@@ -231,6 +230,7 @@ function CreateProviderDialog({
       toast.success('创建成功');
       onSuccess();
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
       toast.error(error.response?.data?.msg || '创建失败');
     },
