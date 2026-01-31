@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/stores';
@@ -26,6 +26,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +66,9 @@ export function LoginPage() {
          if (mustChangePassword) {
             navigate('/change-password', { state: { firstLogin: true } });
          } else {
-            navigate('/');
+            // 登录成功后，如果有来源页面则跳转回来源页面，否则跳转到首页
+            const from = (location.state as any)?.from?.pathname || '/';
+            navigate(from, { replace: true });
          }
       } else {
          setError(res.message || '登录失败');
