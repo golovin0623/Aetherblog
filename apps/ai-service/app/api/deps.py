@@ -15,6 +15,7 @@ from app.services.llm_router import LlmRouter
 from app.services.model_router import ModelRouter
 from app.services.provider_registry import ProviderRegistry
 from app.services.credential_resolver import CredentialResolver
+from app.services.remote_model_fetcher import RemoteModelFetcher
 from app.services.metrics import MetricsStore, get_metrics_store
 from app.services.rate_limiter import RateLimiter
 from app.services.usage_logger import UsageLogger
@@ -31,6 +32,7 @@ _credential_resolver: CredentialResolver | None = None
 _vector_store: VectorStoreService | None = None
 _pg_pool: asyncpg.Pool | None = None
 _usage_logger: UsageLogger | None = None
+_remote_model_fetcher: RemoteModelFetcher | None = None
 
 
 def _get_redis() -> Redis:
@@ -112,6 +114,13 @@ async def get_usage_logger() -> UsageLogger:
         pool = await get_pg_pool()
         _usage_logger = UsageLogger(pool)
     return _usage_logger
+
+
+def get_remote_model_fetcher() -> RemoteModelFetcher:
+    global _remote_model_fetcher
+    if _remote_model_fetcher is None:
+        _remote_model_fetcher = RemoteModelFetcher()
+    return _remote_model_fetcher
 
 
 async def require_user(authorization: str | None = Header(default=None)) -> UserClaims:

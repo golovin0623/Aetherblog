@@ -57,6 +57,7 @@ trigger: always_on
 | 5.5 | 分类标签管理 | §8.2 | CategoryManager, TagManager | 4h |
 | 5.6 | 友链管理 | §8.2 | FriendLinkManager | 3h |
 | 5.7 | 系统设置 | §8.2 | Settings, Profile | 4h |
+| 5.8 | AI 配置中心 | §8.2, §5.1 | AiConfigPage, ProviderComponents | 12h |
 
 ### 阶段6: AI 服务开发
 

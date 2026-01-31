@@ -141,13 +141,15 @@ Spring Boot 新增 `AiServiceClient`（接口）+ `AiServiceHttpClient`（实现
 
 ## 首批供应商与模型清单（已确认）
 
-### 1) OpenAI（首批主力，Embedding 由 OpenAI 承担）
-- 生成类（摘要/标签/标题/润色/大纲）  
-  - `gpt-4o-mini`：高频、低成本  
-  - `gpt-4o`：高质量
-- 向量（Embedding）  
-  - `text-embedding-3-small`（默认）  
-  - `text-embedding-3-large`（质量优先）
+### 1) OpenAI / Anthropic / Google (2026 主力)
+- **GPT 套件**  
+  - `gpt-5.2`：核心写作、精细润色  
+- **Claude 套件**  
+  - `claude-sonnet-4-5-thinking`：深度思维、逻辑推理  
+  - `claude-haiku-4-5-20251001`：智能标签、快速反应  
+- **Gemini 套件**  
+  - `gemini-3-flash-preview`：海量上下文摘要、极速检索  
+  - `gemini-3-pro-preview`：大纲生成、结构化布局
 
 ### 2) OpenAI 协议兼容供应商（可插拔）
 - 通过 LiteLLM 统一接入，作为成本或容灾通道。
@@ -164,11 +166,11 @@ Spring Boot 新增 `AiServiceClient`（接口）+ `AiServiceHttpClient`（实现
 - Embedding 预留 `text-embedding-004` 作为备选，但首批不启用。
 
 ### 推荐路由（示例）
-- `ai.summary.fast` -> gpt-4o-mini  
-- `ai.summary.quality` -> gpt-4o / claude-3.5-sonnet  
-- `ai.tags` -> gpt-4o-mini  
-- `ai.polish` -> claude-3.5-sonnet  
-- `ai.outline` -> gemini-1.5-pro  
+- `ai.summary.fast` -> gemini-3-flash-preview  
+- `ai.summary.quality` -> claude-sonnet-4-5-thinking  
+- `ai.tags` -> claude-haiku-4-5-20251001  
+- `ai.polish` -> gpt-5.2  
+- `ai.outline` -> gemini-3-pro-preview  
 - `ai.embedding` -> text-embedding-3-small（OpenAI）
 
 ## 服务边界

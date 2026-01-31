@@ -59,7 +59,7 @@ export default function PostsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
+
 
   // Debounce search
   useEffect(() => {
@@ -190,7 +190,6 @@ export default function PostsPage() {
   // Handle open properties modal
   const handleOpenProperties = useCallback(async (post: PostListItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsFetchingDetail(true);
     try {
       const res = await postService.getById(post.id);
       console.log('[Debug] API Response:', res);
@@ -200,8 +199,6 @@ export default function PostsPage() {
       }
     } catch (err) {
       logger.error('获取文章详情失败:', err);
-    } finally {
-      setIsFetchingDetail(false);
     }
   }, []);
 
