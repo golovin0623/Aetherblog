@@ -53,7 +53,7 @@ export function PieChart({ data, size = 160, showLegend = true }: PieChartProps)
 
   return (
     <div className="flex items-center gap-6">
-      {/* Chart */}
+      {/* 图表 */}
       <div style={{ width: size, height: size }}>
         <svg viewBox="0 0 100 100" className="w-full h-full">
           {segments.map((seg, i) => (
@@ -64,12 +64,12 @@ export function PieChart({ data, size = 160, showLegend = true }: PieChartProps)
               className="transition-all duration-300 hover:opacity-80"
             />
           ))}
-          {/* Center hole */}
+          {/* 中心空洞 */}
           <circle cx="50" cy="50" r="20" fill="rgb(17, 24, 39)" />
         </svg>
       </div>
 
-      {/* Legend */}
+      {/* 图例 */}
       {showLegend && (
         <div className="flex-1 space-y-2">
           {segments.map((seg, i) => (

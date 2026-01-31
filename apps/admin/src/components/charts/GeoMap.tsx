@@ -16,7 +16,7 @@ export function GeoMap({ data }: GeoMapProps) {
     <div className="p-6 rounded-xl bg-white/5 border border-white/10">
       <h3 className="text-lg font-semibold text-white mb-4">地域分布</h3>
       
-      {/* Simple bar-based geo visualization */}
+      {/* 基于条形图的地理可视化 */}
       <div className="space-y-3">
         {sortedData.map((item, index) => (
           <div key={item.country} className="space-y-1">
@@ -42,7 +42,7 @@ export function GeoMap({ data }: GeoMapProps) {
         ))}
       </div>
 
-      {/* Legend */}
+      {/* 图例 */}
       <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-sm text-gray-400">
         <span>总访问量: {sortedData.reduce((sum, d) => sum + d.count, 0).toLocaleString()}</span>
         <span>共 {sortedData.length} 个地区</span>

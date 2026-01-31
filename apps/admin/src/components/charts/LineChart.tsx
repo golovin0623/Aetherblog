@@ -46,7 +46,7 @@ export function LineChart({
   return (
     <div className="relative" style={{ height }}>
       <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {/* Grid */}
+        {/* 网格 */}
         {showGrid &&
           gridLines.map((line, i) => (
             <line
@@ -60,22 +60,22 @@ export function LineChart({
             />
           ))}
 
-        {/* Area */}
+        {/* 区域 */}
         <path
           d={`${pathD} L 100 100 L 0 100 Z`}
           fill={`url(#gradient-${color.replace('#', '')})`}
           opacity="0.3"
         />
 
-        {/* Line */}
+        {/* 线条 */}
         <path d={pathD} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
 
-        {/* Points */}
+        {/* 数据点 */}
         {points.map((pt, i) => (
           <circle key={i} cx={pt.x} cy={pt.y} r="3" fill={color} vectorEffect="non-scaling-stroke" />
         ))}
 
-        {/* Gradient Definition */}
+        {/* 渐变定义 */}
         <defs>
           <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.5" />
@@ -84,7 +84,7 @@ export function LineChart({
         </defs>
       </svg>
 
-      {/* Labels */}
+      {/* 标签 */}
       {showLabels && (
         <div className="flex justify-between mt-2 text-xs text-gray-500">
           {data.map((d, i) => (

@@ -1291,10 +1291,10 @@ export function CreatePostPage() {
         )}
       </AnimatePresence>
 
-      {/* Formatting Toolbar - outer container with overflow-visible for tooltips */}
+      {/* 格式化工具栏 - 允许提示框溢出的外部容器 */}
       <div className="relative border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 backdrop-blur-sm">
         <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto">
-        {/* Undo/Redo */}
+        {/* 撤销/重做 */}
         <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
             <Undo2 className="w-4 h-4" />
@@ -1303,7 +1303,7 @@ export function CreatePostPage() {
             <Redo2 className="w-4 h-4" />
           </ToolbarButton>
         </div>
-        {/* Headings */}
+        {/* 标题 */}
         <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
             <Heading1 className="w-4 h-4" />
@@ -1316,7 +1316,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
         
-        {/* Text Formatting */}
+        {/* 文本格式化 */}
         <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
             <Bold className="w-4 h-4" />
@@ -1332,7 +1332,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
 
-        {/* Code */}
+        {/* 代码 */}
         <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
             <Code className="w-4 h-4" />
@@ -1342,7 +1342,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
         
-        {/* Lists */}
+        {/* 列表 */}
         <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
             <List className="w-4 h-4" />
@@ -1355,7 +1355,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
 
-        {/* Insert */}
+        {/* 插入 */}
         <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
           <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
             <Link2 className="w-4 h-4" />
@@ -1371,7 +1371,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
 
-        {/* Advanced: Quote, Math, Diagram */}
+        {/* 高级：引用、数学公式、图表 */}
         <div className="flex items-center gap-0.5 px-3">
           <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
             <Quote className="w-4 h-4" />
@@ -1384,10 +1384,10 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
         
-        {/* Spacer */}
+        {/* 占位符 */}
         <div className="flex-1" />
         
-        {/* Zoom Controls with Domain Toggle */}
+        {/* 带域切换的缩放控制 */}
         <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
           <ToolbarButton
             onClick={() => {
@@ -1405,7 +1405,7 @@ export function CreatePostPage() {
             <ZoomOut className="w-4 h-4" />
           </ToolbarButton>
           
-          {/* Font Size Display with Domain Toggle */}
+          {/* 带域切换的字号显示 */}
           <button
             onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
             className={cn(
@@ -1453,7 +1453,7 @@ export function CreatePostPage() {
           </ToolbarButton>
         </div>
 
-        {/* View Mode Toggle */}
+        {/* 视图模式切换 */}
         <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
           <ToolbarButton 
             onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')} 
@@ -1527,11 +1527,11 @@ export function CreatePostPage() {
       </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* 主要内容区域 */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Editor Container */}
+        {/* 编辑器容器 */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* Editor */}
+          {/* 编辑器 */}
           <div ref={editorContainerRef} className="flex-1 overflow-hidden min-h-0 relative">
             <EditorWithPreview
               value={content}
@@ -1553,7 +1553,7 @@ export function CreatePostPage() {
               theme={resolvedTheme}
             />
 
-            {/* Upload Progress Overlay */}
+            {/* 上传进度覆盖层 */}
             {uploads.length > 0 && (
               <UploadProgress
                 uploads={uploads}
@@ -1563,7 +1563,7 @@ export function CreatePostPage() {
               />
             )}
             
-            {/* IDEA-style Table Trigger Zones - Fixed positioning with viewport coordinates */}
+            {/* IDEA 风格的表格触发区域 - 使用视口坐标固定定位 */}
             {tableInfo?.isInTable && tableInfo.tableBounds && tableInfo.rowPositions && editorContainerRef.current && (() => {
               const containerRect = editorContainerRef.current.getBoundingClientRect();
               const isInViewport = tableInfo.tableBounds.top >= containerRect.top - 100 &&
@@ -1580,7 +1580,7 @@ export function CreatePostPage() {
 
               return (
                 <>
-                  {/* Top Trigger Zone (Column Operations) */}
+                  {/* 顶部触发区域 (列操作) */}
                   {tableInfo.columnPositions && tableInfo.columnPositions.length > 0 && (
                     <div
                       className="fixed z-40"
@@ -1593,7 +1593,7 @@ export function CreatePostPage() {
                       onMouseEnter={handleTableTriggerEnter}
                       onMouseLeave={handleTableTriggerLeave}
                     >
-                       {/* Render Segments between dots */}
+                       {/* 渲染点之间的线段 */}
                        {tableInfo.columnPositions.slice(0, -1).map((x: number, i: number) => {
                          const nextX = tableInfo.columnPositions![i + 1];
                          const width = nextX - x;
@@ -1610,7 +1610,7 @@ export function CreatePostPage() {
                          );
                        })}
                        
-                       {/* Render Dots exactly at pipe | positions */}
+                       {/* 在管道符 | 位置精确渲染点 */}
                        {tableInfo.columnPositions.map((x: number, i: number) => (
                          <div
                            key={`col-dot-${i}`}
@@ -1623,7 +1623,7 @@ export function CreatePostPage() {
                     </div>
                   )}
 
-                  {/* Left Trigger Zone (Row Operations) */}
+                  {/* 左侧触发区域 (行操作) */}
                   {extendedRowPositions.length > 0 && (
                     <div
                       className="fixed z-40"
@@ -1636,7 +1636,7 @@ export function CreatePostPage() {
                       onMouseEnter={handleTableTriggerEnter}
                       onMouseLeave={handleTableTriggerLeave}
                     >
-                      {/* Render Segments between dots (representing rows) */}
+                      {/* 渲染点之间的线段 (代表行) */}
                       {extendedRowPositions.slice(0, -1).map((y, i) => {
                         const nextY = extendedRowPositions[i + 1];
                         const height = nextY - y;
@@ -1656,7 +1656,7 @@ export function CreatePostPage() {
                         );
                       })}
 
-                      {/* Render Dots at row gaps (top/bottom of lines) */}
+                      {/* 在行间隙渲染点 (行顶/行底) */}
                       {extendedRowPositions.map((y, i) => (
                         <div
                           key={`row-dot-${i}`}
@@ -1672,7 +1672,7 @@ export function CreatePostPage() {
               );
             })()}
             
-            {/* Floating Table Operations Toolbar */}
+            {/* 浮动表格操作工具栏 */}
             <AnimatePresence>
               {showTableToolbar && tableInfo?.isInTable && tableInfo.tableBounds && editorContainerRef.current && (
                 <motion.div
@@ -1689,7 +1689,7 @@ export function CreatePostPage() {
                   onMouseEnter={handleTableTriggerEnter}
                   onMouseLeave={handleTableTriggerLeave}
                 >
-                  {/* Back/Return button */}
+                  {/* 返回按钮 */}
                   <ToolbarButton
                     onClick={() => setShowTableToolbar(false)}
                     tooltip="关闭"
@@ -1701,7 +1701,7 @@ export function CreatePostPage() {
                   
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
                   
-                  {/* Row operations - purple/pink colors like IDEA */}
+                  {/* 行操作 - 类似 IDEA 的紫/粉色 */}
                   <ToolbarButton
                     onClick={() => { tableCommands.insertRowAbove(); editorCommands.focus(); }}
                     tooltip="上方插入行"
@@ -1721,7 +1721,7 @@ export function CreatePostPage() {
                   
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
                   
-                  {/* Column operations - blue colors */}
+                  {/* 列操作 - 蓝色 */}
                   <ToolbarButton
                     onClick={() => { tableCommands.insertColumnLeft(); editorCommands.focus(); }}
                     tooltip="左侧插入列"
@@ -1741,7 +1741,7 @@ export function CreatePostPage() {
                   
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
                   
-                  {/* Column alignment - white/gray, active is blue bg */}
+                  {/* 列对齐 - 白/灰，激活时为蓝色背景 */}
                   <ToolbarButton
                     onClick={() => { tableCommands.setColumnAlignment('left'); editorCommands.focus(); }}
                     tooltip="左对齐"
@@ -1769,7 +1769,7 @@ export function CreatePostPage() {
                   
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
                   
-                  {/* Delete operations - red colors */}
+                  {/* 删除操作 - 红色 */}
                   <ToolbarButton
                     onClick={() => { tableCommands.deleteRow(); editorCommands.focus(); }}
                     tooltip="删除行"
@@ -1792,7 +1792,7 @@ export function CreatePostPage() {
           </div>
         </div>
 
-        {/* TOC Panel */}
+        {/* 目录面板 */}
         <AnimatePresence mode="wait">
           {showToc && (
             <motion.div
@@ -1817,10 +1817,10 @@ export function CreatePostPage() {
               }}
               className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
             >
-              {/* Cinematic Edge Highlight */}
+              {/* 电影感边缘高光 */}
               <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
 
-              {/* TOC Header */}
+              {/* 目录头部 */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
@@ -1834,7 +1834,7 @@ export function CreatePostPage() {
                 </button>
               </div>
               
-              {/* TOC Content */}
+              {/* 目录内容 */}
               <div className="flex-1 overflow-y-auto py-4 scrollbar-hide">
                 {tocItems.length === 0 ? (
                   <motion.div 
@@ -1890,7 +1890,7 @@ export function CreatePostPage() {
                         style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         title={item.text}
                       >
-                        {/* Elegant Hover Indicator */}
+                        {/* 优雅的悬停指示器 */}
                         <div className="absolute left-1 w-0.5 h-0 bg-primary group-hover:h-3/5 transition-all duration-400 ease-out-expo rounded-full opacity-0 group-hover:opacity-100 shadow-[0_0_8px_#8b5cf6]" />
                         
                         <span className={cn(
@@ -1973,7 +1973,7 @@ export function CreatePostPage() {
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
               className="absolute right-0 top-0 bottom-0 w-[400px] z-50 bg-[var(--bg-primary)] border-l border-[var(--border-default)] shadow-2xl flex flex-col"
             >
-              {/* Header */}
+              {/* 头部 */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">
                 <div className="flex items-center gap-2">
                   <Settings className="w-5 h-5 text-primary" />
@@ -1987,9 +1987,9 @@ export function CreatePostPage() {
                 </button>
               </div>
 
-              {/* Content - Scrollable */}
+              {/* 内容 - 可滚动 */}
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                {/* Cover Image */}
+                {/* 封面图片 */}
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-[var(--text-secondary)]">封面图片</label>
                   <div className="border-2 border-dashed border-[var(--border-default)] rounded-xl p-8 text-center hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
@@ -2001,7 +2001,7 @@ export function CreatePostPage() {
                   </div>
                 </div>
 
-                {/* Publish Time */}
+                {/* 发布时间 */}
                 <div className="space-y-3">
                   <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
                     <Clock className="w-4 h-4 text-primary" />
@@ -2017,7 +2017,7 @@ export function CreatePostPage() {
                   <p className="text-xs text-[var(--text-muted)]">预设发布时间，即刻发布请留空</p>
                 </div>
 
-                {/* Summary */}
+                {/* 摘要 */}
                 <div className="space-y-3">
                    <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
@@ -2038,10 +2038,10 @@ export function CreatePostPage() {
                   />
                 </div>
                 
-                {/* Advanced Settings Divider */}
+                {/* 高级设置分割线 */}
                 <div className="pt-4 border-t border-[var(--border-subtle)]">
                    <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">高级设置</h3>
-                   {/* SEO Settings could go here */}
+                   {/* SEO 设置可在此处添加 */}
                    <div className="opacity-50 pointer-events-none filter blur-[1px]">
                       <div className="space-y-3">
                         <label className="block text-sm font-medium text-[var(--text-secondary)]">SEO 标题 (即将上线)</label>
@@ -2051,7 +2051,7 @@ export function CreatePostPage() {
                 </div>
               </div>
 
-              {/* Footer */}
+              {/* 页脚 */}
               <div className="p-6 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
                  <button
                   onClick={() => setShowSettings(false)}
@@ -2065,7 +2065,7 @@ export function CreatePostPage() {
         )}
       </AnimatePresence>
 
-        {/* AI Assistant Modal */}
+        {/* AI 助手模态框 */}
         <Modal 
           isOpen={showAI} 
           onClose={() => setShowAI(false)}
@@ -2106,7 +2106,7 @@ export function CreatePostPage() {
           </div>
         </Modal>
 
-        {/* Create Category Modal */}
+        {/* 创建分类模态框 */}
         <AnimatePresence>
           {showCreateCategoryModal && (
             <motion.div

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { getFriendLinks } from '../lib/services';
 import FriendsList from './FriendsList';
 
-export const revalidate = 3600; // 1 hour cache
+export const revalidate = 3600; // 缓存 1 小时
 
 export const metadata: Metadata = {
   title: '友情链接',
