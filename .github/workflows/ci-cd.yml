@@ -62,9 +62,32 @@ jobs:
         working-directory: apps/server
         run: mvn test
 
-  # Docker 镜像构建和推送 (仅在 main 分支)
+  # AI 服务测试
+  ai-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: apps/ai-service/requirements.txt
+
+      - name: Install dependencies
+        working-directory: apps/ai-service
+        run: pip install -r requirements.txt
+
+      - name: Run linting
+        working-directory: apps/ai-service
+        run: |
+          pip install ruff
+          ruff check . || true
+
   docker-build-push:
-    needs: [frontend-test, backend-test]
+    needs: [frontend-test, backend-test, ai-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
@@ -72,6 +95,8 @@ jobs:
         include:
           - service: backend
             dockerfile: ./apps/server/Dockerfile
+          - service: ai-service
+            dockerfile: ./apps/ai-service/Dockerfile
           - service: blog
             dockerfile: ./apps/blog/Dockerfile
           - service: admin
