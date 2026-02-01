@@ -14,6 +14,8 @@ export interface SummaryRequest {
   style?: 'professional' | 'casual' | 'technical';
   model?: string;
   promptVersion?: string;
+  modelId?: string;
+  providerCode?: string;
 }
 
 export interface TagsRequest {
@@ -21,6 +23,8 @@ export interface TagsRequest {
   maxTags?: number;
   model?: string;
   promptVersion?: string;
+  modelId?: string;
+  providerCode?: string;
 }
 
 export interface TitlesRequest {
@@ -29,6 +33,8 @@ export interface TitlesRequest {
   style?: 'professional' | 'creative' | 'seo';
   model?: string;
   promptVersion?: string;
+  modelId?: string;
+  providerCode?: string;
 }
 
 export interface PolishRequest {
@@ -37,6 +43,8 @@ export interface PolishRequest {
   style?: 'professional' | 'casual' | 'technical';
   model?: string;
   promptVersion?: string;
+  modelId?: string;
+  providerCode?: string;
 }
 
 export interface OutlineRequest {
@@ -46,6 +54,18 @@ export interface OutlineRequest {
   style?: 'professional' | 'casual' | 'technical';
   model?: string;
   promptVersion?: string;
+  modelId?: string;
+  providerCode?: string;
+}
+
+export interface TranslateRequest {
+  content: string;
+  targetLanguage: string;
+  sourceLanguage?: string;
+  model?: string;
+  promptVersion?: string;
+  modelId?: string;
+  providerCode?: string;
 }
 
 // ==================== 响应类型 ====================
@@ -81,6 +101,15 @@ export interface PolishResponse {
 
 export interface OutlineResponse {
   outline: string;
+  model?: string;
+  tokensUsed?: number;
+  latencyMs?: number;
+}
+
+export interface TranslateResponse {
+  translatedContent: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
   model?: string;
   tokensUsed?: number;
   latencyMs?: number;
@@ -158,6 +187,13 @@ export const aiService = {
    */
   generateOutline: async (request: OutlineRequest): Promise<R<OutlineResponse>> => {
     return api.post<R<OutlineResponse>>('/v1/admin/ai/outline', request);
+  },
+
+  /**
+   * 翻译内容
+   */
+  translateContent: async (request: TranslateRequest): Promise<R<TranslateResponse>> => {
+    return api.post<R<TranslateResponse>>('/v1/admin/ai/translate', request);
   },
 
   /**

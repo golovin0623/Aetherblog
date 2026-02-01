@@ -4,7 +4,7 @@ import {
   Save, Settings, Sparkles, ArrowLeft, Send, 
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Link2, Image, Quote, Heading1, Heading2, Heading3,
-  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle, Tag as TagIcon,
+  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
   Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
   Undo2, Redo2
@@ -16,11 +16,13 @@ import {
   ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
   AlignLeft, AlignCenter, AlignRight
 } from 'lucide-react';
-import { Modal } from '@aetherblog/ui';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { postService } from '@/services/postService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
+import { SelectionAiToolbar } from './components/SelectionAiToolbar';
+import { AiSidePanel, type AiPanelAction, type AiSidePanelHandle } from './components/AiSidePanel';
+import { SlashCommandMenu } from './components/SlashCommandMenu';
 import { useSidebarStore } from '@/stores';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '@/lib/logger';
@@ -133,6 +135,8 @@ export function CreatePostPage() {
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(true);
   const [showAllTags, setShowAllTags] = useState(false);
+  const [aiModelId, setAiModelId] = useState<string | undefined>(undefined);
+  const [aiProviderCode, setAiProviderCode] = useState<string | undefined>(undefined);
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
@@ -140,6 +144,8 @@ export function CreatePostPage() {
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const aiPanelRef = useRef<AiSidePanelHandle | null>(null);
+  const [pendingAiAction, setPendingAiAction] = useState<AiPanelAction | null>(null);
 
   // 侧边栏自动折叠
   const { setAutoCollapse } = useSidebarStore();
@@ -578,6 +584,87 @@ export function CreatePostPage() {
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
   const [showTableToolbar, setShowTableToolbar] = useState(false);
   const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openAiPanel = useCallback((action?: AiPanelAction) => {
+    setShowToc(false);
+    setShowAI(true);
+    if (action) {
+      setPendingAiAction(action);
+    }
+  }, []);
+
+  useEffect(() => {
+    const savedModelId = localStorage.getItem('aetherblog.editor.aiModelId') || undefined;
+    const savedProviderCode = localStorage.getItem('aetherblog.editor.aiProviderCode') || undefined;
+    if (savedModelId && savedProviderCode) {
+      setAiModelId(savedModelId);
+      setAiProviderCode(savedProviderCode);
+    }
+  }, []);
+
+  const handleModelChange = useCallback((modelId: string, providerCode: string) => {
+    setAiModelId(modelId);
+    setAiProviderCode(providerCode);
+    localStorage.setItem('aetherblog.editor.aiModelId', modelId);
+    localStorage.setItem('aetherblog.editor.aiProviderCode', providerCode);
+  }, []);
+
+  useEffect(() => {
+    if (showAI && pendingAiAction) {
+      aiPanelRef.current?.runAction(pendingAiAction);
+      setPendingAiAction(null);
+    }
+  }, [showAI, pendingAiAction]);
+
+  const insertAiText = useCallback((text: string) => {
+    editorCommands.insertText(text);
+    editorCommands.focus();
+  }, [editorCommands]);
+
+  const replaceAiContent = useCallback((text: string) => {
+    const view = editorViewRef.current;
+    if (!view) {
+      setContent(text);
+      return;
+    }
+
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: text.length },
+    });
+    view.focus();
+  }, [setContent]);
+
+  const applyAiTags = useCallback(async (tagNames: string[], mode: 'replace' | 'append') => {
+    const normalized = Array.from(new Set(tagNames.map(name => name.trim()).filter(Boolean)));
+    if (normalized.length === 0) return;
+
+    const existingMap = new Map(tags.map(tag => [tag.name.toLowerCase(), tag]));
+    const nextSelected: Tag[] = mode === 'append' ? [...selectedTags] : [];
+
+    for (const name of normalized) {
+      const key = name.toLowerCase();
+      let tag = existingMap.get(key);
+      if (!tag) {
+        try {
+          const res = await tagService.create({ name });
+          if (res.data) {
+            tag = res.data;
+            existingMap.set(key, tag);
+            setTags(prev => [...prev, tag!]);
+          }
+        } catch (error) {
+          logger.error('Failed to create tag:', error);
+        }
+      }
+
+      if (tag && !nextSelected.find(item => item.id === tag!.id)) {
+        nextSelected.push(tag);
+      }
+    }
+
+    setSelectedTags(nextSelected);
+  }, [tags, selectedTags, setTags, setSelectedTags]);
 
   // 图片上传 Hook
   const handleUploadFn = useCallback(async (file: File, onProgress?: (percent: number) => void): Promise<UploadResult> => {
@@ -1216,7 +1303,10 @@ export function CreatePostPage() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowAI(true)}
+                  onClick={() => {
+                    setShowToc(false);
+                    setShowAI(prev => !prev);
+                  }}
                   className={cn(
                     'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
                     showAI ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
@@ -1480,7 +1570,10 @@ export function CreatePostPage() {
           </ToolbarButton>
 
           <ToolbarButton 
-            onClick={() => setShowToc(!showToc)} 
+            onClick={() => {
+              setShowAI(false);
+              setShowToc(!showToc);
+            }} 
             tooltip={showToc ? '关闭目录' : '打开目录'}
             isActive={showToc}
           >
@@ -1552,6 +1645,13 @@ export function CreatePostPage() {
               isDragging={isDragging}
               theme={resolvedTheme}
             />
+
+            <SelectionAiToolbar
+              editorViewRef={editorViewRef}
+              selectedModelId={aiModelId}
+              selectedProviderCode={aiProviderCode}
+            />
+            <SlashCommandMenu editorViewRef={editorViewRef} onRunAiAction={openAiPanel} />
 
             {/* Upload Progress Overlay */}
             {uploads.length > 0 && (
@@ -1792,6 +1892,27 @@ export function CreatePostPage() {
           </div>
         </div>
 
+        {/* AI Side Panel */}
+        <AnimatePresence mode="wait">
+          {showAI && (
+            <AiSidePanel
+              ref={aiPanelRef}
+              content={content}
+              title={title}
+              summary={summary}
+              selectedModelId={aiModelId}
+              selectedProviderCode={aiProviderCode}
+              onModelChange={handleModelChange}
+              onClose={() => setShowAI(false)}
+              onInsertText={insertAiText}
+              onReplaceContent={replaceAiContent}
+              onUpdateSummary={setSummary}
+              onUpdateTitle={setTitle}
+              onApplyTags={applyAiTags}
+            />
+          )}
+        </AnimatePresence>
+
         {/* TOC Panel */}
         <AnimatePresence mode="wait">
           {showToc && (
@@ -2022,7 +2143,7 @@ export function CreatePostPage() {
                    <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
                     <button 
-                      onClick={() => setShowAI(true)}
+                      onClick={() => openAiPanel('summary')}
                       className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
                     >
                       <Sparkles className="w-3 h-3" />
@@ -2064,47 +2185,6 @@ export function CreatePostPage() {
           </>
         )}
       </AnimatePresence>
-
-        {/* AI Assistant Modal */}
-        <Modal 
-          isOpen={showAI} 
-          onClose={() => setShowAI(false)}
-          title="AI 写作助手"
-          size="md"
-        >
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              选择 AI 功能
-            </h3>
-            
-            <div className="grid grid-cols-1 gap-3">
-              {[
-                { title: '生成摘要', desc: 'AI 自动生成文章摘要', icon: Sparkles },
-                { title: '智能标签', desc: 'AI 推荐相关标签', icon: TagIcon },
-                { title: '润色优化', desc: '优化文章表达和结构', icon: Settings },
-                { title: '续写内容', desc: 'AI 辅助续写段落', icon: Send },
-                { title: 'SEO 优化', desc: '生成 SEO 标题和描述', icon: Search },
-              ].map((item) => (
-                <button 
-                  key={item.title}
-                  className="w-full p-4 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-left transition-colors border border-[var(--border-subtle)] hover:border-primary/30 group"
-                  onClick={() => {/* Implement AI action */}}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors">
-                      <item.icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-white font-medium">{item.title}</p>
-                      <p className="text-gray-400 text-sm">{item.desc}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </Modal>
 
         {/* Create Category Modal */}
         <AnimatePresence>

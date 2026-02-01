@@ -41,14 +41,18 @@ export default function AiConfigPage() {
   );
 
   // 选中的供应商
+  const normalizedSelectedCode = selectedProviderCode?.toLowerCase() ?? null;
   const selectedProvider = useMemo(
-    () => providers.find((p) => p.code === selectedProviderCode),
-    [providers, selectedProviderCode]
+    () =>
+      normalizedSelectedCode
+        ? providers.find((p) => p.code.toLowerCase() === normalizedSelectedCode)
+        : null,
+    [providers, normalizedSelectedCode]
   );
 
   // 进入详情视图
-  const handleSelectProvider = (code: string | null) => {
-    if (code === null) {
+  const handleSelectProvider = (code: string | null | undefined) => {
+    if (!code) {
       setSelectedProviderCode(null);
       setViewMode('grid');
     } else {
@@ -228,18 +232,33 @@ export default function AiConfigPage() {
                   </>
                 )}
               </motion.div>
+            ) : selectedProvider ? (
+              <ProviderDetail
+                key={selectedProvider.id}
+                provider={selectedProvider}
+                onBack={handleBackToGrid}
+                onEdit={() => {
+                  setEditingProvider(selectedProvider);
+                  setShowProviderDialog(true);
+                }}
+              />
             ) : (
-              selectedProvider && (
-                <ProviderDetail
-                  key={selectedProvider.id}
-                  provider={selectedProvider}
-                  onBack={handleBackToGrid}
-                  onEdit={() => {
-                    setEditingProvider(selectedProvider);
-                    setShowProviderDialog(true);
-                  }}
-                />
-              )
+              <motion.div
+                key="detail-empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center h-[60vh] text-center text-[var(--text-muted)] gap-3"
+              >
+                <div className="text-lg font-medium text-[var(--text-secondary)]">未找到该服务商</div>
+                <div className="text-sm">请在左侧重新选择，或返回列表查看</div>
+                <button
+                  onClick={handleBackToGrid}
+                  className="px-4 py-2 rounded-lg bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-sm hover:bg-[var(--bg-card)] transition-colors"
+                >
+                  返回列表
+                </button>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>

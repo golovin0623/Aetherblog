@@ -319,9 +319,64 @@ class ProviderRegistry:
         )
 
     async def delete_provider(self, provider_id: int) -> bool:
-        query = "DELETE FROM ai_providers WHERE id = $1 RETURNING id"
+        """Delete a provider, first clearing any related credentials and routing references."""
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(query, provider_id)
+            async with conn.transaction():
+                # Get credential IDs for this provider
+                cred_ids = await conn.fetch(
+                    "SELECT id FROM ai_credentials WHERE provider_id = $1",
+                    provider_id,
+                )
+                cred_id_list = [row["id"] for row in cred_ids]
+                
+                # Clear routing references to these credentials
+                if cred_id_list:
+                    await conn.execute(
+                        """
+                        UPDATE ai_task_routing
+                        SET credential_id = NULL
+                        WHERE credential_id = ANY($1::bigint[])
+                        """,
+                        cred_id_list,
+                    )
+                
+                # Get model IDs for this provider (to clear routing references)
+                model_ids = await conn.fetch(
+                    "SELECT id FROM ai_models WHERE provider_id = $1",
+                    provider_id,
+                )
+                model_id_list = [row["id"] for row in model_ids]
+                
+                # Clear routing references to these models
+                if model_id_list:
+                    await conn.execute(
+                        """
+                        UPDATE ai_task_routing
+                        SET primary_model_id = NULL
+                        WHERE primary_model_id = ANY($1::bigint[])
+                        """,
+                        model_id_list,
+                    )
+                    await conn.execute(
+                        """
+                        UPDATE ai_task_routing
+                        SET fallback_model_id = NULL
+                        WHERE fallback_model_id = ANY($1::bigint[])
+                        """,
+                        model_id_list,
+                    )
+                
+                # Delete credentials (now safe)
+                await conn.execute(
+                    "DELETE FROM ai_credentials WHERE provider_id = $1",
+                    provider_id,
+                )
+                
+                # Delete the provider (models will CASCADE)
+                row = await conn.fetchrow(
+                    "DELETE FROM ai_providers WHERE id = $1 RETURNING id",
+                    provider_id,
+                )
         if row:
             self.clear_cache()
             return True
@@ -426,9 +481,31 @@ class ProviderRegistry:
         )
 
     async def delete_model(self, model_db_id: int) -> bool:
-        query = "DELETE FROM ai_models WHERE id = $1 RETURNING id"
+        """Delete a model, first clearing any routing references."""
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(query, model_db_id)
+            async with conn.transaction():
+                # Clear references in ai_task_routing to avoid FK constraint errors
+                await conn.execute(
+                    """
+                    UPDATE ai_task_routing
+                    SET primary_model_id = NULL
+                    WHERE primary_model_id = $1
+                    """,
+                    model_db_id,
+                )
+                await conn.execute(
+                    """
+                    UPDATE ai_task_routing
+                    SET fallback_model_id = NULL
+                    WHERE fallback_model_id = $1
+                    """,
+                    model_db_id,
+                )
+                # Now delete the model
+                row = await conn.fetchrow(
+                    "DELETE FROM ai_models WHERE id = $1 RETURNING id",
+                    model_db_id,
+                )
         if row:
             self.clear_cache()
             return True

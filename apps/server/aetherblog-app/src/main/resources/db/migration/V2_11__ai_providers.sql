@@ -1939,7 +1939,8 @@ INSERT INTO ai_task_types (code, name, description, default_model_type, default_
     ('polish', '文章润色', '优化文章内容表达', 'chat', 0.5, 4000, '请根据【{tone}】的语气润色以下内容：\n{content}'),
     ('outline', '大纲生成', '生成文章大纲', 'chat', 0.5, 2000, '请为主题【{topic}】生成层级深度为{depth}的{style}风格大纲。{context}'),
     ('embedding', '向量嵌入', '生成文本向量用于语义搜索', 'embedding', 0, NULL, NULL),
-    ('qa', '智能问答', '基于博客内容的问答', 'chat', 0.3, 2000, '你是一个博客助手，请基于以下参考内容回答用户问题：\n\n参考内容：\n{context}\n\n用户问题：{query}')
+    ('qa', '智能问答', '基于博客内容的问答', 'chat', 0.3, 2000, '你是一个博客助手，请基于以下参考内容回答用户问题：\n\n参考内容：\n{context}\n\n用户问题：{query}'),
+    ('translate', '智能翻译', '多语言翻译', 'chat', 0.3, 2000, '请将以下内容翻译成{target_language}：\n{content}')
 ON CONFLICT (code) DO UPDATE SET 
     prompt_template = EXCLUDED.prompt_template,
     description = EXCLUDED.description,
@@ -1963,7 +1964,8 @@ FROM (VALUES
     ('polish', 'gpt-5-mini', 'deepseek-chat', '{"temperature": 0.5}'),
     ('outline', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.5}'),
     ('embedding', 'text-embedding-3-small', NULL, '{}'),
-    ('qa', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.3}')
+    ('qa', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.3}'),
+    ('translate', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.3}')
 ) AS v(task_code, primary_model, fallback_model, cfg)
 JOIN ai_task_types tt ON tt.code = v.task_code
 LEFT JOIN ai_models pm ON pm.model_id = v.primary_model

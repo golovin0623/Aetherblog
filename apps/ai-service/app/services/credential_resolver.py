@@ -263,15 +263,29 @@ class CredentialResolver:
         return records
 
     async def delete_credential(self, credential_id: int, user_id: int | None = None) -> bool:
-        """Delete a credential."""
+        """Delete a credential, first clearing any routing references."""
         user_id = _normalize_user_id(user_id)
-        query = """
-            DELETE FROM ai_credentials 
-            WHERE id = $1 AND user_id IS NOT DISTINCT FROM $2
-            RETURNING id
-        """
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(query, credential_id, user_id)
+            async with conn.transaction():
+                # Clear references in ai_task_routing to avoid FK constraint errors
+                await conn.execute(
+                    """
+                    UPDATE ai_task_routing
+                    SET credential_id = NULL
+                    WHERE credential_id = $1
+                    """,
+                    credential_id,
+                )
+                # Now delete the credential
+                row = await conn.fetchrow(
+                    """
+                    DELETE FROM ai_credentials 
+                    WHERE id = $1 AND user_id IS NOT DISTINCT FROM $2
+                    RETURNING id
+                    """,
+                    credential_id,
+                    user_id,
+                )
         return row is not None
 
     async def update_last_used(self, credential_id: int, error: str | None = None) -> None:
