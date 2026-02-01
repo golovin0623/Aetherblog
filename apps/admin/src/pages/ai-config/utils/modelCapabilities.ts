@@ -83,6 +83,7 @@ export function resolveModelContextWindow(model: AiModel): number | null {
   const extra = getModelExtra(model) as Record<string, unknown>;
   return (
     parseNumber(extra.maxToken) ??
+    parseNumber(extra.contextWindowTokens) ??
     parseNumber(extra.max_token) ??
     parseNumber(extra.contextWindow) ??
     parseNumber(extra.context_window)
@@ -115,25 +116,61 @@ export function buildModelCapabilities(params: {
   source?: ModelExtraCapabilities['source'];
   maxToken?: number | null;
   maxOutputTokens?: number | null;
+  description?: string;
+  legacy?: boolean;
+  organization?: string;
+  maxDimension?: number | null;
+  resolutions?: string[];
+  extra?: Record<string, unknown> | null;
 }): Record<string, unknown> {
-  const { abilities, settings, config, pricing, parameters, released_at, source, maxToken, maxOutputTokens } = params;
-
-  return {
+  const {
     abilities,
     settings,
     config,
     pricing,
     parameters,
-    released_at: released_at || undefined,
+    released_at,
     source,
-    maxToken: maxToken || undefined,
-    maxOutputTokens: maxOutputTokens || undefined,
-    maxOutput: maxOutputTokens || undefined,
-    // legacy keys for compatibility
-    vision: abilities.vision,
-    reasoning: abilities.reasoning,
-    web_search: abilities.search,
-    image_generation: abilities.imageOutput,
-    function_calling: abilities.functionCall,
+    maxToken,
+    maxOutputTokens,
+    description,
+    legacy,
+    organization,
+    maxDimension,
+    resolutions,
+    extra,
+  } = params;
+
+  const caps: Record<string, unknown> = { ...(extra || {}) };
+  const setIfDefined = (key: string, value: unknown) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' && value.trim() === '') return;
+    if (Array.isArray(value) && value.length === 0) return;
+    caps[key] = value;
   };
+
+  setIfDefined('abilities', abilities);
+  setIfDefined('settings', settings);
+  setIfDefined('config', config);
+  setIfDefined('pricing', pricing);
+  setIfDefined('parameters', parameters);
+  setIfDefined('released_at', released_at || undefined);
+  setIfDefined('source', source);
+  setIfDefined('maxToken', maxToken || undefined);
+  setIfDefined('maxOutputTokens', maxOutputTokens || undefined);
+  setIfDefined('maxOutput', maxOutputTokens || undefined);
+  setIfDefined('description', description);
+  setIfDefined('legacy', legacy);
+  setIfDefined('organization', organization);
+  setIfDefined('maxDimension', maxDimension || undefined);
+  setIfDefined('resolutions', resolutions);
+
+  // legacy keys for compatibility
+  setIfDefined('vision', abilities.vision);
+  setIfDefined('reasoning', abilities.reasoning);
+  setIfDefined('web_search', abilities.search);
+  setIfDefined('image_generation', abilities.imageOutput);
+  setIfDefined('function_calling', abilities.functionCall);
+
+  return caps;
 }

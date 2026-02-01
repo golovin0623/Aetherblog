@@ -9,6 +9,7 @@ import { useCreateCredential, useDeleteCredential } from '../hooks/useCredential
 interface CredentialFormProps {
   providerCode: string;
   credential?: AiCredential | null;
+  providerCapabilities?: Record<string, unknown> | null;
   onSaved?: () => void;
 }
 
@@ -17,6 +18,7 @@ type ApiPathMode = 'auto' | 'append_v1' | 'strip_v1';
 export default function CredentialForm({
   providerCode,
   credential,
+  providerCapabilities,
   onSaved,
 }: CredentialFormProps) {
   const [apiKey, setApiKey] = useState('');
@@ -25,6 +27,16 @@ export default function CredentialForm({
   const [showKey, setShowKey] = useState(false);
   const [isDefault, setIsDefault] = useState(true);
   const [apiPathMode, setApiPathMode] = useState<ApiPathMode>('auto');
+  const providerSettings = (providerCapabilities?.settings || {}) as Record<string, unknown>;
+  const proxySetting = providerSettings.proxyUrl as
+    | { title?: string; placeholder?: string; desc?: string }
+    | false
+    | undefined;
+  const showApiKey = providerSettings.showApiKey !== false;
+  const showBaseUrl = proxySetting !== false;
+  const apiKeyUrl =
+    (providerCapabilities?.apiKeyUrl as string | undefined) ||
+    (providerCapabilities?.api_key_url as string | undefined);
 
   const createMutation = useCreateCredential();
   const deleteMutation = useDeleteCredential();
@@ -42,7 +54,7 @@ export default function CredentialForm({
   }, [credential]);
 
   const handleSave = () => {
-    if (!apiKey && !credential) {
+    if (showApiKey && !apiKey && !credential) {
       return; // 新创建时必须有 API Key
     }
 
@@ -76,47 +88,74 @@ export default function CredentialForm({
   return (
     <div className="space-y-4">
       {/* API Key */}
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-          API Key
-          {credential?.api_key_hint && (
-            <span className="text-xs text-[var(--text-muted)]/60">
-              (当前: {credential.api_key_hint})
-            </span>
-          )}
-        </label>
-        <div className="relative">
-          <input
-            type={showKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={credential ? '输入新 Key 以更新，留空保持原有' : 'sk-...'}
-            className="w-full pr-10 rounded-xl border border-white/5 bg-[var(--bg-primary)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
-          />
-          <button
-            type="button"
-            onClick={() => setShowKey(!showKey)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          >
-            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
+      {showApiKey ? (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+            API Key
+            {credential?.api_key_hint && (
+              <span className="text-xs text-[var(--text-muted)]/60">
+                (当前: {credential.api_key_hint})
+              </span>
+            )}
+            {apiKeyUrl && (
+              <a
+                href={apiKeyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline"
+              >
+                获取密钥
+              </a>
+            )}
+          </label>
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={credential ? '输入新 Key 以更新，留空保持原有' : 'sk-...'}
+              className="w-full pr-10 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-muted)]">
+          该服务商无需 API Key
+        </div>
+      )}
 
       {/* Base URL Override */}
-      <div className="space-y-2">
-        <label className="text-sm text-[var(--text-muted)]">
-          API 代理地址
-          <span className="text-xs opacity-60 ml-1">(可选)</span>
-        </label>
-        <input
-          type="text"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="https://api.example.com/v"
-          className="w-full rounded-xl border border-white/5 bg-[var(--bg-primary)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
-        />
-      </div>
+      {showBaseUrl && (
+        <div className="space-y-2">
+          <label className="text-sm text-[var(--text-muted)]">
+            {proxySetting && typeof proxySetting === 'object' && proxySetting.title
+              ? proxySetting.title
+              : 'API 代理地址'}
+            <span className="text-xs opacity-60 ml-1">(可选)</span>
+          </label>
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder={
+              proxySetting && typeof proxySetting === 'object' && proxySetting.placeholder
+                ? proxySetting.placeholder
+                : 'https://api.example.com/v'
+            }
+            className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+          />
+          {proxySetting && typeof proxySetting === 'object' && proxySetting.desc && (
+            <p className="text-xs text-[var(--text-muted)]">{proxySetting.desc}</p>
+          )}
+        </div>
+      )}
 
       {/* API Path Mode */}
       <div className="space-y-2">
@@ -136,7 +175,7 @@ export default function CredentialForm({
               className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${
                 apiPathMode === item.value
                   ? 'border-primary/50 bg-primary/10 text-primary'
-                  : 'border-white/10 text-[var(--text-muted)] hover:border-white/20'
+                  : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
               }`}
             >
               {item.label}
@@ -159,7 +198,7 @@ export default function CredentialForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="生产环境 Key"
-          className="w-full rounded-xl border border-white/5 bg-[var(--bg-primary)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+          className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
         />
       </div>
 
@@ -169,7 +208,7 @@ export default function CredentialForm({
           type="checkbox"
           checked={isDefault}
           onChange={(e) => setIsDefault(e.target.checked)}
-          className="rounded border-white/20"
+          className="rounded border-[var(--border-default)]"
         />
         设为默认凭证
       </label>
@@ -178,7 +217,7 @@ export default function CredentialForm({
       <div className="flex items-center gap-3 pt-2">
         <button
           onClick={handleSave}
-          disabled={isPending || (!apiKey && !credential)}
+          disabled={isPending || (showApiKey && !apiKey && !credential)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {createMutation.isPending ? (

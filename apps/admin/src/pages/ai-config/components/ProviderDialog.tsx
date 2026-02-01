@@ -26,8 +26,10 @@ export default function ProviderDialog({
     api_type: 'openai_compat',
     base_url: '',
     doc_url: '',
+    icon: '',
     is_enabled: true,
     priority: 100,
+    capabilities: undefined as Record<string, unknown> | undefined,
   });
   const [usePreset, setUsePreset] = useState(true);
   const [selectedPreset, setSelectedPreset] = useState('');
@@ -45,8 +47,10 @@ export default function ProviderDialog({
         api_type: initial.api_type,
         base_url: initial.base_url || '',
         doc_url: initial.doc_url || '',
+        icon: initial.icon || '',
         is_enabled: initial.is_enabled,
         priority: initial.priority,
+        capabilities: initial.capabilities || undefined,
       });
       setUsePreset(false);
     }
@@ -65,10 +69,27 @@ export default function ProviderDialog({
           api_type: preset.apiType,
           base_url: preset.baseUrl || '',
           doc_url: preset.docUrl || '',
+          icon: preset.icon || '',
+          priority: preset.priority ?? prev.priority,
+          capabilities: preset.capabilities || preset.settings ? {
+            ...(preset.capabilities || {}),
+            ...(preset.description ? { description: preset.description } : {}),
+            ...(preset.apiKeyUrl ? { apiKeyUrl: preset.apiKeyUrl } : {}),
+            ...(preset.modelsUrl ? { modelsUrl: preset.modelsUrl } : {}),
+            ...(preset.url ? { url: preset.url } : {}),
+            ...(preset.checkModel ? { checkModel: preset.checkModel } : {}),
+            ...(preset.settings ? { settings: preset.settings } : {}),
+          } : undefined,
         }));
       }
     }
   }, [selectedPreset, usePreset]);
+
+  useEffect(() => {
+    if (!usePreset) {
+      setForm((prev) => ({ ...prev, capabilities: undefined }));
+    }
+  }, [usePreset]);
 
   const handleSubmit = () => {
     if (mode === 'create') {
@@ -79,8 +100,10 @@ export default function ProviderDialog({
         api_type: form.api_type,
         base_url: form.base_url || null,
         doc_url: form.doc_url || null,
+        icon: form.icon || null,
         is_enabled: form.is_enabled,
         priority: form.priority,
+        capabilities: form.capabilities,
       };
       createMutation.mutate(payload, { onSuccess: onClose });
     } else if (initial) {
@@ -90,6 +113,7 @@ export default function ProviderDialog({
         api_type: form.api_type,
         base_url: form.base_url || null,
         doc_url: form.doc_url || null,
+        icon: form.icon || null,
         is_enabled: form.is_enabled,
         priority: form.priority,
       };
@@ -112,16 +136,16 @@ export default function ProviderDialog({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--bg-primary)] shadow-2xl"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             {mode === 'create' ? '添加供应商' : '编辑供应商'}
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -157,7 +181,7 @@ export default function ProviderDialog({
                 <select
                   value={selectedPreset}
                   onChange={(e) => setSelectedPreset(e.target.value)}
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 >
                   <option value="">选择预设供应商</option>
                   {PRESET_PROVIDERS.map((preset) => (
@@ -182,7 +206,7 @@ export default function ProviderDialog({
               onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))}
               disabled={mode === 'edit' || (mode === 'create' && usePreset)}
               placeholder="openai"
-              className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 disabled:opacity-50"
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 disabled:opacity-50"
             />
           </div>
 
@@ -195,7 +219,7 @@ export default function ProviderDialog({
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="OpenAI"
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
               />
             </div>
             <div className="space-y-2">
@@ -205,7 +229,7 @@ export default function ProviderDialog({
                 value={form.display_name}
                 onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                 placeholder="OpenAI"
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
               />
             </div>
           </div>
@@ -216,7 +240,7 @@ export default function ProviderDialog({
             <select
               value={form.api_type}
               onChange={(e) => setForm((prev) => ({ ...prev, api_type: e.target.value }))}
-              className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
             >
               {PROVIDER_TYPES.map((type) => (
                 <option key={type.value} value={type.value}>
@@ -234,7 +258,31 @@ export default function ProviderDialog({
               value={form.base_url}
               onChange={(e) => setForm((prev) => ({ ...prev, base_url: e.target.value }))}
               placeholder="https://api.openai.com/v1"
-              className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+            />
+          </div>
+
+          {/* 文档地址 */}
+          <div className="space-y-2">
+            <label className="text-sm text-[var(--text-muted)]">文档地址</label>
+            <input
+              type="text"
+              value={form.doc_url}
+              onChange={(e) => setForm((prev) => ({ ...prev, doc_url: e.target.value }))}
+              placeholder="https://docs.example.com"
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
+            />
+          </div>
+
+          {/* 图标 */}
+          <div className="space-y-2">
+            <label className="text-sm text-[var(--text-muted)]">图标</label>
+            <input
+              type="text"
+              value={form.icon}
+              onChange={(e) => setForm((prev) => ({ ...prev, icon: e.target.value }))}
+              placeholder="🤖"
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40"
             />
           </div>
 
@@ -251,10 +299,10 @@ export default function ProviderDialog({
         </div>
 
         {/* 底部操作 */}
-        <div className="flex justify-end gap-3 p-5 border-t border-white/5">
+        <div className="flex justify-end gap-3 p-5 border-t border-[var(--border-default)]">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-white/10 text-[var(--text-secondary)] text-sm font-medium hover:bg-white/5 transition-colors"
+            className="px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
           >
             取消
           </button>

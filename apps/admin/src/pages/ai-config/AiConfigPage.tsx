@@ -3,7 +3,7 @@
 
 import { useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RefreshCw, Plus } from 'lucide-react';
+import { RefreshCw, Plus, PanelLeft } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AiProvider } from '@/services/aiProviderService';
 import { useProviders, useToggleProvider, groupProvidersByStatus } from './hooks/useProviders';
@@ -28,6 +28,7 @@ export default function AiConfigPage() {
   const [showProviderDialog, setShowProviderDialog] = useState(false);
   const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null);
   const [showSortDialog, setShowSortDialog] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // 数据
   const { data: providers = [], isLoading } = useProviders();
@@ -78,6 +79,7 @@ export default function AiConfigPage() {
     <div className="h-[calc(100vh-4rem)] flex bg-[var(--bg-primary)]">
       {/* 左侧供应商列表 */}
       <ProviderSidebar
+        className="hidden lg:flex"
         providers={providers}
         selectedCode={selectedProviderCode}
         onSelect={handleSelectProvider}
@@ -88,12 +90,74 @@ export default function AiConfigPage() {
         onOpenSort={() => setShowSortDialog(true)}
         isLoading={isLoading}
       />
+      <ProviderSidebar
+        variant="drawer"
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        providers={providers}
+        selectedCode={selectedProviderCode}
+        onSelect={(code) => {
+          handleSelectProvider(code);
+          setSidebarOpen(false);
+        }}
+        onAddProvider={() => {
+          setEditingProvider(null);
+          setShowProviderDialog(true);
+          setSidebarOpen(false);
+        }}
+        onOpenSort={() => {
+          setShowSortDialog(true);
+          setSidebarOpen(false);
+        }}
+        isLoading={isLoading}
+      />
 
       {/* 右侧内容区 */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 移动端顶部栏 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] bg-[var(--bg-primary)] lg:hidden">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <div className="text-sm font-semibold text-[var(--text-primary)]">
+                {viewMode === 'detail' && selectedProvider
+                  ? selectedProvider.display_name || selectedProvider.name
+                  : 'AI 配置中心'}
+              </div>
+              <div className="text-xs text-[var(--text-muted)]">
+                {viewMode === 'detail' ? '供应商详情' : '服务商与模型配置'}
+              </div>
+            </div>
+          </div>
+          {viewMode === 'grid' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefresh}
+                className="p-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => {
+                  setEditingProvider(null);
+                  setShowProviderDialog(true);
+                }}
+                className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors"
+              >
+                添加
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* 头部 (仅网格视图) */}
         {viewMode === 'grid' && (
-          <div className="flex items-center justify-between p-6 border-b border-white/5">
+          <div className="hidden lg:flex items-center justify-between p-6 border-b border-[var(--border-default)]">
             <div>
               <h1 className="text-xl font-semibold text-[var(--text-primary)]">
                 AI 配置中心
@@ -105,7 +169,7 @@ export default function AiConfigPage() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleRefresh}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-all"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
               >
                 <RefreshCw className="w-4 h-4" />
                 刷新
@@ -150,7 +214,7 @@ export default function AiConfigPage() {
                   <>
                     {/* 已启用 */}
                     {enabled.length > 0 && (
-                      <ProviderGrid title="已启用服务商" count={enabled.length}>
+                      <ProviderGrid title="已启用服务商" count={enabled.length} tone="primary">
                         {enabled.map((provider) => (
                           <ProviderCard
                             key={provider.id}
@@ -165,7 +229,7 @@ export default function AiConfigPage() {
 
                     {/* 未启用 */}
                     {disabled.length > 0 && (
-                      <ProviderGrid title="未启用服务商" count={disabled.length}>
+                      <ProviderGrid title="未启用服务商" count={disabled.length} tone="secondary">
                         {disabled.map((provider) => (
                           <ProviderCard
                             key={provider.id}

@@ -107,8 +107,8 @@ class CredentialResolver:
     ) -> int:
         """Save a new credential."""
         user_id = _normalize_user_id(user_id)
-        encrypted = self.encrypt_api_key(api_key)
-        hint = self.generate_hint(api_key)
+        encrypted = self.encrypt_api_key(api_key.strip())
+        hint = self.generate_hint(api_key.strip())
         
         query = """
             INSERT INTO ai_credentials 

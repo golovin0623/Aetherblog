@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import AsyncGenerator, TYPE_CHECKING
+from typing import Any, AsyncGenerator, TYPE_CHECKING
 
 from litellm import acompletion, aembedding
 
@@ -67,12 +67,17 @@ class LlmRouter:
             # Fallback to a simple concatenation if formatting fails
             return f"{tpl}\n\nContext: {kwargs}"
 
+    def _normalize_prompt_variables(self, prompt_variables: dict[str, Any] | str) -> dict[str, Any]:
+        if isinstance(prompt_variables, str):
+            return {"content": prompt_variables}
+        return prompt_variables
+
     async def chat(
-        self, 
-        prompt_variables: dict[str, Any], 
-        model_alias: str, 
+        self,
+        prompt_variables: dict[str, Any] | str,
+        model_alias: str,
         user_id: int | None = None,
-        custom_prompt: str | None = None
+        custom_prompt: str | None = None,
     ) -> str:
         """Send a chat completion request with dynamic prompt rendering."""
         # Try dynamic routing first
@@ -93,10 +98,11 @@ class LlmRouter:
         
         # Determine and render prompt
         prompt_template = custom_prompt or (routing.config.get("prompt_template") if routing else None)
+        normalized_variables = self._normalize_prompt_variables(prompt_variables)
         prompt = self._render_prompt(
             template=prompt_template,
-            default_template=prompt_variables.get("content", ""),
-            **prompt_variables
+            default_template=normalized_variables.get("content", ""),
+            **normalized_variables
         )
         
         if self.settings.mock_mode:
@@ -153,11 +159,11 @@ class LlmRouter:
         )
 
     async def stream_chat(
-        self, 
-        prompt_variables: dict[str, Any], 
-        model_alias: str, 
+        self,
+        prompt_variables: dict[str, Any] | str,
+        model_alias: str,
         user_id: int | None = None,
-        custom_prompt: str | None = None
+        custom_prompt: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """Stream chat completion response with dynamic prompt rendering."""
         routing = await self._get_routing(model_alias, user_id)
@@ -177,10 +183,11 @@ class LlmRouter:
         
         # Determine and render prompt
         prompt_template = custom_prompt or (routing.config.get("prompt_template") if routing else None)
+        normalized_variables = self._normalize_prompt_variables(prompt_variables)
         prompt = self._render_prompt(
             template=prompt_template,
-            default_template=prompt_variables.get("content", ""),
-            **prompt_variables
+            default_template=normalized_variables.get("content", ""),
+            **normalized_variables
         )
         
         if self.settings.mock_mode:

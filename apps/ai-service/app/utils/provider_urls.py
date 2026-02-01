@@ -21,6 +21,8 @@ def _strip_v1_suffix(url: str) -> str:
     url = _strip_trailing_slash(url)
     if url.endswith("/v1"):
         return url[:-3]
+    if url.endswith("/v"):
+        return url[:-2]
     return url
 
 

@@ -5,6 +5,7 @@ import { Button } from '@aetherblog/ui';
 import { PromptEditor } from './PromptEditor';
 import { apiClient as api } from '@/services/api';
 import { toast } from 'sonner';
+import ModelSelector from '@/components/ai/ModelSelector';
 
 interface Tool {
   id: string;
@@ -34,6 +35,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   const [input, setInput] = useState('');
   const [result, setResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const [selectedProviderCode, setSelectedProviderCode] = useState<string>('');
 
   // Get current tool's prompt config from the pre-loaded list
   const promptConfig = allConfigs.find(c => c.task_type === selectedTool.id) || null;
@@ -59,8 +62,16 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
       // Prepare request data based on tool
       const reqData: any = {
         content: input,
-        promptTemplate: promptConfig?.custom_prompt || undefined
+        promptTemplate: promptConfig?.custom_prompt || undefined,
+        // Optional: Send selected model override if backend supports it
+        // model: selectedModelId,
+        // provider: selectedProviderCode
       };
+
+      if (selectedModelId) {
+        reqData.modelId = selectedModelId;
+        reqData.providerCode = selectedProviderCode;
+      }
 
       if (selectedTool.id === 'outline') {
         reqData.topic = input;
@@ -111,14 +122,23 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               <p className="text-xs text-[var(--text-muted)]">输入原始文本以验证 AI 生成效果</p>
             </div>
           </div>
-          <Button
-            onClick={handleRunTest}
-            disabled={isLoading || !input.trim()}
-            className="rounded-full px-6 gap-2 bg-primary hover:bg-primary/90 text-white shadow-xl shadow-primary/20 transition-all active:scale-95"
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            生成测试
-          </Button>
+          <div className="flex items-center gap-3">
+             <ModelSelector 
+                value={selectedModelId}
+                onChange={(modelId, provider) => {
+                  setSelectedModelId(modelId);
+                  setSelectedProviderCode(provider);
+                }}
+             />
+            <Button
+              onClick={handleRunTest}
+              disabled={isLoading || !input.trim()}
+              className="rounded-full px-6 gap-2 bg-primary hover:bg-primary/90 text-white shadow-xl shadow-primary/20 transition-all active:scale-95"
+            >
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              生成测试
+            </Button>
+          </div>
         </div>
 
         <div className="relative group">

@@ -28,6 +28,7 @@ import { resolveModelSource } from '../utils/modelCapabilities';
 interface ModelListProps {
   providerCode: string;
   providerApiType?: string | null;
+  providerCapabilities?: Record<string, unknown> | null;
   models: AiModel[];
   credentialId?: number | null;
   isLoading?: boolean;
@@ -37,6 +38,7 @@ interface ModelListProps {
 export default function ModelList({
   providerCode,
   providerApiType,
+  providerCapabilities,
   models,
   credentialId,
   isLoading,
@@ -62,7 +64,16 @@ export default function ModelList({
   });
 
   const hasRemoteModels = models.some((m) => resolveModelSource(m) === 'remote');
-  const canFetchRemote = ['openai_compat', 'anthropic'].includes(providerApiType || '') && !!credentialId;
+  const providerSettings = (providerCapabilities?.settings || {}) as Record<string, unknown>;
+  const allowRemote = ['openai_compat', 'anthropic'].includes(providerApiType || '');
+  const modelEditable = providerSettings.modelEditable !== false;
+  const allowAddModel =
+    modelEditable && providerSettings.showAddNewModel !== false;
+  const showModelFetcher =
+    typeof providerSettings.showModelFetcher === 'boolean'
+      ? providerSettings.showModelFetcher
+      : allowRemote;
+  const canFetchRemote = showModelFetcher && allowRemote && !!credentialId;
 
   // Tab 列表
   const tabs = [
@@ -85,6 +96,7 @@ export default function ModelList({
   };
 
   const handleDisableAll = () => {
+    if (!modelEditable) return;
     if (enabled.length === 0) return;
     batchToggleModels.mutate({
       providerCode,
@@ -105,21 +117,21 @@ export default function ModelList({
           {/* 搜索 */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索模型..."
-              className="w-44 pl-8 pr-3 py-1.5 rounded-lg border border-white/5 bg-[var(--bg-primary)]/50 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
-            />
-          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索模型..."
+            className="w-44 pl-8 pr-3 py-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+          />
+        </div>
 
           {/* 拉取 */}
           {canFetchRemote && (
             <button
               onClick={handleFetchRemote}
               disabled={isLoading || syncRemoteModels.isPending}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 text-xs text-[var(--text-secondary)] hover:bg-white/5 transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncRemoteModels.isPending ? 'animate-spin' : ''}`} />
               拉取模型
@@ -141,8 +153,8 @@ export default function ModelList({
           {/* 重置 */}
           <button
             onClick={handleResetAll}
-            disabled={clearProviderModels.isPending}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 text-xs text-[var(--text-muted)] hover:bg-white/5 transition-all disabled:opacity-50"
+            disabled={clearProviderModels.isPending || !modelEditable}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
             <Trash2 className="w-3.5 h-3.5" />
             重置
@@ -151,7 +163,8 @@ export default function ModelList({
           {/* 排序 */}
           <button
             onClick={() => setShowSortDialog(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 text-xs text-[var(--text-muted)] hover:bg-white/5 transition-all"
+            disabled={!modelEditable}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
             <ArrowDownUp className="w-3.5 h-3.5" />
             排序
@@ -160,21 +173,23 @@ export default function ModelList({
           {/* 禁用全部 */}
           <button
             onClick={handleDisableAll}
-            disabled={batchToggleModels.isPending || enabled.length === 0}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 text-xs text-[var(--text-muted)] hover:bg-white/5 transition-all disabled:opacity-50"
+            disabled={batchToggleModels.isPending || enabled.length === 0 || !modelEditable}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
             <ToggleLeft className="w-3.5 h-3.5" />
             全部禁用
           </button>
 
           {/* 添加 */}
-          <button
-            onClick={() => setShowAddDialog(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            添加
-          </button>
+          {allowAddModel && (
+            <button
+              onClick={() => setShowAddDialog(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              添加
+            </button>
+          )}
         </div>
       </div>
 
@@ -187,7 +202,7 @@ export default function ModelList({
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
               activeTab === tab.value
                 ? 'bg-primary/15 text-primary'
-                : 'text-[var(--text-muted)] hover:bg-white/5 hover:text-[var(--text-secondary)]'
+                : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-secondary)]'
             }`}
           >
             {tab.label}
@@ -211,7 +226,12 @@ export default function ModelList({
                 <div className="space-y-2">
                   <AnimatePresence>
                     {enabled.map((model) => (
-                      <ModelCard key={model.id} model={model} onEdit={() => setEditingModel(model)} />
+                      <ModelCard
+                        key={model.id}
+                        model={model}
+                        readOnly={!modelEditable}
+                        onEdit={() => setEditingModel(model)}
+                      />
                     ))}
                   </AnimatePresence>
                 </div>
@@ -225,7 +245,12 @@ export default function ModelList({
                 <div className="space-y-2">
                   <AnimatePresence>
                     {disabled.map((model) => (
-                      <ModelCard key={model.id} model={model} onEdit={() => setEditingModel(model)} />
+                      <ModelCard
+                        key={model.id}
+                        model={model}
+                        readOnly={!modelEditable}
+                        onEdit={() => setEditingModel(model)}
+                      />
                     ))}
                   </AnimatePresence>
                 </div>

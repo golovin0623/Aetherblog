@@ -45,4 +45,14 @@ public class PolishRequest {
      * Prompt 版本
      */
     private String promptVersion;
+
+    /**
+     * 指定 Model ID (可选)
+     */
+    private String modelId;
+
+    /**
+     * 指定 Provider Code (可选)
+     */
+    private String providerCode;
 }

@@ -34,9 +34,19 @@ export default function ProviderDetail({
   const [showMenu, setShowMenu] = useState(false);
 
   const preset = getPresetProvider(provider.code);
+  const docUrl = preset?.docUrl || provider.doc_url || undefined;
+  const description =
+    (provider.capabilities?.description as string | undefined) || preset?.description;
 
   const toggleMutation = useToggleProvider();
   const deleteMutation = useDeleteProvider();
+  const providerSettings = (provider.capabilities?.settings || {}) as Record<string, unknown>;
+  const showDeployName =
+    provider.api_type === 'azure' || Boolean(providerSettings.showDeployName);
+  const showChecker = providerSettings.showChecker !== false;
+  const checkModel =
+    (provider.capabilities?.checkModel as string | undefined) ||
+    (provider.capabilities?.check_model as string | undefined);
 
   // 获取凭证
   const { data: credentials = [] } = useProviderCredentials(provider.code);
@@ -64,11 +74,11 @@ export default function ProviderDetail({
       className="h-full flex flex-col"
     >
       {/* 头部 */}
-      <div className="flex items-center justify-between p-4 border-b border-white/5">
+      <div className="flex items-center justify-between p-4 border-b border-[var(--border-default)]">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="p-2 rounded-xl hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+            className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -78,9 +88,14 @@ export default function ProviderDetail({
               <h1 className="text-lg font-semibold text-[var(--text-primary)]">
                 {provider.display_name || provider.name}
               </h1>
-              {preset?.docUrl && (
+              {description && (
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 max-w-xl">
+                  {description}
+                </p>
+              )}
+              {docUrl && (
                 <a
-                  href={preset.docUrl}
+                  href={docUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -104,7 +119,7 @@ export default function ProviderDetail({
               className={`relative w-12 h-6 rounded-full transition-all duration-300 ${
                 provider.is_enabled
                   ? 'bg-primary shadow-lg shadow-primary/30'
-                  : 'bg-white/10 hover:bg-white/20'
+                  : 'bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
               <motion.div
@@ -112,7 +127,7 @@ export default function ProviderDetail({
                 className={`absolute top-1 w-4 h-4 rounded-full transition-all ${
                   provider.is_enabled
                     ? 'left-7 bg-white'
-                    : 'left-1 bg-white/60'
+                    : 'left-1 bg-[var(--text-muted)]/70'
                 }`}
               />
             </button>
@@ -122,7 +137,7 @@ export default function ProviderDetail({
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-2 rounded-xl hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+              className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
             >
               <MoreHorizontal className="w-5 h-5" />
             </button>
@@ -132,13 +147,13 @@ export default function ProviderDetail({
                   className="fixed inset-0 z-10"
                   onClick={() => setShowMenu(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-white/10 bg-[var(--bg-card)] shadow-xl py-1">
+                <div className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-xl py-1">
                   <button
                     onClick={() => {
                       setShowMenu(false);
                       onEdit();
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-white/5"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
                   >
                     <Pencil className="w-4 h-4" />
                     编辑供应商
@@ -161,38 +176,45 @@ export default function ProviderDetail({
       </div>
 
       {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        {/* 凭证配置 */}
-        <section className="space-y-4">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)]">凭证配置</h2>
-          <div className="rounded-2xl border border-white/5 bg-[var(--bg-card)]/30 p-5">
-            <CredentialForm
-              providerCode={provider.code}
-              credential={defaultCredential}
-            />
-          </div>
-        </section>
+      <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* 凭证配置 */}
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium text-[var(--text-secondary)]">凭证配置</h2>
+            <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] p-5">
+              <CredentialForm
+                providerCode={provider.code}
+                credential={defaultCredential}
+                providerCapabilities={provider.capabilities}
+              />
+            </div>
+          </section>
 
-        {/* 连通性测试 */}
-        <section className="space-y-4">
-          <div className="rounded-2xl border border-white/5 bg-[var(--bg-card)]/30 p-5">
-            <ConnectionTest
-              credentialId={defaultCredential?.id ?? null}
-              models={models}
-              defaultModelId="claude-haiku-4-5-20251001"
-            />
-          </div>
-        </section>
+          {/* 连通性测试 */}
+          {showChecker && (
+            <section className="space-y-4">
+              <h2 className="text-sm font-medium text-[var(--text-secondary)]">连通性测试</h2>
+              <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] p-5">
+                <ConnectionTest
+                  credentialId={defaultCredential?.id ?? null}
+                  models={models}
+                  defaultModelId={checkModel}
+                />
+              </div>
+            </section>
+          )}
+        </div>
 
         {/* 模型列表 */}
         <section className="space-y-4">
           <ModelList
             providerCode={provider.code}
             providerApiType={provider.api_type}
+            providerCapabilities={provider.capabilities}
             models={models}
             credentialId={defaultCredential?.id ?? null}
             isLoading={modelsLoading}
-            showDeployName={provider.api_type === 'azure'}
+            showDeployName={showDeployName}
           />
         </section>
       </div>

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   GripVertical,
   Settings2,
+  X,
 } from 'lucide-react';
 import type { AiProvider } from '@/services/aiProviderService';
 import { groupProvidersByStatus } from '../hooks/useProviders';
@@ -22,6 +23,10 @@ interface ProviderSidebarProps {
   onAddProvider: () => void;
   onOpenSort: () => void;
   isLoading?: boolean;
+  variant?: 'sidebar' | 'drawer';
+  isOpen?: boolean;
+  onClose?: () => void;
+  className?: string;
 }
 
 export default function ProviderSidebar({
@@ -31,6 +36,10 @@ export default function ProviderSidebar({
   onAddProvider,
   onOpenSort,
   isLoading,
+  variant = 'sidebar',
+  isOpen = false,
+  onClose = () => undefined,
+  className = '',
 }: ProviderSidebarProps) {
   const [search, setSearch] = useState('');
   const [enabledExpanded, setEnabledExpanded] = useState(true);
@@ -62,8 +71,20 @@ export default function ProviderSidebar({
     };
   }, [enabled, disabled, search]);
 
-  return (
-    <div className="w-64 h-full flex flex-col border-r border-white/5 bg-[var(--bg-card)]/30">
+  const panel = (
+    <div className={`h-full flex flex-col ${className}`}>
+      {variant === 'drawer' && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">
+          <div className="text-sm font-semibold text-[var(--text-primary)]">服务商列表</div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 头部：搜索 + 操作按钮 */}
       <div className="p-3 space-y-2">
         {/* 搜索框 */}
@@ -71,10 +92,13 @@ export default function ProviderSidebar({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
             type="text"
+            name="provider-search"
+            id="provider-search"
+            autoComplete="off"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索服务商..."
-            className="w-full pl-9 pr-3 py-2 rounded-xl border border-white/5 bg-[var(--bg-primary)]/50 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
           />
         </div>
 
@@ -89,7 +113,7 @@ export default function ProviderSidebar({
           </button>
           <button
             onClick={onOpenSort}
-            className="flex items-center justify-center px-3 py-2 rounded-xl border border-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-all"
+            className="flex items-center justify-center px-3 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
             title="自定义排序"
           >
             <GripVertical className="w-4 h-4" />
@@ -111,7 +135,7 @@ export default function ProviderSidebar({
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
                 selectedCode === null
                   ? 'bg-primary/15 text-primary font-medium'
-                  : 'text-[var(--text-secondary)] hover:bg-white/5'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
               <Settings2 className="w-4 h-4" />
@@ -157,6 +181,38 @@ export default function ProviderSidebar({
           </>
         )}
       </div>
+    </div>
+  );
+
+  if (variant === 'drawer') {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            className="fixed inset-0 z-40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+            <motion.div
+              initial={{ x: -260, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -260, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute left-0 top-0 h-full w-[85%] max-w-sm border-r border-[var(--border-default)] bg-[var(--bg-secondary)] shadow-2xl"
+            >
+              {panel}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  return (
+    <div className={`w-72 h-full flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-secondary)] ${className}`}>
+      {panel}
     </div>
   );
 }
@@ -222,13 +278,13 @@ function ProviderItem({
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all group ${
         selected
           ? 'bg-primary/15 text-primary font-medium'
-          : 'text-[var(--text-secondary)] hover:bg-white/5'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
       }`}
     >
       <ProviderIcon code={provider.code} size={18} />
       <span className="truncate">{provider.display_name || provider.name}</span>
       {!provider.is_enabled && (
-        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[var(--text-muted)]">
+        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-muted)]">
           禁用
         </span>
       )}

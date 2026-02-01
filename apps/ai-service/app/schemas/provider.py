@@ -150,7 +150,7 @@ class CredentialResponse(BaseModel):
 
 class CredentialTestRequest(BaseModel):
     """Request to test a credential."""
-    model_id: str = Field(default="claude-haiku-4-5-20251001", description="Model to test")
+    model_id: str = Field(default="gpt-5-mini", description="Model to test")
 
 
 class CredentialTestResponse(BaseModel):
