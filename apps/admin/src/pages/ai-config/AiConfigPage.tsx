@@ -76,44 +76,24 @@ export default function AiConfigPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex bg-[var(--bg-primary)]">
-      {/* 左侧供应商列表 */}
-      <ProviderSidebar
-        className="hidden lg:flex"
-        providers={providers}
-        selectedCode={selectedProviderCode}
-        onSelect={handleSelectProvider}
-        onAddProvider={() => {
-          setEditingProvider(null);
-          setShowProviderDialog(true);
-        }}
-        onOpenSort={() => setShowSortDialog(true)}
-        isLoading={isLoading}
-      />
-      <ProviderSidebar
-        variant="drawer"
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        providers={providers}
-        selectedCode={selectedProviderCode}
-        onSelect={(code) => {
-          handleSelectProvider(code);
-          setSidebarOpen(false);
-        }}
-        onAddProvider={() => {
-          setEditingProvider(null);
-          setShowProviderDialog(true);
-          setSidebarOpen(false);
-        }}
-        onOpenSort={() => {
-          setShowSortDialog(true);
-          setSidebarOpen(false);
-        }}
-        isLoading={isLoading}
-      />
+    <div className="h-[calc(100vh-4rem)] min-h-0">
+      <div className="h-full min-h-0 flex rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] shadow-sm overflow-hidden">
+        {/* 左侧供应商列表 */}
+        <ProviderSidebar
+          className="hidden lg:flex"
+          providers={providers}
+          selectedCode={selectedProviderCode}
+          onSelect={handleSelectProvider}
+          onAddProvider={() => {
+            setEditingProvider(null);
+            setShowProviderDialog(true);
+          }}
+          onOpenSort={() => setShowSortDialog(true)}
+          isLoading={isLoading}
+        />
 
-      {/* 右侧内容区 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 右侧内容区 */}
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
         {/* 移动端顶部栏 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] bg-[var(--bg-primary)] lg:hidden">
           <div className="flex items-center gap-2">
@@ -167,29 +147,33 @@ export default function AiConfigPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button
+              <motion.button
                 onClick={handleRefresh}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
               >
                 <RefreshCw className="w-4 h-4" />
                 刷新
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={() => {
                   setEditingProvider(null);
                   setShowProviderDialog(true);
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-medium text-sm hover:bg-primary/90 transition-colors"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-medium text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
               >
                 <Plus className="w-4 h-4" />
                 添加供应商
-              </button>
+              </motion.button>
             </div>
           </div>
         )}
 
         {/* 主内容 */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent pr-1">
           <AnimatePresence mode="wait">
             {viewMode === 'grid' ? (
               <motion.div
@@ -260,6 +244,29 @@ export default function AiConfigPage() {
           </AnimatePresence>
         </div>
       </div>
+      </div>
+
+      <ProviderSidebar
+        variant="drawer"
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        providers={providers}
+        selectedCode={selectedProviderCode}
+        onSelect={(code) => {
+          handleSelectProvider(code);
+          setSidebarOpen(false);
+        }}
+        onAddProvider={() => {
+          setEditingProvider(null);
+          setShowProviderDialog(true);
+          setSidebarOpen(false);
+        }}
+        onOpenSort={() => {
+          setShowSortDialog(true);
+          setSidebarOpen(false);
+        }}
+        isLoading={isLoading}
+      />
 
       {/* 供应商配置弹窗 */}
       <AnimatePresence>

@@ -258,6 +258,23 @@ select:focus {
   );
   pointer-events: none;
 }
+
+/* Breathing light animation for model selection hint */
+@keyframes breathing-light {
+  0%, 100% {
+    border-color: var(--border-default);
+    box-shadow: 0 0 0 rgba(99, 102, 241, 0);
+  }
+  50% {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+  }
+}
+
+.animate-breathing-light {
+  animation: breathing-light 2s ease-in-out infinite;
+}
+
 /* 隐藏滚动条但保留滚动功能 */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

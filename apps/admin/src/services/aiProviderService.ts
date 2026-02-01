@@ -57,6 +57,7 @@ export interface AiTaskType {
   model_type?: string | null;
   temperature?: number | null;
   max_tokens?: number | null;
+  prompt_template?: string | null;
 }
 
 export interface AiRouting {
@@ -180,7 +181,16 @@ export const aiProviderService = {
     api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'gpt-5-mini' }),
 
   listTasks: (): Promise<AiServiceResponse<AiTaskType[]>> =>
-    api.get('/v1/admin/providers/tasks'),
+    api.get('/v1/admin/ai/tasks'),
+
+  createTask: (data: Partial<AiTaskType>): Promise<AiServiceResponse<number>> =>
+    api.post('/v1/admin/ai/tasks', data),
+
+  updateTask: (code: string, data: Partial<AiTaskType>): Promise<AiServiceResponse<boolean>> =>
+    api.put(`/v1/admin/ai/tasks/${code}`, data),
+
+  deleteTask: (code: string): Promise<AiServiceResponse<boolean>> =>
+    api.delete(`/v1/admin/ai/tasks/${code}`),
 
   getRouting: (taskType: string): Promise<AiServiceResponse<AiRouting | null>> =>
     api.get(`/v1/admin/providers/routing/${taskType}`),
@@ -219,4 +229,13 @@ export const aiProviderService = {
     items: ModelSortItem[]
   ): Promise<AiServiceResponse<{ updated: number }>> =>
     api.put(`/v1/admin/providers/${providerCode}/models/sort`, { items }),
+
+  listPromptConfigs: (): Promise<AiServiceResponse<any[]>> =>
+    api.get('/v1/admin/ai/prompts'),
+
+  getPromptConfig: (taskType: string): Promise<AiServiceResponse<any>> =>
+    api.get(`/v1/admin/ai/prompts/${taskType}`),
+
+  updatePromptConfig: (taskType: string, data: any): Promise<AiServiceResponse<boolean>> =>
+    api.put(`/v1/admin/ai/prompts/${taskType}`, data),
 };

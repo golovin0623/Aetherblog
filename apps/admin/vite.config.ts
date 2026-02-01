@@ -21,6 +21,19 @@ export default defineConfig(({ command }) => ({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // AI 服务流式端点 - 直接路由到 AI 服务
+      '/api/v1/ai': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        // 禁用代理缓冲以支持流式响应
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            // 禁用 Nginx 缓冲（如果有的话）
+            proxyRes.headers['x-accel-buffering'] = 'no';
+            proxyRes.headers['cache-control'] = 'no-cache';
+          });
+        },
+      },
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,

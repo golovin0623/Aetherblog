@@ -8,6 +8,7 @@
 #   ./start.sh --gateway       # 开发网关模式 (测试网关路由，保留热更新)
 #   ./start.sh --prod          # 生产模式 (通过网关统一入口)
 #   ./start.sh --with-middleware  # 同时启动中间件 (PostgreSQL/Redis/ES)
+#   ./stop.sh && ./start.sh --gateway --with-middleware    # 开发测试指令
 
 set -euo pipefail
 IFS=$'\n\t'

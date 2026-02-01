@@ -45,9 +45,45 @@ class LlmRouter:
             "titles": self.settings.model_titles,
             "polish": self.settings.model_polish,
             "outline": self.settings.model_outline,
+            "translate": self.settings.model_translate,
             "embedding": self.settings.model_embedding,
         }
         return mapping.get(alias, alias)
+
+    @staticmethod
+    def _prefix_model_for_litellm(model_id: str, api_type: str | None) -> str:
+        """
+        Apply provider prefix to model name for correct LiteLLM routing.
+        
+        LiteLLM auto-detects providers based on model name prefixes:
+        - gemini-* → Vertex AI (requires Google Cloud SDK)
+        - claude-* → Anthropic API
+        - gpt-* → OpenAI API
+        
+        For custom API endpoints, we must add explicit prefixes to force the correct routing:
+        - openai_compat/custom: Add 'openai/' prefix to force OpenAI-compatible protocol
+        - azure: Add 'azure/' prefix for Azure OpenAI Service
+        - anthropic: No prefix needed (LiteLLM natively supports Anthropic API)
+        - google: No prefix needed IF using API key auth; Vertex AI needs credentials
+        """
+        if not api_type:
+            return model_id
+            
+        # openai_compat and custom: Force OpenAI-compatible routing
+        if api_type in ("openai_compat", "custom"):
+            if not model_id.startswith("openai/"):
+                return f"openai/{model_id}"
+        
+        # Azure OpenAI: Add azure/ prefix
+        elif api_type == "azure":
+            if not model_id.startswith("azure/"):
+                return f"azure/{model_id}"
+        
+        # anthropic: LiteLLM handles claude-* models natively
+        # google: LiteLLM handles gemini-* models natively with api_key
+        # No prefix needed for these - they work with api_key + api_base
+        
+        return model_id
 
     @dataclass
     class _ResolvedRoute:
@@ -90,8 +126,11 @@ class LlmRouter:
         if not credential:
             raise ValueError("Credential not found for requested provider")
 
+        # Apply provider prefix for correct LiteLLM routing
+        prefixed_model = self._prefix_model_for_litellm(model.model_id, credential.api_type)
+
         return LlmRouter._ResolvedRoute(
-            model=model.model_id,
+            model=prefixed_model,
             api_key=credential.api_key,
             api_base=credential.base_url,
             temperature=0.7,
@@ -113,8 +152,12 @@ class LlmRouter:
 
         routing = await self._get_routing(model_alias, user_id)
         if routing:
+            # Apply provider prefix for correct LiteLLM routing
+            prefixed_model = self._prefix_model_for_litellm(
+                routing.model.model_id, routing.credential.api_type
+            )
             return LlmRouter._ResolvedRoute(
-                model=routing.model.model_id,
+                model=prefixed_model,
                 api_key=routing.credential.api_key,
                 api_base=routing.credential.base_url,
                 temperature=routing.config.get("temperature", 0.7),
@@ -318,3 +361,84 @@ class LlmRouter:
             api_base=api_base,
         )
         return response.data[0]["embedding"]
+
+    async def stream_chat_with_think_detection(
+        self,
+        prompt_variables: dict[str, Any] | str,
+        model_alias: str,
+        user_id: int | None = None,
+        custom_prompt: str | None = None,
+        model_id: str | None = None,
+        provider_code: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        Stream chat completion with <think> block detection.
+        
+        Yields events in format:
+        - {"type": "delta", "content": "...", "isThink": False}
+        - {"type": "delta", "content": "...", "isThink": True}
+        - {"type": "done"}
+        """
+        in_think = False
+        buffer = ""
+        # Minimum chars to keep for tag detection (length of "</think>")
+        # Minimum chars to keep for tag detection (length of "</think>")
+        TAG_BUFFER_SIZE = 8
+        
+        async for chunk in self.stream_chat(
+            prompt_variables=prompt_variables,
+            model_alias=model_alias,
+            user_id=user_id,
+            custom_prompt=custom_prompt,
+            model_id=model_id,
+            provider_code=provider_code,
+        ):
+            buffer += chunk
+            
+            # Process buffer incrementally
+            while len(buffer) > TAG_BUFFER_SIZE:
+                if not in_think:
+                    # Look for <think> start
+                    think_start = buffer.find("<think>")
+                    if think_start != -1 and think_start < len(buffer) - TAG_BUFFER_SIZE:
+                        # Yield content before <think>
+                        if think_start > 0:
+                            yield {"type": "delta", "content": buffer[:think_start], "isThink": False}
+                        buffer = buffer[think_start + 7:]  # Skip <think>
+                        in_think = True
+                    elif think_start == -1:
+                        # No <think> found, safe to yield most of buffer
+                        safe_len = len(buffer) - TAG_BUFFER_SIZE
+                        if safe_len > 0:
+                            yield {"type": "delta", "content": buffer[:safe_len], "isThink": False}
+                            buffer = buffer[safe_len:]
+                        break
+                    else:
+                        # <think> found but too close to end, wait for more data
+                        break
+                else:
+                    # Look for </think> end
+                    think_end = buffer.find("</think>")
+                    if think_end != -1 and think_end < len(buffer) - TAG_BUFFER_SIZE:
+                        # Yield think content
+                        if think_end > 0:
+                            yield {"type": "delta", "content": buffer[:think_end], "isThink": True}
+                        buffer = buffer[think_end + 8:]  # Skip </think>
+                        in_think = False
+                    elif think_end == -1:
+                        # No </think> found, safe to yield most of buffer
+                        safe_len = len(buffer) - TAG_BUFFER_SIZE
+                        if safe_len > 0:
+                            yield {"type": "delta", "content": buffer[:safe_len], "isThink": True}
+                            buffer = buffer[safe_len:]
+                        break
+                    else:
+                        # </think> found but too close to end, wait for more data
+                        break
+        
+        # Yield remaining buffer
+        if buffer:
+            yield {"type": "delta", "content": buffer, "isThink": in_think}
+        
+        yield {"type": "done"}
+

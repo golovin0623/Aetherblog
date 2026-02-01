@@ -8,7 +8,6 @@ import {
   Settings, 
   Box,
   Zap,
-  Cpu,
   Eye,
   Brain,
   Globe,
@@ -16,7 +15,8 @@ import {
   Image,
   Paperclip,
   Brackets,
-  Video
+  Video,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -62,6 +62,23 @@ const resolveAbilities = (model: AiModel) => {
     video: getBool(abilities.video ?? caps.video),
   };
 };
+
+// Ability badge component
+const AbilityBadge: React.FC<{
+  icon: React.FC<{ className?: string }>;
+  color: string;
+  title: string;
+}> = ({ icon: Icon, color, title }) => (
+  <span
+    className={cn(
+      "inline-flex items-center justify-center w-5 h-5 rounded-md",
+      color
+    )}
+    title={title}
+  >
+    <Icon className="w-3 h-3" />
+  </span>
+);
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
   value,
@@ -167,7 +184,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return allModels.find(m => m.model_id === value);
   }, [allModels, value, selectedProviderCode]);
 
-  // Close on outside click (simplified for now, ideally use a click-outside hook)
+  // Close on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -200,16 +217,19 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   return (
     <div className={cn("relative model-selector-container", className)}>
+      {/* Trigger Button - Only shows provider icon */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "w-full flex items-center gap-3 border transition-all duration-200",
+          "flex items-center gap-2 border transition-all duration-200 px-3 w-full",
           variant === 'compact'
-            ? "h-8 px-2.5 rounded-full text-xs"
-            : "h-9 px-3 rounded-full text-sm sm:w-[260px]",
-          "bg-[var(--bg-primary)] border-[var(--border-default)]",
-          "hover:border-primary/40 hover:bg-[var(--bg-card-hover)]",
-          isOpen && "ring-2 ring-primary/20 border-primary/50"
+            ? "h-8 rounded-lg"
+            : "h-9 rounded-full",
+          "bg-gradient-to-br from-[var(--bg-card)] to-[var(--bg-secondary)]",
+          "border-[var(--border-default)]",
+          "hover:border-primary/40 hover:shadow-md hover:shadow-primary/5",
+          isOpen && "ring-2 ring-primary/20 border-primary/50",
+          !selectedModel && !isOpen && "animate-breathing-light border-primary/30"
         )}
       >
         {selectedModel ? (
@@ -217,31 +237,22 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             <ProviderIcon
               code={selectedModel.provider_code}
               size={variant === 'compact' ? 16 : 18}
-              className="shrink-0"
             />
-            <div className="flex flex-col items-start min-w-0 flex-1">
-              <span
-                className={cn(
-                  "font-semibold text-[var(--text-primary)] truncate block w-full text-left",
-                  variant === 'compact' ? "text-xs" : "text-sm"
-                )}
-              >
-                {selectedModel.display_name || selectedModel.model_id}
-              </span>
-              <span className="text-[10px] text-[var(--text-muted)] truncate block w-full text-left">
-                {selectedModel.model_id}
-              </span>
-            </div>
+            <span className="text-xs font-medium text-[var(--text-primary)] truncate max-w-[120px]">
+              {selectedModel.display_name || selectedModel.model_id}
+            </span>
+            <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto" />
           </>
         ) : (
           <>
-            <div className="w-5 h-5 rounded bg-[var(--bg-muted)] flex items-center justify-center">
-               <Box className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-            </div>
-            <span className="text-[var(--text-muted)] flex-1 text-left text-xs">选择模型...</span>
+            <Box className={cn(
+              "text-[var(--text-muted)]",
+              variant === 'compact' ? "w-4 h-4" : "w-4 h-4"
+            )} />
+            <span className="text-xs text-[var(--text-muted)]">选择模型</span>
+            <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto" />
           </>
         )}
-        <ChevronsUpDown className={cn("text-[var(--text-muted)] shrink-0", variant === 'compact' ? "w-3.5 h-3.5" : "w-4 h-4")} />
       </button>
 
       <AnimatePresence>
@@ -252,14 +263,32 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.15 }}
             className={cn(
-              "absolute top-full left-0 z-50 mt-2 rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] shadow-2xl overflow-hidden flex flex-col max-h-[520px]",
-              variant === 'compact' ? "w-[320px]" : "w-[360px]"
+              "absolute top-full left-0 z-50 mt-2 rounded-2xl flex flex-col max-h-[520px]",
+              "bg-white dark:bg-zinc-900",
+              "border border-zinc-200 dark:border-zinc-700/60",
+              "shadow-xl shadow-zinc-200/50 dark:shadow-black/30",
+              variant === 'compact' ? "w-[340px]" : "w-[380px]",
+              "overflow-hidden"
             )}
           >
+            {/* Top shine effect that follows the rounded corners and fades down */}
+            <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
+              <div 
+                className={cn(
+                  "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
+                  "dark:border-white/10"
+                )} 
+                style={{
+                  maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+                  WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+                }}
+              />
+            </div>
+
             {/* Search Header */}
-            <div className="p-3 border-b border-[var(--border-default)] bg-[var(--bg-primary)] sticky top-0 z-10">
+            <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
                 <input
                   type="text"
                   value={search}
@@ -267,99 +296,125 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                   placeholder="搜索模型..."
                   autoFocus
                   className={cn(
-                    "w-full pl-9 pr-3 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 placeholder:text-[var(--text-muted)]/50",
-                    variant === 'compact' ? "py-1.5 text-xs" : "py-2 text-sm"
+                    "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
+                    "bg-white dark:bg-zinc-800",
+                    "border border-zinc-200 dark:border-zinc-700",
+                    "text-zinc-900 dark:text-zinc-100",
+                    "placeholder:text-zinc-400 dark:placeholder:text-zinc-500",
+                    "focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                   )}
                 />
               </div>
             </div>
 
             {/* Models List */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-4 min-h-[200px] scrollbar-thin">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-[200px] max-h-[380px] scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-700">
               {filteredGroups.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 text-[var(--text-muted)]">
-                  <Box className="w-8 h-8 mb-2 opacity-20" />
-                  <p className="text-xs">未找到匹配模型</p>
+                <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-500">
+                  <Box className="w-10 h-10 mb-3 opacity-30" />
+                  <p className="text-sm">未找到匹配模型</p>
                 </div>
               ) : (
                 filteredGroups.map((group) => (
-                  <div key={group.provider.code}>
-                    <div className="px-2 py-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider sticky top-0 bg-[var(--bg-card)]/90 backdrop-blur-sm z-0">
-                      <ProviderIcon code={group.provider.code} size={14} />
-                      {group.provider.display_name || group.provider.name}
+                  <div key={group.provider.code} className="mb-2">
+                    {/* Provider Header */}
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm z-0">
+                      <ProviderIcon code={group.provider.code} size={16} />
+                      <span className="uppercase tracking-wider">
+                        {group.provider.display_name || group.provider.name}
+                      </span>
                     </div>
-                    <div className="space-y-1">
+                    
+                    {/* Model Items */}
+                    <div className="space-y-0.5">
                       {group.models.map((model) => {
                         const abilities = resolveAbilities(model);
                         const contextWindow = resolveContextWindow(model);
-
-                        const badges = [
-                          abilities.vision && { key: "vision", icon: Eye, className: "bg-emerald-500/15 text-emerald-500" },
-                          abilities.reasoning && { key: "reasoning", icon: Brain, className: "bg-violet-500/15 text-violet-500" },
-                          abilities.search && { key: "search", icon: Globe, className: "bg-sky-500/15 text-sky-500" },
-                          abilities.functionCall && { key: "function", icon: Terminal, className: "bg-amber-500/15 text-amber-500" },
-                          abilities.files && { key: "files", icon: Paperclip, className: "bg-lime-500/15 text-lime-500" },
-                          abilities.structuredOutput && { key: "structured", icon: Brackets, className: "bg-fuchsia-500/15 text-fuchsia-500" },
-                          abilities.imageOutput && { key: "image", icon: Image, className: "bg-pink-500/15 text-pink-500" },
-                          abilities.video && { key: "video", icon: Video, className: "bg-indigo-500/15 text-indigo-500" },
-                        ].filter(Boolean) as Array<{ key: string; icon: React.FC<{ className?: string }>; className: string }>;
+                        const isSelected = value === model.model_id && 
+                          (!selectedProviderCode || selectedProviderCode === group.provider.code);
 
                         return (
-                        <button
-                          key={model.id}
-                          onClick={() => handleSelect(model, group.provider)}
-                          className={cn(
-                            "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all duration-200 group relative",
-                            value === model.model_id
-                              ? "bg-primary/10 border border-primary/20"
-                              : "border border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]"
-                          )}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className={cn(
-                                "font-medium truncate text-sm",
-                                value === model.model_id ? "text-primary" : "text-[var(--text-primary)]"
-                              )}>
-                                {model.display_name || model.model_id}
-                              </span>
-                              {value === model.model_id && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
-                            </div>
-                            <div className="text-[10px] text-[var(--text-muted)] truncate">
-                              {model.model_id}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {badges.slice(0, 4).map((badge) => {
-                              const Icon = badge.icon;
-                              return (
-                                <span
-                                  key={badge.key}
-                                  className={cn(
-                                    "inline-flex items-center justify-center w-6 h-6 rounded-md text-[10px] border border-transparent",
-                                    badge.className
-                                  )}
-                                  title={badge.key}
-                                >
-                                  <Icon className="w-3.5 h-3.5" />
-                                </span>
-                              );
-                            })}
-                            {contextWindow && (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-[var(--bg-muted)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap">
-                                <Zap className="w-3 h-3" />
-                                {formatContext(contextWindow)}
-                              </span>
+                          <button
+                            key={model.id}
+                            onClick={() => handleSelect(model, group.provider)}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
+                              isSelected
+                                ? "bg-primary/10 dark:bg-primary/15"
+                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
                             )}
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-[var(--bg-muted)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap">
-                              <Cpu className="w-3 h-3" />
-                              {model.model_type}
+                          >
+                            {/* Model Icon */}
+                            <ProviderIcon 
+                              code={group.provider.code} 
+                              size={20}
+                              className="shrink-0"
+                            />
+                            
+                            {/* Model Name */}
+                            <span className={cn(
+                              "flex-1 font-medium text-sm truncate",
+                              isSelected 
+                                ? "text-primary" 
+                                : "text-zinc-700 dark:text-zinc-200"
+                            )}>
+                              {model.display_name || model.model_id}
                             </span>
-                          </div>
-                        </button>
-                      );
-                    })}
+
+                            {/* Ability Badges */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {abilities.vision && (
+                                <AbilityBadge 
+                                  icon={Eye} 
+                                  color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" 
+                                  title="视觉"
+                                />
+                              )}
+                              {abilities.reasoning && (
+                                <AbilityBadge 
+                                  icon={Brain} 
+                                  color="bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" 
+                                  title="推理"
+                                />
+                              )}
+                              {abilities.search && (
+                                <AbilityBadge 
+                                  icon={Globe} 
+                                  color="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" 
+                                  title="搜索"
+                                />
+                              )}
+                              {abilities.functionCall && (
+                                <AbilityBadge 
+                                  icon={Terminal} 
+                                  color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" 
+                                  title="函数调用"
+                                />
+                              )}
+                              {abilities.imageOutput && (
+                                <AbilityBadge 
+                                  icon={Image} 
+                                  color="bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400" 
+                                  title="图像生成"
+                                />
+                              )}
+                              
+                              {/* Context Window Badge */}
+                              {contextWindow && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                                  <Zap className="w-3 h-3" />
+                                  {formatContext(contextWindow)}
+                                </span>
+                              )}
+
+                              {/* Check mark for selected */}
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-primary ml-1" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))
@@ -367,13 +422,16 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="p-2 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]/30 backdrop-blur-sm">
+            <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
               <a 
                 href="/admin/ai-config" 
-                className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:text-primary hover:bg-[var(--bg-card-hover)] transition-all"
+                className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
               >
-                <Settings className="w-3.5 h-3.5" />
-                管理提供商
+                <div className="flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  管理提供商
+                </div>
+                <ChevronRight className="w-4 h-4" />
               </a>
             </div>
           </motion.div>
@@ -384,3 +442,4 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 };
 
 export default ModelSelector;
+

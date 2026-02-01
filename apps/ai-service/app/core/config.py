@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     model_titles: str = Field(default="gpt-5-mini", alias="MODEL_TITLES")
     model_polish: str = Field(default="gpt-5-mini", alias="MODEL_POLISH")
     model_outline: str = Field(default="gpt-5-mini", alias="MODEL_OUTLINE")
+    model_translate: str = Field(default="gpt-5-mini", alias="MODEL_TRANSLATE")
     model_embedding: str = Field(default="text-embedding-3-small", alias="MODEL_EMBEDDING")
     max_input_chars: int = Field(default=20000, alias="AI_MAX_INPUT_CHARS")
 

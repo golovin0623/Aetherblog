@@ -51,7 +51,7 @@ public class AiServiceHttpClient implements AiServiceClient {
             .uri("/api/v1/ai/summary/stream")
             .contentType(MediaType.APPLICATION_JSON)
             .header("Authorization", token)
-            .accept(MediaType.parseMediaType("application/x-ndjson"))
+            .accept(MediaType.TEXT_EVENT_STREAM)
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
@@ -140,6 +140,72 @@ public class AiServiceHttpClient implements AiServiceClient {
             .bodyToMono(new ParameterizedTypeReference<AiResponse<Boolean>>() {})
             .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
             .doOnError(error -> log.error("Failed to update prompt config: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
+    }
+
+    @Override
+    public Mono<AiResponse<TranslateResponse>> translateContent(TranslateRequest request, String token) {
+        return performRequest(
+            "/api/v1/ai/translate",
+            request,
+            token,
+            new ParameterizedTypeReference<AiResponse<TranslateResponse>>() {}
+        );
+    }
+
+    @Override
+    public Mono<AiResponse<java.util.List<AiTaskTypeResponse>>> listTaskTypes(String token) {
+        return aiWebClient.get()
+            .uri("/api/v1/admin/ai/tasks")
+            .header("Authorization", token)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<java.util.List<AiTaskTypeResponse>>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to list task types: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
+    }
+
+    @Override
+    public Mono<AiResponse<Integer>> createTaskType(TaskTypeCreateRequest request, String token) {
+        return aiWebClient.post()
+            .uri("/api/v1/admin/ai/tasks")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Authorization", token)
+            .bodyValue(request)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<Integer>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to create task type: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
+    }
+
+    @Override
+    public Mono<AiResponse<Boolean>> updateTaskType(String code, TaskTypeUpdateRequest request, String token) {
+        return aiWebClient.put()
+            .uri("/api/v1/admin/ai/tasks/{code}", code)
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Authorization", token)
+            .bodyValue(request)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<Boolean>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to update task type: {}", error.getMessage()))
+            .onErrorResume(this::handleNonStreamError);
+    }
+
+    @Override
+    public Mono<AiResponse<Boolean>> deleteTaskType(String code, String token) {
+        return aiWebClient.delete()
+            .uri("/api/v1/admin/ai/tasks/{code}", code)
+            .header("Authorization", token)
+            .retrieve()
+            .onStatus(status -> status.isError(), this::handleErrorResponse)
+            .bodyToMono(new ParameterizedTypeReference<AiResponse<Boolean>>() {})
+            .retryWhen(Retry.backoff(properties.getMaxRetries(), Duration.ofMillis(500)))
+            .doOnError(error -> log.error("Failed to delete task type: {}", error.getMessage()))
             .onErrorResume(this::handleNonStreamError);
     }
 

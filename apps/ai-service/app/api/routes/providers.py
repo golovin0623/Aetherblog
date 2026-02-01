@@ -550,11 +550,25 @@ async def test_credential(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     
+    # Determine model name with proper prefix for LiteLLM routing
+    # LiteLLM auto-detects providers based on model name prefixes (e.g., gemini-* -> Vertex AI)
+    # We must add explicit prefixes to force correct routing for custom endpoints
+    model_name = req.model_id
+    if provider.api_type in ("openai_compat", "custom"):
+        # Force OpenAI-compatible protocol
+        if not model_name.startswith("openai/"):
+            model_name = f"openai/{model_name}"
+    elif provider.api_type == "azure":
+        # Azure OpenAI Service
+        if not model_name.startswith("azure/"):
+            model_name = f"azure/{model_name}"
+    # anthropic/google: LiteLLM handles natively with api_key + api_base
+    
     # Test with a simple completion
     start = time.perf_counter()
     try:
         response = await acompletion(
-            model=req.model_id,
+            model=model_name,
             messages=[{"role": "user", "content": "Say 'OK'"}],
             api_key=credential.api_key,
             api_base=credential.base_url,
