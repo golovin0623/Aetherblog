@@ -33,7 +33,7 @@ public class AuthController {
     private final UserService userService;
     private final JwtService jwtService;
 
-    private static final long TOKEN_EXPIRATION_SECONDS = 86400; // 24 hours
+    private static final long TOKEN_EXPIRATION_SECONDS = 86400; // 24 小时
 
     /**
      * 用户登录

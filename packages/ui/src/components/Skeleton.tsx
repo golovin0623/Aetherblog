@@ -31,7 +31,7 @@ export function Skeleton({
   return (
     <div
       className={cn(
-        'bg-white/10',
+        'bg-[var(--bg-card)]',
         variantStyles[variant],
         animationStyles[animation],
         className
@@ -60,7 +60,7 @@ export function SkeletonText({ lines = 3 }: { lines?: number }) {
 
 export function SkeletonCard() {
   return (
-    <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+    <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-default)]">
       <Skeleton variant="rectangular" className="w-full h-40 mb-4" />
       <Skeleton className="h-5 w-3/4 mb-2" />
       <Skeleton className="h-4 w-1/2" />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Wand2, Lightbulb, RefreshCw, Tags, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Sparkles, Wand2, Lightbulb, RefreshCw, Tags, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface AiAssistantProps {
   content: string;
@@ -15,7 +15,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
     setIsLoading(true);
     setSuggestions([]);
 
-    // Simulate AI response
+    // 模拟 AI 响应
     setTimeout(() => {
       if (action === 'continue') {
         setSuggestions(['这是 AI 生成的续写内容示例，可以直接插入到文章中...']);
@@ -39,7 +39,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
 
   return (
     <div className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-      {/* Header */}
+      {/* 头部 */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
@@ -57,7 +57,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
 
       {isExpanded && (
         <div className="px-4 pb-4 space-y-3">
-          {/* Actions */}
+          {/* 操作 */}
           <div className="grid grid-cols-2 gap-2">
             {actions.map((action) => (
               <button
@@ -72,7 +72,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
             ))}
           </div>
 
-          {/* Loading */}
+          {/* 加载中 */}
           {isLoading && (
             <div className="flex items-center gap-2 text-gray-400 text-sm">
               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -80,7 +80,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
             </div>
           )}
 
-          {/* Suggestions */}
+          {/* 建议 */}
           {suggestions.length > 0 && (
             <div className="space-y-2">
               {suggestions.map((suggestion, i) => (

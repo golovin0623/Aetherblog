@@ -10,7 +10,7 @@ interface BadgeProps {
 
 export function Badge({ children, variant = 'default', size = 'md', className }: BadgeProps) {
   const variantStyles = {
-    default: 'bg-gray-500/20 text-gray-300',
+    default: 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)]',
     primary: 'bg-primary/20 text-primary',
     success: 'bg-green-500/20 text-green-400',
     warning: 'bg-yellow-500/20 text-yellow-400',

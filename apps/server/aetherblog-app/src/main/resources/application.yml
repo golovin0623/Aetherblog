@@ -103,6 +103,8 @@ aetherblog:
   upload:
     path: ${UPLOAD_PATH:./uploads}
     url-prefix: /uploads
+  media:
+    trash-cleanup-days: 120
   log:
     path: ${LOG_PATH:./logs}
 

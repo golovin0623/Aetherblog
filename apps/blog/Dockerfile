@@ -30,6 +30,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
+COPY --from=deps /app/apps/blog/node_modules ./apps/blog/node_modules
 COPY . .
 
 # Set environment variables for build
@@ -37,6 +38,9 @@ ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_ADMIN_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
 ENV NEXT_PUBLIC_ADMIN_URL=${NEXT_PUBLIC_ADMIN_URL:-/admin/}
+
+# Ensure public folder exists for runtime copy even if repo has none
+RUN mkdir -p /app/apps/blog/public
 
 # Build the application with memory limit
 ENV NODE_OPTIONS="--max-old-space-size=2048"

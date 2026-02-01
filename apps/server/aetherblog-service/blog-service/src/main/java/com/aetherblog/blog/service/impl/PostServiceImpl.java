@@ -244,7 +244,7 @@ public class PostServiceImpl implements PostService {
         post.setCoverImage(request.coverImage());
         post.setWordCount(calculateWordCount(request.content()));
 
-        // Update status and set publishedAt if publishing
+        // 更新状态，如果是发布操作则设置发布时间
         if (request.status() != null) {
             PostStatus newStatus = PostStatus.valueOf(request.status());
             if (newStatus == PostStatus.PUBLISHED && post.getPublishedAt() == null) {

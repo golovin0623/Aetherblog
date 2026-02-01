@@ -12,7 +12,7 @@ export interface User {
 export interface LoginRequest {
   username: string;
   password: string;
-  /** Flag to indicate password is encrypted */
+  /** 标记密码是否已加密 */
   encrypted?: boolean;
 }
 
@@ -21,6 +21,6 @@ export interface LoginResponse {
   refreshToken?: string;
   expiresIn: number;
   userInfo: User;
-  /** Whether user must change password on first login */
+  /** 用户是否必须在首次登录时更改密码 */
   mustChangePassword?: boolean;
 }

@@ -17,7 +17,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-@SuppressWarnings("null")
 public class TagServiceImpl implements TagService {
 
     private final TagRepository tagRepository;
@@ -42,9 +41,6 @@ public class TagServiceImpl implements TagService {
     @Override
     @Transactional
     public Tag createTag(Tag tag) {
-        if (tagRepository.existsByName(tag.getName())) {
-            throw new BusinessException(400, "标签名已存在");
-        }
         if (tag.getSlug() == null || tag.getSlug().isEmpty()) {
             tag.setSlug(SlugUtils.toSlug(tag.getName()));
         }
@@ -57,6 +53,7 @@ public class TagServiceImpl implements TagService {
         Tag existing = getTagById(id);
         existing.setName(tag.getName());
         existing.setColor(tag.getColor());
+        existing.setDescription(tag.getDescription());
         return tagRepository.save(existing);
     }
 
@@ -64,5 +61,17 @@ public class TagServiceImpl implements TagService {
     @Transactional
     public void deleteTag(Long id) {
         tagRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional
+    public Tag getOrCreateTag(String name) {
+        return tagRepository.findByName(name)
+                .orElseGet(() -> {
+                    Tag newTag = new Tag();
+                    newTag.setName(name);
+                    newTag.setSlug(SlugUtils.toSlug(name));
+                    return tagRepository.save(newTag);
+                });
     }
 }

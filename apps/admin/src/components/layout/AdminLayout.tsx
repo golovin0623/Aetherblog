@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { useSidebarStore } from '@/stores';
 import { MobileHeader } from './MobileHeader';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+
+import { useMediaQuery } from '@/hooks';
 import { cn } from '@/lib/utils';
 
 export function AdminLayout() {
@@ -11,7 +12,7 @@ export function AdminLayout() {
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const isMobile = useMediaQuery('(max-width: 768px)');
   const location = useLocation();
-  const isAppPage = location.pathname.startsWith('/media'); // Pages that manage their own layout/scroll
+  const isAppPage = location.pathname.startsWith('/media'); // 管理自身布局/滚动的页面
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -21,6 +22,7 @@ export function AdminLayout() {
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
         <MobileHeader />
+
 
         {/* 页面内容 */}
         <main className={cn(

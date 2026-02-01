@@ -80,26 +80,28 @@ trigger: always_on
 │   └─ 分类CRUD, 标签云管理
 ├─ 任务5.6: 友链管理 → §8.2
 │   └─ 友链CRUD, 状态检测
-└─ 任务5.7: 系统设置 → §8.2
-    └─ 站点配置, 存储配置, 个人资料
+├─ 任务5.7: 系统设置 → §8.2
+│   └─ 站点配置, 存储配置, 个人资料
+└─ 任务5.8: AI 配置中心 → §8.2, §5.1
+    └─ AiConfigPage, ProviderComponents, 图标集成
 
 [检查点5] ════════════════════════════════════════════════════════════
 
 阶段6: AI 服务开发 (预计5天) 
-├─ 任务6.1: AI 核心模块 → §5.1
-│   └─ ai-core (Spring AI配置, ChatClient, Embedding) 
-├─ 任务6.2: 写作 Agent 开发 → §5.1
-│   └─ WritingAgent (清洗, 重写, 润色, 续写) 
-├─ 任务6.3: 标签摘要 Agent → §5.1
-│   └─ TaggingAgent, SummaryAgent
-├─ 任务6.4: RAG 服务开发 → §5.2
-│   └─ 向量存储, 混合检索, RRF重排序
+├─ 任务6.1: Python 服务初始化 → §5.1
+│   └─ apps/ai-service (FastAPI, Poetry, 目录结构) 
+├─ 任务6.2: 核心功能开发 → §5.1
+│   └─ LiteLLM 集成, 模型路由, 鉴权中间件 
+├─ 任务6.3: 业务 Agent 开发 → §5.1
+│   └─ SummaryAgent, TaggingAgent, WritingAgent (Python实现)
+├─ 任务6.4: RAG 服务实现 → §5.2
+│   └─ LlamaIndex集成, 向量存储(pgvector), 混合检索
 ├─ 任务6.5: Prompt 管理服务 → §5.3
 │   └─ 模板CRUD, 动态加载, 版本管理
 ├─ 任务6.6: 前端 AI 助手集成 → §3.2, §8.3
-│   └─ AiAssistant组件, 流式响应UI
+│   └─ AiAssistant组件, 流式响应解析(ReadableStream)
 └─ 任务6.7: AI 搜索集成 → §8.3
-    └─ 语义搜索, 问答面板, 相关推荐
+    └─ 语义搜索 API 联调, 问答面板
 
 [检查点6] ════════════════════════════════════════════════════════════
 

@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 interface PostPropertiesModalProps {
   isOpen: boolean;
   onClose: () => void;
-  post: Post;  // Changed from PostListItem to Post for full data
+  post: Post;  // 已从 PostListItem 改为 Post 以获取完整数据
   categories: Category[];
   tags: Tag[];
   onSave: (data: UpdatePostPropertiesRequest) => Promise<void>;
@@ -60,7 +60,7 @@ export function PostPropertiesModal({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
 
-  // Close date picker when clicking outside
+  // 点击外部时关闭日期选择器
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
@@ -71,10 +71,10 @@ export function PostPropertiesModal({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Initialize form data from Post directly - all data is already available
+  // 直接从 Post 初始化表单数据 - 所有数据均可用
   useEffect(() => {
     if (isOpen && post) {
-      // Use category.id from the nested object if categoryId is missing/null
+      // 如果 categoryId 缺失/为空，使用嵌套对象中的 category.id
       const effectiveCategoryId = post.categoryId || post.category?.id;
       
       setFormData({
@@ -90,7 +90,7 @@ export function PostPropertiesModal({
         password: '',
       });
       
-      // Tags are already in {id, name} format from Post
+      // Tags 已符合 Post 中的 {id, name} 格式
       setSelectedTags(post.tags?.map(t => t.id) || []);
       setTagSearch('');
     }
@@ -124,7 +124,7 @@ export function PostPropertiesModal({
 
   const getTagColor = (index: number) => TAG_COLORS[index % TAG_COLORS.length];
 
-  // --- Custom Date Picker Component ---
+  // --- 自定义日期选择器组件 ---
   const DatePickerPopover = ({ 
     value, 
     onChange 
@@ -176,7 +176,7 @@ export function PostPropertiesModal({
       >
         {!showTimeSelect ? (
           <div className="p-4">
-            {/* Calendar Header */}
+            {/* 日历头部 */}
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-semibold text-white">
                 {format(viewDate, 'yyyy年 MM月', { locale: zhCN })}
@@ -199,7 +199,7 @@ export function PostPropertiesModal({
               </div>
             </div>
 
-            {/* Calendar Grid */}
+            {/* 日历网格 */}
             <div className="grid grid-cols-7 gap-1 mb-2">
               {['一', '二', '三', '四', '五', '六', '日'].map(d => (
                 <div key={d} className="text-[10px] font-bold text-gray-500 text-center py-1">
@@ -229,7 +229,7 @@ export function PostPropertiesModal({
               })}
             </div>
 
-            {/* Bottom Actions */}
+            {/* 底部操作栏 */}
             <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-3">
               <button
                 type="button"
@@ -269,7 +269,7 @@ export function PostPropertiesModal({
             </div>
 
             <div className="flex items-center justify-center gap-4 py-4">
-              {/* Hours */}
+              {/* 小时 */}
               <div className="flex flex-col items-center gap-2">
                 <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">时</span>
                 <div className="flex flex-col gap-1 h-32 overflow-y-auto no-scrollbar px-2 snap-y">
@@ -291,7 +291,7 @@ export function PostPropertiesModal({
                 </div>
               </div>
               <span className="text-xl text-gray-600 font-light">:</span>
-              {/* Minutes */}
+              {/* 分钟 */}
               <div className="flex flex-col items-center gap-2">
                 <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">分</span>
                 <div className="flex flex-col gap-1 h-32 overflow-y-auto no-scrollbar px-2 snap-y">
@@ -331,7 +331,7 @@ export function PostPropertiesModal({
     );
   };
 
-  // Format date for display (YYYY-MM-DD HH:mm)
+  // 格式化日期以用于显示 (YYYY-MM-DD HH:mm)
   const formatDateDisplay = (dateString: string | undefined): string => {
     if (!dateString) return '请选择时间';
     try {
@@ -349,10 +349,10 @@ export function PostPropertiesModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" title="修改信息">
       <form onSubmit={handleSubmit} className="flex flex-col h-[75vh]">
-        {/* Scrollable Content */}
+        {/* 可滚动内容区域 */}
         <div className="flex-1 overflow-y-auto px-1 pr-3 space-y-6 custom-scrollbar pb-6">
           
-          {/* Title */}
+          {/* 标题 */}
           <div>
             <label className={labelClass}>
               <span className="text-red-400">*</span> 文章标题
@@ -367,7 +367,7 @@ export function PostPropertiesModal({
             />
           </div>
 
-          {/* Author - Read Only */}
+          {/* 作者 - 只读 */}
           <div>
             <label className={labelClass}>作者</label>
             <div className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 select-none cursor-not-allowed">
@@ -375,13 +375,13 @@ export function PostPropertiesModal({
             </div>
           </div>
 
-          {/* Tags - Simplified Card Style with Left Border */}
+          {/* 标签 - 左边框简卡风格 */}
           <div>
             <label className={labelClass}>
               <Hash className="w-3.5 h-3.5" /> 标签
             </label>
             <div className="space-y-3">
-              {/* Tag Search */}
+              {/* 标签搜索 */}
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input 
@@ -393,7 +393,7 @@ export function PostPropertiesModal({
                 />
               </div>
               
-              {/* Selected Tags - Card Grid with Left Border */}
+              {/* 已选标签 - 左边框卡片网格 */}
               <div className="grid grid-cols-2 gap-2">
                 <AnimatePresence mode="popLayout">
                   {tags.filter(t => selectedTags.includes(t.id)).map((tag, idx) => {
@@ -427,7 +427,7 @@ export function PostPropertiesModal({
                 </AnimatePresence>
               </div>
 
-              {/* Unselected Tags Pool */}
+              {/* 未选标签池 */}
               {filteredTags.some(t => !selectedTags.includes(t.id)) && (
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
                   {filteredTags.filter(t => !selectedTags.includes(t.id)).map((tag) => (
@@ -446,7 +446,7 @@ export function PostPropertiesModal({
             </div>
           </div>
 
-          {/* Category */}
+          {/* 分类 */}
           <div>
             <label className={labelClass}>
               <span className="text-red-400">*</span> 分类
@@ -471,10 +471,10 @@ export function PostPropertiesModal({
             </div>
           </div>
 
-          {/* Dates & Pin Group */}
+          {/* 日期与置顶组 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
-            {/* Created Time - Premium Custom Date Picker */}
+            {/* 创建时间 - 高级自定义日期选择器 */}
             <div className="relative" ref={datePickerRef}>
               <label className={labelClass}>
                 <Calendar className="w-3.5 h-3.5" /> 创建时间
@@ -537,7 +537,7 @@ export function PostPropertiesModal({
             </div>
           </div>
 
-          {/* Slug */}
+          {/* 别名 */}
           <div>
             <label className={labelClass}>
               <Globe className="w-3.5 h-3.5" /> URL 别名 (Slug)
@@ -551,7 +551,7 @@ export function PostPropertiesModal({
             />
           </div>
 
-          {/* Expansion: Advanced Visibility */}
+          {/* 扩展：高级可见性 */}
           <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
             <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
               <Lock className="w-4 h-4 text-primary" />
@@ -559,7 +559,7 @@ export function PostPropertiesModal({
             </h4>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Status */}
+              {/* 状态 */}
               <div>
                 <label className="text-xs text-gray-500 mb-2 block">文章状态</label>
                 <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
@@ -585,7 +585,7 @@ export function PostPropertiesModal({
                 </div>
               </div>
 
-              {/* Password Protection */}
+              {/* 密码保护 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1.5 block">访问密码</label>
                 <div className="relative">
@@ -611,7 +611,7 @@ export function PostPropertiesModal({
 
         </div>
 
-        {/* Footer Actions */}
+        {/* 底部操作栏 */}
         <div className="flex items-center justify-end pt-5 mt-2 border-t border-white/5 bg-transparent gap-3">
           <button
             type="button"

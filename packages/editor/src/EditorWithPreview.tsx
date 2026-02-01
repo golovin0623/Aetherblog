@@ -10,23 +10,23 @@ export interface EditorWithPreviewProps {
   value: string;
   onChange: (value: string) => void;
   className?: string;
-  /** External view mode control (controlled component) */
+  /** 外部视图模式控制（受控组件） */
   viewMode?: ViewMode;
-  /** Callback when view mode changes (only used with external viewMode) */
+  /** 视图模式更改时的回调（仅用于外部 viewMode） */
   onViewModeChange?: (mode: ViewMode) => void;
-  /** Hide the internal toolbar (use when providing external controls) */
+  /** 隐藏内部工具栏（在提供外部控制时使用） */
   hideToolbar?: boolean;
-  /** Synchronize scroll between editor and preview in split mode */
+  /** 在分屏模式下同步编辑器和预览之间的滚动 */
   isSyncScroll?: boolean;
-  /** Base font size in px (used when editorFontSize/previewFontSize not provided) */
+  /** 基础字体大小（px）（未提供 editorFontSize/previewFontSize 时使用） */
   fontSize?: number;
-  /** Editor font size in px (overrides fontSize for editor) */
+  /** 编辑器字体大小（px）（覆盖编辑器的 fontSize） */
   editorFontSize?: number;
-  /** Preview font size in px (overrides fontSize for preview) */
+  /** 预览字体大小（px）（覆盖预览的 fontSize） */
   previewFontSize?: number;
-  /** Whether to show line numbers in editor */
+  /** 是否在编辑器中显示行号 */
   showLineNumbers?: boolean;
-  /** Ref to expose the CodeMirror EditorView for external control (toolbar commands) */
+  /** 用于暴露 CodeMirror EditorView 以供外部控制（工具栏命令）的 Ref */
   editorViewRef?: React.MutableRefObject<EditorView | null>;
   /** 拖放事件处理 */
   onDrop?: (e: React.DragEvent) => void;
@@ -38,6 +38,8 @@ export interface EditorWithPreviewProps {
   onPaste?: (e: React.ClipboardEvent) => void;
   /** 是否正在拖拽文件 */
   isDragging?: boolean;
+  /** 编辑器主题 */
+  theme?: 'light' | 'dark';
 }
 
 export function EditorWithPreview({
@@ -56,9 +58,11 @@ export function EditorWithPreview({
   onDrop,
   onDragOver,
   onDragLeave,
-  onPaste,isDragging = false,
+  onPaste,
+  isDragging = false,
+  theme = 'dark',
 }: EditorWithPreviewProps) {
-  // Resolve actual font sizes (individual overrides base)
+  // 解析实际字体大小（个别覆盖基础）
   const actualEditorFontSize = editorFontSize ?? fontSize;
   const actualPreviewFontSize = previewFontSize ?? fontSize;
   const [internalViewMode, setInternalViewMode] = useState<ViewMode>('split');
@@ -66,11 +70,11 @@ export function EditorWithPreview({
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
   
-  // Use external viewMode if provided, otherwise use internal state
+  // 如果提供则使用外部视图模式，否则使用内部状态
   const viewMode = externalViewMode ?? internalViewMode;
   const setViewMode = onViewModeChange ?? setInternalViewMode;
 
-  // Inject markdown preview styles
+  // 注入 Markdown 预览样式
   useEffect(() => {
     const styleId = 'markdown-preview-styles';
     if (!document.getElementById(styleId)) {
@@ -81,7 +85,7 @@ export function EditorWithPreview({
     }
   }, []);
 
-  // Sync scroll logic - uses line-based sync for better accuracy
+  // 同步滚动逻辑 - 使用基于行的同步以提高准确性
   useEffect(() => {
     if (!isSyncScroll || viewMode !== 'split') return;
 
@@ -89,34 +93,34 @@ export function EditorWithPreview({
     const previewEl = previewScrollRef.current;
     if (!editorContainer || !previewEl) return;
 
-    // Use RAF to ensure CodeMirror has rendered
+    // 使用 RAF 确保 CodeMirror 已渲染
     const rafId = requestAnimationFrame(() => {
-      // Find CodeMirror's internal scroller and line elements
+      // 查找 CodeMirror 的内部滚动容器和行元素
       const editorEl = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
       const cmContent = editorContainer.querySelector('.cm-content') as HTMLElement | null;
       if (!editorEl || !cmContent) return;
 
-      // Get the current top visible line in the editor
+      // 获取编辑器中当前顶部可见的行
       const getEditorTopLine = (): number => {
         const scrollTop = editorEl.scrollTop;
         const paddingTop = parseFloat(getComputedStyle(cmContent).paddingTop) || 0;
         
-        // Measure line height dynamically from the first visible line
+        // 从第一行可见行动态测量行高
         const firstLine = cmContent.querySelector('.cm-line');
-        // Default to fontSize * 1.5 if no line found (1.5 is standard line-height)
+        // 如果未找到行，则默认为 fontSize * 1.5（1.5 是标准行高）
         const lineHeight = firstLine ? firstLine.clientHeight : (fontSize || 16) * 1.5;
         
         if (!lineHeight) return 1;
 
-        // Calculate line number based on scroll position
-        // Subtract padding to get content scroll position
+        // 根据滚动位置计算行号
+        // 减去内边距以获取内容滚动位置
         const contentScrollTop = Math.max(0, scrollTop - paddingTop);
         return Math.floor(contentScrollTop / lineHeight) + 1;
       };
 
-      // Find the closest element in preview with data-source-line
+      // 在预览中查找具有 data-source-line 的最近元素
       const scrollPreviewToLine = (lineNum: number): void => {
-        // Find elements with data-source-line attributes
+        // 查找具有 data-source-line 属性的元素
         const elements = previewEl.querySelectorAll('[data-source-line]');
         let closestElement: HTMLElement | null = null;
         let closestLine = 0;
@@ -130,19 +134,19 @@ export function EditorWithPreview({
         });
 
         if (closestElement !== null) {
-          // Calculate offset position
+          // 计算偏移位置
           const elementTop = (closestElement as HTMLElement).offsetTop;
           const lineDiff = lineNum - closestLine;
-          // Calculate dynamic line height
+          // 计算动态行高
           const firstLine = cmContent.querySelector('.cm-line');
           const lineHeight = firstLine ? firstLine.clientHeight : (fontSize || 16) * 1.5;
 
-          // Estimate additional scroll based on line difference
+          // 根据行差估计额外滚动
           const additionalScroll = lineDiff * lineHeight;
           
           previewEl.scrollTop = Math.max(0, elementTop + additionalScroll - 50);
         } else {
-          // Fallback to percentage-based sync
+          // 回退到基于百分比的同步
           const editorScrollable = editorEl.scrollHeight - editorEl.clientHeight;
           const previewScrollable = previewEl.scrollHeight - previewEl.clientHeight;
           if (editorScrollable > 0 && previewScrollable > 0) {
@@ -152,7 +156,7 @@ export function EditorWithPreview({
         }
       };
 
-      // Sync editor from preview scroll
+      // 从预览滚动同步编辑器
       const scrollEditorToPreviewPosition = (): void => {
         const previewScrollable = previewEl.scrollHeight - previewEl.clientHeight;
         if (previewScrollable <= 0) return;
@@ -162,8 +166,8 @@ export function EditorWithPreview({
         editorEl.scrollTop = scrollPercentage * editorScrollable;
       };
 
-      // Note: We intentionally do NOT immediately sync on enable
-      // This prevents position jumps when restoring sync after TOC navigation
+      // 注意：我们特意不立即在启用时同步
+      // 这可以防止在 TOC 导航后恢复同步时出现位置跳跃
 
       const handleEditorScroll = () => {
         if (isSyncingRef.current) return;
@@ -190,7 +194,7 @@ export function EditorWithPreview({
       editorEl.addEventListener('scroll', handleEditorScroll, { passive: true });
       previewEl.addEventListener('scroll', handlePreviewScroll, { passive: true });
 
-      // Store cleanup function
+      // 存储清理函数
       (editorContainer as any).__scrollCleanup = () => {
         editorEl.removeEventListener('scroll', handleEditorScroll);
         previewEl.removeEventListener('scroll', handlePreviewScroll);
@@ -205,17 +209,17 @@ export function EditorWithPreview({
         delete (editorContainer as any).__scrollCleanup;
       }
     };
-  }, [isSyncScroll, viewMode]); // Remove 'value' to avoid rebinding on every keystroke
+  }, [isSyncScroll, viewMode]); // 移除 'value' 以避免每次按键时重新绑定
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      {/* Internal Toolbar - only show if not hidden */}
+      {/* 内部工具栏 - 仅在未隐藏时显示 */}
       {!hideToolbar && (
-        <div className="flex items-center gap-2 p-2 border-b border-white/10 bg-white/5">
+        <div className="flex items-center gap-2 p-2 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
           <button
             onClick={() => setViewMode('edit')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10'
+              viewMode === 'edit' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             <Edit className="w-4 h-4" />
@@ -224,7 +228,7 @@ export function EditorWithPreview({
           <button
             onClick={() => setViewMode('preview')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10'
+              viewMode === 'preview' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             <Eye className="w-4 h-4" />
@@ -233,7 +237,7 @@ export function EditorWithPreview({
           <button
             onClick={() => setViewMode('split')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'split' ? 'bg-primary text-white' : 'text-gray-400 hover:bg-white/10'
+              viewMode === 'split' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             <Columns className="w-4 h-4" />
@@ -242,12 +246,12 @@ export function EditorWithPreview({
         </div>
       )}
 
-      {/* Content */}
+      {/* 内容 */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {(viewMode === 'edit' || viewMode === 'split') && (
           <div
             ref={viewMode === 'split' ? editorScrollRef : null}
-            className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-white/10' : ''}`}
+            className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-[var(--border-subtle)]' : ''}`}
           >
             <MarkdownEditor
               value={value}
@@ -256,24 +260,27 @@ export function EditorWithPreview({
               fontSize={actualEditorFontSize}
               showLineNumbers={showLineNumbers}
               contentCentered={viewMode === 'edit'}
-              editorViewRef={editorViewRef}onDrop={onDrop}
+              editorViewRef={editorViewRef}
+              onDrop={onDrop}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onPaste={onPaste}
               isDragging={isDragging}
+              theme={theme}
             />
           </div>
         )}
         
         {viewMode === 'preview' && (
-          <div className="flex-1 overflow-y-auto bg-[#0a0a0c]">
+          <div className="flex-1 overflow-y-auto bg-[var(--bg-primary)]">
             <div
-              className="w-full py-12 px-6 min-h-full"
+              className="w-full pt-4 pb-12 px-6 min-h-full"
               style={{ maxWidth: '800px', margin: '0 auto' }}
             >
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}
+                theme={theme}
               />
             </div>
           </div>
@@ -282,12 +289,13 @@ export function EditorWithPreview({
         {viewMode === 'split' && (
           <div
             ref={previewScrollRef}
-            className="flex-1 overflow-y-auto bg-[#0a0a0c]"
+            className="flex-1 overflow-y-auto bg-[var(--bg-primary)]"
           >
-            <div className="max-w-[90%] mx-auto w-full py-10 px-6 min-h-full">
+            <div className="max-w-[90%] mx-auto w-full pt-4 pb-10 px-6 min-h-full">
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}
+                theme={theme}
               />
             </div>
           </div>
@@ -297,6 +305,6 @@ export function EditorWithPreview({
   );
 }
 
-// Export ViewMode type and component
+// 导出 ViewMode 类型和组件
 export type { ViewMode as EditorViewMode };
 export default EditorWithPreview;

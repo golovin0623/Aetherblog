@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { systemService, formatBytes } from '@/services/systemService';
 import { logger } from '@/lib/logger';
+import { useSmartPolling } from '@/hooks/useSmartPolling';
 
 // ========== 类型定义 ==========
 
@@ -68,7 +69,7 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
   };
 
   return (
-    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden flex-1">
+    <div className="h-1.5 bg-[var(--bg-secondary)] rounded-full overflow-hidden flex-1">
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.min(100, value)}%` }}
@@ -99,7 +100,7 @@ function ContainerIcon({ type }: { type: string }) {
   };
 
   return (
-    <div className={cn("p-2 rounded-lg", colorMap[type] || 'bg-white/10 text-gray-400')}>
+    <div className={cn("p-2 rounded-lg", colorMap[type] || 'bg-[var(--bg-secondary)] text-[var(--text-muted)]')}>
       {iconMap[type] || <Box className="w-4 h-4" />}
     </div>
   );
@@ -124,7 +125,7 @@ function ContainerCard({
         "p-3 rounded-lg border transition-all cursor-pointer",
         isSelected 
           ? "bg-primary/10 border-primary/30" 
-          : "bg-white/5 border-white/5 hover:border-white/10 hover:bg-white/10"
+          : "bg-[var(--bg-card)] border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--bg-card-hover)]"
       )}
     >
       <div className="flex items-center gap-3">
@@ -132,17 +133,17 @@ function ContainerCard({
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <span className={cn("text-sm font-medium truncate", isSelected ? "text-primary" : "text-white")}>
+            <span className={cn("text-sm font-medium truncate", isSelected ? "text-primary" : "text-[var(--text-primary)]")}>
               {container.displayName}
             </span>
-            <span className="text-[10px] text-gray-500 font-mono ml-2">
+            <span className="text-[10px] text-[var(--text-muted)] font-mono ml-2">
               CPU {container.cpuPercent.toFixed(1)}%
             </span>
           </div>
           
           <div className="flex items-center gap-2">
             <ProgressBar value={container.memoryPercent} color="blue" />
-            <span className="text-[10px] text-gray-400 font-mono whitespace-nowrap">
+            <span className="text-[10px] text-[var(--text-muted)] font-mono whitespace-nowrap">
               {formatBytes(container.memoryUsed)} / {formatBytes(container.memoryLimit)}
             </span>
           </div>
@@ -222,15 +223,7 @@ const mockContainers: ContainerMetrics[] = [
   }
 ];
 
-const mockOverview: ContainerOverview = {
-  containers: mockContainers,
-  totalContainers: 5,
-  runningContainers: 5,
-  totalMemoryUsed: mockContainers.reduce((sum, c) => sum + c.memoryUsed, 0),
-  totalMemoryLimit: mockContainers.reduce((sum, c) => sum + c.memoryLimit, 0),
-  avgCpuPercent: mockContainers.reduce((sum, c) => sum + c.cpuPercent, 0) / mockContainers.length,
-  dockerAvailable: true
-};
+
 
 // ========== 主组件 ==========
 
@@ -266,11 +259,16 @@ export function ContainerStatus({
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchData();
-    const timer = setInterval(() => fetchData(false), refreshInterval * 1000);
-    return () => clearInterval(timer);
-  }, [fetchData, refreshInterval]);
+  }, [fetchData]);
+
+  // Smart polling
+  useSmartPolling({
+    callback: () => fetchData(false),
+    interval: refreshInterval
+  });
 
   // Auto-select first container if none selected and data loaded
   useEffect(() => {
@@ -283,75 +281,96 @@ export function ContainerStatus({
     if (!isRefreshing) fetchData(true);
   };
 
-  if (loading && !data) {
-    return (
-      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 animate-pulse h-[400px]", className)} />
-    );
-  }
-
-  if (!data?.dockerAvailable) {
-    return (
-      <div className={cn("p-6 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-gray-500 h-[200px]", className)}>
-        <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
-        <span className="text-sm">Docker API 不可用</span>
-      </div>
-    );
-  }
-
+  // Render main structure always, handle loading state inside
   return (
-    <div className={cn("rounded-xl bg-white/5 border border-white/10 flex flex-col min-h-0", className)}>
-      {/* 头部 */}
-      <div className="p-4 sm:p-6 border-b border-white/5 flex items-center justify-between shrink-0">
+    <div className={cn("rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col min-h-0", className)}>
+      {/* 头部 - 始终显示 */}
+      <div className="p-4 sm:p-6 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <h3 className="text-base sm:text-lg font-semibold text-white">容器监控</h3>
-          {data && (
-            <span className="text-xs text-gray-400 bg-white/5 px-2 py-0.5 rounded">
+          <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">容器监控</h3>
+          {data ? (
+            <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-0.5 rounded">
                {data.runningContainers}/{data.totalContainers}
             </span>
+          ) : (
+             <div className="h-5 w-10 bg-[var(--bg-secondary)] rounded animate-pulse" />
           )}
         </div>
         
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            disabled={isRefreshing || (loading && !data)}
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            <RefreshCw className={cn("w-4 h-4", (isRefreshing || (loading && !data)) && "animate-spin")} />
           </button>
           
           <div className="flex items-center gap-1 px-2 py-1 rounded border bg-green-500/10 border-green-500/20">
-            <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-            <span className="text-[10px] font-medium text-green-400">正常</span>
+            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+            <span className="text-[10px] font-medium text-green-600 dark:text-green-400">正常</span>
           </div>
         </div>
       </div>
 
-      {/* 容器列表 */}
+      {/* 容器列表 or Skeleton or Error */}
       <div className="p-4 space-y-2 overflow-y-auto custom-scrollbar flex-1 min-h-0">
-        <AnimatePresence mode="popLayout">
-          {data?.containers.map((container) => (
-            <ContainerCard 
-              key={container.id} 
-              container={container} 
-              onClick={() => onSelectContainer?.(container.id, container.displayName)}
-              isSelected={selectedId === container.id}
-            />
-          ))}
-        </AnimatePresence>
+        {loading && !data ? (
+          // Skeleton List
+          [1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] animate-pulse shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex justify-between">
+                  <div className="h-4 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-3 w-12 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 flex-1 bg-[var(--bg-secondary)] rounded-full animate-pulse" />
+                  <div className="h-3 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : !data?.dockerAvailable ? (
+          // Error State
+          <div className="flex flex-col items-center justify-center text-[var(--text-muted)] h-full">
+            <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
+            <span className="text-sm">Docker API 不可用</span>
+          </div>
+        ) : (
+          // Actual List
+          <AnimatePresence mode="popLayout">
+            {data.containers.map((container) => (
+              <ContainerCard 
+                key={container.id} 
+                container={container} 
+                onClick={() => onSelectContainer?.(container.id, container.displayName)}
+                isSelected={selectedId === container.id}
+              />
+            ))}
+          </AnimatePresence>
+        )}
       </div>
 
-      {/* 汇总信息 */}
-      {data && data.containers.length > 0 && (
-        <div className="p-3 border-t border-white/5 flex items-center justify-between text-[10px] text-gray-500 shrink-0">
-          <span>
-            内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
-          </span>
-          <span>
-            CPU: {data.avgCpuPercent.toFixed(1)}%
-          </span>
-        </div>
-      )}
+      {/* 汇总信息 or Skeleton Footer */}
+      <div className="shrink-0 p-3 border-t border-[var(--border-subtle)]">
+        {loading && !data ? (
+            <div className="flex justify-between">
+               <div className="h-3 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+               <div className="h-3 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
+            </div>
+        ) : data && data.containers.length > 0 ? (
+            <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+              <span>
+                内存: {formatBytes(data.totalMemoryUsed)} / {formatBytes(data.totalMemoryLimit)}
+              </span>
+              <span>
+                CPU: {data.avgCpuPercent.toFixed(1)}%
+              </span>
+            </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -88,12 +88,12 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 w-full text-left mb-4 group"
       >
-        <div className="p-1.5 rounded-lg bg-white/5 group-hover:bg-white/10 transition-colors">
+        <div className="p-1.5 rounded-lg bg-[var(--bg-card)] group-hover:bg-[var(--bg-card-hover)] transition-colors border border-[var(--border-subtle)]">
           <List className="h-4 w-4 text-primary" />
         </div>
-        <span className="font-medium text-white">目录</span>
+        <span className="font-medium text-[var(--text-primary)]">目录</span>
         <ChevronRight
-          className={`ml-auto h-4 w-4 text-gray-500 transition-transform ${
+          className={`ml-auto h-4 w-4 text-[var(--text-secondary)] transition-transform ${
             isExpanded ? 'rotate-90' : ''
           }`}
         />
@@ -103,7 +103,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
       {isExpanded && (
         <div className="relative pl-2 space-y-1">
           {/* 进度条 */}
-          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white/10 rounded-full">
+          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--border-subtle)] rounded-full">
             <div
               className="absolute left-0 w-full bg-primary rounded-full transition-all duration-300"
               style={{
@@ -123,7 +123,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
               className={`block w-full text-left py-1.5 pl-4 pr-2 rounded-r-md text-sm transition-all ${
                 activeId === heading.id
                   ? 'text-primary bg-primary/10 border-l-2 border-primary -ml-0.5'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               }`}
               style={{
                 paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
@@ -138,7 +138,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
       {/* 返回顶部 */}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="mt-4 flex items-center gap-2 w-full text-left py-2 px-3 rounded-lg text-sm text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
+        className="mt-4 flex items-center gap-2 w-full text-left py-2 px-3 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <span>↑</span>
         <span>返回顶部</span>

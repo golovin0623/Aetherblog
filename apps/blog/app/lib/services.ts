@@ -8,11 +8,22 @@ export interface SiteSettings {
   siteKeywords: string;
   siteUrl: string;
   authorName: string;
+  author_name?: string;
   authorAvatar?: string;
+  author_avatar?: string;
   authorBio?: string;
+  author_bio?: string;
   icp?: string;
   startYear?: string;
   comment_enabled?: boolean;
+  // Welcome Screen
+  welcome_title?: string;
+  welcome_subtitle?: string;
+  welcome_description?: string;
+  welcome_primary_btn_text?: string;
+  welcome_primary_btn_link?: string;
+  welcome_secondary_btn_text?: string;
+  welcome_secondary_btn_link?: string;
   [key: string]: string | number | boolean | undefined;
 }
 

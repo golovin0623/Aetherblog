@@ -7,6 +7,7 @@ export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
 export interface MediaItem {
   id: number;
+  filename: string;
   originalName: string;
   fileUrl: string;
   fileType: MediaType;
@@ -21,6 +22,7 @@ export interface MediaItem {
 export interface MediaListParams {
   fileType?: MediaType;
   keyword?: string;
+  folderId?: number; // @ref Phase 1: 文件夹ID过滤
   sortBy?: 'newest' | 'oldest' | 'name' | 'size';
   pageNum?: number;
   pageSize?: number;
@@ -59,9 +61,9 @@ export const mediaService = {
    * 获取媒体列表（支持筛选）
    */
   getList: (params: MediaListParams = {}): Promise<R<PageResult<MediaItem>>> => {
-    const { fileType, keyword, pageNum = 1, pageSize = 24 } = params;
+    const { fileType, keyword, folderId, pageNum = 1, pageSize = 24 } = params;
     return api.get<R<PageResult<MediaItem>>>('/v1/admin/media', {
-      params: { fileType, keyword, pageNum, pageSize },
+      params: { fileType, keyword, folderId, pageNum, pageSize },
     });
   },
 
@@ -74,13 +76,20 @@ export const mediaService = {
 
   /**
    * 上传文件（支持进度回调）
+   * @param file 文件
+   * @param onProgress 进度回调
+   * @param folderId 文件夹ID (可选)
    */
   upload: async (
     file: File,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    folderId?: number
   ): Promise<MediaItem> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (folderId !== undefined) {
+      formData.append('folderId', folderId.toString());
+    }
 
     const token = useAuthStore.getState().token;
     const response = await axios.post<R<MediaItem>>(
@@ -149,6 +158,95 @@ export const mediaService = {
    */
   getStats: (): Promise<R<StorageStats>> => {
     return api.get<R<StorageStats>>('/v1/admin/media/stats');
+  },
+
+  /**
+   * 移动文件到指定文件夹
+   * @ref 媒体库深度优化方案 - Phase 1: 文件夹管理
+   */
+  moveToFolder: (fileId: number, folderId?: number): Promise<R<MediaItem>> => {
+    return api.post<R<MediaItem>>(`/v1/admin/media/${fileId}/move`, null, {
+      params: { folderId },
+    });
+  },
+
+  /**
+   * 批量移动文件到指定文件夹
+   * @ref 媒体库深度优化方案 - Phase 1: 文件夹管理
+   */
+  batchMoveToFolder: (fileIds: number[], folderId?: number): Promise<R<void>> => {
+    return api.post<R<void>>('/v1/admin/media/batch-move', { fileIds, folderId });
+  },
+
+  /**
+   * 上传编辑后的图片内容
+   */
+  uploadEdited: async (id: number, formData: FormData): Promise<MediaItem> => {
+    const token = useAuthStore.getState().token;
+    const response = await axios.post<R<MediaItem>>(
+      `${API_BASE_URL}/v1/admin/media/${id}/content`,
+      formData,
+      {
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      }
+    );
+    return response.data.data;
+  },
+
+  // ========== 回收站相关接口 ==========
+
+  /**
+   * 获取回收站文件列表
+   */
+  getTrashList: (params: { pageNum?: number; pageSize?: number } = {}): Promise<R<PageResult<MediaItem>>> => {
+    const { pageNum = 1, pageSize = 24 } = params;
+    return api.get<R<PageResult<MediaItem>>>('/v1/admin/media/trash', {
+      params: { pageNum, pageSize },
+    });
+  },
+
+  /**
+   * 获取回收站文件数量
+   */
+  getTrashCount: (): Promise<R<number>> => {
+    return api.get<R<number>>('/v1/admin/media/trash/count');
+  },
+
+  /**
+   * 从回收站恢复文件
+   */
+  restore: (id: number): Promise<R<MediaItem>> => {
+    return api.post<R<MediaItem>>(`/v1/admin/media/${id}/restore`);
+  },
+
+  /**
+   * 批量从回收站恢复文件
+   */
+  batchRestore: (ids: number[]): Promise<R<void>> => {
+    return api.post<R<void>>('/v1/admin/media/trash/batch-restore', ids);
+  },
+
+  /**
+   * 彻底删除文件（从回收站永久删除）
+   */
+  permanentDelete: (id: number): Promise<R<void>> => {
+    return api.delete<R<void>>(`/v1/admin/media/${id}/permanent`);
+  },
+
+  /**
+   * 批量彻底删除文件
+   */
+  batchPermanentDelete: (ids: number[]): Promise<R<void>> => {
+    return api.delete<R<void>>('/v1/admin/media/trash/batch-permanent', { data: ids });
+  },
+
+  /**
+   * 清空回收站
+   */
+  emptyTrash: (): Promise<R<void>> => {
+    return api.delete<R<void>>('/v1/admin/media/trash/empty');
   },
 };
 

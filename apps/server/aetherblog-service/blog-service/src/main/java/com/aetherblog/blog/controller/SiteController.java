@@ -4,7 +4,6 @@ import com.aetherblog.blog.repository.CategoryRepository;
 import com.aetherblog.blog.repository.CommentRepository;
 import com.aetherblog.blog.repository.PostRepository;
 import com.aetherblog.blog.repository.TagRepository;
-import com.aetherblog.blog.repository.UserRepository;
 import com.aetherblog.blog.service.SiteSettingService;
 import com.aetherblog.common.core.domain.R;
 import io.swagger.v3.oas.annotations.Operation;
@@ -78,7 +77,7 @@ public class SiteController {
             .stream().findFirst().ifPresent(admin -> {
                 if (admin.getNickname() != null) map.put("authorName", admin.getNickname());
                 if (admin.getAvatar() != null) {
-                    // Add /api prefix to match context-path configuration
+                    // 添加 /api 前缀以匹配 context-path 配置
                     String avatarPath = admin.getAvatar();
                     if (avatarPath.startsWith("/uploads")) {
                         avatarPath = "/api" + avatarPath;

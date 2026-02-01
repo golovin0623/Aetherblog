@@ -113,24 +113,24 @@ export function RecentActivity({
   }
 
   return (
-    <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-white">最近动态</h3>
-        <button className="text-sm text-primary hover:text-primary/80 transition-colors flex items-center gap-1">
-          查看全部 <ArrowUpRight className="w-4 h-4" />
+    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">最近动态</h3>
+        <button className="text-[var(--text-muted)] hover:text-primary transition-colors">
+          <ArrowUpRight className="w-5 h-5" />
         </button>
       </div>
 
       <div className="flex-1 overflow-hidden">
         <div className="space-y-6 relative h-full overflow-y-auto pr-2 pl-10 pt-2">
           {/* Vertical Line - 精确对齐到图标中心 */}
-          <div className="absolute left-[20px] top-2 bottom-2 w-px bg-white/10" />
+          <div className="absolute left-[20px] top-2 bottom-2 w-px bg-[var(--border-subtle)]" />
 
           {activities.map((item) => (
             <div key={item.id} className="relative">
               {/* Timeline Dot - 宽度24px(w-6)，中心点在20px处 */}
               <div className={cn(
-                "absolute left-[-32px] top-1 w-6 h-6 rounded-full border flex items-center justify-center bg-[#13131a] backdrop-blur-sm z-10",
+                "absolute left-[-32px] top-1 w-6 h-6 rounded-full border flex items-center justify-center bg-[var(--bg-card)] backdrop-blur-sm z-10",
                 getBgColor(item.type).replace('bg-', 'border-')
               )}>
                 {getIcon(item.type)}
@@ -138,8 +138,8 @@ export function RecentActivity({
 
               <div className="space-y-1 pl-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-white">{item.title}</p>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{item.title}</p>
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
                     <Clock className="w-3 h-3" />
                     <span>
                       {formatDistanceToNow(new Date(item.timestamp), {
@@ -151,14 +151,14 @@ export function RecentActivity({
                 </div>
 
                 {item.description && (
-                  <p className="text-xs text-gray-400 line-clamp-2">
+                  <p className="text-xs text-[var(--text-secondary)] line-clamp-2">
                     {item.description}
                   </p>
                 )}
 
                 {item.user && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    by <span className="text-gray-300">{item.user.name}</span>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    by <span className="text-[var(--text-primary)]">{item.user.name}</span>
                   </p>
                 )}
               </div>

@@ -68,7 +68,7 @@ export function ConfirmDialog({
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
+          {/* 背景遮罩 */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -78,7 +78,7 @@ export function ConfirmDialog({
             onClick={onCancel}
           />
           
-          {/* Dialog */}
+          {/* 对话框 */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -86,23 +86,23 @@ export function ConfirmDialog({
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
             className="relative w-full max-w-md"
           >
-            {/* Card with glassmorphism */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900/95 to-gray-950/95 border border-white/10 shadow-2xl">
-              {/* Subtle gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] to-transparent pointer-events-none" />
+            {/* 玻璃拟态卡片 */}
+            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)] shadow-2xl backdrop-blur-xl">
+              {/* 微妙的渐变叠加 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-overlay)] to-transparent pointer-events-none" />
               
-              {/* Close button */}
+              {/* 关闭按钮 */}
               <button
                 onClick={onCancel}
-                className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors z-10"
+                className="absolute top-4 right-4 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
               >
                 <X className="w-4 h-4" />
               </button>
               
-              {/* Content */}
+              {/* 内容 */}
               <div className="relative p-6">
                 <div className="flex items-start gap-4">
-                  {/* Icon */}
+                  {/* 图标 */}
                   <motion.div
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
@@ -116,20 +116,20 @@ export function ConfirmDialog({
                     <IconComponent className={cn('w-6 h-6', config.iconColor)} />
                   </motion.div>
                   
-                  {/* Text */}
+                  {/* 文本 */}
                   <div className="flex-1 pt-1">
-                    <h3 className="text-lg font-semibold text-white">{title}</h3>
-                    <p className="mt-2 text-sm text-gray-400 leading-relaxed">{message}</p>
+                    <h3 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h3>
+                    <p className="mt-2 text-sm text-[var(--text-secondary)] leading-relaxed">{message}</p>
                   </div>
                 </div>
                 
-                {/* Actions */}
+                {/* 操作按钮 */}
                 <div className="flex justify-end gap-3 mt-8">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={onCancel}
-                    className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition-all duration-200"
+                    className="px-5 py-2.5 rounded-xl text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all duration-200"
                   >
                     {cancelText}
                   </motion.button>

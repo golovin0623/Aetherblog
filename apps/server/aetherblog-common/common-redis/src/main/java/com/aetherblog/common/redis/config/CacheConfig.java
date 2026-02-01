@@ -1,5 +1,6 @@
 package com.aetherblog.common.redis.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -21,11 +22,11 @@ import java.time.Duration;
 public class CacheConfig {
 
     @Bean
-    public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+    public CacheManager cacheManager(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
         RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofHours(1))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
-                        .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                        .fromSerializer(new GenericJackson2JsonRedisSerializer(objectMapper)))
                 .disableCachingNullValues();
 
         return RedisCacheManager.builder(connectionFactory)
@@ -33,6 +34,10 @@ public class CacheConfig {
                 .withCacheConfiguration("posts", config.entryTtl(Duration.ofMinutes(30)))
                 .withCacheConfiguration("users", config.entryTtl(Duration.ofHours(2)))
                 .withCacheConfiguration("categories", config.entryTtl(Duration.ofDays(1)))
+                // Phase 6: 媒体库缓存配置
+                .withCacheConfiguration("folderTree", config.entryTtl(Duration.ofMinutes(5)))
+                .withCacheConfiguration("mediaFiles", config.entryTtl(Duration.ofMinutes(10)))
+                .withCacheConfiguration("mediaTags", config.entryTtl(Duration.ofMinutes(15)))
                 .build();
     }
 }

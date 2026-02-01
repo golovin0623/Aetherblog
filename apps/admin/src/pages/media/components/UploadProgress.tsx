@@ -30,7 +30,7 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
   const [hasNewFiles, setHasNewFiles] = useState(false);
 
   // 计算进度 - 使用 status 字段
-  const completedCount = files.filter(f => f.status === 'success').length;
+
   const errorCount = files.filter(f => f.status === 'error').length;
   const processingCount = files.filter(f => f.status === 'processing').length;
   const uploadingCount = files.filter(f => f.status === 'uploading').length;

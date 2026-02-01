@@ -20,5 +20,6 @@
         <module>ai-agent</module>
         <module>ai-prompt</module>
         <module>ai-rag</module>
+        <module>ai-client</module>
     </modules>
 </project>

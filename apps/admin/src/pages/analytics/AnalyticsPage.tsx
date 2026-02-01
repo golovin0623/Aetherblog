@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Mock data for fallback
+// 模拟数据用于回退
 const mockVisitorData = [
   { label: '周一', value: 1200 },
   { label: '周二', value: 1400 },
@@ -36,7 +36,7 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [visitorData, setVisitorData] = useState(mockVisitorData);
 
-  // Fetch visitor trend data when date range changes
+  // 日期范围改变时获取访客趋势数据
   useEffect(() => {
     const fetchData = async () => {
       const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
@@ -44,14 +44,14 @@ export function AnalyticsPage() {
         setLoading(true);
         const res = await analyticsService.getVisitorTrend(days);
         if (res.code === 200 && res.data && res.data.length > 0) {
-          // Transform API data to chart format
+          // 将 API 数据转换为图表格式
           const transformed = res.data.map((item: VisitorTrend) => ({
             label: item.date.slice(5), // MM-DD format
             value: item.pv,
           }));
           setVisitorData(transformed);
         } else {
-          // Generate mock data for demo
+          // 生成演示用的模拟数据
           const mockData = generateMockData(days);
           setVisitorData(mockData);
         }
@@ -67,7 +67,7 @@ export function AnalyticsPage() {
     fetchData();
   }, [dateRange]);
 
-  // Generate mock data based on day count
+  // 基于天数生成模拟数据
   const generateMockData = (days: number) => {
     const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     return Array.from({ length: Math.min(days, 14) }, (_, i) => {
@@ -99,14 +99,14 @@ export function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">统计分析</h1>
-          <p className="text-gray-400 mt-1">深入了解访客行为和内容表现</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">统计分析</h1>
+          <p className="text-[var(--text-muted)] mt-1">深入了解访客行为和内容表现</p>
         </div>
-        {/* Date range toggle - responsive */}
-        <div className="flex items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-white/5 border border-white/5">
+        {/* 日期范围切换 - 响应式 */}
+        <div className="flex items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           {(['7d', '30d', '90d'] as const).map((range) => (
             <button
               key={range}
@@ -115,7 +115,7 @@ export function AnalyticsPage() {
                 "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all touch-manipulation",
                 dateRange === range
                   ? 'bg-primary text-white shadow-lg'
-                  : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                  : 'text-[var(--text-muted)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
               )}
             >
               {range === '7d' ? '7天' : range === '30d' ? '30天' : '90天'}
@@ -124,7 +124,7 @@ export function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Overview Cards - responsive grid */}
+      {/* 概览卡片 - 响应式网格 */}
       <motion.div 
         variants={container}
         initial="hidden"
@@ -135,15 +135,15 @@ export function AnalyticsPage() {
           <motion.div 
             key={i} 
             variants={item}
-            className="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors"
+            className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/20">
                 <stat.icon className="w-5 h-5 text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-gray-400 truncate">{stat.label}</p>
-                <p className="text-lg sm:text-xl font-bold text-white">{stat.value}</p>
+                <p className="text-xs sm:text-sm text-[var(--text-muted)] truncate">{stat.label}</p>
+                <p className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">{stat.value}</p>
               </div>
             </div>
             <p className={cn(
@@ -156,16 +156,16 @@ export function AnalyticsPage() {
         ))}
       </motion.div>
 
-      {/* Charts - responsive grid */}
+      {/* 图表 - 响应式网格 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <motion.div 
           variants={item}
           initial="hidden"
           animate="show"
-          className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+          className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">访问趋势</h3>
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">访问趋势</h3>
             {loading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
           </div>
           {loading ? (
@@ -182,22 +182,22 @@ export function AnalyticsPage() {
           initial="hidden"
           animate="show"
           transition={{ delay: 0.1 }}
-          className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+          className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
         >
-          <h3 className="text-lg font-semibold text-white mb-4">设备分布</h3>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">设备分布</h3>
           <PieChart data={mockDeviceData} />
         </motion.div>
       </div>
 
-      {/* Traffic Sources - full width */}
+      {/* 流量来源 - 全宽 */}
       <motion.div 
         variants={item}
         initial="hidden"
         animate="show"
         transition={{ delay: 0.2 }}
-        className="p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+        className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
       >
-        <h3 className="text-lg font-semibold text-white mb-4">流量来源</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">流量来源</h3>
         <BarChart data={mockTrafficSources} height={200} horizontal />
       </motion.div>
     </div>

@@ -21,9 +21,10 @@ trigger: always_on
 
 【技术栈确认】
 ├─ 前端: React 19 + Next.js 15 + Tailwind CSS 4 + Framer Motion 11
-├─ 后端: Spring Boot 3.4 + JDK 21 + Spring AI 1.0
+├─ 后端: Spring Boot 4.0 + JDK 25
+├─ AI服务: Python 3.12 + FastAPI + LiteLLM
 ├─ 数据库: PostgreSQL 17 + Redis 7.2 + pgvector
-└─ AI: Spring AI + RAG + OpenAI GPT-4o
+└─ AI模型: OpenAI GPT-4o / Claude 3.5 Sonnet
 
 【开发环境检查】
 请确认以下环境已就绪：

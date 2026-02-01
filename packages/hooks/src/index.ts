@@ -13,3 +13,7 @@ export * from './useWindowSize';
 export * from './usePrevious';
 export * from './useToggle';
 export * from './useScrollPosition';
+export * from './useTheme'; // 同时导出 ThemeProvider 和 useTheme
+export * from './ThemeToggle';
+
+

@@ -45,7 +45,7 @@ function UploadItemRow({
   return (
     <div className="px-3 py-2">
       <div className="flex items-center gap-2">
-        {/* Thumbnail or Icon */}
+        {/* 缩略图或图标 */}
         <div className="w-8 h-8 flex-shrink-0 rounded bg-white/5 flex items-center justify-center overflow-hidden">
           {upload.file.type.startsWith('image/') && previewUrl ? (
             <img
@@ -58,7 +58,7 @@ function UploadItemRow({
           )}
         </div>
 
-        {/* File Info */}
+        {/* 文件信息 */}
         <div className="flex-1 min-w-0">
           <p className="text-xs text-gray-300 truncate" title={upload.file.name}>
             {upload.file.name}
@@ -68,7 +68,7 @@ function UploadItemRow({
           </p>
         </div>
 
-        {/* Status */}
+        {/* 状态 */}
         <div className="flex-shrink-0">
           {upload.status === 'uploading' && (
             <Loader2 className="w-4 h-4 text-primary animate-spin" />
@@ -91,7 +91,7 @@ function UploadItemRow({
           )}
         </div>
 
-        {/* Remove Button */}
+        {/* 移除按钮 */}
         {onRemove && upload.status !== 'uploading' && (
           <button
             onClick={() => onRemove(upload.id)}
@@ -102,7 +102,7 @@ function UploadItemRow({
         )}
       </div>
 
-      {/* Progress Bar */}
+      {/* 进度条 */}
       {upload.status === 'uploading' && (
         <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
           <div
@@ -112,7 +112,7 @@ function UploadItemRow({
         </div>
       )}
 
-      {/* Error Message */}
+      {/* 错误信息 */}
       {upload.status === 'error' && upload.error && (
         <p className="mt-1 text-[10px] text-red-400">{upload.error}</p>
       )}
@@ -130,7 +130,7 @@ export function UploadProgress({ uploads, onRemove, onRetry, onClearCompleted }:
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-80 max-h-96 overflow-y-auto bg-[#1a1a1c] border border-white/10 rounded-lg shadow-xl">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
         <span className="text-sm font-medium text-gray-200">
           上传中({uploads.filter(u => u.status === 'uploading').length}/{uploads.length})
@@ -145,7 +145,7 @@ export function UploadProgress({ uploads, onRemove, onRetry, onClearCompleted }:
         )}
       </div>
 
-      {/* Upload Items */}
+      {/* 上传项 */}
       <div className="divide-y divide-white/5">
         {uploads.map((upload) => (
           <UploadItemRow key={upload.id} upload={upload} onRemove={onRemove} onRetry={onRetry} />

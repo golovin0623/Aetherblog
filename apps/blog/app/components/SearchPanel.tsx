@@ -163,28 +163,28 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
       {/* 遮罩层 */}
       <div
         onClick={onClose}
-        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md animate-fadeIn"
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md animate-fadeIn"
       />
 
       {/* 搜索面板 */}
-      <div className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-full max-w-2xl bg-gray-900/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl shadow-black/50 overflow-hidden animate-slideDown">
+      <div className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-full max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden animate-slideDown">
         {/* 搜索输入框 */}
         <form onSubmit={(e) => e.preventDefault()} className="relative">
-          <div className="flex items-center px-4 py-4 border-b border-white/10">
-            <Search className="h-5 w-5 text-gray-400" />
+          <div className="flex items-center px-4 py-4 border-b border-[var(--border-subtle)]">
+            <Search className="h-5 w-5 text-[var(--text-muted)]" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索文章、标签、分类... (支持自然语言)"
-              className="flex-1 mx-3 bg-transparent text-white placeholder-gray-500 outline-none text-lg"
+              className="flex-1 mx-3 bg-transparent text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none text-lg"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="p-1 text-gray-400 hover:text-white transition-colors"
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -197,7 +197,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
         <div className="max-h-[60vh] overflow-y-auto">
           {/* AI 回答 */}
           {(aiAnswer || isAiLoading) && !showHistory && (
-            <div className="border-b border-white/10 p-4">
+            <div className="border-b border-[var(--border-subtle)] p-4">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-1.5 rounded-lg bg-primary/20">
                   <Sparkles className="h-4 w-4 text-primary" />
@@ -207,11 +207,11 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
               </div>
               {isAiLoading ? (
                 <div className="space-y-2">
-                  <div className="h-4 bg-white/5 rounded animate-pulse" />
-                  <div className="h-4 bg-white/5 rounded animate-pulse w-3/4" />
+                  <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse w-3/4" />
                 </div>
               ) : aiAnswer && (
-                <p className="text-gray-300 text-sm leading-relaxed">{aiAnswer.answer}</p>
+                <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{aiAnswer.answer}</p>
               )}
             </div>
           )}
@@ -222,11 +222,11 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
               {searchHistory.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
                       <History className="h-4 w-4" />
                       <span>搜索历史</span>
                     </div>
-                    <button onClick={clearHistory} className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                    <button onClick={clearHistory} className="flex items-center gap-1 px-2 py-1 rounded text-xs text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors">
                       <Trash2 className="h-3 w-3" />
                       清空
                     </button>
@@ -236,9 +236,9 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
                       <button
                         key={item}
                         onClick={() => setQuery(item)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-white/5 text-gray-300 border border-white/5 hover:bg-white/10 hover:text-white transition-all"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all"
                       >
-                        <Clock className="h-3 w-3 text-gray-500" />
+                        <Clock className="h-3 w-3 text-[var(--text-muted)]" />
                         {item}
                       </button>
                     ))}
@@ -248,7 +248,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
 
               {/* 热门搜索 */}
               <div>
-                <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+                <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] mb-3">
                   <TrendingUp className="h-4 w-4" />
                   <span>热门搜索</span>
                 </div>
@@ -270,27 +270,27 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
 
           {/* 搜索结果 */}
           {!showHistory && results.length > 0 && (
-            <div ref={resultsRef} className="divide-y divide-white/5">
+            <div ref={resultsRef} className="divide-y divide-[var(--border-subtle)]">
               {results.map((result, index) => (
                 <div
                   key={result.id}
                   onClick={() => handleResultClick(result)}
                   onMouseEnter={() => setActiveIndex(index)}
                   className={`flex items-start gap-4 px-4 py-4 cursor-pointer transition-colors ${
-                    index === activeIndex ? 'bg-white/10' : 'hover:bg-white/5'
+                    index === activeIndex ? 'bg-[var(--bg-card-hover)]' : 'hover:bg-[var(--bg-secondary)]'
                   }`}
                 >
-                  <div className={`flex-shrink-0 p-2 rounded-lg ${index === activeIndex ? 'bg-primary/20' : 'bg-white/5'}`}>
-                    <FileText className={`h-5 w-5 ${index === activeIndex ? 'text-primary' : 'text-gray-400'}`} />
+                  <div className={`flex-shrink-0 p-2 rounded-lg ${index === activeIndex ? 'bg-primary/20' : 'bg-[var(--bg-secondary)]'}`}>
+                    <FileText className={`h-5 w-5 ${index === activeIndex ? 'text-primary' : 'text-[var(--text-muted)]'}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className={`font-medium truncate mb-1 ${index === activeIndex ? 'text-white' : 'text-gray-200'}`}>
+                    <h4 className={`font-medium truncate mb-1 ${index === activeIndex ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
                       {result.title}
                     </h4>
                     {result.highlight && (
-                      <p className="text-sm text-gray-400 line-clamp-2 mb-2">{result.highlight}</p>
+                      <p className="text-sm text-[var(--text-muted)] line-clamp-2 mb-2">{result.highlight}</p>
                     )}
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
                       {result.category && (
                         <span className="flex items-center gap-1">
                           <Folder className="h-3 w-3" />
@@ -305,7 +305,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
                       )}
                     </div>
                   </div>
-                  <ArrowRight className={`flex-shrink-0 h-5 w-5 transition-transform ${index === activeIndex ? 'text-primary translate-x-1' : 'text-gray-600'}`} />
+                  <ArrowRight className={`flex-shrink-0 h-5 w-5 transition-transform ${index === activeIndex ? 'text-primary translate-x-1' : 'text-[var(--text-muted)]'}`} />
                 </div>
               ))}
             </div>
@@ -314,31 +314,31 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
           {/* 无结果 */}
           {!showHistory && !isLoading && query && results.length === 0 && (
             <div className="py-12 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/5 mb-4">
-                <Search className="h-8 w-8 text-gray-500" />
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--bg-secondary)] mb-4">
+                <Search className="h-8 w-8 text-[var(--text-muted)]" />
               </div>
-              <p className="text-gray-400 mb-2">
-                未找到与 "<span className="text-white">{query}</span>" 相关的内容
+              <p className="text-[var(--text-secondary)] mb-2">
+                未找到与 "<span className="text-[var(--text-primary)]">{query}</span>" 相关的内容
               </p>
             </div>
           )}
         </div>
 
         {/* 底部快捷键提示 */}
-        <div className="px-4 py-3 border-t border-white/10 bg-black/30">
-          <div className="flex items-center justify-between text-xs text-gray-500">
+        <div className="px-4 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+          <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10">↑</kbd>
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10">↓</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-card)]">↑</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-card)]">↓</kbd>
                 导航
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10">Enter</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-card)]">Enter</kbd>
                 打开
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10">ESC</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-card)]">ESC</kbd>
                 关闭
               </span>
             </div>

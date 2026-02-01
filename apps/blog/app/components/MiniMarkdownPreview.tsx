@@ -7,7 +7,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { Components } from 'react-markdown';
 
-// Import KaTeX CSS (shared with MarkdownRenderer)
+// 引入 KaTeX CSS (与 MarkdownRenderer 共享)
 import 'katex/dist/katex.min.css';
 
 interface MiniPreviewProps {
@@ -51,13 +51,13 @@ const components: Components = {
         // 空内容时显示不同的占位符
         if (!codeContent) {
           return (
-            <div className="my-2 p-2 bg-slate-800/30 border border-white/5 rounded text-center text-xs text-gray-600">
+            <div className="my-2 p-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-center text-xs text-[var(--text-muted)]">
               📊 空流程图
             </div>
           );
         }
         return (
-          <div className="my-2 p-3 bg-slate-800/50 border border-white/5 rounded text-center text-xs text-gray-500">
+          <div className="my-2 p-3 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-center text-xs text-[var(--text-muted)]">
             📊 流程图 (点击查看)
           </div>
         );
@@ -66,9 +66,9 @@ const components: Components = {
       // 其他代码块 - 简化显示
       if (language) {
         return (
-          <div className="my-2 p-2 bg-slate-900/50 border border-white/5 rounded overflow-hidden">
-            <div className="text-[10px] text-gray-500 mb-1">{language}</div>
-            <pre className="text-xs text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap">
+          <div className="my-2 p-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded overflow-hidden">
+            <div className="text-[10px] text-[var(--text-muted)] mb-1">{language}</div>
+            <pre className="text-xs text-[var(--text-secondary)] overflow-hidden text-ellipsis whitespace-nowrap">
               {codeContent.slice(0, 100)}{codeContent.length > 100 ? '...' : ''}
             </pre>
           </div>
@@ -93,7 +93,7 @@ const components: Components = {
     );
   },
   
-  // 图片 - 实际渲染图片
+  // 图片 - 实际渲染图片 (修复移动端等比例缩放)
   img: ({ src, alt }) => {
     if (!src) {
       return (
@@ -103,16 +103,16 @@ const components: Components = {
       );
     }
     return (
-      <span className="block my-2">
+      <span className="block my-2 w-full">
         <img 
           src={src} 
           alt={alt || ''} 
-          className="max-w-full h-auto rounded-lg border border-white/10"
+          className="rounded-lg border border-white/10 block"
           loading="lazy"
-          style={{ maxHeight: '300px', objectFit: 'contain' }}
+          style={{ maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: '300px', objectFit: 'contain' }}
         />
         {alt && (
-          <span className="block text-center text-xs text-gray-500 mt-1">{alt}</span>
+          <span className="block text-center text-xs text-gray-500 mt-1" style={{ wordBreak: 'break-word' }}>{alt}</span>
         )}
       </span>
     );
@@ -128,13 +128,13 @@ const components: Components = {
   ),
   
   th: ({ children }) => (
-    <th className="bg-white/5 px-2 py-1 text-left font-medium text-gray-300 border border-white/10">
+    <th className="bg-[var(--bg-secondary)] px-2 py-1 text-left font-medium text-[var(--text-primary)] border border-[var(--border-subtle)]">
       {children}
     </th>
   ),
   
   td: ({ children }) => (
-    <td className="px-2 py-1 text-gray-400 border border-white/10">
+    <td className="px-2 py-1 text-[var(--text-muted)] border border-[var(--border-subtle)]">
       {children}
     </td>
   ),
@@ -151,21 +151,21 @@ const components: Components = {
     </blockquote>
   ),
   
-  // 段落
+  // 段落 - 添加换行支持
   p: ({ children }) => (
-    <p className="my-1">{children}</p>
+    <p className="my-1" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>{children}</p>
   ),
   
   // 标题 - 统一样式
-  h1: ({ children }) => <h3 className="text-sm font-semibold text-gray-200 my-1">{children}</h3>,
-  h2: ({ children }) => <h4 className="text-sm font-semibold text-gray-200 my-1">{children}</h4>,
-  h3: ({ children }) => <h5 className="text-xs font-semibold text-gray-300 my-1">{children}</h5>,
-  h4: ({ children }) => <h6 className="text-xs font-medium text-gray-300 my-1">{children}</h6>,
+  h1: ({ children }) => <h3 className="text-sm font-semibold text-[var(--text-primary)] my-1">{children}</h3>,
+  h2: ({ children }) => <h4 className="text-sm font-semibold text-[var(--text-primary)] my-1">{children}</h4>,
+  h3: ({ children }) => <h5 className="text-xs font-semibold text-[var(--text-secondary)] my-1">{children}</h5>,
+  h4: ({ children }) => <h6 className="text-xs font-medium text-[var(--text-secondary)] my-1">{children}</h6>,
   
-  // 列表
-  ul: ({ children }) => <ul className="list-disc list-inside my-1 pl-2">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside my-1 pl-2">{children}</ol>,
-  li: ({ children }) => <li className="text-gray-400 text-xs">{children}</li>,
+  // 列表 - 修复小圆点和内容同行显示
+  ul: ({ children }) => <ul className="mini-preview-list-ul">{children}</ul>,
+  ol: ({ children }) => <ol className="mini-preview-list-ol">{children}</ol>,
+  li: ({ children }) => <li className="mini-preview-list-li">{children}</li>,
   
   // 水平线
   hr: () => <hr className="my-2 border-t border-white/10" />,
@@ -178,7 +178,7 @@ export function MiniMarkdownPreview({ content, maxLength = 2000 }: MiniPreviewPr
   const truncatedContent = content.slice(0, maxLength);
 
   return (
-    <div className="mini-preview text-sm leading-relaxed text-gray-400">
+    <div className="mini-preview text-sm leading-relaxed text-[var(--text-secondary)] w-full" style={{ maxWidth: '100%', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}

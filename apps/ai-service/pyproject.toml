@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]

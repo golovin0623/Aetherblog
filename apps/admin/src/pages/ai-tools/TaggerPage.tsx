@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, Tags, Plus, X } from 'lucide-react';
+import { RefreshCw, Tags, X } from 'lucide-react';
 
 export function TaggerPage() {
   const [input, setInput] = useState('');

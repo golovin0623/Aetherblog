@@ -42,8 +42,8 @@ public class SystemMonitorService {
     private static volatile long lastNetworkIn = 0;
     private static volatile long lastNetworkOut = 0;
     private static volatile long lastNetworkTime = 0;
-    private static volatile long cachedSpeedIn = 0;  // bytes/s
-    private static volatile long cachedSpeedOut = 0; // bytes/s
+    private static volatile long cachedSpeedIn = 0;  // 字节/秒
+    private static volatile long cachedSpeedOut = 0; // 字节/秒
 
     @Value("${app.upload.path:./uploads}")
     private String uploadPath;
@@ -139,21 +139,21 @@ public class SystemMonitorService {
         private int cpuCores;          // CPU 核心数
         private String cpuModel;       // CPU 型号
         private long cpuFrequency;     // CPU 频率 (Hz)
-        private long memoryUsed;       // bytes
-        private long memoryTotal;      // bytes
+        private long memoryUsed;       // 字节
+        private long memoryTotal;      // 字节
         private double memoryPercent;  // 0-100
-        private long diskUsed;         // bytes
-        private long diskTotal;        // bytes
+        private long diskUsed;         // 字节
+        private long diskTotal;        // 字节
         private double diskPercent;    // 0-100
-        private long networkIn;        // bytes 累计接收
-        private long networkOut;       // bytes 累计发送
-        private long networkInSpeed;   // bytes/s 实时接收速率
-        private long networkOutSpeed;  // bytes/s 实时发送速率
+        private long networkIn;        // 字节 累计接收
+        private long networkOut;       // 字节 累计发送
+        private long networkInSpeed;   // 字节/秒 实时接收速率
+        private long networkOutSpeed;  // 字节/秒 实时发送速率
         private String networkInRate;  // 接收速率 (格式化)
         private String networkOutRate; // 发送速率 (格式化)
         private double networkPercent; // 带宽使用率 0-100
-        private long networkMaxSpeed;  // 配置的最大带宽 bytes/s
-        private long uptime;           // seconds
+        private long networkMaxSpeed;  // 配置的最大带宽 字节/秒
+        private long uptime;           // 秒
         private String osName;         // 操作系统名称
         private String osArch;         // 系统架构
     }
@@ -172,7 +172,7 @@ public class SystemMonitorService {
     @Data
     public static class StorageItem {
         private String name;
-        private long size;          // bytes
+        private long size;          // 字节
         private long fileCount;
         private String formatted;   // "2.5 GB"
 
@@ -188,7 +188,7 @@ public class SystemMonitorService {
     public static class ServiceHealth {
         private String name;
         private String status;      // "up" | "down" | "warning"
-        private long latency;       // ms
+        private long latency;       // 毫秒
         private String message;
         private Map<String, Object> details;
 
@@ -632,8 +632,8 @@ public class SystemMonitorService {
                 // 只统计 en 开头的物理网络接口
                 if (iface.startsWith("en")) {
                     try {
-                        totalIn += Long.parseLong(parts[6]);   // Ibytes
-                        totalOut += Long.parseLong(parts[9]);  // Obytes
+                        totalIn += Long.parseLong(parts[6]);   // 接收字节
+                        totalOut += Long.parseLong(parts[9]);  // 发送字节
                     } catch (NumberFormatException ignored) {}
                 }
             }
@@ -810,14 +810,14 @@ public class SystemMonitorService {
         List<ServiceHealth> services = new ArrayList<>();
 
         // 并行检查各服务 (使用结构化并发 + 虚拟线程)
-        // Create a virtual thread executor
+        // 创建虚拟线程执行器
         try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
             var pgFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkPostgreSQL, executor);
             var redisFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkRedis, executor);
             var esFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkElasticsearch, executor);
 
             try {
-                // Wait for all tasks to complete with a timeout
+                // 等待所有任务完成（带超时）
                 java.util.concurrent.CompletableFuture.allOf(pgFuture, redisFuture, esFuture)
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
 
@@ -826,9 +826,9 @@ public class SystemMonitorService {
                 services.add(esFuture.get());
             } catch (Exception e) {
                 log.warn("Health check timeout or interrupted", e);
-                // Even if timeout/error, try to get results that finished (optimistic)
-                // Or just proceed. The checks capture their own exceptions so futures should complete successfully returning a 'down' status object.
-                // If future.get() throws, it means the task crashed unexpectedly or timeout.
+                // 即使发生超时或错误，也尝试获取已完成的结果（乐观策略）
+                // 或者继续执行。检查任务捕获了自己的异常，因此 Future 应该成功完成并返回 'down' 状态对象。
+                // 如果 future.get() 抛出异常，说明任务意外崩溃或超时。
                 if (!pgFuture.isCompletedExceptionally() && pgFuture.isDone()) services.add(pgFuture.join());
                 if (!redisFuture.isCompletedExceptionally() && redisFuture.isDone()) services.add(redisFuture.join());
                 if (!esFuture.isCompletedExceptionally() && esFuture.isDone()) services.add(esFuture.join());

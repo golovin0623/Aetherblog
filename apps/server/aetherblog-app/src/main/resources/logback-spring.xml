@@ -126,7 +126,7 @@
         <appender-ref ref="FILE_DEBUG" />
     </logger>
     
-    <!-- Root Logger -->
+    <!-- 根日志记录器 -->
     <root level="INFO">
         <appender-ref ref="CONSOLE" />
         <appender-ref ref="FILE_ALL" />

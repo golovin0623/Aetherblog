@@ -106,7 +106,7 @@ export function ImageSizePopover({
       style={getPopoverStyle()}
       className="w-48 bg-[#1e1e20] border border-white/10 rounded-lg shadow-2xl overflow-hidden"
     >
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
         <span className="text-xs font-medium text-gray-300">图片大小</span>
         <button
