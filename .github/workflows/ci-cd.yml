@@ -44,7 +44,9 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        run: pnpm exec tsc --noEmit
+        run: |
+          pnpm --filter @aetherblog/admin exec tsc --noEmit
+          pnpm --filter @aetherblog/blog exec tsc --noEmit
 
       - name: Build all packages
         run: pnpm build

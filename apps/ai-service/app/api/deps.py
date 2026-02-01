@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import AsyncGenerator
+from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from redis.asyncio import Redis

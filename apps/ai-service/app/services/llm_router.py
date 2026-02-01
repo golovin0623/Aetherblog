@@ -260,8 +260,8 @@ class LlmRouter:
                         messages=[{"role": "user", "content": prompt}],
                         api_key=fallback_routing.credential.api_key,
                         api_base=fallback_routing.credential.base_url,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
+                        temperature=resolved.temperature,
+                        max_tokens=resolved.max_tokens,
                     )
                     return response.choices[0].message.content or ""
             raise
@@ -271,7 +271,6 @@ class LlmRouter:
         if not original.fallback_model or not self.model_router:
             return None
         
-        from app.services.credential_resolver import CredentialInfo
         
         # Get credential for fallback provider
         cred = await self.model_router.credential_resolver.get_credential(

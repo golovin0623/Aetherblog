@@ -1,7 +1,5 @@
 
 import requests
-import json
-import time
 
 url = "http://localhost:8000/api/v1/ai/tags/stream"
 headers = {

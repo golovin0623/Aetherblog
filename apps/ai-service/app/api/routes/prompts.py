@@ -54,7 +54,6 @@ async def get_prompt_config(
     llm: LlmRouter = Depends(get_llm_router)
 ) -> ApiResponse[PromptConfigResponse]:
     """Get prompt configuration for a task type."""
-    routing = await llm.model_router.resolve_routing(task_type)
     
     query = """
         SELECT r.config_override as config_override

@@ -32,7 +32,6 @@ from app.schemas.common import ApiResponse
 from app.services.cache import hash_content
 from app.services.metrics import MetricsStore
 from app.services.usage_logger import UsageLogger, estimate_tokens
-from app.utils.ndjson import ndjson_line
 
 
 # ref: §5.4
