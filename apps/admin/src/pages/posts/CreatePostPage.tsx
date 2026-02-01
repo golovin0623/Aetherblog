@@ -216,43 +216,30 @@ export function CreatePostPage() {
     }
   }, [viewMode]);
 
-  // 挂载时获取分类、标签和服务器时间
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoadingCategories(true);
-      setLoadingTags(true);
-      try {
-        const [catRes, tagRes, timeRes] = await Promise.all([
-          categoryService.getList(),
-          tagService.getList(),
-          postService.getServerTime().catch(() => null) // API 不可用时优雅处理
-        ]);
-        if (catRes.data) setCategories(catRes.data);
-        if (tagRes.data) setTags(tagRes.data);
-        
-        // 从服务器时间设置发布时间，如果 API 失败则回退到本地时间
-        if (timeRes?.data?.timestamp) {
-          // 服务器返回 ISO 时间戳，转换为本地 datetime-local 格式
-          const serverDate = new Date(timeRes.data.timestamp);
-          const year = serverDate.getFullYear();
-          const month = String(serverDate.getMonth() + 1).padStart(2, '0');
-          const day = String(serverDate.getDate()).padStart(2, '0');
-          const hours = String(serverDate.getHours()).padStart(2, '0');
-          const minutes = String(serverDate.getMinutes()).padStart(2, '0');
-          setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
-        } else {
-          // 回退到本地时间
-          const now = new Date();
-          const year = now.getFullYear();
-          const month = String(now.getMonth() + 1).padStart(2, '0');
-          const day = String(now.getDate()).padStart(2, '0');
-          const hours = String(now.getHours()).padStart(2, '0');
-          const minutes = String(now.getMinutes()).padStart(2, '0');
-          setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
-        }
-      } catch (error) {
-        logger.error('Failed to fetch categories/tags:', error);
-        // 出错时仍设置默认发布时间
+  const refreshMetaData = useCallback(async () => {
+    setLoadingCategories(true);
+    setLoadingTags(true);
+    try {
+      const [catRes, tagRes, timeRes] = await Promise.all([
+        categoryService.getList(),
+        tagService.getList(),
+        postService.getServerTime().catch(() => null) // API 不可用时优雅处理
+      ]);
+      if (catRes.data) setCategories(catRes.data);
+      if (tagRes.data) setTags(tagRes.data);
+      
+      // 从服务器时间设置发布时间，如果 API 失败则回退到本地时间
+      if (timeRes?.data?.timestamp) {
+        // 服务器返回 ISO 时间戳，转换为本地 datetime-local 格式
+        const serverDate = new Date(timeRes.data.timestamp);
+        const year = serverDate.getFullYear();
+        const month = String(serverDate.getMonth() + 1).padStart(2, '0');
+        const day = String(serverDate.getDate()).padStart(2, '0');
+        const hours = String(serverDate.getHours()).padStart(2, '0');
+        const minutes = String(serverDate.getMinutes()).padStart(2, '0');
+        setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+      } else {
+        // 回退到本地时间
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -260,13 +247,27 @@ export function CreatePostPage() {
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
-      } finally {
-        setLoadingCategories(false);
-        setLoadingTags(false);
       }
-    };
-    fetchData();
+    } catch (error) {
+      logger.error('Failed to fetch categories/tags:', error);
+      // 出错时仍设置默认发布时间
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      setPublishTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+    } finally {
+      setLoadingCategories(false);
+      setLoadingTags(false);
+    }
   }, []);
+
+  // 挂载时获取分类、标签和服务器时间
+  useEffect(() => {
+    refreshMetaData();
+  }, [refreshMetaData]);
 
   // 按 Esc 退出全屏
   useEffect(() => {
@@ -1082,7 +1083,7 @@ export function CreatePostPage() {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] z-20"
+            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] relative z-[80]"
           >
             <div className="flex items-center justify-between px-6 py-3.5 gap-4">
               {/* 左侧块：返回 + 标题 + 元数据 */}
@@ -1133,37 +1134,52 @@ export function CreatePostPage() {
                     <AnimatePresence>
                       {showCategoryDropdown && (
                         <motion.div
-                          initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                          initial={{ opacity: 0, y: 6, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                          className="absolute top-full left-0 mt-2 w-60 z-50 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden"
+                          exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                          className="absolute top-full left-0 mt-3 w-64 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
                         >
-                          <div className="p-2 border-b border-[var(--border-subtle)]">
+                          <div className="absolute -top-2 left-6 h-4 w-4 rotate-45 border border-[var(--border-subtle)] bg-[var(--bg-popover)]/95" />
+                          <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70">
                             <input
                               type="text"
                               value={categorySearch}
                               onChange={(e) => setCategorySearch(e.target.value)}
                               placeholder="搜索分类..."
                               autoFocus
-                              className="w-full px-2 py-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
+                              className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50"
                             />
                           </div>
-                          <div className="max-h-48 overflow-auto py-1">
-                            {filteredCategories.map((cat) => (
-                              <button
-                                key={cat.id}
-                                onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
-                                className={cn(
-                                  'w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-card-hover)]',
-                                  selectedCategory?.id === cat.id ? 'text-primary' : 'text-gray-300'
-                                )}
-                              >
-                                {cat.name}
-                              </button>
-                            ))}
+                          <div className="max-h-56 overflow-auto py-2">
+                            {loadingCategories ? (
+                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">加载中...</div>
+                            ) : filteredCategories.length === 0 ? (
+                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                                暂无分类
+                                <button
+                                  onClick={refreshMetaData}
+                                  className="ml-2 text-primary hover:text-primary/80"
+                                >
+                                  刷新
+                                </button>
+                              </div>
+                            ) : (
+                              filteredCategories.map((cat) => (
+                                <button
+                                  key={cat.id}
+                                  onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
+                                  className={cn(
+                                    'w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] transition-colors',
+                                    selectedCategory?.id === cat.id ? 'text-primary' : 'text-[var(--text-secondary)]'
+                                  )}
+                                >
+                                  {cat.name}
+                                </button>
+                              ))
+                            )}
                             <button
                               onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
-                              className="w-full px-3 py-1.5 text-left text-xs text-primary hover:bg-[var(--bg-card-hover)] flex items-center gap-2 border-t border-[var(--border-subtle)] mt-1 pt-2"
+                              className="w-full px-4 py-2 text-left text-xs text-primary hover:bg-[var(--bg-card-hover)] flex items-center gap-2 border-t border-[var(--border-subtle)] mt-2"
                             >
                               <Plus className="w-3 h-3" /> 新建分类
                             </button>
@@ -1206,11 +1222,12 @@ export function CreatePostPage() {
                          <AnimatePresence>
                           {showAllTags && (
                             <motion.div
-                              initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                              initial={{ opacity: 0, y: 6, scale: 0.96 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                              className="absolute top-full right-0 mt-2 p-2 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl z-50 grid grid-cols-3 gap-2 w-[340px] origin-top-right"
+                              exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                              className="absolute top-full right-0 mt-3 p-3 bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-[2000] grid grid-cols-3 gap-2 w-[340px] origin-top-right backdrop-blur-xl"
                             >
+                               <div className="absolute -top-2 right-6 h-4 w-4 rotate-45 border border-[var(--border-subtle)] bg-[var(--bg-popover)]/95" />
                                {selectedTags.slice(2).map((tag) => (
                                 <span
                                   key={tag.id}
@@ -1247,12 +1264,13 @@ export function CreatePostPage() {
                     <AnimatePresence>
                       {showTagDropdown && (
                         <motion.div
-                          initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                          initial={{ opacity: 0, y: 6, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-2 w-64 z-50 bg-[var(--bg-popover)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden"
+                          exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                          className="absolute top-full right-0 mt-3 w-72 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
                         >
-                          <div className="p-2 border-b border-[var(--border-subtle)]">
+                          <div className="absolute -top-2 right-6 h-4 w-4 rotate-45 border border-[var(--border-subtle)] bg-[var(--bg-popover)]/95" />
+                          <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70">
                             <input
                               type="text"
                               value={tagSearch}
@@ -1260,35 +1278,49 @@ export function CreatePostPage() {
                               onKeyDown={handleTagKeyDown}
                               placeholder="搜索或新建标签..."
                               autoFocus
-                              className="w-full px-2 py-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
+                              className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50"
                             />
                           </div>
-                          <div className="max-h-48 overflow-auto py-1">
-                             {filteredTags.map((tag) => {
-                               const isSelected = selectedTags.some(t => t.id === tag.id);
-                               return (
+                          <div className="max-h-56 overflow-auto py-2">
+                            {loadingTags ? (
+                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">加载中...</div>
+                            ) : filteredTags.length === 0 ? (
+                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">
+                                暂无标签
                                 <button
-                                  key={tag.id}
-                                  onClick={() => { 
-                                    if(isSelected) removeTag(tag.id);
-                                    else setSelectedTags([...selectedTags, tag]);
-                                    setTagSearch('');
-                                  }}
-                                  className={cn(
-                                    'w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-card-hover)] flex justify-between items-center',
-                                    isSelected ? 'text-primary' : 'text-gray-300'
-                                  )}
+                                  onClick={refreshMetaData}
+                                  className="ml-2 text-primary hover:text-primary/80"
                                 >
-                                  {tag.name}
-                                  {isSelected && <CheckCircle className="w-3 h-3" />}
+                                  刷新
                                 </button>
-                               );
-                             })}
-                             {tagSearch && !filteredTags.some(t => t.name === tagSearch) && (
-                               <div className="px-3 py-1.5 text-xs text-gray-500">
-                                 按回车创建 "{tagSearch}"
-                               </div>
-                             )}
+                              </div>
+                            ) : (
+                              filteredTags.map((tag) => {
+                                const isSelected = selectedTags.some(t => t.id === tag.id);
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    onClick={() => { 
+                                      if(isSelected) removeTag(tag.id);
+                                      else setSelectedTags([...selectedTags, tag]);
+                                      setTagSearch('');
+                                    }}
+                                    className={cn(
+                                      'w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] flex justify-between items-center transition-colors',
+                                      isSelected ? 'text-primary' : 'text-[var(--text-secondary)]'
+                                    )}
+                                  >
+                                    {tag.name}
+                                    {isSelected && <CheckCircle className="w-3 h-3" />}
+                                  </button>
+                                );
+                              })
+                            )}
+                            {tagSearch && !filteredTags.some(t => t.name === tagSearch) && (
+                              <div className="px-4 py-2 text-xs text-[var(--text-muted)]">
+                                按回车创建 “{tagSearch}”
+                              </div>
+                            )}
                           </div>
                         </motion.div>
                       )}
@@ -2201,9 +2233,9 @@ export function CreatePostPage() {
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
                 onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-md p-6 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-2xl"
+                className="w-full max-w-md p-6 bg-[var(--bg-popover)] border border-[var(--border-default)] rounded-xl shadow-2xl"
               >
-                <h3 className="text-lg font-semibold text-white mb-4">新建分类</h3>
+                <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">新建分类</h3>
                 <input
                   type="text"
                   value={newCategoryName}
@@ -2216,7 +2248,7 @@ export function CreatePostPage() {
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={() => { setShowCreateCategoryModal(false); setNewCategoryName(''); }}
-                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                    className="px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                   >
                     取消
                   </button>

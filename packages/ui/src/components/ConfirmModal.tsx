@@ -77,14 +77,14 @@ export function ConfirmModal({
           >
             <div className={cn(
               'rounded-2xl p-6',
-              'bg-[#0a0a0c]/95 backdrop-blur-xl',
-              'border border-white/10',
-              'shadow-2xl shadow-black/50'
+              'bg-[var(--bg-popover)] backdrop-blur-xl',
+              'border border-[var(--border-default)]',
+              'shadow-2xl shadow-black/20'
             )}>
               {/* 关闭按钮 */}
               <button
                 onClick={onCancel}
-                className="absolute right-4 top-4 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                className="absolute right-4 top-4 p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -95,8 +95,8 @@ export function ConfirmModal({
               </div>
 
               {/* 内容 */}
-              <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
-              <p className="text-gray-400 mb-6">{message}</p>
+              <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">{title}</h3>
+              <p className="text-[var(--text-secondary)] mb-6">{message}</p>
 
               {/* 操作按钮 */}
               <div className="flex gap-3 justify-end">

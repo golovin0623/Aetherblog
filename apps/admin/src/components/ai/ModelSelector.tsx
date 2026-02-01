@@ -31,6 +31,10 @@ interface ModelSelectorProps {
   modelType?: string;
   variant?: 'default' | 'compact';
   selectedProviderCode?: string;
+  menuAlign?: 'left' | 'right';
+  menuClassName?: string;
+  triggerClassName?: string;
+  showArrow?: boolean;
 }
 
 interface GroupedModels {
@@ -88,6 +92,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   modelType,
   variant = 'default',
   selectedProviderCode,
+  menuAlign = 'left',
+  menuClassName = '',
+  triggerClassName = '',
+  showArrow = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -229,7 +237,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           "border-[var(--border-default)]",
           "hover:border-primary/40 hover:shadow-md hover:shadow-primary/5",
           isOpen && "ring-2 ring-primary/20 border-primary/50",
-          !selectedModel && !isOpen && "animate-breathing-light border-primary/30"
+          !selectedModel && !isOpen && "animate-breathing-light border-primary/30",
+          triggerClassName
         )}
       >
         {selectedModel ? (
@@ -263,27 +272,41 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.15 }}
             className={cn(
-              "absolute top-full left-0 z-50 mt-2 rounded-2xl flex flex-col max-h-[520px]",
-              "bg-white dark:bg-zinc-900",
-              "border border-zinc-200 dark:border-zinc-700/60",
-              "shadow-xl shadow-zinc-200/50 dark:shadow-black/30",
+              "absolute top-full z-50 mt-2 flex flex-col max-h-[520px] overflow-visible",
+              menuAlign === 'right' ? "right-0" : "left-0",
               variant === 'compact' ? "w-[340px]" : "w-[380px]",
-              "overflow-hidden"
+              menuClassName
             )}
           >
-            {/* Top shine effect that follows the rounded corners and fades down */}
-            <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
-              <div 
+            {showArrow && (
+              <div
                 className={cn(
-                  "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
-                  "dark:border-white/10"
-                )} 
-                style={{
-                  maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-                  WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-                }}
+                  "absolute -top-2 h-4 w-4 rotate-45 border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900 z-10",
+                  menuAlign === 'right' ? "right-6" : "left-6"
+                )}
               />
-            </div>
+            )}
+            <div
+              className={cn(
+                "relative rounded-2xl flex flex-col max-h-[520px] overflow-hidden",
+                "bg-white dark:bg-zinc-900",
+                "border border-zinc-200 dark:border-zinc-700/60",
+                "shadow-xl shadow-zinc-200/50 dark:shadow-black/30"
+              )}
+            >
+              {/* Top shine effect that follows the rounded corners and fades down */}
+              <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
+                <div 
+                  className={cn(
+                    "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
+                    "dark:border-white/10"
+                  )} 
+                  style={{
+                    maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+                  }}
+                />
+              </div>
 
             {/* Search Header */}
             <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10">
@@ -422,17 +445,18 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
-              <a 
-                href="/admin/ai-config" 
-                className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
-              >
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  管理提供商
-                </div>
-                <ChevronRight className="w-4 h-4" />
-              </a>
+              <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
+                <a 
+                  href="/admin/ai-config" 
+                  className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    <Settings className="w-4 h-4" />
+                    管理提供商
+                  </div>
+                  <ChevronRight className="w-4 h-4" />
+                </a>
+              </div>
             </div>
           </motion.div>
         )}
@@ -442,4 +466,3 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 };
 
 export default ModelSelector;
-

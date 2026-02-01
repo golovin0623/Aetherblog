@@ -188,7 +188,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         animate={{ width: 360, opacity: 1, x: 0 }}
         exit={{ width: 0, opacity: 0, x: 60 }}
         transition={{ type: 'spring', stiffness: 320, damping: 30, mass: 0.6 }}
-        className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
+        className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-visible flex flex-col z-30 shadow-xl relative"
       >
         <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
 
@@ -197,29 +197,32 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
             <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
             <span className="text-sm font-semibold text-[var(--text-primary)] tracking-wide uppercase">AI 写作面板</span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <ModelSelector
+              variant="compact"
+              className="w-[160px]"
+              value={selectedModelId}
+              selectedProviderCode={selectedProviderCode}
+              modelType="chat"
+              menuAlign="right"
+              menuClassName="w-[400px] max-w-[80vw]"
+              triggerClassName="!bg-[var(--bg-primary)] !border-[var(--border-subtle)] hover:!border-primary/40 !shadow-none"
+              showArrow
+              onChange={onModelChange}
+            />
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] space-y-3">
           <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
             <span>正文 {content.trim().length} 字</span>
             <span>摘要 {summary.trim().length} 字</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--text-muted)] shrink-0">模型</span>
-            <ModelSelector
-              variant="compact"
-              className="flex-1"
-              value={selectedModelId}
-              selectedProviderCode={selectedProviderCode}
-              modelType="chat"
-              onChange={onModelChange}
-            />
           </div>
           <div className="grid grid-cols-2 gap-2">
             {toolConfig.map((tool) => (

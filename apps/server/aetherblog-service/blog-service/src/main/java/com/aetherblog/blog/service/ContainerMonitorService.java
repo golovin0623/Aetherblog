@@ -4,18 +4,13 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Service;
 
-import javax.sql.DataSource;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,14 +26,17 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ContainerMonitorService {
 
-    private final DataSource dataSource;
-    private final RedisConnectionFactory redisConnectionFactory;
-
     @Value("${docker.host:unix:///var/run/docker.sock}")
     private String dockerHost;
     
     @Value("${docker.api.enabled:true}")
     private boolean dockerApiEnabled;
+
+    @Value("${docker.compose.project:aetherblog}")
+    private String dockerComposeProject;
+
+    @Value("${docker.container.name-prefix:aetherblog}")
+    private String dockerContainerNamePrefix;
 
     // ========== 数据模型 ==========
 
@@ -165,45 +163,17 @@ public class ContainerMonitorService {
      */
     private List<ContainerMetrics> getContainerStatsViaCommand() throws Exception {
         List<ContainerMetrics> result = new ArrayList<>();
-        
-        // 自动检测需要监控的容器 (aetherblog 应用 + 实际连接的服务)
-        Set<String> connectedHosts = getConnectedServiceHosts();
-        log.debug("Connected service hosts: {}", connectedHosts);
-        
-        // 获取所有运行中的容器
-        ProcessBuilder listPb = new ProcessBuilder(
-            "docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}"
-        );
-        listPb.redirectErrorStream(true);
-        Process listProcess = listPb.start();
-        
-        List<String[]> containerInfos = new ArrayList<>();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(listProcess.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split("\\|");
-                if (parts.length >= 4) {
-                    String name = parts[1].toLowerCase();
-                    String image = parts[3].toLowerCase();
-                    
-                    // 自动匹配: 1) aetherblog 应用容器 2) 匹配 Redis/Postgres 等连接的服务
-                    boolean isAetherBlogApp = name.contains("aetherblog");
-                    boolean isConnectedService = connectedHosts.stream()
-                        .anyMatch(host -> name.contains(host) || host.contains(name));
-                    boolean isKnownServiceImage = image.contains("redis") || 
-                                                   image.contains("postgres") || 
-                                                   image.contains("elasticsearch");
-                    
-                    if (isAetherBlogApp || isConnectedService || isKnownServiceImage) {
-                        containerInfos.add(parts);
-                        log.debug("Including container: {} (app={}, connected={}, knownImage={})", 
-                            name, isAetherBlogApp, isConnectedService, isKnownServiceImage);
-                    }
-                }
-            }
+
+        boolean useComposeFilter = dockerComposeProject != null && !dockerComposeProject.isBlank();
+        List<String[]> containerInfos = listContainers(useComposeFilter);
+
+        if (useComposeFilter && containerInfos.isEmpty()) {
+            log.debug("No containers matched compose project '{}', falling back to name prefix '{}'",
+                dockerComposeProject, dockerContainerNamePrefix);
+            containerInfos = filterByNamePrefix(listContainers(false));
+        } else if (!useComposeFilter) {
+            containerInfos = filterByNamePrefix(containerInfos);
         }
-        listProcess.waitFor();
         
         if (containerInfos.isEmpty()) {
             log.debug("No relevant containers found");
@@ -276,49 +246,6 @@ public class ContainerMonitorService {
         });
         
         return result;
-    }
-
-    /**
-     * 从 Spring 配置中自动提取实际连接的服务主机名
-     * @return 包含 Redis/PostgreSQL 等服务主机名的集合
-     */
-    private Set<String> getConnectedServiceHosts() {
-        Set<String> hosts = new HashSet<>();
-        
-        // 1. 从 DataSource 获取 PostgreSQL 主机
-        try {
-            // HikariDataSource 等实现会返回 JDBC URL
-            if (dataSource instanceof com.zaxxer.hikari.HikariDataSource hikariDs) {
-                String jdbcUrl = hikariDs.getJdbcUrl();
-                // 格式: jdbc:postgresql://hostname:5432/dbname
-                if (jdbcUrl != null && jdbcUrl.contains("://")) {
-                    String hostPart = jdbcUrl.split("://")[1].split("/")[0];
-                    String hostname = hostPart.contains(":") ? hostPart.split(":")[0] : hostPart;
-                    if (!hostname.isEmpty() && !hostname.equals("localhost") && !hostname.equals("127.0.0.1")) {
-                        hosts.add(hostname.toLowerCase());
-                        log.debug("Detected PostgreSQL host: {}", hostname);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to extract PostgreSQL host from DataSource", e);
-        }
-        
-        // 2. 从 RedisConnectionFactory 获取 Redis 主机
-        try {
-            if (redisConnectionFactory instanceof org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory lettuceCf) {
-                String redisHost = lettuceCf.getHostName();
-                if (redisHost != null && !redisHost.isEmpty() && 
-                    !redisHost.equals("localhost") && !redisHost.equals("127.0.0.1")) {
-                    hosts.add(redisHost.toLowerCase());
-                    log.debug("Detected Redis host: {}", redisHost);
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to extract Redis host from ConnectionFactory", e);
-        }
-        
-        return hosts;
     }
 
     /**
@@ -410,5 +337,52 @@ public class ContainerMonitorService {
             case "search" -> 6;
             default -> 10;
         };
+    }
+
+    private List<String[]> listContainers(boolean useComposeFilter) throws Exception {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("docker");
+        cmd.add("ps");
+        if (useComposeFilter) {
+            cmd.add("--filter");
+            cmd.add("label=com.docker.compose.project=" + dockerComposeProject);
+        }
+        cmd.add("--format");
+        cmd.add("{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}");
+
+        ProcessBuilder listPb = new ProcessBuilder(cmd);
+        listPb.redirectErrorStream(true);
+        Process listProcess = listPb.start();
+
+        List<String[]> containerInfos = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(listProcess.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split("\\|");
+                if (parts.length >= 4) {
+                    containerInfos.add(parts);
+                }
+            }
+        }
+        listProcess.waitFor();
+        return containerInfos;
+    }
+
+    private List<String[]> filterByNamePrefix(List<String[]> containers) {
+        if (dockerContainerNamePrefix == null || dockerContainerNamePrefix.isBlank()) {
+            return containers;
+        }
+        String prefix = dockerContainerNamePrefix.toLowerCase();
+        List<String[]> filtered = new ArrayList<>();
+        for (String[] parts : containers) {
+            if (parts.length >= 2) {
+                String name = parts[1].toLowerCase();
+                if (name.contains(prefix)) {
+                    filtered.add(parts);
+                }
+            }
+        }
+        return filtered;
     }
 }
