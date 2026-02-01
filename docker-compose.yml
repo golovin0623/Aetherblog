@@ -59,7 +59,6 @@ services:
 
 networks:
   aetherblog-network:
-    external: true
     name: aetherblog_aetherblog-network
 
 volumes:

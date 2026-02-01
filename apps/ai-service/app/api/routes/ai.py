@@ -138,13 +138,16 @@ async def summary(
         if cached_data:
             cached = True
             response_text = cached_data.get("summary", "")
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+            # Prefer cached metadata, fallback to current context
+            latency_ms = cached_data.get("latencyMs") or int((time.perf_counter() - start_time) * 1000)
+            tokens_used = cached_data.get("tokensUsed") or (estimate_tokens(req.content) + estimate_tokens(response_text))
+            cached_model = cached_data.get("model") or model
+            
             return ApiResponse(
                 data=SummaryData(
                     summary=response_text,
                     characterCount=len(response_text),
-                    model=model,
+                    model=cached_model,
                     tokensUsed=tokens_used,
                     latencyMs=latency_ms,
                 )
@@ -173,7 +176,7 @@ async def summary(
         )
         await cache.set_json(
             cache_key,
-            {"summary": response_text, "characterCount": len(response_text)},
+            data.model_dump(),
             SUMMARY_TTL,
         )
         return ApiResponse(data=data)
@@ -269,8 +272,15 @@ async def tags(
         cached_data = await cache.get_json(cache_key)
         if cached_data:
             cached = True
-            response_text = ",".join(cached_data.get("tags", []))
-            return ApiResponse(data=TagsData(**cached_data))
+            # Backfill missing metadata for old cache entries
+            data = TagsData(**cached_data)
+            if not data.model:
+                data.model = model
+            if data.tokensUsed is None:
+                data.tokensUsed = estimate_tokens(req.content) + estimate_tokens(",".join(data.tags))
+            if data.latencyMs is None:
+                data.latencyMs = int((time.perf_counter() - start_time) * 1000)
+            return ApiResponse(data=data)
 
         prompt_variables = {
             "content": req.content,
@@ -284,7 +294,14 @@ async def tags(
             model_id=req.modelId,
             provider_code=req.providerCode,
         )
-        data = TagsData(tags=_split_list(response_text)[: req.maxTags])
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+        data = TagsData(
+            tags=_split_list(response_text)[: req.maxTags],
+            model=model,
+            tokensUsed=tokens_used,
+            latencyMs=latency_ms
+        )
         await cache.set_json(cache_key, data.model_dump(), TAGS_TTL)
         return ApiResponse(data=data)
     except HTTPException as exc:
@@ -342,8 +359,15 @@ async def titles(
         cached_data = await cache.get_json(cache_key)
         if cached_data:
             cached = True
-            response_text = ",".join(cached_data.get("titles", []))
-            return ApiResponse(data=TitlesData(**cached_data))
+            # Backfill missing metadata for old cache entries
+            data = TitlesData(**cached_data)
+            if not data.model:
+                data.model = model
+            if data.tokensUsed is None:
+                data.tokensUsed = estimate_tokens(req.content) + estimate_tokens(",".join(data.titles))
+            if data.latencyMs is None:
+                data.latencyMs = int((time.perf_counter() - start_time) * 1000)
+            return ApiResponse(data=data)
 
         prompt_variables = {
             "content": req.content,
@@ -357,7 +381,14 @@ async def titles(
             model_id=req.modelId,
             provider_code=req.providerCode,
         )
-        data = TitlesData(titles=_split_list(response_text)[: req.maxTitles])
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+        data = TitlesData(
+            titles=_split_list(response_text)[: req.maxTitles],
+            model=model,
+            tokensUsed=tokens_used,
+            latencyMs=latency_ms
+        )
         await cache.set_json(cache_key, data.model_dump(), TITLES_TTL)
         return ApiResponse(data=data)
     except HTTPException as exc:
@@ -487,7 +518,16 @@ async def outline(
             model_id=req.modelId,
             provider_code=req.providerCode,
         )
-        return ApiResponse(data=OutlineData(outline=response_text))
+        )
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        tokens_used = estimate_tokens(topic) + estimate_tokens(response_text)
+        return ApiResponse(data=OutlineData(
+            outline=response_text,
+            characterCount=len(response_text),
+            model=model,
+            tokensUsed=tokens_used,
+            latencyMs=latency_ms
+        ))
     except HTTPException as exc:
         error_code = str(exc.detail)
         raise

@@ -69,10 +69,16 @@ class SummaryData(BaseModel):
 
 class TagsData(BaseModel):
     tags: list[str]
+    model: Optional[str] = None
+    tokensUsed: Optional[int] = None
+    latencyMs: Optional[int] = None
 
 
 class TitlesData(BaseModel):
     titles: list[str]
+    model: Optional[str] = None
+    tokensUsed: Optional[int] = None
+    latencyMs: Optional[int] = None
 
 
 class PolishData(BaseModel):
@@ -88,6 +94,10 @@ class PolishData(BaseModel):
 
 class OutlineData(BaseModel):
     outline: str
+    characterCount: int
+    model: Optional[str] = None
+    tokensUsed: Optional[int] = None
+    latencyMs: Optional[int] = None
 
 
 class TranslateRequest(BaseModel):

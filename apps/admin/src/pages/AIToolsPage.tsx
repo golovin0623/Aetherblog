@@ -62,10 +62,14 @@ const syncOrder = (current: string[], nextIds: string[]) => {
   return [...filtered, ...missing];
 };
 
+const isNonNullable = <T,>(value: T): value is NonNullable<T> => {
+  return value !== null && value !== undefined;
+};
+
 const applyOrder = <T,>(items: T[], order: string[], getId: (item: T) => string) => {
   if (!order.length) return items;
   const lookup = new Map(items.map((item) => [getId(item), item]));
-  const ordered = order.map((id) => lookup.get(id)).filter(Boolean) as T[];
+  const ordered = order.map((id) => lookup.get(id)).filter(isNonNullable);
   const used = new Set(order);
   const rest = items.filter((item) => !used.has(getId(item)));
   return [...ordered, ...rest];
