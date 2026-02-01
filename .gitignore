@@ -85,3 +85,6 @@ apps/ai-service/tests/test_streaming.py
 apps/ai-service/tests/test_usage_logger.py
 apps/ai-service/tests/test_vector_store.py
 apps/ai-service/tests/e2e/test_summary_flow.py
+
+# Locks
+.locks/

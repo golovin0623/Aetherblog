@@ -68,14 +68,14 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl border border-white/10 bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
+        className="w-full max-w-sm rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">模型排序</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -91,7 +91,7 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
                 <Reorder.Item
                   key={item.id}
                   value={item}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/5 bg-[var(--bg-card)]/50 cursor-grab active:cursor-grabbing select-none"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] cursor-grab active:cursor-grabbing select-none"
                 >
                   <GripVertical className="w-4 h-4 text-[var(--text-muted)]" />
                   <div className="flex-1">
@@ -100,7 +100,7 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
                     </div>
                     <div className="text-xs text-[var(--text-muted)]">{item.model_id}</div>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)]">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
                     {item.model_type}
                   </span>
                 </Reorder.Item>
@@ -110,7 +110,7 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
         </div>
 
         {/* 底部操作 */}
-        <div className="p-4 border-t border-white/5">
+        <div className="p-4 border-t border-[var(--border-default)]">
           <button
             onClick={handleSave}
             disabled={updateMutation.isPending || items.length === 0}

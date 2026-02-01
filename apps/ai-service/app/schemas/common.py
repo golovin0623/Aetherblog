@@ -11,6 +11,8 @@ class ApiResponse(BaseModel, Generic[T]):
     """
     Matched with Java AiResponse structure.
     """
+    code: Optional[int] = 200
+    message: Optional[str] = "success"
     success: bool = True
     data: Optional[T] = None
     errorCode: Optional[str] = None

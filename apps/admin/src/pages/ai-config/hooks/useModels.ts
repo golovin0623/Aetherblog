@@ -12,6 +12,7 @@ import {
   type ModelSortItem,
 } from '@/services/aiProviderService';
 import type { ModelType } from '../types';
+import { resolveAiServiceErrorMessage } from '../utils/errorMessage';
 
 // Query Keys
 export const modelKeys = {
@@ -57,8 +58,8 @@ export function useCreateModel() {
       queryClient.invalidateQueries({ queryKey: modelKeys.all });
       toast.success('模型已创建');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '创建失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '创建失败'));
     },
   });
 }
@@ -76,8 +77,8 @@ export function useUpdateModel() {
       queryClient.invalidateQueries({ queryKey: modelKeys.all });
       toast.success('模型已更新');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '更新失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '更新失败'));
     },
   });
 }
@@ -94,8 +95,8 @@ export function useDeleteModel() {
       queryClient.invalidateQueries({ queryKey: modelKeys.all });
       toast.success('模型已删除');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '删除失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '删除失败'));
     },
   });
 }
@@ -118,8 +119,8 @@ export function useSyncRemoteModels() {
       queryClient.invalidateQueries({ queryKey: modelKeys.byProvider(providerCode) });
       toast.success('模型列表已拉取');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '拉取失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '拉取失败'));
     },
   });
 }
@@ -142,8 +143,8 @@ export function useClearProviderModels() {
       queryClient.invalidateQueries({ queryKey: modelKeys.byProvider(providerCode) });
       toast.success('模型列表已清空');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '清空失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '清空失败'));
     },
   });
 }
@@ -168,8 +169,8 @@ export function useBatchToggleModels() {
       queryClient.invalidateQueries({ queryKey: modelKeys.byProvider(providerCode) });
       toast.success(enabled ? '模型已全部启用' : '模型已全部禁用');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '操作失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '操作失败'));
     },
   });
 }
@@ -192,8 +193,8 @@ export function useUpdateModelSort() {
       queryClient.invalidateQueries({ queryKey: modelKeys.byProvider(providerCode) });
       toast.success('排序已更新');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '排序更新失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '排序更新失败'));
     },
   });
 }

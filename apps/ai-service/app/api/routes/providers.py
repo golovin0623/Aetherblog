@@ -8,6 +8,7 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 from litellm import acompletion
 
 from app.api.deps import (
@@ -50,6 +51,17 @@ router = APIRouter(
     tags=["providers"],
     dependencies=[Depends(require_admin)],
 )
+
+
+def format_remote_fetch_error(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        text = exc.response.text
+        snippet = text[:200] + ("..." if len(text) > 200 else "")
+        return f"Remote API error {status}: {snippet}".strip()
+    if isinstance(exc, httpx.RequestError):
+        return f"Remote API request failed: {exc}".strip()
+    return f"Remote API error: {exc}".strip()
 
 
 # ============================================================
@@ -388,6 +400,15 @@ async def fetch_remote_models(
         models = await fetcher.fetch_models(provider, credential)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.warning(
+            "remote_model_fetch_failed provider=%s api_type=%s base_url=%s error=%s",
+            provider.code,
+            provider.api_type,
+            credential.base_url,
+            exc,
+        )
+        raise HTTPException(status_code=502, detail=format_remote_fetch_error(exc))
 
     inserted = await registry.bulk_insert_models(provider_code, models)
 

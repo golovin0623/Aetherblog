@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sparkles, BrainCircuit, Wand2, ListTree, Languages, PenLine, FileEdit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AIToolsWorkspace } from '@/components/ai/AIToolsWorkspace';
@@ -34,9 +34,9 @@ export default function AIToolsPage() {
     }
   };
 
-  useState(() => {
+  useEffect(() => {
     fetchAllConfigs();
-  });
+  }, []);
 
   const selectedTool = tools.find(t => t.id === selectedToolId) || tools[0];
 

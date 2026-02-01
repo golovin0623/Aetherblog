@@ -63,16 +63,16 @@ export default function SortDialog({ providers, onClose }: SortDialogProps) {
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl border border-white/10 bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
+        className="w-full max-w-sm rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             自定义排序
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -90,7 +90,7 @@ export default function SortDialog({ providers, onClose }: SortDialogProps) {
                 <Reorder.Item
                   key={item.id}
                   value={item}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/5 bg-[var(--bg-card)]/50 cursor-grab active:cursor-grabbing select-none"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] cursor-grab active:cursor-grabbing select-none"
                 >
                   <GripVertical className="w-4 h-4 text-[var(--text-muted)]" />
                   <ProviderIcon code={item.code} size={20} />
@@ -104,7 +104,7 @@ export default function SortDialog({ providers, onClose }: SortDialogProps) {
         </div>
 
         {/* 底部操作 */}
-        <div className="p-4 border-t border-white/5">
+        <div className="p-4 border-t border-[var(--border-default)]">
           <button
             onClick={handleSave}
             disabled={updateMutation.isPending || items.length === 0}

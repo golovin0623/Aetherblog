@@ -10,6 +10,7 @@ import {
   type CreateCredentialRequest,
 } from '@/services/aiProviderService';
 import type { ConnectionTestResult } from '../types';
+import { resolveAiServiceErrorMessage } from '../utils/errorMessage';
 
 // Query Keys
 export const credentialKeys = {
@@ -68,8 +69,8 @@ export function useCreateCredential() {
       queryClient.invalidateQueries({ queryKey: credentialKeys.all });
       toast.success('凭证已保存');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '保存失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '保存失败'));
     },
   });
 }
@@ -86,8 +87,8 @@ export function useDeleteCredential() {
       queryClient.invalidateQueries({ queryKey: credentialKeys.all });
       toast.success('凭证已删除');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '删除失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '删除失败'));
     },
   });
 }
@@ -116,7 +117,7 @@ export function useTestCredential() {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || '测试失败');
+      toast.error(resolveAiServiceErrorMessage(error, '测试失败'));
     },
   });
 }

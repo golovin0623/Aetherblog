@@ -72,9 +72,9 @@ class RemoteModelFetcher:
 
         url = f"{credential.base_url}/models"
         headers = {
-            "Authorization": f"Bearer {credential.api_key}",
+            "Authorization": f"Bearer {credential.api_key.strip()}",
             "Content-Type": "application/json",
-            "X-API-Key": credential.api_key,
+            "X-API-Key": credential.api_key.strip(),
         }
 
         async with httpx.AsyncClient(timeout=20) as client:
@@ -121,7 +121,7 @@ class RemoteModelFetcher:
         version = credential.extra_config.get("anthropic_version", "2023-06-01")
         headers = {
             "Content-Type": "application/json",
-            "X-API-Key": credential.api_key,
+            "X-API-Key": credential.api_key.strip(),
             "anthropic-version": version,
         }
 

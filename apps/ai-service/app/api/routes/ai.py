@@ -402,15 +402,15 @@ async def outline(
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[OutlineData]:
-    # Change from req.content to req.topic
     start_time = time.perf_counter()
     error_code = None
     model = llm.resolve_model("outline")
     response_text = ""
+    topic = req.topic or req.content or ""
 
     try:
         prompt_variables = {
-            "topic": req.topic,
+            "topic": topic,
             "depth": req.depth,
             "style": req.style,
             "context": f"\n现有内容参考：\n{req.existingContent}" if req.existingContent else ""
@@ -435,7 +435,7 @@ async def outline(
             usage_logger=usage_logger,
             user_id=user.user_id,
             model=model,
-            request_text=req.topic,
+            request_text=topic,
             response_text=response_text,
             start_time=start_time,
             success=error_code is None,

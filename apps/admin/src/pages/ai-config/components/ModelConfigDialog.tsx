@@ -68,6 +68,11 @@ export default function ModelConfigDialog({
     input_cost_per_1k: 0,
     output_cost_per_1k: 0,
     pricing_currency: 'USD' as ModelPricing['currency'],
+    description: '',
+    legacy: false,
+    organization: '',
+    max_dimension: '' as number | '',
+    resolutions: '',
     abilities: {
       functionCall: false,
       vision: false,
@@ -85,6 +90,7 @@ export default function ModelConfigDialog({
     },
     config: {
       deploymentName: '',
+      enabledSearch: false,
     },
     released_at: '',
     parameters_json: '',
@@ -117,6 +123,14 @@ export default function ModelConfigDialog({
       input_cost_per_1k: initial.input_cost_per_1k || 0,
       output_cost_per_1k: initial.output_cost_per_1k || 0,
       pricing_currency: pricing.currency || 'USD',
+      description: extra.description ? String(extra.description) : '',
+      legacy: !!extra.legacy,
+      organization: extra.organization ? String(extra.organization) : '',
+      max_dimension:
+        typeof extra.maxDimension === 'number' && Number.isFinite(extra.maxDimension)
+          ? extra.maxDimension
+          : '',
+      resolutions: Array.isArray(extra.resolutions) ? extra.resolutions.join(', ') : '',
       abilities: {
         functionCall: !!abilities.functionCall,
         vision: !!abilities.vision,
@@ -134,6 +148,7 @@ export default function ModelConfigDialog({
       },
       config: {
         deploymentName: config.deploymentName || '',
+        enabledSearch: !!config.enabledSearch,
       },
       released_at: extra.released_at ? String(extra.released_at) : '',
       parameters_json: extra.parameters ? JSON.stringify(extra.parameters, null, 2) : '',
@@ -173,6 +188,17 @@ export default function ModelConfigDialog({
     };
 
     const source = initial ? resolveModelSource(initial) : 'custom';
+    const extraBase = initial ? (getModelExtra(initial) as Record<string, unknown>) : null;
+    const resolutions = form.resolutions
+      .split(/[,，]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const maxDimensionValue =
+      typeof form.max_dimension === 'number'
+        ? form.max_dimension
+        : form.max_dimension
+          ? Number.parseInt(String(form.max_dimension), 10)
+          : undefined;
 
     const capabilities = buildModelCapabilities({
       abilities: form.abilities,
@@ -181,13 +207,22 @@ export default function ModelConfigDialog({
         searchImpl: form.settings.searchImpl,
         searchProvider: form.settings.searchProvider || undefined,
       },
-      config: showDeployName && form.config.deploymentName ? { deploymentName: form.config.deploymentName } : undefined,
+      config: {
+        deploymentName: showDeployName && form.config.deploymentName ? form.config.deploymentName : undefined,
+        enabledSearch: form.config.enabledSearch,
+      },
       pricing: pricingExtra || form.input_cost_per_1k || form.output_cost_per_1k ? pricing : undefined,
       parameters,
       released_at: form.released_at || null,
       source,
       maxToken: form.context_window || undefined,
       maxOutputTokens: form.max_output_tokens || undefined,
+      description: form.description || undefined,
+      legacy: form.legacy,
+      organization: form.organization || undefined,
+      maxDimension: Number.isFinite(maxDimensionValue as number) ? (maxDimensionValue as number) : undefined,
+      resolutions: resolutions.length ? resolutions : undefined,
+      extra: extraBase,
     });
 
     if (mode === 'create') {
@@ -243,16 +278,16 @@ export default function ModelConfigDialog({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--bg-primary)] shadow-2xl"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
       >
         {/* 头部 */}
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             {mode === 'create' ? '添加自定义模型' : '模型配置'}
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -277,8 +312,8 @@ export default function ModelConfigDialog({
                 value={form.model_id}
                 onChange={(e) => setForm((prev) => ({ ...prev, model_id: e.target.value }))}
                 disabled={mode === 'edit'}
-                placeholder="claude-haiku-4-5-20251001"
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all disabled:opacity-50"
+                placeholder="gpt-5-mini"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all disabled:opacity-50"
               />
               <p className="text-xs text-[var(--text-muted)]">
                 创建后不可修改，调用 AI 时将作为模型 ID 使用
@@ -293,7 +328,31 @@ export default function ModelConfigDialog({
                 value={form.display_name}
                 onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                 placeholder="GPT-5.2 / Claude 4.5 Thinking"
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+              />
+            </div>
+
+            {/* 模型描述 */}
+            <div className="space-y-2">
+              <label className="text-sm text-[var(--text-muted)]">模型描述</label>
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="简要描述模型特性"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+              />
+            </div>
+
+            {/* 归属组织 */}
+            <div className="space-y-2">
+              <label className="text-sm text-[var(--text-muted)]">发布组织</label>
+              <input
+                type="text"
+                value={form.organization}
+                onChange={(e) => setForm((prev) => ({ ...prev, organization: e.target.value }))}
+                placeholder="OpenAI / Anthropic / Google"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
               />
             </div>
 
@@ -303,7 +362,7 @@ export default function ModelConfigDialog({
               <select
                 value={form.model_type}
                 onChange={(e) => setForm((prev) => ({ ...prev, model_type: e.target.value }))}
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
               >
                 {MODEL_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>
@@ -312,6 +371,14 @@ export default function ModelConfigDialog({
                 ))}
               </select>
             </div>
+
+            {/* 旧版标记 */}
+            <CapabilityToggle
+              label="标记为旧版模型"
+              description="用于标记已弃用但仍保留的模型"
+              checked={!!form.legacy}
+              onChange={(v) => setForm((prev) => ({ ...prev, legacy: v }))}
+            />
 
             {/* 部署名 */}
             {showDeployName && (
@@ -327,7 +394,7 @@ export default function ModelConfigDialog({
                     }))
                   }
                   placeholder="gpt-5-2-deploy"
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
                 />
               </div>
             )}
@@ -339,7 +406,7 @@ export default function ModelConfigDialog({
                 type="date"
                 value={form.released_at}
                 onChange={(e) => setForm((prev) => ({ ...prev, released_at: e.target.value }))}
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
               />
             </div>
           </div>
@@ -375,10 +442,27 @@ export default function ModelConfigDialog({
                       context_window: parseInt(e.target.value) || 0,
                     }))
                   }
-                  className="w-24 rounded-lg border border-white/5 bg-[var(--bg-card)]/50 px-3 py-1.5 text-sm text-right text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-24 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-right text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
             </div>
+
+            {form.model_type === 'embedding' && (
+              <div className="space-y-2">
+                <label className="text-sm text-[var(--text-muted)]">最大向量维度</label>
+                <input
+                  type="number"
+                  value={form.max_dimension}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      max_dimension: parseInt(e.target.value) || '',
+                    }))
+                  }
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                />
+              </div>
+            )}
 
             {/* 最大输出 */}
             <div className="space-y-2">
@@ -392,9 +476,22 @@ export default function ModelConfigDialog({
                     max_output_tokens: parseInt(e.target.value) || 0,
                   }))
                 }
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
               />
             </div>
+
+            {form.model_type === 'image' && (
+              <div className="space-y-2">
+                <label className="text-sm text-[var(--text-muted)]">支持分辨率</label>
+                <input
+                  type="text"
+                  value={form.resolutions}
+                  onChange={(e) => setForm((prev) => ({ ...prev, resolutions: e.target.value }))}
+                  placeholder="1024x1024, 1536x1024"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                />
+              </div>
+            )}
           </div>
 
           {/* 能力 */}
@@ -515,7 +612,7 @@ export default function ModelConfigDialog({
                   className={`px-3 py-2 rounded-lg border text-xs text-left transition-all ${
                     extendParamSet.has(option)
                       ? 'border-primary/60 bg-primary/10 text-primary'
-                      : 'border-white/10 text-[var(--text-muted)] hover:border-white/20'
+                      : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
                   }`}
                 >
                   {option}
@@ -527,6 +624,17 @@ export default function ModelConfigDialog({
           {/* 搜索配置 */}
           <div className="space-y-4">
             <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">搜索配置</div>
+            <CapabilityToggle
+              label="启用内置搜索"
+              description="部分模型需要显式开启搜索能力"
+              checked={!!form.config.enabledSearch}
+              onChange={(v) =>
+                setForm((prev) => ({
+                  ...prev,
+                  config: { ...prev.config, enabledSearch: v },
+                }))
+              }
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm text-[var(--text-muted)]">搜索实现方式</label>
@@ -541,7 +649,7 @@ export default function ModelConfigDialog({
                       },
                     }))
                   }
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 >
                   <option value="">自动</option>
                   {SEARCH_IMPL_OPTIONS.map((opt) => (
@@ -563,7 +671,7 @@ export default function ModelConfigDialog({
                     }))
                   }
                   placeholder="perplexity / serpapi"
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
             </div>
@@ -583,7 +691,7 @@ export default function ModelConfigDialog({
                       pricing_currency: e.target.value as ModelPricing['currency'],
                     }))
                   }
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 >
                   <option value="USD">USD</option>
                   <option value="CNY">CNY</option>
@@ -600,7 +708,7 @@ export default function ModelConfigDialog({
                       input_cost_per_1k: parseFloat(e.target.value) || 0,
                     }))
                   }
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
               <div className="space-y-2">
@@ -614,7 +722,7 @@ export default function ModelConfigDialog({
                       output_cost_per_1k: parseFloat(e.target.value) || 0,
                     }))
                   }
-                  className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
             </div>
@@ -625,7 +733,7 @@ export default function ModelConfigDialog({
                 value={form.pricing_json}
                 onChange={(e) => setForm((prev) => ({ ...prev, pricing_json: e.target.value }))}
                 placeholder='{"audioInput": 3.0, "cachedInput": 0.3}'
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
               />
             </div>
           </div>
@@ -640,7 +748,7 @@ export default function ModelConfigDialog({
                 value={form.parameters_json}
                 onChange={(e) => setForm((prev) => ({ ...prev, parameters_json: e.target.value }))}
                 placeholder='{"temperature": {"min": 0, "max": 2}}'
-                className="w-full rounded-xl border border-white/5 bg-[var(--bg-card)]/50 px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
               />
             </div>
           </div>
@@ -653,7 +761,7 @@ export default function ModelConfigDialog({
         </div>
 
         {/* 底部操作 */}
-        <div className="flex items-center justify-between p-5 border-t border-white/5">
+        <div className="flex items-center justify-between p-5 border-t border-[var(--border-default)]">
           {mode === 'edit' && initial && (
             <button
               onClick={handleDelete}
@@ -666,7 +774,7 @@ export default function ModelConfigDialog({
           <div className={`flex gap-3 ${mode === 'create' ? 'ml-auto' : ''}`}>
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-white/10 text-[var(--text-secondary)] text-sm font-medium hover:bg-white/5 transition-colors"
+              className="px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
             >
               取消
             </button>
@@ -703,12 +811,12 @@ function CapabilityToggle({
         type="button"
         onClick={() => onChange(!checked)}
         className={`relative w-10 h-5 rounded-full transition-all flex-shrink-0 mt-0.5 ${
-          checked ? 'bg-primary' : 'bg-white/10 group-hover:bg-white/20'
+          checked ? 'bg-primary' : 'bg-[var(--bg-card)] group-hover:bg-[var(--bg-card-hover)]'
         }`}
       >
         <span
           className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
-            checked ? 'left-5 bg-white' : 'left-0.5 bg-white/60'
+            checked ? 'left-5 bg-white' : 'left-0.5 bg-[var(--text-muted)]/70'
           }`}
         />
       </button>

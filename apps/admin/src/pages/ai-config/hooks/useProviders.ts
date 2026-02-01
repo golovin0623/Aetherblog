@@ -9,6 +9,7 @@ import {
   type CreateProviderRequest,
   type UpdateProviderRequest,
 } from '@/services/aiProviderService';
+import { resolveAiServiceErrorMessage } from '../utils/errorMessage';
 
 // Query Keys
 export const providerKeys = {
@@ -40,8 +41,8 @@ export function useCreateProvider() {
       queryClient.invalidateQueries({ queryKey: providerKeys.all });
       toast.success('供应商已创建');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '创建失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '创建失败'));
     },
   });
 }
@@ -59,8 +60,8 @@ export function useUpdateProvider() {
       queryClient.invalidateQueries({ queryKey: providerKeys.all });
       toast.success('供应商已更新');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '更新失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '更新失败'));
     },
   });
 }
@@ -78,8 +79,8 @@ export function useDeleteProvider() {
       queryClient.invalidateQueries({ queryKey: ['ai-models'] });
       toast.success('供应商已删除');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '删除失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '删除失败'));
     },
   });
 }
@@ -97,8 +98,8 @@ export function useToggleProvider() {
       queryClient.invalidateQueries({ queryKey: providerKeys.all });
       toast.success(enabled ? '供应商已启用' : '供应商已禁用');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '操作失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '操作失败'));
     },
   });
 }
@@ -122,8 +123,8 @@ export function useUpdateProviderPriorities() {
       queryClient.invalidateQueries({ queryKey: providerKeys.all });
       toast.success('排序已更新');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || '排序更新失败');
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '排序更新失败'));
     },
   });
 }

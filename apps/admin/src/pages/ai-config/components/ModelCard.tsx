@@ -29,12 +29,14 @@ import {
 interface ModelCardProps {
   model: AiModel;
   onEdit: () => void;
+  readOnly?: boolean;
 }
 
-export default function ModelCard({ model, onEdit }: ModelCardProps) {
+export default function ModelCard({ model, onEdit, readOnly = false }: ModelCardProps) {
   const toggleMutation = useToggleModel();
 
   const handleToggle = () => {
+    if (readOnly) return;
     toggleMutation.mutate({ id: model.id, enabled: !model.is_enabled });
   };
 
@@ -46,6 +48,12 @@ export default function ModelCard({ model, onEdit }: ModelCardProps) {
   const maxOutputTokens = resolveModelMaxOutputTokens(model);
 
   const releaseAt = extra.released_at ? String(extra.released_at) : null;
+  const description = typeof extra.description === 'string' ? extra.description : null;
+  const legacy = extra.legacy as boolean | undefined;
+  const maxDimension =
+    typeof extra.maxDimension === 'number' && Number.isFinite(extra.maxDimension)
+      ? extra.maxDimension
+      : null;
 
   const priceTags = formatPricing(pricing, model);
 
@@ -63,26 +71,29 @@ export default function ModelCard({ model, onEdit }: ModelCardProps) {
       animate={{ opacity: 1, y: 0 }}
       className={`flex items-center gap-4 px-4 py-3 rounded-xl border transition-all ${
         model.is_enabled
-          ? 'border-white/10 bg-white/5'
-          : 'border-white/5 bg-transparent opacity-70'
+          ? 'border-[var(--border-default)] bg-[var(--bg-card)]'
+          : 'border-[var(--border-subtle)] bg-transparent opacity-70'
       }`}
     >
       {/* 状态点 */}
       <div
         className={`w-2 h-2 rounded-full flex-shrink-0 ${
-          model.is_enabled ? 'bg-emerald-400' : 'bg-white/20'
+          model.is_enabled ? 'bg-emerald-400' : 'bg-[var(--border-default)]'
         }`}
       />
 
       {/* 信息区 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm text-[var(--text-primary)] truncate">
+          <span
+            className="font-medium text-sm text-[var(--text-primary)] truncate"
+            title={description || model.display_name || model.model_id}
+          >
             {model.display_name || model.model_id}
           </span>
           <span className="text-xs text-[var(--text-muted)] truncate">{model.model_id}</span>
           {source && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)]">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
               {source === 'remote' ? '远程' : source === 'custom' ? '自定义' : '内置'}
             </span>
           )}
@@ -90,12 +101,20 @@ export default function ModelCard({ model, onEdit }: ModelCardProps) {
 
         <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-[var(--text-muted)]">
           {contextWindow && <span>{formatContextWindow(contextWindow)}</span>}
+          {model.model_type === 'embedding' && maxDimension && <span>维度 {maxDimension}</span>}
           {maxOutputTokens && <span>输出 {formatContextWindow(maxOutputTokens)}</span>}
+          {legacy && <span className="text-amber-400">旧版</span>}
           {releaseAt && <span>发布 {releaseAt}</span>}
           {priceTags.map((tag) => (
             <span key={tag}>{tag}</span>
           ))}
         </div>
+
+        {description && (
+          <div className="mt-1 text-xs text-[var(--text-muted)] line-clamp-2">
+            {description}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 mt-2">
           {abilities.functionCall && <CapabilityBadge icon={Wand2} title="函数调用" />}
@@ -113,29 +132,32 @@ export default function ModelCard({ model, onEdit }: ModelCardProps) {
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={copyModelId}
-          className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+          className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
           title="复制模型 ID"
         >
           <Copy className="w-4 h-4" />
         </button>
         <button
           onClick={onEdit}
-          className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+          disabled={readOnly}
+          className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all ${
+            readOnly ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--bg-card-hover)]'
+          }`}
           title="配置模型"
         >
           <Settings className="w-4 h-4" />
         </button>
         <button
           onClick={handleToggle}
-          disabled={toggleMutation.isPending}
+          disabled={toggleMutation.isPending || readOnly}
           className={`relative w-10 h-5 rounded-full transition-all flex-shrink-0 ${
-            model.is_enabled ? 'bg-primary' : 'bg-white/10 hover:bg-white/20'
-          } ${toggleMutation.isPending ? 'opacity-50' : ''}`}
+            model.is_enabled ? 'bg-primary' : 'bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]'
+          } ${toggleMutation.isPending || readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <motion.div
             layout
             className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
-              model.is_enabled ? 'left-5 bg-white' : 'left-0.5 bg-white/60'
+              model.is_enabled ? 'left-5 bg-white' : 'left-0.5 bg-[var(--text-muted)]/70'
             }`}
           />
         </button>
@@ -174,7 +196,7 @@ function CapabilityBadge({
 }) {
   return (
     <div
-      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)] text-[11px]"
+      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)] text-[11px]"
       title={title}
     >
       <Icon className="w-3 h-3" />

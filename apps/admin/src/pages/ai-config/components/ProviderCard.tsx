@@ -21,7 +21,11 @@ export default function ProviderCard({
   isToggling,
 }: ProviderCardProps) {
   const preset = getPresetProvider(provider.code);
-  const description = preset?.description || `${provider.api_type} API`;
+  const capabilityDescription =
+    typeof (provider.capabilities as Record<string, unknown> | null)?.description === 'string'
+      ? ((provider.capabilities as Record<string, unknown>).description as string)
+      : undefined;
+  const description = capabilityDescription || preset?.description || `${provider.api_type} API`;
 
   return (
     <motion.div
@@ -30,10 +34,10 @@ export default function ProviderCard({
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2 }}
-      className={`group relative rounded-2xl border bg-[var(--bg-card)]/50 backdrop-blur-xl p-4 cursor-pointer transition-all duration-300 ${
+      className={`group relative rounded-2xl border bg-[var(--bg-card)] backdrop-blur-xl p-4 cursor-pointer transition-all duration-300 ${
         provider.is_enabled
           ? 'border-primary/20 shadow-lg shadow-primary/5'
-          : 'border-white/5 hover:border-white/10'
+          : 'border-[var(--border-default)] hover:border-[var(--border-hover)]'
       }`}
       onClick={onClick}
     >
@@ -45,7 +49,7 @@ export default function ProviderCard({
       <div className="flex items-start justify-between mb-3">
         {/* 图标和名称 */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center shadow-inner">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--bg-card-hover)] to-[var(--bg-card)] flex items-center justify-center shadow-inner">
             <ProviderIcon code={provider.code} size={24} />
           </div>
           <div>
@@ -66,7 +70,7 @@ export default function ProviderCard({
           className={`relative w-11 h-6 rounded-full transition-all duration-300 ${
             provider.is_enabled
               ? 'bg-primary shadow-lg shadow-primary/30'
-              : 'bg-white/10 hover:bg-white/20'
+              : 'bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]'
           } ${isToggling ? 'opacity-50 cursor-not-allowed' : ''}`}
           title={provider.is_enabled ? '点击禁用' : '点击启用'}
         >
@@ -75,7 +79,7 @@ export default function ProviderCard({
             className={`absolute top-1 w-4 h-4 rounded-full transition-all ${
               provider.is_enabled
                 ? 'left-6 bg-white'
-                : 'left-1 bg-white/60'
+                : 'left-1 bg-[var(--text-muted)]/70'
             }`}
           />
         </button>
@@ -87,12 +91,12 @@ export default function ProviderCard({
       </p>
 
       {/* 底部信息 */}
-      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)]">
+      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border-default)]">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
           {provider.api_type}
         </span>
         {provider.priority > 0 && provider.priority < 100 && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)]">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
             优先级 {provider.priority}
           </span>
         )}
@@ -110,13 +114,21 @@ interface ProviderGridProps {
   count: number;
   children: React.ReactNode;
   className?: string;
+  tone?: 'primary' | 'secondary';
 }
 
-export function ProviderGrid({ title, count, children, className = '' }: ProviderGridProps) {
+export function ProviderGrid({
+  title,
+  count,
+  children,
+  className = '',
+  tone = 'primary',
+}: ProviderGridProps) {
+  const toneClass = tone === 'secondary' ? 'text-[var(--color-secondary)]' : 'text-primary';
   return (
     <div className={className}>
       <div className="flex items-center gap-2 mb-4">
-        <h2 className="text-sm font-medium text-[var(--text-secondary)]">{title}</h2>
+        <h2 className={`text-sm font-medium ${toneClass}`}>{title}</h2>
         <span className="text-xs text-[var(--text-muted)]">{count}</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -130,7 +142,7 @@ export function ProviderGrid({ title, count, children, className = '' }: Provide
 export function EmptyProviderState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
+      <div className="w-16 h-16 rounded-2xl bg-[var(--bg-card)] flex items-center justify-center mb-4">
         <Power className="w-8 h-8 text-[var(--text-muted)]" />
       </div>
       <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">

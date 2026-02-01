@@ -44,11 +44,11 @@ class Settings(BaseSettings):
     openai_compat_base_url: str | None = Field(default=None, alias="OPENAI_COMPAT_BASE_URL")
     openai_compat_api_key: str | None = Field(default=None, alias="OPENAI_COMPAT_API_KEY")
 
-    model_summary: str = Field(default="gemini-3-flash-preview", alias="MODEL_SUMMARY")
-    model_tags: str = Field(default="claude-haiku-4-5-20251001", alias="MODEL_TAGS")
-    model_titles: str = Field(default="claude-haiku-4-5-20251001", alias="MODEL_TITLES")
-    model_polish: str = Field(default="gpt-5.2", alias="MODEL_POLISH")
-    model_outline: str = Field(default="gemini-3-pro-preview", alias="MODEL_OUTLINE")
+    model_summary: str = Field(default="gpt-5-mini", alias="MODEL_SUMMARY")
+    model_tags: str = Field(default="gpt-5-mini", alias="MODEL_TAGS")
+    model_titles: str = Field(default="gpt-5-mini", alias="MODEL_TITLES")
+    model_polish: str = Field(default="gpt-5-mini", alias="MODEL_POLISH")
+    model_outline: str = Field(default="gpt-5-mini", alias="MODEL_OUTLINE")
     model_embedding: str = Field(default="text-embedding-3-small", alias="MODEL_EMBEDDING")
     max_input_chars: int = Field(default=20000, alias="AI_MAX_INPUT_CHARS")
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SummaryRequest(BaseModel):
@@ -34,12 +34,19 @@ class PolishRequest(BaseModel):
 
 
 class OutlineRequest(BaseModel):
-    topic: str = Field(..., min_length=1)
+    topic: Optional[str] = Field(default=None, min_length=1)
+    content: Optional[str] = None
     existingContent: Optional[str] = None
     depth: int = Field(default=2, ge=1, le=6)
     style: str = Field(default="professional")
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_topic_or_content(self):
+        if not self.topic and not self.content:
+            raise ValueError("topic or content is required")
+        return self
 
 
 class SummaryData(BaseModel):
