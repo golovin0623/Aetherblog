@@ -1,0 +1,10 @@
+aetherblog:
+  ai:
+    # AI 服务地址（生产环境使用内部服务名）
+    base-url: ${AI_SERVICE_URL:http://localhost:8000}
+    connect-timeout: 5000
+    read-timeout: 30000
+    stream-read-timeout: 300000
+    max-retries: 2
+    circuit-breaker-enabled: true
+    circuit-breaker-threshold: 5

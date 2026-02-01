@@ -59,7 +59,7 @@ export default function PostsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
+
 
   // Debounce search
   useEffect(() => {
@@ -190,7 +190,6 @@ export default function PostsPage() {
   // Handle open properties modal
   const handleOpenProperties = useCallback(async (post: PostListItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsFetchingDetail(true);
     try {
       const res = await postService.getById(post.id);
       console.log('[Debug] API Response:', res);
@@ -200,8 +199,6 @@ export default function PostsPage() {
       }
     } catch (err) {
       logger.error('获取文章详情失败:', err);
-    } finally {
-      setIsFetchingDetail(false);
     }
   }, []);
 
@@ -227,9 +224,9 @@ export default function PostsPage() {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      PUBLISHED: 'bg-green-500/10 text-green-400 border-green-500/20',
-      DRAFT: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-      ARCHIVED: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+      PUBLISHED: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
+      DRAFT: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
+      ARCHIVED: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20',
     };
     const labels = { PUBLISHED: '已发布', DRAFT: '草稿', ARCHIVED: '已归档' };
     return (
@@ -245,12 +242,12 @@ export default function PostsPage() {
       {/* 页面标题 */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-white leading-tight">文章管理</h1>
+          <h1 className="text-xl font-bold text-[var(--text-primary)] leading-tight">文章管理</h1>
           <div className="h-5 flex items-center mt-0.5">
             {loading ? (
-              <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+              <div className="h-4 w-20 bg-[var(--bg-secondary)] rounded animate-pulse" />
             ) : (
-              <p className="text-gray-400 text-sm">共 {pagination.total} 篇文章</p>
+              <p className="text-[var(--text-secondary)] text-sm">共 {pagination.total} 篇文章</p>
             )}
           </div>
         </div>
@@ -285,7 +282,7 @@ export default function PostsPage() {
         </motion.button>
 
         {/* 状态筛选 (滑动背景效果) */}
-        <div className="flex items-center p-1 bg-black/40 rounded-full border border-white/10 backdrop-blur-md">
+        <div className="flex items-center p-1 bg-[var(--bg-secondary)] rounded-full border border-[var(--border-subtle)] backdrop-blur-md">
           {[
             { key: undefined, label: '全部' },
             { key: 'PUBLISHED', label: '已发布' },
@@ -298,7 +295,7 @@ export default function PostsPage() {
                 onClick={() => handleStatusChange(tab.key)}
                 className={cn(
                   'relative px-5 py-2 rounded-full text-sm font-medium transition-colors duration-300',
-                  isActive ? 'text-white' : 'text-gray-400 hover:text-gray-200'
+                  isActive ? 'text-primary' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 )}
               >
                 {isActive && (
@@ -319,7 +316,7 @@ export default function PostsPage() {
 
         {/* 搜索框 */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
             type="text"
             placeholder="搜索文章标题..."
@@ -327,8 +324,8 @@ export default function PostsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
               'w-full pl-10 pr-4 py-2 rounded-xl text-sm',
-              'bg-white/5 border border-white/10',
-              'text-white placeholder-gray-500',
+              'bg-[var(--bg-secondary)] border border-[var(--border-subtle)]',
+              'text-[var(--text-primary)] placeholder-[var(--text-muted)]',
               'focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20',
               'transition-all duration-200'
             )}
@@ -343,7 +340,7 @@ export default function PostsPage() {
               'flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all duration-200 shadow-sm border',
               showAdvancedFilter
                 ? 'bg-primary/20 border-primary/50 text-primary'
-                : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white'
+                : 'bg-[var(--bg-secondary)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
             )}
           >
             <Filter className="w-4 h-4" />
@@ -407,76 +404,76 @@ export default function PostsPage() {
             transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
             className="overflow-hidden"
           >
-            <div className="p-5 bg-white/[0.03] border border-white/10 rounded-2xl">
+            <div className="p-5 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-2xl">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* 分类筛选 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 ml-1">所属分类</label>
+                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">所属分类</label>
                   <select
                     value={filters.categoryId || ''}
                     onChange={(e) => setFilters(f => ({ ...f, categoryId: e.target.value ? Number(e.target.value) : undefined }))}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-gray-300 focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
+                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
                   >
-                    <option value="" className="bg-gray-900">全部分类</option>
+                    <option value="" className="bg-[var(--bg-card)]">全部分类</option>
                     {categories.map(c => (
-                      <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>
+                      <option key={c.id} value={c.id} className="bg-[var(--bg-card)]">{c.name}</option>
                     ))}
                   </select>
                 </div>
 
                 {/* 标签筛选 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 ml-1">标签筛选</label>
+                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">标签筛选</label>
                   <select
                     value={filters.tagId || ''}
                     onChange={(e) => setFilters(f => ({ ...f, tagId: e.target.value ? Number(e.target.value) : undefined }))}
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-gray-300 focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
+                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
                   >
-                    <option value="" className="bg-gray-900">全部标签</option>
+                    <option value="" className="bg-[var(--bg-card)]">全部标签</option>
                     {tags.map(t => (
-                      <option key={t.id} value={t.id} className="bg-gray-900">{t.name}</option>
+                      <option key={t.id} value={t.id} className="bg-[var(--bg-card)]">{t.name}</option>
                     ))}
                   </select>
                 </div>
 
                 {/* 浏览量范围 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 ml-1">浏览量范围</label>
+                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">浏览量范围</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
                       placeholder="最小"
                       value={filters.minViewCount || ''}
                       onChange={(e) => setFilters(f => ({ ...f, minViewCount: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-gray-300 focus:outline-none focus:border-primary/50"
+                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                     />
-                    <span className="text-gray-600 flex-shrink-0">-</span>
+                    <span className="text-[var(--text-muted)] flex-shrink-0">-</span>
                     <input
                       type="number"
                       placeholder="最大"
                       value={filters.maxViewCount || ''}
                       onChange={(e) => setFilters(f => ({ ...f, maxViewCount: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-gray-300 focus:outline-none focus:border-primary/50"
+                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                     />
                   </div>
                 </div>
 
                 {/* 发布时间范围 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 ml-1">发布时间</label>
+                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">发布时间</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="date"
                       value={filters.startDate}
                       onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-2 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300 focus:outline-none focus:border-primary/50 [color-scheme:dark]"
+                      className="flex-1 min-w-0 px-2 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50 [color-scheme:dark]"
                     />
-                    <span className="text-gray-600 flex-shrink-0">-</span>
+                    <span className="text-[var(--text-muted)] flex-shrink-0">-</span>
                     <input
                       type="date"
                       value={filters.endDate}
                       onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-2 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300 focus:outline-none focus:border-primary/50 [color-scheme:dark]"
+                      className="flex-1 min-w-0 px-2 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50 [color-scheme:dark]"
                     />
                   </div>
                 </div>
@@ -488,10 +485,10 @@ export default function PostsPage() {
 
 
       {/* 文章列表 */}
-      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden backdrop-blur-sm shadow-xl relative flex flex-col">
+      <div className="rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-hidden backdrop-blur-sm shadow-xl relative flex flex-col">
         {/* 固定表头 - 仅桌面端显示 */}
         <table className="w-full table-fixed hidden md:table">
-          <thead className="bg-white/[0.02] border-b border-white/5 text-gray-400 text-xs font-semibold uppercase tracking-wider">
+          <thead className="bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] text-[var(--text-muted)] text-xs font-semibold uppercase tracking-wider">
             <tr>
               <th className="px-4 py-3.5 text-left w-[40%]">标题</th>
               <th className="px-4 py-3.5 text-left w-20">状态</th>
@@ -521,14 +518,14 @@ export default function PostsPage() {
                   <table className="w-full table-fixed">
                     <tbody>
                       {Array.from({ length: 10 }).map((_, i) => (
-                        <tr key={i} className="border-b border-white/5 last:border-b-0">
-                          <td className="px-4 py-3.5 w-[40%]"><div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-20"><div className="h-5 bg-white/5 rounded-full w-14 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-24"><div className="h-6 bg-white/5 rounded-md w-16 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-40"><div className="flex gap-1.5"><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div><div className="h-5 bg-white/5 rounded w-12 animate-pulse"></div></div></td>
-                          <td className="px-4 py-3.5 w-24"><div className="h-5 bg-white/5 rounded w-20 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-16"><div className="h-5 bg-white/5 rounded w-10 animate-pulse"></div></td>
-                          <td className="px-4 py-3.5 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-white/5 rounded-lg animate-pulse"></div></td>
+                        <tr key={i} className="border-b border-[var(--border-subtle)] last:border-b-0">
+                          <td className="px-4 py-3.5 w-[40%]"><div className="h-5 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-20"><div className="h-5 bg-[var(--bg-secondary)] rounded-full w-14 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-24"><div className="h-6 bg-[var(--bg-secondary)] rounded-md w-16 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-40"><div className="flex gap-1.5"><div className="h-5 bg-[var(--bg-secondary)] rounded w-12 animate-pulse"></div><div className="h-5 bg-[var(--bg-secondary)] rounded w-12 animate-pulse"></div></div></td>
+                          <td className="px-4 py-3.5 w-24"><div className="h-5 bg-[var(--bg-secondary)] rounded w-20 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-16"><div className="h-5 bg-[var(--bg-secondary)] rounded w-10 animate-pulse"></div></td>
+                          <td className="px-4 py-3.5 w-28 flex justify-end gap-1"><div className="h-7 w-7 bg-[var(--bg-secondary)] rounded-lg animate-pulse"></div><div className="h-7 w-7 bg-[var(--bg-secondary)] rounded-lg animate-pulse"></div></td>
                         </tr>
                       ))}
                     </tbody>
@@ -538,11 +535,11 @@ export default function PostsPage() {
                 {/* 移动端骨架屏 */}
                 <div className="md:hidden space-y-4">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
-                      <div className="h-5 bg-white/5 rounded w-3/4 animate-pulse"></div>
+                    <div key={i} className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3">
+                      <div className="h-5 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse"></div>
                       <div className="flex justify-between items-center">
-                        <div className="h-5 bg-white/5 rounded-full w-14 animate-pulse"></div>
-                        <div className="h-5 bg-white/5 rounded w-24 animate-pulse"></div>
+                        <div className="h-5 bg-[var(--bg-secondary)] rounded-full w-14 animate-pulse"></div>
+                        <div className="h-5 bg-[var(--bg-secondary)] rounded w-24 animate-pulse"></div>
                       </div>
                     </div>
                   ))}
@@ -566,10 +563,10 @@ export default function PostsPage() {
                 exit={{ opacity: 0 }}
                 className="text-center py-20"
               >
-                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Search className="w-8 h-8 text-gray-600" />
+                <div className="w-16 h-16 bg-[var(--bg-secondary)] rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Search className="w-8 h-8 text-[var(--text-muted)]" />
                 </div>
-                <p className="text-gray-400">暂无符合条件的文章</p>
+                <p className="text-[var(--text-muted)]">暂无符合条件的文章</p>
               </motion.div>
             ) : (
               <motion.div
@@ -586,14 +583,14 @@ export default function PostsPage() {
                         {posts.map((post) => (
                           <tr 
                             key={post.id} 
-                            className="border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors group"
+                            className="border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--bg-card-hover)] transition-colors group"
                           >
                             <td className="px-4 py-3.5 w-[40%]">
                               <button
                                 onClick={(e) => handleEdit(post, e)}
                                 className="text-left w-full"
                               >
-                                <p className="text-white font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
+                                <p className="text-[var(--text-primary)] font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
                                   {post.title}
                                 </p>
                               </button>
@@ -602,7 +599,7 @@ export default function PostsPage() {
                               {getStatusBadge(post.status)}
                             </td>
                             <td className="px-4 py-3.5 w-24 whitespace-nowrap">
-                              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-gray-300">
+                              <span className="px-2 py-1 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)]">
                                 {post.categoryName || '-'}
                               </span>
                             </td>
@@ -625,7 +622,7 @@ export default function PostsPage() {
                                               "px-1.5 py-0.5 text-[10px] rounded-md font-mono transition-all",
                                               activeTagPopover === post.id 
                                                 ? "bg-primary text-white border-primary shadow-lg shadow-primary/20" 
-                                                : "bg-white/5 border border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
+                                                : "bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
                                             )}
                                           >
                                             +{post.tagNames.length - 1}
@@ -638,7 +635,7 @@ export default function PostsPage() {
                                                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                className="absolute left-0 bottom-full mb-2 z-[60] min-w-[120px] p-2 rounded-xl bg-gray-900/95 border border-white/10 backdrop-blur-xl shadow-2xl"
+                                                className="absolute left-0 bottom-full mb-2 z-[60] min-w-[120px] p-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] backdrop-blur-xl shadow-2xl"
                                                 onClick={(e) => e.stopPropagation()}
                                               >
                                                 <div className="flex flex-wrap gap-1.5 max-w-[200px]">
@@ -660,28 +657,28 @@ export default function PostsPage() {
                                     </div>
                                   </>
                                 ) : (
-                                  <span className="text-gray-600 text-[10px] ml-1">无标签</span>
+                                  <span className="text-[var(--text-muted)] text-[10px] ml-1">无标签</span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-3.5 w-24 text-sm text-gray-400 whitespace-nowrap">
+                            <td className="px-4 py-3.5 w-24 text-sm text-[var(--text-muted)] whitespace-nowrap">
                               {formatDate(post.publishedAt || post.createdAt)}
                             </td>
-                            <td className="px-4 py-3.5 w-16 text-sm text-gray-400 font-mono whitespace-nowrap">
+                            <td className="px-4 py-3.5 w-16 text-sm text-[var(--text-muted)] font-mono whitespace-nowrap">
                               {post.viewCount}
                             </td>
                             <td className="px-4 py-3 w-28">
                               <div className="flex items-center justify-end gap-1">
                                 <button
                                   onClick={(e) => handleOpenProperties(post, e)}
-                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200"
+                                  className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-200"
                                   title="设置"
                                 >
                                   <Settings className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={(e) => handleEdit(post, e)}
-                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200"
+                                  className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-200"
                                   title="编辑"
                                 >
                                   <Edit className="w-4 h-4" />
@@ -689,7 +686,7 @@ export default function PostsPage() {
                                 <button
                                   onClick={(e) => handleCopyClick(post, e)}
                                   disabled={actionLoading === post.id}
-                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all duration-200 disabled:opacity-50"
+                                  className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-200 disabled:opacity-50"
                                   title="复制"
                                 >
                                   {actionLoading === post.id ? (
@@ -701,7 +698,7 @@ export default function PostsPage() {
                                 <button
                                   onClick={(e) => handleDeleteClick(post, e)}
                                   disabled={actionLoading === post.id}
-                                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-red-400 transition-all duration-200 disabled:opacity-50"
+                                  className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-red-400 transition-all duration-200 disabled:opacity-50"
                                   title="删除"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -715,28 +712,28 @@ export default function PostsPage() {
                   </div>
 
                   {/* 移动端视图 - 列表卡片 */}
-                  <div className="md:hidden divide-y divide-white/5">
+                  <div className="md:hidden divide-y divide-[var(--border-subtle)]">
                     {posts.map((post) => (
-                      <div key={post.id} className="p-4 space-y-3 active:bg-white/5 transition-colors">
+                      <div key={post.id} className="p-4 space-y-3 active:bg-[var(--bg-card-hover)] transition-colors">
                         <div className="flex justify-between items-start gap-4">
                           <button
                             onClick={(e) => handleEdit(post, e)}
                             className="text-left flex-1"
                           >
-                            <h3 className="text-white font-medium text-sm line-clamp-2 leading-relaxed">
+                            <h3 className="text-[var(--text-primary)] font-medium text-sm line-clamp-2 leading-relaxed">
                               {post.title}
                             </h3>
                           </button>
                           {getStatusBadge(post.status)}
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                          <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
+                        <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                          <span className="px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
                             {post.categoryName || '-'}
                           </span>
-                          <span className="w-px h-2.5 bg-white/10" />
+                          <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
                           <span>{formatDate(post.publishedAt || post.createdAt)}</span>
-                          <span className="w-px h-2.5 bg-white/10" />
+                          <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
                           <span>{post.viewCount} 浏览</span>
                         </div>
 
@@ -753,32 +750,32 @@ export default function PostsPage() {
                                   </span>
                                 ))}
                                 {post.tagNames.length > 2 && (
-                                  <span className="px-1.5 py-0.5 text-[10px] bg-white/5 border border-white/10 rounded text-gray-500 font-mono">
+                                  <span className="px-1.5 py-0.5 text-[10px] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-[var(--text-muted)] font-mono">
                                     +{post.tagNames.length - 2}
                                   </span>
                                 )}
                               </>
                             ) : (
-                              <span className="text-[10px] text-gray-600 italic">无标签</span>
+                              <span className="text-[10px] text-[var(--text-muted)] italic">无标签</span>
                             )}
                           </div>
                           <div className="flex items-center gap-0.5">
                             <button
                               onClick={(e) => handleOpenProperties(post, e)}
-                              className="p-2 text-gray-400 active:text-white"
+                              className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                             >
                               <Settings className="w-4 h-4" />
                             </button>
                             <button
                               onClick={(e) => handleEdit(post, e)}
-                              className="p-2 text-gray-400 active:text-white"
+                              className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
                               onClick={(e) => handleCopyClick(post, e)}
                               disabled={actionLoading === post.id}
-                              className="p-2 text-gray-400 active:text-white disabled:opacity-50"
+                              className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)] disabled:opacity-50"
                             >
                               {actionLoading === post.id ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -788,7 +785,7 @@ export default function PostsPage() {
                             </button>
                             <button
                               onClick={(e) => handleDeleteClick(post, e)}
-                              className="p-2 text-gray-400 active:text-red-400"
+                              className="p-2 text-[var(--text-muted)] active:text-red-400"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

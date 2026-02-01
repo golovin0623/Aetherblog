@@ -57,18 +57,19 @@ trigger: always_on
 | 5.5 | 分类标签管理 | §8.2 | CategoryManager, TagManager | 4h |
 | 5.6 | 友链管理 | §8.2 | FriendLinkManager | 3h |
 | 5.7 | 系统设置 | §8.2 | Settings, Profile | 4h |
+| 5.8 | AI 配置中心 | §8.2, §5.1 | AiConfigPage, ProviderComponents | 12h |
 
 ### 阶段6: AI 服务开发
 
 | 任务ID | 任务名称 | 相关文档 | 产出物 | 预估时间 |
 |:-------|:---------|:---------|:-------|:---------|
-| 6.1 | AI 核心模块 | §5.1 | ai-core | 6h |
-| 6.2 | 写作 Agent 开发 | §5.1 | WritingAgent | 8h |
-| 6.3 | 标签摘要 Agent | §5.1 | TaggingAgent, SummaryAgent | 6h |
-| 6.4 | RAG 服务开发 | §5.2 | RagService, Retrievers | 10h |
-| 6.5 | Prompt 管理服务 | §5.3 | PromptService | 4h |
-| 6.6 | 前端 AI 助手集成 | §3.2, §8.3 | AiAssistant组件 | 8h |
-| 6.7 | AI 搜索集成 | §8.3 | SemanticSearch UI | 6h |
+| 6.1 | Python 服务初始化 | §5.1 | apps/ai-service, pyproject.toml | 4h |
+| 6.2 | 核心功能开发 | §5.1 | LiteLLM路由, Auth中间件 | 8h |
+| 6.3 | 业务 Agent 开发 | §5.1 | Agents (Summary, Tagging, Writing) | 12h |
+| 6.4 | RAG 服务实现 | §5.2 | VectorStore, Retrievers | 10h |
+| 6.5 | Prompt 管理服务 | §5.3 | PromptService, Templates | 4h |
+| 6.6 | 前端 AI 助手集成 | §3.2, §8.3 | AiAssistant组件 (Stream) | 8h |
+| 6.7 | AI 搜索集成 | §8.3 | SemanticSearch API | 6h |
 
 ### 阶段7-10: 后续阶段
 

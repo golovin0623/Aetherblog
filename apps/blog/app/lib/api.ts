@@ -14,21 +14,21 @@ const API_BASE_URL = isServer
   : '';  // 客户端使用空字符串，让请求变成相对路径
 
 export const API_ENDPOINTS = {
-  // Public Posts
+  // 公开文章
   posts: `${API_BASE_URL}/api/v1/public/posts`,
   postBySlug: (slug: string) => `${API_BASE_URL}/api/v1/public/posts/${slug}`,
   
-  // Friend Links
+  // 友情链接
   friendLinks: `${API_BASE_URL}/api/v1/public/friend-links`,
   
-  // Archives
+  // 归档
   archives: `${API_BASE_URL}/api/v1/public/archives`,
 
-  // Site Settings
+  // 站点设置
   settings: `${API_BASE_URL}/api/v1/public/site/info`,
   stats: `${API_BASE_URL}/api/v1/public/site/stats`,
 
-  // Comments
+  // 评论
   comments: (postId: number) => `${API_BASE_URL}/api/v1/public/comments/post/${postId}`,
 };
 

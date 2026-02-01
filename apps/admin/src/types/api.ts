@@ -7,6 +7,16 @@ export interface R<T> {
   traceId?: string;
 }
 
+export interface AiServiceResponse<T> {
+  code?: number;
+  message?: string;
+  success: boolean;
+  data: T;
+  errorCode?: string;
+  errorMessage?: string;
+  requestId?: string;
+}
+
 export interface PageResult<T> {
   list: T[];
   total: number;

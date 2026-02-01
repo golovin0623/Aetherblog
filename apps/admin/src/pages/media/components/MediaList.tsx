@@ -4,7 +4,7 @@
  * @ref §3.2.4 - 媒体管理模块
  */
 
-import { Image, Video, Music, FileText, Download, Trash2, Eye, Link2 } from 'lucide-react';
+import { Image, Video, Music, FileText, Download, Trash2, Eye, Link2, FolderInput } from 'lucide-react';
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
 import { format } from 'date-fns';
@@ -19,6 +19,7 @@ interface MediaListProps {
   onDelete: (id: number) => void;
   onCopyUrl: (url: string) => void;
   onDownload: (url: string, filename: string) => void;
+  onMove?: (id: number, name: string) => void;
 }
 
 const typeIcons: Record<MediaType, typeof Image> = {
@@ -38,29 +39,30 @@ const typeLabels: Record<MediaType, string> = {
 /**
  * 媒体列表视图组件
  */
-export function MediaList({ 
-  items, 
-  selectedId, 
+export function MediaList({
+  items,
+  selectedId,
   selectedIds,
-  onSelect, 
+  onSelect,
   onToggleSelect,
   onPreview,
   onDelete,
   onCopyUrl,
-  onDownload 
+  onDownload,
+  onMove,
 }: MediaListProps) {
   return (
     <div className="rounded-xl overflow-hidden">
       {/* 桌面端表格视图 */}
-      <div className="hidden md:block bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+      <div className="hidden md:block bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
       <table className="w-full text-left border-collapse table-fixed">
         <thead>
-          <tr className="border-b border-white/10 bg-white/5">
+          <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
             <th className="w-12 px-4 py-3">
               {/* 全选 logic */}
-              <div className="w-5 h-5 rounded border-2 border-white/20" />
+              <div className="w-5 h-5 rounded border-2 border-[var(--border-default)]" />
             </th>
-            <th className="w-auto px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <th className="w-auto px-4 py-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               文件名
             </th>
             <th className="w-32 px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
@@ -72,12 +74,12 @@ export function MediaList({
             <th className="w-48 px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               上传时间
             </th>
-            <th className="w-44 px-4 py-3 text-right text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <th className="w-44 px-4 py-3 text-right text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               操作
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/5">
+        <tbody className="divide-y divide-[var(--border-subtle)]">
           {items.map((item) => {
             const Icon = typeIcons[item.fileType] || FileText;
             const isSidebarSelected = selectedId === item.id;
@@ -90,7 +92,7 @@ export function MediaList({
                 onClick={() => onSelect(item.id)}
                 className={cn(
                   'group cursor-pointer transition-all duration-200',
-                  isSidebarSelected ? 'bg-primary/10' : 'hover:bg-white/5',
+                  isSidebarSelected ? 'bg-primary/10' : 'hover:bg-[var(--bg-card-hover)]',
                   isBatchSelected && 'bg-primary/5'
                 )}
               >
@@ -99,62 +101,71 @@ export function MediaList({
                     type="checkbox"
                     checked={isBatchSelected}
                     onChange={() => onToggleSelect(item.id)}
-                    className="w-5 h-5 rounded border-2 border-white/20 bg-transparent text-primary focus:ring-primary/30"
+                    className="w-5 h-5 rounded border-2 border-[var(--border-default)] bg-transparent text-primary focus:ring-primary/30"
                   />
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden bg-white/10 flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden bg-[var(--bg-secondary)] flex-shrink-0">
                       {item.fileType === 'IMAGE' ? (
                         <img src={fullUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <Icon className="w-5 h-5 text-gray-400" />
+                        <Icon className="w-5 h-5 text-[var(--text-muted)]" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-white truncate" title={item.originalName}>
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate" title={item.originalName}>
                         {item.originalName}
                       </p>
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-sm text-gray-400">
+                  <span className="text-sm text-[var(--text-secondary)]">
                     {typeLabels[item.fileType] || item.fileType}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-400">
+                <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
                   {formatFileSize(item.fileSize)}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-400">
+                <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
                   {format(new Date(item.createdAt), 'yyyy-MM-dd HH:mm')}
                 </td>
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1.5 transition-opacity">
                     <button
                       onClick={() => onPreview(item.id)}
-                      className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                      className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                       title="预览"
                     >
                       <Eye className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onCopyUrl(fullUrl)}
-                      className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                      className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                       title="复制链接"
                     >
                       <Link2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onDownload(fullUrl, item.originalName)}
-                      className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                      className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                       title="下载"
                     >
                       <Download className="w-4 h-4" />
                     </button>
+                    {onMove && (
+                      <button
+                        onClick={() => onMove(item.id, item.originalName)}
+                        className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                        title="移动到文件夹"
+                      >
+                        <FolderInput className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => onDelete(item.id)}
-                      className="p-2 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors"
+                      className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-400 transition-colors"
                       title="删除"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -246,6 +257,14 @@ export function MediaList({
                   >
                     <Download className="w-4 h-4" />
                   </button>
+                  {onMove && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(item.id, item.originalName); }}
+                      className="p-2 text-gray-400 active:text-white"
+                    >
+                      <FolderInput className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
                     className="p-2 text-gray-400 active:text-red-400"

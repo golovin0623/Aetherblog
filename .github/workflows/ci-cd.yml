@@ -1,0 +1,221 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+# 并发控制: 同一分支/PR 的新运行会取消旧的运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
+
+jobs:
+  # 前端测试和构建
+  frontend-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: |
+          pnpm --filter @aetherblog/admin exec tsc --noEmit
+          pnpm --filter @aetherblog/blog exec tsc --noEmit
+
+      - name: Build all packages
+        run: pnpm build
+
+  # 后端测试和构建
+  backend-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven
+        working-directory: apps/server
+        run: mvn clean install -DskipTests
+
+      - name: Run tests
+        working-directory: apps/server
+        run: mvn test
+
+  # AI 服务测试
+  ai-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: apps/ai-service/requirements.txt
+
+      - name: Install dependencies
+        working-directory: apps/ai-service
+        run: pip install -r requirements.txt
+
+      - name: Python syntax check
+        working-directory: apps/ai-service
+        run: |
+          python -m py_compile app/main.py
+          find app -name "*.py" -exec python -m py_compile {} \;
+
+      - name: Run linting
+        working-directory: apps/ai-service
+        run: |
+          pip install ruff
+          ruff check .
+
+      - name: Verify app can start
+        working-directory: apps/ai-service
+        env:
+          AI_ENV: test
+          AI_MOCK_MODE: "true"
+        run: |
+          python -c "from app.main import app; print('✅ App imports successfully')"
+
+  # Docker 配置验证
+  config-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose files
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.prod.yml config --quiet
+          echo "✅ Docker Compose files are valid"
+
+  docker-build-push:
+    needs: [frontend-test, backend-test, ai-test, config-validate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - service: backend
+            dockerfile: ./apps/server/Dockerfile
+          - service: ai-service
+            dockerfile: ./apps/ai-service/Dockerfile
+          - service: blog
+            dockerfile: ./apps/blog/Dockerfile
+          - service: admin
+            dockerfile: ./apps/admin/Dockerfile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache,mode=max
+          platforms: linux/amd64
+
+  # 自动部署到服务器 (已禁用: 改用 Watchtower 拉取式更新)
+  # deploy:
+  #   needs: docker-build-push
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Copy config files to server
+  #       uses: appleboy/scp-action@v0.1.7
+  #       with:
+  #         host: ${{ secrets.SERVER_HOST }}
+  #         username: ${{ secrets.SERVER_USER }}
+  #         key: ${{ secrets.SERVER_SSH_KEY }}
+  #         source: "docker-compose.prod.yml,nginx/nginx.conf"
+  #         target: ${{ secrets.DEPLOY_PATH || '/root/aetherblog' }}
+  #
+  #     - name: Deploy to server via SSH
+  #       uses: appleboy/ssh-action@v1.0.0
+  #       with:
+  #         host: ${{ secrets.SERVER_HOST }}
+  #         username: ${{ secrets.SERVER_USER }}
+  #         key: ${{ secrets.SERVER_SSH_KEY }}
+  #         script: |
+  #           # 设置部署目录 (默认 /root/aetherblog)
+  #           DEPLOY_DIR=${{ secrets.DEPLOY_PATH || '/root/aetherblog' }}
+  #           mkdir -p $DEPLOY_DIR
+  #           cd $DEPLOY_DIR
+  #
+  #           # 设置环境变量
+  #           export DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }}
+  #           export VERSION=main-${{ github.sha }}
+  #           
+  #           # 拉取镜像并启动
+  #           docker-compose -f docker-compose.prod.yml pull
+  #           docker-compose -f docker-compose.prod.yml up -d
+  #           
+  #           # 清理未使用的镜像
+  #           docker image prune -f

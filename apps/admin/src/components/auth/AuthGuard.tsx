@@ -1,10 +1,9 @@
 /**
  * @file AuthGuard.tsx
- * @description Authentication guard that validates token before rendering protected routes.
+ * @description 认证守卫，在渲染受保护路由前验证令牌。
  * 
- * This component solves the issue of stale persisted auth state by actively validating
- * the token with the backend on initial render. If the token is invalid or expired,
- * the user is immediately redirected to login without seeing the protected content.
+ * 此组件通过在初始渲染时主动与后端验证令牌，解决了持久化认证状态过时的问题。
+ * 如果令牌无效或过期，用户将立即重定向到登录页面，而不会看到受保护的内容。
  */
 
 import React, { useEffect, useState } from 'react';
@@ -24,8 +23,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const location = useLocation();
   const { isAuthenticated, token, logout } = useAuthStore();
 
-  // We trust the persisted auth state for the initial render to show skeletons immediately.
-  // The background validation will handle expired tokens.
+  // 我们信任持久化的认证状态进行初始渲染，以便立即显示骨架屏。
+  // 后台验证将处理过期的令牌。
   const [isChecking, setIsChecking] = useState(isAuthenticated && token);
 
   useEffect(() => {
@@ -50,13 +49,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
     validateToken();
   }, [token, isAuthenticated, logout]);
 
-  // If definitely not authenticated, redirect
+  // 如果明确未认证，则重定向
   if (!isAuthenticated || !token) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // If we have a token, we render children immediately so skeletons can show.
-  // The background check will kick the user out if the token is actually invalid.
+  // 如果我们有令牌，立即渲染子组件以便显示骨架屏。
+  // 如果令牌实际上无效，后台检查将踢出用户。
   return <>{children}</>;
 }
 

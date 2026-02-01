@@ -1,12 +1,12 @@
 export { MarkdownEditor } from './MarkdownEditor';
-export { MarkdownPreview } from './MarkdownPreview';
+export { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview';
 export { EditorWithPreview } from './EditorWithPreview';
 export { useEditorCommands } from './useEditorCommands';
 export { useTableCommands } from './useTableCommands';
 export { useImageUpload } from './useImageUpload';
 export { EditorView } from '@codemirror/view';
 
-// Components
+// 组件
 export { UploadProgress, ImageSizePopover } from './components';
 
 export type { MarkdownEditorProps } from './MarkdownEditor';

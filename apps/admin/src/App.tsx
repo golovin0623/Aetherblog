@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import LoginPage from './pages/auth/LoginPage';
@@ -12,8 +12,29 @@ import CommentsPage from './pages/CommentsPage';
 import FriendsPage from './pages/FriendsPage';
 import SettingsPage from './pages/SettingsPage';
 import AIToolsPage from './pages/AIToolsPage';
+import { AiTestPage } from './pages/AiTestPage';
 import MonitorPage from './pages/MonitorPage';
+import FolderPermissionsPage from './pages/media/FolderPermissionsPage';
+import AiConfigPage from './pages/ai-config/AiConfigPage';
 import { Toaster } from 'sonner';
+
+/**
+ * @ref 媒体库深度优化方案 - Phase 5: 权限管理路由 Wrapper
+ */
+function FolderPermissionsWrapper() {
+  const { folderId } = useParams<{ folderId: string }>();
+  
+  if (!folderId) {
+    return <Navigate to="/media" replace />;
+  }
+  
+  return (
+    <FolderPermissionsPage 
+      folderId={parseInt(folderId)} 
+      folderName={`文件夹 ${folderId}`} 
+    />
+  );
+}
 
 function App() {
   // 使用 Vite 注入的 BASE_URL，开发环境为 '/'，生产环境为 '/admin/'
@@ -39,11 +60,14 @@ function App() {
           <Route path="posts/new" element={<CreatePostPage />} />
           <Route path="posts/:id/edit" element={<CreatePostPage />} />
           <Route path="media" element={<MediaPage />} />
+          <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="comments" element={<CommentsPage />} />
           <Route path="friends" element={<FriendsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="ai-tools" element={<AIToolsPage />} />
+          <Route path="ai-test" element={<AiTestPage />} />
+          <Route path="ai-config" element={<AiConfigPage />} />
           <Route path="monitor" element={<MonitorPage />} />
         </Route>
       </Routes>
@@ -52,4 +76,3 @@ function App() {
 }
 
 export default App;
-

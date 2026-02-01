@@ -12,8 +12,8 @@ import java.util.List;
 /**
  * 标签管理控制器
  */
-@io.swagger.v3.oas.annotations.tags.Tag(name = "标签管理", description = "标签CRUD接口")
-@RestController
+@io.swagger.v3.oas.annotations.tags.Tag(name = "标签管理", description = "文章标签管理接口")
+@RestController("blogTagController")
 @RequestMapping("/v1/admin/tags")
 @RequiredArgsConstructor
 public class TagController {

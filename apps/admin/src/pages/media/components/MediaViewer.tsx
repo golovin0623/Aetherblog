@@ -91,39 +91,39 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         className={cn(
           "relative z-10 w-full max-w-6xl h-full max-h-[85vh]",
           "flex flex-col rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.5)]",
-          "bg-white/5 border border-white/10 backdrop-blur-md"
+          "bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl"
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部精致工具栏 */}
-        <div className="flex items-center justify-between px-8 py-6 bg-gradient-to-b from-black/20 to-transparent">
+        <div className="flex items-center justify-between px-8 py-6 border-b border-[var(--border-subtle)]">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
                <ImageIcon className="w-5 h-5 text-primary" />
             </div>
             <div className="flex flex-col">
-              <h3 className="text-white text-base font-semibold truncate max-w-[300px]">
+              <h3 className="text-[var(--text-primary)] text-base font-semibold truncate max-w-[300px]">
                 {currentItem.originalName}
               </h3>
-              <p className="text-[10px] text-white/50 tracking-wider">
+              <p className="text-[var(--text-secondary)] text-[10px] tracking-wider">
                 {currentIndex + 1} OF {items.length} • {formatFileSize(currentItem.fileSize)}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-black/20 backdrop-blur-md border border-white/5">
+          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] shadow-sm">
             {currentItem.fileType === 'IMAGE' && (
               <>
                 <button
                   onClick={() => setRotation(prev => (prev + 90) % 360)}
-                  className="p-2.5 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                  className="p-2.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] rounded-xl transition-all"
                   title="旋转"
                 >
                   <RotateCw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setIsZoomed(!isZoomed)}
-                  className="p-2.5 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                  className="p-2.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] rounded-xl transition-all"
                   title={isZoomed ? "缩小" : "放大"}
                 >
                   {isZoomed ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -132,22 +132,22 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             )}
             <button
               onClick={handleDownloadClick}
-              className="p-2.5 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+              className="p-2.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] rounded-xl transition-all"
               title="下载"
             >
               <Download className="w-4 h-4" />
             </button>
             <button
               onClick={() => onDelete(currentItem.id)}
-              className="p-2.5 text-red-400/60 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
+              className="p-2.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
               title="删除"
             >
               <Trash2 className="w-4 h-4" />
             </button>
-            <div className="w-px h-4 bg-white/10 mx-1" />
+            <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
             <button
               onClick={onClose}
-              className="p-2.5 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+              className="p-2.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] rounded-xl transition-all"
             >
               <X className="w-5 h-5" />
             </button>
@@ -156,15 +156,16 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
         {/* 主展示区 */}
         <div className="flex-1 relative flex items-center justify-center overflow-hidden px-8 pb-8">
-          {/* 上一页 悬浮按钮 (更扁平化) */}
+          {/* 上一页 悬浮按钮 */}
           <button
             onClick={onPrev}
             className={cn(
-              "absolute left-8 z-20 p-4 rounded-full bg-white/0 hover:bg-white/5 text-white/30 hover:text-white transition-all",
+              "absolute left-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+              "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
               currentIndex === 0 && "invisible"
             )}
           >
-            <ChevronLeft className="w-10 h-10" />
+            <ChevronLeft className="w-6 h-6" />
           </button>
 
           {/* 媒体核心 */}
@@ -227,16 +228,17 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           <button
             onClick={onNext}
             className={cn(
-              "absolute right-8 z-20 p-4 rounded-full bg-white/0 hover:bg-white/5 text-white/30 hover:text-white transition-all",
+              "absolute right-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+              "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
               currentIndex === items.length - 1 && "invisible"
             )}
           >
-            <ChevronRight className="w-10 h-10" />
+            <ChevronRight className="w-6 h-6" />
           </button>
         </div>
 
         {/* 精致缩略图页脚导航 */}
-        <div className="h-28 bg-black/20 border-t border-white/5 px-8 flex items-center justify-center">
+        <div className="h-28 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] px-8 flex items-center justify-center">
           <div className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth">
             {items.map((item, index) => (
               <button
@@ -252,11 +254,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                  {item.fileType === 'IMAGE' ? (
                    <img src={getMediaUrl(item.fileUrl)} className="w-full h-full object-cover" alt="" />
                  ) : (
-                   <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                   <div className="w-full h-full bg-[var(--bg-card)] flex items-center justify-center border border-[var(--border-subtle)]">
                      {item.fileType === 'VIDEO' ? (
-                        <RotateCw className="w-4 h-4 text-white/30 animate-spin" />
+                        <RotateCw className="w-4 h-4 text-[var(--text-muted)] animate-spin" />
                       ) : (
-                        <ImageIcon className="w-4 h-4 text-white/30" />
+                        <ImageIcon className="w-4 h-4 text-[var(--text-muted)]" />
                       )}
                    </div>
                  )}

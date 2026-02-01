@@ -9,7 +9,6 @@ import {
   SystemStatus,
   RecentActivity,
   SystemTrends,
-  ActivityItem,
   ContainerStatus,
   RealtimeLogViewer
 } from './components';
@@ -22,14 +21,14 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
   
-  // Container Logs State
+  // 容器日志状态
   const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
 
   const handleContainerSelect = (id: string, name: string) => {
     setSelectedContainer({id, name});
   };
 
-  // Mock data for fallback or initial dev
+  // 模拟数据用于回退或初始开发
   const mockData: DashboardData = {
     stats: {
       posts: 128,
@@ -71,19 +70,19 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Call real API
+        // 调用真实 API
         const res = await analyticsService.getDashboard();
         if (res.code === 200 && res.data) {
           setData(res.data);
         } else {
-          // Fallback to mock data if API fails
+          // 如果 API 失败，回退到模拟数据
           logger.warn('Dashboard API returned non-200, using mock data');
           setData(mockData);
         }
       } catch (err) {
         logger.error('Failed to fetch dashboard data:', err);
         toast.error('加载仪表盘数据失败，显示演示数据');
-        setData(mockData); // Fallback
+        setData(mockData); // 回退
       } finally {
         setLoading(false);
       }
@@ -91,7 +90,7 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  // Refetch visitor trend when time range changes
+  // 当时间范围改变时重新获取访客趋势
   const [trendLoading, setTrendLoading] = useState(false);
   const [visitorTrend, setVisitorTrend] = useState<typeof mockData.visitorTrend | null>(null);
 
@@ -104,7 +103,7 @@ export default function DashboardPage() {
         if (res.code === 200 && res.data) {
           setVisitorTrend(res.data);
         } else {
-          // Generate fallback mock data for selected range
+          // 为选定范围生成回退模拟数据
           const fallbackData = Array.from({ length: days }, (_, i) => {
             const date = new Date();
             date.setDate(date.getDate() - (days - 1 - i));
@@ -118,7 +117,7 @@ export default function DashboardPage() {
         }
       } catch (err) {
         logger.error(`Failed to fetch ${days}-day visitor trend:`, err);
-        // Generate fallback mock data
+        // 生成回退模拟数据
         const fallbackData = Array.from({ length: days }, (_, i) => {
           const date = new Date();
           date.setDate(date.getDate() - (days - 1 - i));
@@ -139,67 +138,67 @@ export default function DashboardPage() {
   if (loading && !data) {
     return (
       <div className="space-y-6">
-        {/* Header Skeleton */}
+        {/* 头部骨架 */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="space-y-2">
-            <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
-            <div className="h-4 w-48 bg-white/10 rounded animate-pulse" />
+            <div className="h-8 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
+            <div className="h-4 w-48 bg-[var(--bg-secondary)] rounded animate-pulse" />
           </div>
-          <div className="h-8 w-32 bg-white/10 rounded animate-pulse" />
+          <div className="h-8 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
         </div>
 
-        {/* Stats Cards Skeleton */}
+        {/* 统计网格骨架 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="p-6 rounded-xl bg-white/5 border border-white/10 h-[140px] relative overflow-hidden">
-              {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div key={i} className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[140px] relative overflow-hidden">
+              {/* 闪光效果 */}
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
               <div className="flex justify-between items-start">
                 <div className="space-y-3 flex-1">
-                  <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
-                  <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
-                  <div className="h-3 w-16 bg-white/10 rounded animate-pulse" />
+                  <div className="h-4 w-20 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-8 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-3 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 </div>
-                <div className="w-10 h-10 bg-white/10 rounded-lg animate-pulse" />
+                <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
               </div>
             </div>
           ))}
         </div>
 
-        {/* Content & Activity Skeleton */}
+        {/* 内容和活动骨架 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Posts Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          {/* 热门文章骨架 */}
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-6">
-              <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
-              <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+              <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+              <div className="h-4 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
             </div>
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4 p-3">
-                  <div className="w-8 h-8 bg-white/10 rounded-lg animate-pulse" />
-                  <div className="flex-1 h-4 bg-white/10 rounded animate-pulse" />
-                  <div className="w-12 h-4 bg-white/10 rounded animate-pulse" />
+                  <div className="w-8 h-8 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
+                  <div className="flex-1 h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="w-12 h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Recent Activity Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          {/* 最近活动骨架 */}
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-4">
-              <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
-              <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+              <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+              <div className="h-4 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
             </div>
             <div className="space-y-4 ml-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="flex items-start gap-4">
-                  <div className="w-6 h-6 bg-white/10 rounded-full animate-pulse" />
+                  <div className="w-6 h-6 bg-[var(--bg-secondary)] rounded-full animate-pulse" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-white/10 rounded w-3/4 animate-pulse" />
-                    <div className="h-3 bg-white/10 rounded w-1/2 animate-pulse" />
+                    <div className="h-4 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse" />
+                    <div className="h-3 bg-[var(--bg-secondary)] rounded w-1/2 animate-pulse" />
                   </div>
                 </div>
               ))}
@@ -207,66 +206,66 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Charts Area Skeleton */}
+        {/* 图表区域骨架 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Visitor Chart Skeleton */}
-          <div className="lg:col-span-2 p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          {/* 访客图表骨架 */}
+          <div className="lg:col-span-2 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between items-center mb-6">
               <div className="space-y-2">
-                <div className="h-6 w-24 bg-white/10 rounded animate-pulse" />
-                <div className="h-4 w-32 bg-white/10 rounded animate-pulse" />
+                <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                <div className="h-4 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
               </div>
               <div className="flex gap-2">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="w-12 h-8 bg-white/10 rounded animate-pulse" />
+                  <div key={i} className="w-12 h-8 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 ))}
               </div>
             </div>
-            <div className="h-[300px] bg-white/5 rounded-lg animate-pulse" />
+            <div className="h-[300px] bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
           </div>
 
-          {/* Device Chart Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px] relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            <div className="h-6 w-24 bg-white/10 rounded animate-pulse mb-4" />
+          {/* 设备图表骨架 */}
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
+            <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded animate-pulse mb-4" />
             <div className="h-[340px] flex items-center justify-center">
-              <div className="w-48 h-48 rounded-full bg-white/10 animate-pulse" />
+              <div className="w-48 h-48 rounded-full bg-[var(--bg-secondary)] animate-pulse" />
             </div>
           </div>
         </div>
 
-        {/* System Monitoring Area Skeleton */}
-        <h2 className="text-lg font-semibold text-white pt-4">系统监控</h2>
+        {/* 系统监控区域骨架 */}
+        <h2 className="text-lg font-semibold text-[var(--text-primary)] pt-4">系统监控</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* System Trends Skeleton */}
-          <div className="lg:col-span-2 p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          {/* 系统趋势骨架 */}
+          <div className="lg:col-span-2 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             <div className="flex justify-between mb-6">
-              <div className="h-6 w-32 bg-white/10 rounded animate-pulse" />
+              <div className="h-6 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
               <div className="flex gap-2">
-                <div className="h-8 w-24 bg-white/10 rounded animate-pulse" />
-                <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
+                <div className="h-8 w-24 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                <div className="h-8 w-16 bg-[var(--bg-secondary)] rounded animate-pulse" />
               </div>
             </div>
-            <div className="h-[300px] bg-white/5 rounded-xl animate-pulse" />
+            <div className="h-[300px] bg-[var(--bg-secondary)] rounded-xl animate-pulse" />
           </div>
 
-          {/* System Status Skeleton */}
-          <div className="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden">
-            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            <div className="h-6 w-24 bg-white/10 rounded mb-6 animate-pulse" />
+          {/* 系统状态骨架 */}
+          <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
+            <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded mb-6 animate-pulse" />
             <div className="grid grid-cols-2 gap-4 mb-6">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="space-y-2">
-                  <div className="h-4 bg-white/10 rounded animate-pulse" />
-                  <div className="h-2 bg-white/10 rounded animate-pulse" />
+                  <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
+                  <div className="h-2 bg-[var(--bg-secondary)] rounded animate-pulse" />
                 </div>
               ))}
             </div>
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse" />
+                <div key={i} className="h-12 bg-[var(--bg-secondary)] rounded-lg animate-pulse" />
               ))}
             </div>
           </div>
@@ -275,7 +274,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Use visitorTrend from dedicated fetch, fallback to data.visitorTrend, then mockData
+  // 使用专用获取的 visitorTrend，回退到 data.visitorTrend，然后是 mockData
   const chartData = visitorTrend || data?.visitorTrend || mockData.visitorTrend;
   const topPostsData = data?.topPosts || mockData.topPosts;
 
@@ -286,19 +285,19 @@ export default function DashboardPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white">仪表盘</h1>
-          <p className="text-gray-400 text-sm sm:text-base mt-0.5 sm:mt-1">欢迎回来，查看您的博客数据概览</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">仪表盘</h1>
+          <p className="text-[var(--text-secondary)] text-sm sm:text-base mt-0.5 sm:mt-1">欢迎回来，查看您的博客数据概览</p>
         </div>
-        <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 bg-white/5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-white/5 self-start sm:self-auto">
+        <div className="flex items-center gap-2 text-xs sm:text-sm text-[var(--text-muted)] bg-[var(--bg-card)] px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-[var(--border-subtle)] self-start sm:self-auto">
           <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span><span className="hidden sm:inline">上次更新: </span>{new Date().toLocaleTimeString()}</span>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* 统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         <StatsCard
           title="文章总数"
@@ -366,13 +365,13 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Content & Activity - Moved up */}
+      {/* 内容和活动 - 上移 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TopPosts posts={topPostsData} />
         <RecentActivity />
       </div>
 
-      {/* Charts Area */}
+      {/* 图表区域 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <VisitorChart
@@ -385,11 +384,11 @@ export default function DashboardPage() {
         <DeviceChart data={data?.deviceStats} loading={loading} />
       </div>
 
-      {/* System Monitoring Area */}
+      {/* 系统监控区域 */}
       <div className="space-y-6 pt-4">
-        <h2 className="text-lg font-semibold text-white">系统监控</h2>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">系统监控</h2>
         
-        {/* Row 1: Trends + Status */}
+        {/* 第 1 行：趋势 + 状态 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
            <div className="lg:col-span-2">
              <SystemTrends className="h-[500px]" />
@@ -399,7 +398,7 @@ export default function DashboardPage() {
            </div>
         </div>
 
-        {/* Row 2: Logs + Container */}
+        {/* 第 2 行：日志 + 容器 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
            <div className="lg:col-span-2">
              <RealtimeLogViewer 

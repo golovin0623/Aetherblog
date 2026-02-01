@@ -20,7 +20,7 @@
             <artifactId>common-core</artifactId>
         </dependency>
 
-        <!-- Validation -->
+        <!-- 校验 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>

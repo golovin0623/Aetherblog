@@ -51,17 +51,17 @@ export const FriendCard: React.FC<FriendCardProps> = ({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group relative block overflow-hidden rounded-2xl border border-white/10 shadow-lg transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl antialiased"
+      className="group relative block overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-lg transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl antialiased"
       style={{ 
         animationDelay: `${index * 100}ms`,
-        background: `linear-gradient(145deg, ${themeColor}15, rgba(255, 255, 255, 0.03))`,
+        background: `linear-gradient(145deg, ${themeColor}15, var(--bg-card))`,
       }}
     >
       {/* 悬浮时的强光晕背景 */}
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
         style={{ 
-          background: `linear-gradient(145deg, ${themeColor}25, rgba(255, 255, 255, 0.05))`,
+          background: `linear-gradient(145deg, ${themeColor}25, var(--bg-card-hover))`,
         }}
       />
 
@@ -91,7 +91,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
               className="absolute -inset-2 rounded-full opacity-30 blur-md transition-opacity group-hover:opacity-50"
               style={{ backgroundColor: themeColor }}
             />
-            <div className="relative h-14 w-14 rounded-full overflow-hidden ring-2 ring-white/10 group-hover:ring-white/30 transition-all bg-white/5">
+            <div className="relative h-14 w-14 rounded-full overflow-hidden ring-2 ring-[var(--border-subtle)] group-hover:ring-[var(--border-hover)] transition-all bg-[var(--bg-secondary)]">
               {!imageError ? (
                 <img
                   src={avatar}
@@ -102,7 +102,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
                 />
               ) : (
                 <div
-                  className="h-full w-full flex items-center justify-center text-white text-lg font-bold"
+                  className="h-full w-full flex items-center justify-center text-[var(--text-primary)] text-lg font-bold"
                   style={{ backgroundColor: themeColor }}
                 >
                   {name.charAt(0).toUpperCase()}
@@ -113,11 +113,11 @@ export const FriendCard: React.FC<FriendCardProps> = ({
 
           {/* 信息区域 */}
           <div className="flex-1 min-w-0 pt-1">
-            <h3 className="flex items-center gap-2 font-bold text-white text-lg truncate tracking-wide">
+            <h3 className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-lg truncate tracking-wide">
               {name}
-              <ExternalLink className="h-4 w-4 text-white/40 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
+              <ExternalLink className="h-4 w-4 text-[var(--text-muted)] opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
             </h3>
-            <p className="mt-1.5 text-sm text-gray-300/90 line-clamp-2 leading-relaxed font-medium">
+            <p className="mt-1.5 text-sm text-[var(--text-secondary)] line-clamp-2 leading-relaxed font-medium">
               {description || '这个人很懒，什么都没写~'}
             </p>
           </div>

@@ -54,9 +54,12 @@ src/
 │   ├── CommentsPage.tsx           # 评论管理
 │   ├── SettingsPage.tsx           # 系统设置
 │   ├── auth/                      # 认证页面
-│   └── posts/                     # 文章子模块
-│       ├── CreatePostPage.tsx     # 创建文章
-│       └── EditPostPage.tsx       # 编辑文章
+│   ├── posts/                     # 文章子模块
+│   │   ├── CreatePostPage.tsx     # 创建文章
+│   │   └── EditPostPage.tsx       # 编辑文章
+│   └── ai-config/                 # 🤖 AI 配置中心
+│       ├── AiConfigPage.tsx       # 主页面 (三栏布局)
+│       └── components/            # 独有组件 (ProviderSidebar 等)
 ├── components/                    # 业务组件
 │   ├── layout/                    # 布局组件
 │   │   ├── AdminLayout.tsx        # 后台布局

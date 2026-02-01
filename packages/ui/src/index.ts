@@ -13,6 +13,7 @@ export * from './components/Tag';
 export * from './components/Skeleton';
 export * from './components/Dropdown';
 export * from './components/Tooltip';
+export * from './components/Textarea';
 
 // 工具函数
 export * from './utils';
