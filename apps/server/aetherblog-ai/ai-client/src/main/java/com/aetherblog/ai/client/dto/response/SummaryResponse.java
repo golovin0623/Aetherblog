@@ -34,4 +34,9 @@ public class SummaryResponse {
      * 生成耗时（毫秒）
      */
     private Long latencyMs;
+
+    /**
+     * 字符数
+     */
+    private Integer characterCount;
 }

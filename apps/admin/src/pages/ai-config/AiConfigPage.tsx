@@ -247,7 +247,7 @@ export default function AiConfigPage() {
             ) : (
               selectedProvider && (
                 <ProviderDetail
-                  key="detail"
+                  key={selectedProvider.id}
                   provider={selectedProvider}
                   onBack={handleBackToGrid}
                   onEdit={() => {

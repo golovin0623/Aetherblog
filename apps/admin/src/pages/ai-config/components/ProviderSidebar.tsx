@@ -87,14 +87,23 @@ export default function ProviderSidebar({
 
       {/* 头部：搜索 + 操作按钮 */}
       <div className="p-3 space-y-2">
+        {/* 隐藏的输入框用于阻止浏览器自动填充 (Autofill Trap) */}
+        <div className="hidden" aria-hidden="true">
+          <input type="text" name="fake-username-trap" autoComplete="username" tabIndex={-1} />
+          <input type="password" name="fake-password-trap" autoComplete="current-password" tabIndex={-1} />
+        </div>
+
         {/* 搜索框 */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
-            type="text"
-            name="provider-search"
-            id="provider-search"
-            autoComplete="off"
+            type="search"
+            name="ai-provider-search-random-id"
+            id="ai-provider-listing-search"
+            autoComplete="new-password"
+            data-form-type="other"
+            data-lpignore="true"
+            role="searchbox"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索服务商..."
@@ -263,6 +272,7 @@ function ProviderGroup({
 }
 
 // 供应商项
+// 供应商项
 function ProviderItem({
   provider,
   selected,
@@ -275,18 +285,18 @@ function ProviderItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all group ${
+      className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all group ${
         selected
-          ? 'bg-primary/15 text-primary font-medium'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+          ? 'bg-white dark:bg-zinc-800 shadow-sm text-[var(--text-primary)] font-bold'
+          : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
       }`}
     >
-      <ProviderIcon code={provider.code} size={18} />
+      <ProviderIcon code={provider.code} size={20} />
       <span className="truncate">{provider.display_name || provider.name}</span>
-      {!provider.is_enabled && (
-        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-muted)]">
-          禁用
-        </span>
+      
+      {/* 启用状态指示点 (仅已启用显示) */}
+      {provider.is_enabled && (
+        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
       )}
     </button>
   );

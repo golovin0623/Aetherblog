@@ -112,7 +112,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 animate-in fade-in duration-500">
       {/* Input Section */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-primary/10">
               <FileText className="w-5 h-5 text-primary" />
@@ -122,18 +122,20 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               <p className="text-xs text-[var(--text-muted)]">输入原始文本以验证 AI 生成效果</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-             <ModelSelector 
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+             <ModelSelector
                 value={selectedModelId}
                 onChange={(modelId, provider) => {
                   setSelectedModelId(modelId);
                   setSelectedProviderCode(provider);
                 }}
+                className="w-full sm:w-[260px]"
+                selectedProviderCode={selectedProviderCode}
              />
             <Button
               onClick={handleRunTest}
               disabled={isLoading || !input.trim()}
-              className="rounded-full px-6 gap-2 bg-primary hover:bg-primary/90 text-white shadow-xl shadow-primary/20 transition-all active:scale-95"
+              className="h-9 rounded-full px-4 gap-2 bg-primary text-white hover:bg-primary/90 shadow-md shadow-primary/20 transition-all active:scale-95 text-xs"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               生成测试

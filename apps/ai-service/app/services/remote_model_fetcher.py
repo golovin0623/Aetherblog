@@ -9,6 +9,7 @@ import httpx
 
 from app.services.provider_registry import ProviderInfo
 from app.services.credential_resolver import CredentialInfo
+from app.utils.provider_urls import normalize_api_base
 
 
 @dataclass
@@ -67,10 +68,11 @@ class RemoteModelFetcher:
     async def _fetch_openai_models(
         self, provider: ProviderInfo, credential: CredentialInfo
     ) -> list[RemoteModelInfo]:
-        if not credential.base_url:
+        base_url = normalize_api_base(credential.base_url, provider.api_type, credential.extra_config)
+        if not base_url:
             raise ValueError("Missing base_url for provider")
 
-        url = f"{credential.base_url}/models"
+        url = f"{base_url}/models"
         headers = {
             "Authorization": f"Bearer {credential.api_key.strip()}",
             "Content-Type": "application/json",
@@ -82,7 +84,15 @@ class RemoteModelFetcher:
             resp.raise_for_status()
             payload = resp.json()
 
-        data = payload.get("data", []) if isinstance(payload, dict) else []
+        data: list[Any] = []
+        if isinstance(payload, list):
+            data = payload
+        elif isinstance(payload, dict):
+            for key in ("data", "models", "model_list", "items", "result"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    data = value
+                    break
         models: list[RemoteModelInfo] = []
 
         for item in data:
@@ -114,10 +124,11 @@ class RemoteModelFetcher:
     async def _fetch_anthropic_models(
         self, provider: ProviderInfo, credential: CredentialInfo
     ) -> list[RemoteModelInfo]:
-        if not credential.base_url:
+        base_url = normalize_api_base(credential.base_url, provider.api_type, credential.extra_config)
+        if not base_url:
             raise ValueError("Missing base_url for provider")
 
-        url = f"{credential.base_url}/models"
+        url = f"{base_url}/models"
         version = credential.extra_config.get("anthropic_version", "2023-06-01")
         headers = {
             "Content-Type": "application/json",

@@ -10,6 +10,8 @@ class SummaryRequest(BaseModel):
     maxLength: int = Field(default=200, ge=10, le=2000)
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
+    modelId: Optional[str] = None
+    providerCode: Optional[str] = None
 
 
 class TagsRequest(BaseModel):
@@ -17,6 +19,8 @@ class TagsRequest(BaseModel):
     maxTags: int = Field(default=5, ge=1, le=20)
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
+    modelId: Optional[str] = None
+    providerCode: Optional[str] = None
 
 
 class TitlesRequest(BaseModel):
@@ -24,6 +28,8 @@ class TitlesRequest(BaseModel):
     maxTitles: int = Field(default=5, ge=1, le=10)
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
+    modelId: Optional[str] = None
+    providerCode: Optional[str] = None
 
 
 class PolishRequest(BaseModel):
@@ -31,6 +37,8 @@ class PolishRequest(BaseModel):
     tone: Optional[str] = None
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
+    modelId: Optional[str] = None
+    providerCode: Optional[str] = None
 
 
 class OutlineRequest(BaseModel):
@@ -41,6 +49,8 @@ class OutlineRequest(BaseModel):
     style: str = Field(default="professional")
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
+    modelId: Optional[str] = None
+    providerCode: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_topic_or_content(self):
@@ -52,6 +62,9 @@ class OutlineRequest(BaseModel):
 class SummaryData(BaseModel):
     summary: str
     characterCount: int
+    model: Optional[str] = None
+    tokensUsed: Optional[int] = None
+    latencyMs: Optional[int] = None
 
 
 class TagsData(BaseModel):
