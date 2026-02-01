@@ -261,4 +261,119 @@ public class AiController {
             return R.fail(error.getMessage());
         }
     }
+
+    /**
+     * 翻译内容 - 同步返回
+     */
+    @Operation(summary = "翻译内容", description = "将内容翻译为目标语言")
+    @PostMapping("/translate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public R<TranslateResponse> translateContent(
+            @Valid @RequestBody TranslateRequest request,
+            @RequestHeader("Authorization") String token) {
+        log.info("Translating content to: {}", request.getTargetLanguage());
+        try {
+            var response = aiServiceClient.translateContent(request, token).block(Duration.ofSeconds(120));
+            if (response != null && response.isSuccess()) {
+                return R.ok(response.getData());
+            } else {
+                return R.fail(response != null ? response.getErrorMessage() : "AI service returned null");
+            }
+        } catch (Exception error) {
+            log.error("Failed to translate content", error);
+            return R.fail(error.getMessage());
+        }
+    }
+
+    /**
+     * 获取所有任务类型
+     */
+    @Operation(summary = "获取所有 AI 任务类型", description = "获取系统定义的所有 AI 辅助工具（包括预定义和自定义）")
+    @GetMapping("/tasks")
+    @PreAuthorize("hasRole('ADMIN')")
+    public R<java.util.List<AiTaskTypeResponse>> listTaskTypes(
+            @RequestHeader("Authorization") String token) {
+        log.info("Listing all AI task types");
+        try {
+            var response = aiServiceClient.listTaskTypes(token).block(Duration.ofSeconds(30));
+            if (response != null && response.isSuccess()) {
+                return R.ok(response.getData());
+            } else {
+                return R.fail(response != null ? response.getErrorMessage() : "AI service returned null");
+            }
+        } catch (Exception error) {
+            log.error("Failed to list task types", error);
+            return R.fail(error.getMessage());
+        }
+    }
+
+    /**
+     * 创建 AI 任务类型
+     */
+    @Operation(summary = "创建 AI 任务类型", description = "创建一个新的自定义 AI 辅助工具")
+    @PostMapping("/tasks")
+    @PreAuthorize("hasRole('ADMIN')")
+    public R<Integer> createTaskType(
+            @Valid @RequestBody TaskTypeCreateRequest request,
+            @RequestHeader("Authorization") String token) {
+        log.info("Creating new AI task type: {}", request.getCode());
+        try {
+            var response = aiServiceClient.createTaskType(request, token).block(Duration.ofSeconds(30));
+            if (response != null && response.isSuccess()) {
+                return R.ok(response.getData());
+            } else {
+                return R.fail(response != null ? response.getErrorMessage() : "AI service returned null");
+            }
+        } catch (Exception error) {
+            log.error("Failed to create task type", error);
+            return R.fail(error.getMessage());
+        }
+    }
+
+    /**
+     * 更新 AI 任务类型
+     */
+    @Operation(summary = "更新 AI 任务类型", description = "更新现有的 AI 辅助工具配置")
+    @PutMapping("/tasks/{code}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public R<Boolean> updateTaskType(
+            @PathVariable String code,
+            @Valid @RequestBody TaskTypeUpdateRequest request,
+            @RequestHeader("Authorization") String token) {
+        log.info("Updating AI task type: {}", code);
+        try {
+            var response = aiServiceClient.updateTaskType(code, request, token).block(Duration.ofSeconds(30));
+            if (response != null && response.isSuccess()) {
+                return R.ok(response.getData());
+            } else {
+                return R.fail(response != null ? response.getErrorMessage() : "AI service returned null");
+            }
+        } catch (Exception error) {
+            log.error("Failed to update task type", error);
+            return R.fail(error.getMessage());
+        }
+    }
+
+    /**
+     * 删除 AI 任务类型
+     */
+    @Operation(summary = "删除 AI 任务类型", description = "删除指定的自定义 AI 辅助工具")
+    @DeleteMapping("/tasks/{code}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public R<Boolean> deleteTaskType(
+            @PathVariable String code,
+            @RequestHeader("Authorization") String token) {
+        log.info("Deleting AI task type: {}", code);
+        try {
+            var response = aiServiceClient.deleteTaskType(code, token).block(Duration.ofSeconds(30));
+            if (response != null && response.isSuccess()) {
+                return R.ok(response.getData());
+            } else {
+                return R.fail(response != null ? response.getErrorMessage() : "AI service returned null");
+            }
+        } catch (Exception error) {
+            log.error("Failed to delete task type", error);
+            return R.fail(error.getMessage());
+        }
+    }
 }

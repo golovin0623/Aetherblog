@@ -195,7 +195,7 @@ export default function ProviderDetail({
       </div>
 
       {/* 详情内容区域 */}
-      <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 space-y-6 scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
       
          {/* 配置项列表容器 */}
          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">

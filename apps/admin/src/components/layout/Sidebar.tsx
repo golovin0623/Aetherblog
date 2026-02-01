@@ -18,6 +18,7 @@ import {
   ChevronsRight,
   Sun,
   Moon,
+  Bot,
   PanelLeftClose,
 } from 'lucide-react';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -36,7 +37,7 @@ const navItems = [
   { path: '/comments', icon: MessageSquare, label: '评论管理' },
   { path: '/friends', icon: Link2, label: '友情链接' },
   { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
-  { path: '/ai-config', icon: Settings, label: 'AI 配置' },
+  { path: '/ai-config', icon: Bot, label: 'AI 配置' },
   { path: '/monitor', icon: Activity, label: '系统监控' },
   { path: '/settings', icon: Settings, label: '系统设置' },
 ];

@@ -1,5 +1,5 @@
 export { MarkdownEditor } from './MarkdownEditor';
-export { MarkdownPreview } from './MarkdownPreview';
+export { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview';
 export { EditorWithPreview } from './EditorWithPreview';
 export { useEditorCommands } from './useEditorCommands';
 export { useTableCommands } from './useTableCommands';

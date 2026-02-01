@@ -69,12 +69,24 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
     <motion.div
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex items-center gap-4 px-4 py-3 rounded-xl border transition-all ${
+      className={`relative group flex items-center gap-4 px-4 py-3 rounded-xl border transition-all overflow-hidden ${
         model.is_enabled
-          ? 'border-[var(--border-default)] bg-[var(--bg-card)]'
+          ? 'border-[var(--border-default)] bg-[var(--bg-card)] shadow-sm'
           : 'border-[var(--border-subtle)] bg-transparent opacity-70'
       }`}
     >
+      {/* Top shine effect */}
+      {model.is_enabled && (
+        <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
+          <div 
+            className="absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/30 dark:border-white/10"
+            style={{
+              maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+            }}
+          />
+        </div>
+      )}
       {/* 状态点 */}
       <div
         className={`w-2 h-2 rounded-full flex-shrink-0 ${

@@ -241,3 +241,89 @@ class ModelRouter:
             )
         
         return True
+
+    async def create_task_type(
+        self,
+        code: str,
+        name: str,
+        description: str | None = None,
+        model_type: str = "chat",
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        prompt_template: str | None = None,
+    ) -> int:
+        """Create a new AI task type."""
+        query = """
+            INSERT INTO ai_task_types (code, name, description, default_model_type, default_temperature, default_max_tokens, prompt_template)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(
+                query, code, name, description, model_type, temperature, max_tokens, prompt_template
+            )
+
+    async def delete_task_type(self, code: str) -> bool:
+        """Delete an AI task type by code."""
+        # Note: ai_task_routing has FK to ai_task_types.id without ON DELETE CASCADE in migration?
+        # Actually it has REFERENCES ai_task_types(id). 
+        # We might need to delete routing first.
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Delete routings first
+                await conn.execute(
+                    "DELETE FROM ai_task_routing WHERE task_type_id = (SELECT id FROM ai_task_types WHERE code = $1)",
+                    code
+                )
+                res = await conn.execute("DELETE FROM ai_task_types WHERE code = $1", code)
+                return res == "DELETE 1"
+
+    async def update_task_type(
+        self,
+        code: str,
+        name: str | None = None,
+        description: str | None = None,
+        model_type: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        prompt_template: str | None = None,
+    ) -> bool:
+        """Update an existing AI task type."""
+        updates = []
+        params = []
+        idx = 1
+        
+        if name is not None:
+            updates.append(f"name = ${idx}")
+            params.append(name)
+            idx += 1
+        if description is not None:
+            updates.append(f"description = ${idx}")
+            params.append(description)
+            idx += 1
+        if model_type is not None:
+            updates.append(f"default_model_type = ${idx}")
+            params.append(model_type)
+            idx += 1
+        if temperature is not None:
+            updates.append(f"default_temperature = ${idx}")
+            params.append(temperature)
+            idx += 1
+        if max_tokens is not None:
+            updates.append(f"default_max_tokens = ${idx}")
+            params.append(max_tokens)
+            idx += 1
+        if prompt_template is not None:
+            updates.append(f"prompt_template = ${idx}")
+            params.append(prompt_template)
+            idx += 1
+            
+        if not updates:
+            return True
+            
+        params.append(code)
+        query = f"UPDATE ai_task_types SET {', '.join(updates)} WHERE code = ${idx}"
+        
+        async with self.pool.acquire() as conn:
+            res = await conn.execute(query, *params)
+            return res == "UPDATE 1"

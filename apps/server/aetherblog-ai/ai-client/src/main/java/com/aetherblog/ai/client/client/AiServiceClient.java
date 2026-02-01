@@ -88,4 +88,49 @@ public interface AiServiceClient {
      * @return 是否成功
      */
     Mono<AiResponse<Boolean>> updatePromptConfig(String taskType, PromptUpdateRequest request, String token);
+
+    /**
+     * 翻译内容
+     *
+     * @param request 翻译请求
+     * @param token 认证令牌
+     * @return 翻译响应
+     */
+    Mono<AiResponse<TranslateResponse>> translateContent(TranslateRequest request, String token);
+
+    /**
+     * 获取所有任务类型
+     *
+     * @param token 认证令牌
+     * @return 任务类型列表
+     */
+    Mono<AiResponse<java.util.List<AiTaskTypeResponse>>> listTaskTypes(String token);
+
+    /**
+     * 创建任务类型
+     *
+     * @param request 创建请求
+     * @param token 认证令牌
+     * @return 创建后的任务 ID
+     */
+    Mono<AiResponse<Integer>> createTaskType(TaskTypeCreateRequest request, String token);
+
+    /**
+     * 更新任务类型
+     *
+     * @param code 任务标识
+     * @param request 更新请求
+     * @param token 认证令牌
+     * @return 是否成功
+     */
+    Mono<AiResponse<Boolean>> updateTaskType(String code, TaskTypeUpdateRequest request, String token);
+
+    /**
+     * 删除任务类型
+     *
+     * @param code 任务标识
+     * @param token 认证令牌
+     * @return 是否成功
+     */
+    Mono<AiResponse<Boolean>> deleteTaskType(String code, String token);
 }

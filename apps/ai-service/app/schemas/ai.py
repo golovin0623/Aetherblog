@@ -76,8 +76,34 @@ class TitlesData(BaseModel):
 
 
 class PolishData(BaseModel):
-    content: str
+    polishedContent: str = Field(alias="polishedContent")
+    changes: Optional[str] = None
+    model: Optional[str] = None
+    tokensUsed: Optional[int] = None
+    latencyMs: Optional[int] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class OutlineData(BaseModel):
     outline: str
+
+
+class TranslateRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    targetLanguage: str = Field(default="en")
+    sourceLanguage: Optional[str] = None
+    promptVersion: Optional[str] = None
+    promptTemplate: Optional[str] = None
+    modelId: Optional[str] = None
+    providerCode: Optional[str] = None
+
+
+class TranslateData(BaseModel):
+    translatedContent: str
+    sourceLanguage: Optional[str] = None
+    targetLanguage: str
+    model: Optional[str] = None
+    tokensUsed: Optional[int] = None
+    latencyMs: Optional[int] = None

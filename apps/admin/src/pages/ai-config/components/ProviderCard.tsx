@@ -60,12 +60,17 @@ export default function ProviderCard({
               background: `linear-gradient(135deg, ${brand.gradientFrom}, ${brand.gradientTo})`
             }}
           />
-          <div 
-            className="absolute top-0 inset-x-0 h-[3px]"
-            style={{
-              background: `linear-gradient(90deg, transparent, ${brand.primary}, transparent)`
-            }}
-          />
+          <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
+            <div
+              className="absolute inset-0 rounded-[inherit] border-t border-l border-r"
+              style={{
+                borderColor: brand.primary,
+                opacity: 0.5,
+                maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+              }}
+            />
+          </div>
         </>
       )}
 
