@@ -158,7 +158,11 @@ class ProviderRegistry:
             WHERE ($1::text IS NULL OR p.code = $1)
               AND ($2::text IS NULL OR m.model_type = $2)
               AND ($3 = FALSE OR m.is_enabled = TRUE)
-            ORDER BY p.priority DESC, m.display_name
+            ORDER BY
+              COALESCE((m.capabilities->>'sort')::int, 999999) ASC,
+              m.is_enabled DESC,
+              p.priority DESC,
+              m.display_name
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(query, provider_code, model_type, enabled_only)
@@ -429,6 +433,103 @@ class ProviderRegistry:
             self.clear_cache()
             return True
         return False
+
+    async def bulk_insert_models(self, provider_code: str, models: list[Any]) -> int:
+        """Bulk insert models (ignore duplicates)."""
+        if not models:
+            return 0
+        provider = await self.get_provider(provider_code)
+        if not provider:
+            return 0
+
+        query = """
+            INSERT INTO ai_models
+                (provider_id, model_id, display_name, model_type, context_window,
+                 max_output_tokens, input_cost_per_1k, output_cost_per_1k, capabilities, is_enabled)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (provider_id, model_id) DO NOTHING
+        """
+        values = [
+            (
+                provider.id,
+                m.model_id,
+                m.display_name,
+                m.model_type,
+                m.context_window,
+                m.max_output_tokens,
+                m.input_cost_per_1k,
+                m.output_cost_per_1k,
+                _encode_json(m.capabilities),
+                m.is_enabled,
+            )
+            for m in models
+        ]
+
+        async with self.pool.acquire() as conn:
+            await conn.executemany(query, values)
+
+        self.clear_cache()
+        return len(values)
+
+    async def delete_models_by_provider(self, provider_code: str, source: str | None = None) -> int:
+        """Delete models for a provider (optionally filtered by source)."""
+        provider = await self.get_provider(provider_code)
+        if not provider:
+            return 0
+
+        if source:
+            query = """
+                DELETE FROM ai_models
+                WHERE provider_id = $1
+                  AND COALESCE(capabilities->>'source', '') = $2
+                RETURNING id
+            """
+            params = (provider.id, source)
+        else:
+            query = "DELETE FROM ai_models WHERE provider_id = $1 RETURNING id"
+            params = (provider.id,)
+
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+
+        if rows:
+            self.clear_cache()
+        return len(rows)
+
+    async def batch_toggle_models(self, ids: list[int], enabled: bool) -> int:
+        """Batch toggle model enabled state by ids."""
+        if not ids:
+            return 0
+        query = """
+            UPDATE ai_models
+            SET is_enabled = $2
+            WHERE id = ANY($1::bigint[])
+            RETURNING id
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, ids, enabled)
+        if rows:
+            self.clear_cache()
+        return len(rows)
+
+    async def update_models_sort(self, items: list[dict[str, int]]) -> int:
+        """Update model sort order using capabilities.sort."""
+        if not items:
+            return 0
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                for item in items:
+                    await conn.execute(
+                        """
+                        UPDATE ai_models
+                        SET capabilities = COALESCE(capabilities, '{}'::jsonb) || $2::jsonb
+                        WHERE id = $1
+                        """,
+                        item["id"],
+                        _encode_json({"sort": item["sort"]}),
+                    )
+        self.clear_cache()
+        return len(items)
 
     async def get_provider_by_id(self, provider_id: int) -> ProviderInfo | None:
         query = """

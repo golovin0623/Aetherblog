@@ -16,6 +16,7 @@ import asyncpg
 from cryptography.fernet import Fernet
 
 from app.core.config import get_settings
+from app.utils.provider_urls import normalize_api_base
 
 logger = logging.getLogger("ai-service")
 
@@ -61,6 +62,7 @@ class CredentialInfo:
     id: int
     provider_id: int
     provider_code: str
+    api_type: str | None
     api_key: str  # Decrypted
     base_url: str | None
     extra_config: dict[str, Any]
@@ -105,8 +107,8 @@ class CredentialResolver:
     ) -> int:
         """Save a new credential."""
         user_id = _normalize_user_id(user_id)
-        encrypted = self.encrypt_api_key(api_key)
-        hint = self.generate_hint(api_key)
+        encrypted = self.encrypt_api_key(api_key.strip())
+        hint = self.generate_hint(api_key.strip())
         
         query = """
             INSERT INTO ai_credentials 
@@ -162,7 +164,8 @@ class CredentialResolver:
         user_id = _normalize_user_id(user_id)
         if credential_id:
             query = """
-                SELECT c.id, c.provider_id, p.code as provider_code, c.api_key_encrypted,
+                SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
+                       c.api_key_encrypted,
                        COALESCE(c.base_url_override, p.base_url) as base_url,
                        c.extra_config, c.is_default
                 FROM ai_credentials c
@@ -176,7 +179,8 @@ class CredentialResolver:
         else:
             # Try user's credentials first
             query = """
-                SELECT c.id, c.provider_id, p.code as provider_code, c.api_key_encrypted,
+                SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
+                       c.api_key_encrypted,
                        COALESCE(c.base_url_override, p.base_url) as base_url,
                        c.extra_config, c.is_default
                 FROM ai_credentials c
@@ -191,13 +195,16 @@ class CredentialResolver:
                 row = await conn.fetchrow(query, provider_code, user_id)
         
         if row:
+            extra_config = _parse_json(row["extra_config"])
+            normalized_base = normalize_api_base(row["base_url"], row["api_type"], extra_config)
             return CredentialInfo(
                 id=row["id"],
                 provider_id=row["provider_id"],
                 provider_code=row["provider_code"],
+                api_type=row["api_type"],
                 api_key=self.decrypt_api_key(row["api_key_encrypted"]),
-                base_url=row["base_url"],
-                extra_config=_parse_json(row["extra_config"]),
+                base_url=normalized_base,
+                extra_config=extra_config,
                 is_default=row["is_default"],
             )
         
@@ -213,8 +220,9 @@ class CredentialResolver:
                 id=0,
                 provider_id=0,
                 provider_code="openai",
+                api_type="openai_compat",
                 api_key=settings.openai_api_key,
-                base_url=settings.openai_base_url,
+                base_url=normalize_api_base(settings.openai_base_url, "openai_compat", {}),
                 extra_config={},
                 is_default=True,
             )
@@ -223,8 +231,9 @@ class CredentialResolver:
                 id=0,
                 provider_id=0,
                 provider_code="openai_compat",
+                api_type="openai_compat",
                 api_key=settings.openai_compat_api_key,
-                base_url=settings.openai_compat_base_url,
+                base_url=normalize_api_base(settings.openai_compat_base_url, "openai_compat", {}),
                 extra_config={},
                 is_default=True,
             )
@@ -236,7 +245,7 @@ class CredentialResolver:
         user_id = _normalize_user_id(user_id)
         query = """
             SELECT c.id, c.name, c.api_key_hint, p.code as provider_code, p.display_name as provider_name,
-                   c.base_url_override, c.is_default, c.is_enabled, c.last_used_at, c.last_error,
+                   c.base_url_override, c.extra_config, c.is_default, c.is_enabled, c.last_used_at, c.last_error,
                    c.created_at
             FROM ai_credentials c
             JOIN ai_providers p ON c.provider_id = p.id
@@ -246,7 +255,12 @@ class CredentialResolver:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(query, user_id)
         
-        return [dict(row) for row in rows]
+        records = []
+        for row in rows:
+            record = dict(row)
+            record["extra_config"] = _parse_json(record.get("extra_config"))
+            records.append(record)
+        return records
 
     async def delete_credential(self, credential_id: int, user_id: int | None = None) -> bool:
         """Delete a credential."""

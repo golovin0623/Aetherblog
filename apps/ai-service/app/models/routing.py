@@ -33,6 +33,7 @@ class AiTaskType(Base):
     default_temperature: Mapped[float | None] = mapped_column(Numeric(3, 2), default=0.7)
     default_max_tokens: Mapped[int | None] = mapped_column(Integer)
     config_schema: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    prompt_template: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships

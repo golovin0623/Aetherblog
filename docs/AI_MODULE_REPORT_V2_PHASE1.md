@@ -20,7 +20,7 @@
 ### 3. AI 业务接口落地 (Phase 2)
 - [x] **文本处理接口**: 交付摘要 (`summary`)、标签 (`tags`)、标题建议 (`titles`)、文本润色 (`polish`)、文章大纲 (`outline`)。
 - [x] **流式分发**: 实现了基于 NDJSON 的流式响应接口，支持实时打字机效果。
-- [x] **多模型路由**: 支持 gpt-4o-mini, gpt-4o 以及自定义 OpenAI 兼容接口。
+- [x] **多模型路由**: 支持 gpt-5-mini, gpt-4o 以及自定义 OpenAI 兼容接口。
 
 ### 4. 语义检索与存储 (Phase 3 - 部分提前交付)
 - [x] **向量存储**: 数据库启用 `pgvector` 扩展，落地 `vector_store` 相关表结构。

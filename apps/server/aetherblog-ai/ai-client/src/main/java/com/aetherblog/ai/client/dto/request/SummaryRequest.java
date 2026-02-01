@@ -39,7 +39,7 @@ public class SummaryRequest {
     private String style = "professional";
     
     /**
-     * 模型（gpt-4o-mini/gpt-4o）
+     * 模型（gpt-5.2/claude-sonnet-4-5-thinking）
      */
     private String model;
     
@@ -47,4 +47,14 @@ public class SummaryRequest {
      * Prompt 版本
      */
     private String promptVersion;
+
+    /**
+     * 指定 Model ID (可选)
+     */
+    private String modelId;
+
+    /**
+     * 指定 Provider Code (可选)
+     */
+    private String providerCode;
 }

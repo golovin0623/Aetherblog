@@ -1,5 +1,5 @@
 import api from './api';
-import type { R } from '@/types';
+import type { AiServiceResponse } from '@/types';
 
 export interface AiProvider {
   id: number;
@@ -41,6 +41,8 @@ export interface AiCredential {
   provider_code: string;
   provider_name?: string | null;
   base_url_override?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  extra_config?: Record<string, any> | null;
   is_default: boolean;
   is_enabled: boolean;
   last_used_at?: string | null;
@@ -55,6 +57,7 @@ export interface AiTaskType {
   model_type?: string | null;
   temperature?: number | null;
   max_tokens?: number | null;
+  prompt_template?: string | null;
 }
 
 export interface AiRouting {
@@ -131,53 +134,108 @@ export interface RoutingUpdateRequest {
   config_override?: Record<string, any> | null;
 }
 
+export interface ModelSortItem {
+  id: number;
+  sort: number;
+}
+
 export const aiProviderService = {
-  listProviders: (enabledOnly = false): Promise<R<AiProvider[]>> =>
+  listProviders: (enabledOnly = false): Promise<AiServiceResponse<AiProvider[]>> =>
     api.get('/v1/admin/providers', { params: { enabled_only: enabledOnly } }),
 
-  createProvider: (data: CreateProviderRequest): Promise<R<AiProvider>> =>
+  createProvider: (data: CreateProviderRequest): Promise<AiServiceResponse<AiProvider>> =>
     api.post('/v1/admin/providers', data),
 
-  updateProvider: (id: number, data: UpdateProviderRequest): Promise<R<AiProvider>> =>
+  updateProvider: (id: number, data: UpdateProviderRequest): Promise<AiServiceResponse<AiProvider>> =>
     api.put(`/v1/admin/providers/${id}`, data),
 
-  deleteProvider: (id: number): Promise<R<boolean>> =>
+  deleteProvider: (id: number): Promise<AiServiceResponse<boolean>> =>
     api.delete(`/v1/admin/providers/${id}`),
 
-  listModels: (providerCode?: string, modelType?: string): Promise<R<AiModel[]>> => {
+  listModels: (providerCode?: string, modelType?: string): Promise<AiServiceResponse<AiModel[]>> => {
     if (providerCode) {
       return api.get(`/v1/admin/providers/${providerCode}/models`, { params: { enabled_only: false } });
     }
     return api.get('/v1/admin/providers/models', { params: { model_type: modelType, enabled_only: false } });
   },
 
-  createModel: (providerCode: string, data: CreateModelRequest): Promise<R<AiModel>> =>
+  createModel: (providerCode: string, data: CreateModelRequest): Promise<AiServiceResponse<AiModel>> =>
     api.post(`/v1/admin/providers/${providerCode}/models`, data),
 
-  updateModel: (id: number, data: UpdateModelRequest): Promise<R<AiModel>> =>
+  updateModel: (id: number, data: UpdateModelRequest): Promise<AiServiceResponse<AiModel>> =>
     api.put(`/v1/admin/providers/models/${id}`, data),
 
-  deleteModel: (id: number): Promise<R<boolean>> =>
+  deleteModel: (id: number): Promise<AiServiceResponse<boolean>> =>
     api.delete(`/v1/admin/providers/models/${id}`),
 
-  listCredentials: (): Promise<R<AiCredential[]>> =>
+  listCredentials: (): Promise<AiServiceResponse<AiCredential[]>> =>
     api.get('/v1/admin/providers/credentials'),
 
-  createCredential: (data: CreateCredentialRequest): Promise<R<{ id: number }>> =>
+  createCredential: (data: CreateCredentialRequest): Promise<AiServiceResponse<{ id: number }>> =>
     api.post('/v1/admin/providers/credentials', data),
 
-  deleteCredential: (id: number): Promise<R<boolean>> =>
+  deleteCredential: (id: number): Promise<AiServiceResponse<boolean>> =>
     api.delete(`/v1/admin/providers/credentials/${id}`),
 
-  testCredential: (id: number, modelId?: string): Promise<R<{ success: boolean; message: string; latency_ms?: number }>> =>
-    api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'gpt-4o-mini' }),
+  testCredential: (id: number, modelId?: string): Promise<AiServiceResponse<{ success: boolean; message: string; latency_ms?: number }>> =>
+    api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'gpt-5-mini' }),
 
-  listTasks: (): Promise<R<AiTaskType[]>> =>
-    api.get('/v1/admin/providers/tasks'),
+  listTasks: (): Promise<AiServiceResponse<AiTaskType[]>> =>
+    api.get('/v1/admin/ai/tasks'),
 
-  getRouting: (taskType: string): Promise<R<AiRouting | null>> =>
+  createTask: (data: Partial<AiTaskType>): Promise<AiServiceResponse<number>> =>
+    api.post('/v1/admin/ai/tasks', data),
+
+  updateTask: (code: string, data: Partial<AiTaskType>): Promise<AiServiceResponse<boolean>> =>
+    api.put(`/v1/admin/ai/tasks/${code}`, data),
+
+  deleteTask: (code: string): Promise<AiServiceResponse<boolean>> =>
+    api.delete(`/v1/admin/ai/tasks/${code}`),
+
+  getRouting: (taskType: string): Promise<AiServiceResponse<AiRouting | null>> =>
     api.get(`/v1/admin/providers/routing/${taskType}`),
 
-  updateRouting: (taskType: string, data: RoutingUpdateRequest): Promise<R<boolean>> =>
+  updateRouting: (taskType: string, data: RoutingUpdateRequest): Promise<AiServiceResponse<boolean>> =>
     api.put(`/v1/admin/providers/routing/${taskType}`, data),
+
+  syncRemoteModels: (
+    providerCode: string,
+    credentialId?: number | null
+  ): Promise<AiServiceResponse<{ inserted: number; total: number }>> =>
+    api.post(`/v1/admin/providers/${providerCode}/models/remote`, {
+      credential_id: credentialId ?? null,
+    }),
+
+  clearProviderModels: (
+    providerCode: string,
+    source?: string
+  ): Promise<AiServiceResponse<{ deleted: number }>> =>
+    api.delete(`/v1/admin/providers/${providerCode}/models`, {
+      params: { source },
+    }),
+
+  batchToggleModels: (
+    providerCode: string,
+    ids: number[],
+    enabled: boolean
+  ): Promise<AiServiceResponse<{ updated: number }>> =>
+    api.put(`/v1/admin/providers/${providerCode}/models/batch-toggle`, {
+      ids,
+      enabled,
+    }),
+
+  updateModelSort: (
+    providerCode: string,
+    items: ModelSortItem[]
+  ): Promise<AiServiceResponse<{ updated: number }>> =>
+    api.put(`/v1/admin/providers/${providerCode}/models/sort`, { items }),
+
+  listPromptConfigs: (): Promise<AiServiceResponse<any[]>> =>
+    api.get('/v1/admin/ai/prompts'),
+
+  getPromptConfig: (taskType: string): Promise<AiServiceResponse<any>> =>
+    api.get(`/v1/admin/ai/prompts/${taskType}`),
+
+  updatePromptConfig: (taskType: string, data: any): Promise<AiServiceResponse<boolean>> =>
+    api.put(`/v1/admin/ai/prompts/${taskType}`, data),
 };

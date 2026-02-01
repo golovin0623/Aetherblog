@@ -58,6 +58,8 @@ async def request_context(request: Request, call_next):
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     payload = ApiResponse(
+        code=exc.status_code,
+        message=str(exc.detail),
         success=False,
         errorMessage=str(exc.detail),
         errorCode=f"HTTP_{exc.status_code}",
@@ -71,6 +73,8 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     payload = ApiResponse(
+        code=400,
+        message="Validation failed",
         success=False,
         errorMessage="Validation failed",
         errorCode="VALIDATION_ERROR",
@@ -84,6 +88,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("unhandled_exception", extra={"error": str(exc)})
     payload = ApiResponse(
+        code=500,
+        message="Internal server error",
         success=False,
         errorMessage="Internal server error",
         errorCode="INTERNAL_ERROR",

@@ -223,15 +223,7 @@ const mockContainers: ContainerMetrics[] = [
   }
 ];
 
-const mockOverview: ContainerOverview = {
-  containers: mockContainers,
-  totalContainers: 5,
-  runningContainers: 5,
-  totalMemoryUsed: mockContainers.reduce((sum, c) => sum + c.memoryUsed, 0),
-  totalMemoryLimit: mockContainers.reduce((sum, c) => sum + c.memoryLimit, 0),
-  avgCpuPercent: mockContainers.reduce((sum, c) => sum + c.cpuPercent, 0) / mockContainers.length,
-  dockerAvailable: true
-};
+
 
 // ========== 主组件 ==========
 

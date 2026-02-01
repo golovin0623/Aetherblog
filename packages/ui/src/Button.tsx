@@ -4,7 +4,7 @@ import { cn } from './utils';
 
 interface ButtonProps {
   children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'dark';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   disabled?: boolean;
@@ -18,6 +18,7 @@ const variants = {
   secondary: 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] border-2 border-transparent bg-clip-padding relative before:absolute before:inset-0 before:bg-gradient-to-r before:from-primary before:to-purple-500 before:rounded-lg before:-z-10 before:m-[-2px]',
   ghost: 'text-[var(--text-secondary)] hover:text-white hover:bg-gradient-to-r hover:from-primary/10 hover:to-purple-500/10',
   danger: 'bg-red-500 text-white hover:bg-red-600',
+  dark: 'bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90',
 };
 
 const sizes = {

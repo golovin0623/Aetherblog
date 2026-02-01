@@ -31,6 +31,17 @@ public class StreamParser {
             return Mono.empty();
         }
         
+        // Handle SSE data prefix
+        if (line.startsWith("data: ")) {
+            line = line.substring(6);
+        } else if (line.startsWith("data:")) {
+            line = line.substring(5);
+        }
+        
+        if (line.isBlank() || line.startsWith(":")) { // Skip comments or empty data
+             return Mono.empty();
+        }
+        
         try {
             StreamEvent event = objectMapper.readValue(line, StreamEvent.class);
             return Mono.just(event);

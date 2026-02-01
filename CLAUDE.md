@@ -385,3 +385,9 @@ To reset password manually:
 UPDATE users SET password_hash = '$2a$10$8.UnVuG9HHgffUDAlk8q2OuVGkqBKkjJRqdE7z6OcExSqz8tRdByW' WHERE username = 'admin';
 -- Password becomes: 123456
 ```
+
+## Custom Slash Commands (Skills)
+
+| Command | Description |
+|---------|-------------|
+| `/doc` | 执行最严苛的质量控制与文档同步流程，确保代码、文档与设计一致性。 |

@@ -8,12 +8,14 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 from litellm import acompletion
 
 from app.api.deps import (
     get_provider_registry,
     get_credential_resolver,
     get_model_router,
+    get_remote_model_fetcher,
     require_admin,
 )
 from app.core.jwt import UserClaims
@@ -32,10 +34,15 @@ from app.schemas.provider import (
     ProviderUpdate,
     ModelCreate,
     ModelUpdate,
+    ModelSyncRequest,
+    ModelSyncResponse,
+    ModelBatchToggleRequest,
+    ModelSortRequest,
 )
 from app.services.provider_registry import ProviderRegistry
 from app.services.credential_resolver import CredentialResolver
 from app.services.model_router import ModelRouter
+from app.services.remote_model_fetcher import RemoteModelFetcher
 
 logger = logging.getLogger("ai-service")
 
@@ -44,6 +51,17 @@ router = APIRouter(
     tags=["providers"],
     dependencies=[Depends(require_admin)],
 )
+
+
+def format_remote_fetch_error(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        text = exc.response.text
+        snippet = text[:200] + ("..." if len(text) > 200 else "")
+        return f"Remote API error {status}: {snippet}".strip()
+    if isinstance(exc, httpx.RequestError):
+        return f"Remote API request failed: {exc}".strip()
+    return f"Remote API error: {exc}".strip()
 
 
 # ============================================================
@@ -356,6 +374,87 @@ async def delete_model(
     return ApiResponse(code=200, message="success", data=True)
 
 
+@router.post("/{provider_code}/models/remote", response_model=ApiResponse[ModelSyncResponse])
+async def fetch_remote_models(
+    provider_code: str,
+    req: ModelSyncRequest,
+    user: UserClaims = Depends(require_admin),
+    resolver: CredentialResolver = Depends(get_credential_resolver),
+    registry: ProviderRegistry = Depends(get_provider_registry),
+    fetcher: RemoteModelFetcher = Depends(get_remote_model_fetcher),
+):
+    """Fetch remote model list and insert into database."""
+    provider = await registry.get_provider(provider_code)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    credential = await resolver.get_credential(
+        provider_code=provider_code,
+        user_id=user.user_id,
+        credential_id=req.credential_id,
+    )
+    if not credential:
+        raise HTTPException(status_code=404, detail="Credential not found")
+
+    try:
+        models = await fetcher.fetch_models(provider, credential)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.warning(
+            "remote_model_fetch_failed provider=%s api_type=%s base_url=%s error=%s",
+            provider.code,
+            provider.api_type,
+            credential.base_url,
+            exc,
+        )
+        raise HTTPException(status_code=502, detail=format_remote_fetch_error(exc))
+
+    inserted = await registry.bulk_insert_models(provider_code, models)
+
+    return ApiResponse(
+        data=ModelSyncResponse(
+            inserted=inserted,
+            total=len(models),
+        ),
+    )
+
+
+@router.delete("/{provider_code}/models", response_model=ApiResponse[dict[str, int]])
+async def delete_models_by_provider(
+    provider_code: str,
+    source: str | None = None,
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """Delete models by provider (optionally remote only)."""
+    deleted = await registry.delete_models_by_provider(provider_code, source=source)
+    return ApiResponse(data={"deleted": deleted})
+
+
+@router.put("/{provider_code}/models/batch-toggle", response_model=ApiResponse[dict[str, int]])
+async def batch_toggle_models(
+    provider_code: str,
+    req: ModelBatchToggleRequest,
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """Batch toggle model enabled state."""
+    updated = await registry.batch_toggle_models(req.ids, req.enabled)
+    return ApiResponse(data={"updated": updated})
+
+
+@router.put("/{provider_code}/models/sort", response_model=ApiResponse[dict[str, int]])
+async def update_model_sort(
+    provider_code: str,
+    req: ModelSortRequest,
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """Update model sort order."""
+    updated = await registry.update_models_sort(
+        [{"id": item.id, "sort": item.sort} for item in req.items]
+    )
+    return ApiResponse(data={"updated": updated})
+
+
 # ============================================================
 # Credential Endpoints
 # ============================================================
@@ -402,6 +501,7 @@ async def list_credentials(
                 provider_code=c["provider_code"],
                 provider_name=c["provider_name"],
                 base_url_override=c["base_url_override"],
+                extra_config=c.get("extra_config"),
                 is_default=c["is_default"],
                 is_enabled=c["is_enabled"],
                 last_used_at=c["last_used_at"],
@@ -450,11 +550,25 @@ async def test_credential(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     
+    # Determine model name with proper prefix for LiteLLM routing
+    # LiteLLM auto-detects providers based on model name prefixes (e.g., gemini-* -> Vertex AI)
+    # We must add explicit prefixes to force correct routing for custom endpoints
+    model_name = req.model_id
+    if provider.api_type in ("openai_compat", "custom"):
+        # Force OpenAI-compatible protocol
+        if not model_name.startswith("openai/"):
+            model_name = f"openai/{model_name}"
+    elif provider.api_type == "azure":
+        # Azure OpenAI Service
+        if not model_name.startswith("azure/"):
+            model_name = f"azure/{model_name}"
+    # anthropic/google: LiteLLM handles natively with api_key + api_base
+    
     # Test with a simple completion
     start = time.perf_counter()
     try:
         response = await acompletion(
-            model=req.model_id,
+            model=model_name,
             messages=[{"role": "user", "content": "Say 'OK'"}],
             api_key=credential.api_key,
             api_base=credential.base_url,

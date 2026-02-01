@@ -386,6 +386,12 @@ pnpm add xxx  # 说明用途
 ```markdown
 # CHANGELOG - AetherBlog 设计文档变更记录
 
+## [v2.2.0] - 2026-02-01
+### Added
+- §8.2: 引入 LobeChat 风格 AI 配置中心设计 (三栏布局: Sidebar/Grid/Detail)
+- §3.2: 集成 @lobehub/icons 官方 AI 品牌图标库 (ProviderIcon 组件)
+- §3.2: 新增 AI 配置相关组件 (ProviderCard, SortDialog, ModelList)
+
 ## [v2.1.0] - 2026-01-25
 ### Changed
 - §2, §5: 架构重大变更，AI 服务从 Spring Boot 剥离，迁移至独立 Python 服务 (FastAPI + LiteLLM)

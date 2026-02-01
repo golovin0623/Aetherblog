@@ -28,7 +28,7 @@ import {
   formatBytes,
   formatUptime,
   formatFrequency,
-  formatBytesPerSecond,
+
   formatBandwidth
 } from '@/services/systemService';
 import { logger } from '@/lib/logger';
