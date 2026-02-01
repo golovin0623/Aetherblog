@@ -518,7 +518,6 @@ async def outline(
             model_id=req.modelId,
             provider_code=req.providerCode,
         )
-        )
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(topic) + estimate_tokens(response_text)
         return ApiResponse(data=OutlineData(
