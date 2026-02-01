@@ -9,6 +9,11 @@ on:
     branches:
       - main
 
+# 并发控制: 同一分支/PR 的新运行会取消旧的运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
 
@@ -16,6 +21,7 @@ jobs:
   # 前端测试和构建
   frontend-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,12 +43,16 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
       - name: Build all packages
         run: pnpm build
 
   # 后端测试和构建
   backend-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -65,6 +75,7 @@ jobs:
   # AI 服务测试
   ai-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,16 +91,45 @@ jobs:
         working-directory: apps/ai-service
         run: pip install -r requirements.txt
 
+      - name: Python syntax check
+        working-directory: apps/ai-service
+        run: |
+          python -m py_compile app/main.py
+          find app -name "*.py" -exec python -m py_compile {} \;
+
       - name: Run linting
         working-directory: apps/ai-service
         run: |
           pip install ruff
-          ruff check . || true
+          ruff check .
+
+      - name: Verify app can start
+        working-directory: apps/ai-service
+        env:
+          AI_ENV: test
+          AI_MOCK_MODE: "true"
+        run: |
+          python -c "from app.main import app; print('✅ App imports successfully')"
+
+  # Docker 配置验证
+  config-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose files
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.prod.yml config --quiet
+          echo "✅ Docker Compose files are valid"
 
   docker-build-push:
-    needs: [frontend-test, backend-test, ai-test]
+    needs: [frontend-test, backend-test, ai-test, config-validate]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         include:
