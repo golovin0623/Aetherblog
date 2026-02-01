@@ -147,7 +147,7 @@ export default function CredentialForm({
             placeholder={
               proxySetting && typeof proxySetting === 'object' && proxySetting.placeholder
                 ? proxySetting.placeholder
-                : 'https://ai.golovin.cn/v'
+                : 'https://ai.golovin.cn/v1'
             }
             className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
           />

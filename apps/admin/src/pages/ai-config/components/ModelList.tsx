@@ -33,6 +33,7 @@ interface ModelListProps {
   credentialId?: number | null;
   isLoading?: boolean;
   showDeployName?: boolean;
+  variant?: 'default' | 'simple';
 }
 
 export default function ModelList({
@@ -43,6 +44,7 @@ export default function ModelList({
   credentialId,
   isLoading,
   showDeployName,
+  variant = 'default',
 }: ModelListProps) {
   const [activeTab, setActiveTab] = useState<ModelType | 'all'>('all');
   const [search, setSearch] = useState('');

@@ -116,18 +116,36 @@ async def summary(
     cached = False
     response_text = ""
     error_code = None
-    model = llm.resolve_model("summary")
+    try:
+        model = await llm.resolve_effective_model(
+            "summary",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         cache_key = (
-            f"ai:summary:{hash_content(req.content)}:{model}:"
+            f"ai:summary:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
             f"{_prompt_version(req.promptVersion)}:{req.maxLength}"
         )
         cached_data = await cache.get_json(cache_key)
         if cached_data:
             cached = True
             response_text = cached_data.get("summary", "")
-            return ApiResponse(data=SummaryData(**cached_data))
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+            return ApiResponse(
+                data=SummaryData(
+                    summary=response_text,
+                    characterCount=len(response_text),
+                    model=model,
+                    tokensUsed=tokens_used,
+                    latencyMs=latency_ms,
+                )
+            )
 
         prompt_variables = {
             "content": req.content,
@@ -137,10 +155,24 @@ async def summary(
             prompt_variables=prompt_variables,
             model_alias="summary",
             user_id=user.user_id,
-            custom_prompt=req.promptTemplate
+            custom_prompt=req.promptTemplate,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
-        data = SummaryData(summary=response_text, characterCount=len(response_text))
-        await cache.set_json(cache_key, data.model_dump(), SUMMARY_TTL)
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+        data = SummaryData(
+            summary=response_text,
+            characterCount=len(response_text),
+            model=model,
+            tokensUsed=tokens_used,
+            latencyMs=latency_ms,
+        )
+        await cache.set_json(
+            cache_key,
+            {"summary": response_text, "characterCount": len(response_text)},
+            SUMMARY_TTL,
+        )
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
@@ -178,7 +210,15 @@ async def summary_stream(
     start_time = time.perf_counter()
     response_chars = 0
     error_code = None
-    model = llm.resolve_model("summary")
+    try:
+        model = await llm.resolve_effective_model(
+            "summary",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     async def event_stream():
         nonlocal response_chars, error_code
@@ -191,7 +231,9 @@ async def summary_stream(
                 prompt_variables=prompt_variables,
                 model_alias="summary",
                 user_id=user.user_id,
-                custom_prompt=req.promptTemplate
+                custom_prompt=req.promptTemplate,
+                model_id=req.modelId,
+                provider_code=req.providerCode,
             ):
                 response_chars += len(chunk)
                 yield ndjson_line({"type": "delta", "content": chunk})
@@ -233,7 +275,15 @@ async def tags(
     cached = False
     response_text = ""
     error_code = None
-    model = llm.resolve_model("tags")
+    try:
+        model = await llm.resolve_effective_model(
+            "tags",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         cache_key = (
@@ -254,7 +304,9 @@ async def tags(
             prompt_variables=prompt_variables,
             model_alias="tags",
             user_id=user.user_id,
-            custom_prompt=req.promptTemplate
+            custom_prompt=req.promptTemplate,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
         data = TagsData(tags=_split_list(response_text)[: req.maxTags])
         await cache.set_json(cache_key, data.model_dump(), TAGS_TTL)
@@ -296,7 +348,15 @@ async def titles(
     cached = False
     response_text = ""
     error_code = None
-    model = llm.resolve_model("titles")
+    try:
+        model = await llm.resolve_effective_model(
+            "titles",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         cache_key = (
@@ -317,7 +377,9 @@ async def titles(
             prompt_variables=prompt_variables,
             model_alias="titles",
             user_id=user.user_id,
-            custom_prompt=req.promptTemplate
+            custom_prompt=req.promptTemplate,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
         data = TitlesData(titles=_split_list(response_text)[: req.maxTitles])
         await cache.set_json(cache_key, data.model_dump(), TITLES_TTL)
@@ -356,7 +418,15 @@ async def polish(
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
     error_code = None
-    model = llm.resolve_model("polish")
+    try:
+        model = await llm.resolve_effective_model(
+            "polish",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     response_text = ""
 
     try:
@@ -368,7 +438,9 @@ async def polish(
             prompt_variables=prompt_variables,
             model_alias="polish",
             user_id=user.user_id,
-            custom_prompt=req.promptTemplate
+            custom_prompt=req.promptTemplate,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
         return ApiResponse(data=PolishData(content=response_text))
     except HTTPException as exc:
@@ -404,7 +476,15 @@ async def outline(
 ) -> ApiResponse[OutlineData]:
     start_time = time.perf_counter()
     error_code = None
-    model = llm.resolve_model("outline")
+    try:
+        model = await llm.resolve_effective_model(
+            "outline",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     response_text = ""
     topic = req.topic or req.content or ""
 
@@ -419,7 +499,9 @@ async def outline(
             prompt_variables=prompt_variables,
             model_alias="outline",
             user_id=user.user_id,
-            custom_prompt=req.promptTemplate
+            custom_prompt=req.promptTemplate,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
         return ApiResponse(data=OutlineData(outline=response_text))
     except HTTPException as exc:

@@ -150,15 +150,20 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         <button
           onClick={handleToggle}
           disabled={toggleMutation.isPending || readOnly}
-          className={`relative w-10 h-5 rounded-full transition-all flex-shrink-0 ${
-            model.is_enabled ? 'bg-primary' : 'bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]'
+          className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-out flex-shrink-0 focus:outline-none ${
+            model.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-zinc-800'
           } ${toggleMutation.isPending || readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <motion.div
             layout
-            className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
-              model.is_enabled ? 'left-5 bg-white' : 'left-0.5 bg-[var(--text-muted)]/70'
+            className={`w-4 h-4 rounded-full shadow-sm z-10 ${
+                model.is_enabled ? 'bg-white dark:bg-black' : 'bg-white'
             }`}
+             initial={false}
+             animate={{ 
+               x: model.is_enabled ? 20 : 0
+             }}
+             transition={{ type: "spring", stiffness: 500, damping: 30 }}
           />
         </button>
       </div>

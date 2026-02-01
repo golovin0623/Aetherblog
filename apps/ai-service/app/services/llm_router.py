@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+from dataclasses import dataclass
 from typing import Any, AsyncGenerator, TYPE_CHECKING
 
 from litellm import acompletion, aembedding
@@ -48,6 +49,16 @@ class LlmRouter:
         }
         return mapping.get(alias, alias)
 
+    @dataclass
+    class _ResolvedRoute:
+        model: str
+        api_key: str | None
+        api_base: str | None
+        temperature: float
+        max_tokens: int | None
+        prompt_template: str | None
+        override: bool
+
     async def _get_routing(self, task_type: str, user_id: int | None = None) -> "RoutingConfig | None":
         """Get routing config from model router if available."""
         if self.model_router:
@@ -56,6 +67,86 @@ class LlmRouter:
             except Exception as e:
                 logger.warning(f"Failed to get routing from DB, using env config: {e}")
         return None
+
+    async def _resolve_override(
+        self,
+        model_id: str | None,
+        provider_code: str | None,
+        user_id: int | None,
+    ) -> "LlmRouter._ResolvedRoute | None":
+        if not model_id:
+            return None
+        if not self.model_router:
+            raise ValueError("Model override is not available")
+
+        model = await self.model_router.provider_registry.get_model(model_id, provider_code)
+        if not model:
+            raise ValueError("Requested model not found")
+
+        credential = await self.model_router.credential_resolver.get_credential(
+            model.provider_code,
+            user_id=user_id,
+        )
+        if not credential:
+            raise ValueError("Credential not found for requested provider")
+
+        return LlmRouter._ResolvedRoute(
+            model=model.model_id,
+            api_key=credential.api_key,
+            api_base=credential.base_url,
+            temperature=0.7,
+            max_tokens=None,
+            prompt_template=None,
+            override=True,
+        )
+
+    async def _resolve_route(
+        self,
+        model_alias: str,
+        user_id: int | None = None,
+        model_id: str | None = None,
+        provider_code: str | None = None,
+    ) -> "LlmRouter._ResolvedRoute":
+        override = await self._resolve_override(model_id, provider_code, user_id)
+        if override:
+            return override
+
+        routing = await self._get_routing(model_alias, user_id)
+        if routing:
+            return LlmRouter._ResolvedRoute(
+                model=routing.model.model_id,
+                api_key=routing.credential.api_key,
+                api_base=routing.credential.base_url,
+                temperature=routing.config.get("temperature", 0.7),
+                max_tokens=routing.config.get("max_tokens"),
+                prompt_template=routing.prompt_template,
+                override=False,
+            )
+
+        return LlmRouter._ResolvedRoute(
+            model=self.resolve_model(model_alias),
+            api_key=self.settings.openai_api_key,
+            api_base=self.settings.openai_base_url,
+            temperature=0.7,
+            max_tokens=None,
+            prompt_template=None,
+            override=False,
+        )
+
+    async def resolve_effective_model(
+        self,
+        model_alias: str,
+        user_id: int | None = None,
+        model_id: str | None = None,
+        provider_code: str | None = None,
+    ) -> str:
+        resolved = await self._resolve_route(
+            model_alias=model_alias,
+            user_id=user_id,
+            model_id=model_id,
+            provider_code=provider_code,
+        )
+        return resolved.model
 
     def _render_prompt(self, template: str | None, default_template: str, **kwargs) -> str:
         """Render prompt template with provided variables."""
@@ -78,49 +169,45 @@ class LlmRouter:
         model_alias: str,
         user_id: int | None = None,
         custom_prompt: str | None = None,
+        model_id: str | None = None,
+        provider_code: str | None = None,
     ) -> str:
         """Send a chat completion request with dynamic prompt rendering."""
-        # Try dynamic routing first
-        routing = await self._get_routing(model_alias, user_id)
-        
-        if routing:
-            model = routing.model.model_id
-            api_key = routing.credential.api_key
-            api_base = routing.credential.base_url
-            temperature = routing.config.get("temperature", 0.7)
-            max_tokens = routing.config.get("max_tokens")
-        else:
-            model = self.resolve_model(model_alias)
-            api_key = self.settings.openai_api_key
-            api_base = self.settings.openai_base_url
-            temperature = 0.7
-            max_tokens = None
-        
-        # Determine and render prompt
-        prompt_template = custom_prompt or (routing.config.get("prompt_template") if routing else None)
+        resolved = await self._resolve_route(
+            model_alias=model_alias,
+            user_id=user_id,
+            model_id=model_id,
+            provider_code=provider_code,
+        )
+
+        prompt_template = custom_prompt or resolved.prompt_template
         normalized_variables = self._normalize_prompt_variables(prompt_variables)
         prompt = self._render_prompt(
             template=prompt_template,
             default_template=normalized_variables.get("content", ""),
             **normalized_variables
         )
-        
-        if self.settings.mock_mode:
-            return f"[mock:{model}]"
+
+        if self.settings.mock_mode and not resolved.override:
+            return f"[mock:{resolved.model}]"
         
         try:
             response = await acompletion(
-                model=model,
+                model=resolved.model,
                 messages=[{"role": "user", "content": prompt}],
-                api_key=api_key,
-                api_base=api_base,
-                temperature=temperature,
-                max_tokens=max_tokens,
+                api_key=resolved.api_key,
+                api_base=resolved.api_base,
+                temperature=resolved.temperature,
+                max_tokens=resolved.max_tokens,
             )
             content = response.choices[0].message.content
             return content or ""
         except Exception as e:
             # Try fallback model if available
+            if self.model_router:
+                routing = await self._get_routing(model_alias, user_id)
+            else:
+                routing = None
             if routing and routing.fallback_model:
                 logger.warning(f"Primary model failed, trying fallback: {e}")
                 fallback_routing = await self._get_routing_for_fallback(routing)
@@ -164,45 +251,38 @@ class LlmRouter:
         model_alias: str,
         user_id: int | None = None,
         custom_prompt: str | None = None,
+        model_id: str | None = None,
+        provider_code: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """Stream chat completion response with dynamic prompt rendering."""
-        routing = await self._get_routing(model_alias, user_id)
-        
-        if routing:
-            model = routing.model.model_id
-            api_key = routing.credential.api_key
-            api_base = routing.credential.base_url
-            temperature = routing.config.get("temperature", 0.7)
-            max_tokens = routing.config.get("max_tokens")
-        else:
-            model = self.resolve_model(model_alias)
-            api_key = self.settings.openai_api_key
-            api_base = self.settings.openai_base_url
-            temperature = 0.7
-            max_tokens = None
-        
-        # Determine and render prompt
-        prompt_template = custom_prompt or (routing.config.get("prompt_template") if routing else None)
+        resolved = await self._resolve_route(
+            model_alias=model_alias,
+            user_id=user_id,
+            model_id=model_id,
+            provider_code=provider_code,
+        )
+
+        prompt_template = custom_prompt or resolved.prompt_template
         normalized_variables = self._normalize_prompt_variables(prompt_variables)
         prompt = self._render_prompt(
             template=prompt_template,
             default_template=normalized_variables.get("content", ""),
             **normalized_variables
         )
-        
-        if self.settings.mock_mode:
-            for chunk in ["[", "mock", f":{model}", "]"]:
+
+        if self.settings.mock_mode and not resolved.override:
+            for chunk in ["[", "mock", f":{resolved.model}", "]"]:
                 yield chunk
                 await asyncio.sleep(0)
             return
         
         stream = await acompletion(
-            model=model,
+            model=resolved.model,
             messages=[{"role": "user", "content": prompt}],
-            api_key=api_key,
-            api_base=api_base,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            api_key=resolved.api_key,
+            api_base=resolved.api_base,
+            temperature=resolved.temperature,
+            max_tokens=resolved.max_tokens,
             stream=True,
         )
         async for part in stream:
