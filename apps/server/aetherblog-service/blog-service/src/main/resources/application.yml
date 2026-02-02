@@ -29,6 +29,10 @@ spring:
       port: 6379
       database: 0
 
+  # Elasticsearch 配置
+  elasticsearch:
+    uris: http://localhost:9200
+
 # 服务器配置
 server:
   port: 8080
