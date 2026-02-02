@@ -55,6 +55,10 @@ spring:
       port: 6379
       database: 0
   
+  # Elasticsearch 配置
+  elasticsearch:
+    uris: http://localhost:9200
+
   # AI 配置
   ai:
     openai:
