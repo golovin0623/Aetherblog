@@ -29,7 +29,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Theme Toggle */}
+        {/* 主题切换 */}
         <button
           onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
           className={cn(
