@@ -19,7 +19,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
 
   return (
     <div className={`flex items-center bg-[var(--bg-secondary)] rounded-full ${paddingClass} border border-[var(--border-subtle)] relative`}>
-      {/* Sliding pill indicator */}
+      {/* 滑动药丸指示器 */}
       <div
         className={`absolute top-0.5 bottom-0.5 ${widthClass} bg-primary/20 rounded-full transition-all duration-300 ease-out`}
         style={{
@@ -27,7 +27,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
         }}
       />
       
-      {/* Links - fixed width to prevent layout shift */}
+      {/* 链接 - 固定宽度防止布局偏移 */}
       <Link
         href="/posts"
         className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
