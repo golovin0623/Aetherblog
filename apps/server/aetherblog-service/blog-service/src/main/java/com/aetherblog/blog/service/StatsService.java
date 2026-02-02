@@ -158,45 +158,55 @@ public class StatsService {
     }
 
     /**
-     * 获取访客趋势数据
-     * @param days 查询最近多少天的数据
-     * @return 每日 PV/UV 列表
+     * 获取访客趋势数据 (基于 visit_records 表)
+     *
+     * @param days 查询最近多少天的数据 (最大 30 天)
+     * @return 每日 PV/UV 列表，排除机器人访问，聚合每日数据
      */
     public List<VisitorTrend> getVisitorTrend(int days) {
+        // 默认查询最近7天，最大支持30天
+        if (days <= 0) days = 7;
+        if (days > 30) days = 30;
+
         LocalDateTime startTime = LocalDate.now().minusDays(days - 1).atStartOfDay();
         
-        // 从 visit_records 表获取每日统计
+        // 从 visit_records 表获取每日统计 (已在 Repository 层过滤 isBot = false)
         List<Object[]> dailyStats = visitRecordRepository.getDailyStats(startTime);
         
         // 构建日期到数据的映射
         Map<String, VisitorTrend> trendMap = new HashMap<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         
-        for (Object[] row : dailyStats) {
-            LocalDate date;
-            Object dateObj = row[0];
-            // Hibernate 6+ 可能返回 LocalDate，旧版本返回 java.sql.Date
-            if (dateObj instanceof LocalDate) {
-                date = (LocalDate) dateObj;
-            } else if (dateObj instanceof java.sql.Date) {
-                date = ((java.sql.Date) dateObj).toLocalDate();
-            } else if (dateObj instanceof java.util.Date) {
-                date = ((java.util.Date) dateObj).toInstant()
-                        .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
-            } else {
-                log.warn("Unknown date type from getDailyStats: {}", dateObj != null ? dateObj.getClass() : "null");
-                continue;
+        if (dailyStats != null) {
+            for (Object[] row : dailyStats) {
+                if (row == null || row.length < 3) continue;
+
+                LocalDate date;
+                Object dateObj = row[0];
+                if (dateObj instanceof LocalDate ld) {
+                    date = ld;
+                } else if (dateObj instanceof java.sql.Date sd) {
+                    date = sd.toLocalDate();
+                } else if (dateObj instanceof java.util.Date ud) {
+                    date = ud.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                } else {
+                    log.warn("getDailyStats 返回了未知的日期类型: {}", dateObj != null ? dateObj.getClass() : "null");
+                    continue;
+                }
+
+                String dateStr = date.format(formatter);
+                long pv = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+                long uv = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+
+                trendMap.put(dateStr, new VisitorTrend(dateStr, pv, uv));
             }
-            String dateStr = date.format(formatter);
-            long pv = ((Number) row[1]).longValue();
-            long uv = ((Number) row[2]).longValue();
-            trendMap.put(dateStr, new VisitorTrend(dateStr, pv, uv));
         }
         
-        // 补全缺失的日期（显示为0）
+        // 补全缺失的日期，确保返回连续的时间序列
         List<VisitorTrend> result = new ArrayList<>();
+        LocalDate today = LocalDate.now();
         for (int i = days - 1; i >= 0; i--) {
-            String dateStr = LocalDate.now().minusDays(i).format(formatter);
+            String dateStr = today.minusDays(i).format(formatter);
             result.add(trendMap.getOrDefault(dateStr, new VisitorTrend(dateStr, 0, 0)));
         }
         
