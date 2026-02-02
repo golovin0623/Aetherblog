@@ -1,0 +1,26 @@
+# =============================================================================
+# AetherBlog Development Environment Configuration
+# =============================================================================
+# This file contains insecure defaults for local development only.
+# It is activated by default via spring.profiles.active=dev in application.yml.
+# DO NOT USE THESE CREDENTIALS IN PRODUCTION.
+# =============================================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/aetherblog
+    username: aetherblog
+    password: aetherblog123
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+
+  ai:
+    openai:
+      api-key: sk-placeholder
+
+jwt:
+  secret: aetherblog-secret-key-for-jwt-token-generation-2024

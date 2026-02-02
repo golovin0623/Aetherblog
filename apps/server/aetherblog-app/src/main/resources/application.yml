@@ -2,6 +2,10 @@ spring:
   application:
     name: aetherblog
   
+  # Set default profile to dev for local development
+  profiles:
+    active: dev
+
   # 文件上传配置 (支持大文件/视频上传, 最大10GB)
   servlet:
     multipart:
@@ -17,9 +21,7 @@ spring:
   
   # 数据源配置
   datasource:
-    url: jdbc:postgresql://localhost:5432/aetherblog
-    username: aetherblog
-    password: aetherblog123
+    # URL, Username, Password are configured in application-dev.yml or via Environment Variables
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -49,16 +51,12 @@ spring:
     clean-disabled: ${FLYWAY_CLEAN_DISABLED:false}
   
   # Redis 配置
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      database: 0
+  # Host, Port are configured in application-dev.yml or via Environment Variables
   
   # AI 配置
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:sk-placeholder}
+      # API Key configured in application-dev.yml or via Environment Variables
       chat:
         model: gpt-4-turbo-preview
         options:
@@ -74,7 +72,7 @@ server:
 
 # JWT 配置
 jwt:
-  secret: ${JWT_SECRET:aetherblog-secret-key-for-jwt-token-generation-2024}
+  # Secret configured in application-dev.yml or via Environment Variables
   expiration: 86400000 # 24 hours
 
 # 日志配置
