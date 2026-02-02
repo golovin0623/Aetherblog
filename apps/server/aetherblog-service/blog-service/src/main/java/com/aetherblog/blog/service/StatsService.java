@@ -207,14 +207,20 @@ public class StatsService {
      * 获取近期文章统计
      */
     public Map<String, Long> getRecentPostStats() {
+        LocalDateTime now = LocalDateTime.now();
+        // 本周开始时间 (周一 00:00:00)
+        LocalDateTime thisWeekStart = now.with(java.time.DayOfWeek.MONDAY).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        // 本月开始时间 (1号 00:00:00)
+        LocalDateTime thisMonthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+
         long totalPosts = postRepository.count();
-        // TODO: 实现按时间过滤的文章统计
-        // 需要在 PostRepository 中添加按创建时间查询的方法
+        long thisWeekPosts = postRepository.countByCreatedAtGreaterThanEqual(thisWeekStart);
+        long thisMonthPosts = postRepository.countByCreatedAtGreaterThanEqual(thisMonthStart);
         
         Map<String, Long> stats = new HashMap<>();
         stats.put("total", totalPosts);
-        stats.put("thisWeek", 0L);  // 需要按创建时间过滤
-        stats.put("thisMonth", 0L); // 需要按创建时间过滤
+        stats.put("thisWeek", thisWeekPosts);
+        stats.put("thisMonth", thisMonthPosts);
         
         return stats;
     }
