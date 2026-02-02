@@ -2,7 +2,9 @@ package com.aetherblog.common.core.exception;
 
 import com.aetherblog.common.core.domain.R;
 import com.aetherblog.common.core.enums.ResultCode;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -18,7 +20,10 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final Environment environment;
 
     /**
      * 业务异常
@@ -58,7 +63,10 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<Void> handleException(Exception e) {
         log.error("系统异常", e);
-        // FIXME: 调试期间暴露异常信息，生产环境应屏蔽
+        // 生产环境屏蔽具体异常信息
+        if (environment.matchesProfiles("prod")) {
+            return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常");
+        }
         return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常: " + e.getMessage());
     }
 }
