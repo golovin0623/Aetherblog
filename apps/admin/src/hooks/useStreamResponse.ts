@@ -139,7 +139,7 @@ export function useStreamResponse(): UseStreamResponseReturn {
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
             
-            const jsonStr = line.slice(6); // 移除 "data: "
+            const jsonStr = line.slice('data: '.length); // 移除 "data: "
             if (!jsonStr.trim()) continue;
 
             try {
