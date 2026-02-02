@@ -55,8 +55,24 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
     Page<Post> findByStatusAndKeyword(@Param("status") PostStatus status, @Param("keyword") String keyword, Pageable pageable);
 
     /**
-     * 统计时间范围内新增文章数
+     * 统计未删除的文章总数
      */
-    @Query("SELECT COUNT(p) FROM Post p WHERE p.createdAt BETWEEN :startTime AND :endTime")
-    int countByCreatedAtBetween(@Param("startTime") java.time.LocalDateTime startTime, @Param("endTime") java.time.LocalDateTime endTime);
+    long countByDeletedFalse();
+
+    /**
+     * 统计所有未删除文章的总字数
+     */
+    @Query("SELECT SUM(p.wordCount) FROM Post p WHERE p.deleted = false")
+    Long sumWordCountByDeletedFalse();
+
+    /**
+     * 统计时间范围内新增的文章数 (排除已删除)
+     */
+    @Query("SELECT COUNT(p) FROM Post p WHERE p.deleted = false AND p.createdAt BETWEEN :startTime AND :endTime")
+    long countByCreatedAtBetween(@Param("startTime") java.time.LocalDateTime startTime, @Param("endTime") java.time.LocalDateTime endTime);
+
+    /**
+     * 统计指定时间之后新增的文章数 (包含起始时间，排除已删除)
+     */
+    long countByDeletedFalseAndCreatedAtGreaterThanEqual(java.time.LocalDateTime dateTime);
 }
