@@ -35,7 +35,7 @@ public class ElasticsearchConfig {
                         URI uri = URI.create(uriStr);
                         return new HttpHost(uri.getHost(), uri.getPort() == -1 ? 9200 : uri.getPort(), uri.getScheme());
                     } catch (Exception e) {
-                        log.error("Invalid Elasticsearch URI: {}", uriStr);
+                        log.error("Invalid Elasticsearch URI format detected");
                         return new HttpHost("localhost", 9200, "http");
                     }
                 })
