@@ -27,7 +27,7 @@ public class ElasticsearchConfig {
 
     @Bean(destroyMethod = "close")
     public RestHighLevelClient restHighLevelClient() {
-        log.info("Initializing Elasticsearch RestHighLevelClient with URIs: {}", uris);
+        log.info("Initializing Elasticsearch RestHighLevelClient");
 
         HttpHost[] hosts = uris.stream()
                 .map(uriStr -> {
