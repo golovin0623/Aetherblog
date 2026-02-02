@@ -41,6 +41,7 @@
         <jjwt.version>0.12.7</jjwt.version>
         <!-- 适用于 Spring Boot 4 的 Jackson 3.x (tools.jackson) -->
         <jackson.version>3.0.3</jackson.version>
+        <elasticsearch.version>7.17.27</elasticsearch.version>
         <!-- JDK 25 测试支持：覆盖 Byte Buddy 以兼容 Mockito -->
         <byte-buddy.version>1.17.8</byte-buddy.version>
     </properties>
@@ -138,6 +139,13 @@
                 <groupId>tools.jackson.core</groupId>
                 <artifactId>jackson-databind</artifactId>
                 <version>${jackson.version}</version>
+            </dependency>
+
+            <!-- Elasticsearch Rest High Level Client -->
+            <dependency>
+                <groupId>org.elasticsearch.client</groupId>
+                <artifactId>elasticsearch-rest-high-level-client</artifactId>
+                <version>${elasticsearch.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
