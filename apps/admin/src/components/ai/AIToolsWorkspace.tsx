@@ -44,7 +44,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
   const { resolvedTheme } = useTheme();
 
-  // Streaming state
+  // 流式状态
   const {
     content: streamContent,
     thinkContent,
@@ -57,10 +57,10 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     abort
   } = useStreamResponse();
 
-  // Get current tool's prompt config from the pre-loaded list
+  // 从预加载列表中获取当前工具的 Prompt 配置
   const promptConfig = allConfigs.find(c => c.task_type === selectedTool.id) || null;
 
-  // Clear result when tool changes
+  // 工具切换时清除结果
   useEffect(() => {
     resetStream();
   }, [selectedTool.id, resetStream]);
@@ -76,7 +76,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
       return;
     }
 
-    // Prepare request data based on tool
+    // 根据工具准备请求数据
     const reqData: Record<string, unknown> = {
       content: input,
       promptTemplate: promptConfig?.custom_prompt || undefined,
@@ -93,10 +93,10 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     }
 
     if (selectedTool.id === 'translate') {
-      reqData.targetLanguage = 'en'; // Default to English
+      reqData.targetLanguage = 'en'; // 默认为英语
     }
 
-    // Use streaming endpoint
+    // 使用流式端点
     const streamUrl = `${AI_SERVICE_URL}/${selectedTool.id}/stream`;
     
     try {
@@ -132,12 +132,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
   return (
     <div className="h-full grid grid-cols-1 xl:grid-cols-2 gap-6 animate-in fade-in duration-500">
-      {/* Inject Markdown Styles */}
+      {/* 注入 Markdown 样式 */}
       <style dangerouslySetInnerHTML={{ __html: previewStyles }} />
 
-      {/* Input Column (Middle) */}
+      {/* 输入列 (中间) */}
       <div className="flex flex-col h-full bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative">
-        {/* Top shine effect */}
+        {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div 
             className={cn(
@@ -205,7 +205,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         <div className="flex-1 flex flex-col min-h-0 rounded-b-3xl overflow-hidden">
-          {/* Input Section (1/2) */}
+          {/* 输入区域 (1/2) */}
           <div className="flex-1 relative">
             <textarea
               value={input}
@@ -220,7 +220,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             )}
           </div>
 
-          {/* Prompt Section (1/2) */}
+          {/* Prompt 区域 (1/2) */}
           {promptConfig && !isGlobalLoading && (
             <>
               <div className="w-full border-t border-dashed border-[var(--border-default)] opacity-50 my-0" />
@@ -239,9 +239,9 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Result Column (Right) */}
+      {/* 结果列 (右侧) */}
       <div className="flex flex-col h-full overflow-hidden bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] shadow-sm relative group">
-        {/* Top shine effect */}
+        {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div 
             className={cn(
@@ -315,7 +315,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           ) : (
             <div className="space-y-4 animate-in fade-in duration-300 relative">
-              {/* Thinking Block */}
+              {/* 思考块 */}
               {(thinkContent || isThinking) && (
                 <ThinkingBlock 
                   content={thinkContent} 
@@ -323,7 +323,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 />
               )}
               
-              {/* Stream Content */}
+              {/* 流式内容 */}
               <div className="relative min-h-[200px]">
                 {viewMode === 'preview' ? (
                   <MarkdownPreview 
@@ -341,7 +341,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                       {streamContent || (isStreaming && !isThinking && (
                         <span className="text-[var(--text-muted)] italic">正在生成...</span>
                       ))}
-                      {/* Typewriter Cursor */}
+                      {/* 打字机光标 */}
                       {isStreaming && !isThinking && streamContent && (
                         <span className="inline-block w-0.5 h-4 bg-emerald-500 ml-0.5 animate-pulse" />
                       )}
