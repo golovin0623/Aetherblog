@@ -209,9 +209,9 @@ public class StatsService {
     public Map<String, Long> getRecentPostStats() {
         LocalDateTime now = LocalDateTime.now();
         // 本周开始时间 (周一 00:00:00)
-        LocalDateTime thisWeekStart = now.with(java.time.DayOfWeek.MONDAY).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime thisWeekStart = now.with(java.time.DayOfWeek.MONDAY).truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         // 本月开始时间 (1号 00:00:00)
-        LocalDateTime thisMonthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime thisMonthStart = now.withDayOfMonth(1).truncatedTo(java.time.temporal.ChronoUnit.DAYS);
 
         long totalPosts = postRepository.count();
         long thisWeekPosts = postRepository.countByCreatedAtGreaterThanEqual(thisWeekStart);
