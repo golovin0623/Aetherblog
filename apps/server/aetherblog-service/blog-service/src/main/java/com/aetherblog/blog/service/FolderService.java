@@ -112,7 +112,7 @@ public interface FolderService {
      *
      * @param folderId 文件夹ID
      * @param userId 用户ID
-     * @return true if user has access
+     * @return 如果用户拥有访问权限则返回 true
      */
     boolean hasAccess(Long folderId, Long userId);
 

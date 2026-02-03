@@ -43,7 +43,7 @@ export default function MobileMenu() {
   const { data: settings } = useQuery({
     queryKey: ['siteSettings'],
     queryFn: getSiteSettings,
-    staleTime: 10 * 60 * 1000 // 10 mins
+    staleTime: 10 * 60 * 1000 // 10 分钟
   });
 
   const authorName = settings?.author_name || settings?.authorName || 'Golovin';

@@ -55,7 +55,7 @@ public interface StorageService {
      *
      * @param path 文件路径
      * @param provider 存储提供商
-     * @return CDN URL
+     * @return CDN 地址
      */
     String getCdnUrl(String path, StorageProvider provider);
 
