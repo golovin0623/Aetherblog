@@ -37,14 +37,14 @@ public class StatsServiceTest {
 
     @Test
     void testGetRecentPostStats() {
-        // Arrange
+        // 准备
         when(postRepository.count()).thenReturn(100L);
         when(postRepository.countByCreatedAtGreaterThanEqual(any(LocalDateTime.class))).thenReturn(5L, 20L);
 
-        // Act
+        // 执行
         Map<String, Long> stats = statsService.getRecentPostStats();
 
-        // Assert
+        // 断言
         assertEquals(100L, stats.get("total"));
         assertEquals(5L, stats.get("thisWeek"));
         assertEquals(20L, stats.get("thisMonth"));
