@@ -168,10 +168,11 @@ export function LoginPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300 ml-1">Username</label>
+                <label htmlFor="username" className="text-sm font-medium text-slate-300 ml-1">Username</label>
                 <div className="relative group">
                   <UserIcon className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
+                    id="username"
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -184,12 +185,13 @@ export function LoginPage() {
 
               <div className="space-y-2">
                  <div className="flex items-center justify-between ml-1">
-                   <label className="text-sm font-medium text-slate-300">Password</label>
+                   <label htmlFor="password" className="text-sm font-medium text-slate-300">Password</label>
                    <a href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">Forgot password?</a>
                  </div>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
+                    id="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -200,8 +202,8 @@ export function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
-                    tabIndex={-1}
+                    className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded"
+                    aria-label="Toggle password visibility" aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
