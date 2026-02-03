@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 @Table(name = "visit_records", indexes = {
     @Index(name = "idx_visit_records_post", columnList = "post_id"),
     @Index(name = "idx_visit_records_visitor", columnList = "visitor_hash"),
-    @Index(name = "idx_visit_records_created", columnList = "createdAt")
+    @Index(name = "idx_visit_records_bot_created", columnList = "is_bot, created_at")
 })
 public class VisitRecord {
 
