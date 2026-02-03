@@ -131,19 +131,19 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 `;
 
   return (
-    <div className="h-full grid grid-cols-1 xl:grid-cols-2 gap-6 animate-in fade-in duration-500">
+    <div className="h-full flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6 animate-in fade-in duration-500 overflow-y-auto md:overflow-hidden">
       {/* Inject Markdown Styles */}
       <style dangerouslySetInnerHTML={{ __html: previewStyles }} />
 
       {/* Input Column (Middle) */}
-      <div className="flex flex-col h-full bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative">
+      <div className="flex flex-col min-h-[50vh] md:min-h-0 md:h-full bg-[var(--bg-card)] rounded-2xl md:rounded-3xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative">
         {/* Top shine effect */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
-          <div 
+          <div
             className={cn(
               "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
               "dark:border-white/10"
-            )} 
+            )}
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
               WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -151,7 +151,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           />
         </div>
 
-        <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-card)] rounded-t-3xl z-20 flex-shrink-0">
+        {/* Header - Desktop */}
+        <div className="hidden md:flex p-4 border-b border-[var(--border-subtle)] items-center justify-between bg-[var(--bg-card)] rounded-t-3xl z-20 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-primary/10">
               <FileText className="w-5 h-5 text-primary" />
@@ -171,7 +172,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 className="w-[180px]"
                 selectedProviderCode={selectedProviderCode}
              />
-             
+
              {isStreaming ? (
                 <button
                   onClick={abort}
@@ -204,18 +205,26 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-h-0 rounded-b-3xl overflow-hidden">
+        {/* Header - Mobile: Title only */}
+        <div className="md:hidden p-3 border-b border-[var(--border-subtle)] flex items-center gap-2 bg-[var(--bg-card)] rounded-t-2xl z-20 flex-shrink-0">
+          <div className="p-1.5 rounded-lg bg-primary/10">
+            <FileText className="w-4 h-4 text-primary" />
+          </div>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">测试内容</h2>
+        </div>
+
+        <div className="flex-1 flex flex-col min-h-0 rounded-b-2xl md:rounded-b-3xl overflow-hidden">
           {/* Input Section (1/2) */}
-          <div className="flex-1 relative">
+          <div className="flex-1 relative min-h-[120px]">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
-              className="w-full h-full p-6 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-sm font-light ring-offset-bg overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent"
+              className="w-full h-full p-4 md:p-6 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-sm font-light ring-offset-bg overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent"
             />
             {input.length === 0 && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
-                <FileText className="w-16 h-16 text-[var(--text-muted)]" />
+                <FileText className="w-12 h-12 md:w-16 md:h-16 text-[var(--text-muted)]" />
               </div>
             )}
           </div>
@@ -224,7 +233,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           {promptConfig && !isGlobalLoading && (
             <>
               <div className="w-full border-t border-dashed border-[var(--border-default)] opacity-50 my-0" />
-              <div className="flex-1 bg-[var(--bg-secondary)] relative">
+              <div className="flex-1 bg-[var(--bg-secondary)] relative min-h-[100px]">
                 <PromptEditor
                   taskType={selectedTool.id}
                   defaultPrompt={promptConfig.default_prompt}
@@ -235,19 +244,62 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               </div>
             </>
           )}
-          <div className="h-2 flex-none bg-[var(--bg-secondary)]" />
+          {/* Bottom spacer - taller on mobile for floating bar */}
+          <div className="h-20 md:h-2 flex-none bg-[var(--bg-secondary)]" />
+        </div>
+
+        {/* Mobile: Model selector and action button - floating bar */}
+        <div className="md:hidden absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-[var(--bg-card)] via-[var(--bg-card)] to-transparent z-20">
+          <div className="flex items-center gap-2 p-2 bg-[var(--bg-secondary)]/90 backdrop-blur-sm rounded-2xl border border-[var(--border-subtle)]">
+            <ModelSelector
+              value={selectedModelId}
+              onChange={(modelId, provider) => {
+                setSelectedModelId(modelId);
+                setSelectedProviderCode(provider);
+              }}
+              className="flex-1"
+              selectedProviderCode={selectedProviderCode}
+              variant="compact"
+              menuAlign="left"
+              menuClassName="!fixed !left-4 !right-4 !w-auto !max-w-none !top-auto !bottom-20"
+            />
+
+            {isStreaming ? (
+              <button
+                onClick={abort}
+                type="button"
+                className="w-10 h-10 p-0 rounded-xl border border-red-500/30 bg-[var(--bg-card)] text-red-500 hover:bg-red-500/10 transition-all active:scale-95 inline-flex items-center justify-center flex-shrink-0"
+                aria-label="停止生成"
+              >
+                <Square className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleRunTest}
+                type="button"
+                disabled={isRunDisabled}
+                className={cn(
+                  "w-10 h-10 p-0 rounded-xl bg-primary text-white transition-all active:scale-95 inline-flex items-center justify-center flex-shrink-0",
+                  isRunDisabled && "opacity-50 cursor-not-allowed"
+                )}
+                aria-label="生成测试"
+              >
+                <ArrowUpRight className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Result Column (Right) */}
-      <div className="flex flex-col h-full overflow-hidden bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] shadow-sm relative group">
+      <div className="flex flex-col min-h-[45vh] md:min-h-0 md:h-full overflow-hidden bg-[var(--bg-card)] rounded-2xl md:rounded-3xl border border-[var(--border-subtle)] shadow-sm relative group">
         {/* Top shine effect */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
-          <div 
+          <div
             className={cn(
               "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
               "dark:border-white/10"
-            )} 
+            )}
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
               WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -258,26 +310,26 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-700 -z-10 pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl group-hover:bg-emerald-500/10 transition-colors duration-700 -z-10 pointer-events-none" />
 
-        <div className="p-6 pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm">
+        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+            <div className="p-1.5 md:p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors">
+              <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">生成结果</h2>
+              <h2 className="text-sm md:text-lg font-semibold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">生成结果</h2>
             </div>
           </div>
-          
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2 md:gap-3">
              <div className={cn(
                "px-2 py-1 rounded-md text-[10px] font-mono border transition-all",
-               isDone ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : 
-               isStreaming ? "bg-blue-500/10 text-blue-500 border-blue-500/20 animate-pulse" : 
+               isDone ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+               isStreaming ? "bg-blue-500/10 text-blue-500 border-blue-500/20 animate-pulse" :
                "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
              )}>
-               {isDone ? '已完成' : isStreaming ? '正在生成' : '预览'}
+               {isDone ? '已完成' : isStreaming ? '生成中' : '预览'}
              </div>
-             
+
              <button
                onClick={() => setViewMode(prev => prev === 'preview' ? 'code' : 'preview')}
                className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-all active:scale-95"
@@ -292,7 +344,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[var(--border-subtle)]/30 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[var(--border-subtle)]/60 scrollbar-track-transparent z-0">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[var(--border-subtle)]/30 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[var(--border-subtle)]/60 scrollbar-track-transparent z-0">
           {streamError ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
               <div className="p-4 rounded-full bg-red-500/10 border border-red-500/20 animate-in zoom-in-50 duration-300">

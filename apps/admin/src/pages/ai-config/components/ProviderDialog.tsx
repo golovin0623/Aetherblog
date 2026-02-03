@@ -136,7 +136,7 @@ export default function ProviderDialog({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
+        className="relative w-[90vw] sm:w-full sm:max-w-md max-h-[80vh] flex flex-col rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
       >
         {/* 顶部环境光 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
@@ -176,7 +176,7 @@ export default function ProviderDialog({
                       type="radio"
                       checked={usePreset}
                       onChange={() => setUsePreset(true)}
-                      className="accent-primary w-4 h-4"
+                      className="accent-black dark:accent-white w-4 h-4"
                     />
                     使用预设
                   </label>
@@ -185,7 +185,7 @@ export default function ProviderDialog({
                       type="radio"
                       checked={!usePreset}
                       onChange={() => setUsePreset(false)}
-                      className="accent-primary w-4 h-4"
+                      className="accent-black dark:accent-white w-4 h-4"
                     />
                     自定义
                   </label>
@@ -233,7 +233,7 @@ export default function ProviderDialog({
                   value={form.name}
                   onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="OpenAI"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
                 />
               </div>
               <div className="space-y-2">
@@ -243,7 +243,7 @@ export default function ProviderDialog({
                   value={form.display_name}
                   onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                   placeholder="OpenAI"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
                 />
               </div>
             </div>
@@ -272,7 +272,7 @@ export default function ProviderDialog({
                 value={form.base_url}
                 onChange={(e) => setForm((prev) => ({ ...prev, base_url: e.target.value }))}
                 placeholder="https://api.openai.com/v1"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
 
@@ -284,7 +284,7 @@ export default function ProviderDialog({
                 value={form.doc_url}
                 onChange={(e) => setForm((prev) => ({ ...prev, doc_url: e.target.value }))}
                 placeholder="https://docs.example.com"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
 
@@ -308,7 +308,7 @@ export default function ProviderDialog({
                     onClick={() => setForm((prev) => ({ ...prev, icon: emoji }))}
                     className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-all ${
                       form.icon === emoji 
-                        ? 'border-primary bg-primary/10 text-primary shadow-[0_0_12px_rgba(var(--primary-rgb),0.2)]' 
+                        ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black shadow-sm' 
                         : 'border-[var(--border-default)] bg-[var(--bg-card)]'
                     }`}
                   >
@@ -339,7 +339,7 @@ export default function ProviderDialog({
                   type="checkbox"
                   checked={form.is_enabled}
                   onChange={(e) => setForm((prev) => ({ ...prev, is_enabled: e.target.checked }))}
-                  className="peer appearance-none w-5 h-5 rounded-md border border-[var(--border-default)] checked:bg-primary checked:border-transparent transition-all cursor-pointer"
+                  className="peer appearance-none w-5 h-5 rounded-md border border-[var(--border-default)] checked:bg-black dark:checked:bg-white checked:border-transparent transition-all cursor-pointer"
                 />
                 <X className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity rotate-45 scale-125 translate-x-[0.5px] -translate-y-[0.5px] pointer-events-none" />
               </div>
@@ -363,7 +363,7 @@ export default function ProviderDialog({
             disabled={isPending || !form.code || !form.name}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm active:scale-95"
           >
             {isPending ? (
               <Loader2 className="w-4 h-4 animate-spin" />

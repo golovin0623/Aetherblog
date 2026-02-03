@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ElementType } from 'react';
-import { Sparkles, BrainCircuit, Wand2, ListTree, Languages, PenLine, FileEdit, Wrench, Plus, Settings2 } from 'lucide-react';
+import { Sparkles, BrainCircuit, Wand2, ListTree, Languages, PenLine, FileEdit, Wrench, Plus, Settings2, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AIToolsWorkspace } from '@/components/ai/AIToolsWorkspace';
 import { CustomToolModal } from '@/components/ai/CustomToolModal';
 import { aiProviderService, AiTaskType } from '@/services/aiProviderService';
 import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
   PointerSensor,
@@ -84,11 +85,19 @@ export default function AIToolsPage() {
   const systemCodes = useMemo(() => SYSTEM_TOOLS.map(t => t.code), []);
   const [systemOrder, setSystemOrder] = useState<string[]>(() => syncOrder(loadOrder(SYSTEM_ORDER_KEY), systemCodes));
   const [customOrder, setCustomOrder] = useState<string[]>(() => loadOrder(CUSTOM_ORDER_KEY));
-  
+
   // Custom tool management state
   const [showToolModal, setShowToolModal] = useState(false);
   const [editingTool, setEditingTool] = useState<AiTaskType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Mobile sidebar state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Mobile tool tabs scroll ref
+  const toolTabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const fetchAllData = async () => {
     setIsLoading(true);
@@ -227,10 +236,260 @@ export default function AIToolsPage() {
     }
   };
 
+  // Check scroll state for mobile tabs
+  const checkScrollState = () => {
+    if (toolTabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = toolTabsRef.current;
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 1);
+    }
+  };
+
+  useEffect(() => {
+    checkScrollState();
+    const el = toolTabsRef.current;
+    if (el) {
+      el.addEventListener('scroll', checkScrollState);
+      window.addEventListener('resize', checkScrollState);
+      return () => {
+        el.removeEventListener('scroll', checkScrollState);
+        window.removeEventListener('resize', checkScrollState);
+      };
+    }
+  }, [allTools]);
+
+  // Scroll to selected tool on mobile
+  useEffect(() => {
+    if (toolTabsRef.current) {
+      const selectedEl = toolTabsRef.current.querySelector(`[data-tool-id="${selectedToolId}"]`) as HTMLElement;
+      if (selectedEl) {
+        const container = toolTabsRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const selectedRect = selectedEl.getBoundingClientRect();
+
+        // Center the selected item
+        const scrollOffset = selectedRect.left - containerRect.left - (containerRect.width / 2) + (selectedRect.width / 2);
+        container.scrollTo({
+          left: container.scrollLeft + scrollOffset,
+          behavior: 'smooth'
+        });
+      }
+      checkScrollState();
+    }
+  }, [selectedToolId]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (toolTabsRef.current) {
+      const scrollAmount = 150;
+      toolTabsRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleMobileToolSelect = (code: string) => {
+    setSelectedToolId(code);
+  };
+
   return (
-    <div className="h-[calc(100vh-6rem)] overflow-hidden flex gap-6">
-      {/* Left Column: Tools List */}
-      <div className="w-[280px] flex-shrink-0 flex flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] overflow-hidden shadow-sm h-full">
+    <div className="h-[calc(100vh-6rem)] md:h-[calc(100vh-6rem)] overflow-hidden flex flex-col md:flex-row md:gap-6">
+      {/* Mobile: Top Tool Tabs Bar */}
+      <div className="md:hidden relative flex-shrink-0">
+        {/* Scroll left button */}
+        <AnimatePresence>
+          {canScrollLeft && (
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => scrollTabs('left')}
+              className="absolute left-0 top-0 bottom-0 z-20 w-8 flex items-center justify-center bg-gradient-to-r from-[var(--bg-secondary)] via-[var(--bg-secondary)] to-transparent"
+            >
+              <ChevronLeft className="w-5 h-5 text-[var(--text-muted)]" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Scrollable tabs */}
+        <div
+          ref={toolTabsRef}
+          className="flex items-center gap-2 px-4 py-3 overflow-x-auto scrollbar-none bg-[var(--bg-card)] border-b border-[var(--border-subtle)]"
+        >
+          {/* Menu button to open sidebar */}
+          <button
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="flex-shrink-0 p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-primary transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Tool tabs */}
+          {allTools.map((tool) => {
+            const Icon = tool.icon;
+            const isSelected = selectedToolId === tool.code;
+            return (
+              <button
+                key={tool.code}
+                data-tool-id={tool.code}
+                onClick={() => handleMobileToolSelect(tool.code)}
+                className={cn(
+                  "flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
+                  isSelected
+                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                    : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                {tool.name}
+              </button>
+            );
+          })}
+
+          {/* Add button */}
+          <button
+            onClick={() => {
+              setEditingTool(null);
+              setShowToolModal(true);
+            }}
+            className="flex-shrink-0 p-2 rounded-xl bg-[var(--bg-secondary)] border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-primary hover:border-primary/30 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scroll right button */}
+        <AnimatePresence>
+          {canScrollRight && (
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => scrollTabs('right')}
+              className="absolute right-0 top-0 bottom-0 z-20 w-8 flex items-center justify-center bg-gradient-to-l from-[var(--bg-secondary)] via-[var(--bg-secondary)] to-transparent"
+            >
+              <ChevronRight className="w-5 h-5 text-[var(--text-muted)]" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Mobile: Sidebar Drawer (inside main container) */}
+      <AnimatePresence>
+        {isMobileSidebarOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            />
+
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="md:hidden fixed left-4 top-20 bottom-4 z-50 w-[75vw] max-w-[280px] flex flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
+                <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  工具列表
+                </h2>
+                <button
+                  onClick={() => setIsMobileSidebarOpen(false)}
+                  className="p-2 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Tool list */}
+              <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={systemToolItems.map(t => t.code)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-1.5">
+                      {systemToolItems.map((tool) => (
+                        <SortableToolItem
+                          key={tool.code}
+                          tool={tool}
+                          isSelected={selectedToolId === tool.code}
+                          onSelect={() => {
+                            setSelectedToolId(tool.code);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+
+                  {customToolItems.length > 0 && <div className="h-2" />}
+
+                  <SortableContext
+                    items={customToolItems.map(t => t.code)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-1.5">
+                      {customToolItems.map((tool) => (
+                        <SortableToolItem
+                          key={tool.code}
+                          tool={tool}
+                          isSelected={selectedToolId === tool.code}
+                          onSelect={() => {
+                            setSelectedToolId(tool.code);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                          onEdit={() => {
+                            setEditingTool((tool as any).raw);
+                            setShowToolModal(true);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </div>
+
+              {/* Add button */}
+              <div className="p-3 border-t border-[var(--border-subtle)]">
+                <button
+                  onClick={() => {
+                    setEditingTool(null);
+                    setShowToolModal(true);
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className={cn(
+                    'group w-full flex items-center justify-center gap-2 p-2.5 rounded-xl transition-all',
+                    'bg-gradient-to-b from-[var(--bg-card)] to-[var(--bg-secondary)]',
+                    'border border-[var(--border-subtle)]',
+                    'text-[var(--text-secondary)] font-medium text-sm',
+                    'hover:text-primary hover:border-primary/30'
+                  )}
+                >
+                  <Plus className="w-4 h-4" />
+                  新建功能
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop: Left Column - Tools List */}
+      <div className="hidden md:flex w-[280px] flex-shrink-0 flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] overflow-hidden shadow-sm h-full">
         {/* Header */}
         <div className="p-6 pb-4 border-b border-[var(--border-subtle)]">
           <h1 className="text-xl font-extrabold text-[var(--text-primary)] tracking-tight flex items-center gap-2">
@@ -288,7 +547,7 @@ export default function AIToolsPage() {
             </SortableContext>
           </DndContext>
         </div>
-        
+
         {/* Fixed Bottom: New Custom Tool */}
         <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
           <button
@@ -311,14 +570,14 @@ export default function AIToolsPage() {
         </div>
       </div>
 
-      {/* Main Area: Workspace (Cols 2 & 3) */}
-      <div className="flex-1 h-full min-w-0">
-        <AIToolsWorkspace 
-          selectedTool={{ 
-            id: selectedTool.code, 
-            label: selectedTool.name, 
-            desc: selectedTool.description || '' 
-          }} 
+      {/* Main Area: Workspace */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden p-4 md:p-0">
+        <AIToolsWorkspace
+          selectedTool={{
+            id: selectedTool.code,
+            label: selectedTool.name,
+            desc: selectedTool.description || ''
+          }}
           allConfigs={promptConfigs}
           onConfigUpdated={fetchAllData}
           isGlobalLoading={isLoading}
