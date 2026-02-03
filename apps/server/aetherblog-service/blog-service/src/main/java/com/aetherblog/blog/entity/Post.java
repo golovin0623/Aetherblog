@@ -19,11 +19,11 @@ import java.util.Set;
 @Table(name = "posts", indexes = {
     @Index(name = "idx_posts_slug", columnList = "slug"),
     @Index(name = "idx_posts_status", columnList = "status"),
-    @Index(name = "idx_posts_published_at", columnList = "publishedAt"),
+    @Index(name = "idx_posts_published_at", columnList = "published_at"),
     @Index(name = "idx_posts_category", columnList = "category_id"),
     @Index(name = "idx_posts_author", columnList = "author_id"),
     @Index(name = "idx_posts_deleted", columnList = "deleted"),
-    @Index(name = "idx_posts_embedding_status", columnList = "embeddingStatus")
+    @Index(name = "idx_posts_embedding_status", columnList = "embedding_status")
 })
 public class Post {
 
