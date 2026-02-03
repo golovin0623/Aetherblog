@@ -124,7 +124,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
 
   return (
     <section className="mt-20 max-w-4xl mx-auto">
-      {/* Header with Collapsible Toggle */}
+      {/* 带折叠切换的头部 */}
       <div 
         onClick={() => setIsSectionExpanded(!isSectionExpanded)}
         className="flex items-center justify-between mb-8 pb-4 border-b border-[var(--border-subtle)] cursor-pointer group select-none"
@@ -151,7 +151,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            {/* Collapsed Form Trigger */}
+            {/* 折叠表单触发器 */}
             {!isFormExpanded && (
               <motion.button
                 ref={formTriggerRef}
@@ -173,7 +173,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
               </motion.button>
             )}
 
-            {/* Expanded Comment Form */}
+            {/* 展开的评论表单 */}
             <AnimatePresence>
               {isFormExpanded && (
                 <motion.div
@@ -183,7 +183,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                   exit={{ opacity: 0, height: 0, scale: 0.98 }}
                   className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-8 relative overflow-hidden border border-[var(--border-default)] shadow-2xl shadow-indigo-500/5 mb-12"
                 >
-                    {/* Simplified Decorative Gradients */}
+                    {/* 简化的装饰性渐变 */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
                     
                     <div className="flex items-center justify-between mb-6">
@@ -281,7 +281,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
               )}
             </AnimatePresence>
 
-            {/* Comments List */}
+            {/* 评论列表 */}
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-4">
                 <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -336,14 +336,14 @@ function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onRepl
             fallback={comment.nickname.slice(0, 1).toUpperCase()} 
             className="w-10 h-10 border-2 border-[#1a1d24] ring-2 ring-white/5 shadow-lg"
           />
-          {/* Connecting Line for Children */}
+          {/* 子评论连接线 */}
           {hasChildren && isExpanded && (
             <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[2px] h-[calc(100%-48px)] bg-gradient-to-b from-white/10 to-transparent" />
           )}
         </div>
 
         <div className="flex-1 pb-2">
-          {/* Comment Card */}
+          {/* 评论卡片 */}
           <div className="bg-[var(--bg-card)]/80 backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl rounded-tl-none p-4 hover:border-[var(--border-hover)] transition-colors group">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -376,10 +376,10 @@ function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onRepl
             </div>
           </div>
 
-          {/* Children / Expand Toggle */}
+          {/* 子评论 / 展开切换 */}
           {hasChildren && (
             <div className="mt-3">
-              {/* Toggle Button */}
+              {/* 切换按钮 */}
               {!isExpanded && (
                 <button 
                   onClick={() => setIsExpanded(true)}
@@ -391,7 +391,7 @@ function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onRepl
                 </button>
               )}
 
-              {/* Collapsible Content */}
+              {/* 可折叠内容 */}
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -409,7 +409,7 @@ function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onRepl
                       />
                     ))}
                     
-                    {/* Fold up button if long thread */}
+                    {/* 长评论折叠按钮 */}
                     {comment.children!.length > 2 && (
                       <button 
                         onClick={() => setIsExpanded(false)}
