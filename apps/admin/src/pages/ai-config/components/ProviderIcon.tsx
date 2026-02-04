@@ -3,6 +3,8 @@
 
 import type { ComponentType, CSSProperties } from 'react';
 
+import { getBrandIconSvgMaskUrl, resolveBrandIconId } from '../utils/lobeIcons';
+
 // 动态导入 LobeHub 图标 (避免 tree-shaking 问题)
 import OpenAI from '@lobehub/icons/es/OpenAI';
 import Anthropic from '@lobehub/icons/es/Anthropic';
@@ -67,8 +69,15 @@ const PROVIDER_ALIASES: Record<string, string> = {
   'lingyiwanwu': 'yi',
 };
 
+function isLikelyEmoji(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return trimmed.length <= 6 && /[^\p{ASCII}]/u.test(trimmed);
+}
+
 interface ProviderIconProps {
   code: string;
+  icon?: string | null;
   size?: number;
   className?: string;
 }
@@ -77,7 +86,7 @@ interface ProviderIconProps {
  * 渲染供应商图标
  * 使用 @lobehub/icons 提供的官方 AI 品牌图标
  */
-export default function ProviderIcon({ code, size = 24, className }: ProviderIconProps) {
+export default function ProviderIcon({ code, icon, size = 24, className }: ProviderIconProps) {
   // 规范化代码
   const normalizedCode = code.toLowerCase().replace(/[-_\s]/g, '');
   
@@ -88,6 +97,51 @@ export default function ProviderIcon({ code, size = 24, className }: ProviderIco
 
   const IconComponent = iconKey ? PROVIDER_ICONS[iconKey] : null;
 
+  const brandIconId = resolveBrandIconId(icon);
+  if (brandIconId) {
+    const normalizedBrandKey = brandIconId.toLowerCase().replace(/[-_\s]/g, '');
+    const localBrandKey = PROVIDER_ICONS[normalizedBrandKey]
+      ? normalizedBrandKey
+      : PROVIDER_ALIASES[normalizedBrandKey] || null;
+    const LocalBrandIcon = localBrandKey ? PROVIDER_ICONS[localBrandKey] : null;
+
+    if (LocalBrandIcon) {
+      return (
+        <div
+          className={className}
+          style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <LocalBrandIcon size={size} />
+        </div>
+      );
+    }
+
+    const svgUrl = getBrandIconSvgMaskUrl(brandIconId, 'aliyun');
+    return (
+      <div
+        className={className}
+        style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            width: size,
+            height: size,
+            backgroundColor: 'currentColor',
+            maskImage: `url(${svgUrl})`,
+            WebkitMaskImage: `url(${svgUrl})`,
+            maskRepeat: 'no-repeat',
+            WebkitMaskRepeat: 'no-repeat',
+            maskPosition: 'center',
+            WebkitMaskPosition: 'center',
+            maskSize: 'contain',
+            WebkitMaskSize: 'contain',
+          }}
+        />
+      </div>
+    );
+  }
+
   if (IconComponent) {
     return (
       <div 
@@ -95,6 +149,20 @@ export default function ProviderIcon({ code, size = 24, className }: ProviderIco
         style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
         <IconComponent size={size} />
+      </div>
+    );
+  }
+
+  const trimmedIcon = icon?.trim();
+  if (trimmedIcon && isLikelyEmoji(trimmedIcon)) {
+    return (
+      <div
+        className={className}
+        style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <span aria-hidden="true" style={{ fontSize: Math.max(12, Math.round(size * 0.85)), lineHeight: 1 }}>
+          {trimmedIcon}
+        </span>
       </div>
     );
   }

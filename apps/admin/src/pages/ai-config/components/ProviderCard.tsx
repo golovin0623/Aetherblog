@@ -37,105 +37,117 @@ export default function ProviderCard({
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
-      className={`group relative rounded-2xl border p-4 cursor-pointer transition-all duration-300 overflow-hidden ${
+      className={`group relative rounded-2xl border p-5 cursor-pointer transition-all duration-300 overflow-hidden ${
         provider.is_enabled
-          ? 'bg-[var(--bg-card)] border-transparent shadow-xl'
-          : 'bg-[var(--bg-card)]/50 border-[var(--border-default)] hover:border-[var(--border-hover)] hover:bg-[var(--bg-card)] shadow-sm'
+          ? 'bg-white/70 dark:bg-zinc-900/40 border-white/40 dark:border-white/5 backdrop-blur-xl shadow-2xl z-10'
+          : 'bg-white/30 dark:bg-zinc-950/20 border-white/20 dark:border-white/5 backdrop-blur-sm opacity-80 hover:opacity-100 hover:bg-white/50 dark:hover:bg-zinc-900/40 hover:border-white/40'
       }`}
       style={
         provider.is_enabled
           ? {
-              boxShadow: `0 8px 30px -12px ${brand.primary}30`, // 30 = 20% opacity using hex
+              boxShadow: `0 10px 40px -10px ${brand.primary}40, 0 0 1px 1px ${brand.primary}10`, 
             }
           : undefined
       }
       onClick={onClick}
     >
-      {/* 启用状态背景光晕 */}
+      {/* 启用状态背景光晕 - 增强透明感 */}
       {provider.is_enabled && (
         <>
           <div 
-            className="absolute inset-0 opacity-[0.03] pointer-events-none"
+            className="absolute -inset-[10%] opacity-[0.08] pointer-events-none blur-3xl transition-opacity group-hover:opacity-[0.12]"
             style={{
-              background: `linear-gradient(135deg, ${brand.gradientFrom}, ${brand.gradientTo})`
+              background: `radial-gradient(circle at 20% 20%, ${brand.gradientFrom}, transparent 70%), radial-gradient(circle at 80% 80%, ${brand.gradientTo}, transparent 70%)`
             }}
           />
-          <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
+          <div className="absolute -inset-[1px] rounded-[inherit] pointer-events-none z-10 overflow-hidden">
+            {/* 特色光带：延展到侧边 2/5 位置 - 增强厚度与贴合度 */}
             <div
-              className="absolute inset-0 rounded-[inherit] border-t border-l border-r"
+              className="absolute inset-0 rounded-[inherit] border-t-2 border-l-2 border-r-2"
               style={{
                 borderColor: brand.primary,
-                opacity: 0.5,
-                maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+                opacity: 0.8,
+                maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 40%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 40%)',
               }}
             />
           </div>
         </>
       )}
 
-      <div className="relative z-10 flex items-start justify-between mb-3">
+      <div className="relative z-10 flex items-start justify-between mb-4">
         {/* 图标和名称 */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <div 
-            className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-inner transition-colors duration-300 ${
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-transform duration-500 group-hover:scale-110 ${
               provider.is_enabled ? 'text-white' : 'bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
             }`}
             style={provider.is_enabled ? {
               background: `linear-gradient(135deg, ${brand.gradientFrom}, ${brand.gradientTo})`,
+              boxShadow: `0 4px 15px -4px ${brand.primary}80`,
               color: '#ffffff' 
             } : undefined}
           >
-            <ProviderIcon code={provider.code} size={24} className={provider.is_enabled ? "text-white" : ""} />
+            <ProviderIcon
+              code={provider.code}
+              icon={provider.icon}
+              size={28}
+              className={provider.is_enabled ? "text-white drop-shadow-md" : ""}
+            />
           </div>
-          <div>
-            <h3 className="font-bold text-[var(--text-primary)] tracking-tight">
+          <div className="min-w-0">
+            <h3 className="font-extrabold text-[var(--text-primary)] text-base tracking-tight truncate dark:text-zinc-100">
               {provider.display_name || provider.name}
             </h3>
-            <p className="text-[11px] font-mono text-[var(--text-muted)] opacity-70">{provider.code}</p>
+            <p className="text-[10px] font-mono text-[var(--text-muted)] font-bold opacity-60 tracking-wider uppercase">{provider.code}</p>
           </div>
         </div>
 
-        {/* 启用开关 - 增强对比度 */}
+        {/* 启用开关 - 极简高对比 */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onToggle(!provider.is_enabled);
           }}
           disabled={isToggling}
-          className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-200 ease-out focus:outline-none shadow-inner ${
+          className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ease-in-out focus:outline-none shadow-inner border border-transparent ${
             isToggling ? 'opacity-50 cursor-not-allowed' : ''
-          } ${provider.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-zinc-800'}`}
+          } ${provider.is_enabled ? 'bg-zinc-900 dark:bg-white' : 'bg-black/10 dark:bg-white/5 border-black/5 dark:border-white/5'}`}
         >
           <motion.div
             layout
-            className={`w-5 h-5 rounded-full shadow-sm z-10 ${
-                provider.is_enabled ? 'bg-white dark:bg-black' : 'bg-white'
+            className={`w-4 h-4 rounded-full shadow-lg z-10 ${
+                provider.is_enabled ? 'bg-white dark:bg-zinc-900' : 'bg-white/90'
             }`}
              initial={false}
              animate={{ 
-               x: provider.is_enabled ? 20 : 0
+               x: provider.is_enabled ? 24 : 0
              }}
-             transition={{ type: "spring", stiffness: 500, damping: 30 }}
+             transition={{ type: "spring", stiffness: 400, damping: 25 }}
           />
         </button>
       </div>
 
-      {/* 描述 */}
-      <p className="relative z-10 text-xs text-[var(--text-muted)] line-clamp-2 min-h-[2.5rem] leading-relaxed">
+      {/* 描述 - 提升可读性 - 严格截断 */}
+      <p className="relative z-10 text-[13px] text-[var(--text-primary)] dark:text-zinc-300 opacity-80 group-hover:opacity-100 transition-opacity line-clamp-2 h-[2.5rem] overflow-hidden leading-relaxed font-medium">
         {description}
       </p>
 
-      {/* 底部信息 */}
-      <div className="relative z-10 flex items-center gap-2 mt-4 pt-3 border-t border-[var(--border-default)]/50">
-        <span className="text-[10px] px-2.5 py-1 rounded-md bg-[var(--bg-scale-200)] text-[var(--text-secondary)] font-medium">
-          {provider.api_type}
-        </span>
-        {provider.priority > 0 && provider.priority < 100 && (
-          <span className="text-[10px] px-2.5 py-1 rounded-md bg-[var(--bg-scale-200)] text-[var(--text-secondary)] font-medium">
-            优先级 {provider.priority}
+      {/* 底部信息 - 更加微妙但清晰 */}
+      <div className="relative z-10 flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-default)]/20 dark:border-white/5">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] font-bold tracking-wide uppercase">
+            {provider.api_type}
           </span>
-        )}
+          {provider.priority > 0 && provider.priority < 100 && (
+            <span className="text-[10px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] font-bold tracking-wide uppercase">
+              PRIORITY {provider.priority}
+            </span>
+          )}
+        </div>
+        
+        {/* 指示器 */}
+        <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${provider.is_enabled ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)] scale-125' : 'bg-zinc-400 opacity-30 shadow-none scale-100'}`} />
       </div>
 
       {/* Hover 效果 - 仅在未启用时显示简单的边框高亮，启用后已有阴影 */}

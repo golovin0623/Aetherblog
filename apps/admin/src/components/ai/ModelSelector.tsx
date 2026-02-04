@@ -32,6 +32,7 @@ interface ModelSelectorProps {
   variant?: 'default' | 'compact';
   selectedProviderCode?: string;
   menuAlign?: 'left' | 'right';
+  menuPlacement?: 'top' | 'bottom';
   menuClassName?: string;
   triggerClassName?: string;
   showArrow?: boolean;
@@ -93,12 +94,21 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   variant = 'default',
   selectedProviderCode,
   menuAlign = 'left',
+  menuPlacement = 'bottom',
   menuClassName = '',
   triggerClassName = '',
   showArrow = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // 获取提供商
   const { data: providersResponse } = useQuery({
@@ -192,7 +202,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return allModels.find(m => m.model_id === value);
   }, [allModels, value, selectedProviderCode]);
 
-  // 点击外部关闭
+  const selectedProvider = useMemo(() => {
+    if (!selectedModel) return null;
+    return providers.find((p) => p.code === selectedModel.provider_code) || null;
+  }, [providers, selectedModel]);
+
+  // Close on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -215,13 +230,192 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     setSearch('');
   };
 
-  // 格式化上下文窗口大小的辅助函数
   const formatContext = (tokens?: number | null) => {
     if (!tokens) return null;
     if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(0)}M`;
     if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}K`;
     return tokens;
   };
+
+  const renderContent = () => (
+    <div
+      className={cn(
+        "relative flex flex-col overflow-hidden",
+        isMobile ? "h-[70vh] rounded-t-[2.5rem]" : "rounded-2xl max-h-[520px]",
+        "bg-white dark:bg-zinc-900",
+        !isMobile && "border border-zinc-200 dark:border-zinc-700/60 shadow-xl shadow-zinc-200/50 dark:shadow-black/30"
+      )}
+    >
+      {/* Top shine effect - only desktop */}
+      {!isMobile && (
+        <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
+          <div 
+            className={cn(
+              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
+              "dark:border-white/10"
+            )} 
+            style={{
+              maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
+            }}
+          />
+        </div>
+      )}
+
+      {/* Mobile Drawer Handle */}
+      {isMobile && (
+        <div className="flex-shrink-0 flex justify-center py-4">
+          <div className="w-12 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+        </div>
+      )}
+
+      {/* Search Header */}
+      <div className={cn(
+        "px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10",
+        isMobile && "pt-0"
+      )}>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索模型..."
+            autoFocus={!isMobile}
+            className={cn(
+              "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
+              "bg-white dark:bg-zinc-800",
+              "border border-zinc-200 dark:border-zinc-700",
+              "text-zinc-900 dark:text-zinc-100",
+              "placeholder:text-zinc-400 dark:placeholder:text-zinc-500",
+              "focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+            )}
+          />
+        </div>
+      </div>
+
+      {/* Models List */}
+      <div className={cn(
+        "flex-1 overflow-y-auto p-2 space-y-1 no-scrollbar",
+        isMobile ? "px-4" : "min-h-[200px] max-h-[380px]"
+      )}>
+        {filteredGroups.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-500">
+            <Box className="w-10 h-10 mb-3 opacity-30" />
+            <p className="text-sm">未找到匹配模型</p>
+          </div>
+        ) : (
+          filteredGroups.map((group) => (
+            <div key={group.provider.code} className="mb-2">
+              {/* Provider Header */}
+              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm z-0">
+                <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
+                <span className="uppercase tracking-wider">
+                  {group.provider.display_name || group.provider.name}
+                </span>
+              </div>
+              
+              {/* Model Items */}
+              <div className="space-y-0.5">
+                {group.models.map((model) => {
+                  const abilities = resolveAbilities(model);
+                  const contextWindow = resolveContextWindow(model);
+                  const isSelected = value === model.model_id && 
+                    (!selectedProviderCode || selectedProviderCode === group.provider.code);
+
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => handleSelect(model, group.provider)}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
+                        isSelected
+                          ? "bg-primary/10 dark:bg-primary/15"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+                      )}
+                    >
+                      {/* Model Icon */}
+                      <ProviderIcon 
+                        code={group.provider.code} 
+                        icon={group.provider.icon}
+                        size={20}
+                        className="shrink-0"
+                      />
+                      
+                      {/* Model Name */}
+                      <div className="flex-1 min-w-0">
+                        <div className={cn(
+                          "font-medium text-sm truncate",
+                          isSelected 
+                            ? "text-primary" 
+                            : "text-zinc-700 dark:text-zinc-200"
+                        )}>
+                          {model.display_name || model.model_id}
+                        </div>
+                        {isMobile && contextWindow && (
+                          <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            {formatContext(contextWindow)} 上下文
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Ability Badges */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {!isMobile && abilities.vision && (
+                          <AbilityBadge 
+                            icon={Eye} 
+                            color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" 
+                            title="视觉"
+                          />
+                        )}
+                        {!isMobile && abilities.reasoning && (
+                          <AbilityBadge 
+                            icon={Brain} 
+                            color="bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" 
+                            title="推理"
+                          />
+                        )}
+                        
+                        {!isMobile && contextWindow && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                            <Zap className="w-3 h-3" />
+                            {formatContext(contextWindow)}
+                          </span>
+                        )}
+
+                        {/* Check mark for selected */}
+                        {isSelected && (
+                          <Check className="w-5 h-5 text-primary ml-1" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className={cn(
+        "p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50",
+        isMobile && "pb-8 px-4"
+      )}>
+        <a 
+          href="/admin/ai-config" 
+          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+        >
+          <div className="flex items-center gap-2">
+            <Settings className="w-4 h-4" />
+            管理提供商
+          </div>
+          <ChevronRight className="w-4 h-4" />
+        </a>
+      </div>
+    </div>
+  );
 
   return (
     <div className={cn("relative model-selector-container", className)}>
@@ -245,220 +439,80 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           <>
             <ProviderIcon
               code={selectedModel.provider_code}
-              size={variant === 'compact' ? 16 : 18}
+              icon={selectedProvider?.icon || null}
+              size={variant === 'compact' ? 14 : 16}
             />
-            <span className="text-xs font-medium text-[var(--text-primary)] truncate max-w-[120px]">
+            <span className="text-[10px] sm:text-xs font-bold text-[var(--text-primary)] truncate max-w-[100px] sm:max-w-[120px] uppercase tracking-tighter">
               {selectedModel.display_name || selectedModel.model_id}
             </span>
-            <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto" />
+            <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto flex-shrink-0" />
           </>
         ) : (
           <>
             <Box className={cn(
               "text-[var(--text-muted)]",
-              variant === 'compact' ? "w-4 h-4" : "w-4 h-4"
+              variant === 'compact' ? "w-3.5 h-3.5" : "w-4 h-4"
             )} />
-            <span className="text-xs text-[var(--text-muted)]">选择模型</span>
-            <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto" />
+            <span className="text-[10px] sm:text-xs text-[var(--text-muted)] font-bold uppercase tracking-tighter">选择模型</span>
+            <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto flex-shrink-0" />
           </>
         )}
       </button>
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
-            className={cn(
-              "absolute top-full z-50 mt-2 flex flex-col max-h-[520px] overflow-visible",
-              menuAlign === 'right' ? "right-0" : "left-0",
-              variant === 'compact' ? "w-[340px]" : "w-[380px]",
-              menuClassName
-            )}
-          >
-            {showArrow && (
-              <div
-                className={cn(
-                  "absolute -top-2 h-4 w-4 rotate-45 border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900 z-10",
-                  menuAlign === 'right' ? "right-6" : "left-6"
-                )}
+          isMobile ? (
+            <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsOpen(false)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               />
-            )}
-            <div
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="relative z-10"
+              >
+                {renderContent()}
+              </motion.div>
+            </div>
+          ) : (
+            <motion.div
+              initial={{ 
+                opacity: 0, 
+                y: menuPlacement === 'top' ? -4 : 4, 
+                scale: 0.98 
+              }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ 
+                opacity: 0, 
+                y: menuPlacement === 'top' ? -4 : 4, 
+                scale: 0.98 
+              }}
+              transition={{ duration: 0.15 }}
               className={cn(
-                "relative rounded-2xl flex flex-col max-h-[520px] overflow-hidden",
-                "bg-white dark:bg-zinc-900",
-                "border border-zinc-200 dark:border-zinc-700/60",
-                "shadow-xl shadow-zinc-200/50 dark:shadow-black/30"
+                "absolute z-50 flex flex-col max-h-[520px] overflow-visible",
+                menuPlacement === 'top' ? "bottom-full mb-2" : "top-full mt-2",
+                menuAlign === 'right' ? "right-0" : "left-0",
+                variant === 'compact' ? "w-[340px]" : "w-[380px]",
+                menuClassName
               )}
             >
-              {/* 顶部光泽效果，跟随圆角并向下淡出 */}
-              <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
-                <div 
+              {showArrow && (
+                <div
                   className={cn(
-                    "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
-                    "dark:border-white/10"
-                  )} 
-                  style={{
-                    maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-                  }}
-                />
-              </div>
-
-            {/* 搜索头部 */}
-            <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="搜索模型..."
-                  autoFocus
-                  className={cn(
-                    "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
-                    "bg-white dark:bg-zinc-800",
-                    "border border-zinc-200 dark:border-zinc-700",
-                    "text-zinc-900 dark:text-zinc-100",
-                    "placeholder:text-zinc-400 dark:placeholder:text-zinc-500",
-                    "focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                    "absolute -top-2 h-4 w-4 rotate-45 border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900 z-10",
+                    menuAlign === 'right' ? "right-6" : "left-6"
                   )}
                 />
-              </div>
-            </div>
-
-            {/* 模型列表 */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-[200px] max-h-[380px] scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-700">
-              {filteredGroups.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-500">
-                  <Box className="w-10 h-10 mb-3 opacity-30" />
-                  <p className="text-sm">未找到匹配模型</p>
-                </div>
-              ) : (
-                filteredGroups.map((group) => (
-                  <div key={group.provider.code} className="mb-2">
-                    {/* 提供商头部 */}
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm z-0">
-                      <ProviderIcon code={group.provider.code} size={16} />
-                      <span className="uppercase tracking-wider">
-                        {group.provider.display_name || group.provider.name}
-                      </span>
-                    </div>
-                    
-                    {/* 模型项 */}
-                    <div className="space-y-0.5">
-                      {group.models.map((model) => {
-                        const abilities = resolveAbilities(model);
-                        const contextWindow = resolveContextWindow(model);
-                        const isSelected = value === model.model_id && 
-                          (!selectedProviderCode || selectedProviderCode === group.provider.code);
-
-                        return (
-                          <button
-                            key={model.id}
-                            onClick={() => handleSelect(model, group.provider)}
-                            className={cn(
-                              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
-                              isSelected
-                                ? "bg-primary/10 dark:bg-primary/15"
-                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-                            )}
-                          >
-                            {/* 模型图标 */}
-                            <ProviderIcon 
-                              code={group.provider.code} 
-                              size={20}
-                              className="shrink-0"
-                            />
-                            
-                            {/* 模型名称 */}
-                            <span className={cn(
-                              "flex-1 font-medium text-sm truncate",
-                              isSelected 
-                                ? "text-primary" 
-                                : "text-zinc-700 dark:text-zinc-200"
-                            )}>
-                              {model.display_name || model.model_id}
-                            </span>
-
-                            {/* 能力徽章 */}
-                            <div className="flex items-center gap-1 shrink-0">
-                              {abilities.vision && (
-                                <AbilityBadge 
-                                  icon={Eye} 
-                                  color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" 
-                                  title="视觉"
-                                />
-                              )}
-                              {abilities.reasoning && (
-                                <AbilityBadge 
-                                  icon={Brain} 
-                                  color="bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" 
-                                  title="推理"
-                                />
-                              )}
-                              {abilities.search && (
-                                <AbilityBadge 
-                                  icon={Globe} 
-                                  color="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" 
-                                  title="搜索"
-                                />
-                              )}
-                              {abilities.functionCall && (
-                                <AbilityBadge 
-                                  icon={Terminal} 
-                                  color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" 
-                                  title="函数调用"
-                                />
-                              )}
-                              {abilities.imageOutput && (
-                                <AbilityBadge 
-                                  icon={Image} 
-                                  color="bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400" 
-                                  title="图像生成"
-                                />
-                              )}
-                              
-                              {/* 上下文窗口徽章 */}
-                              {contextWindow && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
-                                  <Zap className="w-3 h-3" />
-                                  {formatContext(contextWindow)}
-                                </span>
-                              )}
-
-                              {/* 选中标记 */}
-                              {isSelected && (
-                                <Check className="w-4 h-4 text-primary ml-1" />
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
               )}
-            </div>
-
-            {/* 底部 */}
-              <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
-                <a 
-                  href="/admin/ai-config" 
-                  className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <Settings className="w-4 h-4" />
-                    管理提供商
-                  </div>
-                  <ChevronRight className="w-4 h-4" />
-                </a>
-              </div>
-            </div>
-          </motion.div>
+              {renderContent()}
+            </motion.div>
+          )
         )}
       </AnimatePresence>
     </div>

@@ -16,6 +16,7 @@ import { AiTestPage } from './pages/AiTestPage';
 import MonitorPage from './pages/MonitorPage';
 import FolderPermissionsPage from './pages/media/FolderPermissionsPage';
 import AiConfigPage from './pages/ai-config/AiConfigPage';
+import { AiWritingWorkspacePage } from './pages/posts/AiWritingWorkspacePage';
 import { Toaster } from 'sonner';
 
 /**
@@ -59,6 +60,8 @@ function App() {
           <Route path="posts" element={<PostsPage />} />
           <Route path="posts/new" element={<CreatePostPage />} />
           <Route path="posts/:id/edit" element={<CreatePostPage />} />
+          <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
+          <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
           <Route path="media" element={<MediaPage />} />
           <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
           <Route path="categories" element={<CategoriesPage />} />

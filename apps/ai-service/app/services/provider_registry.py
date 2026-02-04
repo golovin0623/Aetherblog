@@ -319,64 +319,19 @@ class ProviderRegistry:
         )
 
     async def delete_provider(self, provider_id: int) -> bool:
-        """Delete a provider, first clearing any related credentials and routing references."""
+        """Delete a provider.
+
+        Cascade behavior:
+        - ai_models: CASCADE deleted (FK with ON DELETE CASCADE)
+        - ai_credentials: CASCADE deleted (FK with ON DELETE CASCADE)
+        - ai_task_routing references: Automatically SET NULL via FK constraints
+        """
         async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                # Get credential IDs for this provider
-                cred_ids = await conn.fetch(
-                    "SELECT id FROM ai_credentials WHERE provider_id = $1",
-                    provider_id,
-                )
-                cred_id_list = [row["id"] for row in cred_ids]
-                
-                # Clear routing references to these credentials
-                if cred_id_list:
-                    await conn.execute(
-                        """
-                        UPDATE ai_task_routing
-                        SET credential_id = NULL
-                        WHERE credential_id = ANY($1::bigint[])
-                        """,
-                        cred_id_list,
-                    )
-                
-                # Get model IDs for this provider (to clear routing references)
-                model_ids = await conn.fetch(
-                    "SELECT id FROM ai_models WHERE provider_id = $1",
-                    provider_id,
-                )
-                model_id_list = [row["id"] for row in model_ids]
-                
-                # Clear routing references to these models
-                if model_id_list:
-                    await conn.execute(
-                        """
-                        UPDATE ai_task_routing
-                        SET primary_model_id = NULL
-                        WHERE primary_model_id = ANY($1::bigint[])
-                        """,
-                        model_id_list,
-                    )
-                    await conn.execute(
-                        """
-                        UPDATE ai_task_routing
-                        SET fallback_model_id = NULL
-                        WHERE fallback_model_id = ANY($1::bigint[])
-                        """,
-                        model_id_list,
-                    )
-                
-                # Delete credentials (now safe)
-                await conn.execute(
-                    "DELETE FROM ai_credentials WHERE provider_id = $1",
-                    provider_id,
-                )
-                
-                # Delete the provider (models will CASCADE)
-                row = await conn.fetchrow(
-                    "DELETE FROM ai_providers WHERE id = $1 RETURNING id",
-                    provider_id,
-                )
+            # Direct delete - FK constraints will handle all cascades and nullifications
+            row = await conn.fetchrow(
+                "DELETE FROM ai_providers WHERE id = $1 RETURNING id",
+                provider_id,
+            )
         if row:
             self.clear_cache()
             return True
@@ -481,50 +436,42 @@ class ProviderRegistry:
         )
 
     async def delete_model(self, model_db_id: int) -> bool:
-        """Delete a model, first clearing any routing references."""
+        """Delete a model.
+
+        Note: ai_task_routing references will be automatically SET NULL via FK constraint.
+        No manual cleanup needed.
+        """
         async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                # Clear references in ai_task_routing to avoid FK constraint errors
-                await conn.execute(
-                    """
-                    UPDATE ai_task_routing
-                    SET primary_model_id = NULL
-                    WHERE primary_model_id = $1
-                    """,
-                    model_db_id,
-                )
-                await conn.execute(
-                    """
-                    UPDATE ai_task_routing
-                    SET fallback_model_id = NULL
-                    WHERE fallback_model_id = $1
-                    """,
-                    model_db_id,
-                )
-                # Now delete the model
-                row = await conn.fetchrow(
-                    "DELETE FROM ai_models WHERE id = $1 RETURNING id",
-                    model_db_id,
-                )
+            # Direct delete - FK constraints with ON DELETE SET NULL will handle cleanup
+            row = await conn.fetchrow(
+                "DELETE FROM ai_models WHERE id = $1 RETURNING id",
+                model_db_id,
+            )
         if row:
             self.clear_cache()
             return True
         return False
 
     async def bulk_insert_models(self, provider_code: str, models: list[Any]) -> int:
-        """Bulk insert models (ignore duplicates)."""
+        """Bulk insert models (ignore duplicates).
+
+        Returns:
+            int: Actual number of models inserted (excluding duplicates)
+        """
         if not models:
             return 0
         provider = await self.get_provider(provider_code)
         if not provider:
             return 0
 
+        # Use RETURNING to count actual inserts (not skipped by ON CONFLICT)
         query = """
             INSERT INTO ai_models
                 (provider_id, model_id, display_name, model_type, context_window,
                  max_output_tokens, input_cost_per_1k, output_cost_per_1k, capabilities, is_enabled)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (provider_id, model_id) DO NOTHING
+            RETURNING id
         """
         values = [
             (
@@ -542,11 +489,16 @@ class ProviderRegistry:
             for m in models
         ]
 
+        inserted_count = 0
         async with self.pool.acquire() as conn:
-            await conn.executemany(query, values)
+            async with conn.transaction():  # Add transaction protection
+                for value_tuple in values:
+                    result = await conn.fetchrow(query, *value_tuple)
+                    if result:  # Only count if actually inserted (not skipped by ON CONFLICT)
+                        inserted_count += 1
 
         self.clear_cache()
-        return len(values)
+        return inserted_count  # Return actual inserted count
 
     async def delete_models_by_provider(self, provider_code: str, source: str | None = None) -> int:
         """Delete models for a provider (optionally filtered by source)."""
