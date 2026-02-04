@@ -7,11 +7,43 @@ import { X, Loader2 } from 'lucide-react';
 import type { AiProvider, CreateProviderRequest, UpdateProviderRequest } from '@/services/aiProviderService';
 import { PROVIDER_TYPES, PRESET_PROVIDERS, getPresetProvider } from '../types';
 import { useCreateProvider, useUpdateProvider } from '../hooks/useProviders';
+import ProviderIcon from './ProviderIcon';
+import ProviderIconPickerDialog from './ProviderIconPickerDialog';
 
 interface ProviderDialogProps {
   mode: 'create' | 'edit';
   initial?: AiProvider | null;
   onClose: () => void;
+}
+
+type ProviderFormErrors = Partial<
+  Record<'code' | 'name' | 'display_name' | 'base_url' | 'doc_url' | 'priority', string>
+>;
+
+function normalizeCode(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function validateProviderCode(value: string): string | null {
+  const code = normalizeCode(value);
+  if (!code) return '请输入供应商代码';
+  if (code.length > 50) return '供应商代码不能超过 50 个字符';
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(code)) return '仅支持小写字母、数字、-、_';
+  return null;
+}
+
+function validateHttpUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return '仅支持 http/https 链接';
+    }
+    return null;
+  } catch {
+    return '请输入有效的 URL';
+  }
 }
 
 export default function ProviderDialog({
@@ -33,6 +65,8 @@ export default function ProviderDialog({
   });
   const [usePreset, setUsePreset] = useState(true);
   const [selectedPreset, setSelectedPreset] = useState('');
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [errors, setErrors] = useState<ProviderFormErrors>({});
 
   const createMutation = useCreateProvider();
   const updateMutation = useUpdateProvider();
@@ -69,7 +103,7 @@ export default function ProviderDialog({
           api_type: preset.apiType,
           base_url: preset.baseUrl || '',
           doc_url: preset.docUrl || '',
-          icon: preset.icon || '',
+          icon: '',
           priority: preset.priority ?? prev.priority,
           capabilities: preset.capabilities || preset.settings ? {
             ...(preset.capabilities || {}),
@@ -91,31 +125,85 @@ export default function ProviderDialog({
     }
   }, [usePreset]);
 
+  const clearError = (key: keyof ProviderFormErrors) => {
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const validateForm = () => {
+    const nextErrors: ProviderFormErrors = {};
+
+    const codeError = validateProviderCode(form.code);
+    if (codeError) nextErrors.code = codeError;
+
+    const name = form.name.trim();
+    if (!name) nextErrors.name = '请输入名称';
+    if (name.length > 100) nextErrors.name = '名称不能超过 100 个字符';
+
+    const displayName = form.display_name.trim();
+    if (displayName.length > 100) nextErrors.display_name = '显示名称不能超过 100 个字符';
+
+    const baseUrlError = validateHttpUrl(form.base_url);
+    if (baseUrlError) nextErrors.base_url = baseUrlError;
+
+    const docUrlError = validateHttpUrl(form.doc_url);
+    if (docUrlError) nextErrors.doc_url = docUrlError;
+
+    if (!Number.isFinite(form.priority) || !Number.isInteger(form.priority)) {
+      nextErrors.priority = '优先级必须为整数';
+    } else if (form.priority < 0 || form.priority > 999999) {
+      nextErrors.priority = '优先级需在 0 ~ 999999 之间';
+    }
+
+    setErrors(nextErrors);
+    return nextErrors;
+  };
+
   const handleSubmit = () => {
+    const nextErrors = validateForm();
+    if (Object.keys(nextErrors).length > 0) return;
+
+    const normalized = {
+      code: normalizeCode(form.code),
+      name: form.name.trim(),
+      display_name: form.display_name.trim(),
+      api_type: form.api_type,
+      base_url: form.base_url.trim(),
+      doc_url: form.doc_url.trim(),
+      icon: form.icon.trim(),
+      is_enabled: form.is_enabled,
+      priority: form.priority,
+      capabilities: form.capabilities,
+    };
+
     if (mode === 'create') {
       const payload: CreateProviderRequest = {
-        code: form.code,
-        name: form.name,
-        display_name: form.display_name || null,
-        api_type: form.api_type,
-        base_url: form.base_url || null,
-        doc_url: form.doc_url || null,
-        icon: form.icon || null,
-        is_enabled: form.is_enabled,
-        priority: form.priority,
-        capabilities: form.capabilities,
+        code: normalized.code,
+        name: normalized.name,
+        display_name: normalized.display_name || null,
+        api_type: normalized.api_type,
+        base_url: normalized.base_url || null,
+        doc_url: normalized.doc_url || null,
+        icon: normalized.icon || null,
+        is_enabled: normalized.is_enabled,
+        priority: normalized.priority,
+        capabilities: normalized.capabilities,
       };
       createMutation.mutate(payload, { onSuccess: onClose });
     } else if (initial) {
       const payload: UpdateProviderRequest = {
-        name: form.name,
-        display_name: form.display_name || null,
-        api_type: form.api_type,
-        base_url: form.base_url || null,
-        doc_url: form.doc_url || null,
-        icon: form.icon || null,
-        is_enabled: form.is_enabled,
-        priority: form.priority,
+        name: normalized.name,
+        display_name: normalized.display_name || null,
+        api_type: normalized.api_type,
+        base_url: normalized.base_url || null,
+        doc_url: normalized.doc_url || null,
+        icon: normalized.icon || null,
+        is_enabled: normalized.is_enabled,
+        priority: normalized.priority,
       };
       updateMutation.mutate({ id: initial.id, data: payload }, { onSuccess: onClose });
     }
@@ -162,11 +250,18 @@ export default function ProviderDialog({
           >
             <X className="w-5 h-5" />
           </motion.button>
-        </div>
-
-        {/* 表单内容区 - 独立滚动 */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
-          <div className="p-5 space-y-4">
+	        </div>
+	
+	        <form
+	          className="flex-1 min-h-0 flex flex-col"
+	          onSubmit={(e) => {
+	            e.preventDefault();
+	            handleSubmit();
+	          }}
+	        >
+	          {/* 表单内容区 - 独立滚动 */}
+	          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
+	            <div className="p-5 space-y-4">
             {/* 预设选择 (仅创建时) */}
             {mode === 'create' && (
               <div className="space-y-3">
@@ -200,7 +295,7 @@ export default function ProviderDialog({
                     <option value="">选择预设供应商</option>
                     {PRESET_PROVIDERS.map((preset) => (
                       <option key={preset.code} value={preset.code}>
-                        {preset.icon} {preset.displayName}
+                        {preset.displayName}
                       </option>
                     ))}
                   </select>
@@ -217,11 +312,29 @@ export default function ProviderDialog({
               <input
                 type="text"
                 value={form.code}
-                onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))}
+                onChange={(e) => {
+                  clearError('code');
+                  setForm((prev) => ({ ...prev, code: e.target.value }));
+                }}
+                onBlur={() => {
+                  const next = normalizeCode(form.code);
+                  if (next !== form.code) {
+                    setForm((prev) => ({ ...prev, code: next }));
+                  }
+                }}
                 disabled={mode === 'edit' || (mode === 'create' && usePreset)}
                 placeholder="openai"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 disabled:opacity-50 transition-all"
+                className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 disabled:opacity-50 transition-all ${
+                  errors.code ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                }`}
               />
+              {errors.code ? (
+                <div className="text-xs text-red-500">{errors.code}</div>
+              ) : (
+                <div className="text-xs text-[var(--text-muted)]">
+                  建议使用小写字母与数字，可包含 <span className="font-mono">-</span> / <span className="font-mono">_</span>
+                </div>
+              )}
             </div>
 
             {/* 名称 */}
@@ -231,20 +344,48 @@ export default function ProviderDialog({
                 <input
                   type="text"
                   value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => {
+                    clearError('name');
+                    setForm((prev) => ({ ...prev, name: e.target.value }));
+                  }}
+                  onBlur={() => {
+                    const next = form.name.trim();
+                    if (next !== form.name) {
+                      setForm((prev) => ({ ...prev, name: next }));
+                    }
+                  }}
                   placeholder="OpenAI"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                  className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
+                    errors.name ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                  }`}
                 />
+                {errors.name ? <div className="text-xs text-red-500">{errors.name}</div> : null}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-[var(--text-muted)]">显示名称</label>
                 <input
                   type="text"
                   value={form.display_name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                  onChange={(e) => {
+                    clearError('display_name');
+                    setForm((prev) => ({ ...prev, display_name: e.target.value }));
+                  }}
+                  onBlur={() => {
+                    const next = form.display_name.trim();
+                    if (next !== form.display_name) {
+                      setForm((prev) => ({ ...prev, display_name: next }));
+                    }
+                  }}
                   placeholder="OpenAI"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                  className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
+                    errors.display_name ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                  }`}
                 />
+                {errors.display_name ? (
+                  <div className="text-xs text-red-500">{errors.display_name}</div>
+                ) : (
+                  <div className="text-xs text-[var(--text-muted)]">可留空，默认使用“名称”</div>
+                )}
               </div>
             </div>
 
@@ -270,10 +411,30 @@ export default function ProviderDialog({
               <input
                 type="text"
                 value={form.base_url}
-                onChange={(e) => setForm((prev) => ({ ...prev, base_url: e.target.value }))}
+                onChange={(e) => {
+                  clearError('base_url');
+                  setForm((prev) => ({ ...prev, base_url: e.target.value }));
+                }}
+                onBlur={() => {
+                  const next = form.base_url.trim();
+                  if (next !== form.base_url) {
+                    setForm((prev) => ({ ...prev, base_url: next }));
+                  }
+                  const err = validateHttpUrl(form.base_url);
+                  if (err) {
+                    setErrors((prev) => ({ ...prev, base_url: err }));
+                  }
+                }}
                 placeholder="https://api.openai.com/v1"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
+                  errors.base_url ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                }`}
               />
+              {errors.base_url ? (
+                <div className="text-xs text-red-500">{errors.base_url}</div>
+              ) : (
+                <div className="text-xs text-[var(--text-muted)]">留空则使用默认地址</div>
+              )}
             </div>
 
             {/* 文档地址 */}
@@ -282,54 +443,109 @@ export default function ProviderDialog({
               <input
                 type="text"
                 value={form.doc_url}
-                onChange={(e) => setForm((prev) => ({ ...prev, doc_url: e.target.value }))}
+                onChange={(e) => {
+                  clearError('doc_url');
+                  setForm((prev) => ({ ...prev, doc_url: e.target.value }));
+                }}
+                onBlur={() => {
+                  const next = form.doc_url.trim();
+                  if (next !== form.doc_url) {
+                    setForm((prev) => ({ ...prev, doc_url: next }));
+                  }
+                  const err = validateHttpUrl(form.doc_url);
+                  if (err) {
+                    setErrors((prev) => ({ ...prev, doc_url: err }));
+                  }
+                }}
                 placeholder="https://docs.example.com"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
+                  errors.doc_url ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                }`}
               />
+              {errors.doc_url ? <div className="text-xs text-red-500">{errors.doc_url}</div> : null}
+            </div>
+
+            {/* 优先级 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-[var(--text-muted)]">优先级</label>
+              <input
+                type="number"
+                value={form.priority}
+                onChange={(e) => {
+                  clearError('priority');
+                  setForm((prev) => ({
+                    ...prev,
+                    priority: Number.parseInt(e.target.value || '0', 10),
+                  }));
+                }}
+                min={0}
+                step={1}
+                className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all ${
+                  errors.priority ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                }`}
+              />
+              {errors.priority ? (
+                <div className="text-xs text-red-500">{errors.priority}</div>
+              ) : (
+                <div className="text-xs text-[var(--text-muted)]">数字越小越靠前（支持在侧边栏里拖拽排序）</div>
+              )}
             </div>
 
             {/* 图标 */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label htmlFor="provider-icon" className="text-sm font-medium text-[var(--text-muted)] cursor-pointer">
-                  图标
-                </label>
-                <span className="text-[10px] text-[var(--text-muted)] opacity-50 uppercase tracking-wider">可选</span>
-              </div>
-              
-              {/* 快速选择图标 */}
-              <div className="flex flex-wrap gap-2 p-1">
-                {['🤖', '💬', '🧠', '☁️', '⚡', '🌈', '🎨', '✨', '🔥', '🚀'].map((emoji) => (
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-medium text-[var(--text-muted)]">图标</label>
+                <div className="flex items-center gap-2">
+                  {form.icon ? (
+                    <button
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, icon: '' }))}
+                      className="px-2.5 py-1.5 rounded-lg text-xs border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                      title="清除自定义图标"
+                    >
+                      清除
+                    </button>
+                  ) : null}
                   <motion.button
-                    key={emoji}
                     type="button"
-                    whileHover={{ scale: 1.1, backgroundColor: 'var(--bg-card-hover)' }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setForm((prev) => ({ ...prev, icon: emoji }))}
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-all ${
-                      form.icon === emoji 
-                        ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black shadow-sm' 
-                        : 'border-[var(--border-default)] bg-[var(--bg-card)]'
-                    }`}
+                    onClick={() => setShowIconPicker(true)}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
                   >
-                    <span className="text-base">{emoji}</span>
+                    选择图标
                   </motion.button>
-                ))}
+                </div>
               </div>
 
-              <div className="relative group">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg pointer-events-none z-10 select-none transition-transform group-focus-within:scale-110">
-                  {form.icon || '🤖'}
+              <div className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)]">
+                <div className="w-10 h-10 rounded-xl border border-[var(--border-default)] bg-[var(--bg-secondary)] flex items-center justify-center">
+                  <ProviderIcon
+                    code={form.code || 'custom'}
+                    icon={form.icon || null}
+                    size={22}
+                    className="text-[var(--text-primary)]"
+                  />
                 </div>
-                <input
-                  id="provider-icon"
-                  type="text"
-                  value={form.icon}
-                  onChange={(e) => setForm((prev) => ({ ...prev, icon: e.target.value }))}
-                  placeholder="输入 Emoji 或从上方选择..."
-                  className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/5 transition-all"
-                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                    {form.display_name || form.name || '未命名供应商'}
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] truncate">
+                    {form.icon ? `自定义：${form.icon}` : '默认：按供应商代码匹配'}
+                  </div>
+                </div>
               </div>
+
+              {showIconPicker && (
+                <ProviderIconPickerDialog
+                  value={form.icon || null}
+                  onChange={(iconId) => {
+                    setForm((prev) => ({ ...prev, icon: iconId || '' }));
+                  }}
+                  onClose={() => setShowIconPicker(false)}
+                />
+              )}
             </div>
 
             {/* 启用状态 */}
@@ -348,29 +564,29 @@ export default function ProviderDialog({
           </div>
         </div>
 
-        {/* 底部操作 - 固定 */}
-        <div className="relative z-20 flex justify-end gap-3 p-5 bg-[var(--bg-primary)]">
-          <motion.button
-            onClick={onClose}
-            whileHover={{ scale: 1.02, backgroundColor: 'var(--bg-card-hover)' }}
-            whileTap={{ scale: 0.98 }}
-            className="px-5 py-2.5 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium transition-colors"
-          >
-            取消
-          </motion.button>
-          <motion.button
-            onClick={handleSubmit}
-            disabled={isPending || !form.code || !form.name}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm active:scale-95"
-          >
-            {isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : null}
-            保存
-          </motion.button>
-        </div>
+	          {/* 底部操作 - 固定 */}
+	          <div className="relative z-20 flex justify-end gap-3 p-5 bg-[var(--bg-primary)]">
+	            <motion.button
+	              type="button"
+	              onClick={onClose}
+	              whileHover={{ scale: 1.02, backgroundColor: 'var(--bg-card-hover)' }}
+	              whileTap={{ scale: 0.98 }}
+	              className="px-5 py-2.5 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium transition-colors"
+	            >
+	              取消
+	            </motion.button>
+	            <motion.button
+	              type="submit"
+	              disabled={isPending || !form.code.trim() || !form.name.trim()}
+	              whileHover={{ scale: 1.02 }}
+	              whileTap={{ scale: 0.98 }}
+	              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm active:scale-95"
+	            >
+	              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+	              保存
+	            </motion.button>
+	          </div>
+	        </form>
       </motion.div>
     </motion.div>
   );

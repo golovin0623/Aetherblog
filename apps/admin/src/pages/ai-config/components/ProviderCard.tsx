@@ -88,7 +88,12 @@ export default function ProviderCard({
               color: '#ffffff' 
             } : undefined}
           >
-            <ProviderIcon code={provider.code} size={28} className={provider.is_enabled ? "text-white drop-shadow-md" : ""} />
+            <ProviderIcon
+              code={provider.code}
+              icon={provider.icon}
+              size={28}
+              className={provider.is_enabled ? "text-white drop-shadow-md" : ""}
+            />
           </div>
           <div className="min-w-0">
             <h3 className="font-extrabold text-[var(--text-primary)] text-base tracking-tight truncate dark:text-zinc-100">

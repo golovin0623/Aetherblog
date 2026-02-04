@@ -303,7 +303,7 @@ function ProviderItem({
           : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
       }`}
     >
-      <ProviderIcon code={provider.code} size={20} />
+      <ProviderIcon code={provider.code} icon={provider.icon} size={20} />
       <span className="truncate min-w-0">{provider.display_name || provider.name}</span>
       
       {/* 启用状态指示点 (仅已启用显示) */}

@@ -44,7 +44,8 @@ export default function ProviderDetail({
   
   // Computed
   const preset = propPreset || getPresetProvider(provider.code);
-  const docUrl = preset?.docUrl || provider.doc_url || undefined;
+  // Allow user override from DB to take precedence over preset defaults
+  const docUrl = provider.doc_url || preset?.docUrl || undefined;
   const brand = getProviderBrand(provider.code);
   
   // Data
@@ -137,7 +138,7 @@ export default function ProviderDetail({
               background: `linear-gradient(135deg, ${brand.gradientFrom}, ${brand.gradientTo})`
             }}
           >
-            <ProviderIcon code={provider.code} size={28} className="text-white" />
+            <ProviderIcon code={provider.code} icon={provider.icon} size={28} className="text-white" />
           </div>
           
           <div className="flex-1 min-w-0 pt-0.5">

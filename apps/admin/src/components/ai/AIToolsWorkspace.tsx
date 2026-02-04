@@ -27,6 +27,7 @@ interface AIToolsWorkspaceProps {
   allConfigs: PromptConfig[];
   onConfigUpdated: () => void;
   isGlobalLoading: boolean;
+  isMobileSidebarOpen?: boolean;
 }
 
 // AI 服务直连地址 (通过 Nginx 代理)
@@ -36,12 +37,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   selectedTool, 
   allConfigs, 
   onConfigUpdated,
-  isGlobalLoading
+  isGlobalLoading,
+  isMobileSidebarOpen = false
 }) => {
   const [input, setInput] = useState('');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [selectedProviderCode, setSelectedProviderCode] = useState<string>('');
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
+  const [showConfig, setShowConfig] = useState(false);
   const { resolvedTheme } = useTheme();
 
   // Streaming state
@@ -152,7 +155,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         {/* Header - Desktop */}
-        <div className="hidden md:flex p-4 border-b border-[var(--border-subtle)] items-center justify-between bg-[var(--bg-card)] rounded-t-3xl z-20 flex-shrink-0">
+        <div className="hidden md:flex p-4 border-b border-[var(--border-subtle)] items-center justify-between bg-[var(--bg-card)] rounded-t-3xl z-10 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-primary/10">
               <FileText className="w-5 h-5 text-primary" />
@@ -161,47 +164,6 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">测试内容</h2>
               <p className="text-xs text-[var(--text-muted)]">输入原始文本以验证效果</p>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-             <ModelSelector
-                value={selectedModelId}
-                onChange={(modelId, provider) => {
-                  setSelectedModelId(modelId);
-                  setSelectedProviderCode(provider);
-                }}
-                className="w-[180px]"
-                selectedProviderCode={selectedProviderCode}
-             />
-
-             {isStreaming ? (
-                <button
-                  onClick={abort}
-                  type="button"
-                  className="w-11 h-11 p-0 rounded-2xl border border-red-500/30 bg-[var(--bg-card)] text-red-500 hover:bg-red-500/10 transition-all active:scale-95 inline-flex items-center justify-center"
-                  aria-label="停止生成"
-                >
-                  <Square className="w-4 h-4" />
-                </button>
-             ) : (
-                <button
-                  onClick={handleRunTest}
-                  type="button"
-                  disabled={isRunDisabled}
-                  className={cn(
-                    "group w-11 h-11 p-0 rounded-2xl border border-transparent bg-transparent transition-all active:scale-95 inline-flex items-center justify-center",
-                    "hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)]",
-                    isRunDisabled && "opacity-60 cursor-not-allowed hover:bg-transparent hover:border-transparent"
-                  )}
-                  aria-label="生成测试"
-                >
-                  <ArrowUpRight
-                    className={cn(
-                      "w-6 h-6 transition-transform text-black dark:text-white",
-                      isRunDisabled ? "text-[var(--text-muted)]" : "group-hover:scale-[1.05]"
-                    )}
-                  />
-                </button>
-             )}
           </div>
         </div>
 
@@ -213,80 +175,106 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">测试内容</h2>
         </div>
 
-        <div className="flex-1 flex flex-col min-h-0 rounded-b-2xl md:rounded-b-3xl overflow-hidden">
-          {/* Input Section (1/2) */}
-          <div className="flex-1 relative min-h-[120px]">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
-              className="w-full h-full p-4 md:p-6 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-sm font-light ring-offset-bg overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent"
-            />
-            {input.length === 0 && (
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10">
-                <FileText className="w-12 h-12 md:w-16 md:h-16 text-[var(--text-muted)]" />
-              </div>
-            )}
-          </div>
+        <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
+          {/* Main Content Areas: Stacked or Togglable */}
+          <div className="flex-1 relative flex flex-col min-h-0">
+            {/* Input Section */}
+            <div className={cn(
+              "flex-1 relative transition-all duration-500 ease-in-out origin-top",
+              showConfig ? "h-0 opacity-0 pointer-events-none scale-95" : "h-full opacity-100 scale-100"
+            )}>
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
+                className="w-full h-full p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar"
+              />
+              {input.length === 0 && (
+                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-[0.03] dark:opacity-[0.05]">
+                  <FileText className="w-24 h-24 mb-4" />
+                  <p className="text-xl font-medium tracking-widest uppercase">Content Hub</p>
+                </div>
+              )}
+            </div>
 
-          {/* Prompt Section (1/2) */}
-          {promptConfig && !isGlobalLoading && (
-            <>
-              <div className="w-full border-t border-dashed border-[var(--border-default)] opacity-50 my-0" />
-              <div className="flex-1 bg-[var(--bg-secondary)] relative min-h-[100px]">
+            {/* Prompt Section (The Integrated Panel) */}
+            {promptConfig && !isGlobalLoading && (
+              <div className={cn(
+                "absolute inset-0 z-10 bg-[var(--bg-secondary)] transition-all duration-500 ease-in-out",
+                showConfig ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
+              )}>
                 <PromptEditor
                   taskType={selectedTool.id}
                   defaultPrompt={promptConfig.default_prompt}
                   customPrompt={promptConfig.custom_prompt || ''}
                   onSave={handleSavePrompt}
                   isLoading={isStreaming}
+                  onClose={() => setShowConfig(false)}
                 />
               </div>
-            </>
-          )}
-          {/* Bottom spacer - taller on mobile for floating bar */}
-          <div className="h-20 md:h-2 flex-none bg-[var(--bg-secondary)]" />
-        </div>
-
-        {/* Mobile: Model selector and action button - floating bar */}
-        <div className="md:hidden absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-[var(--bg-card)] via-[var(--bg-card)] to-transparent z-20">
-          <div className="flex items-center gap-2 p-2 bg-[var(--bg-secondary)]/90 backdrop-blur-sm rounded-2xl border border-[var(--border-subtle)]">
-            <ModelSelector
-              value={selectedModelId}
-              onChange={(modelId, provider) => {
-                setSelectedModelId(modelId);
-                setSelectedProviderCode(provider);
-              }}
-              className="flex-1"
-              selectedProviderCode={selectedProviderCode}
-              variant="compact"
-              menuAlign="left"
-              menuClassName="!fixed !left-4 !right-4 !w-auto !max-w-none !top-auto !bottom-20"
-            />
-
-            {isStreaming ? (
-              <button
-                onClick={abort}
-                type="button"
-                className="w-10 h-10 p-0 rounded-xl border border-red-500/30 bg-[var(--bg-card)] text-red-500 hover:bg-red-500/10 transition-all active:scale-95 inline-flex items-center justify-center flex-shrink-0"
-                aria-label="停止生成"
-              >
-                <Square className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                onClick={handleRunTest}
-                type="button"
-                disabled={isRunDisabled}
-                className={cn(
-                  "w-10 h-10 p-0 rounded-xl bg-primary text-white transition-all active:scale-95 inline-flex items-center justify-center flex-shrink-0",
-                  isRunDisabled && "opacity-50 cursor-not-allowed"
-                )}
-                aria-label="生成测试"
-              >
-                <ArrowUpRight className="w-5 h-5" />
-              </button>
             )}
+          </div>
+          {/* Unified Execution Hub - Floating at bottom center */}
+          <div className={cn(
+            "absolute bottom-8 left-1/2 -translate-x-1/2 z-40 w-[94%] sm:w-auto transition-all duration-500",
+            (showConfig || isMobileSidebarOpen) ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
+          )}>
+            <div className="glass-premium rounded-[2.5rem] p-1 sm:p-1.5 flex items-center gap-1 sm:gap-1.5 shadow-2xl border-white/10">
+              {/* Toggle Config Button */}
+              <button
+                onClick={() => setShowConfig(!showConfig)}
+                className={cn(
+                  "p-2.5 sm:p-3.5 rounded-full transition-all duration-500",
+                  showConfig 
+                    ? "bg-black text-white dark:bg-white dark:text-black shadow-lg shadow-black/25 scale-110" 
+                    : "text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-black dark:hover:text-white"
+                )}
+                title={showConfig ? "返回输入" : "专家配置"}
+              >
+                <Code className="w-5 h-5" />
+              </button>
+
+              <div className="w-px h-6 bg-[var(--border-subtle)]/30 mx-0.5 sm:mx-1" />
+
+              <ModelSelector
+                value={selectedModelId}
+                onChange={(modelId, provider) => {
+                  setSelectedModelId(modelId);
+                  setSelectedProviderCode(provider);
+                }}
+                className="w-[124px] sm:w-[220px]"
+                triggerClassName="!border-none !bg-transparent !shadow-none hover:!bg-[var(--bg-card-hover)] rounded-full h-11 sm:h-12"
+                selectedProviderCode={selectedProviderCode}
+                menuPlacement="top"
+              />
+
+              <div className="w-px h-6 bg-[var(--border-subtle)]/30 mx-0.5 sm:mx-1" />
+
+              {isStreaming ? (
+                <button
+                  onClick={abort}
+                  className="h-11 sm:h-12 px-4 sm:px-6 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all font-bold flex items-center gap-2 animate-pulse"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                  <span className="hidden sm:inline text-xs uppercase tracking-widest">Abort</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleRunTest}
+                  disabled={isRunDisabled}
+                  className={cn(
+                    "h-11 sm:h-12 px-5 sm:px-8 rounded-full transition-all flex items-center gap-2 font-black shadow-xl active:scale-95 group/exec",
+                    "bg-black text-white dark:bg-white dark:text-black hover:opacity-90 relative overflow-hidden",
+                    !isRunDisabled && "hover:shadow-primary/20 hover:shadow-2xl",
+                    isRunDisabled && "opacity-30 cursor-not-allowed grayscale shadow-none"
+                  )}
+                >
+                  <div className="absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent scale-x-0 group-hover/exec:scale-x-100 transition-transform duration-700" />
+                  <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover/exec:translate-x-0.5 group-hover/exec:-translate-y-0.5 transition-transform" />
+                  <span className="text-[11px] sm:text-xs uppercase tracking-widest">Execute</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -312,11 +300,15 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
         <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 md:p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors">
-              <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
+            <div className="p-1.5 md:p-2 rounded-lg bg-black text-white dark:bg-white dark:text-black transition-colors">
+              <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
             </div>
             <div>
-              <h2 className="text-sm md:text-lg font-semibold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">生成结果</h2>
+              <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">生成结果</h2>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium tracking-tighter">AI Generator v2</span>
+              </div>
             </div>
           </div>
 
@@ -344,7 +336,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[var(--border-subtle)]/30 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[var(--border-subtle)]/60 scrollbar-track-transparent z-0">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 no-scrollbar z-0">
           {streamError ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
               <div className="p-4 rounded-full bg-red-500/10 border border-red-500/20 animate-in zoom-in-50 duration-300">

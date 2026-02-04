@@ -138,6 +138,14 @@ export default function AIToolsPage() {
     persistOrder(CUSTOM_ORDER_KEY, customOrder);
   }, [customOrder]);
 
+  useEffect(() => {
+    if (isMobileSidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [isMobileSidebarOpen]);
+
   const handleSaveTool = async (data: Partial<AiTaskType>) => {
     setIsSaving(true);
     try {
@@ -293,113 +301,93 @@ export default function AIToolsPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-6rem)] md:h-[calc(100vh-6rem)] overflow-hidden flex flex-col md:flex-row md:gap-6">
+    <div className="h-[calc(100vh-6rem)] md:h-[calc(100vh-6rem)] overflow-hidden flex flex-col md:flex-row md:gap-6 relative">
       {/* Mobile: Top Tool Tabs Bar */}
-      <div className="md:hidden relative flex-shrink-0">
-        {/* Scroll left button */}
-        <AnimatePresence>
-          {canScrollLeft && (
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => scrollTabs('left')}
-              className="absolute left-0 top-0 bottom-0 z-20 w-8 flex items-center justify-center bg-gradient-to-r from-[var(--bg-secondary)] via-[var(--bg-secondary)] to-transparent"
-            >
-              <ChevronLeft className="w-5 h-5 text-[var(--text-muted)]" />
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        {/* Scrollable tabs */}
-        <div
-          ref={toolTabsRef}
-          className="flex items-center gap-2 px-4 py-3 overflow-x-auto scrollbar-none bg-[var(--bg-card)] border-b border-[var(--border-subtle)]"
+      <div className="md:hidden sticky top-0 z-40 bg-[var(--bg-card)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] flex items-center h-[56px] overflow-hidden flex-shrink-0">
+        {/* Menu button - fixed left */}
+        <button
+          onClick={() => setIsMobileSidebarOpen(true)}
+          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-zinc-100 dark:active:bg-zinc-800"
         >
-          {/* Menu button to open sidebar */}
-          <button
-            onClick={() => setIsMobileSidebarOpen(true)}
-            className="flex-shrink-0 p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-primary transition-colors"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          <Menu className="w-6 h-6" />
+        </button>
 
-          {/* Tool tabs */}
-          {allTools.map((tool) => {
-            const Icon = tool.icon;
-            const isSelected = selectedToolId === tool.code;
-            return (
-              <button
-                key={tool.code}
-                data-tool-id={tool.code}
-                onClick={() => handleMobileToolSelect(tool.code)}
-                className={cn(
-                  "flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
-                  isSelected
-                    ? "bg-primary text-white shadow-md shadow-primary/20"
-                    : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {tool.name}
-              </button>
-            );
-          })}
-
-          {/* Add button */}
-          <button
-            onClick={() => {
-              setEditingTool(null);
-              setShowToolModal(true);
-            }}
-            className="flex-shrink-0 p-2 rounded-xl bg-[var(--bg-secondary)] border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-primary hover:border-primary/30 transition-colors"
+        <div className="flex-1 relative h-full overflow-hidden">
+          <div
+            ref={toolTabsRef}
+            className="flex items-center h-full gap-2 px-4 overflow-x-auto no-scrollbar scroll-smooth"
           >
-            <Plus className="w-5 h-5" />
-          </button>
+            {allTools.map((tool) => {
+              const Icon = tool.icon;
+              const isSelected = selectedToolId === tool.code;
+              return (
+                <button
+                  key={tool.code}
+                  data-tool-id={tool.code}
+                  onClick={() => handleMobileToolSelect(tool.code)}
+                  className={cn(
+                    "flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl text-xs font-black transition-all border shadow-sm",
+                    isSelected
+                      ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white"
+                      : "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
+                  )}
+                  title={tool.name}
+                >
+                  <Icon className="w-5 h-5" />
+                </button>
+              );
+            })}
+          </div>
+          
+          {/* Scroll indicators / Fades */}
+          <div className={cn(
+            "absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[var(--bg-card)] to-transparent pointer-events-none transition-opacity duration-300",
+            canScrollLeft ? "opacity-100" : "opacity-0"
+          )} />
+          <div className={cn(
+            "absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-[var(--bg-card)] to-transparent pointer-events-none transition-opacity duration-300",
+            canScrollRight ? "opacity-100" : "opacity-0"
+          )} />
         </div>
 
-        {/* Scroll right button */}
-        <AnimatePresence>
-          {canScrollRight && (
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => scrollTabs('right')}
-              className="absolute right-0 top-0 bottom-0 z-20 w-8 flex items-center justify-center bg-gradient-to-l from-[var(--bg-secondary)] via-[var(--bg-secondary)] to-transparent"
-            >
-              <ChevronRight className="w-5 h-5 text-[var(--text-muted)]" />
-            </motion.button>
-          )}
-        </AnimatePresence>
+        {/* Add button - fixed right */}
+        <button
+          onClick={() => {
+            setEditingTool(null);
+            setShowToolModal(true);
+          }}
+          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-zinc-100 dark:active:bg-zinc-800"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
       </div>
 
       {/* Mobile: Sidebar Drawer (inside main container) */}
       <AnimatePresence>
         {isMobileSidebarOpen && (
           <>
-            {/* Backdrop */}
+            {/* Backdrop - Internal */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsMobileSidebarOpen(false)}
-              className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+              className="md:hidden absolute inset-0 z-[60] bg-black/20 dark:bg-black/40 backdrop-blur-[2px]"
             />
 
-            {/* Drawer */}
+            {/* Drawer - Internal */}
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="md:hidden fixed left-4 top-20 bottom-4 z-50 w-[75vw] max-w-[280px] flex flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] shadow-2xl overflow-hidden"
+              transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 1 }}
+              className="md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[85vw] max-w-[280px] flex flex-col bg-white dark:bg-zinc-950 border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
             >
               {/* Header */}
-              <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-                <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  工具列表
+              <div className="p-6 border-b border-[var(--border-subtle)] flex items-center justify-between bg-white dark:bg-zinc-950">
+                <h2 className="text-xl font-black text-black dark:text-white flex items-center gap-3 tracking-tighter uppercase">
+                  <Sparkles className="w-6 h-6 text-black dark:text-white" />
+                  Tools Menu
                 </h2>
                 <button
                   onClick={() => setIsMobileSidebarOpen(false)}
@@ -410,56 +398,56 @@ export default function AIToolsPage() {
               </div>
 
               {/* Tool list */}
-              <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
+              <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   onDragEnd={handleDragEnd}
                 >
-                  <SortableContext
-                    items={systemToolItems.map(t => t.code)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="space-y-1.5">
-                      {systemToolItems.map((tool) => (
-                        <SortableToolItem
-                          key={tool.code}
-                          tool={tool}
-                          isSelected={selectedToolId === tool.code}
-                          onSelect={() => {
-                            setSelectedToolId(tool.code);
-                            setIsMobileSidebarOpen(false);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
+                  <div className="space-y-2 relative">
+                    <AnimatePresence initial={false}>
+                      <SortableContext
+                        items={systemToolItems.map(t => t.code)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {systemToolItems.map((tool) => (
+                          <SortableToolItem
+                            key={tool.code}
+                            tool={tool}
+                            isSelected={selectedToolId === tool.code}
+                            onSelect={() => {
+                              setSelectedToolId(tool.code);
+                              setIsMobileSidebarOpen(false);
+                            }}
+                          />
+                        ))}
+                      </SortableContext>
 
-                  {customToolItems.length > 0 && <div className="h-2" />}
+                      {customToolItems.length > 0 && <div className="h-4 border-b border-[var(--border-subtle)] mb-4" />}
 
-                  <SortableContext
-                    items={customToolItems.map(t => t.code)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="space-y-1.5">
-                      {customToolItems.map((tool) => (
-                        <SortableToolItem
-                          key={tool.code}
-                          tool={tool}
-                          isSelected={selectedToolId === tool.code}
-                          onSelect={() => {
-                            setSelectedToolId(tool.code);
-                            setIsMobileSidebarOpen(false);
-                          }}
-                          onEdit={() => {
-                            setEditingTool((tool as any).raw);
-                            setShowToolModal(true);
-                            setIsMobileSidebarOpen(false);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
+                      <SortableContext
+                        items={customToolItems.map(t => t.code)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {customToolItems.map((tool) => (
+                          <SortableToolItem
+                            key={tool.code}
+                            tool={tool}
+                            isSelected={selectedToolId === tool.code}
+                            onSelect={() => {
+                              setSelectedToolId(tool.code);
+                              setIsMobileSidebarOpen(false);
+                            }}
+                            onEdit={() => {
+                              setEditingTool((tool as any).raw);
+                              setShowToolModal(true);
+                              setIsMobileSidebarOpen(false);
+                            }}
+                          />
+                        ))}
+                      </SortableContext>
+                    </AnimatePresence>
+                  </div>
                 </DndContext>
               </div>
 
@@ -472,15 +460,13 @@ export default function AIToolsPage() {
                     setIsMobileSidebarOpen(false);
                   }}
                   className={cn(
-                    'group w-full flex items-center justify-center gap-2 p-2.5 rounded-xl transition-all',
-                    'bg-gradient-to-b from-[var(--bg-card)] to-[var(--bg-secondary)]',
-                    'border border-[var(--border-subtle)]',
-                    'text-[var(--text-secondary)] font-medium text-sm',
-                    'hover:text-primary hover:border-primary/30'
+                    'group w-full flex items-center justify-center gap-3 p-4 rounded-2xl transition-all',
+                    'bg-black text-white dark:bg-white dark:text-black font-black text-sm uppercase tracking-widest',
+                    'shadow-xl active:scale-95'
                   )}
                 >
-                  <Plus className="w-4 h-4" />
-                  新建功能
+                  <Plus className="w-5 h-5" />
+                  New Tool
                 </button>
               </div>
             </motion.div>
@@ -502,7 +488,7 @@ export default function AIToolsPage() {
         </div>
 
         {/* Scrollable Tool List */}
-        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -557,11 +543,10 @@ export default function AIToolsPage() {
             }}
             className={cn(
               'group w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-all duration-300',
-              'bg-gradient-to-b from-[var(--bg-card)] to-[var(--bg-secondary)]',
-              'border border-[var(--border-subtle)]',
+              'bg-[var(--bg-secondary)] border border-[var(--border-subtle)]',
               'text-[var(--text-secondary)] font-medium text-sm',
               'shadow-sm hover:shadow-md hover:shadow-primary/5',
-              'hover:text-primary hover:border-primary/30 hover:bg-primary/5'
+              'hover:text-primary hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98]'
             )}
           >
             <Plus className="w-4 h-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-90" />
@@ -581,6 +566,7 @@ export default function AIToolsPage() {
           allConfigs={promptConfigs}
           onConfigUpdated={fetchAllData}
           isGlobalLoading={isLoading}
+          isMobileSidebarOpen={isMobileSidebarOpen}
         />
       </div>
 
@@ -638,29 +624,46 @@ function SortableToolItem({
         }
       }}
       className={cn(
-        'relative w-full min-w-0 min-h-[60px] flex items-center gap-2.5 p-3 rounded-xl text-left transition-all duration-200 cursor-grab active:cursor-grabbing select-none',
+        'relative w-full min-w-0 flex items-center gap-4 px-4 py-4 rounded-2xl text-left transition-all duration-300 cursor-grab active:cursor-grabbing select-none group',
+        'border mb-2 overflow-hidden',
         isSelected
-          ? 'bg-primary text-white shadow-md shadow-primary/20'
-          : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)]',
-        isDragging && 'opacity-80 ring-2 ring-primary/30'
+          ? 'bg-black text-white dark:bg-white dark:text-black border-transparent shadow-xl z-10'
+          : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
+        isDragging && 'opacity-80 ring-2 ring-black/20 dark:ring-white/20 scale-[1.02] z-50 shadow-2xl'
       )}
     >
+      {/* Selection Glow Indicator */}
+      {isSelected && (
+        <motion.div
+          layoutId="activeToolBg"
+          className="absolute inset-0 bg-black dark:bg-white -z-10"
+          transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+        />
+      )}
+
       <div
         className={cn(
-          'p-2 rounded-lg transition-colors flex-shrink-0',
-          isSelected ? 'bg-white/20 text-white' : 'bg-[var(--bg-card)] text-[var(--text-muted)]'
+          'p-2.5 rounded-xl transition-colors flex-shrink-0',
+          isSelected 
+            ? 'bg-white/20 dark:bg-black/10 text-white dark:text-black' 
+            : 'bg-[var(--bg-card)] text-[var(--text-muted)] group-hover:text-black dark:group-hover:text-white'
         )}
       >
-        <Icon className="w-5 h-5" />
+        <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
       </div>
+      
       <div className={cn("flex-1 min-w-0", !tool.isSystem && "pr-8")}>
-        <div className={cn('font-semibold text-sm truncate mb-0.5', isSelected ? 'text-white' : '')}>
+        <div className={cn('font-bold text-sm sm:text-base truncate mb-0.5', isSelected ? '' : 'text-[var(--text-primary)]')}>
           {tool.name}
         </div>
-        <p className={cn('text-[11px] leading-tight line-clamp-2 h-[26px] overflow-hidden whitespace-normal', isSelected ? 'text-white/80' : 'text-[var(--text-muted)]')}>
+        <p className={cn(
+          'text-[11px] sm:text-xs leading-tight line-clamp-2 h-[32px] overflow-hidden whitespace-normal font-medium', 
+          isSelected ? 'opacity-80' : 'text-[var(--text-muted)]'
+        )}>
           {tool.description}
         </p>
       </div>
+      
       {!tool.isSystem && (
         <button
           type="button"
@@ -670,14 +673,14 @@ function SortableToolItem({
             onEdit?.();
           }}
           className={cn(
-            'absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-lg transition-all',
+            'absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-xl transition-all',
             isSelected
-              ? 'text-white hover:bg-white/20'
+              ? 'text-white/40 hover:text-white hover:bg-white/10 dark:text-black/40 dark:hover:text-black dark:hover:bg-black/5'
               : 'text-[var(--text-muted)] hover:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-sm bg-[var(--bg-card)]'
           )}
           aria-label="编辑工具"
         >
-          <Settings2 className="w-3.5 h-3.5" />
+          <Settings2 className="w-4 h-4" />
         </button>
       )}
     </div>

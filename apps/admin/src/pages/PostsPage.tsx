@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings, Sparkles } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { postService, PostListItem, Post } from '@/services/postService';
@@ -22,6 +22,8 @@ export default function PostsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<string | undefined>(undefined);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const createMenuRef = useRef<HTMLDivElement>(null);
 
   // Advanced Filter state
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
@@ -54,6 +56,9 @@ export default function PostsPage() {
     const handleClickOutside = (event: MouseEvent) => {
       if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
         setActiveTagPopover(null);
+      }
+      if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
+        setShowCreateMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -255,31 +260,83 @@ export default function PostsPage() {
 
       {/* 筛选和搜索 */}
       <div className="flex flex-wrap items-center gap-4 mb-4">
-        {/* Premium 新建按钮 (持续光泽流动效果) */}
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => navigate('/posts/new')}
-          className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-primary via-primary to-primary overflow-hidden shadow-lg shadow-primary/25"
-        >
-          {/* 持续流动的光泽效果 */}
-          <div 
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-            style={{
-              animation: 'shimmer 3s ease-in-out infinite',
-            }}
-          />
-          <style>{`
-            @keyframes shimmer {
-              0% { transform: translateX(-100%); }
-              50% { transform: translateX(100%); }
-              50.01% { transform: translateX(-100%); }
-              100% { transform: translateX(-100%); }
-            }
-          `}</style>
-          <Plus className="w-4 h-4 relative z-10" />
-          <span className="relative z-10">新建文章</span>
-        </motion.button>
+        {/* Premium 新建按钮 with 下拉菜单 */}
+        <div className="relative" ref={createMenuRef}>
+          <div className="flex items-center gap-0.5">
+            {/* 主按钮 - 常规创建 */}
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate('/posts/new')}
+              className="group relative flex items-center gap-2 px-4 py-2 rounded-l-xl text-sm font-semibold text-white bg-gradient-to-r from-primary via-primary to-primary overflow-hidden shadow-lg shadow-primary/25"
+            >
+              {/* 持续流动的光泽效果 */}
+              <div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                style={{
+                  animation: 'shimmer 3s ease-in-out infinite',
+                }}
+              />
+              <style>{`
+                @keyframes shimmer {
+                  0% { transform: translateX(-100%); }
+                  50% { transform: translateX(100%); }
+                  50.01% { transform: translateX(-100%); }
+                  100% { transform: translateX(-100%); }
+                }
+              `}</style>
+              <Plus className="w-4 h-4 relative z-10" />
+              <span className="relative z-10">新建文章</span>
+            </motion.button>
+
+            {/* 下拉触发按钮 */}
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => setShowCreateMenu(!showCreateMenu)}
+              className="group relative flex items-center justify-center w-9 h-full rounded-r-xl text-white bg-gradient-to-r from-primary to-primary overflow-hidden shadow-lg shadow-primary/25 border-l border-white/20"
+            >
+              <ChevronDown className={cn(
+                "w-4 h-4 relative z-10 transition-transform duration-200",
+                showCreateMenu && "rotate-180"
+              )} />
+            </motion.button>
+          </div>
+
+          {/* 下拉菜单 */}
+          <AnimatePresence>
+            {showCreateMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                className="absolute top-full mt-2 left-0 w-64 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-xl shadow-2xl overflow-hidden z-50"
+              >
+                <div className="p-2">
+                  <button
+                    onClick={() => {
+                      navigate('/posts/ai-writing/new');
+                      setShowCreateMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all hover:bg-[var(--bg-card-hover)] group"
+                  >
+                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-purple-500/20 group-hover:from-primary/30 group-hover:to-purple-500/30 transition-all">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-[var(--text-primary)]">AI 协同写作</span>
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/10 text-primary">新</span>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">工作流驱动的智能创作体验</p>
+                    </div>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* 状态筛选 (滑动背景效果) */}
         <div className="flex items-center p-1 bg-[var(--bg-secondary)] rounded-full border border-[var(--border-subtle)] backdrop-blur-md">
