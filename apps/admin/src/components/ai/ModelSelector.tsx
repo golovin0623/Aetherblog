@@ -67,7 +67,7 @@ const resolveAbilities = (model: AiModel) => {
   };
 };
 
-// Ability badge component
+// 能力徽章组件
 const AbilityBadge: React.FC<{
   icon: React.FC<{ className?: string }>;
   color: string;
@@ -100,13 +100,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  // Fetch Providers
+  // 获取提供商
   const { data: providersResponse } = useQuery({
     queryKey: ['ai-providers'],
     queryFn: () => aiProviderService.listProviders(true) // only enabled
   });
 
-  // Fetch Models
+  // 获取模型
   const { data: modelsResponse } = useQuery({
     queryKey: ['ai-models'],
     queryFn: () => aiProviderService.listModels(undefined, undefined)
@@ -115,7 +115,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const providers = providersResponse?.data || [];
   const allModels = modelsResponse?.data || [];
 
-  // Group models by provider
+  // 按提供商分组模型
   const groupedModels = useMemo(() => {
     const groups: GroupedModels[] = [];
     const filteredModels = allModels.filter((model) => {
@@ -125,11 +125,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       return true;
     });
     
-    // Sort providers by priority
+    // 按优先级排序提供商
     const sortedProviders = [...providers].sort((a, b) => b.priority - a.priority);
 
     sortedProviders.forEach(provider => {
-      // Filter models for this provider
+      // 筛选该提供商的模型
       const providerModels = filteredModels.filter(
         m => m.provider_code === provider.code
       );
@@ -142,8 +142,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       }
     });
 
-    // If provider list did not include the filtered provider (e.g., disabled),
-    // still return models grouped under a placeholder.
+    // 如果提供商列表未包含筛选出的提供商（例如已禁用），
+    // 仍将模型分组在占位符下返回。
     if (groups.length === 0 && filteredModels.length > 0 && providerCode) {
       const fallbackProvider = providers.find((p) => p.code === providerCode);
       if (fallbackProvider) {
@@ -154,21 +154,21 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return groups;
   }, [providers, allModels, modelType, providerCode]);
 
-  // Filter based on search
+  // 基于搜索进行筛选
   const filteredGroups = useMemo(() => {
     if (!search.trim()) return groupedModels;
 
     const lowerSearch = search.toLowerCase();
     
     return groupedModels.map(group => {
-      // Check if provider matches
+      // 检查提供商是否匹配
       const providerMatch = 
         group.provider.name.toLowerCase().includes(lowerSearch) ||
         (group.provider.display_name && group.provider.display_name.toLowerCase().includes(lowerSearch));
 
       if (providerMatch) return group;
 
-      // Filter models
+      // 筛选模型
       const filteredModels = group.models.filter(m => 
         m.model_id.toLowerCase().includes(lowerSearch) ||
         (m.display_name && m.display_name.toLowerCase().includes(lowerSearch))
@@ -181,7 +181,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     }).filter(group => group.models.length > 0);
   }, [groupedModels, search]);
 
-  // Find selected model object
+  // 查找选中的模型对象
   const selectedModel = useMemo(() => {
     if (!value) return null;
     if (selectedProviderCode) {
@@ -192,7 +192,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return allModels.find(m => m.model_id === value);
   }, [allModels, value, selectedProviderCode]);
 
-  // Close on outside click
+  // 点击外部关闭
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -215,7 +215,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     setSearch('');
   };
 
-  // Helper to format context window
+  // 格式化上下文窗口大小的辅助函数
   const formatContext = (tokens?: number | null) => {
     if (!tokens) return null;
     if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(0)}M`;
@@ -225,7 +225,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   return (
     <div className={cn("relative model-selector-container", className)}>
-      {/* Trigger Button - Only shows provider icon */}
+      {/* 触发按钮 - 仅显示提供商图标 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
@@ -294,7 +294,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 "shadow-xl shadow-zinc-200/50 dark:shadow-black/30"
               )}
             >
-              {/* Top shine effect that follows the rounded corners and fades down */}
+              {/* 顶部光泽效果，跟随圆角并向下淡出 */}
               <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
                 <div 
                   className={cn(
@@ -308,7 +308,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 />
               </div>
 
-            {/* Search Header */}
+            {/* 搜索头部 */}
             <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
@@ -330,7 +330,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               </div>
             </div>
 
-            {/* Models List */}
+            {/* 模型列表 */}
             <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-[200px] max-h-[380px] scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-700">
               {filteredGroups.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-500">
@@ -340,7 +340,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               ) : (
                 filteredGroups.map((group) => (
                   <div key={group.provider.code} className="mb-2">
-                    {/* Provider Header */}
+                    {/* 提供商头部 */}
                     <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm z-0">
                       <ProviderIcon code={group.provider.code} size={16} />
                       <span className="uppercase tracking-wider">
@@ -348,7 +348,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                       </span>
                     </div>
                     
-                    {/* Model Items */}
+                    {/* 模型项 */}
                     <div className="space-y-0.5">
                       {group.models.map((model) => {
                         const abilities = resolveAbilities(model);
@@ -367,14 +367,14 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                 : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
                             )}
                           >
-                            {/* Model Icon */}
+                            {/* 模型图标 */}
                             <ProviderIcon 
                               code={group.provider.code} 
                               size={20}
                               className="shrink-0"
                             />
                             
-                            {/* Model Name */}
+                            {/* 模型名称 */}
                             <span className={cn(
                               "flex-1 font-medium text-sm truncate",
                               isSelected 
@@ -384,7 +384,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                               {model.display_name || model.model_id}
                             </span>
 
-                            {/* Ability Badges */}
+                            {/* 能力徽章 */}
                             <div className="flex items-center gap-1 shrink-0">
                               {abilities.vision && (
                                 <AbilityBadge 
@@ -422,7 +422,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                 />
                               )}
                               
-                              {/* Context Window Badge */}
+                              {/* 上下文窗口徽章 */}
                               {contextWindow && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
                                   <Zap className="w-3 h-3" />
@@ -430,7 +430,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                 </span>
                               )}
 
-                              {/* Check mark for selected */}
+                              {/* 选中标记 */}
                               {isSelected && (
                                 <Check className="w-4 h-4 text-primary ml-1" />
                               )}
@@ -444,7 +444,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               )}
             </div>
 
-            {/* Footer */}
+            {/* 底部 */}
               <div className="p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
                 <a 
                   href="/admin/ai-config" 

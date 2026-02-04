@@ -57,7 +57,7 @@ public class MediaServiceTest {
             mediaService.upload(file, 1L, null);
         });
 
-        // Verify message if needed, but for now just expecting exception is enough
+        // 如果需要可以验证消息，但目前只预期抛出异常就足够了
     }
 
     @Test
