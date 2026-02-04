@@ -63,7 +63,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<Void> handleException(Exception e) {
         log.error("系统异常", e);
-        // Expose exception details only for development/testing profiles for easier debugging.
+        // 仅在开发/测试配置中暴露异常详情以便于调试。
         if (environment.matchesProfiles("dev", "test", "local")) {
             return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常: " + e.getMessage());
         }
