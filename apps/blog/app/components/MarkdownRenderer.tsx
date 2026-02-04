@@ -169,7 +169,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
         mermaid.initialize({
           startOnLoad: false,
           theme: mermaidTheme as any,
-          // Adjust variables only for dark mode or specific needs
+          // 仅针对暗色模式或特定需求调整变量
           themeVariables: theme === 'dark' ? {
             primaryColor: '#6366f1',
             primaryTextColor: '#f1f5f9',
