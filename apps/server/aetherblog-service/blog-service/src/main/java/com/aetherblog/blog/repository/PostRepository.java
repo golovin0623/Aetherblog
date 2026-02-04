@@ -59,4 +59,9 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
      */
     @Query("SELECT COUNT(p) FROM Post p WHERE p.createdAt BETWEEN :startTime AND :endTime")
     int countByCreatedAtBetween(@Param("startTime") java.time.LocalDateTime startTime, @Param("endTime") java.time.LocalDateTime endTime);
+
+    /**
+     * 统计指定时间之后新增的文章数 (包含起始时间)
+     */
+    long countByCreatedAtGreaterThanEqual(java.time.LocalDateTime dateTime);
 }

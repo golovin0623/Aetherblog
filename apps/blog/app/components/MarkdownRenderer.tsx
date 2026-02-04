@@ -169,7 +169,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
         mermaid.initialize({
           startOnLoad: false,
           theme: mermaidTheme as any,
-          // Adjust variables only for dark mode or specific needs
+          // 仅针对暗色模式或特定需求调整变量
           themeVariables: theme === 'dark' ? {
             primaryColor: '#6366f1',
             primaryTextColor: '#f1f5f9',
@@ -306,7 +306,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 
   return (
     <div className={`code-block-wrapper relative group my-4 rounded-xl overflow-hidden border border-[var(--markdown-border-code)] bg-[var(--markdown-bg-code)] ${isCollapsed ? 'collapsed' : ''}`}>
-      {/* Header */}
+      {/* 头部 */}
       <div className="code-block-header flex items-center justify-between px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--markdown-border-code)]">
         <span className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-wider">
           {langDisplay}
@@ -334,7 +334,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
         </button>
       </div>
 
-      {/* Code content */}
+      {/* 代码内容 */}
       <div className="code-block-content overflow-x-auto">
         {highlightedHtml ? (
           <div

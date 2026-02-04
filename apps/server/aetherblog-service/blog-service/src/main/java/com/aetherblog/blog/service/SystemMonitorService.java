@@ -4,6 +4,11 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.cluster.health.ClusterHealthStatus;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
@@ -37,6 +42,7 @@ public class SystemMonitorService {
 
     private final DataSource dataSource;
     private final RedisConnectionFactory redisConnectionFactory;
+    private final RestHighLevelClient elasticsearchClient;
 
     // 网络速率计算缓存
     private static volatile long lastNetworkIn = 0;
@@ -984,9 +990,34 @@ public class SystemMonitorService {
     }
 
     private ServiceHealth checkElasticsearch() {
-        // ES 检查 - 目前返回 warning 状态 (单节点模式)
-        // TODO: 集成 ES RestHighLevelClient 后可动态检查
-        return new ServiceHealth("Elasticsearch", "warning", 50, "单节点模式 (Yellow)");
+        long start = System.currentTimeMillis();
+        try {
+            ClusterHealthRequest request = new ClusterHealthRequest();
+            ClusterHealthResponse response = elasticsearchClient.cluster().health(request, RequestOptions.DEFAULT);
+            long latency = System.currentTimeMillis() - start;
+
+            String status = "down";
+            String message = "Cluster status: " + response.getStatus().name();
+
+            if (response.getStatus() == ClusterHealthStatus.GREEN) {
+                status = "up";
+            } else if (response.getStatus() == ClusterHealthStatus.YELLOW) {
+                status = "warning";
+                message += " (单节点模式)";
+            }
+
+            ServiceHealth health = new ServiceHealth("Elasticsearch", status, latency, message);
+            Map<String, Object> details = new java.util.HashMap<>();
+            details.put("clusterName", response.getClusterName());
+            details.put("numberOfNodes", response.getNumberOfNodes());
+            details.put("activePrimaryShards", response.getActivePrimaryShards());
+            health.setDetails(details);
+
+            return health;
+        } catch (Exception e) {
+            log.warn("Elasticsearch health check failed", e);
+            return new ServiceHealth("Elasticsearch", "down", 0, e.getMessage());
+        }
     }
 
     private static String formatBytes(long bytes) {

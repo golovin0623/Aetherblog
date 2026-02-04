@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
     @Index(name = "idx_comments_post", columnList = "post_id"),
     @Index(name = "idx_comments_parent", columnList = "parent_id"),
     @Index(name = "idx_comments_status", columnList = "status"),
-    @Index(name = "idx_comments_created", columnList = "createdAt")
+    @Index(name = "idx_comments_created", columnList = "created_at")
 })
 public class Comment {
 

@@ -78,10 +78,10 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
         />
 
         <div className="grid lg:grid-cols-3 h-full max-h-full overflow-hidden relative z-20">
-            {/* Left Content Section (1/3 width on desktop, 100% on mobile) */}
+            {/* 左侧内容区域 (桌面端 1/3 宽度，移动端 100%) */}
             <div className="lg:col-span-1 p-6 md:p-8 flex flex-col h-full border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] overflow-hidden min-w-0">
                 <div className="flex flex-col items-start min-h-0 flex-1 overflow-hidden min-w-0 w-full">
-                     {/* Meta Info: Category, Date */}
+                     {/* 元信息：分类、日期 */}
                     <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-3">
                         {post.category && (
                             <Link href={`/categories/${post.category.slug}`} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-purple-500 text-white shadow-sm hover:shadow-md transition-all">
@@ -95,14 +95,14 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                         </div>
                     </div>
 
-                    {/* Title */}
+                    {/* 标题 */}
                     <h1 className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent transition-all cursor-pointer`}>
                         <Link href={`/posts/${post.slug}`}>
                             {post.title}
                         </Link>
                     </h1>
                     
-                    {/* Tags (New Style) */}
+                    {/* 标签 (新样式) */}
                     {post.tags && post.tags.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                             {post.tags.slice(0, 2).map(tag => (
@@ -118,7 +118,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                         </div>
                     )}
 
-                    {/* Summary - Adaptive height with fade mask */}
+                    {/* 摘要 - 自适应高度带渐变遮罩 */}
                     <div 
                       className="text-[var(--text-secondary)] text-sm leading-relaxed mb-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full min-w-0"
                       style={{
@@ -132,7 +132,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     </div>
                 </div>
 
-                {/* Read More Button */}
+                {/* 阅读更多按钮 */}
                 <Link
                     href={`/posts/${post.slug}`}
                     className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 shadow-[var(--shadow-primary)] hover:shadow-[var(--shadow-primary-lg)] text-xs shrink-0"
@@ -142,7 +142,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                 </Link>
             </div>
 
-             {/* Right Preview Section (2/3 width) - Rendered Markdown */}
+             {/* 右侧预览区域 (2/3 宽度) - 渲染的 Markdown */}
             <div className="hidden lg:block lg:col-span-2 bg-[var(--preview-bg)] overflow-hidden relative">
                 <div className="p-8 h-full overflow-hidden">
                     {post.contentPreview ? (
@@ -162,7 +162,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                     )}
                 </div>
 
-                 {/* Subtle Fade Out Overlay - Lighter gradient */}
+                 {/* 微妙的淡出覆盖层 - 较浅的渐变 */}
                  <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[var(--bg-card)] via-[var(--bg-card)]/50 to-transparent pointer-events-none" />
             </div>
         </div>

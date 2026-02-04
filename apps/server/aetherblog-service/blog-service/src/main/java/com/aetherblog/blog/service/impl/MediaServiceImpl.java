@@ -73,6 +73,19 @@ public class MediaServiceImpl implements MediaService {
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers"
     );
 
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+            // Images
+            "jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "ico", "bmp", "tiff",
+            // Video
+            "mp4", "webm", "ogg", "avi", "mov", "wmv",
+            // Audio
+            "mp3", "wav", "m4a", "aac", "flac",
+            // Documents
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers",
+            // Archives
+            "zip", "rar", "7z", "tar", "gz"
+    );
+
     @Override
     @Transactional
     public MediaFile upload(MultipartFile file, Long uploaderId, Long folderId) {
@@ -89,6 +102,13 @@ public class MediaServiceImpl implements MediaService {
         String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
         String originalName = StringUtils.cleanPath(originalFilename != null ? originalFilename : "unknown");
         String extension = getFileExtension(originalName);
+
+        // Security Check: Validate file extension
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            log.warn("拒绝上传非法文件类型: filename={}, extension={}", originalName, extension);
+            throw new BusinessException(400, "不支持的文件类型: " + extension);
+        }
+
         String filename = UUID.randomUUID() + "." + extension;
         String relativePath = datePath + "/" + filename;
 

@@ -25,7 +25,7 @@ export default function PostsPage() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
 
-  // Advanced Filter state
+  // 高级筛选状态
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -38,20 +38,20 @@ export default function PostsPage() {
     endDate: '',
   });
 
-  // Action Confirmation state
+  // 操作确认状态
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     type: 'delete' | 'copy';
     post: PostListItem | null;
   }>({ isOpen: false, type: 'delete', post: null });
 
-  // Properties Modal state
+  // 属性弹窗状态
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
 
-  // Close tag popover when clicking outside
+  // 点击外部时关闭标签弹出框
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
@@ -66,7 +66,7 @@ export default function PostsPage() {
   }, []);
 
 
-  // Debounce search
+  // 防抖搜索
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -105,12 +105,12 @@ export default function PostsPage() {
     }
   };
 
-  // Initial fetch and fetch on status/search/filter change
+  // 初始加载及状态/搜索/筛选变更时加载
   useEffect(() => {
     fetchPosts(1, activeStatus, debouncedSearch || undefined, filters);
   }, [activeStatus, debouncedSearch, filters]);
 
-  // Fetch categories and tags for filters
+  // 获取筛选用的分类和标签
   useEffect(() => {
     const loadFilterData = async () => {
       try {
@@ -135,7 +135,7 @@ export default function PostsPage() {
     fetchPosts(page, activeStatus, debouncedSearch || undefined, filters);
   };
 
-  // Handle delete action
+  // 处理删除操作
   const confirmDelete = async () => {
     if (!confirmDialog.post) return;
     try {
@@ -150,7 +150,7 @@ export default function PostsPage() {
     }
   };
 
-  // Handle copy action
+  // 处理复制操作
   const confirmCopy = async () => {
     if (!confirmDialog.post) return;
     try {
@@ -186,13 +186,13 @@ export default function PostsPage() {
     setConfirmDialog({ isOpen: true, type: 'copy', post });
   }, []);
 
-  // Handle edit
+  // 处理编辑
   const handleEdit = useCallback((post: PostListItem, e: React.MouseEvent) => {
     e.stopPropagation();
     navigate(`/posts/${post.id}/edit`);
   }, [navigate]);
 
-  // Handle open properties modal
+  // 处理打开属性弹窗
   const handleOpenProperties = useCallback(async (post: PostListItem, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -207,7 +207,7 @@ export default function PostsPage() {
     }
   }, []);
 
-  // Handle save properties
+  // 处理保存属性
   const handleSaveProperties = useCallback(async (data: UpdatePostPropertiesRequest) => {
     if (!selectedPost) return;
     try {
@@ -958,7 +958,7 @@ export default function PostsPage() {
         onCancel={() => setConfirmDialog({ isOpen: false, type: 'delete', post: null })}
       />
 
-      {/* Properties Modal */}
+      {/* 属性弹窗 */}
       {selectedPost && (
         <PostPropertiesModal
           isOpen={isPropertiesModalOpen}

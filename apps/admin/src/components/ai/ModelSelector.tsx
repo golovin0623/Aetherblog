@@ -68,7 +68,7 @@ const resolveAbilities = (model: AiModel) => {
   };
 };
 
-// Ability badge component
+// 能力徽章组件
 const AbilityBadge: React.FC<{
   icon: React.FC<{ className?: string }>;
   color: string;
@@ -110,13 +110,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Fetch Providers
+  // 获取提供商
   const { data: providersResponse } = useQuery({
     queryKey: ['ai-providers'],
     queryFn: () => aiProviderService.listProviders(true) // only enabled
   });
 
-  // Fetch Models
+  // 获取模型
   const { data: modelsResponse } = useQuery({
     queryKey: ['ai-models'],
     queryFn: () => aiProviderService.listModels(undefined, undefined)
@@ -125,7 +125,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const providers = providersResponse?.data || [];
   const allModels = modelsResponse?.data || [];
 
-  // Group models by provider
+  // 按提供商分组模型
   const groupedModels = useMemo(() => {
     const groups: GroupedModels[] = [];
     const filteredModels = allModels.filter((model) => {
@@ -135,11 +135,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       return true;
     });
     
-    // Sort providers by priority
+    // 按优先级排序提供商
     const sortedProviders = [...providers].sort((a, b) => b.priority - a.priority);
 
     sortedProviders.forEach(provider => {
-      // Filter models for this provider
+      // 筛选该提供商的模型
       const providerModels = filteredModels.filter(
         m => m.provider_code === provider.code
       );
@@ -152,8 +152,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       }
     });
 
-    // If provider list did not include the filtered provider (e.g., disabled),
-    // still return models grouped under a placeholder.
+    // 如果提供商列表未包含筛选出的提供商（例如已禁用），
+    // 仍将模型分组在占位符下返回。
     if (groups.length === 0 && filteredModels.length > 0 && providerCode) {
       const fallbackProvider = providers.find((p) => p.code === providerCode);
       if (fallbackProvider) {
@@ -164,21 +164,21 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return groups;
   }, [providers, allModels, modelType, providerCode]);
 
-  // Filter based on search
+  // 基于搜索进行筛选
   const filteredGroups = useMemo(() => {
     if (!search.trim()) return groupedModels;
 
     const lowerSearch = search.toLowerCase();
     
     return groupedModels.map(group => {
-      // Check if provider matches
+      // 检查提供商是否匹配
       const providerMatch = 
         group.provider.name.toLowerCase().includes(lowerSearch) ||
         (group.provider.display_name && group.provider.display_name.toLowerCase().includes(lowerSearch));
 
       if (providerMatch) return group;
 
-      // Filter models
+      // 筛选模型
       const filteredModels = group.models.filter(m => 
         m.model_id.toLowerCase().includes(lowerSearch) ||
         (m.display_name && m.display_name.toLowerCase().includes(lowerSearch))
@@ -191,7 +191,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     }).filter(group => group.models.length > 0);
   }, [groupedModels, search]);
 
-  // Find selected model object
+  // 查找选中的模型对象
   const selectedModel = useMemo(() => {
     if (!value) return null;
     if (selectedProviderCode) {
@@ -419,7 +419,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   return (
     <div className={cn("relative model-selector-container", className)}>
-      {/* Trigger Button - Only shows provider icon */}
+      {/* 触发按钮 - 仅显示提供商图标 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(

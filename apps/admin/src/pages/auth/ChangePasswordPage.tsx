@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import CryptoJS from 'crypto-js';
 
-// Encryption key - must match backend
+// 加密密钥 - 必须与后端匹配
 const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
 
-// Encrypt password before sending
+// 发送前加密密码
 const encryptPassword = (password: string): string => {
   const timestamp = Date.now().toString();
   const data = JSON.stringify({ password, timestamp });
@@ -33,7 +33,7 @@ export function ChangePasswordPage() {
   const location = useLocation();
   const logout = useAuthStore((state) => state.logout);
   
-  // Check if this is first login forced password change
+  // 检查是否为首次登录强制修改密码
   const isFirstLogin = location.state?.firstLogin === true;
 
   const validatePasswords = () => {
@@ -63,7 +63,7 @@ export function ChangePasswordPage() {
     setIsLoading(true);
 
     try {
-      // Encrypt passwords before sending
+      // 发送前加密密码
       const res = await authService.changePassword({
         currentPassword: encryptPassword(currentPassword),
         newPassword: encryptPassword(newPassword),
@@ -72,7 +72,7 @@ export function ChangePasswordPage() {
       
       if (res.code === 200) {
         setSuccess(true);
-        // After successful password change, logout and redirect to login
+        // 密码修改成功后，登出并重定向到登录页
         setTimeout(() => {
           logout();
           navigate('/login', { 
@@ -92,23 +92,23 @@ export function ChangePasswordPage() {
 
   return (
     <div className="w-full min-h-screen flex bg-black text-white selection:bg-amber-500/30 overflow-hidden font-sans relative">
-      {/* Background Layer - Shared */}
+      {/* 背景层 - 共享 */}
       <div className="absolute inset-0 z-0">
         <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-amber-600/10 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
         <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600/5 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
-        {/* Grid Pattern */}
+        {/* 网格图案 */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
       </div>
 
-      {/* Left: Brand/Art Section (Desktop only) */}
+      {/* 左侧：品牌/艺术区（仅桌面端） */}
       <motion.div 
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-white/5"
       >
-        {/* Brand Content */}
+        {/* 品牌内容 */}
         <div className="relative z-10">
            <div className="inline-flex items-center gap-3">
              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
@@ -137,7 +137,7 @@ export function ChangePasswordPage() {
         </div>
       </motion.div>
 
-      {/* Right: Form Section */}
+      {/* 右侧：表单区 */}
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -145,7 +145,7 @@ export function ChangePasswordPage() {
         className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 relative z-10"
       >
         <div className="w-full max-w-[420px] space-y-8">
-          {/* Mobile Branding */}
+          {/* 移动端品牌展示 */}
           <div className="lg:hidden flex flex-col items-center mb-8 text-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center shadow-2xl shadow-amber-500/20 mb-4">
               <KeyRound className="w-8 h-8 text-white" />
@@ -165,7 +165,7 @@ export function ChangePasswordPage() {
             </p>
           </div>
 
-          {/* Success State */}
+          {/* 成功状态 */}
           {success ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -183,7 +183,7 @@ export function ChangePasswordPage() {
             </motion.div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Warning for first login */}
+              {/* 首次登录警告 */}
               {isFirstLogin && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
@@ -200,7 +200,7 @@ export function ChangePasswordPage() {
                 </motion.div>
               )}
 
-              {/* Error Message */}
+              {/* 错误消息 */}
               {error && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
@@ -212,7 +212,7 @@ export function ChangePasswordPage() {
                 </motion.div>
               )}
 
-              {/* Form Fields */}
+              {/* 表单字段 */}
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-300 ml-1">Current Password</label>
@@ -286,7 +286,7 @@ export function ChangePasswordPage() {
                 </div>
               </div>
 
-              {/* Password Requirements */}
+              {/* 密码要求 */}
               <div className="p-4 rounded-xl bg-white/5 border border-white/5">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Password Health</p>
                 <ul className="space-y-2">
@@ -313,7 +313,7 @@ export function ChangePasswordPage() {
                 </ul>
               </div>
 
-              {/* Submit Button */}
+              {/* 提交按钮 */}
               <button
                 type="submit"
                 disabled={isLoading}
@@ -335,7 +335,7 @@ export function ChangePasswordPage() {
                 )}
               </button>
 
-              {/* Back link */}
+              {/* 返回链接 */}
               {!isFirstLogin && (
                 <div className="text-center">
                   <button 
@@ -354,7 +354,7 @@ export function ChangePasswordPage() {
             Your credentials are protected by industrial-grade encryption.
           </p>
 
-          {/* Mobile Status */}
+          {/* 移动端状态 */}
           <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-40">
             <div className="w-1 h-1 bg-amber-500 rounded-full" />
             <span className="text-[10px] text-slate-500 font-medium tracking-widest uppercase">Secured Environment</span>
