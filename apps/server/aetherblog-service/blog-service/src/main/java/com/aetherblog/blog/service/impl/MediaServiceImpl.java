@@ -104,7 +104,7 @@ public class MediaServiceImpl implements MediaService {
         String extension = getFileExtension(originalName);
 
         // Security Check: Validate file extension
-        if (!ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
             log.warn("拒绝上传非法文件类型: filename={}, extension={}", originalName, extension);
             throw new BusinessException(400, "不支持的文件类型: " + extension);
         }
