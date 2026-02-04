@@ -47,7 +47,7 @@ aria-label="上一页"
           <button
             key={index}
             onClick={() => onPageChange(p)}
-            aria-label={`Page ${p}`}
+aria-label={`第 ${p} 页`}
             aria-current={p === page ? 'page' : undefined}
             className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
               p === page
