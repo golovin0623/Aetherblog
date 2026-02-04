@@ -31,14 +31,14 @@ public class StreamParser {
             return Mono.empty();
         }
         
-        // Handle SSE data prefix
+        // 处理 SSE 数据前缀
         if (line.startsWith("data: ")) {
             line = line.substring(6);
         } else if (line.startsWith("data:")) {
             line = line.substring(5);
         }
         
-        if (line.isBlank() || line.startsWith(":")) { // Skip comments or empty data
+        if (line.isBlank() || line.startsWith(":")) { // 跳过注释或空数据
              return Mono.empty();
         }
         
