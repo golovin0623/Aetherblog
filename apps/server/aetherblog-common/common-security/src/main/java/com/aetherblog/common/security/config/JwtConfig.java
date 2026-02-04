@@ -15,7 +15,7 @@ public class JwtConfig {
     /**
      * 密钥
      */
-    private String secret = "aetherblog-secret-key-for-jwt-token-generation-2024";
+    private String secret;
 
     /**
      * 过期时间（毫秒）
