@@ -37,7 +37,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
         className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        aria-label="Previous page"
+aria-label="上一页"
       >
         <ChevronLeft className="w-4 h-4 text-gray-400" />
       </button>
