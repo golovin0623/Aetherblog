@@ -5,13 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface ThinkingBlockProps {
   content: string;
-  isActive?: boolean; // Currently receiving think content
+  isActive?: boolean; // 当前正在接收思考内容
   className?: string;
 }
 
 /**
- * Collapsible thinking block component for AI reasoning display.
- * Similar to DeepSeek/Claude thinking display.
+ * 可折叠的 AI 推理过程显示组件。
+ * 类似于 DeepSeek/Claude 的思考显示。
  */
 export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
   content,
@@ -30,7 +30,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
         : "border-[var(--border-subtle)] bg-[var(--bg-secondary)]",
       className
     )}>
-      {/* Header */}
+      {/* 头部 */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
@@ -67,7 +67,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
         )}
       </button>
 
-      {/* Content */}
+      {/* 内容 */}
       <AnimatePresence>
         {isExpanded && (
           <motion.div

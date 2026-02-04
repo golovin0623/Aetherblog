@@ -1,4 +1,4 @@
-// Blog Components
+// 博客组件
 export { ArticleCard } from './ArticleCard';
 export { FriendCard } from './FriendCard';
 export { SearchPanel } from './SearchPanel';

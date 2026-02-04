@@ -176,9 +176,9 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
               onClick={() => toggleYear(yearData.year)}
               className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10"
             >
-              {/* Node with pulse animation when expanded */}
+              {/* 展开时带脉冲动画的节点 */}
               <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary group-hover:bg-primary/30 transition-colors">
-                {/* Pulse ring animation when expanded */}
+                {/* 展开时的脉冲环动画 */}
                 {isYearExpanded && (
                   <span className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: '2s' }} />
                 )}
