@@ -9,6 +9,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
+import asyncpg
 from litellm import acompletion
 
 from app.api.deps import (
@@ -16,6 +17,7 @@ from app.api.deps import (
     get_credential_resolver,
     get_model_router,
     get_remote_model_fetcher,
+    get_pg_pool,
     require_admin,
 )
 from app.core.jwt import UserClaims
@@ -366,12 +368,34 @@ async def update_model(
 async def delete_model(
     model_id: int,
     registry: ProviderRegistry = Depends(get_provider_registry),
+    pool: asyncpg.Pool = Depends(get_pg_pool),
 ):
-    """Delete a model."""
+    """Delete a model.
+
+    Note: Related ai_task_routing entries will have their model references
+    automatically set to NULL via FK constraints.
+    """
+    # Optional: Check and warn if model is in use (for better UX)
+    async with pool.acquire() as conn:
+        usage_count = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM ai_task_routing
+            WHERE primary_model_id = $1 OR fallback_model_id = $1
+            """,
+            model_id,
+        )
+
     deleted = await registry.delete_model(model_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Model not found")
-    return ApiResponse(code=200, message="success", data=True)
+
+    # Info message if model was in use
+    message = "success"
+    if usage_count and usage_count > 0:
+        message = f"Model deleted. {usage_count} task routing(s) updated to use default model."
+
+    return ApiResponse(code=200, message=message, data=True)
 
 
 @router.post("/{provider_code}/models/remote", response_model=ApiResponse[ModelSyncResponse])

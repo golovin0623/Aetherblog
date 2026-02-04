@@ -313,7 +313,7 @@ export default function ModelConfigDialog({
                 onChange={(e) => setForm((prev) => ({ ...prev, model_id: e.target.value }))}
                 disabled={mode === 'edit'}
                 placeholder="gpt-5-mini"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all disabled:opacity-50"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all disabled:opacity-50"
               />
               <p className="text-xs text-[var(--text-muted)]">
                 创建后不可修改，调用 AI 时将作为模型 ID 使用
@@ -328,7 +328,7 @@ export default function ModelConfigDialog({
                 value={form.display_name}
                 onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                 placeholder="GPT-5.2 / Claude 4.5 Thinking"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
 
@@ -340,7 +340,7 @@ export default function ModelConfigDialog({
                 value={form.description}
                 onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                 placeholder="简要描述模型特性"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
 
@@ -352,7 +352,7 @@ export default function ModelConfigDialog({
                 value={form.organization}
                 onChange={(e) => setForm((prev) => ({ ...prev, organization: e.target.value }))}
                 placeholder="OpenAI / Anthropic / Google"
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
 
@@ -362,7 +362,7 @@ export default function ModelConfigDialog({
               <select
                 value={form.model_type}
                 onChange={(e) => setForm((prev) => ({ ...prev, model_type: e.target.value }))}
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
               >
                 {MODEL_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>
@@ -394,7 +394,7 @@ export default function ModelConfigDialog({
                     }))
                   }
                   placeholder="gpt-5-2-deploy"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all"
                 />
               </div>
             )}
@@ -406,7 +406,7 @@ export default function ModelConfigDialog({
                 type="date"
                 value={form.released_at}
                 onChange={(e) => setForm((prev) => ({ ...prev, released_at: e.target.value }))}
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
           </div>
@@ -431,7 +431,7 @@ export default function ModelConfigDialog({
                     const idx = parseInt(e.target.value);
                     setForm((prev) => ({ ...prev, context_window: contextPresets[idx] }));
                   }}
-                  className="flex-1 accent-primary"
+                  className="flex-1 accent-black dark:accent-white"
                 />
                 <input
                   type="number"
@@ -459,7 +459,7 @@ export default function ModelConfigDialog({
                       max_dimension: parseInt(e.target.value) || '',
                     }))
                   }
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
                 />
               </div>
             )}
@@ -476,7 +476,7 @@ export default function ModelConfigDialog({
                     max_output_tokens: parseInt(e.target.value) || 0,
                   }))
                 }
-                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
               />
             </div>
 
@@ -488,7 +488,7 @@ export default function ModelConfigDialog({
                   value={form.resolutions}
                   onChange={(e) => setForm((prev) => ({ ...prev, resolutions: e.target.value }))}
                   placeholder="1024x1024, 1536x1024"
-                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40 transition-all"
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all"
                 />
               </div>
             )}
@@ -611,7 +611,7 @@ export default function ModelConfigDialog({
                   }}
                   className={`px-3 py-2 rounded-lg border text-xs text-left transition-all ${
                     extendParamSet.has(option)
-                      ? 'border-primary/60 bg-primary/10 text-primary'
+                      ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black'
                       : 'border-[var(--border-default)] text-[var(--text-muted)] hover:border-[var(--border-hover)]'
                   }`}
                 >
@@ -772,20 +772,24 @@ export default function ModelConfigDialog({
             </button>
           )}
           <div className={`flex gap-3 ${mode === 'create' ? 'ml-auto' : ''}`}>
-            <button
+            <motion.button
               onClick={onClose}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               className="px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
             >
               取消
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={handleSubmit}
               disabled={isPending || (mode === 'create' && !form.model_id)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
             >
               {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               确认
-            </button>
+            </motion.button>
           </div>
         </div>
       </motion.div>
@@ -811,7 +815,7 @@ function CapabilityToggle({
         type="button"
         onClick={() => onChange(!checked)}
         className={`relative w-10 h-5 rounded-full transition-all flex-shrink-0 mt-0.5 ${
-          checked ? 'bg-primary' : 'bg-[var(--bg-card)] group-hover:bg-[var(--bg-card-hover)]'
+          checked ? 'bg-black dark:bg-white' : 'bg-[var(--bg-card)] group-hover:bg-[var(--bg-card-hover)]'
         }`}
       >
         <span

@@ -26,7 +26,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     <div className={cn(
       "rounded-xl overflow-hidden border transition-all duration-300",
       isActive
-        ? "border-violet-500/30 bg-violet-500/5"
+        ? "border-zinc-500/30 bg-zinc-500/5 dark:border-zinc-400/20 dark:bg-zinc-400/5"
         : "border-[var(--border-subtle)] bg-[var(--bg-secondary)]",
       className
     )}>
@@ -40,7 +40,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
       >
         <div className={cn(
           "p-1.5 rounded-lg transition-colors",
-          isActive ? "bg-violet-500/20 text-violet-500" : "bg-[var(--bg-card)] text-[var(--text-muted)]"
+          isActive ? "bg-black text-white dark:bg-white dark:text-black" : "bg-[var(--bg-card)] text-[var(--text-muted)]"
         )}>
           {isActive ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -51,7 +51,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
         
         <span className={cn(
           "flex-1 text-sm font-medium",
-          isActive ? "text-violet-400" : "text-[var(--text-muted)]"
+          isActive ? "text-black dark:text-white font-bold" : "text-[var(--text-muted)]"
         )}>
           {isActive ? "思考中..." : "思考过程"}
         </span>
@@ -82,13 +82,13 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
                 "p-4 rounded-lg text-sm leading-relaxed whitespace-pre-wrap",
                 "bg-black/5 dark:bg-black/20",
                 "text-[var(--text-secondary)] font-light",
-                "max-h-[300px] overflow-y-auto scrollbar-thin"
+                "max-h-[300px] overflow-y-auto no-scrollbar"
               )}>
                 {content || (
                   <span className="text-[var(--text-muted)] italic">思考内容为空</span>
                 )}
                 {isActive && (
-                  <span className="inline-block w-2 h-4 bg-violet-500 ml-0.5 animate-pulse" />
+                  <span className="inline-block w-2 h-4 bg-black dark:bg-white ml-0.5 animate-pulse" />
                 )}
               </div>
             </div>

@@ -45,11 +45,11 @@ export function Modal({
   }, [onClose]);
 
   const sizeClasses = {
-    sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    full: 'max-w-4xl',
+    sm: 'max-w-[calc(100vw-2rem)] sm:max-w-sm',
+    md: 'max-w-[calc(100vw-2rem)] sm:max-w-md',
+    lg: 'max-w-[calc(100vw-2rem)] sm:max-w-lg',
+    xl: 'max-w-[calc(100vw-2rem)] sm:max-w-xl',
+    full: 'max-w-[calc(100vw-2rem)] sm:max-w-4xl',
   };
 
   return (
@@ -81,10 +81,10 @@ export function Modal({
             className={cn('relative w-full', sizeClasses[size])}
           >
             {/* 毛玻璃效果卡片 */}
-            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl">
+            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl max-h-[calc(100vh-4rem)] flex flex-col">
               {/* 头部 */}
               {(title || showCloseButton) && (
-                <div className="relative flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
+                <div className="relative flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[var(--border-subtle)] flex-shrink-0">
                   {title && (
                     <motion.h2 
                       initial={{ opacity: 0, x: -10 }}
@@ -109,11 +109,11 @@ export function Modal({
               )}
               
               {/* 内容 */}
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.05 }}
-                className="relative p-6"
+                className="relative p-4 sm:p-6 overflow-y-auto flex-1 min-h-0"
               >
                 {children}
               </motion.div>

@@ -63,6 +63,12 @@ AetherBlog/
 # 开发模式 - 直接访问各端口
 ./start.sh
 
+# 开发模式 + 启动中间件 (PostgreSQL/Redis/Elasticsearch)
+./start.sh --with-middleware
+
+# 如果 Elasticsearch 在本机反复重启，可先跳过 (当前版本对 ES 不是强依赖)
+./start.sh --with-middleware --skip-elasticsearch
+
 # 生产模式 - 启动网关作为统一入口 (:7899)
 ./start.sh --prod
 
@@ -92,6 +98,13 @@ pnpm install
 
 # 2. 启动数据库服务
 docker compose up -d
+# 如果 Elasticsearch 启动异常，可先跳过:
+#   docker compose up -d postgres redis
+# 或尝试切换 ES 镜像版本:
+#   ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:8.14.3 docker compose up -d elasticsearch
+# 如果日志出现 SIGILL / registerNatives 崩溃（Apple Silicon 常见），请先更新到最新代码后重建 ES 容器:
+#   docker compose rm -sf elasticsearch
+#   docker compose up -d elasticsearch
 
 # 3. 启动后端服务
 cd apps/server && ./mvnw spring-boot:run -pl aetherblog-app

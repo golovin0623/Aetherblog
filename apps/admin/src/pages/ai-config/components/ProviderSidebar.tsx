@@ -112,13 +112,15 @@ export default function ProviderSidebar({
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 transition-all"
             />
           </div>
-          <button
+          <motion.button
             onClick={onAddProvider}
-            className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.9 }}
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
             title="添加服务商"
           >
             <Plus className="w-4 h-4" />
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -131,8 +133,9 @@ export default function ProviderSidebar({
         ) : (
           <>
             {/* 全部按钮 */}
-            <button
+            <motion.button
               onClick={() => onSelect(null)}
+              whileTap={{ scale: 0.97 }}
               className={`w-full min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all ${
                 selectedCode === null
                   ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] font-medium'
@@ -141,7 +144,7 @@ export default function ProviderSidebar({
             >
               <Archive className="w-4 h-4" />
               全部
-            </button>
+            </motion.button>
 
             {/* 已启用分组 */}
             <ProviderGroup
@@ -150,13 +153,15 @@ export default function ProviderSidebar({
               onToggle={() => setEnabledExpanded(!enabledExpanded)}
               action={
                 <Tooltip content="自定义排序" position="top" delay={0}>
-                  <button
+                  <motion.button
                     onClick={onOpenSort}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                     className="flex items-center justify-center w-7 h-7 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
                     aria-label="自定义排序"
                   >
                     <ArrowUpDown className="w-3.5 h-3.5" />
-                  </button>
+                  </motion.button>
                 </Tooltip>
               }
             >
@@ -196,18 +201,23 @@ export default function ProviderSidebar({
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            className="fixed inset-0 z-40"
+            className="absolute inset-0 z-50 lg:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+            {/* Local Backdrop */}
+            <div 
+              className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-[2px]" 
+              onClick={onClose} 
+            />
+            
             <motion.div
-              initial={{ x: -260, opacity: 0 }}
+              initial={{ x: '-100%', opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -260, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="absolute left-0 top-0 h-full w-[85%] max-w-sm border-r border-[var(--border-default)] bg-[var(--bg-secondary)] shadow-2xl"
+              exit={{ x: '-100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="absolute left-0 top-0 h-full w-[280px] border-r border-[var(--border-default)] bg-[var(--bg-secondary)] shadow-2xl flex flex-col overflow-hidden"
             >
               {panel}
             </motion.div>
@@ -241,8 +251,9 @@ function ProviderGroup({
   return (
     <div className="mt-3">
       <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-card-hover)] text-xs text-[var(--text-muted)] min-h-[36px]">
-        <button
+        <motion.button
           onClick={onToggle}
+          whileTap={{ scale: 0.95 }}
           className="flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
         >
           {expanded ? (
@@ -251,7 +262,7 @@ function ProviderGroup({
             <ChevronRight className="w-3.5 h-3.5" />
           )}
           <span className="font-medium">{title}</span>
-        </button>
+        </motion.button>
         <div className="ml-auto flex items-center">{action}</div>
       </div>
       <AnimatePresence initial={false}>
@@ -283,21 +294,22 @@ function ProviderItem({
   onClick: () => void;
 }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
+      whileTap={{ scale: 0.97 }}
       className={`relative w-full min-w-0 min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all group ${
         selected
           ? 'bg-white dark:bg-zinc-800 shadow-sm text-[var(--text-primary)] font-bold'
           : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
       }`}
     >
-      <ProviderIcon code={provider.code} size={20} />
+      <ProviderIcon code={provider.code} icon={provider.icon} size={20} />
       <span className="truncate min-w-0">{provider.display_name || provider.name}</span>
       
       {/* 启用状态指示点 (仅已启用显示) */}
       {provider.is_enabled && (
         <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
       )}
-    </button>
+    </motion.button>
   );
 }

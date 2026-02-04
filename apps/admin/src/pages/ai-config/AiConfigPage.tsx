@@ -81,7 +81,7 @@ export default function AiConfigPage() {
 
   return (
     <div className="h-[calc(100vh-4rem)] min-h-0">
-      <div className="h-full min-h-0 flex rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] shadow-sm overflow-hidden">
+      <div className="h-full min-h-0 flex rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] shadow-sm overflow-hidden relative">
         {/* 左侧供应商列表 */}
         <ProviderSidebar
           className="hidden lg:flex"
@@ -120,21 +120,23 @@ export default function AiConfigPage() {
           </div>
           {viewMode === 'grid' && (
             <div className="flex items-center gap-2">
-              <button
+              <motion.button
                 onClick={handleRefresh}
+                whileTap={{ scale: 0.9 }}
                 className="p-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
               >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-              <button
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </motion.button>
+              <motion.button
                 onClick={() => {
                   setEditingProvider(null);
                   setShowProviderDialog(true);
                 }}
-                className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors"
+                whileTap={{ scale: 0.9 }}
+                className="px-3 py-1.5 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
               >
                 添加
-              </button>
+              </motion.button>
             </div>
           )}
         </div>
@@ -155,9 +157,15 @@ export default function AiConfigPage() {
                 onClick={handleRefresh}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all group"
               >
-                <RefreshCw className="w-4 h-4" />
+                <motion.div
+                  animate={isLoading ? { rotate: 360 } : { rotate: 0 }}
+                  transition={{ duration: 0.5, repeat: isLoading ? Infinity : 0, ease: "linear" }}
+                  className="group-active:rotate-45 transition-transform"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </motion.div>
                 刷新
               </motion.button>
               <motion.button
@@ -167,7 +175,7 @@ export default function AiConfigPage() {
                 }}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white font-medium text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black font-bold text-sm hover:opacity-90 transition-all shadow-sm active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 添加供应商
@@ -262,9 +270,6 @@ export default function AiConfigPage() {
             )}
           </AnimatePresence>
         </div>
-      </div>
-      </div>
-
       <ProviderSidebar
         variant="drawer"
         isOpen={sidebarOpen}
@@ -286,6 +291,8 @@ export default function AiConfigPage() {
         }}
         isLoading={isLoading}
       />
+    </div>
+  </div>
 
       {/* 供应商配置弹窗 */}
       <AnimatePresence>

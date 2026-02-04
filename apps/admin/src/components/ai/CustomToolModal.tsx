@@ -81,12 +81,12 @@ export const CustomToolModal: React.FC<CustomToolModalProps> = ({
       title={tool ? '编辑自定义工具' : '新建自定义工具'}
       size="lg"
     >
-      <div className="text-[var(--text-muted)] text-sm mb-6">
+      <div className="text-[var(--text-muted)] text-xs sm:text-sm mb-4 sm:mb-6">
         配置您的自定义 AI 处理流程。提示词模板中使用 {'{content}'} 作为输入占位符。
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+        <div className="space-y-3 sm:space-y-4">
           <div className="grid gap-2">
             <label htmlFor="code" className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
               <Code className="w-3 h-3" />
@@ -143,31 +143,31 @@ export const CustomToolModal: React.FC<CustomToolModalProps> = ({
               placeholder="例如: 请将以下内容翻译为英语:\n\n{content}"
               value={formData.prompt_template || ''}
               onChange={(e) => setFormData({ ...formData, prompt_template: e.target.value })}
-              className="min-h-[150px] bg-[var(--bg-card)] border-[var(--border-subtle)] font-mono text-xs"
+              className="min-h-[120px] sm:min-h-[150px] bg-[var(--bg-card)] border-[var(--border-subtle)] font-mono text-xs"
             />
           </div>
         </div>
 
-        <div className="flex justify-between items-center pt-4 border-t border-[var(--border-subtle)]">
-          <div>
+        <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-[var(--border-subtle)]">
+          <div className="flex justify-center sm:justify-start">
             {tool && onDelete && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => tool.code && onDelete(tool.code)}
-                className="text-red-500 hover:text-red-600 hover:bg-red-500/10 gap-2 px-3"
+                className="text-red-500 hover:text-red-600 hover:bg-red-500/10 gap-2 px-3 w-full sm:w-auto"
               >
                 <Trash2 className="w-4 h-4" />
                 删除
               </Button>
             )}
           </div>
-          <div className="flex gap-3">
-            <Button type="button" variant="secondary" onClick={onClose} size="sm" className="px-6">
+          <div className="flex gap-2 sm:gap-3">
+            <Button type="button" variant="secondary" onClick={onClose} size="sm" className="flex-1 sm:flex-none px-4 sm:px-6">
               取消
             </Button>
-            <Button type="submit" loading={isSaving} size="sm" className="gap-2 px-6">
+            <Button type="submit" loading={isSaving} size="sm" className="flex-1 sm:flex-none gap-2 px-4 sm:px-6">
               <Save className="w-4 h-4" />
               {isSaving ? '保存中...' : '提交保存'}
             </Button>

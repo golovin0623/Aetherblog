@@ -47,6 +47,19 @@ FAILED_SERVICES=()
 DOCKER_REMOVE_ORPHANS=false
 SKIP_ELASTICSEARCH=false
 MIDDLEWARE_SERVICES=()
+OPTIONAL_MIDDLEWARE_SERVICES=("elasticsearch")
+
+# 判断是否为可选中间件
+is_optional_middleware_service() {
+    local svc=$1
+    local optional
+    for optional in "${OPTIONAL_MIDDLEWARE_SERVICES[@]}"; do
+        if [ "$svc" = "$optional" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 # 解析参数
 while [[ "$#" -gt 0 ]]; do
@@ -205,39 +218,89 @@ wait_for_middleware() {
     fi
 
     local attempt=1
+    local problems_required=()
+    local problems_optional=()
     while [ $attempt -le $retries ]; do
-        local problems=()
+        problems_required=()
+        problems_optional=()
         for svc in "${MIDDLEWARE_SERVICES[@]}"; do
             local cid status health
             cid=$(docker_compose ps -q "$svc" 2>/dev/null || true)
             if [ -z "$cid" ]; then
-                problems+=("$svc:missing")
+                if is_optional_middleware_service "$svc"; then
+                    problems_optional+=("$svc:missing")
+                else
+                    problems_required+=("$svc:missing")
+                fi
                 continue
             fi
             status=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)
             health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null || true)
 
             if [ "$status" != "running" ]; then
-                problems+=("$svc:$status")
+                if is_optional_middleware_service "$svc"; then
+                    problems_optional+=("$svc:$status")
+                else
+                    problems_required+=("$svc:$status")
+                fi
                 continue
             fi
             if [ -n "$health" ] && [ "$health" != "healthy" ]; then
-                problems+=("$svc:$health")
+                if is_optional_middleware_service "$svc"; then
+                    problems_optional+=("$svc:$health")
+                else
+                    problems_required+=("$svc:$health")
+                fi
                 continue
             fi
         done
 
-        if [ ${#problems[@]} -eq 0 ]; then
+        if [ ${#problems_required[@]} -eq 0 ] && [ ${#problems_optional[@]} -eq 0 ]; then
             echo -e "${GREEN}✅ 中间件服务已启动 (${MIDDLEWARE_SERVICES[*]})${NC}"
             return 0
         fi
 
-        echo -e "${YELLOW}⚠️  中间件尚未就绪 (${problems[*]}) 尝试 ${attempt}/${retries}${NC}"
+        local display=()
+        if [ ${#problems_required[@]} -gt 0 ]; then
+            display+=("${problems_required[@]}")
+        fi
+        if [ ${#problems_optional[@]} -gt 0 ]; then
+            display+=("${problems_optional[@]}")
+        fi
+
+        if [ ${#problems_required[@]} -eq 0 ]; then
+            echo -e "${YELLOW}⚠️  可选中间件尚未就绪 (${display[*]}) 尝试 ${attempt}/${retries}${NC}"
+        else
+            echo -e "${YELLOW}⚠️  中间件尚未就绪 (${display[*]}) 尝试 ${attempt}/${retries}${NC}"
+        fi
         if [ $attempt -lt $retries ]; then
             sleep "$delay"
         fi
         attempt=$((attempt + 1))
     done
+
+    if [ ${#problems_required[@]} -eq 0 ] && [ ${#problems_optional[@]} -gt 0 ]; then
+        echo -e "${YELLOW}⚠️  可选中间件启动超时 (${problems_optional[*]})，将继续启动应用${NC}"
+        docker_compose ps 2>/dev/null || true
+        for svc in "${MIDDLEWARE_SERVICES[@]}"; do
+            if ! is_optional_middleware_service "$svc"; then
+                continue
+            fi
+            local cid status health
+            cid=$(docker_compose ps -q "$svc" 2>/dev/null || true)
+            if [ -z "$cid" ]; then
+                continue
+            fi
+            status=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null || true)
+            if [ "$status" != "running" ] || { [ -n "$health" ] && [ "$health" != "healthy" ]; }; then
+                echo -e "${YELLOW}   ${svc} 最近日志:${NC}"
+                docker logs --tail "$MIDDLEWARE_LOG_TAIL" "$cid" 2>/dev/null || true
+            fi
+        done
+        echo -e "${YELLOW}   提示: 可使用 --skip-elasticsearch 跳过 ES；或通过 ELASTICSEARCH_IMAGE 切换 ES 镜像版本后重启容器${NC}"
+        return 0
+    fi
 
     echo -e "${RED}❌ 中间件启动超时${NC}"
     docker_compose ps 2>/dev/null || true
@@ -414,7 +477,7 @@ start_middleware() {
         
         # 等待服务就绪
         echo -e "${BLUE}   等待中间件服务就绪...${NC}"
-        if ! wait_for_middleware "$HEALTH_RETRIES" "$HEALTH_RETRY_DELAY"; then
+        if ! wait_for_middleware "$MIDDLEWARE_RETRIES" "$MIDDLEWARE_RETRY_DELAY"; then
             record_failure "中间件"
         fi
     else
