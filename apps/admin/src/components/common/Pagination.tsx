@@ -32,11 +32,12 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-center gap-2">
+    <nav aria-label="Pagination" className="flex items-center justify-center gap-2">
       <button
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
         className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        aria-label="Previous page"
       >
         <ChevronLeft className="w-4 h-4 text-gray-400" />
       </button>
@@ -46,6 +47,8 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
           <button
             key={index}
             onClick={() => onPageChange(p)}
+            aria-label={`Page ${p}`}
+            aria-current={p === page ? 'page' : undefined}
             className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
               p === page
                 ? 'bg-primary text-white'
@@ -55,7 +58,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
             {p}
           </button>
         ) : (
-          <span key={index} className="text-gray-500">
+          <span key={index} className="text-gray-500" aria-hidden="true">
             {p}
           </span>
         )
@@ -65,10 +68,11 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
         className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        aria-label="Next page"
       >
         <ChevronRight className="w-4 h-4 text-gray-400" />
       </button>
-    </div>
+    </nav>
   );
 }
 
