@@ -68,7 +68,7 @@ aria-label="上一页"
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
         className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        aria-label="Next page"
+aria-label="下一页"
       >
         <ChevronRight className="w-4 h-4 text-gray-400" />
       </button>
