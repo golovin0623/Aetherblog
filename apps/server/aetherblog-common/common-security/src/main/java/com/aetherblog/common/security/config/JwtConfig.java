@@ -1,21 +1,25 @@
 package com.aetherblog.common.security.config;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * JWT 配置属性
  */
 @Data
 @Component
+@Validated
 @ConfigurationProperties(prefix = "jwt")
 public class JwtConfig {
 
     /**
      * 密钥
      */
-    private String secret = "aetherblog-secret-key-for-jwt-token-generation-2024";
+    @NotBlank(message = "JWT Secret must be configured")
+    private String secret;
 
     /**
      * 过期时间（毫秒）
