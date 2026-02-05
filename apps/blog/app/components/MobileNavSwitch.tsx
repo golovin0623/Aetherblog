@@ -40,10 +40,16 @@ export default function MobileNavSwitch() {
   const isTimeline = activeTab === 'timeline';
 
   return (
-    <div className="flex items-center bg-[var(--bg-secondary)] rounded-full p-1 border border-[var(--border-subtle)] flex-shrink-0">
+    <div
+      role="group"
+      aria-label="View mode"
+      className="flex items-center bg-[var(--bg-secondary)] rounded-full p-1 border border-[var(--border-subtle)] flex-shrink-0"
+    >
       <button
+        type="button"
+        aria-pressed={!isTimeline}
         onClick={() => handleNavClick('posts')}
-        className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+        className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer motion-reduce:transition-none ${
           !isTimeline
             ? 'bg-primary text-white shadow-sm'
             : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -52,8 +58,10 @@ export default function MobileNavSwitch() {
         首页
       </button>
       <button
+        type="button"
+        aria-pressed={isTimeline}
         onClick={() => handleNavClick('timeline')}
-        className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+        className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer motion-reduce:transition-none ${
           isTimeline
             ? 'bg-primary text-white shadow-sm'
             : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
