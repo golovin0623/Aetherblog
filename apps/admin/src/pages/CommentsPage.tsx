@@ -9,10 +9,10 @@ import { toast } from 'sonner';
 import { commentService, Comment, CommentStatus } from '@/services/commentService';
 import { logger } from '@/lib/logger';
 
-// UI Status types (lowercase for internal state)
+// UI 状态类型 (内部状态使用小写)
 type UIStatus = 'all' | 'pending' | 'approved' | 'spam' | 'deleted';
 
-// Status configuration
+// 状态配置
 const statusConfig: Record<string, any> = {
   pending: { label: '待审核', color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-500/10 dark:bg-orange-500/20', icon: Clock },
   approved: { label: '已通过', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10 dark:bg-green-500/20', icon: Check },
@@ -20,7 +20,7 @@ const statusConfig: Record<string, any> = {
   deleted: { label: '已删除', color: 'text-gray-500 dark:text-gray-400', bg: 'bg-gray-500/10 dark:bg-gray-500/20', icon: Trash2 },
 };
 
-// Mock data for fallback
+// 降级使用的模拟数据
 const mockComments: Comment[] = [
   {
     id: 1,
@@ -92,7 +92,7 @@ export default function CommentsPage() {
         setComments(res.data.list);
         setTotal(res.data.total);
       } else {
-        // Fallback to mock data if API returns empty or fails
+        // 如果 API 返回为空或失败，降级使用模拟数据
         const mockFiltered = mockComments.filter(c =>
           status === undefined || c.status === status
         );
@@ -101,7 +101,7 @@ export default function CommentsPage() {
       }
     } catch (error) {
       logger.error('Failed to fetch comments:', error);
-      // Fallback on error
+      // 出错时降级
       const status = selectedStatus === 'all' ? undefined : (selectedStatus.toUpperCase() as CommentStatus);
       const mockFiltered = mockComments.filter(c =>
         status === undefined || c.status === status
@@ -117,7 +117,7 @@ export default function CommentsPage() {
     fetchComments();
   }, [fetchComments]);
 
-  // Actions
+  // 操作
   const handleApprove = async (id: number) => {
     try {
       const res = await commentService.approve(id);
@@ -126,7 +126,7 @@ export default function CommentsPage() {
         fetchComments();
       }
     } catch (error) {
-      // Fallback for demo
+      // 演示用降级数据
       setComments(prev => prev.map(c => c.id === id ? { ...c, status: CommentStatus.APPROVED } : c));
       toast.success('评论已通过 (演示模式)');
     }
@@ -166,7 +166,7 @@ export default function CommentsPage() {
         fetchComments();
       }
     } catch (error) {
-      // Fallback for demo
+      // 演示用降级数据
       setComments(prev => prev.map(c => c.id === id ? { ...c, status: CommentStatus.APPROVED } : c));
       toast.success('评论已还原 (演示模式)');
     }
@@ -188,7 +188,7 @@ export default function CommentsPage() {
         }
       }
     } catch (error) {
-      // Fallback for demo
+      // 演示用降级数据
       if (isPermanent) {
         setComments(prev => prev.filter(c => c.id !== id));
         toast.success('评论已彻底删除 (演示模式)');
@@ -202,7 +202,7 @@ export default function CommentsPage() {
   const handleReply = async (id: number) => {
     if (!replyContent.trim()) return;
     try {
-      // Assuming reply API exists or using a generic create/reply
+      // 假设存在回复 API 或使用通用的创建/回复
       toast.success('回复已发送');
       setReplyingTo(null);
       setReplyContent('');
@@ -226,7 +226,7 @@ export default function CommentsPage() {
     return date.toLocaleDateString('zh-CN');
   };
 
-  // Filter comments locally for search (or could be done on backend)
+  // 本地过滤评论以进行搜索 (也可以在后端完成)
   const filteredComments = comments.filter(comment => {
     const matchesSearch = searchQuery === '' ||
       comment.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -246,7 +246,7 @@ export default function CommentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">评论管理</h1>
@@ -254,9 +254,9 @@ export default function CommentsPage() {
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* 工具栏 */}
       <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search */}
+        {/* 搜索 */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
@@ -268,7 +268,7 @@ export default function CommentsPage() {
           />
         </div>
 
-        {/* Status filter */}
+        {/* 状态筛选 */}
         <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] overflow-x-auto">
           {(['all', 'pending', 'approved', 'spam', 'deleted'] as UIStatus[]).map((status) => (
             <button
@@ -290,7 +290,7 @@ export default function CommentsPage() {
         </div>
       </div>
 
-      {/* Comments list */}
+      {/* 评论列表 */}
       <div className="space-y-3 min-h-[400px]">
         {loading ? (
           <div className="space-y-3">
@@ -321,7 +321,7 @@ export default function CommentsPage() {
                         key={comment.id}
                         className="p-4 sm:p-5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors"
                       >
-                        {/* Comment header */}
+                        {/* 评论头部 */}
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -346,7 +346,7 @@ export default function CommentsPage() {
                           </div>
                         </div>
 
-                        {/* Post reference */}
+                        {/* 文章引用 */}
                         <div className="mb-3">
                           {comment.post && (
                             <a
@@ -360,12 +360,12 @@ export default function CommentsPage() {
                           )}
                         </div>
 
-                        {/* Comment content */}
+                        {/* 评论内容 */}
                         <p className="text-[var(--text-primary)] text-sm leading-relaxed mb-4">
                           {comment.content}
                         </p>
 
-                        {/* Actions */}
+                        {/* 操作 */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {comment.status === 'PENDING' && (
                             <>
@@ -436,7 +436,7 @@ export default function CommentsPage() {
                           )}
                         </div>
 
-                        {/* Reply input */}
+                        {/* 回复输入框 */}
                         <AnimatePresence>
                           {replyingTo === comment.id && (
                             <motion.div

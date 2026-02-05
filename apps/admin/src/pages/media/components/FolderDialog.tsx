@@ -20,14 +20,14 @@ interface FolderDialogProps {
 }
 
 const FOLDER_COLORS = [
-  '#6366f1', // Indigo
-  '#8b5cf6', // Purple
-  '#ec4899', // Pink
-  '#f59e0b', // Amber
-  '#10b981', // Emerald
-  '#3b82f6', // Blue
-  '#ef4444', // Red
-  '#06b6d4', // Cyan
+  '#6366f1', // 靛蓝
+  '#8b5cf6', // 紫色
+  '#ec4899', // 粉色
+  '#f59e0b', // 琥珀色
+  '#10b981', // 翠绿
+  '#3b82f6', // 蓝色
+  '#ef4444', // 红色
+  '#06b6d4', // 青色
 ];
 
 export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogProps) {

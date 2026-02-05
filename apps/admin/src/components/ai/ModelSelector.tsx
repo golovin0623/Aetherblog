@@ -207,7 +207,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return providers.find((p) => p.code === selectedModel.provider_code) || null;
   }, [providers, selectedModel]);
 
-  // Close on outside click
+  // 点击外部关闭
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -246,7 +246,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         !isMobile && "border border-zinc-200 dark:border-zinc-700/60 shadow-xl shadow-zinc-200/50 dark:shadow-black/30"
       )}
     >
-      {/* Top shine effect - only desktop */}
+      {/* 顶部光泽效果 - 仅桌面端 */}
       {!isMobile && (
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
           <div 
@@ -262,14 +262,14 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         </div>
       )}
 
-      {/* Mobile Drawer Handle */}
+      {/* 移动端抽屉手柄 */}
       {isMobile && (
         <div className="flex-shrink-0 flex justify-center py-4">
           <div className="w-12 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800" />
         </div>
       )}
 
-      {/* Search Header */}
+      {/* 搜索头部 */}
       <div className={cn(
         "px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10",
         isMobile && "pt-0"
@@ -294,7 +294,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         </div>
       </div>
 
-      {/* Models List */}
+      {/* 模型列表 */}
       <div className={cn(
         "flex-1 overflow-y-auto p-2 space-y-1 no-scrollbar",
         isMobile ? "px-4" : "min-h-[200px] max-h-[380px]"
@@ -307,7 +307,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         ) : (
           filteredGroups.map((group) => (
             <div key={group.provider.code} className="mb-2">
-              {/* Provider Header */}
+              {/* 提供商头部 */}
               <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm z-0">
                 <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
                 <span className="uppercase tracking-wider">
@@ -315,7 +315,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 </span>
               </div>
               
-              {/* Model Items */}
+              {/* 模型项 */}
               <div className="space-y-0.5">
                 {group.models.map((model) => {
                   const abilities = resolveAbilities(model);
@@ -334,7 +334,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                           : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
                       )}
                     >
-                      {/* Model Icon */}
+                      {/* 模型图标 */}
                       <ProviderIcon 
                         code={group.provider.code} 
                         icon={group.provider.icon}
@@ -342,7 +342,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                         className="shrink-0"
                       />
                       
-                      {/* Model Name */}
+                      {/* 模型名称 */}
                       <div className="flex-1 min-w-0">
                         <div className={cn(
                           "font-medium text-sm truncate",
@@ -360,7 +360,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                         )}
                       </div>
 
-                      {/* Ability Badges */}
+                      {/* 能力徽章 */}
                       <div className="flex items-center gap-1 shrink-0">
                         {!isMobile && abilities.vision && (
                           <AbilityBadge 
@@ -384,7 +384,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                           </span>
                         )}
 
-                        {/* Check mark for selected */}
+                        {/* 选中标记 */}
                         {isSelected && (
                           <Check className="w-5 h-5 text-primary ml-1" />
                         )}
@@ -398,7 +398,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         )}
       </div>
 
-      {/* Footer */}
+      {/* 底部 */}
       <div className={cn(
         "p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50",
         isMobile && "pb-8 px-4"
