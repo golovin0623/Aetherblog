@@ -76,7 +76,7 @@ export default function ProviderDetail({
 
   useEffect(() => {
     if (defaultCredential) {
-      setKeyInput(DUMMY_API_KEY_MASK);
+      setKeyInput(defaultCredential.api_key_hint || DUMMY_API_KEY_MASK);
     } else {
       setKeyInput('');
     }
@@ -93,7 +93,7 @@ export default function ProviderDetail({
   };
 
   const handleSaveKey = () => {
-    if (!keyInput || keyInput === DUMMY_API_KEY_MASK) return; // No change or valid input
+    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) return; // No change or valid input
 
     createCredentialMutation.mutate({
       provider_code: provider.code,
@@ -102,7 +102,7 @@ export default function ProviderDetail({
       name: 'Default Credential' // Optional name
     }, {
       onSuccess: () => {
-        setKeyInput(DUMMY_API_KEY_MASK); // Reset to mask on success
+
       }
     });
   };
@@ -284,7 +284,7 @@ export default function ProviderDetail({
                               onChange={(e) => setKeyInput(e.target.value)}
                               onBlur={handleSaveKey}
                               onFocus={() => {
-                                if (keyInput === DUMMY_API_KEY_MASK) {
+                                if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
                                   setKeyInput('');
                                 }
                               }}
