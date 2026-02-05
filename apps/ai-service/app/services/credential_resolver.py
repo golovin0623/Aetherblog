@@ -93,7 +93,7 @@ class CredentialResolver:
         """Generate a hint for display (e.g., 'sk-abc...xyz')."""
         if len(api_key) <= 12:
             return "********"
-        return f"{api_key[:6]}...{api_key[-4:]}"
+        return f"{api_key[:3]}...{api_key[-3:]}"
 
     async def save_credential(
         self,
