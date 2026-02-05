@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 interface StatsCardProps {
   title: string;
-  value: number | string; // Changed to support both number and string for formatted values
+  value: number | string; // 改为支持格式化值的数字和字符串
   prefix?: string;
   suffix?: string;
   change?: number;
