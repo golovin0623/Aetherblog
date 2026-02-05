@@ -75,4 +75,18 @@ public class MediaServiceTest {
         assertNotNull(result);
         assertEquals("image.jpg", result.getOriginalName());
     }
+
+    @Test
+    void upload_WithSvgExtension_ShouldThrowException() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "image.svg",
+                "image/svg+xml",
+                "<svg onload=\"alert(1)\"></svg>".getBytes()
+        );
+
+        assertThrows(BusinessException.class, () -> {
+            mediaService.upload(file, 1L, null);
+        });
+    }
 }
