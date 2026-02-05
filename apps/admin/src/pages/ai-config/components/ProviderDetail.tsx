@@ -279,7 +279,7 @@ export default function ProviderDetail({
                       <div className="flex-1 max-w-lg relative">
                           <div className="relative group">
                             <input 
-                              type={showKey || (keyInput.includes('...') || keyInput === DUMMY_API_KEY_MASK) ? "text" : "password"}
+                              type={showKey ? "text" : "password"}
                               value={keyInput}
                               onChange={(e) => setKeyInput(e.target.value)}
                               onBlur={handleSaveKey}
