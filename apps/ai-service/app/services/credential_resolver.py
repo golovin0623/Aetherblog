@@ -90,10 +90,10 @@ class CredentialResolver:
         return self._fernet.decrypt(encrypted.encode()).decode()
 
     def generate_hint(self, api_key: str) -> str:
-        """Generate a hint for display (e.g., 'sk-...abc')."""
-        if len(api_key) <= 8:
-            return "***"
-        return f"{api_key[:3]}...{api_key[-3:]}"
+        """Generate a hint for display (e.g., 'sk-abc...xyz')."""
+        if len(api_key) <= 12:
+            return "********"
+        return f"{api_key[:6]}...{api_key[-4:]}"
 
     async def save_credential(
         self,
