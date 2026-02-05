@@ -7,6 +7,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Eraser,
   Trash2,
   ArrowDownUp,
   ToggleLeft,
@@ -150,7 +151,7 @@ export default function ModelList({
               onClick={handleClearRemote}
               disabled={clearProviderModels.isPending}
               title="清空远程"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-500/20 text-xs text-red-400 bg-[var(--bg-primary)] hover:bg-red-500/5 transition-all disabled:opacity-50"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-500/20 text-xs text-red-400 bg-[var(--bg-primary)] hover:bg-red-500/5 transition-all disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">清空远程</span>
@@ -164,7 +165,7 @@ export default function ModelList({
             title="重置全部"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Eraser className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">重置</span>
           </button>
 
