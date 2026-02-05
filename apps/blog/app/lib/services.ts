@@ -69,7 +69,7 @@ export interface CreateCommentRequest {
 
 /**
  * 获取站点全量配置
- * 重新验证：1 小时 (3600秒)
+ * 重新验证：60 秒
  */
 export async function getSiteSettings(): Promise<SiteSettings> {
   try {
@@ -117,12 +117,12 @@ export async function getRecentPosts(limit: number = 6): Promise<Post[]> {
 
 /**
  * 获取友链列表
- * 重新验证：1 小时 (3600秒)
+ * 重新验证：60 秒
  */
 export async function getFriendLinks(): Promise<FriendLink[]> {
   try {
     const res = await fetch(API_ENDPOINTS.friendLinks, {
-      next: { revalidate: 3600 }
+      next: { revalidate: 60 }
     });
 
     if (!res.ok) throw new Error('Failed to fetch friend links');
