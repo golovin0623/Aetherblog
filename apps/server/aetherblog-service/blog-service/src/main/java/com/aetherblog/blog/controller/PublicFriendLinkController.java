@@ -21,7 +21,7 @@ import java.util.List;
  */
 @Tag(name = "友链公开接口", description = "前台友链展示接口")
 @RestController
-@RequestMapping("/v1/friend-links")
+@RequestMapping("/v1/public/friend-links")
 @RequiredArgsConstructor
 public class PublicFriendLinkController {
 
