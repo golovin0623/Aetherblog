@@ -8,4 +8,4 @@
 
 ## 2025-05-20 - Motion and Current State in Toggles
 **Learning:** Custom view toggles with animations (like sliding pills) can be disorienting for users with motion sensitivity and invisible to screen readers without semantic roles.
-**Action:** Always add `motion-reduce:transition-none` to animated UI elements and use `aria-current="page"` (or appropriate value) to indicate the active state in navigation-like toggles.
+**Action:** Always add `motion-reduce:transition-none` to animated UI elements and use `aria-current="page"` for link-based toggles or `aria-pressed="true"` for button-based toggles to indicate the active state.
