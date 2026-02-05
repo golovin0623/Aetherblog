@@ -767,7 +767,7 @@ export default function MediaPage() {
                     setSelectedMedia(null);
                   }
                 }}
-                // Bottom Sheet
+                // 底部菜单 (Bottom Sheet)
                 className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-white/85 dark:bg-zinc-900/85 backdrop-blur-xl rounded-t-3xl border-t border-white/20 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col"
               >
                 {/* 拖拽手柄 */}
