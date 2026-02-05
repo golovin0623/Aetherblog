@@ -29,8 +29,8 @@ interface ProviderDetailProps {
   onBack: () => void;
   onEdit: () => void;
   preset?: PresetProvider;
-  activeTab: "config" | "models";
-  onActiveTabChange: (tab: "config" | "models") => void;
+  activeTab?: "config" | "models";
+  onActiveTabChange?: (tab: "config" | "models") => void;
 }
 
 const DUMMY_API_KEY_MASK = 'sk-****************************************';
