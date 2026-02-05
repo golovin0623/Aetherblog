@@ -29,6 +29,8 @@ interface ProviderDetailProps {
   onBack: () => void;
   onEdit: () => void;
   preset?: PresetProvider;
+  activeTab?: "config" | "models";
+  onActiveTabChange?: (tab: "config" | "models") => void;
 }
 
 const DUMMY_API_KEY_MASK = 'sk-****************************************';
@@ -38,9 +40,15 @@ export default function ProviderDetail({
   onBack,
   onEdit, 
   preset: propPreset,
+  activeTab: controlledActiveTab,
+  onActiveTabChange,
 }: ProviderDetailProps) {
   const [showKey, setShowKey] = useState(false);
-  const [activeTab, setActiveTab] = useState<'config' | 'models'>('config');
+  useEffect(() => {
+    setShowKey(false);
+  }, [provider.code]);
+  const activeTab = controlledActiveTab || 'config';
+  const setActiveTab = onActiveTabChange || (() => {});
   
   // Computed
   const preset = propPreset || getPresetProvider(provider.code);
