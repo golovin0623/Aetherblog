@@ -1,69 +1,15 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Users } from 'lucide-react';
+import { Users, Globe } from 'lucide-react';
 import FriendCard from '../components/FriendCard';
 import { FriendLink } from '../lib/services';
-
-const MOCK_FRIENDS: FriendLink[] = [
-  {
-    id: 1,
-    name: 'Google',
-    url: 'https://www.google.com',
-    logo: 'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png',
-    description: '全球最大的搜索引擎，提供网页、图片、视频等多种搜索服务',
-    themeColor: '#4285F4',
-  },
-  {
-    id: 2,
-    name: 'GitHub',
-    url: 'https://github.com',
-    logo: 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png',
-    description: '全球最大的代码托管平台，开源社区的家园',
-    themeColor: '#24292e',
-  },
-  {
-    id: 3,
-    name: 'OpenAI',
-    url: 'https://openai.com',
-    logo: 'https://cdn.oaistatic.com/assets/favicon-o20kmmos.svg',
-    description: 'AI 研究实验室，ChatGPT、GPT-4、DALL·E 的创造者',
-    themeColor: '#10A37F',
-  },
-  {
-    id: 4,
-    name: 'Apple',
-    url: 'https://www.apple.com',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/1/1b/Apple_logo_grey.svg',
-    description: '创新科技公司，iPhone、Mac、iPad 的缔造者',
-    themeColor: '#555555',
-  },
-  {
-    id: 5,
-    name: 'Microsoft',
-    url: 'https://www.microsoft.com',
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg',
-    description: '全球领先的软件公司，Windows、Office、Azure 的开发者',
-    themeColor: '#00A4EF',
-  },
-  {
-    id: 6,
-    name: '百度',
-    url: 'https://www.baidu.com',
-    logo: 'https://www.baidu.com/favicon.ico',
-    description: '中国最大的搜索引擎，提供搜索、AI、云服务等',
-    themeColor: '#2932E1',
-  },
-];
 
 interface FriendsListProps {
   initialFriends: FriendLink[];
 }
 
 export default function FriendsList({ initialFriends }: FriendsListProps) {
-  // 如果服务器数据可用则使用，否则回退到 MOCK 数据
-  const displayFriends = initialFriends.length > 0 ? initialFriends : MOCK_FRIENDS;
-
   return (
     <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
       <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">
@@ -101,28 +47,38 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {displayFriends.map((friend, index) => (
-            <motion.div
-              key={friend.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: index * 0.1 }}
-            >
-              <FriendCard
-                name={friend.name}
-                url={friend.url}
-                avatar={friend.logo || ''}
-                description={friend.description}
-                themeColor={friend.themeColor}
-                // email/rss 尚未在服务接口中，但在模拟数据中定义
-                // 服务 FriendLink 接口是子集。
-                // 我们暂时可以转换或忽略。
-                index={index}
-              />
-            </motion.div>
-          ))}
-        </div>
+        {initialFriends.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-20 text-[var(--text-muted)] gap-4"
+          >
+            <div className="w-16 h-16 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center">
+              <Globe className="w-8 h-8 opacity-50" />
+            </div>
+            <p>暂无友链，稍后再来看看吧</p>
+          </motion.div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {initialFriends.map((friend, index) => (
+              <motion.div
+                key={friend.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+              >
+                <FriendCard
+                  name={friend.name}
+                  url={friend.url}
+                  avatar={friend.logo || ''}
+                  description={friend.description}
+                  themeColor={friend.themeColor}
+                  index={index}
+                />
+              </motion.div>
+            ))}
+          </div>
+        )}
 
         {/* 友链申请行动号召 */}
         <motion.div
