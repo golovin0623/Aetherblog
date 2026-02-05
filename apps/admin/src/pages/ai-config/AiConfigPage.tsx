@@ -29,6 +29,7 @@ export default function AiConfigPage() {
   const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null);
   const [showSortDialog, setShowSortDialog] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeDetailTab, setActiveDetailTab] = useState<"config" | "models">("config");
 
   // 数据
   const { data: providers = [], isLoading } = useProviders();
@@ -54,6 +55,7 @@ export default function AiConfigPage() {
   const handleSelectProvider = (code: string | null | undefined) => {
     if (!code) {
       setSelectedProviderCode(null);
+    setActiveDetailTab("config");
       setViewMode('grid');
     } else {
       setSelectedProviderCode(code);
@@ -65,6 +67,7 @@ export default function AiConfigPage() {
   const handleBackToGrid = () => {
     setViewMode('grid');
     setSelectedProviderCode(null);
+    setActiveDetailTab("config");
   };
 
   // 刷新数据
@@ -242,7 +245,9 @@ export default function AiConfigPage() {
               </motion.div>
             ) : selectedProvider ? (
               <ProviderDetail
-                key={selectedProvider.id}
+                key="detail"
+                activeTab={activeDetailTab}
+                onActiveTabChange={setActiveDetailTab}
                 provider={selectedProvider}
                 onBack={handleBackToGrid}
                 onEdit={() => {
