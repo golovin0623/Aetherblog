@@ -32,7 +32,9 @@ spring:
     show-sql: false
     properties:
       hibernate:
-        # 批量抓取以解决 N+1 问题 (Batch fetching to solve N+1)
+        # 启用默认的批量抓取，以解决 N+1 查询问题。
+        # 该值（100）远大于典型的分页大小（例如 10-30），
+        # 确保在单次操作中能为页面上的所有主实体批量加载其关联
         default_batch_fetch_size: 100
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
