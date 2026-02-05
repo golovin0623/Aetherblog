@@ -15,7 +15,10 @@ public class JwtConfig {
     /**
      * 密钥
      */
-    private String secret;
+    /**
+     * 密钥
+     */
+    @NotBlank private String secret;
 
     /**
      * 过期时间（毫秒）
