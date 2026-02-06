@@ -54,10 +54,12 @@ export function DataTable<T extends { id: number | string }>({
                   className="px-6 py-4 text-left text-sm font-medium text-[var(--text-muted)]"
                   style={{ width: column.width }}
                   aria-sort={
-                    sortKey === column.key
-                      ? sortDirection === 'asc'
-                        ? 'ascending'
-                        : 'descending'
+                    column.sortable
+                      ? sortKey === column.key
+                        ? sortDirection === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
                       : undefined
                   }
                 >
