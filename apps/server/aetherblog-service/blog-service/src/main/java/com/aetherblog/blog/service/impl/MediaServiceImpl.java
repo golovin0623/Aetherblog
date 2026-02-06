@@ -74,15 +74,15 @@ public class MediaServiceImpl implements MediaService {
     );
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            // Images
+            // 图片
             "jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "ico", "bmp", "tiff",
-            // Video
+            // 视频
             "mp4", "webm", "ogg", "avi", "mov", "wmv",
-            // Audio
+            // 音频
             "mp3", "wav", "m4a", "aac", "flac",
-            // Documents
+            // 文档
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers",
-            // Archives
+            // 压缩包
             "zip", "rar", "7z", "tar", "gz"
     );
 
@@ -103,7 +103,7 @@ public class MediaServiceImpl implements MediaService {
         String originalName = StringUtils.cleanPath(originalFilename != null ? originalFilename : "unknown");
         String extension = getFileExtension(originalName);
 
-        // Security Check: Validate file extension
+        // 安全检查：验证文件扩展名
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             log.warn("拒绝上传非法文件类型: filename={}, extension={}", originalName, extension);
             throw new BusinessException(400, "不支持的文件类型: " + extension);

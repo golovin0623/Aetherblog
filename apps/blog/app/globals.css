@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Note: Code syntax highlighting is now handled by Shiki in MarkdownRenderer */
+/* 注意：代码语法高亮现在由 MarkdownRenderer 中的 Shiki 处理 */
 
 /* ========================================
    Theme CSS Variables (Light/Dark)

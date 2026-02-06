@@ -1,7 +1,7 @@
 import api from './api';
 import { R } from '@/types';
 
-// Match backend StatsService.DashboardStats
+// 匹配后端 StatsService.DashboardStats
 export interface DashboardStats {
   posts: number;
   categories: number;
@@ -56,7 +56,7 @@ export interface DashboardData {
 }
 
 class AnalyticsService {
-  // Get complete dashboard data in one call
+  // 一次调用获取完整仪表盘数据
   async getDashboard(): Promise<R<DashboardData>> {
     return api.get<R<DashboardData>>('/v1/admin/stats/dashboard');
   }

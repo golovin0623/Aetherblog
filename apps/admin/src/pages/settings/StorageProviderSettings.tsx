@@ -75,7 +75,7 @@ export default function StorageProviderSettings() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] p-6">
-      {/* Header */}
+      {/* 头部 */}
       <div className="max-w-6xl mx-auto mb-8">
         <div className="flex items-center justify-between">
           <div>
@@ -97,7 +97,7 @@ export default function StorageProviderSettings() {
         </div>
       </div>
 
-      {/* Provider List */}
+      {/* 提供商列表 */}
       <div className="max-w-6xl mx-auto space-y-4">
         {isLoading ? (
           <div className="text-center py-12 text-[var(--text-muted)]">
@@ -146,7 +146,7 @@ export default function StorageProviderSettings() {
                     </p>
                   </div>
 
-                  {/* Config Preview */}
+                  {/* 配置预览 */}
                   <div className="mt-3 p-3 bg-black/20 rounded-lg">
                     <pre className="text-xs text-[var(--text-muted)] overflow-x-auto">
                       {JSON.stringify(JSON.parse(provider.configJson), null, 2)}
@@ -154,7 +154,7 @@ export default function StorageProviderSettings() {
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* 操作 */}
                 <div className="flex items-center gap-2 ml-4">
                   <button
                     onClick={() => testMutation.mutate(provider.id)}
@@ -191,7 +191,7 @@ export default function StorageProviderSettings() {
         )}
       </div>
 
-      {/* Create Dialog */}
+      {/* 创建对话框 */}
       <AnimatePresence>
         {isCreating && (
           <CreateProviderDialog
@@ -207,7 +207,7 @@ export default function StorageProviderSettings() {
   );
 }
 
-// Create Provider Dialog Component
+// 创建提供商对话框组件
 function CreateProviderDialog({
   onClose,
   onSuccess,
@@ -301,7 +301,7 @@ function CreateProviderDialog({
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name */}
+          {/* 名称 */}
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               名称
@@ -315,7 +315,7 @@ function CreateProviderDialog({
             />
           </div>
 
-          {/* Provider Type */}
+          {/* 提供商类型 */}
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               存储类型
@@ -340,7 +340,7 @@ function CreateProviderDialog({
             </select>
           </div>
 
-          {/* Config JSON */}
+          {/* 配置 JSON */}
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               配置 (JSON)
@@ -354,7 +354,7 @@ function CreateProviderDialog({
             />
           </div>
 
-          {/* Options */}
+          {/* 选项 */}
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2">
               <input
@@ -377,7 +377,7 @@ function CreateProviderDialog({
             </label>
           </div>
 
-          {/* Actions */}
+          {/* 操作 */}
           <div className="flex items-center gap-3 pt-4">
             <Button
               type="submit"

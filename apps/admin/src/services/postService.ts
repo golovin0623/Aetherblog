@@ -109,7 +109,7 @@ export const postService = {
   publish: (id: number): Promise<R<void>> =>
     apiClient.patch<R<void>>(`/v1/admin/posts/${id}/publish`),
 
-  // Get server time for publish scheduling
+  // 获取用于定时发布的服务器时间
   getServerTime: (): Promise<R<{ timestamp: string; timezone: string }>> =>
     apiClient.get<R<{ timestamp: string; timezone: string }>>('/v1/admin/system/time'),
 };

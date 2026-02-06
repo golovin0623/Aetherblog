@@ -8,8 +8,8 @@ export interface FriendLink {
   logo?: string;
   description?: string;
   email?: string;
-  rssUrl?: string; // V2 feature
-  themeColor?: string; // V2 feature
+  rssUrl?: string; // V2 特性
+  themeColor?: string; // V2 特性
   isOnline?: boolean;
   lastCheckAt?: string;
   sortOrder: number;
@@ -29,8 +29,8 @@ class FriendService {
    */
   async getAll(): Promise<FriendLink[]> {
     const res = await api.get<R<FriendLink[]>>(this.BASE_URL);
-    // Sort by sortOrder desc (larger number first) or asc depending on requirement
-    // Usually asc for custom ordering
+    // 根据需求按 sortOrder 降序（大数在前）或升序排序
+    // 自定义排序通常使用升序
     return res.data?.sort((a, b) => a.sortOrder - b.sortOrder) || [];
   }
 
@@ -86,11 +86,11 @@ class FriendService {
 
   /**
    * 重新排序 (由于后端暂无批量排序接口，使用并发更新)
-   * @param ids ID array in new order
+   * @param ids 新顺序的 ID 数组
    */
   /**
    * 重新排序
-   * @param ids ID array in new order
+   * @param ids 新顺序的 ID 数组
    */
   async reorder(ids: number[]): Promise<void> {
     await api.patch(`${this.BASE_URL}/reorder`, ids);

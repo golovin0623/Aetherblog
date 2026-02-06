@@ -25,7 +25,7 @@ public class CryptoUtils {
      * 解密前端加密的密码
      * 前端使用 CryptoJS AES 加密
      * 
-     * @param encryptedData Base64 encoded encrypted data from CryptoJS
+     * @param encryptedData 来自 CryptoJS 的 Base64 编码加密数据
      * @return 解密后的原始密码
      */
     public static String decryptPassword(String encryptedData) {
