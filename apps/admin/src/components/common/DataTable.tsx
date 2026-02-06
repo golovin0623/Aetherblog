@@ -53,11 +53,19 @@ export function DataTable<T extends { id: number | string }>({
                   key={String(column.key)}
                   className="px-6 py-4 text-left text-sm font-medium text-[var(--text-muted)]"
                   style={{ width: column.width }}
+                  aria-sort={
+                    sortKey === column.key
+                      ? sortDirection === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : undefined
+                  }
                 >
                   {column.sortable ? (
                     <button
                       onClick={() => handleSort(String(column.key))}
                       className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors"
+                      aria-label={`排序：${column.title}`}
                     >
                       {column.title}
                       {sortKey === column.key ? (
@@ -116,6 +124,7 @@ export function DataTable<T extends { id: number | string }>({
               onClick={() => onPageChange?.(page - 1)}
               disabled={page <= 1}
               className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="上一页"
             >
               <ChevronLeft className="w-4 h-4 text-[var(--text-muted)]" />
             </button>
@@ -123,6 +132,7 @@ export function DataTable<T extends { id: number | string }>({
               onClick={() => onPageChange?.(page + 1)}
               disabled={page >= totalPages}
               className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="下一页"
             >
               <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
             </button>
