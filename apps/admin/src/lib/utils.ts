@@ -16,6 +16,14 @@ export function formatNumber(num: number): string {
 }
 
 /**
+ * 格式化日期
+ */
+export function formatDate(dateStr: string | null): string {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('zh-CN');
+}
+
+/**
  * 格式化文件大小
  */
 export function formatFileSize(bytes: number): string {
