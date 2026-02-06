@@ -56,6 +56,13 @@ public class SecurityConfig {
             "/error"
     };
 
+    /**
+     * 管理员路径
+     */
+    private static final String[] ADMIN_PATHS = {
+            "/v1/admin/**"
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -63,6 +70,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(WHITE_LIST).permitAll()
+                        .requestMatchers(ADMIN_PATHS).hasRole(com.aetherblog.common.core.constant.SecurityConstants.ROLE_ADMIN)
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())

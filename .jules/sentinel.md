@@ -14,3 +14,8 @@
 **Vulnerability:** The application allowed `svg` and `xml` file uploads without sanitization. SVG files can contain embedded JavaScript (`<script>`) which executes when viewed in a browser, leading to Stored XSS.
 **Learning:** Standard image allowlists often include SVG, but SVG is an XML-based format that supports scripting. Treating it as a "safe image" without processing is dangerous.
 **Prevention:** Removed `svg` and `xml` from `ALLOWED_EXTENSIONS` and `ALLOWED_IMAGE_TYPES`. For future SVG support, implement server-side sanitization (e.g., stripping scripts) or serve with `Content-Disposition: attachment`.
+
+## 2026-02-09 - Broken Access Control on Admin API
+**Vulnerability:** Admin endpoints (`/v1/admin/**`) were accessible to any authenticated user (e.g. self-registered users) because `SecurityConfig` only checked `.authenticated()` without role validation.
+**Learning:** Spring Security's `authenticated()` is insufficient for privileged routes; it only verifies identity, not authorization. Default "User" roles must not inherit Admin privileges.
+**Prevention:** Explicitly restrict sensitive path patterns (like `/v1/admin/**`) to specific roles (e.g., `.hasRole("ADMIN")`) in the security filter chain.
