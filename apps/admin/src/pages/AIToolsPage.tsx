@@ -383,19 +383,33 @@ export default function AIToolsPage() {
               transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 1 }}
               className="md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[85vw] max-w-[280px] flex flex-col bg-white dark:bg-zinc-950 border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
             >
+
               {/* Header */}
-              <div className="p-6 border-b border-[var(--border-subtle)] flex items-center justify-between bg-white dark:bg-zinc-950">
-                <h2 className="text-xl font-black text-black dark:text-white flex items-center gap-3 tracking-tighter uppercase">
-                  <Sparkles className="w-6 h-6 text-black dark:text-white" />
-                  Tools Menu
-                </h2>
-                <button
-                  onClick={() => setIsMobileSidebarOpen(false)}
-                  className="p-2 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+              <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-card)]">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <h2 className="text-lg font-bold text-[var(--text-primary)]">AI 工具箱</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingTool(null);
+                      setShowToolModal(true);
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setIsMobileSidebarOpen(false)}
+                    className="p-2 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
+
 
               {/* Tool list */}
               <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
@@ -405,7 +419,7 @@ export default function AIToolsPage() {
                   onDragEnd={handleDragEnd}
                 >
                   <div className="space-y-2 relative">
-                    <AnimatePresence initial={false}>
+
                       <SortableContext
                         items={systemToolItems.map(t => t.code)}
                         strategy={verticalListSortingStrategy}
@@ -446,46 +460,44 @@ export default function AIToolsPage() {
                           />
                         ))}
                       </SortableContext>
-                    </AnimatePresence>
+
                   </div>
                 </DndContext>
               </div>
 
-              {/* Add button */}
-              <div className="p-3 border-t border-[var(--border-subtle)]">
-                <button
-                  onClick={() => {
-                    setEditingTool(null);
-                    setShowToolModal(true);
-                    setIsMobileSidebarOpen(false);
-                  }}
-                  className={cn(
-                    'group w-full flex items-center justify-center gap-3 p-4 rounded-2xl transition-all',
-                    'bg-black text-white dark:bg-white dark:text-black font-black text-sm uppercase tracking-widest',
-                    'shadow-xl active:scale-95'
-                  )}
-                >
-                  <Plus className="w-5 h-5" />
-                  New Tool
-                </button>
-              </div>
+
             </motion.div>
           </>
         )}
       </AnimatePresence>
 
+
       {/* Desktop: Left Column - Tools List */}
       <div className="hidden md:flex w-[280px] flex-shrink-0 flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] overflow-hidden shadow-sm h-full">
         {/* Header */}
-        <div className="p-6 pb-4 border-b border-[var(--border-subtle)]">
-          <h1 className="text-xl font-extrabold text-[var(--text-primary)] tracking-tight flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            AI 工具箱
-          </h1>
-          <p className="text-xs text-[var(--text-muted)] mt-1.5 font-light">
+
+        <div className="p-4 border-b border-[var(--border-subtle)]">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-lg font-bold text-[var(--text-primary)] tracking-tight flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              AI 工具箱
+            </h1>
+            <button
+              onClick={() => {
+                setEditingTool(null);
+                setShowToolModal(true);
+              }}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-black dark:bg-white text-white dark:text-black hover:opacity-90 transition-all shadow-sm"
+              title="新建工具"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] font-light">
             选择工具以开始创作
           </p>
         </div>
+
 
         {/* Scrollable Tool List */}
         <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
@@ -534,25 +546,7 @@ export default function AIToolsPage() {
           </DndContext>
         </div>
 
-        {/* Fixed Bottom: New Custom Tool */}
-        <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
-          <button
-            onClick={() => {
-              setEditingTool(null);
-              setShowToolModal(true);
-            }}
-            className={cn(
-              'group w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-all duration-300',
-              'bg-[var(--bg-secondary)] border border-[var(--border-subtle)]',
-              'text-[var(--text-secondary)] font-medium text-sm',
-              'shadow-sm hover:shadow-md hover:shadow-primary/5',
-              'hover:text-primary hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98]'
-            )}
-          >
-            <Plus className="w-4 h-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-90" />
-            新建功能
-          </button>
-        </div>
+
       </div>
 
       {/* Main Area: Workspace */}
@@ -627,25 +621,18 @@ function SortableToolItem({
         'relative w-full min-w-0 flex items-center gap-4 px-4 py-4 rounded-2xl text-left transition-all duration-300 cursor-grab active:cursor-grabbing select-none group',
         'border mb-2 overflow-hidden',
         isSelected
-          ? 'bg-black text-white dark:bg-white dark:text-black border-transparent shadow-xl z-10'
+          ? 'bg-white dark:bg-zinc-800 shadow-md ring-1 ring-primary/20 text-[var(--text-primary)] font-bold z-10'
           : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
-        isDragging && 'opacity-80 ring-2 ring-black/20 dark:ring-white/20 scale-[1.02] z-50 shadow-2xl'
+        isDragging && 'opacity-80 ring-2 ring-primary/20 scale-[1.02] z-50 shadow-2xl'
       )}
     >
-      {/* Selection Glow Indicator */}
-      {isSelected && (
-        <motion.div
-          layoutId="activeToolBg"
-          className="absolute inset-0 bg-black dark:bg-white -z-10"
-          transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-        />
-      )}
+
 
       <div
         className={cn(
           'p-2.5 rounded-xl transition-colors flex-shrink-0',
           isSelected 
-            ? 'bg-white/20 dark:bg-black/10 text-white dark:text-black' 
+            ? 'bg-primary/10 text-primary'
             : 'bg-[var(--bg-card)] text-[var(--text-muted)] group-hover:text-black dark:group-hover:text-white'
         )}
       >

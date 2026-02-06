@@ -60,12 +60,48 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             </div>
           </div>
         </div>
-        <button 
-          onClick={onClose}
-          className="p-2 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View Toggle */}
+          <button
+            onClick={() => setShowDefault(!showDefault)}
+            className={cn(
+              "h-9 px-3 sm:px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+              showDefault
+                ? "bg-black text-white dark:bg-white dark:text-black border-transparent shadow-lg"
+                : "bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]"
+            )}
+          >
+            {showDefault ? 'Exit Preview' : 'View Default'}
+          </button>
+
+          {/* Save/Reset Actions */}
+          {isDirty && !showDefault && (
+            <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-right-4 duration-300">
+              <button
+                onClick={handleReset}
+                className="h-9 px-3 rounded-xl text-[10px] font-black bg-red-500/10 text-red-500 hover:bg-red-500/20 uppercase tracking-widest transition-all"
+              >
+                Discard
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isLoading}
+                className="h-9 px-4 rounded-xl text-[10px] font-black bg-black text-white dark:bg-white dark:text-black shadow-xl hover:opacity-90 active:scale-95 uppercase tracking-widest transition-all"
+              >
+                Deploy
+              </button>
+            </div>
+          )}
+
+          <div className="w-px h-6 bg-[var(--border-subtle)] mx-1" />
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Editor Body */}
@@ -115,58 +151,21 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         )}
       </div>
 
-      {/* Footer Actions */}
-      <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 right-4 sm:right-6 z-30">
-        <div className="glass-premium rounded-3xl p-2 sm:p-3 flex items-center justify-between shadow-2xl border-white/5">
-          <div className="flex items-center gap-2 sm:gap-4 px-2 sm:px-3">
-             <div className="flex flex-col">
-               <span className="text-[10px] font-black italic text-black dark:text-white uppercase tracking-tighter">Status</span>
-               <span className="text-[10px] font-bold text-[var(--text-primary)]">
-                 {prompt.length} CHARS
-               </span>
-             </div>
-             <div className="w-px h-6 bg-[var(--border-subtle)]" />
-             <div className="flex flex-col">
-               <span className="text-[10px] font-black italic text-[var(--text-muted)] uppercase tracking-tighter">Storage</span>
-               <span className="text-[10px] font-medium text-[var(--text-muted)]">
-                 {prompt ? 'OVERRIDE' : 'SYSTEM'}
-               </span>
-             </div>
+      {/* Floating Status Badge (Desktop only) */}
+      <div className="hidden sm:flex absolute bottom-8 left-8 items-center gap-4 px-4 py-2 rounded-2xl bg-[var(--bg-card)]/50 backdrop-blur-md border border-[var(--border-subtle)] shadow-xl z-20 pointer-events-none">
+          <div className="flex flex-col">
+            <span className="text-[9px] font-black italic text-[var(--text-muted)] uppercase tracking-tighter">Status</span>
+            <span className="text-[10px] font-bold text-[var(--text-primary)]">
+              {prompt.length} CHARS
+            </span>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowDefault(!showDefault)}
-              className={cn(
-                "h-10 px-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all",
-                showDefault 
-                  ? "bg-black text-white dark:bg-white dark:text-black shadow-lg" 
-                  : "bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]"
-              )}
-            >
-              {showDefault ? 'Exit Preview' : 'View Default'}
-            </button>
-
-            {isDirty && !showDefault && (
-              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                <button
-                  onClick={handleReset}
-                  className="h-10 px-4 rounded-2xl text-[10px] font-black bg-red-500/10 text-red-500 hover:bg-red-500/20 uppercase tracking-widest transition-all"
-                >
-                  Discard
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={isLoading}
-                  className="h-10 px-6 rounded-2xl text-[10px] font-black bg-black text-white dark:bg-white dark:text-black shadow-xl hover:opacity-90 active:scale-95 uppercase tracking-widest transition-all"
-                >
-                  Deploy Change
-                </button>
-              </div>
-            )}
+          <div className="w-px h-6 bg-[var(--border-subtle)]" />
+          <div className="flex flex-col">
+            <span className="text-[9px] font-black italic text-[var(--text-muted)] uppercase tracking-tighter">Storage</span>
+            <span className="text-[10px] font-medium text-[var(--text-muted)]">
+              {prompt ? 'OVERRIDE' : 'SYSTEM'}
+            </span>
           </div>
-        </div>
       </div>
-    </div>
-  );
+    </div>  );
 };
