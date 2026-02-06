@@ -217,7 +217,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           {/* Unified Execution Hub - Floating at bottom center */}
           <div className={cn(
             "absolute bottom-8 left-1/2 -translate-x-1/2 z-40 w-[94%] sm:w-auto transition-all duration-500",
-            (showConfig || isMobileSidebarOpen) ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
+            isMobileSidebarOpen ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
           )}>
             <div className="glass-premium rounded-[2.5rem] p-1 sm:p-1.5 flex items-center gap-1 sm:gap-1.5 shadow-2xl border-white/10">
               {/* Toggle Config Button */}
