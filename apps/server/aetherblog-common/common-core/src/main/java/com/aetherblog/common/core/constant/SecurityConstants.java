@@ -50,5 +50,15 @@ public class SecurityConstants {
      */
     public static final int PASSWORD_MAX_LENGTH = 20;
 
+    /**
+     * 管理员角色标识
+     */
+    public static final String ROLE_ADMIN = "ADMIN";
+
+    /**
+     * 普通用户角色标识
+     */
+    public static final String ROLE_USER = "USER";
+
     private SecurityConstants() {}
 }
