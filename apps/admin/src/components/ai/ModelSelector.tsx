@@ -495,7 +495,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               </div>
             ) : (
               <div
-                className="fixed inset-0 z-[9999] pointer-events-none"
+                className="fixed inset-0 z-[9999] pointer-events-none model-selector-portal"
                 onClick={(e) => {
                   if (e.target === e.currentTarget) setIsOpen(false);
                 }}
