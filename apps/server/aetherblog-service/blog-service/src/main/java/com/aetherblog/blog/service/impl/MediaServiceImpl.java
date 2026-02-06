@@ -57,8 +57,9 @@ public class MediaServiceImpl implements MediaService {
     @Value("${aetherblog.media.trash-cleanup-days:120}")
     private int trashCleanupDays;
 
+    // Security Note: SVG is removed to prevent Stored XSS attacks
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
-            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/svg+xml", "image/avif"
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/avif"
     );
 
     private static final Set<String> ALLOWED_VIDEO_TYPES = Set.of(
@@ -69,19 +70,20 @@ public class MediaServiceImpl implements MediaService {
             "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/flac"
     );
 
+    // Security Note: XML is removed to prevent XSS/XXE risks
     private static final Set<String> DOCUMENT_EXTENSIONS = Set.of(
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers"
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers"
     );
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            // Images
-            "jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "ico", "bmp", "tiff",
+            // Images (SVG removed for security)
+            "jpg", "jpeg", "png", "gif", "webp", "avif", "ico", "bmp", "tiff",
             // Video
             "mp4", "webm", "ogg", "avi", "mov", "wmv",
             // Audio
             "mp3", "wav", "m4a", "aac", "flac",
-            // Documents
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers",
+            // Documents (XML removed for security)
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers",
             // Archives
             "zip", "rar", "7z", "tar", "gz"
     );
