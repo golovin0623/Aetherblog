@@ -57,8 +57,9 @@ public class MediaServiceImpl implements MediaService {
     @Value("${aetherblog.media.trash-cleanup-days:120}")
     private int trashCleanupDays;
 
+    // Security Note: SVG is removed to prevent Stored XSS attacks
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
-            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/svg+xml", "image/avif"
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/avif"
     );
 
     private static final Set<String> ALLOWED_VIDEO_TYPES = Set.of(
@@ -69,19 +70,20 @@ public class MediaServiceImpl implements MediaService {
             "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/flac"
     );
 
+    // Security Note: XML is removed to prevent XSS/XXE risks
     private static final Set<String> DOCUMENT_EXTENSIONS = Set.of(
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers"
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers"
     );
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            // 图片
-            "jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "ico", "bmp", "tiff",
+            // 图片 (出于安全考虑已移除 SVG)
+            "jpg", "jpeg", "png", "gif", "webp", "avif", "ico", "bmp", "tiff",
             // 视频
             "mp4", "webm", "ogg", "avi", "mov", "wmv",
             // 音频
             "mp3", "wav", "m4a", "aac", "flac",
-            // 文档
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "xml", "json", "log", "key", "pages", "numbers",
+            // 文档 (出于安全考虑已移除 XML)
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers",
             // 压缩包
             "zip", "rar", "7z", "tar", "gz"
     );
