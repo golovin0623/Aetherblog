@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { 
   ChevronsUpDown, 
@@ -100,6 +101,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   showArrow = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
   const [isMobile, setIsMobile] = useState(false);
 
@@ -210,8 +213,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   // 点击外部关闭
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.model-selector-container')) {
+      const target = event.target as Node;
+      // 检查点击是否在触发器内或在 Portal 内容内
+      const isInsideTrigger = triggerRef.current?.contains(target);
+      const isInsidePortal = (target as HTMLElement).closest('.model-selector-portal');
+
+      if (!isInsideTrigger && !isInsidePortal) {
         setIsOpen(false);
       }
     };
@@ -418,10 +425,15 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   );
 
   return (
-    <div className={cn("relative model-selector-container", className)}>
+    <div ref={triggerRef} className={cn("relative model-selector-container", className)}>
       {/* 触发按钮 - 仅显示提供商图标 */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (!isOpen && triggerRef.current) {
+            setTriggerRect(triggerRef.current.getBoundingClientRect());
+          }
+          setIsOpen(!isOpen);
+        }}
         className={cn(
           "flex items-center gap-2 border transition-all duration-200 px-3 w-full",
           variant === 'compact'
@@ -459,62 +471,71 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         )}
       </button>
 
-      <AnimatePresence mode="wait">
-        {isOpen && (
-          isMobile ? (
-            <div className="fixed inset-0 z-[100] flex flex-col justify-end">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setIsOpen(false)}
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              />
-              <motion.div
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="relative z-10"
-              >
-                {renderContent()}
-              </motion.div>
-            </div>
-          ) : (
-            <motion.div
-              initial={{ 
-                opacity: 0, 
-                y: menuPlacement === 'top' ? -4 : 4, 
-                scale: 0.98 
-              }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ 
-                opacity: 0, 
-                y: menuPlacement === 'top' ? -4 : 4, 
-                scale: 0.98 
-              }}
-              transition={{ duration: 0.15 }}
-              className={cn(
-                "absolute z-50 flex flex-col max-h-[520px] overflow-visible",
-                menuPlacement === 'top' ? "bottom-full mb-2" : "top-full mt-2",
-                menuAlign === 'right' ? "right-0" : "left-0",
-                variant === 'compact' ? "w-[340px]" : "w-[380px]",
-                menuClassName
-              )}
-            >
-              {showArrow && (
-                <div
-                  className={cn(
-                    "absolute -top-2 h-4 w-4 rotate-45 border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900 z-10",
-                    menuAlign === 'right' ? "right-6" : "left-6"
-                  )}
+
+        {isOpen && createPortal(
+          <AnimatePresence mode="wait">
+            {isMobile ? (
+              <div className="fixed inset-0 z-[9999] flex flex-col justify-end">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setIsOpen(false)}
+                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 />
-              )}
-              {renderContent()}
-            </motion.div>
-          )
+                <motion.div
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                  className="relative z-10"
+                >
+                  {renderContent()}
+                </motion.div>
+              </div>
+            ) : (
+              <div
+                className="fixed inset-0 z-[9999] pointer-events-none model-selector-portal"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setIsOpen(false);
+                }}
+              >
+                <div
+                  className="pointer-events-auto absolute"
+                  style={{
+                    left: triggerRect ? (menuAlign === 'right' ? triggerRect.right - (variant === 'compact' ? 340 : 380) : triggerRect.left) : 0,
+                    top: triggerRect ? (menuPlacement === 'top' ? triggerRect.top - 8 : triggerRect.bottom + 8) : 0,
+                    transform: menuPlacement === 'top' ? 'translateY(-100%)' : 'none',
+                    width: variant === 'compact' ? '340px' : '380px'
+                  }}
+                >
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: menuPlacement === 'top' ? 10 : -10,
+                      scale: 0.98
+                    }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{
+                      opacity: 0,
+                      y: menuPlacement === 'top' ? 10 : -10,
+                      scale: 0.98
+                    }}
+                    transition={{ duration: 0.15 }}
+                    className={cn(
+                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900 overflow-hidden",
+                      menuClassName
+                    )}
+                  >
+                    {renderContent()}
+                  </motion.div>
+                </div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
+
     </div>
   );
 };
