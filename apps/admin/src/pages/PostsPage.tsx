@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings, Sparkles } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
+import { StatusBadge } from '@/components/common/StatusBadge';
 import { postService, PostListItem, Post } from '@/services/postService';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
@@ -227,26 +228,6 @@ export default function PostsPage() {
   const handleTogglePopover = useCallback((id: number) => {
     setActiveTagPopover(prev => prev === id ? null : id);
   }, []);
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('zh-CN');
-  };
-
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      PUBLISHED: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
-      DRAFT: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
-      ARCHIVED: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20',
-    };
-    const labels = { PUBLISHED: '已发布', DRAFT: '草稿', ARCHIVED: '已归档' };
-    return (
-      <span className={cn('px-1.5 py-0.5 text-xs rounded-full border leading-none font-medium', styles[status as keyof typeof styles] || styles.DRAFT)}>
-        {labels[status as keyof typeof labels] || status}
-      </span>
-    );
-  };
-
 
   return (
     <div className="flex flex-col">
@@ -674,7 +655,7 @@ export default function PostsPage() {
                               {post.title}
                             </h3>
                           </button>
-                          {getStatusBadge(post.status)}
+                          <StatusBadge status={post.status} />
                         </div>
 
                         <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
