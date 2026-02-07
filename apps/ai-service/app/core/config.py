@@ -8,15 +8,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 计算项目根目录的 .env 路径 (apps/ai-service/app/core/config.py -> 根目录)
 # 在开发环境中使用根 .env，在 Docker 容器中该文件不存在时会被忽略
-_ROOT_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
-# 如果根 .env 不存在（如 Docker 容器内），使用当前目录的 .env 或不使用
-_ENV_FILE = str(_ROOT_ENV_FILE) if _ROOT_ENV_FILE.exists() else ".env"
+def _find_env_file() -> str | None:
+    """
+    查找 .env 文件，兼容开发环境和 Docker 容器。
+    - 开发环境: /path/to/AetherBlog/apps/ai-service/app/core/config.py -> parents[4] = /path/to/AetherBlog
+    - Docker: /app/app/core/config.py -> parents[4] 不存在，直接使用环境变量
+    """
+    try:
+        root_env = Path(__file__).resolve().parents[4] / ".env"
+        if root_env.exists():
+            return str(root_env)
+    except IndexError:
+        pass  # Docker 容器中路径层级不够
+    
+    # 检查当前目录 .env (备选)
+    if Path(".env").exists():
+        return ".env"
+    
+    # 无 .env 文件，完全依赖环境变量
+    return None
+
+_ENV_FILE = _find_env_file()
 
 
 # ref: §8.3.1
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=_ENV_FILE if Path(_ENV_FILE).exists() else None,
+        env_file=_ENV_FILE,  # None 表示不使用 .env 文件，依赖环境变量
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",  # 忽略根 .env 中不认识的其他服务配置项
