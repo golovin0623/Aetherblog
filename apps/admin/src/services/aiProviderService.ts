@@ -177,6 +177,9 @@ export const aiProviderService = {
   deleteCredential: (id: number): Promise<AiServiceResponse<boolean>> =>
     api.delete(`/v1/admin/providers/credentials/${id}`),
 
+  revealCredential: (id: number): Promise<AiServiceResponse<{ id: number; api_key: string }>> =>
+    api.get(`/v1/admin/providers/credentials/${id}/reveal`),
+
   testCredential: (id: number, modelId?: string): Promise<AiServiceResponse<{ success: boolean; message: string; latency_ms?: number }>> =>
     api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'gpt-5-mini' }),
 

@@ -6,18 +6,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ExternalLink,
   Pencil,
-  Trash2,
+  XCircle,
   SlidersHorizontal,
   Eye,
   EyeOff,
   Settings,
   Brain,
+  Loader2,
 } from 'lucide-react';
 import { Tooltip } from '@aetherblog/ui';
 import type { AiProvider } from '@/services/aiProviderService';
 import { getPresetProvider, type PresetProvider } from '../types';
 import { useToggleProvider, useDeleteProvider, useUpdateProvider } from '../hooks/useProviders';
-import { useProviderCredentials, useCreateCredential } from '../hooks/useCredentials';
+import { useProviderCredentials, useCreateCredential, useRevealCredential } from '../hooks/useCredentials';
 import { useProviderModels } from '../hooks/useModels';
 import { getProviderBrand } from '../utils/brandColors';
 import ProviderIcon from './ProviderIcon';
@@ -44,8 +45,12 @@ export default function ProviderDetail({
   onActiveTabChange: setActiveTab,
 }: ProviderDetailProps) {
   const [showKey, setShowKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  
+  // Reset state when provider changes
   useEffect(() => {
     setShowKey(false);
+    setRevealedKey(null);
   }, [provider.code]);
   
   // Computed
@@ -64,6 +69,7 @@ export default function ProviderDetail({
   const deleteMutation = useDeleteProvider();
   const updateProviderMutation = useUpdateProvider();
   const createCredentialMutation = useCreateCredential();
+  const revealMutation = useRevealCredential();
   
   // State for inline editing
   const [proxyInput, setProxyInput] = useState('');
@@ -93,18 +99,43 @@ export default function ProviderDetail({
   };
 
   const handleSaveKey = () => {
-    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) return; // No change or valid input
+    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint || keyInput === revealedKey) return; // No change
 
     createCredentialMutation.mutate({
       provider_code: provider.code,
       api_key: keyInput,
       is_default: true,
-      name: 'Default Credential' // Optional name
+      name: 'Default Credential'
     }, {
       onSuccess: () => {
-
+        setRevealedKey(null); // Clear revealed key after update
       }
     });
+  };
+
+  const handleRevealKey = async () => {
+    if (!defaultCredential) return;
+    
+    if (showKey && revealedKey) {
+      // If already showing, just toggle off
+      setShowKey(false);
+      return;
+    }
+    
+    // Fetch the real key if not already fetched
+    if (!revealedKey) {
+      revealMutation.mutate(defaultCredential.id, {
+        onSuccess: (data) => {
+          setRevealedKey(data.api_key);
+          setKeyInput(data.api_key);
+          setShowKey(true);
+        }
+      });
+    } else {
+      // Already have the key, just toggle display
+      setKeyInput(revealedKey);
+      setShowKey(true);
+    }
   };
 
   const handleToggle = (enabled: boolean) => {
@@ -255,134 +286,260 @@ export default function ProviderDetail({
              WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 12px, black 95%, transparent)'
         }}
       >
-        <AnimatePresence mode="wait">
-          {activeTab === 'config' ? (
-            <motion.div
-              key="config"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-              className="px-6 lg:px-8 py-6 space-y-4"
-            >
-               {/* 配置项列表容器 */}
-               <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
-                   
-                   {/* 1. API Key Row (Input Style) */}
-                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-                      <div className="space-y-1 md:w-1/3">
-                          <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
-                          <div className="text-xs text-[var(--text-muted)]">
-                             用于鉴权的 API Key
-                          </div>
-                      </div>
-                      <div className="flex-1 max-w-lg relative">
-                          <div className="relative group">
-                            <input 
-                              type={showKey ? "text" : "password"}
-                              value={keyInput}
-                              onChange={(e) => setKeyInput(e.target.value)}
-                              onBlur={handleSaveKey}
-                              onFocus={() => {
-                                if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
-                                  setKeyInput('');
-                                }
-                              }}
-                              placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
-                              className="w-full px-3 py-2.5 pr-10 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
-                            />
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setShowKey(!showKey); }}
-                                  className="p-1 hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
-                                  title={showKey ? "隐藏" : "显示"}
-                                >
-                                   {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
-                            </div>
-                          </div>
-                      </div>
-                   </div>
-
-                   {/* 2. API Proxy Row (Input Style) */}
-                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-                      <div className="space-y-1 md:w-1/3">
-                          <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
-                          <div className="text-xs text-[var(--text-muted)]">
-                             接口请求的 Base URL
-                          </div>
-                      </div>
-                      <div className="flex-1 max-w-lg">
-                         <div className="relative group">
-                           <input 
-                              type="text"
-                              value={proxyInput}
-                              onChange={(e) => setProxyInput(e.target.value)}
-                              onBlur={handleSaveProxy}
-                              placeholder={preset?.baseUrl || "默认地址"}
-                              className="w-full px-3 py-2.5 pr-8 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
-                           />
-                           <div className="absolute right-2 top-1/2 -translate-y-1/2 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                              <Pencil className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                           </div>
-                         </div>
-                      </div>
-                   </div>
-
-                   {/* 3. Connection Check Row */}
-                   {showChecker && (
+        {/* 移动端: 使用 Tab 切换 */}
+        <div className="lg:hidden">
+          <AnimatePresence mode="wait">
+            {activeTab === 'config' ? (
+              <motion.div
+                key="config"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.2 }}
+                className="px-6 py-6 space-y-4"
+              >
+                 {/* 配置项列表容器 */}
+                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+                     
+                     {/* 1. API Key Row (Input Style) */}
                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
                         <div className="space-y-1 md:w-1/3">
-                            <div className="font-medium text-sm text-[var(--text-primary)]">连通性检查</div>
+                            <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
                             <div className="text-xs text-[var(--text-muted)]">
-                               测试 API Key 与代理地址是否正确
+                               用于鉴权的 API Key
+                            </div>
+                        </div>
+                        <div className="flex-1 max-w-lg relative">
+                            <div className="relative group">
+                              <input 
+                                type={showKey ? "text" : "password"}
+                                value={keyInput}
+                                onChange={(e) => setKeyInput(e.target.value)}
+                                onBlur={handleSaveKey}
+                                onFocus={() => {
+                                  if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
+                                    setKeyInput('');
+                                  }
+                                }}
+                                placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
+                                className="w-full px-3 py-2.5 pr-10 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
+                              />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                  <Tooltip content="点击获取并显示真实的 API Key" position="top" delay={0}>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleRevealKey(); }}
+                                      disabled={revealMutation.isPending}
+                                      className="p-1 hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] transition-opacity disabled:opacity-50"
+                                      title={showKey ? "隐藏" : "显示真实密钥"}
+                                    >
+                                       {revealMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </Tooltip>
+                              </div>
+                            </div>
+                        </div>
+                     </div>
+
+                     {/* 2. API Proxy Row (Input Style) */}
+                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
+                        <div className="space-y-1 md:w-1/3">
+                            <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
+                            <div className="text-xs text-[var(--text-muted)]">
+                               接口请求的 Base URL
                             </div>
                         </div>
                         <div className="flex-1 max-w-lg">
-                            <ConnectionTest 
-                              credentialId={defaultCredential?.id ?? null} 
-                              models={models} 
-                              defaultModelId={checkModel}
-                              simpleMode={true}
-                            />
+                           <div className="relative group">
+                             <input 
+                                type="text"
+                                value={proxyInput}
+                                onChange={(e) => setProxyInput(e.target.value)}
+                                onBlur={handleSaveProxy}
+                                placeholder={preset?.baseUrl || "默认地址"}
+                                className="w-full px-3 py-2.5 pr-8 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
+                             />
+                             <div className="absolute right-2 top-1/2 -translate-y-1/2 transition-opacity">
+                                <Pencil className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                             </div>
+                           </div>
                         </div>
                      </div>
-                   )}
-               </div>
 
-               {/* 底部删除按钮 */}
-               <div className="flex justify-center pt-2">
-                   <button
-                     onClick={handleDelete}
-                     className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-red-500/10 text-xs font-medium text-red-500 transition-colors"
-                   >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      删除服务商配置
-                   </button>
-               </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="models"
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              transition={{ duration: 0.2 }}
-              className="px-6 lg:px-8 py-6"
-            >
-                <ModelList
-                  providerCode={provider.code}
-                  providerApiType={provider.api_type}
-                  providerCapabilities={provider.capabilities}
-                  models={models}
-                  credentialId={defaultCredential?.id ?? null}
-                  isLoading={modelsLoading}
-                  showDeployName={showDeployName}
-                  variant="simple"
-                />
-            </motion.div>
-          )}
-        </AnimatePresence>
+                     {/* 3. Connection Check Row */}
+                     {showChecker && (
+                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
+                          <div className="space-y-1 md:w-1/3">
+                              <div className="font-medium text-sm text-[var(--text-primary)]">连通性检查</div>
+                              <div className="text-xs text-[var(--text-muted)]">
+                                 测试 API Key 与代理地址是否正确
+                              </div>
+                          </div>
+                          <div className="flex-1 max-w-lg">
+                              <ConnectionTest 
+                                credentialId={defaultCredential?.id ?? null} 
+                                models={models} 
+                                defaultModelId={checkModel}
+                                simpleMode={true}
+                              />
+                          </div>
+                       </div>
+                     )}
+                 </div>
+
+                 {/* 底部删除按钮 */}
+                 <div className="flex justify-center pt-2">
+                     <button
+                       onClick={handleDelete}
+                       className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-red-500/10 text-xs font-medium text-red-500 transition-colors"
+                     >
+                        <XCircle className="w-3.5 h-3.5" />
+                        删除服务商配置
+                     </button>
+                 </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="models"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                transition={{ duration: 0.2 }}
+                className="px-6 py-6"
+              >
+                  <ModelList
+                    providerCode={provider.code}
+                    providerApiType={provider.api_type}
+                    providerCapabilities={provider.capabilities}
+                    models={models}
+                    credentialId={defaultCredential?.id ?? null}
+                    isLoading={modelsLoading}
+                    showDeployName={showDeployName}
+                    variant="simple"
+                  />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* PC 端: 同时显示配置和模型列表 */}
+        <div className="hidden lg:block px-8 py-6 space-y-6">
+          {/* 配置项列表容器 */}
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+              
+              {/* 1. API Key Row (Input Style) */}
+              <div className="flex items-center justify-between gap-4 p-4">
+                 <div className="space-y-1 w-1/3">
+                     <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
+                     <div className="text-xs text-[var(--text-muted)]">
+                        用于鉴权的 API Key
+                     </div>
+                 </div>
+                 <div className="flex-1 max-w-lg relative">
+                     <div className="relative group">
+                       <input 
+                         type={showKey ? "text" : "password"}
+                         value={keyInput}
+                         onChange={(e) => setKeyInput(e.target.value)}
+                         onBlur={handleSaveKey}
+                         onFocus={() => {
+                           if (keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint) {
+                             setKeyInput('');
+                           }
+                         }}
+                         placeholder={defaultCredential ? "点击修改 API Key" : "请输入 API Key"}
+                         className="w-full px-3 py-2.5 pr-10 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
+                       />
+                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                           <Tooltip content="点击获取并显示真实的 API Key" position="top" delay={0}>
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); handleRevealKey(); }}
+                               disabled={revealMutation.isPending}
+                               className="p-1 hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                               title={showKey ? "隐藏" : "显示真实密钥"}
+                             >
+                                {revealMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                             </button>
+                           </Tooltip>
+                       </div>
+                     </div>
+                 </div>
+              </div>
+
+              {/* 2. API Proxy Row (Input Style) */}
+              <div className="flex items-center justify-between gap-4 p-4">
+                 <div className="space-y-1 w-1/3">
+                     <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
+                     <div className="text-xs text-[var(--text-muted)]">
+                        接口请求的 Base URL
+                     </div>
+                 </div>
+                 <div className="flex-1 max-w-lg">
+                    <div className="relative group">
+                      <input 
+                         type="text"
+                         value={proxyInput}
+                         onChange={(e) => setProxyInput(e.target.value)}
+                         onBlur={handleSaveProxy}
+                         placeholder={preset?.baseUrl || "默认地址"}
+                         className="w-full px-3 py-2.5 pr-8 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/5 dark:focus:ring-white/10 transition-all placeholder:[var(--text-muted)]/40 shadow-sm"
+                      />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <Pencil className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                      </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* 3. Connection Check Row */}
+              {showChecker && (
+                <div className="flex items-center justify-between gap-4 p-4">
+                   <div className="space-y-1 w-1/3">
+                       <div className="font-medium text-sm text-[var(--text-primary)]">连通性检查</div>
+                       <div className="text-xs text-[var(--text-muted)]">
+                          测试 API Key 与代理地址是否正确
+                       </div>
+                   </div>
+                   <div className="flex-1 max-w-lg">
+                       <ConnectionTest 
+                         credentialId={defaultCredential?.id ?? null} 
+                         models={models} 
+                         defaultModelId={checkModel}
+                         simpleMode={true}
+                       />
+                   </div>
+                </div>
+              )}
+          </div>
+
+          {/* PC 端模型列表 */}
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] p-4">
+              <div className="flex items-center gap-2 mb-4">
+                  <Brain className="w-4 h-4 text-[var(--text-muted)]" />
+                  <h3 className="font-medium text-sm text-[var(--text-primary)]">可用模型</h3>
+              </div>
+              <ModelList
+                providerCode={provider.code}
+                providerApiType={provider.api_type}
+                providerCapabilities={provider.capabilities}
+                models={models}
+                credentialId={defaultCredential?.id ?? null}
+                isLoading={modelsLoading}
+                showDeployName={showDeployName}
+                variant="simple"
+              />
+          </div>
+
+          {/* 底部删除按钮 */}
+          <div className="flex justify-center pt-2">
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-red-500/10 text-xs font-medium text-red-500 transition-colors"
+              >
+                 <XCircle className="w-3.5 h-3.5" />
+                 删除服务商配置
+              </button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
