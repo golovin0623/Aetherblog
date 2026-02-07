@@ -67,12 +67,18 @@ export function useStreamResponse(): UseStreamResponseReturn {
     const token = useAuthStore.getState().token;
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify(body),
         signal: abortControllerRef.current.signal,
       });

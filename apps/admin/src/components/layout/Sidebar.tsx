@@ -28,6 +28,7 @@ import { useState } from 'react';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { UserProfileModal } from './UserProfileModal';
 import { getMediaUrl } from '@/services/mediaService';
+import { authService } from '@/services/authService';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
@@ -117,9 +118,13 @@ export function Sidebar() {
         confirmText="确认退出"
         cancelText="取消"
         variant="warning"
-        onConfirm={() => {
-          logout();
-          navigate('/login');
+        onConfirm={async () => {
+          try {
+            await authService.logout();
+          } finally {
+            logout();
+            navigate('/login');
+          }
         }}
         onCancel={() => setShowLogoutConfirm(false)}
       />

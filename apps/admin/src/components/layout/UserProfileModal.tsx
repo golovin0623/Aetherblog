@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
   User,
   Lock,
@@ -21,18 +22,7 @@ import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { cn } from '@/lib/utils';
-import CryptoJS from 'crypto-js';
 import { useMediaQuery } from '@/hooks';
-
-// 加密密钥 - 必须与后端匹配
-const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
-
-// 发送前加密密码
-const encryptPassword = (password: string): string => {
-  const timestamp = Date.now().toString();
-  const data = JSON.stringify({ password, timestamp });
-  return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
-};
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -43,8 +33,9 @@ interface UserProfileModalProps {
 type TabType = 'profile' | 'security';
 
 export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProfileModalProps) {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, logout } = useAuthStore();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [isLoading, setIsLoading] = useState(false);
@@ -144,16 +135,21 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     setIsLoading(true);
     try {
       const res = await authService.changePassword({
-        currentPassword: encryptPassword(currentPassword),
-        newPassword: encryptPassword(newPassword),
-        encrypted: true,
+        currentPassword,
+        newPassword,
       });
 
       if (res.code === 200) {
-        toast.success('密码修改成功');
+        toast.success('密码修改成功，请重新登录');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+
+        await authService.logout().catch(() => undefined);
+
+        logout();
+        onClose();
+        navigate('/login', { state: { message: '密码已更新，请重新登录' } });
       } else {
         toast.error(res.message || '密码修改失败');
       }

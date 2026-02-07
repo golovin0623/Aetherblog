@@ -47,6 +47,10 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public Category createCategory(Category category) {
+        // 校验分类名称不能重复
+        if (categoryRepository.existsByName(category.getName())) {
+            throw new BusinessException(400, "分类名称已存在");
+        }
         if (category.getSlug() == null || category.getSlug().isEmpty()) {
             category.setSlug(SlugUtils.toSlug(category.getName()));
         }
@@ -57,6 +61,11 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public Category updateCategory(Long id, Category category) {
         Category existing = getCategoryById(id);
+        // 如果名称变更，校验新名称是否已被使用
+        if (!existing.getName().equals(category.getName()) 
+                && categoryRepository.existsByName(category.getName())) {
+            throw new BusinessException(400, "分类名称已存在");
+        }
         existing.setName(category.getName());
         existing.setDescription(category.getDescription());
         existing.setIcon(category.getIcon());

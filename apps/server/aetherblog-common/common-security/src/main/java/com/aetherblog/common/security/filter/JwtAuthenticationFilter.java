@@ -1,9 +1,11 @@
 package com.aetherblog.common.security.filter;
 
+import com.aetherblog.common.security.constant.AuthCookieConstants;
 import com.aetherblog.common.security.domain.LoginUser;
 import com.aetherblog.common.security.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -32,20 +34,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        
+
         String token = extractToken(request);
-        
+
         if (StringUtils.hasText(token) && jwtService.validateToken(token)) {
             LoginUser loginUser = jwtService.getLoginUser(token);
-            
+
             if (loginUser != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UsernamePasswordAuthenticationToken authentication = 
+                UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(loginUser, null, loginUser.getAuthorities());
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         }
-        
+
         chain.doFilter(request, response);
     }
 
@@ -54,6 +56,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith(BEARER_PREFIX)) {
             return bearerToken.substring(BEARER_PREFIX.length());
         }
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null || cookies.length == 0) {
+            return null;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (AuthCookieConstants.ACCESS_TOKEN_COOKIE.equals(cookie.getName())
+                    && StringUtils.hasText(cookie.getValue())) {
+                return cookie.getValue();
+            }
+        }
+
         return null;
     }
 }

@@ -41,6 +41,10 @@ public class TagServiceImpl implements TagService {
     @Override
     @Transactional
     public Tag createTag(Tag tag) {
+        // 校验标签名称不能重复
+        if (tagRepository.existsByName(tag.getName())) {
+            throw new BusinessException(400, "标签名称已存在");
+        }
         if (tag.getSlug() == null || tag.getSlug().isEmpty()) {
             tag.setSlug(SlugUtils.toSlug(tag.getName()));
         }
@@ -51,6 +55,11 @@ public class TagServiceImpl implements TagService {
     @Transactional
     public Tag updateTag(Long id, Tag tag) {
         Tag existing = getTagById(id);
+        // 如果名称变更，校验新名称是否已被使用
+        if (!existing.getName().equals(tag.getName()) 
+                && tagRepository.existsByName(tag.getName())) {
+            throw new BusinessException(400, "标签名称已存在");
+        }
         existing.setName(tag.getName());
         existing.setColor(tag.getColor());
         existing.setDescription(tag.getDescription());
