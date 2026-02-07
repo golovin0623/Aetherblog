@@ -1,7 +1,6 @@
 import api from './api';
 import axios from 'axios';
 import { R, PageResult } from '@/types';
-import { useAuthStore } from '@/stores';
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
@@ -91,14 +90,11 @@ export const mediaService = {
       formData.append('folderId', folderId.toString());
     }
 
-    const token = useAuthStore.getState().token;
     const response = await axios.post<R<MediaItem>>(
       `${API_BASE_URL}/v1/admin/media/upload`,
       formData,
       {
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
+        withCredentials: true,
         onUploadProgress: (event) => {
           if (event.total && onProgress) {
             const percent = Math.round((event.loaded * 100) / event.total);
@@ -182,14 +178,11 @@ export const mediaService = {
    * 上传编辑后的图片内容
    */
   uploadEdited: async (id: number, formData: FormData): Promise<MediaItem> => {
-    const token = useAuthStore.getState().token;
     const response = await axios.post<R<MediaItem>>(
       `${API_BASE_URL}/v1/admin/media/${id}/content`,
       formData,
       {
-        headers: {
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
+        withCredentials: true,
       }
     );
     return response.data.data;

@@ -14,19 +14,14 @@ import lombok.NoArgsConstructor;
 public class ChangePasswordRequest {
 
     /**
-     * 当前密码（可能是加密后的）
+     * 当前密码
      */
     @NotBlank(message = "当前密码不能为空")
     private String currentPassword;
 
     /**
-     * 新密码（可能是加密后的）
+     * 新密码
      */
     @NotBlank(message = "新密码不能为空")
     private String newPassword;
-
-    /**
-     * 是否已加密
-     */
-    private Boolean encrypted = false;
 }

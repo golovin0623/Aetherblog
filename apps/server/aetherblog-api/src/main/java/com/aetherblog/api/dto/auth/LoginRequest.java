@@ -14,14 +14,5 @@ public record LoginRequest(
 
     @Schema(description = "密码", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "密码不能为空")
-    String password,
-
-    @Schema(description = "是否已加密")
-    Boolean encrypted
-) {
-    public LoginRequest {
-        if (encrypted == null) {
-            encrypted = false;
-        }
-    }
-}
+    String password
+) {}

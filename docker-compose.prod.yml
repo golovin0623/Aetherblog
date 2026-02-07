@@ -139,6 +139,9 @@ services:
       AI_SERVICE_URL: http://ai-service:8000
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
       JWT_SECRET: ${JWT_SECRET}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:true}
+      AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:Strict}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:http://localhost:7899,http://127.0.0.1:7899}
       LOGGING_FILE_NAME: /app/logs/server.log
       APP_LOG_PATH: /app/logs
     volumes:

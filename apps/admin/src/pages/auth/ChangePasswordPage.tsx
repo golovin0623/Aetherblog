@@ -6,17 +6,6 @@ import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
-import CryptoJS from 'crypto-js';
-
-// 加密密钥 - 必须与后端匹配
-const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
-
-// 发送前加密密码
-const encryptPassword = (password: string): string => {
-  const timestamp = Date.now().toString();
-  const data = JSON.stringify({ password, timestamp });
-  return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
-};
 
 export function ChangePasswordPage() {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -63,11 +52,9 @@ export function ChangePasswordPage() {
     setIsLoading(true);
 
     try {
-      // 发送前加密密码
       const res = await authService.changePassword({
-        currentPassword: encryptPassword(currentPassword),
-        newPassword: encryptPassword(newPassword),
-        encrypted: true,
+        currentPassword,
+        newPassword,
       });
       
       if (res.code === 200) {
@@ -351,7 +338,7 @@ export function ChangePasswordPage() {
           )}
 
           <p className="text-center text-[10px] text-slate-600 tracking-wider">
-            Your credentials are protected by industrial-grade encryption.
+            Your credentials are protected in transit by HTTPS.
           </p>
 
           {/* 移动端状态 */}

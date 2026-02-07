@@ -14,7 +14,7 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User, token?: string | null) => void;
   logout: () => void;
   updateUser: (user: Partial<User>) => void;
 }
@@ -25,7 +25,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isAuthenticated: false,
-      login: (user, token) =>
+      login: (user, token = null) =>
         set({ user, token, isAuthenticated: true }),
       logout: () =>
         set({ user: null, token: null, isAuthenticated: false }),
@@ -36,6 +36,10 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'aetherblog-auth',
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 );
