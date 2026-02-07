@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ExternalLink } from 'lucide-react';
 
 interface FriendCardProps {
@@ -27,14 +27,32 @@ export const FriendCard: React.FC<FriendCardProps> = ({
   index = 0,
 }) => {
   const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   // 智能检测图片宽高比
   const [isSquareImage, setIsSquareImage] = useState<boolean | null>(null);
+
+  // 检测是否有有效的头像 URL
+  const hasValidAvatar = avatar && avatar.trim() !== '';
+
+  // 图片加载超时处理
+  useEffect(() => {
+    if (!hasValidAvatar) return;
+    
+    const timeout = setTimeout(() => {
+      if (!imageLoaded) {
+        setImageError(true);
+      }
+    }, 5000); // 5秒超时
+
+    return () => clearTimeout(timeout);
+  }, [hasValidAvatar, imageLoaded]);
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     const aspectRatio = img.naturalWidth / img.naturalHeight;
     // 宽高比在 0.7~1.4 之间视为"接近正方形"，使用填充模式
     setIsSquareImage(aspectRatio >= 0.7 && aspectRatio <= 1.4);
+    setImageLoaded(true);
   };
 
   // 根据图片比例动态决定样式
@@ -45,6 +63,9 @@ export const FriendCard: React.FC<FriendCardProps> = ({
     : isSquareImage
       ? "h-full w-full object-cover transition-opacity duration-200"
       : "h-full w-full object-contain p-1.5 transition-opacity duration-200";
+  
+  // 是否显示回退的首字母头像
+  const showFallback = !hasValidAvatar || imageError;
 
   return (
     <a
@@ -92,7 +113,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
               style={{ backgroundColor: themeColor }}
             />
             <div className="relative h-14 w-14 rounded-full overflow-hidden ring-2 ring-[var(--border-subtle)] group-hover:ring-[var(--border-hover)] transition-all bg-[var(--bg-secondary)]">
-              {!imageError ? (
+              {!showFallback ? (
                 <img
                   src={avatar}
                   alt={name}
@@ -102,7 +123,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
                 />
               ) : (
                 <div
-                  className="h-full w-full flex items-center justify-center text-[var(--text-primary)] text-lg font-bold"
+                  className="h-full w-full flex items-center justify-center text-white text-lg font-bold"
                   style={{ backgroundColor: themeColor }}
                 >
                   {name.charAt(0).toUpperCase()}
