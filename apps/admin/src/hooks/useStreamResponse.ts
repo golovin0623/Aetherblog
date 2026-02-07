@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
 interface StreamEvent {
   type: 'delta' | 'done' | 'error';
   content?: string;
@@ -75,13 +77,28 @@ export function useStreamResponse(): UseStreamResponseReturn {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const response = await fetch(url, {
+      const requestInit: RequestInit = {
         method: 'POST',
         headers,
         credentials: 'include',
         body: JSON.stringify(body),
         signal: abortControllerRef.current.signal,
-      });
+      };
+
+      const executeStreamRequest = () => fetch(url, requestInit);
+
+      let response = await executeStreamRequest();
+
+      if (response.status === 401 || response.status === 403) {
+        const refreshResponse = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+
+        if (refreshResponse.ok) {
+          response = await executeStreamRequest();
+        }
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

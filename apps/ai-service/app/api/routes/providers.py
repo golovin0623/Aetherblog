@@ -537,6 +537,41 @@ async def list_credentials(
     )
 
 
+@router.get("/credentials/{credential_id}/reveal", response_model=ApiResponse[dict])
+async def reveal_credential(
+    credential_id: int,
+    user: UserClaims = Depends(require_admin),
+    resolver: CredentialResolver = Depends(get_credential_resolver),
+):
+    """
+    Reveal the actual API key for a credential.
+    
+    This endpoint returns the decrypted API key for admin users.
+    The key is encrypted in transit via HTTPS.
+    """
+    user_id = user.user_id
+    try:
+        credential = await resolver.get_credential_by_id(
+            credential_id, 
+            user_id=user_id, 
+            decrypt_key=True
+        )
+    except Exception as e:
+        logger.warning(f"Failed to decrypt credential {credential_id}: {e}")
+        raise HTTPException(
+            status_code=400, 
+            detail="无法解密 API Key（可能密钥配置已变更）。请删除并重新添加凭证。"
+        )
+    
+    if not credential:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    
+    return ApiResponse(data={
+        "id": credential["id"],
+        "api_key": credential["api_key"],
+    })
+
+
 @router.delete("/credentials/{credential_id}", response_model=ApiResponse[bool])
 async def delete_credential(
     credential_id: int,

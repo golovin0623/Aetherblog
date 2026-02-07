@@ -11,8 +11,27 @@ from app.api import deps as deps_module
 @pytest.mark.asyncio
 async def test_require_user_missing_token():
     with pytest.raises(HTTPException) as exc:
-        await deps_module.require_user(None)
+        await deps_module.require_user(None, None)
     assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_require_user_accepts_cookie_token():
+    token = jwt.encode({"userId": "cookie-user", "role": "user"}, "test-secret", algorithm="HS256")
+
+    user = await deps_module.require_user(None, token)
+
+    assert user.user_id == "cookie-user"
+
+
+@pytest.mark.asyncio
+async def test_require_user_prefers_header_over_cookie():
+    header_token = jwt.encode({"userId": "header-user", "role": "user"}, "test-secret", algorithm="HS256")
+    cookie_token = jwt.encode({"userId": "cookie-user", "role": "user"}, "test-secret", algorithm="HS256")
+
+    user = await deps_module.require_user(f"Bearer {header_token}", cookie_token)
+
+    assert user.user_id == "header-user"
 
 
 @pytest.mark.asyncio
@@ -60,6 +79,7 @@ async def test_rate_limit_calls_limiters():
 @pytest.mark.asyncio
 async def test_get_pg_pool_cached(monkeypatch):
     deps_module._pg_pool = None
+
     class SentinelPool:
         async def close(self):
             return None
