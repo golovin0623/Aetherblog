@@ -531,6 +531,12 @@ start_backend() {
             
             if [ -n "$JAR_FILE" ]; then
                 echo -e "${BLUE}   启动后端服务: $JAR_FILE${NC}"
+                # 加载 .env 环境变量
+                if [ -f "$PROJECT_ROOT/.env" ]; then
+                    set -a
+                    source "$PROJECT_ROOT/.env"
+                    set +a
+                fi
                 nohup java -Dapp.log.path="$LOG_DIR" -DAPP_LOG_PATH="$LOG_DIR" -Dlogging.file.path="$LOG_DIR" -jar "$JAR_FILE" > "$LOG_DIR/backend.log" 2>&1 &
                 local backend_pid=$!
                 echo $backend_pid > "$PID_DIR/backend.pid"

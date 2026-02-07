@@ -1,0 +1,18 @@
+[Unit]
+Description=AetherBlog Deployment Webhook Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Aetherblog/webhook
+Environment=WEBHOOK_SECRET=change-me
+Environment=WEBHOOK_PORT=7868
+Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
+Environment=DEPLOY_TIMEOUT=900
+ExecStart=/usr/bin/python3 /root/Aetherblog/webhook/webhook_server.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

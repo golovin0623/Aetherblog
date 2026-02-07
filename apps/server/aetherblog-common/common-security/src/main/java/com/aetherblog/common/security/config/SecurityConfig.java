@@ -43,7 +43,7 @@ public class SecurityConfig {
     }
 
     /**
-     * 白名单路径
+     * 白名单路径 (不包含 context-path /api，因为 Spring 会自动剥离)
      */
     private static final String[] WHITE_LIST = {
             "/v1/public/**",

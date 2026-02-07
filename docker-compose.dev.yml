@@ -1,0 +1,68 @@
+# =============================================================================
+# AetherBlog - 本地开发环境 Docker Compose
+# =============================================================================
+# 仅启动基础中间件 + Nginx 网关
+# 后端、AI 服务、前端在宿主机本地运行
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 数据库
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: aetherblog-postgres
+    environment:
+      POSTGRES_DB: aetherblog
+      POSTGRES_USER: aetherblog
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-aetherblog123}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - aetherblog_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aetherblog -d aetherblog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis 缓存
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7.4-alpine
+    container_name: aetherblog-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - aetherblog_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Nginx 网关 (连接宿主机服务)
+  # ---------------------------------------------------------------------------
+  gateway:
+    image: nginx:alpine
+    container_name: aetherblog-gateway-dev
+    ports:
+      - "${GATEWAY_PORT:-7899}:80"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+volumes:
+  aetherblog_postgres_data:
+  aetherblog_redis_data:
