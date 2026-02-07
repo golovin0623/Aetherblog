@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -32,6 +33,7 @@ public class StatsService {
     private final TagRepository tagRepository;
     private final CommentRepository commentRepository;
     private final VisitRecordRepository visitRecordRepository;
+    private final Clock clock;
 
     /**
      * 获取 Dashboard 概览统计
@@ -81,7 +83,7 @@ public class StatsService {
         DashboardStats stats = getDashboardStats();
         
         // 计算趋势：比较本月与上月
-        var now = java.time.LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         var thisMonthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
         var lastMonthStart = thisMonthStart.minusMonths(1);
         
@@ -168,7 +170,7 @@ public class StatsService {
         if (days <= 0) days = 7;
         if (days > 30) days = 30;
 
-        LocalDateTime startTime = LocalDate.now().minusDays(days - 1).atStartOfDay();
+        LocalDateTime startTime = LocalDate.now(clock).minusDays(days - 1).atStartOfDay();
         
         // 从 visit_records 表获取每日统计 (已在 Repository 层过滤 isBot = false)
         List<Object[]> dailyStats = visitRecordRepository.getDailyStats(startTime);
@@ -204,7 +206,7 @@ public class StatsService {
         
         // 补全缺失的日期，确保返回连续的时间序列
         List<VisitorTrend> result = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(clock);
         for (int i = days - 1; i >= 0; i--) {
             String dateStr = today.minusDays(i).format(formatter);
             result.add(trendMap.getOrDefault(dateStr, new VisitorTrend(dateStr, 0, 0)));
@@ -217,7 +219,7 @@ public class StatsService {
      * 获取近期文章统计
      */
     public Map<String, Long> getRecentPostStats() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         // 本周开始时间 (周一 00:00:00)
         LocalDateTime thisWeekStart = now.with(java.time.DayOfWeek.MONDAY).truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         // 本月开始时间 (1号 00:00:00)

@@ -115,7 +115,7 @@ export function useTableCommands(
     const currentRowIndex = currentLine.number - tableStartLine;
 
     // 解析当前行的列
-    const cells = lineText.split('|').filter((c, i, arr) => i > 0 && i < arr.length - 1);
+    const cells = lineText.split('|').filter((_, i, arr) => i > 0 && i < arr.length - 1);
     const columnCount = cells.length;
 
     // 根据行内光标位置计算当前列索引
@@ -136,7 +136,7 @@ export function useTableCommands(
     const alignments: TableAlignment[] = [];
     if (rowCount >= 2) {
       const separatorLine = doc.line(tableStartLine + 1);
-      const sepCells = separatorLine.text.split('|').filter((c, i, arr) => i > 0 && i < arr.length - 1);
+      const sepCells = separatorLine.text.split('|').filter((_, i, arr) => i > 0 && i < arr.length - 1);
       for (const cell of sepCells) {
         const trimmed = cell.trim();
         if (trimmed.startsWith(':') && trimmed.endsWith(':')) {
