@@ -132,6 +132,8 @@ public class AuthController {
      * 用户注册
      */
     @PostMapping("/register")
+    // Security: Rate limit to mitigate DoS/Spam registration (5 requests per 10 minutes per IP)
+    @RateLimit(key = "auth:register", count = 5, time = 600, limitType = RateLimit.LimitType.IP)
     public R<LoginResponse.UserInfoVO> register(@Valid @RequestBody RegisterRequest request) {
         log.info("用户注册请求: username={}, email={}", request.getUsername(), request.getEmail());
 
