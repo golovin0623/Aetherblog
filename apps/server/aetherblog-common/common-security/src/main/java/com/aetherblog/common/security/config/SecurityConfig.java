@@ -21,7 +21,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Spring Security 配置
- * 
+ *
  * @ref §4.4 - 安全架构实现
  */
 @Configuration
@@ -49,6 +49,8 @@ public class SecurityConfig {
             "/v1/public/**",
             "/v1/auth/login",
             "/v1/auth/register",
+            "/v1/auth/refresh",
+            "/v1/auth/logout",
             "/api-docs/**",
             "/swagger-ui/**",
             "/actuator/health",

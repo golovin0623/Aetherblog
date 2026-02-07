@@ -85,10 +85,6 @@ class FriendService {
   }
 
   /**
-   * 重新排序 (由于后端暂无批量排序接口，使用并发更新)
-   * @param ids ID array in new order
-   */
-  /**
    * 重新排序
    * @param ids ID array in new order
    */

@@ -89,4 +89,18 @@ public class MediaServiceTest {
             mediaService.upload(file, 1L, null);
         });
     }
+
+    @Test
+    void upload_WithXmlExtension_ShouldThrowException() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "data.xml",
+                "application/xml",
+                "<?xml version=\"1.0\"?><data>test</data>".getBytes()
+        );
+
+        assertThrows(BusinessException.class, () -> {
+            mediaService.upload(file, 1L, null);
+        });
+    }
 }

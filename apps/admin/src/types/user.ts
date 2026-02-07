@@ -12,8 +12,6 @@ export interface User {
 export interface LoginRequest {
   username: string;
   password: string;
-  /** 标记密码是否已加密 */
-  encrypted?: boolean;
 }
 
 export interface LoginResponse {
