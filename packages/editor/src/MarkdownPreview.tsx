@@ -3,6 +3,7 @@ import { marked, Renderer } from 'marked';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 import katex from 'katex';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 
 // 导入 KaTeX CSS
 import 'katex/dist/katex.min.css';
@@ -77,8 +78,27 @@ mermaid.initialize({
     nodeTextColor: '#e2e8f0',
   },
   fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
-  securityLevel: 'loose',
+  securityLevel: 'strict',
 });
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const MARKDOWN_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'style'],
+  ADD_ATTR: ['data-source-line', 'data-mermaid-id', 'data-copy-code', 'aria-label'],
+};
+
+const SVG_SANITIZE_CONFIG = {
+  USE_PROFILES: { svg: true, svgFilters: true },
+};
 
 // 规范化语言名称
 function normalizeLanguage(lang: string): BundledLanguage {
@@ -102,7 +122,7 @@ function renderMath(text: string): string {
         throwOnError: false,
       })}</div>`;
     } catch {
-      return `<div class="math-block math-error">${formula}</div>`;
+      return `<div class="math-block math-error">${escapeHtml(formula)}</div>`;
     }
   });
 
@@ -114,7 +134,7 @@ function renderMath(text: string): string {
         throwOnError: false,
       })}</span>`;
     } catch {
-      return `<span class="math-inline math-error">${formula}</span>`;
+      return `<span class="math-inline math-error">${escapeHtml(formula)}</span>`;
     }
   });
 
@@ -169,10 +189,11 @@ function createLineTrackingRenderer(
     // 处理 Mermaid 图表
     if (lang === 'mermaid') {
       const id = generateMermaidId();
+      const escapedMermaidCode = escapeHtml(code);
       return `
         <div class="mermaid-wrapper">
           <div class="mermaid-container" data-mermaid-id="${id}">
-            <pre class="mermaid">${code}</pre>
+            <pre class="mermaid">${escapedMermaidCode}</pre>
           </div>
         </div>
       `;
@@ -208,11 +229,8 @@ function createLineTrackingRenderer(
           <div class="code-block-wrapper">
             <div class="code-block-header">
               <span class="code-block-lang">${langDisplay}</span>
-              <button class="code-block-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block-wrapper').querySelector('code').textContent)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
+              <button type="button" class="code-block-copy" data-copy-code="1" aria-label="Copy code">
+                ⧉
               </button>
             </div>
             <div class="code-block-content">${highlightedCode}</div>
@@ -255,15 +273,47 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
     if (!content) return '';
     try {
       const renderer = createLineTrackingRenderer(content, highlighter, theme);
-      return marked.parse(content, {
+      const parsedHtml = marked.parse(content, {
         gfm: true,
         breaks: true,
         renderer
       }) as string;
+
+      return DOMPurify.sanitize(parsedHtml, MARKDOWN_SANITIZE_CONFIG);
     } catch {
-      return content;
+      return DOMPurify.sanitize(`<p>${escapeHtml(content)}</p>`, MARKDOWN_SANITIZE_CONFIG);
     }
   }, [content, highlighter, theme]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const handleCopyClick = async (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const button = target.closest<HTMLButtonElement>('.code-block-copy');
+      if (!button) return;
+
+      const wrapper = button.closest('.code-block-wrapper');
+      const codeElement = wrapper?.querySelector('code');
+      const codeText = codeElement?.textContent;
+      if (!codeText) return;
+
+      try {
+        await navigator.clipboard.writeText(codeText);
+      } catch (error) {
+        console.error('Copy code error:', error);
+      }
+    };
+
+    const container = containerRef.current;
+    container.addEventListener('click', handleCopyClick);
+
+    return () => {
+      container.removeEventListener('click', handleCopyClick);
+    };
+  }, [html]);
 
   // HTML 设置后渲染 mermaid 图表
   useEffect(() => {
@@ -306,7 +356,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
         nodeTextColor: '#e2e8f0',
       },
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
-      securityLevel: 'loose',
+      securityLevel: 'strict',
     });
     mermaidIdCounter = 0;
     
@@ -320,7 +370,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
         
         try {
           const { svg } = await mermaid.render(id, code);
-          container.innerHTML = svg;
+          container.innerHTML = DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG);
         } catch (error) {
           console.error('Mermaid rendering error:', error);
           container.innerHTML = `<div class="mermaid-error">Failed to render diagram</div>`;
