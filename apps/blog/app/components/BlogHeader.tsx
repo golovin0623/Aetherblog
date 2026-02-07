@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings2 } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
 import MobileMenu from './MobileMenu';
@@ -97,7 +97,8 @@ export default function BlogHeader() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
+  const lastScrollYRef = useRef(0);
 
   // 文章详情页自动隐藏逻辑
   useEffect(() => {
@@ -122,6 +123,7 @@ export default function BlogHeader() {
 
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
+      const lastScrollY = lastScrollYRef.current;
       
       // 靠近顶部时始终显示
       if (currentScrollY < 100) {
@@ -134,12 +136,12 @@ export default function BlogHeader() {
         setIsVisible(true);
       }
       
-      setLastScrollY(currentScrollY);
+      lastScrollYRef.current = currentScrollY;
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isArticleDetail, lastScrollY]);
+  }, [isArticleDetail]); // Removed dependency on scroll state
 
   // 监听鼠标移动，更新光束位置和显隐状态
   const updateMousePosition = useCallback((e: React.MouseEvent) => {

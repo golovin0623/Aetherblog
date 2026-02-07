@@ -13,3 +13,7 @@
 ## 2026-02-05 - [React Event Handler Re-renders]
 **Learning:** Attaching `onMouseMove` handlers that update component state (`useState`) triggers a full component re-render on every pixel of mouse movement. This causes significant main-thread blocking, especially in lists/grids.
 **Action:** For high-frequency interactions like spotlight effects, use `useRef` to directly manipulate the DOM (e.g., `ref.current.style.background = ...`) to bypass the React render cycle entirely. Use `useState` only for low-frequency state changes (like `onMouseEnter`/`onMouseLeave`).
+
+## 2026-02-06 - [Optimizing Scroll Event Listeners]
+**Learning:** Storing scroll position in `useState` inside a scroll event handler causes the component to re-render on every scroll event (frame). If this state is a dependency of `useEffect`, it forces the event listener to be detached and re-attached constantly, causing significant performance degradation.
+**Action:** Use `useRef` to track mutable values like `lastScrollY` in event handlers. Only update state (e.g., `setIsVisible`) when the visual state actually changes to minimize re-renders and keep `useEffect` dependencies stable.
