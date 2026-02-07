@@ -9,3 +9,7 @@
 ## 2026-02-04 - [Global Batch Fetching]
 **Learning:** Spring Data JPA's `default_batch_fetch_size` property is an effective "set and forget" solution for N+1 problems in ToMany relationships (like tags) and ToOne relationships (like category) when pagination is involved. It avoids the complexity and memory risks of `JOIN FETCH` with `Pageable`.
 **Action:** Always enable `hibernate.default_batch_fetch_size` (e.g., 100) in `application.yml` for JPA projects to prevent silent N+1 performance degradation.
+
+## 2026-02-05 - [React Event Handler Re-renders]
+**Learning:** Attaching `onMouseMove` handlers that update component state (`useState`) triggers a full component re-render on every pixel of mouse movement. This causes significant main-thread blocking, especially in lists/grids.
+**Action:** For high-frequency interactions like spotlight effects, use `useRef` to directly manipulate the DOM (e.g., `ref.current.style.background = ...`) to bypass the React render cycle entirely. Use `useState` only for low-frequency state changes (like `onMouseEnter`/`onMouseLeave`).
