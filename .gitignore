@@ -88,3 +88,4 @@ apps/ai-service/tests/e2e/test_summary_flow.py
 
 # Locks
 .locks/
+.coverage

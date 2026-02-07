@@ -29,7 +29,8 @@ async def get_all_prompts(
 ) -> ApiResponse[list[PromptConfigResponse]]:
     """Get all prompt configurations."""
     query = """
-        SELECT tt.code as task_type, tt.prompt_template as default_prompt, r.prompt_template as custom_prompt
+        SELECT tt.code as task_type, tt.prompt_template as default_prompt, 
+               COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt
         FROM ai_task_types tt
         LEFT JOIN ai_task_routing r ON r.task_type_id = tt.id AND r.user_id IS NULL
         ORDER BY tt.id
@@ -37,6 +38,7 @@ async def get_all_prompts(
     async with llm.model_router.pool.acquire() as conn:
         rows = await conn.fetch(query)
     
+    logger.info(f"Retrieved {len(rows)} prompt configurations")
     data = [
         PromptConfigResponse(
             task_type=row["task_type"],
@@ -45,6 +47,7 @@ async def get_all_prompts(
         )
         for row in rows
     ]
+    logger.info(f"Returning data: {data}")
     return ApiResponse(data=data)
 
 
@@ -56,7 +59,8 @@ async def get_prompt_config(
     """Get prompt configuration for a task type."""
     
     query = """
-        SELECT r.config_override as config_override
+        SELECT tt.prompt_template as default_prompt,
+               COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt
         FROM ai_task_types tt
         LEFT JOIN ai_task_routing r ON r.task_type_id = tt.id AND r.user_id IS NULL
         WHERE tt.code = $1
@@ -67,16 +71,11 @@ async def get_prompt_config(
     if not row:
         raise HTTPException(status_code=404, detail=f"Task type {task_type} not found")
 
-    config_override = row["config_override"] or {}
-    custom_prompt = None
-    if isinstance(config_override, dict):
-        custom_prompt = config_override.get("prompt_template")
-
     return ApiResponse(
         data=PromptConfigResponse(
             task_type=task_type,
-            default_prompt=None,
-            custom_prompt=custom_prompt
+            default_prompt=row["default_prompt"],
+            custom_prompt=row["custom_prompt"]
         )
     )
 
@@ -111,6 +110,8 @@ async def update_prompt_config(
         task_type=task_type,
         config_override=config_override,
         update_config=True,
+        prompt_template=req.prompt_template,
+        update_prompt=True,
         user_id=None
     )
     return ApiResponse(data=success)
