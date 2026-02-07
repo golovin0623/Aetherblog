@@ -179,43 +179,52 @@ jobs:
           cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache,mode=max
           platforms: linux/amd64
 
-  # 自动部署到服务器 (已禁用: 改用 Watchtower 拉取式更新)
-  # deploy:
-  #   needs: docker-build-push
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Copy config files to server
-  #       uses: appleboy/scp-action@v0.1.7
-  #       with:
-  #         host: ${{ secrets.SERVER_HOST }}
-  #         username: ${{ secrets.SERVER_USER }}
-  #         key: ${{ secrets.SERVER_SSH_KEY }}
-  #         source: "docker-compose.prod.yml,nginx/nginx.conf"
-  #         target: ${{ secrets.DEPLOY_PATH || '/root/aetherblog' }}
-  #
-  #     - name: Deploy to server via SSH
-  #       uses: appleboy/ssh-action@v1.0.0
-  #       with:
-  #         host: ${{ secrets.SERVER_HOST }}
-  #         username: ${{ secrets.SERVER_USER }}
-  #         key: ${{ secrets.SERVER_SSH_KEY }}
-  #         script: |
-  #           # 设置部署目录 (默认 /root/aetherblog)
-  #           DEPLOY_DIR=${{ secrets.DEPLOY_PATH || '/root/aetherblog' }}
-  #           mkdir -p $DEPLOY_DIR
-  #           cd $DEPLOY_DIR
-  #
-  #           # 设置环境变量
-  #           export DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }}
-  #           export VERSION=main-${{ github.sha }}
-  #           
-  #           # 拉取镜像并启动
-  #           docker-compose -f docker-compose.prod.yml pull
-  #           docker-compose -f docker-compose.prod.yml up -d
-  #           
-  #           # 清理未使用的镜像
-  #           docker image prune -f
+  # ===========================================================================
+  # 自动部署到服务器 (SSH)
+  # ===========================================================================
+  deploy:
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy config files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "docker-compose.prod.yml,nginx/nginx.conf"
+          target: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            
+            # 部署目录
+            DEPLOY_DIR=${{ secrets.DEPLOY_PATH }}
+            cd $DEPLOY_DIR
+            
+            # 设置环境变量
+            export DOCKER_REGISTRY=${{ secrets.DOCKER_USERNAME }}
+            export VERSION=latest
+            
+            echo "📦 Pulling latest images..."
+            docker compose -f docker-compose.prod.yml pull
+            
+            echo "🚀 Starting services..."
+            docker compose -f docker-compose.prod.yml up -d
+            
+            echo "🧹 Cleaning up unused images..."
+            docker image prune -f
+            
+            echo "✅ Deployment completed!"
+            docker compose -f docker-compose.prod.yml ps

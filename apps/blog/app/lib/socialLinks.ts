@@ -15,7 +15,7 @@ export const PLATFORM_ICON_URLS: Record<string, string> = {
   gitee: 'https://api.iconify.design/simple-icons:gitee.svg?color=%23C71D23',
   juejin: 'https://api.iconify.design/simple-icons:juejin.svg?color=%231E80FF',
   csdn: 'https://api.iconify.design/simple-icons:csdn.svg?color=%23FC5531',
-  
+
   // 国际主流
   github: 'https://api.iconify.design/logos:github-icon.svg',
   twitter: 'https://api.iconify.design/logos:twitter.svg',
@@ -32,12 +32,80 @@ export const PLATFORM_ICON_URLS: Record<string, string> = {
   stackoverflow: 'https://api.iconify.design/logos:stackoverflow-icon.svg',
   whatsapp: 'https://api.iconify.design/logos:whatsapp-icon.svg',
   snapchat: 'https://api.iconify.design/simple-icons:snapchat.svg?color=black',
-  
+
   // 其他
   email: 'https://api.iconify.design/noto:envelope.svg',
   rss: 'https://api.iconify.design/simple-icons:rss.svg?color=%23FFA500',
   website: 'https://api.iconify.design/logos:chrome.svg',
 };
+
+const RELATIVE_URL_PREFIXES = ['/', './', '../'];
+const SAFE_ICON_PROTOCOLS = new Set(['http:', 'https:']);
+const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:']);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function hasRelativePrefix(url: string): boolean {
+  return RELATIVE_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
+function sanitizeIconUrl(rawUrl: unknown): string | undefined {
+  if (typeof rawUrl !== 'string') return undefined;
+
+  const url = rawUrl.trim();
+  if (!url) return undefined;
+
+  if (hasRelativePrefix(url)) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return SAFE_ICON_PROTOCOLS.has(parsed.protocol) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeSocialHref(rawUrl: unknown): { href: string; isExternal: boolean } | null {
+  if (typeof rawUrl !== 'string') return null;
+
+  const url = rawUrl.trim();
+  if (!url) return null;
+
+  if (url.startsWith('mailto:')) {
+    const email = url.slice('mailto:'.length).trim();
+    if (!EMAIL_PATTERN.test(email)) {
+      return null;
+    }
+    return { href: `mailto:${email}`, isExternal: false };
+  }
+
+  if (hasRelativePrefix(url)) {
+    return { href: url, isExternal: false };
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!SAFE_LINK_PROTOCOLS.has(parsed.protocol)) {
+      return null;
+    }
+    return {
+      href: parsed.toString(),
+      isExternal: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeEmail(email: unknown): string | null {
+  if (typeof email !== 'string') return null;
+
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail) return null;
+
+  return EMAIL_PATTERN.test(normalizedEmail) ? normalizedEmail : null;
+}
 
 export interface SocialLinkItem {
   id: string;
@@ -48,76 +116,89 @@ export interface SocialLinkItem {
   isExternal: boolean;
 }
 
-export function extractSocialLinks(settings?: Record<string, any>): SocialLinkItem[] {
+export function extractSocialLinks(settings?: Record<string, unknown>): SocialLinkItem[] {
   if (!settings) return [];
-  
+
   const links: SocialLinkItem[] = [];
 
-  // 1. 优先解析新的 JSON 格式配置 (social_links)
   if (settings.social_links) {
-    let parsedLinks: any[] = [];
+    let parsedLinks: unknown[] = [];
     if (Array.isArray(settings.social_links)) {
       parsedLinks = settings.social_links;
     } else if (typeof settings.social_links === 'string') {
       try {
-        parsedLinks = JSON.parse(settings.social_links);
+        parsedLinks = JSON.parse(settings.social_links) as unknown[];
       } catch {
         parsedLinks = [];
       }
     }
 
     if (Array.isArray(parsedLinks)) {
-      parsedLinks.forEach((link: any) => {
-        if (link.url && link.name) {
-          const platformId = link.platform || link.id;
-          const mappedIconUrl = PLATFORM_ICON_URLS[platformId] || link.icon;
-          
-          links.push({
-            id: platformId,
-            href: link.url,
-            label: link.name,
-            iconUrl: mappedIconUrl,
-            isExternal: !link.url.startsWith('mailto:'),
-          });
-        }
+      parsedLinks.forEach((rawLink, index) => {
+        if (!rawLink || typeof rawLink !== 'object') return;
+
+        const link = rawLink as Record<string, unknown>;
+        const name = typeof link.name === 'string' ? link.name.trim() : '';
+        const safeLink = sanitizeSocialHref(link.url);
+
+        if (!name || !safeLink) return;
+
+        const rawPlatform =
+          (typeof link.platform === 'string' && link.platform.trim()) ||
+          (typeof link.id === 'string' && link.id.trim()) ||
+          `social_${index}`;
+
+        const mappedIconUrl = sanitizeIconUrl(
+          PLATFORM_ICON_URLS[rawPlatform] ?? link.icon
+        );
+
+        links.push({
+          id: rawPlatform,
+          href: safeLink.href,
+          label: name,
+          iconUrl: mappedIconUrl,
+          isExternal: safeLink.isExternal,
+        });
       });
     }
   }
-  
-  // 2. 兼容旧的 social_ 前缀配置
+
   if (links.length === 0) {
     Object.entries(settings).forEach(([key, value]) => {
-      if (key.startsWith('social_') && key !== 'social_links' && value && typeof value === 'string' && value.trim()) {
+      if (key.startsWith('social_') && key !== 'social_links' && typeof value === 'string' && value.trim()) {
         const platform = key.replace('social_', '');
-        const mappedIconUrl = PLATFORM_ICON_URLS[platform];
+        const safeLink = sanitizeSocialHref(value);
+        if (!safeLink) return;
+
+        const mappedIconUrl = sanitizeIconUrl(PLATFORM_ICON_URLS[platform]);
         const label = platform.charAt(0).toUpperCase() + platform.slice(1);
-        
+
         links.push({
           id: platform,
-          href: value.trim(),
+          href: safeLink.href,
           label,
           icon: MousePointer2,
           iconUrl: mappedIconUrl,
-          isExternal: !value.startsWith('mailto:') && value.startsWith('http'),
+          isExternal: safeLink.isExternal,
         });
       }
     });
   }
-  
-  // 3. 特殊处理邮箱 (site_email -> email link)
+
   const hasEmail = links.some((link) => link.id === 'email' || link.href.startsWith('mailto:'));
-  const email = settings.site_email || settings.author_email;
-  
-  if (!hasEmail && email && typeof email === 'string' && email.trim()) {
+  const email = settings.site_email ?? settings.author_email;
+  const safeEmail = sanitizeEmail(email);
+
+  if (!hasEmail && safeEmail) {
     links.push({
       id: 'email',
-      href: `mailto:${email.trim()}`,
+      href: `mailto:${safeEmail}`,
       label: 'Email',
       icon: Mail,
       iconUrl: PLATFORM_ICON_URLS.email,
       isExternal: false,
     });
   }
-  
+
   return links;
 }
