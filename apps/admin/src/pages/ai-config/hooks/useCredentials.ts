@@ -94,6 +94,21 @@ export function useDeleteCredential() {
 }
 
 /**
+ * 获取解密后的 API Key
+ */
+export function useRevealCredential() {
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await aiProviderService.revealCredential(id);
+      return res.data;
+    },
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '获取密钥失败'));
+    },
+  });
+}
+
+/**
  * 测试凭证连通性
  */
 export function useTestCredential() {

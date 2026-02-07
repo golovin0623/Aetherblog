@@ -262,6 +262,47 @@ class CredentialResolver:
             records.append(record)
         return records
 
+    async def get_credential_by_id(
+        self, 
+        credential_id: int, 
+        user_id: int | None = None,
+        decrypt_key: bool = False,
+    ) -> dict[str, Any] | None:
+        """
+        Get a single credential by ID.
+        
+        Args:
+            credential_id: The credential ID
+            user_id: The user ID (for access control)
+            decrypt_key: If True, return decrypted API key (for admin reveal feature)
+        """
+        user_id = _normalize_user_id(user_id)
+        query = """
+            SELECT c.id, c.name, c.api_key_hint, c.api_key_encrypted,
+                   p.code as provider_code, p.display_name as provider_name,
+                   c.base_url_override, c.extra_config, c.is_default, c.is_enabled, 
+                   c.last_used_at, c.last_error, c.created_at
+            FROM ai_credentials c
+            JOIN ai_providers p ON c.provider_id = p.id
+            WHERE c.id = $1 AND c.user_id IS NOT DISTINCT FROM $2
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(query, credential_id, user_id)
+        
+        if not row:
+            return None
+        
+        result = dict(row)
+        result["extra_config"] = _parse_json(result.get("extra_config"))
+        
+        if decrypt_key:
+            result["api_key"] = self.decrypt_api_key(result["api_key_encrypted"])
+        
+        # Remove encrypted key from response
+        del result["api_key_encrypted"]
+        
+        return result
+
     async def delete_credential(self, credential_id: int, user_id: int | None = None) -> bool:
         """Delete a credential, first clearing any routing references."""
         user_id = _normalize_user_id(user_id)
