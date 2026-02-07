@@ -24,22 +24,6 @@
 services:
 
   # ---------------------------------------------------------------------------
-  # Watchtower (自动更新服务 - 拉取式部署)
-  # ---------------------------------------------------------------------------
-  watchtower:
-    image: containrrr/watchtower
-    container_name: aetherblog-watchtower
-    restart: unless-stopped
-    environment:
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=300 # 每5分钟检查一次
-      - WATCHTOWER_INCLUDE_STOPPED=true
-      - WATCHTOWER_REVIVE_STOPPED=true
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 300
-
-  # ---------------------------------------------------------------------------
   # Gateway (统一入口)
   # ---------------------------------------------------------------------------
   
