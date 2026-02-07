@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Calendar, Eye, Folder } from 'lucide-react';
 
 interface ArticleCardProps {
@@ -31,17 +32,18 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   isPinned = false,
   index = 0,
 }) => {
-  // 鼠标位置状态 (用于光束跟随效果)
-  const [mousePosition, setMousePosition] = React.useState({ x: 0, y: 0 });
+  // Use ref for direct DOM manipulation of background position (high freq)
+  const spotlightRef = React.useRef<HTMLDivElement>(null);
+  // Use state for opacity (low freq), ensures correct style on re-renders
   const [isHovering, setIsHovering] = React.useState(false);
 
-  // 监听鼠标移动，更新光束位置
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    if (!spotlightRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
   };
 
   // 计算显示的标签数量
@@ -63,10 +65,12 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
 
         {/* 聚光灯效果层 */}
         <div
+          ref={spotlightRef}
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            // Managed by React state to persist correctly across re-renders
             opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
+            // Background is managed manually via ref
           }}
         />
 
@@ -81,10 +85,12 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
         {/* 封面图片 */}
         {coverImage && (
           <div className="block aspect-video w-full overflow-hidden relative z-20 shrink-0">
-            <img
+            <Image
               src={coverImage}
               alt={title}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              className="object-cover transition-transform duration-500 group-hover:scale-105"
             />
           </div>
         )}
@@ -187,4 +193,3 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
 };
 
 export default ArticleCard;
-
