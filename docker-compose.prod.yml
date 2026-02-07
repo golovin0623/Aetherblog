@@ -189,7 +189,7 @@ services:
       AI_LOG_LEVEL: info
       AI_MOCK_MODE: ${AI_MOCK_MODE:-false}
       AI_JWT_MODE: ${AI_JWT_MODE:-HMAC}
-      AI_JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}  # AI 服务与后端共用同一个密钥
       AI_JWT_JWKS_URL: ${AI_JWT_JWKS_URL:-}
       AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}

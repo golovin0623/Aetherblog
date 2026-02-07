@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from redis.asyncio import Redis
 import asyncpg
 from pgvector.asyncpg import register_vector
@@ -22,6 +22,8 @@ from app.services.vector_store import VectorStoreService
 
 # ref: §4.4, §8.3.1
 logger = logging.getLogger(__name__)
+
+ACCESS_TOKEN_COOKIE_NAME = "ab_access_token"
 
 _redis: Redis | None = None
 _router: LlmRouter | None = None
@@ -122,10 +124,32 @@ def get_remote_model_fetcher() -> RemoteModelFetcher:
     return _remote_model_fetcher
 
 
-async def require_user(authorization: str | None = Header(default=None)) -> UserClaims:
-    if not authorization:
+def _normalize_token(raw_token: str | None) -> str | None:
+    if not raw_token:
+        return None
+
+    token = raw_token.strip()
+    if not token:
+        return None
+
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+
+    return token or None
+
+
+def _resolve_token(authorization: str | None, access_token_cookie: str | None) -> str | None:
+    return _normalize_token(authorization) or _normalize_token(access_token_cookie)
+
+
+async def require_user(
+    authorization: str | None = Header(default=None),
+    access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE_NAME),
+) -> UserClaims:
+    token = _resolve_token(authorization, access_token_cookie)
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
-    token = authorization.replace("Bearer ", "", 1).strip()
+
     try:
         claims = decode_token(token)
         return extract_user(claims)
@@ -152,14 +176,18 @@ async def rate_limit(
     return user
 
 
-async def get_current_user(authorization: str | None = Header(default=None)) -> dict | None:
+async def get_current_user(
+    authorization: str | None = Header(default=None),
+    access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE_NAME),
+) -> dict | None:
     """
     Optional user extraction - returns None if no valid token.
     Use for endpoints that work for both authenticated and unauthenticated users.
     """
-    if not authorization:
+    token = _resolve_token(authorization, access_token_cookie)
+    if not token:
         return None
-    token = authorization.replace("Bearer ", "", 1).strip()
+
     try:
         claims = decode_token(token)
         user = extract_user(claims)

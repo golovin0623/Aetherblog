@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 计算项目根目录的 .env 路径 (apps/ai-service/app/core/config.py -> 根目录)
+# 在开发环境中使用根 .env，在 Docker 容器中该文件不存在时会被忽略
+_ROOT_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
+# 如果根 .env 不存在（如 Docker 容器内），使用当前目录的 .env 或不使用
+_ENV_FILE = str(_ROOT_ENV_FILE) if _ROOT_ENV_FILE.exists() else ".env"
+
 
 # ref: §8.3.1
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE if Path(_ENV_FILE).exists() else None,
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # 忽略根 .env 中不认识的其他服务配置项
     )
 
     env: str = Field(default="dev", alias="AI_ENV")
@@ -20,11 +28,11 @@ class Settings(BaseSettings):
     log_level: str = Field(default="info", alias="AI_LOG_LEVEL")
     mock_mode: bool = Field(default=True, alias="AI_MOCK_MODE")
 
-    jwt_mode: Literal["HMAC", "JWKS"] = Field(default="HMAC", alias="AI_JWT_MODE")
-    jwt_secret: str = Field(default="change-me", alias="AI_JWT_SECRET")
-    jwt_jwks_url: str | None = Field(default=None, alias="AI_JWT_JWKS_URL")
-    jwt_issuer: str | None = Field(default=None, alias="AI_JWT_ISSUER")
-    jwt_audience: str | None = Field(default=None, alias="AI_JWT_AUDIENCE")
+    jwt_mode: Literal["HMAC", "JWKS"] = Field(default="HMAC", validation_alias="AI_JWT_MODE")
+    jwt_secret: str = Field(default="change-me", validation_alias="JWT_SECRET")  # 与后端共用
+    jwt_jwks_url: str | None = Field(default=None, validation_alias="AI_JWT_JWKS_URL")
+    jwt_issuer: str | None = Field(default=None, validation_alias="AI_JWT_ISSUER")
+    jwt_audience: str | None = Field(default=None, validation_alias="AI_JWT_AUDIENCE")
 
     rate_limit_user_per_min: int = Field(default=10, alias="AI_RATE_LIMIT_USER_PER_MIN")
     rate_limit_global_per_min: int = Field(default=100, alias="AI_RATE_LIMIT_GLOBAL_PER_MIN")

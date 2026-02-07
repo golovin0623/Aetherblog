@@ -92,7 +92,8 @@ class ModelRouter:
         user_id = _normalize_user_id(user_id)
         # Query routing config (user-level first, then system default)
         query = """
-            SELECT r.id, r.config_override, r.credential_id, r.prompt_template as custom_prompt,
+            SELECT r.id, r.config_override, r.credential_id, 
+                   COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt,
                    tt.code as task_code, tt.default_temperature, tt.default_max_tokens,
                    tt.prompt_template as default_prompt,
                    pm.id as primary_model_id, pm.model_id as primary_model,

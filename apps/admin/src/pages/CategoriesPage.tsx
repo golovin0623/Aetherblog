@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Folder, Tag as TagIcon, Loader2, Trash2, Edit2, X, Check } from 'lucide-react';
+import { Plus, Folder, Tag as TagIcon, Loader2, Trash2, Edit2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { ConfirmModal } from '@aetherblog/ui';
 import { logger } from '@/lib/logger';
+import { toast } from 'sonner';
+import { CreateItemModal } from './categories/CreateItemModal';
 
 export default function CategoriesPage() {
   const [activeTab, setActiveTab] = useState<'categories' | 'tags'>('categories');
@@ -14,14 +16,12 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Create form state
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [creating, setCreating] = useState(false);
-  
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string; type: 'category' | 'tag' } | null>(null);
+  
+  // Create modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -51,34 +51,31 @@ export default function CategoriesPage() {
     }
   };
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    
+  const handleCreate = async (data: { name: string; description?: string }) => {
     try {
       setCreating(true);
       if (activeTab === 'categories') {
-        const res = await categoryService.create({ name: newName, description: newDescription });
+        const res = await categoryService.create({ name: data.name, description: data.description });
         if (res.code === 200) {
-          setShowCreateForm(false);
-          setNewName('');
-          setNewDescription('');
+          setShowCreateModal(false);
+          toast.success('分类创建成功');
           fetchData();
         } else {
-          alert(res.message || '创建失败');
+          toast.error(res.message || '创建失败');
         }
       } else {
-        const res = await tagService.create({ name: newName });
+        const res = await tagService.create({ name: data.name });
         if (res.code === 200) {
-          setShowCreateForm(false);
-          setNewName('');
+          setShowCreateModal(false);
+          toast.success('标签创建成功');
           fetchData();
         } else {
-          alert(res.message || '创建失败');
+          toast.error(res.message || '创建失败');
         }
       }
     } catch (err: any) {
       logger.error('Create error:', err);
-      alert(err.message || '创建失败');
+      toast.error(err.message || '创建失败');
     } finally {
       setCreating(false);
     }
@@ -93,19 +90,19 @@ export default function CategoriesPage() {
         if (res.code === 200) {
           fetchData();
         } else {
-          alert(res.message || '删除失败');
+          toast.error(res.message || '删除失败');
         }
       } else {
         const res = await tagService.delete(deleteTarget.id);
         if (res.code === 200) {
           fetchData();
         } else {
-          alert(res.message || '删除失败');
+          toast.error(res.message || '删除失败');
         }
       }
     } catch (err: any) {
       logger.error('Delete error:', err);
-      alert(err.message || '删除失败');
+      toast.error(err.message || '删除失败');
     } finally {
       setDeleteTarget(null);
     }
@@ -127,7 +124,7 @@ export default function CategoriesPage() {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => setShowCreateForm(true)}
+          onClick={() => setShowCreateModal(true)}
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded-lg',
             'bg-primary text-white font-medium',
@@ -139,65 +136,10 @@ export default function CategoriesPage() {
         </motion.button>
       </div>
 
-      {/* 创建表单 */}
-      {showCreateForm && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-4 rounded-xl bg-[var(--bg-card)] border border-primary/30"
-        >
-          <div className="flex items-center gap-4">
-            <input
-              type="text"
-              placeholder={activeTab === 'categories' ? '分类名称' : '标签名称'}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className={cn(
-                'flex-1 px-4 py-2 rounded-lg',
-                'bg-[var(--bg-input)] border border-[var(--border-subtle)]',
-                'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
-                'focus:outline-none focus:border-primary/50'
-              )}
-              autoFocus
-            />
-            {activeTab === 'categories' && (
-              <input
-                type="text"
-                placeholder="描述（可选）"
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                className={cn(
-                  'flex-1 px-4 py-2 rounded-lg',
-                  'bg-[var(--bg-input)] border border-[var(--border-subtle)]',
-                  'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
-                  'focus:outline-none focus:border-primary/50'
-                )}
-              />
-            )}
-            <button
-              onClick={handleCreate}
-              disabled={creating || !newName.trim()}
-              className={cn(
-                'p-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors',
-                (creating || !newName.trim()) && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              {creating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); }}
-              className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </motion.div>
-      )}
-
       {/* 标签页切换 */}
       <div className="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-lg w-fit relative">
         <button
-          onClick={() => { setActiveTab('categories'); setShowCreateForm(false); }}
+          onClick={() => setActiveTab('categories')}
           className={cn(
             'relative z-10 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2',
             activeTab === 'categories'
@@ -218,7 +160,7 @@ export default function CategoriesPage() {
           </span>
         </button>
         <button
-          onClick={() => { setActiveTab('tags'); setShowCreateForm(false); }}
+          onClick={() => setActiveTab('tags')}
           className={cn(
             'relative z-10 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2',
             activeTab === 'tags'
@@ -334,6 +276,15 @@ export default function CategoriesPage() {
           )
         )}
       </div>
+
+      {/* 创建弹窗 */}
+      <CreateItemModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={handleCreate}
+        type={activeTab === 'categories' ? 'category' : 'tag'}
+        loading={creating}
+      />
 
       {/* 删除确认弹窗 */}
       <ConfirmModal

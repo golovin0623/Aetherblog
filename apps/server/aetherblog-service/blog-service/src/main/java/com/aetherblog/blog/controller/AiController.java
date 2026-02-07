@@ -5,8 +5,12 @@ import com.aetherblog.ai.client.dto.request.*;
 import com.aetherblog.ai.client.dto.response.*;
 import com.aetherblog.ai.client.dto.stream.StreamEvent;
 import com.aetherblog.common.core.domain.R;
+import com.aetherblog.common.core.exception.BusinessException;
+import com.aetherblog.common.security.constant.AuthCookieConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +48,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<SummaryResponse> generateSummary(
             @Valid @RequestBody SummaryRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Generating summary for content length: {}", request.getContent().length());
         try {
             var response = aiServiceClient.generateSummary(request, token).block(Duration.ofSeconds(60));
@@ -67,7 +73,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public Flux<ServerSentEvent<StreamEvent>> generateSummaryStream(
             @Valid @RequestBody SummaryRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Generating summary stream for content length: {}", request.getContent().length());
         
         return aiServiceClient.generateSummaryStream(request, token)
@@ -99,7 +107,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<TagsResponse> extractTags(
             @Valid @RequestBody TagsRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Extracting tags for content length: {}", request.getContent().length());
         try {
             var response = aiServiceClient.extractTags(request, token).block(Duration.ofSeconds(30));
@@ -122,7 +132,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<TitlesResponse> suggestTitles(
             @Valid @RequestBody TitlesRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Suggesting titles for content length: {}", request.getContent().length());
         try {
             var response = aiServiceClient.suggestTitles(request, token).block(Duration.ofSeconds(30));
@@ -145,7 +157,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<PolishResponse> polishContent(
             @Valid @RequestBody PolishRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Polishing content length: {}", request.getContent().length());
         try {
             var response = aiServiceClient.polishContent(request, token).block(Duration.ofSeconds(120));
@@ -168,7 +182,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<OutlineResponse> generateOutline(
             @Valid @RequestBody OutlineRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Generating outline for topic: {}", request.getTopic());
         try {
             var response = aiServiceClient.generateOutline(request, token).block(Duration.ofSeconds(60));
@@ -201,7 +217,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<PromptConfigResponse> getPromptConfig(
             @PathVariable String taskType,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Getting prompt config for task type: {}", taskType);
         try {
             var response = aiServiceClient.getPromptConfig(taskType, token).block(Duration.ofSeconds(30));
@@ -223,7 +241,9 @@ public class AiController {
     @GetMapping("/prompts")
     @PreAuthorize("hasRole('ADMIN')")
     public R<java.util.List<PromptConfigResponse>> listPromptConfigs(
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Listing all prompt configs");
         try {
             var response = aiServiceClient.listPromptConfigs(token).block(Duration.ofSeconds(30));
@@ -247,7 +267,9 @@ public class AiController {
     public R<Boolean> updatePromptConfig(
             @PathVariable String taskType,
             @Valid @RequestBody PromptUpdateRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Updating prompt config for task type: {}", taskType);
         try {
             var response = aiServiceClient.updatePromptConfig(taskType, request, token).block(Duration.ofSeconds(30));
@@ -270,7 +292,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<TranslateResponse> translateContent(
             @Valid @RequestBody TranslateRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Translating content to: {}", request.getTargetLanguage());
         try {
             var response = aiServiceClient.translateContent(request, token).block(Duration.ofSeconds(120));
@@ -292,7 +316,9 @@ public class AiController {
     @GetMapping("/tasks")
     @PreAuthorize("hasRole('ADMIN')")
     public R<java.util.List<AiTaskTypeResponse>> listTaskTypes(
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Listing all AI task types");
         try {
             var response = aiServiceClient.listTaskTypes(token).block(Duration.ofSeconds(30));
@@ -315,7 +341,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<Integer> createTaskType(
             @Valid @RequestBody TaskTypeCreateRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Creating new AI task type: {}", request.getCode());
         try {
             var response = aiServiceClient.createTaskType(request, token).block(Duration.ofSeconds(30));
@@ -339,7 +367,9 @@ public class AiController {
     public R<Boolean> updateTaskType(
             @PathVariable String code,
             @Valid @RequestBody TaskTypeUpdateRequest request,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Updating AI task type: {}", code);
         try {
             var response = aiServiceClient.updateTaskType(code, request, token).block(Duration.ofSeconds(30));
@@ -362,7 +392,9 @@ public class AiController {
     @PreAuthorize("hasRole('ADMIN')")
     public R<Boolean> deleteTaskType(
             @PathVariable String code,
-            @RequestHeader("Authorization") String token) {
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest httpRequest) {
+        token = resolveAuthorizationToken(token, httpRequest);
         log.info("Deleting AI task type: {}", code);
         try {
             var response = aiServiceClient.deleteTaskType(code, token).block(Duration.ofSeconds(30));
@@ -376,4 +408,34 @@ public class AiController {
             return R.fail(error.getMessage());
         }
     }
+
+
+    private String resolveAuthorizationToken(String authorization, HttpServletRequest request) {
+        if (authorization != null && !authorization.isBlank()) {
+            return authorization;
+        }
+
+        String accessToken = getCookieValue(request, AuthCookieConstants.ACCESS_TOKEN_COOKIE);
+        if (accessToken != null && !accessToken.isBlank()) {
+            return "Bearer " + accessToken;
+        }
+
+        throw new BusinessException(401, "Missing token");
+    }
+
+    private String getCookieValue(HttpServletRequest request, String cookieName) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null || cookies.length == 0) {
+            return null;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (cookieName.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+
+        return null;
+    }
+
 }

@@ -29,7 +29,7 @@ async def test_prompt_routes():
         return [{"task_type": "summary", "default_prompt": "default", "custom_prompt": "custom"}]
 
     def fetchrow(_query, _args):
-        return {"config_override": {"prompt_template": "custom"}}
+        return {"default_prompt": "default", "custom_prompt": "custom", "config_override": {"prompt_template": "custom"}}
 
     conn = FakeConn(fetch=fetch, fetchrow=fetchrow)
     llm = FakeLlmRouter(conn)
