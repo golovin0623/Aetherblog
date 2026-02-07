@@ -6,17 +6,6 @@ import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
-import CryptoJS from 'crypto-js';
-
-// 加密密钥 - 在生产环境中应来自服务器或环境变量
-const ENCRYPTION_KEY = 'AetherBlog@2026!SecureKey#Auth';
-
-// 发送前加密密码
-const encryptPassword = (password: string): string => {
-  const timestamp = Date.now().toString();
-  const data = JSON.stringify({ password, timestamp });
-  return CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString();
-};
 
 export function LoginPage() {
   const [username, setUsername] = useState('');
@@ -34,17 +23,13 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      // 发送前加密密码
-      const encryptedPassword = encryptPassword(password);
-      
       const res = await authService.login({ 
         username, 
-        password: encryptedPassword,
-        encrypted: true // 告知后端此密码已加密的标志
+        password,
       });
       
       if (res.code === 200 && res.data) {
-         const { accessToken, userInfo, mustChangePassword } = res.data;
+         const { userInfo, mustChangePassword } = res.data;
          const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
          // 验证角色是否为允许值之一
          const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
@@ -60,7 +45,7 @@ export function LoginPage() {
             role
          };
          
-         login(user, accessToken);
+         login(user);
          
          // 检查用户是否需要在首次登录时更改密码
          if (mustChangePassword) {

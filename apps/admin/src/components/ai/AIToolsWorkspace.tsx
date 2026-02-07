@@ -187,12 +187,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
-                className="w-full h-full p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar"
+                className="w-full h-full p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
               />
               {input.length === 0 && (
-                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-[0.03] dark:opacity-[0.05]">
-                  <FileText className="w-24 h-24 mb-4" />
-                  <p className="text-xl font-medium tracking-widest uppercase">Content Hub</p>
+                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-[0.06] dark:opacity-[0.08]">
+                  <FileText className="w-20 h-20 md:w-24 md:h-24 mb-3" />
+                  <p className="text-lg md:text-xl font-medium tracking-widest uppercase">点击输入内容</p>
                 </div>
               )}
             </div>
