@@ -130,6 +130,25 @@ export function useUpdateProviderPriorities() {
 }
 
 /**
+ * 批量切换供应商状态
+ */
+export function useBatchToggleProviders() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ ids, enabled }: { ids: number[]; enabled: boolean }) =>
+      aiProviderService.batchToggleProviders(ids, enabled),
+    onSuccess: (_, { enabled }) => {
+      queryClient.invalidateQueries({ queryKey: providerKeys.all });
+      toast.success(enabled ? '所选供应商已启用' : '所选供应商已禁用');
+    },
+    onError: (error: unknown) => {
+      toast.error(resolveAiServiceErrorMessage(error, '批量操作失败'));
+    },
+  });
+}
+
+/**
  * 按启用状态分组供应商
  */
 export function groupProvidersByStatus(providers: AiProvider[]) {

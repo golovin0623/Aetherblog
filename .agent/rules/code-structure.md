@@ -352,3 +352,33 @@ Database
 - apps/ 的依赖
 
 ✅ 只有 `workspace:*` 引用的包会正确链接
+
+---
+
+## 10. 2026-02-08 结构同步记录 (v1.2.1)
+
+### 10.1 Admin `src/` 结构快照
+```text
+src/
+├── components/
+├── hooks/
+├── lib/
+├── pages/
+│   ├── ai-config/
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   └── utils/
+│   ├── media/
+│   │   └── components/
+│   └── ...
+├── services/
+├── stores/
+└── types/
+```
+
+### 10.2 本次结构结论
+- 未新增目录层级。
+- 已将媒体模块多处深层相对路径导入改为 `@/services/*`。
+
+### 10.3 CHANGELOG
+- Changed: 目录树无新增；完成导入路径规范化（别名统一）。

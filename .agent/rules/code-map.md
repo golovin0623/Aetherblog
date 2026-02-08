@@ -157,3 +157,15 @@ trigger: always_on
 ```
 
 ---
+
+## 🗂️ 2026-02-08 任务映射增补 (v1.0.1)
+
+| Task ID | 模块 | 关键文件 | 状态 |
+|---|---|---|---|
+| AI-ROUTING-001 | AI Service 启动兼容 | `start.sh`, `apps/ai-service/requirements.txt`, `apps/ai-service/eval_type_backport.py`, `apps/ai-service/app/api/routes/providers.py` | Done |
+| AI-ADMIN-002 | 管理端 AI 图标规范 | `apps/admin/src/pages/ai-config/components/ProviderIcon.tsx`, `apps/admin/src/pages/ai-config/components/ProviderCard.tsx` | Done |
+| OPS-STARTUP-003 | 启动脚本稳定性 | `start.sh` | Done |
+| DOC-SYNC-004 | 规则与设计文档同步 | `.agent/rules/code-design.md`, `.agent/rules/code-structure.md`, `.agent/rules/code-tree.md`, `.agent/rules/code-map.md`, `.agent/rules/ui_rules.md`, `系统需求企划书及详细设计.md` | Done |
+
+### CHANGELOG
+- Added: AI/运维/文档四项任务映射。

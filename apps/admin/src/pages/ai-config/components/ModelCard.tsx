@@ -53,10 +53,6 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
   const releaseAt = extra.released_at ? String(extra.released_at) : null;
   const description = typeof extra.description === 'string' ? extra.description : null;
   const legacy = extra.legacy as boolean | undefined;
-  const maxDimension =
-    typeof extra.maxDimension === 'number' && Number.isFinite(extra.maxDimension)
-      ? extra.maxDimension
-      : null;
 
   const priceTags = formatPricing(pricing, model);
 
@@ -77,16 +73,19 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
     <motion.div
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative group flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all overflow-hidden ${
-        model.is_enabled
-          ? 'border-[var(--border-default)]/60 bg-[var(--bg-card)] shadow-sm'
-          : 'border-transparent bg-transparent opacity-70 hover:bg-[var(--bg-card-hover)]'
-      }`}
+      className={`relative group flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all overflow-hidden ${model.is_enabled
+        ? 'border-[var(--border-default)]/60 bg-[var(--bg-card)] shadow-sm'
+        : 'border-transparent bg-transparent opacity-70 hover:bg-[var(--bg-card-hover)]'
+        }`}
+      style={{
+        transform: 'translateZ(0)',
+        WebkitBackfaceVisibility: 'hidden',
+      }}
     >
       {/* Top shine effect */}
       {model.is_enabled && (
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
-          <div 
+          <div
             className="absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/30 dark:border-white/10"
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -97,14 +96,13 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
       )}
       {/* 状态点 */}
       <div
-        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-          model.is_enabled ? 'bg-emerald-400' : 'bg-[var(--border-default)]'
-        }`}
+        className={`w-2 h-2 rounded-full flex-shrink-0 ${model.is_enabled ? 'bg-emerald-400' : 'bg-[var(--border-default)]'
+          }`}
       />
 
       {/* 信息区 */}
-      <motion.div 
-        className="flex-1 min-w-0 cursor-pointer lg:cursor-default" 
+      <motion.div
+        className="flex-1 min-w-0 cursor-pointer lg:cursor-default"
         whileTap={window.innerWidth < 1024 ? { scale: 0.98 } : {}}
         onClick={(e) => {
           if (window.innerWidth < 1024) copyModelId(e);
@@ -124,7 +122,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
               </span>
             )}
           </div>
-          
+
           <div className="flex items-center gap-1.5 h-4">
             <AnimatePresence mode="wait">
               {copied ? (
@@ -192,9 +190,8 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         <button
           onClick={onEdit}
           disabled={readOnly}
-          className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all ${
-            readOnly ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--bg-card-hover)]'
-          }`}
+          className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all ${readOnly ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[var(--bg-card-hover)]'
+            }`}
           title="配置模型"
         >
           <Settings className="w-4 h-4" />
@@ -202,20 +199,17 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         <button
           onClick={handleToggle}
           disabled={toggleMutation.isPending || readOnly}
-          className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-out flex-shrink-0 focus:outline-none ${
-            model.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-zinc-800'
-          } ${toggleMutation.isPending || readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-out flex-shrink-0 focus:outline-none flex items-center ${model.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-zinc-800'
+            } ${toggleMutation.isPending || readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <motion.div
-            layout
-            className={`w-4 h-4 rounded-full shadow-sm z-10 ${
-                model.is_enabled ? 'bg-white dark:bg-black' : 'bg-white'
-            }`}
-             initial={false}
-             animate={{ 
-               x: model.is_enabled ? 20 : 0
-             }}
-             transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className={`w-4 h-4 rounded-full shadow-sm z-10 ${model.is_enabled ? 'bg-white dark:bg-black' : 'bg-white'
+              }`}
+            initial={false}
+            animate={{
+              x: model.is_enabled ? 20 : 0
+            }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
           />
         </button>
       </div>

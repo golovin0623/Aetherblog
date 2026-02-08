@@ -165,7 +165,7 @@ export default function ModelConfigDialog({
     if (form.parameters_json.trim()) {
       try {
         parameters = JSON.parse(form.parameters_json) as Record<string, unknown>;
-      } catch (error) {
+      } catch {
         setJsonError('参数 JSON 无法解析，请检查格式');
         return;
       }
@@ -174,7 +174,7 @@ export default function ModelConfigDialog({
     if (form.pricing_json.trim()) {
       try {
         pricingExtra = JSON.parse(form.pricing_json) as Record<string, unknown>;
-      } catch (error) {
+      } catch {
         setJsonError('价格 JSON 无法解析，请检查格式');
         return;
       }
