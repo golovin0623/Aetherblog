@@ -337,6 +337,23 @@ class ProviderRegistry:
             return True
         return False
 
+    async def batch_toggle_providers(self, ids: list[int], enabled: bool) -> int:
+        """Batch toggle provider enabled state by ids."""
+        if not ids:
+            return 0
+        query = """
+            UPDATE ai_providers
+            SET is_enabled = $2
+            WHERE id = ANY($1::bigint[])
+            RETURNING id
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, ids, enabled)
+        if rows:
+            self.clear_cache()
+        return len(rows)
+
+
     async def create_model(
         self,
         *,

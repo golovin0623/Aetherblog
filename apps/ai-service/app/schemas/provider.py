@@ -81,6 +81,12 @@ class ProviderUpdate(BaseModel):
     config_schema: dict[str, Any] | None = None
 
 
+class ProviderBatchToggleRequest(BaseModel):
+    """Batch toggle providers."""
+    ids: list[int]
+    enabled: bool
+
+
 class ModelCreate(BaseModel):
     """Request to create a model."""
     model_id: str = Field(min_length=1, max_length=100)

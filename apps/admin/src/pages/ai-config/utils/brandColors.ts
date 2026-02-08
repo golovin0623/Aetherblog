@@ -60,10 +60,15 @@ export const PROVIDER_BRAND_COLORS: Record<string, BrandColor> = {
     gradientFrom: '#2932e1',
     gradientTo: '#1c23a0',
   },
-  hundyuan: {
+  hunyuan: {
     primary: '#0052d9', // Tencent Blue
     gradientFrom: '#0052d9',
     gradientTo: '#003cab',
+  },
+  taichu: {
+    primary: '#1890ff', // Tech Blue
+    gradientFrom: '#1890ff',
+    gradientTo: '#096dd9',
   },
   ollama: {
     primary: '#000000', // Ollama Black/White
@@ -80,15 +85,60 @@ export const PROVIDER_BRAND_COLORS: Record<string, BrandColor> = {
     gradientFrom: '#f59e0b',
     gradientTo: '#d97706',
   },
-  grok: {
-    primary: '#000000', // X Black
-    gradientFrom: '#1f2937',
-    gradientTo: '#000000',
+  groq: {
+    primary: '#f55036', // Groq Orange
+    gradientFrom: '#f55036',
+    gradientTo: '#d9442b',
+  },
+  together: {
+    primary: '#0f6fff', // Together Blue
+    gradientFrom: '#0f6fff',
+    gradientTo: '#0a56cc',
+  },
+  fireworks: {
+    primary: '#f43f5e', // Fireworks Rose
+    gradientFrom: '#f43f5e',
+    gradientTo: '#e11d48',
   },
   openrouter: {
     primary: '#7c3aed', // OpenRouter Violet
     gradientFrom: '#7c3aed',
     gradientTo: '#5b21b6',
+  },
+  novita: {
+    primary: '#8b5cf6', // Novita Violet
+    gradientFrom: '#8b5cf6',
+    gradientTo: '#7c3aed',
+  },
+  siliconflow: {
+    primary: '#2563eb', // SiliconFlow Blue
+    gradientFrom: '#2563eb',
+    gradientTo: '#1d4ed8',
+  },
+  upstage: {
+    primary: '#f59e0b', // Upstage Amber
+    gradientFrom: '#f59e0b',
+    gradientTo: '#d97706',
+  },
+  vercel: {
+    primary: '#000000', // Vercel Black
+    gradientFrom: '#333333',
+    gradientTo: '#000000',
+  },
+  nebius: {
+    primary: '#7c3aed', // Nebius Purple
+    gradientFrom: '#7c3aed',
+    gradientTo: '#5b21b6',
+  },
+  cerebras: {
+    primary: '#334155', // Cerebras Slate
+    gradientFrom: '#334155',
+    gradientTo: '#1e293b',
+  },
+  grok: {
+    primary: '#000000', // X Black
+    gradientFrom: '#1f2937',
+    gradientTo: '#000000',
   },
 };
 
@@ -112,6 +162,18 @@ export function getProviderBrand(code: string): BrandColor {
   if (normalizedCode.includes('tongyi') || normalizedCode.includes('qwen') || normalizedCode.includes('alibaba')) return PROVIDER_BRAND_COLORS.qwen;
   if (normalizedCode.includes('yi') || normalizedCode.includes('lingyi')) return PROVIDER_BRAND_COLORS.yi;
   if (normalizedCode.includes('ollama')) return PROVIDER_BRAND_COLORS.ollama;
+  if (normalizedCode.includes('groq')) return PROVIDER_BRAND_COLORS.groq;
+  if (normalizedCode.includes('together')) return PROVIDER_BRAND_COLORS.together;
+  if (normalizedCode.includes('taichu')) return PROVIDER_BRAND_COLORS.taichu;
+  if (normalizedCode.includes('fireworks')) return PROVIDER_BRAND_COLORS.fireworks;
+  if (normalizedCode.includes('siliconflow')) return PROVIDER_BRAND_COLORS.siliconflow;
+  if (normalizedCode.includes('upstage')) return PROVIDER_BRAND_COLORS.upstage;
+  if (normalizedCode.includes('vercel')) return PROVIDER_BRAND_COLORS.vercel;
+  if (normalizedCode.includes('nebius')) return PROVIDER_BRAND_COLORS.nebius;
+  if (normalizedCode.includes('cerebras')) return PROVIDER_BRAND_COLORS.cerebras;
+  if (normalizedCode.includes('perplexity')) return PROVIDER_BRAND_COLORS.perplexity;
+  if (normalizedCode.includes('mistral')) return PROVIDER_BRAND_COLORS.mistral;
+  if (normalizedCode.includes('openrouter')) return PROVIDER_BRAND_COLORS.openrouter;
 
   return PROVIDER_BRAND_COLORS[normalizedCode] || DEFAULT_BRAND_COLOR;
 }
