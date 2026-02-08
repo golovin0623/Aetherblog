@@ -61,13 +61,12 @@ export default function AiConfigPage() {
 
   // 进入详情视图
   const handleSelectProvider = useCallback((code: string | null | undefined) => {
+    setActiveDetailTab("config"); // 切换时重置为配置 Tab
     if (!code) {
       setSelectedProviderCode(null);
-      setActiveDetailTab("config");
       setViewMode('grid');
     } else {
       setSelectedProviderCode(code);
-      setActiveDetailTab("config"); // 切换时重置为配置 Tab
       setViewMode('detail');
     }
   }, []);

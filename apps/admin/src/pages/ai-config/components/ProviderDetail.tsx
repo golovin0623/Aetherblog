@@ -56,7 +56,20 @@ export default function ProviderDetail({
   // Computed
   const preset = propPreset || getPresetProvider(provider.code);
   // Allow user override from DB to take precedence over preset defaults
-  const docUrl = provider.doc_url || preset?.docUrl || undefined;
+  const rawDocUrl = provider.doc_url || preset?.docUrl || undefined;
+  
+  // 安全验证：只允许 http:// 或 https:// 协议，防止 javascript: XSS 攻击
+  const isSafeUrl = (url: string | undefined): boolean => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+  const docUrl = isSafeUrl(rawDocUrl) ? rawDocUrl : undefined;
+  
   const brand = getProviderBrand(provider.code);
 
   // Data

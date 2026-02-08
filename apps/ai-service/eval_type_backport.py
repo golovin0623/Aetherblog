@@ -6,6 +6,54 @@ from collections.abc import Mapping
 from typing import Any
 
 
+# 安全的 AST 节点白名单 - 只允许类型注解相关的节点
+_SAFE_AST_NODES = (
+    ast.Expression,  # 顶层表达式
+    ast.Name,        # 变量名如 str, int, None
+    ast.Attribute,   # 属性访问如 typing.Optional
+    ast.Subscript,   # 下标访问如 List[str], Dict[str, int]
+    ast.Tuple,       # 元组（用于多类型参数）
+    ast.List,        # 列表（某些类型表达式）
+    ast.Constant,    # 常量如 None, 字符串字面量
+    ast.Load,        # 加载上下文
+    ast.BinOp,       # 二元操作（用于 Union: X | Y）
+    ast.BitOr,       # | 操作符
+)
+
+# Python 3.8 兼容：旧版本使用 NameConstant, Str, Num 等
+try:
+    _SAFE_AST_NODES = _SAFE_AST_NODES + (ast.NameConstant, ast.Str, ast.Num, ast.Ellipsis)  # type: ignore[attr-defined]
+except AttributeError:
+    pass  # Python 3.9+ 已移除这些节点类型
+
+
+class UnsafeTypeExpressionError(Exception):
+    """类型表达式包含不安全的 AST 节点"""
+    pass
+
+
+def _validate_safe_ast(node: ast.AST, expression: str) -> None:
+    """
+    验证 AST 树只包含安全的类型注解节点。
+    
+    Args:
+        node: 要验证的 AST 节点
+        expression: 原始表达式（用于错误消息）
+    
+    Raises:
+        UnsafeTypeExpressionError: 如果发现不安全的节点
+    """
+    if not isinstance(node, _SAFE_AST_NODES):
+        raise UnsafeTypeExpressionError(
+            f"类型表达式包含不安全的 AST 节点: {type(node).__name__}. "
+            f"表达式: {expression!r}"
+        )
+    
+    # 递归检查所有子节点
+    for child in ast.iter_child_nodes(node):
+        _validate_safe_ast(child, expression)
+
+
 class _UnionSyntaxTransformer(ast.NodeTransformer):
     def visit_BinOp(self, node: ast.BinOp) -> ast.AST:
         node = self.generic_visit(node)
@@ -57,6 +105,11 @@ def eval_type_backport(
         if not isinstance(value, typing.ForwardRef):
             raise
 
-        rewritten = _rewrite_union_syntax(value.__forward_arg__)
+        expression = value.__forward_arg__
+        rewritten = _rewrite_union_syntax(expression)
+        
+        # 安全验证：确保 AST 只包含类型注解相关的安全节点
+        _validate_safe_ast(rewritten, expression)
+        
         return eval(compile(rewritten, "<eval_type_backport>", "eval"), namespace, local_namespace)
 
