@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { versionService } from '../../../services/versionService';
+import { versionService } from '@/services/versionService';
 
 /**
  * 版本历史组件

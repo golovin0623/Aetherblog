@@ -17,7 +17,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ReactCrop, { Crop as CropType, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { mediaService } from '../../../services/mediaService';
+import { mediaService } from '@/services/mediaService';
 
 /**
  * 图片编辑器组件

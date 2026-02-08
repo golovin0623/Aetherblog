@@ -1,0 +1,21 @@
+{
+  "files": [],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "."
+  },
+  "references": [
+    { "path": "./apps/admin" },
+    { "path": "./apps/blog" },
+    { "path": "./packages/editor" },
+    { "path": "./packages/types" },
+    { "path": "./packages/ui" }
+  ]
+}

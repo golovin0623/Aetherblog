@@ -6,7 +6,7 @@ import { Button } from '@aetherblog/ui';
 import type { AccessType } from '@aetherblog/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { shareService } from '../../../services/shareService';
+import { shareService } from '@/services/shareService';
 
 /**
  * 分享对话框组件

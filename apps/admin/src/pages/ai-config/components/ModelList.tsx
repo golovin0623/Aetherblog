@@ -45,7 +45,7 @@ export default function ModelList({
   credentialId,
   isLoading,
   showDeployName,
-  variant = 'default',
+  variant: _variant = 'default',
 }: ModelListProps) {
   const [activeTab, setActiveTab] = useState<ModelType | 'all'>('all');
   const [search, setSearch] = useState('');

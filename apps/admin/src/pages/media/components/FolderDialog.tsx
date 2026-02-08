@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Folder, Palette } from 'lucide-react';
 import type { MediaFolder, CreateFolderRequest, UpdateFolderRequest } from '@aetherblog/types';
-import { folderService } from '../../../services/folderService';
+import { folderService } from '@/services/folderService';
 import { cn } from '@aetherblog/utils';
 import { toast } from 'sonner';
 
