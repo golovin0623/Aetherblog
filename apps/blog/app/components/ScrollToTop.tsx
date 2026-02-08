@@ -1,0 +1,57 @@
+'use client';
+import { useEffect, useState, useRef } from 'react';
+import { ArrowUp } from 'lucide-react';
+
+export const ScrollToTop = () => {
+  const [isVisible, setIsVisible] = useState(false);
+  const circleRef = useRef<SVGCircleElement>(null);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const scrollY = window.scrollY;
+      setIsVisible(scrollY > 300);
+
+      if (circleRef.current) {
+        const height = document.documentElement.scrollHeight - window.innerHeight;
+        const offset = 113 - Math.min(1, Math.max(0, scrollY / height)) * 113;
+        circleRef.current.style.strokeDashoffset = `${offset}`;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // Initial check
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  return (
+    <button
+      onClick={scrollToTop}
+      className={`fixed bottom-8 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
+      }`}
+      aria-label="返回顶部"
+      tabIndex={isVisible ? 0 : -1}
+    >
+      <div className="relative flex items-center justify-center w-10 h-10">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+          <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border-subtle)" strokeWidth="2" />
+          <circle
+            ref={circleRef}
+            cx="22"
+            cy="22"
+            r="18"
+            fill="none"
+            stroke="var(--color-primary)"
+            strokeWidth="2"
+            strokeDasharray="113"
+            strokeDashoffset="113"
+            strokeLinecap="round"
+            className="transition-all duration-75 ease-out"
+          />
+        </svg>
+        <ArrowUp className="w-5 h-5 text-[var(--text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300" />
+      </div>
+    </button>
+  );
+};

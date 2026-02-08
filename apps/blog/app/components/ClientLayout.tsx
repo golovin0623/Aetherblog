@@ -2,6 +2,7 @@
 
 import { TransitionProvider, PageTransition } from './PageTransition';
 import VisitTracker from './VisitTracker';
+import { ScrollToTop } from './ScrollToTop';
 import { ReactNode } from 'react';
 
 /**
@@ -14,6 +15,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
   return (
       <TransitionProvider>
         <VisitTracker />
+        <ScrollToTop />
         <PageTransition>
           {children}
         </PageTransition>
