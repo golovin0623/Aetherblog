@@ -62,11 +62,13 @@ public class MediaServiceTest {
 
     @Test
     void upload_WithSafeExtension_ShouldSucceed() {
+        // Use real JPEG magic bytes (FF D8 FF)
+        byte[] jpegContent = new byte[]{(byte)0xFF, (byte)0xD8, (byte)0xFF, 0x01, 0x02};
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "image.jpg",
                 "image/jpeg",
-                "fake-image-content".getBytes()
+                jpegContent
         );
 
         when(mediaFileRepository.save(any(MediaFile.class))).thenAnswer(invocation -> invocation.getArgument(0));
