@@ -75,6 +75,11 @@ public class MediaServiceImpl implements MediaService {
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers"
     );
 
+    // Extensions that require magic byte validation
+    private static final Set<String> CHECKED_IMAGE_EXTENSIONS = Set.of(
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "ico", "tiff"
+    );
+
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             // Images (SVG removed for security)
             "jpg", "jpeg", "png", "gif", "webp", "avif", "ico", "bmp", "tiff",
@@ -550,7 +555,7 @@ public class MediaServiceImpl implements MediaService {
     }
 
     private void validateMagicBytes(MultipartFile file, String extension) {
-        if (!Set.of("jpg", "jpeg", "png", "gif", "webp", "bmp").contains(extension)) {
+        if (!CHECKED_IMAGE_EXTENSIONS.contains(extension)) {
             return;
         }
 
@@ -589,8 +594,22 @@ public class MediaServiceImpl implements MediaService {
                 case "bmp":
                     isValid = hex.startsWith("424D");
                     break;
+                case "avif":
+                    // AVIF uses ftyp box, usually starts with ....ftypavif (bytes 4-11)
+                    // Since offset 4 is variable, we check 000000..6674797061766966 or similar
+                    // But typically: 00 00 00 1C 66 74 79 70 61 76 69 66 (ftypavif)
+                    // Check for "ftyp" at offset 4: 66747970
+                    isValid = hex.substring(8, 16).equals("66747970");
+                    break;
+                case "ico":
+                    isValid = hex.startsWith("00000100");
+                    break;
+                case "tiff":
+                    isValid = hex.startsWith("49492A00") || hex.startsWith("4D4D002A");
+                    break;
                 default:
-                    isValid = true;
+                    // Default to false for security; any checked extension must have a case here
+                    isValid = false;
             }
 
             if (!isValid) {
