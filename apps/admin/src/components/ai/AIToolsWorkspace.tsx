@@ -119,14 +119,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   const isRunDisabled = !input.trim() || isGlobalLoading;
 
   // 键盘快捷键处理 (Cmd/Ctrl + Enter)
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       if (!isRunDisabled) {
         handleRunTest();
       }
     }
-  }, [isRunDisabled, handleRunTest]);
+  };
 
   const handleSavePrompt = async (newPrompt: string | null) => {
     try {
