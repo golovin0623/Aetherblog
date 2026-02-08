@@ -592,7 +592,15 @@ start_ai_service() {
             cp .env.example .env
         fi
 
+        local should_install_ai_deps=false
         if [ ! -x ".venv/bin/uvicorn" ]; then
+            should_install_ai_deps=true
+        elif ! .venv/bin/python -c "import eval_type_backport" > /dev/null 2>&1; then
+            echo -e "${BLUE}   检测到 AI 服务依赖不完整，正在补齐...${NC}"
+            should_install_ai_deps=true
+        fi
+
+        if [ "$should_install_ai_deps" = true ]; then
             echo -e "${BLUE}   安装 AI 服务依赖...${NC}"
             .venv/bin/pip install -r requirements.txt
         fi

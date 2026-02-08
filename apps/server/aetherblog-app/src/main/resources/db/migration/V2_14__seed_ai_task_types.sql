@@ -53,9 +53,4 @@ JOIN ai_task_types tt ON tt.code = v.task_code
 LEFT JOIN target_models pm ON pm.model_id = v.primary_model AND pm.rn = 1
 LEFT JOIN target_models fm ON fm.model_id = v.fallback_model AND fm.rn = 1
 ON CONFLICT ON CONSTRAINT uq_ai_task_routing_user_task
-DO UPDATE SET
-    primary_model_id = EXCLUDED.primary_model_id,
-    fallback_model_id = EXCLUDED.fallback_model_id,
-    config_override = EXCLUDED.config_override,
-    is_enabled = TRUE,
-    updated_at = CURRENT_TIMESTAMP;
+DO NOTHING;
