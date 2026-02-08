@@ -4,19 +4,23 @@ import com.aetherblog.common.core.domain.R;
 import com.aetherblog.common.core.utils.IpUtils;
 import com.aetherblog.common.core.utils.JsonUtils;
 import com.aetherblog.common.core.utils.ServletUtils;
-import com.aetherblog.common.redis.service.RedisService;
 import com.aetherblog.common.security.annotation.RateLimit;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 限流过滤器
@@ -26,14 +30,25 @@ import java.io.IOException;
 @SuppressWarnings("null")
 public class RateLimitFilter implements Filter {
 
-    private final RedisService redisService;
+    // Removed RedisService dependency in favor of direct RedisTemplate for Lua script execution
+    private final RedisTemplate<String, Object> redisTemplate;
     private final RequestMappingHandlerMapping handlerMapping;
 
+    private static final String LUA_SCRIPT_TEXT =
+        "local count = redis.call('incr', KEYS[1]) " +
+        "if tonumber(count) == 1 then " +
+        "  redis.call('expire', KEYS[1], ARGV[1]) " +
+        "end " +
+        "return count";
+
+    private final RedisScript<Long> rateLimitScript;
+
     public RateLimitFilter(
-            RedisService redisService,
+            RedisTemplate<String, Object> redisTemplate,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
-        this.redisService = redisService;
+        this.redisTemplate = redisTemplate;
         this.handlerMapping = handlerMapping;
+        this.rateLimitScript = new DefaultRedisScript<>(LUA_SCRIPT_TEXT, Long.class);
     }
 
     private static final String RATE_LIMIT_KEY = "rate_limit:";
@@ -64,13 +79,17 @@ public class RateLimitFilter implements Filter {
 
     private boolean checkRateLimit(HttpServletRequest request, RateLimit rateLimit) {
         String key = buildKey(request, rateLimit);
-        long count = redisService.increment(key, 1);
         
-        if (count == 1) {
-            redisService.expire(key, rateLimit.time(), rateLimit.timeUnit());
-        }
+        // Use Lua script for atomic increment and expire
+        long expireTime = rateLimit.timeUnit().toSeconds(rateLimit.time());
+
+        Long count = redisTemplate.execute(
+            rateLimitScript,
+            Collections.singletonList(key),
+            String.valueOf(expireTime)
+        );
         
-        return count <= rateLimit.count();
+        return count != null && count <= rateLimit.count();
     }
 
     private String buildKey(HttpServletRequest request, RateLimit rateLimit) {
