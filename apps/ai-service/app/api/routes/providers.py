@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
@@ -676,7 +677,7 @@ async def list_task_types(
     )
 
 
-@router.get("/routing/{task_type}", response_model=ApiResponse[RoutingResponse | None])
+@router.get("/routing/{task_type}", response_model=ApiResponse[Optional[RoutingResponse]])
 async def get_routing(
     task_type: str,
     user: UserClaims = Depends(require_admin),

@@ -37,16 +37,15 @@ export default function ProviderCard({
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
-      className={`group relative rounded-2xl border p-5 cursor-pointer transition-all duration-300 overflow-hidden ${
-        provider.is_enabled
+      className={`group relative rounded-2xl border p-5 cursor-pointer transition-all duration-300 overflow-hidden ${provider.is_enabled
           ? 'bg-white/70 dark:bg-zinc-900/40 border-white/40 dark:border-white/5 backdrop-blur-xl shadow-2xl z-10'
           : 'bg-white/30 dark:bg-zinc-950/20 border-white/20 dark:border-white/5 backdrop-blur-sm opacity-80 hover:opacity-100 hover:bg-white/50 dark:hover:bg-zinc-900/40 hover:border-white/40'
-      }`}
+        }`}
       style={
         provider.is_enabled
           ? {
-              boxShadow: `0 10px 40px -10px ${brand.primary}40, 0 0 1px 1px ${brand.primary}10`, 
-            }
+            boxShadow: `0 10px 40px -10px ${brand.primary}40, 0 0 1px 1px ${brand.primary}10`,
+          }
           : undefined
       }
       onClick={onClick}
@@ -54,7 +53,7 @@ export default function ProviderCard({
       {/* 启用状态背景光晕 - 增强透明感 */}
       {provider.is_enabled && (
         <>
-          <div 
+          <div
             className="absolute -inset-[10%] opacity-[0.08] pointer-events-none blur-3xl transition-opacity group-hover:opacity-[0.12]"
             style={{
               background: `radial-gradient(circle at 20% 20%, ${brand.gradientFrom}, transparent 70%), radial-gradient(circle at 80% 80%, ${brand.gradientTo}, transparent 70%)`
@@ -77,15 +76,14 @@ export default function ProviderCard({
 
       <div className="relative z-10 flex items-start justify-between mb-4">
         {/* 图标和名称 */}
-        <div className="flex items-center gap-4">
-          <div 
-            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-transform duration-500 group-hover:scale-110 ${
-              provider.is_enabled ? 'text-white' : 'bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
-            }`}
+        <div className="flex items-center gap-4 min-w-0">
+          <div
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-transform duration-500 group-hover:scale-110 flex-shrink-0 ${provider.is_enabled ? 'text-white' : 'bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
+              }`}
             style={provider.is_enabled ? {
               background: `linear-gradient(135deg, ${brand.gradientFrom}, ${brand.gradientTo})`,
               boxShadow: `0 4px 15px -4px ${brand.primary}80`,
-              color: '#ffffff' 
+              color: '#ffffff'
             } : undefined}
           >
             <ProviderIcon
@@ -95,37 +93,18 @@ export default function ProviderCard({
               className={provider.is_enabled ? "text-white drop-shadow-md" : ""}
             />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 pr-8">
             <h3 className="font-extrabold text-[var(--text-primary)] text-base tracking-tight truncate dark:text-zinc-100">
               {provider.display_name || provider.name}
             </h3>
-            <p className="text-[10px] font-mono text-[var(--text-muted)] font-bold opacity-60 tracking-wider uppercase">{provider.code}</p>
+            <p className="text-[10px] font-mono text-[var(--text-muted)] font-bold opacity-60 tracking-wider uppercase truncate">{provider.code}</p>
           </div>
         </div>
 
-        {/* 启用开关 - 极简高对比 */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle(!provider.is_enabled);
-          }}
-          disabled={isToggling}
-          className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ease-in-out focus:outline-none shadow-inner border border-transparent ${
-            isToggling ? 'opacity-50 cursor-not-allowed' : ''
-          } ${provider.is_enabled ? 'bg-zinc-900 dark:bg-white' : 'bg-black/10 dark:bg-white/5 border-black/5 dark:border-white/5'}`}
-        >
-          <motion.div
-            layout
-            className={`w-4 h-4 rounded-full shadow-lg z-10 ${
-                provider.is_enabled ? 'bg-white dark:bg-zinc-900' : 'bg-white/90'
-            }`}
-             initial={false}
-             animate={{ 
-               x: provider.is_enabled ? 24 : 0
-             }}
-             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          />
-        </button>
+        {/* 状态指示器 - 移至右上角 */}
+        <div className="absolute top-0 right-0 h-12 flex items-center">
+          <div className={`w-2 h-2 rounded-full transition-all duration-500 ${provider.is_enabled ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)] scale-125' : 'bg-zinc-400 opacity-30 shadow-none scale-100'}`} />
+        </div>
       </div>
 
       {/* 描述 - 提升可读性 - 严格截断 */}
@@ -135,20 +114,42 @@ export default function ProviderCard({
 
       {/* 底部信息 - 更加微妙但清晰 */}
       <div className="relative z-10 flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-default)]/20 dark:border-white/5">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] font-bold tracking-wide uppercase">
-            {provider.api_type}
+        <div className="flex items-center gap-2 overflow-hidden">
+          <span className="text-[10px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] font-bold tracking-wide uppercase whitespace-nowrap">
+            {provider.api_type === 'OPENAI_COMPAT' ? 'OpenAI' : (provider.api_type === 'ANTHROPIC' ? 'Anthropic' : provider.api_type)}
           </span>
           {provider.priority > 0 && provider.priority < 100 && (
-            <span className="text-[10px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] font-bold tracking-wide uppercase">
+            <span className="text-[10px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] font-bold tracking-wide uppercase whitespace-nowrap">
               PRIORITY {provider.priority}
             </span>
           )}
         </div>
-        
-        {/* 指示器 */}
-        <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${provider.is_enabled ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)] scale-125' : 'bg-zinc-400 opacity-30 shadow-none scale-100'}`} />
       </div>
+
+      {/* 启用开关 - 移至右下方单独一行 */}
+      <div className="relative z-10 flex justify-end mt-4">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(!provider.is_enabled);
+          }}
+          disabled={isToggling}
+          className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ease-in-out focus:outline-none shadow-inner border border-transparent ${isToggling ? 'opacity-50 cursor-not-allowed' : ''
+            } ${provider.is_enabled ? 'bg-zinc-600 dark:bg-white' : 'bg-black/10 dark:bg-white/5 border-black/5 dark:border-white/5'}`}
+        >
+          <motion.div
+            layout
+            className={`w-4 h-4 rounded-full shadow-lg z-10 relative top-0 ${provider.is_enabled ? 'bg-white dark:bg-zinc-900' : 'bg-white/90'
+              }`}
+            initial={false}
+            animate={{
+              x: provider.is_enabled ? 24 : 0
+            }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          />
+        </button>
+      </div>
+
 
       {/* Hover 效果 - 仅在未启用时显示简单的边框高亮，启用后已有阴影 */}
       {!provider.is_enabled && (
