@@ -372,3 +372,12 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
   }
 }
 
+/* Exclude backdrop overlays from View Transition to prevent blur flickering during theme switch */
+.backdrop-exclude-transition {
+  view-transition-name: none !important;
+}
+
+/* Auto-exclude common backdrop patterns from View Transition */
+[class*="backdrop-blur"] {
+  view-transition-name: none;
+}

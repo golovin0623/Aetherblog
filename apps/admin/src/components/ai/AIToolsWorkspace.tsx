@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PromptEditor } from './PromptEditor';
@@ -68,7 +68,13 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     resetStream();
   }, [selectedTool.id, resetStream]);
 
-  const handleRunTest = async () => {
+  // 检测操作系统
+  const isMac = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  }, []);
+
+  const handleRunTest = useCallback(async () => {
     if (!input.trim()) {
       toast.error('请输入测试内容');
       return;
@@ -107,7 +113,20 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     } catch {
       toast.error('流式请求失败');
     }
-  };
+  }, [input, selectedModelId, selectedProviderCode, selectedTool.id, promptConfig?.custom_prompt, stream]);
+
+  // 是否禁用运行按钮
+  const isRunDisabled = !input.trim() || isGlobalLoading;
+
+  // 键盘快捷键处理 (Cmd/Ctrl + Enter)
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (!isRunDisabled) {
+        handleRunTest();
+      }
+    }
+  }, [isRunDisabled, handleRunTest]);
 
   const handleSavePrompt = async (newPrompt: string | null) => {
     try {
@@ -127,7 +146,6 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
   const hasContent = streamContent.length > 0 || thinkContent.length > 0;
   const previewTheme = resolvedTheme === 'dark' ? 'dark' : 'light';
-  const isRunDisabled = !input.trim() || isGlobalLoading;
   const previewStyles = `${markdownPreviewStyles}
 .markdown-preview a { text-decoration: none; }
 .markdown-preview a:hover { text-decoration: none; }
@@ -181,13 +199,17 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             {/* Input Section */}
             <div className={cn(
               "flex-1 relative transition-all duration-500 ease-in-out origin-top",
-              showConfig ? "h-0 opacity-0 pointer-events-none scale-95" : "h-full opacity-100 scale-100"
+              // PC: use opacity/scale animation, Mobile: use hidden/block
+              showConfig 
+                ? "md:h-0 md:opacity-0 md:scale-95 md:pointer-events-none hidden md:block" 
+                : "h-full opacity-100 scale-100"
             )}>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
-                className="w-full h-full p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
+                className="w-full h-full min-h-[200px] p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
               />
               {input.length === 0 && (
                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-[0.06] dark:opacity-[0.08]">
@@ -197,44 +219,59 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               )}
             </div>
 
-            {/* Prompt Section (The Integrated Panel) */}
+            {/* Prompt Section - PC: translate animation, Mobile: conditional render */}
             {promptConfig && !isGlobalLoading && (
-              <div className={cn(
-                "absolute inset-0 z-10 bg-[var(--bg-secondary)] transition-all duration-500 ease-in-out",
-                showConfig ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
-              )}>
-                <PromptEditor
-                  taskType={selectedTool.id}
-                  defaultPrompt={promptConfig.default_prompt}
-                  customPrompt={promptConfig.custom_prompt || ''}
-                  onSave={handleSavePrompt}
-                  isLoading={isStreaming}
-                  onClose={() => setShowConfig(false)}
-                />
-              </div>
+              <>
+                {/* Desktop version - uses translate animation */}
+                <div className={cn(
+                  "hidden md:flex absolute inset-0 z-10 bg-[var(--bg-secondary)] flex-col overflow-hidden transition-all duration-500 ease-in-out",
+                  showConfig ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
+                )}>
+                  <PromptEditor
+                    taskType={selectedTool.id}
+                    defaultPrompt={promptConfig.default_prompt}
+                    customPrompt={promptConfig.custom_prompt || ''}
+                    onSave={handleSavePrompt}
+                    isLoading={isStreaming}
+                    onClose={() => setShowConfig(false)}
+                  />
+                </div>
+                {/* Mobile version - conditional render for proper display */}
+                {showConfig && (
+                  <div className="md:hidden absolute inset-0 z-10 bg-[var(--bg-secondary)] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <PromptEditor
+                      taskType={selectedTool.id}
+                      defaultPrompt={promptConfig.default_prompt}
+                      customPrompt={promptConfig.custom_prompt || ''}
+                      onSave={handleSavePrompt}
+                      isLoading={isStreaming}
+                      onClose={() => setShowConfig(false)}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
           {/* Unified Execution Hub - Floating at bottom center */}
           <div className={cn(
-            "absolute bottom-8 left-1/2 -translate-x-1/2 z-40 w-[94%] sm:w-auto transition-all duration-500",
-            isMobileSidebarOpen ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100"
+            "absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-500",
+            isMobileSidebarOpen ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
+            showConfig && "hidden md:flex"  // Hide on mobile when config is open, show on PC
           )}>
-            <div className="glass-premium rounded-[2.5rem] p-1 sm:p-1.5 flex items-center gap-1 sm:gap-1.5 shadow-2xl border-white/10">
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Toggle Config Button */}
               <button
                 onClick={() => setShowConfig(!showConfig)}
                 className={cn(
-                  "p-2.5 sm:p-3.5 rounded-full transition-all duration-500",
-                  showConfig 
-                    ? "bg-black text-white dark:bg-white dark:text-black shadow-lg shadow-black/25 scale-110" 
-                    : "text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-black dark:hover:text-white"
+                  "w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all duration-300 flex items-center justify-center",
+                  "bg-[var(--bg-secondary)] text-[var(--text-muted)] shadow-md",
+                  "hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-lg",
+                  showConfig && "bg-black text-white dark:bg-white dark:text-black shadow-lg"
                 )}
                 title={showConfig ? "返回输入" : "专家配置"}
               >
                 <Code className="w-5 h-5" />
               </button>
-
-              <div className="w-px h-6 bg-[var(--border-subtle)]/30 mx-0.5 sm:mx-1" />
 
               <ModelSelector
                 value={selectedModelId}
@@ -242,36 +279,33 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                   setSelectedModelId(modelId);
                   setSelectedProviderCode(provider);
                 }}
-                className="w-[124px] sm:w-[220px]"
-                triggerClassName="!border-none !bg-transparent !shadow-none hover:!bg-[var(--bg-card-hover)] rounded-full h-11 sm:h-12"
+                className="w-[140px] sm:w-[200px]"
+                triggerClassName="h-11 sm:h-12 rounded-full bg-[var(--bg-secondary)] shadow-md hover:bg-[var(--bg-card-hover)] hover:shadow-lg border-none"
                 selectedProviderCode={selectedProviderCode}
                 menuPlacement="top"
               />
 
-              <div className="w-px h-6 bg-[var(--border-subtle)]/30 mx-0.5 sm:mx-1" />
-
               {isStreaming ? (
                 <button
                   onClick={abort}
-                  className="h-11 sm:h-12 px-4 sm:px-6 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all font-bold flex items-center gap-2 animate-pulse"
+                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--bg-secondary)] text-red-500 shadow-md hover:bg-red-500/10 hover:shadow-lg transition-all flex items-center justify-center animate-pulse"
+                  title="停止生成"
                 >
                   <Square className="w-4 h-4 fill-current" />
-                  <span className="hidden sm:inline text-xs uppercase tracking-widest">Abort</span>
                 </button>
               ) : (
                 <button
                   onClick={handleRunTest}
                   disabled={isRunDisabled}
                   className={cn(
-                    "h-11 sm:h-12 px-5 sm:px-8 rounded-full transition-all flex items-center gap-2 font-black shadow-xl active:scale-95 group/exec",
-                    "bg-black text-white dark:bg-white dark:text-black hover:opacity-90 relative overflow-hidden",
-                    !isRunDisabled && "hover:shadow-primary/20 hover:shadow-2xl",
-                    isRunDisabled && "opacity-30 cursor-not-allowed grayscale shadow-none"
+                    "w-11 h-11 sm:w-12 sm:h-12 rounded-full transition-all duration-300 flex items-center justify-center active:scale-95",
+                    "bg-[var(--bg-secondary)] text-[var(--text-muted)] shadow-md",
+                    "hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] hover:shadow-lg",
+                    isRunDisabled && "opacity-30 cursor-not-allowed"
                   )}
+                  title={`执行 (${isMac ? '⌘' : 'Ctrl'} + Enter)`}
                 >
-                  <div className="absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent scale-x-0 group-hover/exec:scale-x-100 transition-transform duration-700" />
-                  <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover/exec:translate-x-0.5 group-hover/exec:-translate-y-0.5 transition-transform" />
-                  <span className="text-[11px] sm:text-xs uppercase tracking-widest">Execute</span>
+                  <ArrowUpRight className="w-5 h-5" />
                 </button>
               )}
             </div>
