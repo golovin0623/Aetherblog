@@ -76,3 +76,16 @@ trigger: always_on
 *(任务详情结构同上，篇幅原因省略)*
 
 ---
+
+## 🧭 2026-02-08 路线图增补 (v1.0.1)
+
+### Phase 4 - AI 功能集成
+- `AI-ROUTING-001` AI 服务启动稳定性修复（Python 3.9 注解兼容）
+- `AI-ADMIN-002` AI 配置页图标与视觉规范统一
+
+### Phase 5 - 优化与部署
+- `OPS-STARTUP-003` 启动脚本依赖探测与健康检查鲁棒性增强
+- `DOC-SYNC-004` 规则文档与设计文档同步
+
+### CHANGELOG
+- Added: `AI-ROUTING-001`, `AI-ADMIN-002`, `OPS-STARTUP-003`, `DOC-SYNC-004`

@@ -1,0 +1,4 @@
+# SDKMAN environment configuration
+# See: https://golovin.cn/post/87
+java=25.0.2-tem
+maven=3.9.6

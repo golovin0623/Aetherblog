@@ -135,3 +135,30 @@ import { Button } from '@/components/ui/Button';  // 禁止！
   - 颜色应为低透明度 (如 `bg-white/5`) 配合微妙边框。
   - 加载过程应无缝衔接，避免内容出现时的跳变。
 - **目的**: 减少用户等待焦虑，提供布局确定性。
+
+---
+
+## 8. AI 配置中心专项规范（2026-02-08）
+
+### 8.1 图标来源规范
+- **AI 品牌图标**：统一使用 `@lobehub/icons`
+- **通用图标 fallback**：统一使用 `lucide-react`
+- **严禁**：运行时使用 Emoji 作为图标、未授权 SVG 资源
+
+### 8.2 主题 token 规范
+- 供应商卡片与配置视图的基础色必须优先使用：
+  - `bg-[var(--bg-primary|secondary|card|card-hover)]`
+  - `text-[var(--text-primary|secondary|muted)]`
+  - `border-[var(--border-default|subtle)]`
+
+### 8.3 动效一致性规范
+- 模态框/抽屉/侧边栏必须使用 `AnimatePresence + motion` 处理进出场。
+
+### 8.4 交互反馈规范 (Interaction Feedback Standards)
+- **绝对禁止**: 在生产代码中使用 `window.alert()`, `window.confirm()` 或 `window.prompt()`。
+- **强制执行**: 所有交互确认必须使用项目定义的 `ConfirmDialog` 或类似的自定义 UI 组件，以确保视觉风格符合 "认知优雅" 规范。
+
+### CHANGELOG
+- Added: AI 图标来源与禁止项规则。
+- Added: 供应商卡片主题 token 约束。
+- Added: 交互反馈规范，禁止使用原生浏览器弹窗。

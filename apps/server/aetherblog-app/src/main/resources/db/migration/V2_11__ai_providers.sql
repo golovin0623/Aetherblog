@@ -1259,7 +1259,6 @@ INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_
     ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'openrouter/auto', 'Auto (best for prompt)', 'chat', 2000000, NULL, NULL, NULL, '{"source": "builtin", "maxToken": 2000000, "contextWindowTokens": 2000000, "description": "根据上下文长度、主题和复杂性，你的请求将发送到 Llama 3 70B Instruct、Claude 3.5 Sonnet（自我调节）或 GPT-4o。"}', TRUE),
     ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'deepseek/deepseek-chat-v3.1', 'DeepSeek V3.1', 'chat', 163840, NULL, 0.0002, 0.0008, '{"abilities": {"functionCall": true, "reasoning": true}, "pricing": {"units": [{"name": "textInput", "rate": 0.2, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textOutput", "rate": 0.8, "strategy": "fixed", "unit": "millionTokens"}]}, "released_at": "2025-08-21", "source": "builtin", "maxToken": 163840, "contextWindowTokens": 163840, "description": "DeepSeek-V3.1是一款支持128K长上下文和高效模式切换的大型混合推理模型，它在工具调用、代码生成和复杂推理任务上实现了卓越的性能与速度。", "reasoning": true, "function_calling": true}', FALSE),
     ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'google/gemini-2.5-flash-image-preview', 'Nano Banana', 'chat', 40960, 8192, 0.0003, 0.0025, '{"abilities": {"imageOutput": true, "vision": true}, "pricing": {"units": [{"name": "imageOutput", "rate": 30, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textInput", "rate": 0.3, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textOutput", "rate": 2.5, "strategy": "fixed", "unit": "millionTokens"}]}, "released_at": "2025-08-26", "source": "builtin", "maxToken": 40960, "contextWindowTokens": 40960, "maxOutputTokens": 8192, "maxOutput": 8192, "description": "Gemini 2.5 Flash 实验模型，支持图像生成", "vision": true, "image_generation": true}', FALSE),
-    ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'deepseek/deepseek-chat-v3.1', 'DeepSeek V3.1', 'chat', 163840, NULL, 0.0002, 0.0008, '{"abilities": {"functionCall": true, "reasoning": true}, "pricing": {"units": [{"name": "textInput", "rate": 0.2, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textOutput", "rate": 0.8, "strategy": "fixed", "unit": "millionTokens"}]}, "released_at": "2025-08-21", "source": "builtin", "maxToken": 163840, "contextWindowTokens": 163840, "description": "DeepSeek-V3.1是一款支持128K长上下文和高效模式切换的大型混合推理模型，它在工具调用、代码生成和复杂推理任务上实现了卓越的性能与速度。", "reasoning": true, "function_calling": true}', FALSE),
     ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'qwen/qwen3-30b-a3b:free', 'Qwen3 30B A3B (Free)', 'chat', 40960, NULL, NULL, NULL, '{"abilities": {"reasoning": true}, "source": "builtin", "maxToken": 40960, "contextWindowTokens": 40960, "description": "Qwen3 是 Qwen 大型语言模型系列的最新一代，具有密集和专家混合 (MoE) 架构，在推理、多语言支持和高级代理任务方面表现出色。其在复杂推理的思考模式和高效对话的非思考模式之间无缝切换的独特能力确保了多功能、高质量的性能。\n\nQwen3 显著优于 QwQ 和 Qwen2.5 等先前模型，提供卓越的数学、编码、常识推理、创意写作和交互式对话能力。Qwen3-30B-A3B 变体包含 305 亿个参数（33 亿个激活参数）、48 层、128 个专家（每个任务激活 8 个），并支持高达 131K 令牌上下文（使用 YaRN），为开源模型树立了新标准。", "reasoning": true}', FALSE),
     ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'qwen/qwen3-30b-a3b', 'Qwen3 30B A3B', 'chat', 40960, 40960, 0.0001, 0.0003, '{"abilities": {"reasoning": true}, "pricing": {"units": [{"name": "textInput", "rate": 0.1, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textOutput", "rate": 0.3, "strategy": "fixed", "unit": "millionTokens"}]}, "source": "builtin", "maxToken": 40960, "contextWindowTokens": 40960, "maxOutputTokens": 40960, "maxOutput": 40960, "description": "Qwen3 是 Qwen 大型语言模型系列的最新一代，具有密集和专家混合 (MoE) 架构，在推理、多语言支持和高级代理任务方面表现出色。其在复杂推理的思考模式和高效对话的非思考模式之间无缝切换的独特能力确保了多功能、高质量的性能。\n\nQwen3 显著优于 QwQ 和 Qwen2.5 等先前模型，提供卓越的数学、编码、常识推理、创意写作和交互式对话能力。Qwen3-30B-A3B 变体包含 305 亿个参数（33 亿个激活参数）、48 层、128 个专家（每个任务激活 8 个），并支持高达 131K 令牌上下文（使用 YaRN），为开源模型树立了新标准。", "reasoning": true}', FALSE),
     ((SELECT id FROM ai_providers WHERE code = 'openrouter'), 'qwen/qwen3-8b:free', 'Qwen3 8B (Free)', 'chat', 40960, 40960, NULL, NULL, '{"abilities": {"reasoning": true}, "source": "builtin", "maxToken": 40960, "contextWindowTokens": 40960, "maxOutputTokens": 40960, "maxOutput": 40960, "description": "Qwen3-8B 是 Qwen3 系列中一个密集的 82 亿参数因果语言模型，专为推理密集型任务和高效对话而设计。它支持在用于数学、编码和逻辑推理的“思考”模式与用于一般对话的“非思考”模式之间无缝切换。该模型经过微调，可用于指令遵循、代理集成、创意写作以及跨 100 多种语言和方言的多语言使用。它原生支持 32K 令牌上下文窗口，并可通过 YaRN 扩展到 131K 令牌。", "reasoning": true}', FALSE),
@@ -1968,15 +1967,12 @@ FROM (VALUES
     ('translate', 'gpt-4o-mini', 'deepseek-chat', '{"temperature": 0.3}')
 ) AS v(task_code, primary_model, fallback_model, cfg)
 JOIN ai_task_types tt ON tt.code = v.task_code
-LEFT JOIN ai_models pm ON pm.model_id = v.primary_model
+LEFT JOIN ai_models pm ON pm.model_id = v.primary_model 
+    AND pm.provider_id = (SELECT id FROM ai_providers WHERE code = 'openai')
 LEFT JOIN ai_models fm ON fm.model_id = v.fallback_model
+    AND fm.provider_id = (SELECT id FROM ai_providers WHERE code = 'deepseek')
 ON CONFLICT ON CONSTRAINT uq_ai_task_routing_user_task
-DO UPDATE SET
-    primary_model_id = EXCLUDED.primary_model_id,
-    fallback_model_id = EXCLUDED.fallback_model_id,
-    config_override = EXCLUDED.config_override,
-    is_enabled = TRUE,
-    updated_at = CURRENT_TIMESTAMP;
+DO NOTHING;
 
 -- ============================================================
 -- End of Migration

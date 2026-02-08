@@ -152,6 +152,12 @@ export const aiProviderService = {
   deleteProvider: (id: number): Promise<AiServiceResponse<boolean>> =>
     api.delete(`/v1/admin/providers/${id}`),
 
+  batchToggleProviders: (
+    ids: number[],
+    enabled: boolean
+  ): Promise<AiServiceResponse<{ updated: number }>> =>
+    api.put('/v1/admin/providers/batch-toggle', { ids, enabled }),
+
   listModels: (providerCode?: string, modelType?: string): Promise<AiServiceResponse<AiModel[]>> => {
     if (providerCode) {
       return api.get(`/v1/admin/providers/${providerCode}/models`, { params: { enabled_only: false } });

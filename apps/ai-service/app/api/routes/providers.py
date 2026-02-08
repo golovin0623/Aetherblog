@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
@@ -40,6 +41,7 @@ from app.schemas.provider import (
     ModelSyncResponse,
     ModelBatchToggleRequest,
     ModelSortRequest,
+    ProviderBatchToggleRequest,
 )
 from app.services.provider_registry import ProviderRegistry
 from app.services.credential_resolver import CredentialResolver
@@ -139,6 +141,16 @@ async def create_provider(
     except Exception as exc:
         logger.exception("Failed to create provider")
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.put("/batch-toggle", response_model=ApiResponse[dict[str, int]])
+async def batch_toggle_providers(
+    req: ProviderBatchToggleRequest,
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """Batch toggle provider enabled state."""
+    updated = await registry.batch_toggle_providers(req.ids, req.enabled)
+    return ApiResponse(data={"updated": updated})
 
 
 @router.put("/{provider_id}", response_model=ApiResponse[ProviderResponse])
@@ -676,7 +688,7 @@ async def list_task_types(
     )
 
 
-@router.get("/routing/{task_type}", response_model=ApiResponse[RoutingResponse | None])
+@router.get("/routing/{task_type}", response_model=ApiResponse[Optional[RoutingResponse]])
 async def get_routing(
     task_type: str,
     user: UserClaims = Depends(require_admin),

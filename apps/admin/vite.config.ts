@@ -4,8 +4,8 @@ import path from 'path';
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],
-  // 开发环境使用根路径，生产环境使用 /admin/
-  base: command === 'serve' ? '/' : '/admin/',
+  // 统一使用 /admin/ 作为 base，确保网关模式下路由正常工作
+  base: '/admin/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -16,6 +16,11 @@ export default defineConfig(({ command }) => ({
     host: true, // 允许外部访问 (开发网关模式需要)
     strictPort: true,
     allowedHosts: true, // 允许所有主机访问 (Vite 6.x 安全要求)
+    // HMR 配置: 通过网关访问时，WebSocket 直连本机 5173
+    hmr: {
+      port: 5173,
+      host: 'localhost',
+    },
     proxy: {
       '/api/v1/admin/providers': {
         target: 'http://localhost:8000',

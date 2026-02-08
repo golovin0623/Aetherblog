@@ -38,7 +38,7 @@ import {
   GripVertical,
 } from 'lucide-react';
 import type { MediaFolder, FolderTreeNode } from '@aetherblog/types';
-import { folderService } from '../../../services/folderService';
+import { folderService } from '@/services/folderService';
 import { cn } from '@aetherblog/utils';
 import { toast } from 'sonner';
 
