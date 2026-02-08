@@ -75,6 +75,11 @@ public class MediaServiceImpl implements MediaService {
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers"
     );
 
+    // Extensions that require magic byte validation
+    private static final Set<String> CHECKED_IMAGE_EXTENSIONS = Set.of(
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "ico", "tiff"
+    );
+
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             // Images (SVG removed for security)
             "jpg", "jpeg", "png", "gif", "webp", "avif", "ico", "bmp", "tiff",
@@ -110,6 +115,9 @@ public class MediaServiceImpl implements MediaService {
             log.warn("拒绝上传非法文件类型: filename={}, extension={}", originalName, extension);
             throw new BusinessException(400, "不支持的文件类型: " + extension);
         }
+
+        // Security Check: Validate Magic Bytes for images to prevent file disguise (e.g. PHP as PNG)
+        validateMagicBytes(file, extension);
 
         String filename = UUID.randomUUID() + "." + extension;
         String relativePath = datePath + "/" + filename;
@@ -544,5 +552,84 @@ public class MediaServiceImpl implements MediaService {
         if (filename == null) return "bin";
         int dotIndex = filename.lastIndexOf('.');
         return dotIndex > 0 ? filename.substring(dotIndex + 1).toLowerCase() : "bin";
+    }
+
+    private void validateMagicBytes(MultipartFile file, String extension) {
+        if (!CHECKED_IMAGE_EXTENSIONS.contains(extension)) {
+            return;
+        }
+
+        try (java.io.InputStream is = file.getInputStream()) {
+            byte[] header = new byte[12];
+            int read = is.read(header);
+
+            if (read < 2) {
+                 throw new BusinessException(400, "文件内容为空或过短");
+            }
+
+            // WebP requires at least 12 bytes to check RIFF....WEBP
+            if ("webp".equals(extension) && read < 12) {
+                 throw new BusinessException(400, "WebP文件损坏或无效");
+            }
+
+            String hex = bytesToHex(header);
+            boolean isValid = false;
+
+            switch (extension) {
+                case "jpg":
+                case "jpeg":
+                    isValid = hex.startsWith("FFD8FF");
+                    break;
+                case "png":
+                    isValid = hex.startsWith("89504E470D0A1A0A");
+                    break;
+                case "gif":
+                    isValid = hex.startsWith("47494638");
+                    break;
+                case "webp":
+                    // 0-3: 52 49 46 46 (RIFF)
+                    // 8-11: 57 45 42 50 (WEBP)
+                    isValid = hex.startsWith("52494646") && hex.substring(16, 24).equals("57454250");
+                    break;
+                case "bmp":
+                    isValid = hex.startsWith("424D");
+                    break;
+                case "avif":
+                    // AVIF uses ftyp box, usually starts with ....ftypavif (bytes 4-11)
+                    // Since offset 4 is variable, we check 000000..6674797061766966 or similar
+                    // But typically: 00 00 00 1C 66 74 79 70 61 76 69 66 (ftypavif)
+                    // Check for "ftyp" at offset 4: 66747970
+                    isValid = hex.substring(8, 16).equals("66747970");
+                    break;
+                case "ico":
+                    isValid = hex.startsWith("00000100");
+                    break;
+                case "tiff":
+                    isValid = hex.startsWith("49492A00") || hex.startsWith("4D4D002A");
+                    break;
+                default:
+                    // Default to false for security; any checked extension must have a case here
+                    isValid = false;
+            }
+
+            if (!isValid) {
+                 log.warn("文件魔数校验失败: extension={}, hex={}", extension, hex);
+                 throw new BusinessException(400, "文件内容与扩展名不匹配，请检查文件完整性");
+            }
+        } catch (IOException e) {
+            log.error("无法读取文件头", e);
+            throw new BusinessException(500, "无法验证文件内容");
+        }
+    }
+
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+    private static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
     }
 }
