@@ -5,3 +5,4 @@ export { SearchPanel } from './SearchPanel';
 export { TimelineTree } from './TimelineTree';
 export { TableOfContents } from './TableOfContents';
 export { CodeBlockRenderer } from './CodeBlockRenderer';
+export { ScrollToTop } from './ScrollToTop';

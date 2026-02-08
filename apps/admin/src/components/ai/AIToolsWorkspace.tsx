@@ -209,6 +209,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
+                aria-label="输入测试内容"
                 className="w-full h-full min-h-[200px] p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
               />
               {input.length === 0 && (
@@ -290,6 +291,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                   onClick={abort}
                   className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--bg-secondary)] text-red-500 shadow-md hover:bg-red-500/10 hover:shadow-lg transition-all flex items-center justify-center animate-pulse"
                   title="停止生成"
+                  aria-label="停止生成"
                 >
                   <Square className="w-4 h-4 fill-current" />
                 </button>
@@ -304,6 +306,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                     isRunDisabled && "opacity-30 cursor-not-allowed"
                   )}
                   title={`执行 (${isMac ? '⌘' : 'Ctrl'} + Enter)`}
+                  aria-label={`执行 (${isMac ? 'Command' : 'Ctrl'} + Enter)`}
                 >
                   <ArrowUpRight className="w-5 h-5" />
                 </button>
