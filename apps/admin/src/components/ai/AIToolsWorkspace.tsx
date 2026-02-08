@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Eye } from 'lucide-react';
+import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Eye, Command } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PromptEditor } from './PromptEditor';
 import { apiClient as api } from '@/services/api';
@@ -186,7 +186,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!isRunDisabled) handleRunTest();
+                  }
+                }}
                 placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
+                aria-label="输入测试内容"
                 className="w-full h-full p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
               />
               {input.length === 0 && (
@@ -230,6 +237,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                     : "text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-black dark:hover:text-white"
                 )}
                 title={showConfig ? "返回输入" : "专家配置"}
+                aria-label={showConfig ? "返回输入" : "专家配置"}
               >
                 <Code className="w-5 h-5" />
               </button>
@@ -254,6 +262,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 <button
                   onClick={abort}
                   className="h-11 sm:h-12 px-4 sm:px-6 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all font-bold flex items-center gap-2 animate-pulse"
+                  aria-label="停止生成"
                 >
                   <Square className="w-4 h-4 fill-current" />
                   <span className="hidden sm:inline text-xs uppercase tracking-widest">Abort</span>
@@ -268,10 +277,13 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                     !isRunDisabled && "hover:shadow-primary/20 hover:shadow-2xl",
                     isRunDisabled && "opacity-30 cursor-not-allowed grayscale shadow-none"
                   )}
+                  title="执行测试 (Ctrl + Enter)"
                 >
                   <div className="absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent scale-x-0 group-hover/exec:scale-x-100 transition-transform duration-700" />
                   <ArrowUpRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover/exec:translate-x-0.5 group-hover/exec:-translate-y-0.5 transition-transform" />
-                  <span className="text-[11px] sm:text-xs uppercase tracking-widest">Execute</span>
+                  <span className="text-[11px] sm:text-xs uppercase tracking-widest flex items-center gap-1">
+                    Execute <Command className="w-3 h-3 opacity-50 hidden md:block ml-0.5" /><span className="hidden md:block opacity-50 text-[10px]">↵</span>
+                  </span>
                 </button>
               )}
             </div>
@@ -326,6 +338,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                onClick={() => setViewMode(prev => prev === 'preview' ? 'code' : 'preview')}
                className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-all active:scale-95"
                title={viewMode === 'preview' ? "查看源码" : "查看预览"}
+               aria-label={viewMode === 'preview' ? "查看源码" : "查看预览"}
              >
                {viewMode === 'preview' ? (
                  <Code className="w-4 h-4" />
@@ -412,6 +425,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                  navigator.clipboard.writeText(streamContent);
                  toast.success('已复制到剪贴板');
                }}
+               aria-label="复制结果"
              >
                复制结果
              </button>
