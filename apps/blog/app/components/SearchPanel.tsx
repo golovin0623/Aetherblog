@@ -157,10 +157,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  // 搜索结果变化时重置激活项
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [results]);
+  }, [isOpen, activeIndex, results, onClose, handleResultClick]);
 
   // 自动聚焦
   useEffect(() => {
