@@ -17,6 +17,8 @@ import MonitorPage from './pages/MonitorPage';
 import FolderPermissionsPage from './pages/media/FolderPermissionsPage';
 import AiConfigPage from './pages/ai-config/AiConfigPage';
 import { AiWritingWorkspacePage } from './pages/posts/AiWritingWorkspacePage';
+import ActivitiesPage from './pages/activities/ActivitiesPage';
+import AnalyticsPage from './pages/analytics/AnalyticsPage';
 import { Toaster } from 'sonner';
 
 /**
@@ -71,7 +73,9 @@ function App() {
           <Route path="ai-tools" element={<AIToolsPage />} />
           <Route path="ai-test" element={<AiTestPage />} />
           <Route path="ai-config" element={<AiConfigPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="monitor" element={<MonitorPage />} />
+          <Route path="activities" element={<ActivitiesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

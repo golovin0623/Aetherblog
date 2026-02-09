@@ -66,8 +66,13 @@ async def _log_usage(
     request: Request,
     metrics: MetricsStore,
     usage_logger: UsageLogger,
-    user_id: str,
+    user_id: str | int,
+    task_type: str,
     model: str,
+    provider_code: str | None,
+    model_id: str | None,
+    input_cost_per_1k: float | None,
+    output_cost_per_1k: float | None,
     request_text: str,
     response_text: str,
     start_time: float,
@@ -90,7 +95,12 @@ async def _log_usage(
     await usage_logger.record(
         user_id=user_id,
         endpoint=request.url.path,
+        task_type=task_type,
+        provider_code=provider_code,
+        model_id=model_id,
         model=model,
+        input_cost_per_1k=input_cost_per_1k,
+        output_cost_per_1k=output_cost_per_1k,
         request_chars=len(request_text),
         response_chars=len(response_text),
         tokens_in=tokens_in,
@@ -101,6 +111,24 @@ async def _log_usage(
         error_code=error_code,
         request_id=getattr(request.state, "request_id", None),
     )
+
+
+async def _resolve_model_context(
+    llm,
+    *,
+    task_type: str,
+    user_id: int,
+    model_id: str | None,
+    provider_code: str | None,
+) -> tuple[str, dict[str, str | float | None]]:
+    usage_context = await llm.resolve_usage_context(
+        task_type,
+        user_id=user_id,
+        model_id=model_id,
+        provider_code=provider_code,
+    )
+    model = str(usage_context.get("model") or "")
+    return model, usage_context
 
 
 @router.post("/summary", response_model=ApiResponse[SummaryData])
@@ -118,9 +146,12 @@ async def summary(
     cached = False
     response_text = ""
     error_code = None
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "summary",
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="summary",
             user_id=user.user_id,
             model_id=req.modelId,
             provider_code=req.providerCode,
@@ -191,7 +222,12 @@ async def summary(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user.user_id,
+            task_type="summary",
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=req.content,
             response_text=response_text,
             start_time=start_time,
@@ -212,9 +248,15 @@ async def summary_stream(
 ) -> StreamingResponse:
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "summary", user_id=user.user_id, model_id=req.modelId, provider_code=req.providerCode
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="summary",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -227,7 +269,7 @@ async def summary_stream(
         _stream_with_think_detection(
             request, llm, prompt_variables, "summary", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, metrics, usage_logger, start_time, req.content
+            model, usage_context, metrics, usage_logger, start_time, req.content
         ),
         media_type="text/event-stream",
         headers={
@@ -253,9 +295,12 @@ async def tags(
     cached = False
     response_text = ""
     error_code = None
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "tags",
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="tags",
             user_id=user.user_id,
             model_id=req.modelId,
             provider_code=req.providerCode,
@@ -315,7 +360,12 @@ async def tags(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user.user_id,
+            task_type="tags",
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=req.content,
             response_text=response_text,
             start_time=start_time,
@@ -340,9 +390,12 @@ async def titles(
     cached = False
     response_text = ""
     error_code = None
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "titles",
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="titles",
             user_id=user.user_id,
             model_id=req.modelId,
             provider_code=req.providerCode,
@@ -402,7 +455,12 @@ async def titles(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user.user_id,
+            task_type="titles",
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=req.content,
             response_text=response_text,
             start_time=start_time,
@@ -424,9 +482,12 @@ async def polish(
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
     error_code = None
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "polish",
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="polish",
             user_id=user.user_id,
             model_id=req.modelId,
             provider_code=req.providerCode,
@@ -469,7 +530,12 @@ async def polish(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user.user_id,
+            task_type="polish",
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=req.content,
             response_text=response_text,
             start_time=start_time,
@@ -490,9 +556,12 @@ async def outline(
 ) -> ApiResponse[OutlineData]:
     start_time = time.perf_counter()
     error_code = None
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "outline",
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="outline",
             user_id=user.user_id,
             model_id=req.modelId,
             provider_code=req.providerCode,
@@ -538,7 +607,12 @@ async def outline(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user.user_id,
+            task_type="outline",
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=topic,
             response_text=response_text,
             start_time=start_time,
@@ -566,9 +640,12 @@ async def translate(
     cached = False
     response_text = ""
     error_code = None
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "translate",
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="translate",
             user_id=user.user_id,
             model_id=req.modelId,
             provider_code=req.providerCode,
@@ -639,7 +716,12 @@ async def translate(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user.user_id,
+            task_type="translate",
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=req.content,
             response_text=response_text,
             start_time=start_time,
@@ -664,6 +746,7 @@ async def _stream_with_think_detection(
     model_id: str | None,
     provider_code: str | None,
     model: str,
+    usage_context: dict[str, str | float | None],
     metrics,
     usage_logger,
     start_time: float,
@@ -700,7 +783,12 @@ async def _stream_with_think_detection(
             metrics=metrics,
             usage_logger=usage_logger,
             user_id=user_id,
+            task_type=model_alias,
             model=model,
+            provider_code=usage_context.get("provider_code") if usage_context else None,
+            model_id=usage_context.get("model_id") if usage_context else None,
+            input_cost_per_1k=usage_context.get("input_cost_per_1k") if usage_context else None,
+            output_cost_per_1k=usage_context.get("output_cost_per_1k") if usage_context else None,
             request_text=request_text,
             response_text="x" * response_chars,
             start_time=start_time,
@@ -721,9 +809,15 @@ async def tags_stream(
 ) -> StreamingResponse:
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "tags", user_id=user.user_id, model_id=req.modelId, provider_code=req.providerCode
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="tags",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -733,7 +827,7 @@ async def tags_stream(
         _stream_with_think_detection(
             request, llm, prompt_variables, "tags", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, metrics, usage_logger, start_time, req.content
+            model, usage_context, metrics, usage_logger, start_time, req.content
         ),
         media_type="text/event-stream",
         headers={
@@ -755,9 +849,15 @@ async def titles_stream(
 ) -> StreamingResponse:
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "titles", user_id=user.user_id, model_id=req.modelId, provider_code=req.providerCode
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="titles",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -767,7 +867,7 @@ async def titles_stream(
         _stream_with_think_detection(
             request, llm, prompt_variables, "titles", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, metrics, usage_logger, start_time, req.content
+            model, usage_context, metrics, usage_logger, start_time, req.content
         ),
         media_type="text/event-stream",
         headers={
@@ -789,9 +889,15 @@ async def polish_stream(
 ) -> StreamingResponse:
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "polish", user_id=user.user_id, model_id=req.modelId, provider_code=req.providerCode
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="polish",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -801,7 +907,7 @@ async def polish_stream(
         _stream_with_think_detection(
             request, llm, prompt_variables, "polish", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, metrics, usage_logger, start_time, req.content
+            model, usage_context, metrics, usage_logger, start_time, req.content
         ),
         media_type="text/event-stream",
         headers={
@@ -822,9 +928,15 @@ async def outline_stream(
     usage_logger=Depends(get_usage_logger),
 ) -> StreamingResponse:
     start_time = time.perf_counter()
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "outline", user_id=user.user_id, model_id=req.modelId, provider_code=req.providerCode
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="outline",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -840,7 +952,7 @@ async def outline_stream(
         _stream_with_think_detection(
             request, llm, prompt_variables, "outline", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, metrics, usage_logger, start_time, topic
+            model, usage_context, metrics, usage_logger, start_time, topic
         ),
         media_type="text/event-stream",
         headers={
@@ -862,9 +974,15 @@ async def translate_stream(
 ) -> StreamingResponse:
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
+    model = ""
+    usage_context: dict[str, str | float | None] = {}
     try:
-        model = await llm.resolve_effective_model(
-            "translate", user_id=user.user_id, model_id=req.modelId, provider_code=req.providerCode
+        model, usage_context = await _resolve_model_context(
+            llm,
+            task_type="translate",
+            user_id=user.user_id,
+            model_id=req.modelId,
+            provider_code=req.providerCode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -878,7 +996,7 @@ async def translate_stream(
         _stream_with_think_detection(
             request, llm, prompt_variables, "translate", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, metrics, usage_logger, start_time, req.content
+            model, usage_context, metrics, usage_logger, start_time, req.content
         ),
         media_type="text/event-stream",
         headers={
