@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { ExternalLink } from 'lucide-react';
 
 interface FriendCardProps {
@@ -114,9 +115,11 @@ export const FriendCard: React.FC<FriendCardProps> = ({
             />
             <div className="relative h-14 w-14 rounded-full overflow-hidden ring-2 ring-[var(--border-subtle)] group-hover:ring-[var(--border-hover)] transition-all bg-[var(--bg-secondary)]">
               {!showFallback ? (
-                <img
+                <Image
                   src={avatar}
                   alt={name}
+                  fill
+                  sizes="56px"
                   onLoad={handleImageLoad}
                   onError={() => setImageError(true)}
                   className={imageClass}
