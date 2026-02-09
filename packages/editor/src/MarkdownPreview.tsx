@@ -549,7 +549,13 @@ export const markdownPreviewStyles = `
     background: transparent !important;
     padding: 0;
   }
-  .markdown-preview ul, .markdown-preview ol {
+  .markdown-preview ul {
+    list-style-type: disc;
+    padding-left: 1.5em;
+    margin: 0.75em 0;
+  }
+  .markdown-preview ol {
+    list-style-type: decimal;
     padding-left: 1.5em;
     margin: 0.75em 0;
   }

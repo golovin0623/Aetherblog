@@ -12,6 +12,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, useImageUpload, UploadProgress, type ViewMode, type TableInfo, type UploadResult } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
+import { Tooltip } from '@aetherblog/ui';
 import {
   ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
   AlignLeft, AlignCenter, AlignRight
@@ -40,49 +41,22 @@ interface ToolbarButtonProps {
 }
 
 function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'primary', className, tooltipPosition = 'top' }: ToolbarButtonProps) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  const handleMouseEnter = () => {
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPosition({
-        x: rect.left + rect.width / 2,
-        y: tooltipPosition === 'bottom' ? rect.bottom + 2 : rect.top - 2
-      });
-    }
-    setShowTooltip(true);
-  };
-
   return (
-    <button
-      ref={buttonRef}
-      onClick={onClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setShowTooltip(false)}
-      className={cn(
-        'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
-        isActive && activeColor === 'primary' && 'bg-indigo-500/90 text-white',
-        isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
-        className
-      )}
-    >
-      <span className="block transition-transform active:scale-90">
-        {children}
-      </span>
-      {showTooltip && (
-        <span
-          className={cn(
-            "fixed z-[9999] px-2.5 py-1.5 text-xs text-white bg-[var(--bg-tooltip)] rounded-md border border-[var(--border-subtle)] whitespace-nowrap -translate-x-1/2 pointer-events-none shadow-lg",
-             tooltipPosition === 'bottom' ? 'mt-1' : '-translate-y-full -mt-1'
-          )}
-          style={{ left: position.x, top: position.y }}
-        >
-          {tooltip}
+    <Tooltip content={tooltip} side={tooltipPosition} delay={0}>
+      <button
+        onClick={onClick}
+        className={cn(
+          'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
+          isActive && activeColor === 'primary' && 'bg-indigo-500/90 text-white',
+          isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
+          className
+        )}
+      >
+        <span className="block transition-transform active:scale-90">
+          {children}
         </span>
-      )}
-    </button>
+      </button>
+    </Tooltip>
   );
 }
 
