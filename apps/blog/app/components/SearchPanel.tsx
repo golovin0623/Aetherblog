@@ -114,11 +114,21 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
   }, [query, performSearch]);
 
   // 处理结果点击
-  const handleResultClick = (result: SearchResult) => {
+  const handleResultClick = useCallback((result: SearchResult) => {
     saveToHistory(query);
     router.push(`/posts/${result.slug}`);
     onClose();
-  };
+  }, [saveToHistory, query, router, onClose]);
+
+  // 滚动到激活项
+  useEffect(() => {
+    if (activeIndex >= 0 && resultsRef.current) {
+      const activeElement = resultsRef.current.children[activeIndex] as HTMLElement;
+      if (activeElement) {
+        activeElement.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [activeIndex]);
 
   // 键盘导航
   useEffect(() => {
@@ -147,7 +157,10 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, activeIndex, results, onClose]);
+  // 搜索结果变化时重置激活项
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [results]);
 
   // 自动聚焦
   useEffect(() => {
@@ -175,6 +188,12 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
             <input
               ref={inputRef}
               type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="search-results-list"
+              aria-expanded={results.length > 0 && !showHistory}
+              aria-activedescendant={activeIndex >= 0 && results[activeIndex] ? `search-result-${results[activeIndex].id}` : undefined}
+              aria-label="搜索框"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索文章、标签、分类... (支持自然语言)"
@@ -183,6 +202,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
             {query && (
               <button
                 type="button"
+                aria-label="清空搜索关键词"
                 onClick={() => setQuery('')}
                 className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
@@ -270,10 +290,18 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
 
           {/* 搜索结果 */}
           {!showHistory && results.length > 0 && (
-            <div ref={resultsRef} className="divide-y divide-[var(--border-subtle)]">
+            <div
+              ref={resultsRef}
+              id="search-results-list"
+              role="listbox"
+              className="divide-y divide-[var(--border-subtle)]"
+            >
               {results.map((result, index) => (
                 <div
                   key={result.id}
+                  id={`search-result-${result.id}`}
+                  role="option"
+                  aria-selected={index === activeIndex}
                   onClick={() => handleResultClick(result)}
                   onMouseEnter={() => setActiveIndex(index)}
                   className={`flex items-start gap-4 px-4 py-4 cursor-pointer transition-colors ${
@@ -318,7 +346,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
                 <Search className="h-8 w-8 text-[var(--text-muted)]" />
               </div>
               <p className="text-[var(--text-secondary)] mb-2">
-                未找到与 "<span className="text-[var(--text-primary)]">{query}</span>" 相关的内容
+                未找到与 &quot;<span className="text-[var(--text-primary)]">{query}</span>&quot; 相关的内容
               </p>
             </div>
           )}
