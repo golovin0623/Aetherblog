@@ -2,6 +2,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
 
+const STROKE_CIRCUMFERENCE = 113;
+
 export const ScrollToTop = () => {
   const [isVisible, setIsVisible] = useState(false);
   const circleRef = useRef<SVGCircleElement>(null);
@@ -21,7 +23,7 @@ export const ScrollToTop = () => {
         const height = document.documentElement.scrollHeight - window.innerHeight;
         // Avoid division by zero and clamp value between 0 and 1
         const progress = height > 0 ? Math.min(1, Math.max(0, scrollY / height)) : 0;
-        const offset = 113 - progress * 113;
+        const offset = STROKE_CIRCUMFERENCE * (1 - progress);
         circleRef.current.style.strokeDashoffset = `${offset}`;
       }
 
@@ -68,8 +70,8 @@ export const ScrollToTop = () => {
             fill="none"
             stroke="var(--color-primary)"
             strokeWidth="2"
-            strokeDasharray="113"
-            strokeDashoffset="113"
+            strokeDasharray={STROKE_CIRCUMFERENCE}
+            strokeDashoffset={STROKE_CIRCUMFERENCE}
             strokeLinecap="round"
             className="transition-all duration-75 ease-out"
           />
