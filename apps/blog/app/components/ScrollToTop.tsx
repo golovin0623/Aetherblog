@@ -13,10 +13,8 @@ export const ScrollToTop = () => {
       const shouldBeVisible = scrollY > 300;
 
       // Update visibility state only if changed to minimize re-render checks
-      setIsVisible(prev => {
-        if (prev !== shouldBeVisible) return shouldBeVisible;
-        return prev;
-      });
+      // React automatically bails out if state is the same, so simple setter is sufficient
+      setIsVisible(shouldBeVisible);
 
       // Update progress ring directly via DOM
       if (circleRef.current) {
