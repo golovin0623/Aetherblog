@@ -17,3 +17,7 @@
 ## 2026-02-06 - [Optimizing Scroll Event Listeners]
 **Learning:** Storing scroll position in `useState` inside a scroll event handler causes the component to re-render on every scroll event (frame). If this state is a dependency of `useEffect`, it forces the event listener to be detached and re-attached constantly, causing significant performance degradation.
 **Action:** Use `useRef` to track mutable values like `lastScrollY` in event handlers. Only update state (e.g., `setIsVisible`) when the visual state actually changes to minimize re-renders and keep `useEffect` dependencies stable.
+
+## 2026-02-07 - [Throttling Scroll with requestAnimationFrame]
+**Learning:** High-frequency event listeners like `scroll` can fire faster than the screen refresh rate (60fps+). Executing complex logic (especially DOM updates) directly in the event handler blocks the main thread and causes jank.
+**Action:** Always wrap scroll/resize logic in `requestAnimationFrame` to throttle updates to the browser's paint cycle, and use `useRef` to store the animation frame ID for cancellation.
