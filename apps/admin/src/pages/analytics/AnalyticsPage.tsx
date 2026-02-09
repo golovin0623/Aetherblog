@@ -1,205 +1,234 @@
-import { useState, useEffect } from 'react';
-import { BarChart2, Users, Monitor, TrendingUp, Loader2 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { LineChart, BarChart, PieChart } from '../../components/charts';
-import { analyticsService, VisitorTrend } from '@/services/analyticsService';
-import { logger } from '@/lib/logger';
+import { useEffect, useMemo, useState } from 'react';
+import { Cpu, DollarSign, Clock, Loader2, Repeat2, AlertTriangle } from 'lucide-react';
+import { StatsCard } from '../dashboard/components/StatsCard';
+import {
+  AiModelDistributionChart,
+  AiUsageTrendChart,
+  AiUsageRecordsTable,
+} from '../dashboard/components';
+import {
+  analyticsService,
+  type AiDashboardData,
+  type AiCallRecord,
+} from '@/services/analyticsService';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 
-// 模拟数据用于回退
-const mockVisitorData = [
-  { label: '周一', value: 1200 },
-  { label: '周二', value: 1400 },
-  { label: '周三', value: 1100 },
-  { label: '周四', value: 1600 },
-  { label: '周五', value: 1800 },
-  { label: '周六', value: 2200 },
-  { label: '周日', value: 1900 },
-];
+const PAGE_SIZE = 20;
 
-const mockDeviceData = [
-  { label: '桌面端', value: 5600, color: '#8b5cf6' },
-  { label: '移动端', value: 3200, color: '#ec4899' },
-  { label: '平板', value: 800, color: '#06b6d4' },
-];
+const EMPTY_DATA: AiDashboardData = {
+  rangeDays: 30,
+  overview: {
+    totalCalls: 0,
+    successCalls: 0,
+    errorCalls: 0,
+    successRate: 0,
+    cacheHitRate: 0,
+    totalTokens: 0,
+    totalCost: 0,
+    avgTokensPerCall: 0,
+    avgCostPerCall: 0,
+    avgLatencyMs: 0,
+  },
+  trend: [],
+  modelDistribution: [],
+  taskDistribution: [],
+  records: {
+    list: [],
+    pageNum: 1,
+    pageSize: PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  },
+};
 
-const mockTrafficSources = [
-  { label: '直接访问', value: 4200 },
-  { label: '搜索引擎', value: 3100 },
-  { label: '社交媒体', value: 1800 },
-  { label: '外链', value: 900 },
-];
+function uniqueBy<T>(items: T[], mapper: (item: T) => string): string[] {
+  return Array.from(new Set(items.map(mapper).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
 
 export function AnalyticsPage() {
-  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('7d');
-  const [loading, setLoading] = useState(true);
-  const [visitorData, setVisitorData] = useState(mockVisitorData);
+  const [days, setDays] = useState<7 | 30 | 90>(30);
+  const [page, setPage] = useState(1);
+  const [taskType, setTaskType] = useState('');
+  const [modelId, setModelId] = useState('');
+  const [successFilter, setSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
+  const [keyword, setKeyword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<AiDashboardData>(EMPTY_DATA);
 
-  // 日期范围改变时获取访客趋势数据
   useEffect(() => {
     const fetchData = async () => {
-      const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
       try {
         setLoading(true);
-        const res = await analyticsService.getVisitorTrend(days);
-        if (res.code === 200 && res.data && res.data.length > 0) {
-          // 将 API 数据转换为图表格式
-          const transformed = res.data.map((item: VisitorTrend) => ({
-            label: item.date.slice(5), // MM-DD format
-            value: item.pv,
-          }));
-          setVisitorData(transformed);
+        const success = successFilter === 'all' ? undefined : successFilter === 'success';
+        const response = await analyticsService.getAiDashboard({
+          days,
+          pageNum: page,
+          pageSize: PAGE_SIZE,
+          taskType: taskType || undefined,
+          modelId: modelId || undefined,
+          success,
+          keyword: keyword.trim() || undefined,
+        });
+
+        if (response.code === 200 && response.data) {
+          setData(response.data);
         } else {
-          // 生成演示用的模拟数据
-          const mockData = generateMockData(days);
-          setVisitorData(mockData);
+          setData(EMPTY_DATA);
         }
-      } catch (err) {
-        logger.error('Failed to fetch analytics data:', err);
-        toast.error('获取统计数据失败，显示演示数据');
-        const mockData = generateMockData(days);
-        setVisitorData(mockData);
+      } catch (error) {
+        logger.error('Failed to fetch AI analytics:', error);
+        toast.error('加载 AI 统计数据失败');
+        setData(EMPTY_DATA);
       } finally {
         setLoading(false);
       }
     };
+
     fetchData();
-  }, [dateRange]);
+  }, [days, page, taskType, modelId, successFilter, keyword]);
 
-  // 基于天数生成模拟数据
-  const generateMockData = (days: number) => {
-    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    return Array.from({ length: Math.min(days, 14) }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (days - 1 - i));
-      return {
-        label: days <= 7 ? weekdays[date.getDay()] : `${date.getMonth() + 1}/${date.getDate()}`,
-        value: Math.floor(Math.random() * 1500) + 800,
-      };
-    });
-  };
-
-  const container = {
-    hidden: { opacity: 0 },
-    show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-  };
-
-  const item = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0 },
-  };
-
-  const stats = [
-    { icon: Users, label: '总访客', value: '12,453', change: '+8.2%', positive: true },
-    { icon: BarChart2, label: '页面浏览', value: '45,678', change: '+15.3%', positive: true },
-    { icon: TrendingUp, label: '跳出率', value: '32.1%', change: '-2.4%', positive: true },
-    { icon: Monitor, label: '平均停留', value: '3:24', change: '+0:18', positive: true },
-  ];
+  const overview = data.overview || EMPTY_DATA.overview;
+  const modelOptions = useMemo(
+    () => uniqueBy(data.modelDistribution, item => item.model),
+    [data.modelDistribution],
+  );
+  const taskOptions = useMemo(
+    () => uniqueBy(data.taskDistribution, item => item.task),
+    [data.taskDistribution],
+  );
+  const records: AiCallRecord[] = data.records?.list || [];
 
   return (
     <div className="space-y-6">
-      {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">统计分析</h1>
-          <p className="text-[var(--text-muted)] mt-1">深入了解访客行为和内容表现</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">AI 数据分析</h1>
+          <p className="text-[var(--text-muted)] mt-1">模型调用记录、占比、趋势和成本全链路追踪</p>
         </div>
-        {/* 日期范围切换 - 响应式 */}
-        <div className="flex items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-          {(['7d', '30d', '90d'] as const).map((range) => (
+
+        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] self-start">
+          {([7, 30, 90] as const).map(option => (
             <button
-              key={range}
-              onClick={() => setDateRange(range)}
-              className={cn(
-                "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all touch-manipulation",
-                dateRange === range
-                  ? 'bg-primary text-white shadow-lg'
-                  : 'text-[var(--text-muted)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
-              )}
+              key={option}
+              onClick={() => {
+                setDays(option);
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                days === option
+                  ? 'bg-primary text-white shadow'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
             >
-              {range === '7d' ? '7天' : range === '30d' ? '30天' : '90天'}
+              {option}天
             </button>
           ))}
         </div>
       </div>
 
-      {/* 概览卡片 - 响应式网格 */}
-      <motion.div 
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
-      >
-        {stats.map((stat, i) => (
-          <motion.div 
-            key={i} 
-            variants={item}
-            className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/20">
-                <stat.icon className="w-5 h-5 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-[var(--text-muted)] truncate">{stat.label}</p>
-                <p className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">{stat.value}</p>
-              </div>
-            </div>
-            <p className={cn(
-              "mt-2 text-xs sm:text-sm",
-              stat.positive ? 'text-green-400' : 'text-red-400'
-            )}>
-              {stat.change}
-            </p>
-          </motion.div>
-        ))}
-      </motion.div>
-
-      {/* 图表 - 响应式网格 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <motion.div 
-          variants={item}
-          initial="hidden"
-          animate="show"
-          className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-[var(--text-primary)]">访问趋势</h3>
-            {loading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-          </div>
-          {loading ? (
-            <div className="h-[200px] sm:h-[250px] flex items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <LineChart data={visitorData} height={250} />
-          )}
-        </motion.div>
-        
-        <motion.div 
-          variants={item}
-          initial="hidden"
-          animate="show"
-          transition={{ delay: 0.1 }}
-          className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
-        >
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">设备分布</h3>
-          <PieChart data={mockDeviceData} />
-        </motion.div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
+        <StatsCard
+          title="总调用"
+          value={overview.totalCalls}
+          change={overview.successRate}
+          changeLabel="成功率"
+          icon={<Repeat2 className="w-5 h-5" />}
+          color="indigo"
+          loading={loading}
+        />
+        <StatsCard
+          title="总 Tokens"
+          value={overview.totalTokens}
+          change={0}
+          changeLabel={`均次 ${Math.round(overview.avgTokensPerCall)} tokens`}
+          icon={<Cpu className="w-5 h-5" />}
+          color="cyan"
+          loading={loading}
+        />
+        <StatsCard
+          title="总费用"
+          value={`$${overview.totalCost.toFixed(4)}`}
+          change={0}
+          changeLabel={`均次 $${overview.avgCostPerCall.toFixed(6)}`}
+          icon={<DollarSign className="w-5 h-5" />}
+          color="emerald"
+          loading={loading}
+        />
+        <StatsCard
+          title="平均延迟"
+          value={`${Math.round(overview.avgLatencyMs)} ms`}
+          change={0}
+          changeLabel={`缓存命中 ${overview.cacheHitRate}%`}
+          icon={<Clock className="w-5 h-5" />}
+          color="blue"
+          loading={loading}
+        />
+        <StatsCard
+          title="失败请求"
+          value={overview.errorCalls}
+          change={0}
+          changeLabel={`成功 ${overview.successCalls}`}
+          icon={<AlertTriangle className="w-5 h-5" />}
+          color="orange"
+          loading={loading}
+        />
       </div>
 
-      {/* 流量来源 - 全宽 */}
-      <motion.div 
-        variants={item}
-        initial="hidden"
-        animate="show"
-        transition={{ delay: 0.2 }}
-        className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]"
-      >
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">流量来源</h3>
-        <BarChart data={mockTrafficSources} height={200} horizontal />
-      </motion.div>
+      {loading && data.trend.length === 0 ? (
+        <div className="h-52 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2">
+            <AiUsageTrendChart data={data.trend} loading={loading} />
+          </div>
+          <div>
+            <AiModelDistributionChart data={data.modelDistribution} loading={loading} />
+          </div>
+        </div>
+      )}
+
+      <AiUsageRecordsTable
+        records={records}
+        loading={loading}
+        page={data.records?.pageNum || page}
+        pageSize={data.records?.pageSize || PAGE_SIZE}
+        total={data.records?.total || 0}
+        onPageChange={(nextPage) => {
+          if (nextPage < 1) {
+            return;
+          }
+          const totalPages = data.records?.pages || 1;
+          if (nextPage > totalPages) {
+            return;
+          }
+          setPage(nextPage);
+        }}
+        modelOptions={modelOptions}
+        taskOptions={taskOptions}
+        selectedTaskType={taskType}
+        selectedModelId={modelId}
+        selectedSuccess={successFilter}
+        selectedKeyword={keyword}
+        onTaskTypeChange={(value) => {
+          setTaskType(value);
+          setPage(1);
+        }}
+        onModelIdChange={(value) => {
+          setModelId(value);
+          setPage(1);
+        }}
+        onSuccessChange={(value) => {
+          setSuccessFilter(value);
+          setPage(1);
+        }}
+        onKeywordChange={(value) => {
+          setKeyword(value);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

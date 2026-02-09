@@ -81,4 +81,18 @@ public class StatsController {
     public R<List<ArchiveStats>> getArchiveStats() {
         return R.ok(statsService.getMonthlyArchiveStats());
     }
+
+    @Operation(summary = "获取 AI 统计看板")
+    @GetMapping("/ai-dashboard")
+    public R<AiAnalyticsDashboard> getAiDashboard(
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String taskType,
+            @RequestParam(required = false) String modelId,
+            @RequestParam(required = false) Boolean success,
+            @RequestParam(required = false) String keyword
+    ) {
+        return R.ok(statsService.getAiAnalyticsDashboard(days, pageNum, pageSize, taskType, modelId, success, keyword));
+    }
 }

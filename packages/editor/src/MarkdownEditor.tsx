@@ -3,6 +3,7 @@ import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { EditorView } from '@codemirror/view';
+import type { Extension } from '@codemirror/state';
 
 export interface MarkdownEditorProps {
   value: string;
@@ -32,6 +33,8 @@ export interface MarkdownEditorProps {
   isDragging?: boolean;
   /** 编辑器主题 */
   theme?: 'light' | 'dark';
+  /** 额外的 CodeMirror Extensions */
+  additionalExtensions?: Extension[];
 }
 
 export function MarkdownEditor({
@@ -53,6 +56,7 @@ export function MarkdownEditor({
   onPaste,
   isDragging = false,
   theme = 'dark',
+  additionalExtensions = [],
 }: MarkdownEditorProps) {
   // CodeMirror 组件的内部引用
   const cmRef = useCallback((ref: ReactCodeMirrorRef | null) => {
@@ -161,8 +165,10 @@ export function MarkdownEditor({
         '.tok-strong': { fontWeight: 'bold' },
         '.tok-strikethrough': { textDecoration: 'line-through' },
       }),
+      // 添加外部传入的 Extensions
+      ...additionalExtensions,
     ],
-    [minHeight, showLineNumbers, contentCentered, fontSize, theme]
+    [minHeight, showLineNumbers, contentCentered, fontSize, theme, additionalExtensions]
   );
 
   return (

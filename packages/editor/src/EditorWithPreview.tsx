@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { EditorView } from '@codemirror/view';
+import type { Extension } from '@codemirror/state';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview';
 import { Edit, Eye, Columns } from 'lucide-react';
@@ -40,6 +41,8 @@ export interface EditorWithPreviewProps {
   isDragging?: boolean;
   /** 编辑器主题 */
   theme?: 'light' | 'dark';
+  /** 额外的 CodeMirror Extensions */
+  additionalExtensions?: Extension[];
 }
 
 export function EditorWithPreview({
@@ -61,6 +64,7 @@ export function EditorWithPreview({
   onPaste,
   isDragging = false,
   theme = 'dark',
+  additionalExtensions = [],
 }: EditorWithPreviewProps) {
   // 解析实际字体大小（个别覆盖基础）
   const actualEditorFontSize = editorFontSize ?? fontSize;
@@ -267,6 +271,7 @@ export function EditorWithPreview({
               onPaste={onPaste}
               isDragging={isDragging}
               theme={theme}
+              additionalExtensions={additionalExtensions}
             />
           </div>
         )}
