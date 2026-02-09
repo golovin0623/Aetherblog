@@ -2,24 +2,50 @@
 import { useEffect, useState, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
 
+const STROKE_CIRCUMFERENCE = 113;
+
 export const ScrollToTop = () => {
   const [isVisible, setIsVisible] = useState(false);
   const circleRef = useRef<SVGCircleElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const onScroll = () => {
+    const updateScroll = () => {
       const scrollY = window.scrollY;
-      setIsVisible(scrollY > 300);
+      const shouldBeVisible = scrollY > 300;
 
+      // Update visibility state only if changed to minimize re-render checks
+      // React automatically bails out if state is the same, so simple setter is sufficient
+      setIsVisible(shouldBeVisible);
+
+      // Update progress ring directly via DOM
       if (circleRef.current) {
         const height = document.documentElement.scrollHeight - window.innerHeight;
-        const offset = 113 - Math.min(1, Math.max(0, scrollY / height)) * 113;
+        // Avoid division by zero and clamp value between 0 and 1
+        const progress = height > 0 ? Math.min(1, Math.max(0, scrollY / height)) : 0;
+        const offset = STROKE_CIRCUMFERENCE * (1 - progress);
         circleRef.current.style.strokeDashoffset = `${offset}`;
       }
+
+      rafRef.current = null;
     };
+
+    const onScroll = () => {
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(updateScroll);
+      }
+    };
+
     window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll(); // Initial check
-    return () => window.removeEventListener('scroll', onScroll);
+    // Initial check
+    updateScroll();
+
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
   }, []);
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -44,8 +70,8 @@ export const ScrollToTop = () => {
             fill="none"
             stroke="var(--color-primary)"
             strokeWidth="2"
-            strokeDasharray="113"
-            strokeDashoffset="113"
+            strokeDasharray={STROKE_CIRCUMFERENCE}
+            strokeDashoffset={STROKE_CIRCUMFERENCE}
             strokeLinecap="round"
             className="transition-all duration-75 ease-out"
           />
