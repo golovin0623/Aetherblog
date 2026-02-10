@@ -1,60 +1,34 @@
-/**
- * AI 协同写作完整集成版本
- *
- * 已集成功能：
- * ✅ Phase 1: 版本控制系统（撤销/重做/历史/对比）
- * ✅ Phase 2: 实时 AI 预测（Ghost Text）
- * ✅ Phase 3: 批注/批量优化/对话面板
- * ✅ Phase 4: 工作流优化（自由/引导模式切换）
- */
-
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Sparkles,
-  ArrowLeft,
-  Save,
-  Settings,
-  X,
-  History,
-  RotateCcw,
-  RotateCw,
-  MessageSquare,
-  FileCheck,
-  Zap,
-  Workflow,
-  Pen,
-} from 'lucide-react';
+import { Sparkles, ArrowLeft, Save, Settings, X, History, RotateCcw, RotateCw } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '@aetherblog/hooks';
 import { cn } from '@/lib/utils';
 
-// Hooks
+// 新组件
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
 import { useHistoryManager } from '@/hooks/useHistoryManager';
-import { useAiPrediction } from '@/hooks/useAiPrediction';
-
-// 组件
 import { FloatingAiToolbar } from '@/components/ai/FloatingAiToolbar';
 import { WorkflowNavigation } from '@/components/ai/WorkflowNavigation';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { DiffView } from '@/components/history/DiffView';
-import { AnnotationList } from '@/components/ai/AnnotationCard';
-import { BatchOptimizationPanel } from '@/components/ai/BatchOptimizationPanel';
-import { AiChatPanel } from '@/components/ai/AiChatPanel';
-
-// 类型
-import type { AiCapability, WritingStage, Annotation } from '@/types/writing-workflow';
+import type { AiCapability, WritingStage } from '@/types/writing-workflow';
 import type { ContentSnapshot } from '@/types/content-history';
 
-// Extensions
-import { createGhostTextExtension } from '@/lib/ghost-text-extension';
-import { aiService } from '@/services/aiService';
-import { toast } from 'sonner';
+/**
+ * AI 协同写作页面
+ *
+ * 核心特性：
+ * 1. 工作流驱动的创作流程
+ * 2. 跟随光标的智能AI工具
+ * 3. 阶段化的AI辅助
+ * 4. 学习用户偏好
+ */
 
-// AI 工具定义
+// 定义所有可用的 AI 工具
 const AI_CAPABILITIES: AiCapability[] = [
+  // 随行工具
   {
     id: 'polish',
     label: '润色',
@@ -87,12 +61,77 @@ const AI_CAPABILITIES: AiCapability[] = [
     requiresSelection: true,
     cost: 'low',
   },
+  {
+    id: 'translate',
+    label: '翻译',
+    description: '翻译选中文本',
+    type: 'floating',
+    icon: 'languages',
+    applicableStages: ['draft-generation', 'refinement', 'free-writing'],
+    requiresSelection: true,
+    cost: 'low',
+  },
+
+  // 全局工具
+  {
+    id: 'generate-title',
+    label: '生成标题',
+    description: '基于内容生成标题建议',
+    type: 'global',
+    icon: 'heading',
+    applicableStages: ['publication', 'free-writing'],
+    requiresSelection: false,
+    cost: 'low',
+  },
+  {
+    id: 'extract-tags',
+    label: '提取标签',
+    description: '智能提取文章标签',
+    type: 'global',
+    icon: 'hash',
+    applicableStages: ['publication', 'free-writing'],
+    requiresSelection: false,
+    cost: 'low',
+  },
+  {
+    id: 'generate-summary',
+    label: '生成摘要',
+    description: '生成文章摘要',
+    type: 'global',
+    icon: 'file-text',
+    applicableStages: ['final-review', 'publication', 'free-writing'],
+    requiresSelection: false,
+    cost: 'medium',
+  },
+
+  // 工作流钩子
+  {
+    id: 'suggest-topics',
+    label: '选题建议',
+    description: 'AI提供写作方向建议',
+    type: 'hook',
+    icon: 'lightbulb',
+    applicableStages: ['topic-selection'],
+    requiresSelection: false,
+    cost: 'medium',
+  },
+  {
+    id: 'generate-outline',
+    label: '生成大纲',
+    description: '基于主题生成文章结构',
+    type: 'hook',
+    icon: 'list-tree',
+    applicableStages: ['outline-planning'],
+    requiresSelection: false,
+    cost: 'medium',
+  },
 ];
 
 export function AiWritingWorkspacePage() {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
   const { id } = useParams<{ id: string }>();
+  const isEditMode = !!id;
   const postId = id ? parseInt(id, 10) : null;
 
   // 编辑器状态
@@ -102,12 +141,9 @@ export function AiWritingWorkspacePage() {
   const editorViewRef = useRef<EditorView | null>(null);
 
   // UI 状态
-  const [workflowMode, setWorkflowMode] = useState<'guided' | 'free'>('free'); // 模式切换
   const [showWorkflowNav, setShowWorkflowNav] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
-  const [showChatPanel, setShowChatPanel] = useState(false);
-  const [showAnnotationList, setShowAnnotationList] = useState(false);
-  const [showBatchOptimization, setShowBatchOptimization] = useState(false);
   const [compareSnapshots, setCompareSnapshots] = useState<{
     snapshot1: ContentSnapshot;
     snapshot2: ContentSnapshot;
@@ -117,6 +153,9 @@ export function AiWritingWorkspacePage() {
   const workflow = useWritingWorkflow({
     postId: postId?.toString(),
     onEvent: (event) => {
+      console.log('Workflow event:', event);
+
+      // 工作流阶段完成时自动创建快照
       if (event.type === 'stage-complete' && postId) {
         historyManager.createSnapshot({
           title,
@@ -133,6 +172,9 @@ export function AiWritingWorkspacePage() {
   const historyManager = useHistoryManager({
     postId: postId?.toString(),
     onEvent: (event) => {
+      console.log('History event:', event);
+
+      // 历史事件处理：撤销/重做时更新编辑器内容
       if (event.type === 'undo' || event.type === 'redo' || event.type === 'jumped') {
         setTitle(event.snapshot.title);
         setContent(event.snapshot.content);
@@ -141,97 +183,67 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // Ghost Text Extensions
-  const ghostTextExtensions = useMemo(() => {
-    return createGhostTextExtension({
-      onAccept: () => aiPrediction.handleAccept(),
-      onReject: () => aiPrediction.handleReject(),
-      onAcceptWord: () => aiPrediction.handleAcceptWord(),
-      onAcceptLine: () => aiPrediction.handleAcceptLine(),
-    });
-  }, []);
+  // 处理 AI 工具执行
+  const handleToolExecute = useCallback(async (toolId: string, selectedText: string) => {
+    console.log('Executing tool:', toolId, 'on text:', selectedText.slice(0, 50) + '...');
 
-  // AI 预测
-  const aiPrediction = useAiPrediction({
-    enabled: true,
-    editorViewRef,
-    documentTitle: title,
-    writingStage: workflow.context.currentStage,
-    onPredictionAccepted: (type) => {
-      console.log('Accepted prediction:', type);
-    },
-  });
+    // 记录工具使用
+    workflow.recordToolUsage(toolId);
 
-  // AI 工具执行
-  const handleToolExecute = useCallback(
-    async (toolId: string, selectedText: string) => {
-      workflow.recordToolUsage(toolId);
+    // AI 修改前创建快照
+    if (postId) {
+      await historyManager.createSnapshot({
+        title,
+        content,
+        summary,
+        source: 'user-edit',
+        sourceName: '修改前',
+      });
+    }
 
-      // 创建快照
-      if (postId) {
-        await historyManager.createSnapshot({
-          title,
-          content,
-          summary,
-          source: 'user-edit',
-          sourceName: '修改前',
-        });
-      }
+    // TODO: 调用实际的 AI 服务
+    // const result = await aiService.executeCapability(toolId, { text: selectedText });
 
-      try {
-        let result: string = '';
+    // 示例：模拟 AI 响应
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // 调用真实 AI API
-        if (toolId === 'polish') {
-          const res = await aiService.polishContent({
-            content: selectedText,
-            polishType: 'all',
-            style: 'professional',
-          });
-          if (res.code === 200 && res.data) {
-            result = res.data.polishedContent;
-          }
-        } else if (toolId === 'expand') {
-          // 扩写功能可以复用润色API或创建新endpoint
-          result = selectedText + '\n\n[AI 扩写的内容...]';
-        } else if (toolId === 'summarize') {
-          const res = await aiService.generateSummary({
-            content: selectedText,
-          });
-          if (res.code === 200 && res.data) {
-            result = res.data.summary;
-          }
-        }
+    // 模拟 AI 修改内容
+    const mockResult = `[AI ${toolId} 处理后的内容]\n${selectedText}`;
 
-        // 替换选中文本
-        const newContent = content.replace(selectedText, result);
-        setContent(newContent);
+    // 更新内容
+    setContent(prevContent => prevContent.replace(selectedText, mockResult));
 
-        // 创建 AI 修改快照
-        if (postId) {
-          await historyManager.createSnapshot({
-            title,
-            content: newContent,
-            summary,
-            source: 'ai-suggestion',
-            sourceName: `AI ${toolId}`,
-            aiModel: 'gpt-4',
-          });
-        }
+    // AI 修改后创建快照
+    if (postId) {
+      await historyManager.createSnapshot({
+        title,
+        content: content.replace(selectedText, mockResult),
+        summary,
+        source: 'ai-suggestion',
+        sourceName: `AI ${toolId}`,
+        aiModel: 'gpt-4',
+      });
+    }
+  }, [workflow, historyManager, title, content, summary, postId]);
 
-        toast.success(`AI ${toolId} 完成`);
-      } catch (error) {
-        toast.error('AI 处理失败');
-        console.error('AI tool execution failed:', error);
-      }
-    },
-    [workflow, historyManager, title, content, summary, postId]
-  );
+  // 处理阶段切换
+  const handleStageClick = useCallback((stage: WritingStage) => {
+    workflow.enterStage(stage);
+  }, [workflow]);
 
-  // 自动保存
+  // 判断是否可以跳转到某个阶段
+  const canJumpToStage = useCallback((stage: WritingStage) => {
+    // 可以跳转到：当前阶段、已完成阶段、下一阶段
+    const stageIndex = workflow.config.enabledStages.indexOf(stage);
+    const currentIndex = workflow.config.enabledStages.indexOf(workflow.context.currentStage);
+    return stageIndex <= currentIndex + 1;
+  }, [workflow]);
+
+  // 自动保存和快照创建
   useEffect(() => {
     if (!postId || !content) return;
 
+    // 防抖：内容变化后3秒自动创建快照
     const timer = setTimeout(() => {
       historyManager.createSnapshot({
         title,
@@ -245,26 +257,41 @@ export function AiWritingWorkspacePage() {
     return () => clearTimeout(timer);
   }, [title, content, summary, postId, historyManager]);
 
-  // 快捷键
+  // 快捷键绑定
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + Z: 撤销
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         historyManager.undo();
       }
+
+      // Ctrl/Cmd + Shift + Z: 重做
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         historyManager.redo();
       }
+
+      // Ctrl/Cmd + H: 打开历史面板
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
         e.preventDefault();
-        setShowHistoryPanel((prev) => !prev);
+        setShowHistoryPanel(prev => !prev);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyManager]);
+
+  // 处理版本对比
+  const handleCompare = useCallback((id1: string, id2: string) => {
+    const snapshot1 = historyManager.state.snapshots.find(s => s.id === id1);
+    const snapshot2 = historyManager.state.snapshots.find(s => s.id === id2);
+
+    if (snapshot1 && snapshot2) {
+      setCompareSnapshots({ snapshot1, snapshot2 });
+    }
+  }, [historyManager.state.snapshots]);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)]">
@@ -282,34 +309,6 @@ export function AiWritingWorkspacePage() {
             <span className="text-lg font-semibold text-[var(--text-primary)]">
               AI 协同写作
             </span>
-          </div>
-
-          {/* 模式切换 */}
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-secondary)]">
-            <button
-              onClick={() => setWorkflowMode('free')}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
-                workflowMode === 'free'
-                  ? 'bg-primary text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              )}
-            >
-              <Pen className="w-4 h-4 inline mr-1" />
-              自由写作
-            </button>
-            <button
-              onClick={() => setWorkflowMode('guided')}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
-                workflowMode === 'guided'
-                  ? 'bg-primary text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              )}
-            >
-              <Workflow className="w-4 h-4 inline mr-1" />
-              引导模式
-            </button>
           </div>
         </div>
 
@@ -338,7 +337,7 @@ export function AiWritingWorkspacePage() {
                   ? 'hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)]'
                   : 'text-[var(--text-muted)] opacity-50 cursor-not-allowed'
               )}
-              title="重做"
+              title="重做 (Ctrl+Shift+Z)"
             >
               <RotateCw className="w-4 h-4" />
             </button>
@@ -351,37 +350,31 @@ export function AiWritingWorkspacePage() {
                   ? 'bg-primary/10 text-primary'
                   : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
               )}
-              title="历史版本"
+              title="历史版本 (Ctrl+H)"
             >
               <History className="w-4 h-4" />
             </button>
           </div>
 
-          {/* 功能按钮 */}
+          {/* 工作流导航切换 */}
           <button
-            onClick={() => setShowChatPanel(!showChatPanel)}
+            onClick={() => setShowWorkflowNav(!showWorkflowNav)}
             className={cn(
-              'p-2 rounded-lg transition-colors',
-              showChatPanel ? 'bg-primary/10 text-primary' : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
+              'px-3 py-2 rounded-lg transition-colors text-sm',
+              showWorkflowNav
+                ? 'bg-primary/10 text-primary'
+                : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
             )}
-            title="AI 对话"
           >
-            <MessageSquare className="w-5 h-5" />
+            工作流 {workflow.progress.percentage}%
           </button>
 
-          {workflowMode === 'guided' && (
-            <button
-              onClick={() => setShowWorkflowNav(!showWorkflowNav)}
-              className={cn(
-                'px-3 py-2 rounded-lg transition-colors text-sm',
-                showWorkflowNav
-                  ? 'bg-primary/10 text-primary'
-                  : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
-              )}
-            >
-              工作流 {workflow.progress.percentage}%
-            </button>
-          )}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
 
           <button
             onClick={() => {
@@ -394,7 +387,6 @@ export function AiWritingWorkspacePage() {
                   sourceName: '手动保存',
                 });
               }
-              toast.success('保存成功');
             }}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90"
           >
@@ -406,9 +398,9 @@ export function AiWritingWorkspacePage() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 工作流导航 */}
+        {/* 工作流导航（左侧） */}
         <AnimatePresence>
-          {workflowMode === 'guided' && showWorkflowNav && (
+          {showWorkflowNav && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 280, opacity: 1 }}
@@ -419,7 +411,10 @@ export function AiWritingWorkspacePage() {
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">创作流程</h3>
-                  <button onClick={() => setShowWorkflowNav(false)} className="p-1 rounded hover:bg-[var(--bg-card-hover)]">
+                  <button
+                    onClick={() => setShowWorkflowNav(false)}
+                    className="p-1 rounded hover:bg-[var(--bg-card-hover)]"
+                  >
                     <X className="w-4 h-4 text-[var(--text-muted)]" />
                   </button>
                 </div>
@@ -428,12 +423,8 @@ export function AiWritingWorkspacePage() {
                     currentStage={workflow.context.currentStage}
                     completedStages={workflow.context.stageHistory}
                     progress={workflow.progress}
-                    onStageClick={(stage) => workflow.enterStage(stage)}
-                    canJumpTo={(stage) => {
-                      const stageIndex = workflow.config.enabledStages.indexOf(stage);
-                      const currentIndex = workflow.config.enabledStages.indexOf(workflow.context.currentStage);
-                      return stageIndex <= currentIndex + 1;
-                    }}
+                    onStageClick={handleStageClick}
+                    canJumpTo={canJumpToStage}
                   />
                 </div>
               </div>
@@ -441,8 +432,9 @@ export function AiWritingWorkspacePage() {
           )}
         </AnimatePresence>
 
-        {/* 编辑器 */}
+        {/* 编辑器区域 */}
         <main className="flex-1 flex flex-col overflow-hidden">
+          {/* 标题输入 */}
           <div className="px-6 py-4 border-b border-[var(--border-subtle)]">
             <input
               type="text"
@@ -453,6 +445,7 @@ export function AiWritingWorkspacePage() {
             />
           </div>
 
+          {/* 编辑器 */}
           <div className="flex-1 relative overflow-hidden">
             <EditorWithPreview
               value={content}
@@ -460,9 +453,9 @@ export function AiWritingWorkspacePage() {
               viewMode="split"
               editorViewRef={editorViewRef}
               theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
-              additionalExtensions={ghostTextExtensions}
             />
 
+            {/* 跟随光标的 AI 工具栏 */}
             <FloatingAiToolbar
               editorViewRef={editorViewRef}
               currentStage={workflow.context.currentStage}
@@ -472,7 +465,7 @@ export function AiWritingWorkspacePage() {
           </div>
         </main>
 
-        {/* 历史面板 */}
+        {/* 历史面板（右侧） */}
         <AnimatePresence>
           {showHistoryPanel && (
             <HistoryPanel
@@ -484,45 +477,49 @@ export function AiWritingWorkspacePage() {
               onToggleBookmark={(id, note) => historyManager.toggleBookmark(id, note)}
               onDelete={(id) => historyManager.deleteSnapshot(id)}
               onClear={() => historyManager.clearHistory()}
-              onCompare={(id1, id2) => {
-                const snapshot1 = historyManager.state.snapshots.find((s) => s.id === id1);
-                const snapshot2 = historyManager.state.snapshots.find((s) => s.id === id2);
-                if (snapshot1 && snapshot2) {
-                  setCompareSnapshots({ snapshot1, snapshot2 });
-                }
-              }}
+              onCompare={handleCompare}
               onClose={() => setShowHistoryPanel(false)}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* AI 对话面板 */}
-        <AnimatePresence>
-          {showChatPanel && (
-            <AiChatPanel
-              messages={workflow.context.conversationHistory || []}
-              onSendMessage={async (message, includeContext) => {
-                workflow.addConversation('user', message);
-                // TODO: 调用 AI API
-                setTimeout(() => {
-                  workflow.addConversation('ai', '这是 AI 的回复示例');
-                }, 1000);
-              }}
-              onClearHistory={() => {
-                // 清空对话历史
-              }}
-              onClose={() => setShowChatPanel(false)}
-              currentDocumentContext={{
-                title,
-                content,
-                wordCount: content.length,
-              }}
             />
           )}
         </AnimatePresence>
       </div>
 
-      {/* 差异对比 */}
+      {/* 阶段提示（底部） */}
+      <AnimatePresence>
+        {workflow.context.currentStage !== 'free-writing' && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="px-6 py-3 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl backdrop-blur-xl">
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-sm text-[var(--text-secondary)]">
+                  当前阶段：
+                  <span className="ml-1 font-medium text-[var(--text-primary)]">
+                    {getStageName(workflow.context.currentStage)}
+                  </span>
+                </span>
+                {workflow.canSkip && (
+                  <>
+                    <div className="w-px h-4 bg-[var(--border-subtle)]" />
+                    <button
+                      onClick={workflow.skipStage}
+                      className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      跳过此阶段
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 差异对比视图（全屏覆盖） */}
       <AnimatePresence>
         {compareSnapshots && (
           <DiffView

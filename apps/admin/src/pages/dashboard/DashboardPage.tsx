@@ -10,16 +10,64 @@ import {
   RecentActivity,
   SystemTrends,
   ContainerStatus,
-  RealtimeLogViewer
+  RealtimeLogViewer,
+  AiUsageTrendChart,
+  AiModelDistributionChart,
+  AiUsageRecordsTable
 } from './components';
-import { analyticsService, DashboardData } from '@/services/analyticsService';
+import {
+  analyticsService,
+  DashboardData,
+  type AiDashboardData,
+  type AiCallRecord,
+} from '@/services/analyticsService';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
+
+const AI_DASHBOARD_PAGE_SIZE = 20;
+
+const MOCK_AI_DASHBOARD: AiDashboardData = {
+  rangeDays: 30,
+  overview: {
+    totalCalls: 0,
+    successCalls: 0,
+    errorCalls: 0,
+    successRate: 0,
+    cacheHitRate: 0,
+    totalTokens: 0,
+    totalCost: 0,
+    avgTokensPerCall: 0,
+    avgCostPerCall: 0,
+    avgLatencyMs: 0,
+  },
+  trend: [],
+  modelDistribution: [],
+  taskDistribution: [],
+  records: {
+    list: [],
+    pageNum: 1,
+    pageSize: AI_DASHBOARD_PAGE_SIZE,
+    total: 0,
+    pages: 0,
+  },
+};
+
+function uniqueBy<T>(items: T[], mapper: (item: T) => string): string[] {
+  return Array.from(new Set(items.map(mapper).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiData, setAiData] = useState<AiDashboardData>(MOCK_AI_DASHBOARD);
+  const [aiDays, setAiDays] = useState<7 | 30 | 90>(30);
+  const [aiPage, setAiPage] = useState(1);
+  const [aiTaskType, setAiTaskType] = useState('');
+  const [aiModelId, setAiModelId] = useState('');
+  const [aiKeyword, setAiKeyword] = useState('');
+  const [aiSuccessFilter, setAiSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
   
   // 容器日志状态
   const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
@@ -89,6 +137,42 @@ export default function DashboardPage() {
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const fetchAiDashboard = async () => {
+      try {
+        setAiLoading(true);
+        const success = aiSuccessFilter === 'all'
+          ? undefined
+          : aiSuccessFilter === 'success';
+
+        const response = await analyticsService.getAiDashboard({
+          days: aiDays,
+          pageNum: aiPage,
+          pageSize: AI_DASHBOARD_PAGE_SIZE,
+          taskType: aiTaskType || undefined,
+          modelId: aiModelId || undefined,
+          success,
+          keyword: aiKeyword.trim() || undefined,
+        });
+
+        if (response.code === 200 && response.data) {
+          setAiData(response.data);
+        } else {
+          logger.warn('AI dashboard API returned non-200, using empty data');
+          setAiData(MOCK_AI_DASHBOARD);
+        }
+      } catch (error) {
+        logger.error('Failed to fetch AI dashboard:', error);
+        toast.error('AI 看板数据加载失败，显示空状态');
+        setAiData(MOCK_AI_DASHBOARD);
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    fetchAiDashboard();
+  }, [aiDays, aiPage, aiTaskType, aiModelId, aiSuccessFilter, aiKeyword]);
 
   // 当时间范围改变时重新获取访客趋势
   const [trendLoading, setTrendLoading] = useState(false);
@@ -277,6 +361,11 @@ export default function DashboardPage() {
   // 使用专用获取的 visitorTrend，回退到 data.visitorTrend，然后是 mockData
   const chartData = visitorTrend || data?.visitorTrend || mockData.visitorTrend;
   const topPostsData = data?.topPosts || mockData.topPosts;
+  const aiOverview = aiData.overview || MOCK_AI_DASHBOARD.overview;
+  const aiModelOptions = uniqueBy(aiData.modelDistribution, item => item.model);
+  const aiTaskOptions = uniqueBy(aiData.taskDistribution, item => item.task);
+  const aiRecords: AiCallRecord[] = aiData.records?.list || [];
+  const aiTrendData = aiData.trend || [];
 
   return (
     <motion.div
@@ -349,19 +438,141 @@ export default function DashboardPage() {
         />
         <StatsCard
           title="AI Tokens"
-          value={data?.stats.aiTokens || 0}
+          value={aiOverview.totalTokens || data?.stats.aiTokens || 0}
           change={0}
-          changeLabel="总消耗"
+          changeLabel={`均值 ${Math.round(aiOverview.avgTokensPerCall || 0)} / 次`}
           icon={<Cpu className="w-5 h-5" />}
           color="indigo"
         />
         <StatsCard
           title="AI 费用"
-          value={`$${(data?.stats.aiCost || 0).toFixed(2)}`}
-          change={0}
-          changeLabel="总花费"
+          value={`$${(aiOverview.totalCost || data?.stats.aiCost || 0).toFixed(2)}`}
+          change={aiOverview.successRate || 0}
+          changeLabel={`成功率 ${aiOverview.successRate || 0}%`}
           icon={<DollarSign className="w-5 h-5" />}
           color="emerald"
+        />
+      </div>
+
+      {/* AI 调用分析 */}
+      <div className="space-y-4 pt-2">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI 记录与统计看板</h2>
+          <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] self-start">
+            {([7, 30, 90] as const).map(days => (
+              <button
+                key={days}
+                onClick={() => {
+                  setAiDays(days);
+                  setAiPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  aiDays === days
+                    ? 'bg-primary text-white shadow'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {days}天
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
+          <StatsCard
+            title="AI 调用总数"
+            value={aiOverview.totalCalls}
+            change={aiOverview.successRate}
+            changeLabel="成功率"
+            icon={<Cpu className="w-5 h-5" />}
+            color="indigo"
+            loading={aiLoading}
+          />
+          <StatsCard
+            title="AI 总 Tokens"
+            value={aiOverview.totalTokens}
+            change={0}
+            changeLabel="累计消耗"
+            icon={<Cpu className="w-5 h-5" />}
+            color="cyan"
+            loading={aiLoading}
+          />
+          <StatsCard
+            title="AI 总费用"
+            value={`$${aiOverview.totalCost.toFixed(4)}`}
+            change={0}
+            changeLabel={`均次 $${aiOverview.avgCostPerCall.toFixed(6)}`}
+            icon={<DollarSign className="w-5 h-5" />}
+            color="emerald"
+            loading={aiLoading}
+          />
+          <StatsCard
+            title="平均延迟"
+            value={`${Math.round(aiOverview.avgLatencyMs)} ms`}
+            change={0}
+            changeLabel={`缓存命中 ${aiOverview.cacheHitRate}%`}
+            icon={<Clock className="w-5 h-5" />}
+            color="blue"
+            loading={aiLoading}
+          />
+          <StatsCard
+            title="失败调用"
+            value={aiOverview.errorCalls}
+            change={0}
+            changeLabel={`成功 ${aiOverview.successCalls}`}
+            icon={<MessageSquare className="w-5 h-5" />}
+            color="orange"
+            loading={aiLoading}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2">
+            <AiUsageTrendChart data={aiTrendData} loading={aiLoading} />
+          </div>
+          <div>
+            <AiModelDistributionChart data={aiData.modelDistribution} loading={aiLoading} />
+          </div>
+        </div>
+
+        <AiUsageRecordsTable
+          records={aiRecords}
+          loading={aiLoading}
+          page={aiData.records?.pageNum || aiPage}
+          pageSize={aiData.records?.pageSize || AI_DASHBOARD_PAGE_SIZE}
+          total={aiData.records?.total || 0}
+          onPageChange={(nextPage) => {
+            if (nextPage < 1) {
+              return;
+            }
+            const totalPages = aiData.records?.pages || 1;
+            if (nextPage > totalPages) {
+              return;
+            }
+            setAiPage(nextPage);
+          }}
+          modelOptions={aiModelOptions}
+          taskOptions={aiTaskOptions}
+          selectedTaskType={aiTaskType}
+          selectedModelId={aiModelId}
+          selectedSuccess={aiSuccessFilter}
+          selectedKeyword={aiKeyword}
+          onTaskTypeChange={(value) => {
+            setAiTaskType(value);
+            setAiPage(1);
+          }}
+          onModelIdChange={(value) => {
+            setAiModelId(value);
+            setAiPage(1);
+          }}
+          onSuccessChange={(value) => {
+            setAiSuccessFilter(value);
+            setAiPage(1);
+          }}
+          onKeywordChange={(value) => {
+            setAiKeyword(value);
+            setAiPage(1);
+          }}
         />
       </div>
 

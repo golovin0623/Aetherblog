@@ -1,6 +1,8 @@
 package com.aetherblog.blog.service;
 
+import com.aetherblog.blog.entity.AiUsageLog;
 import com.aetherblog.blog.entity.Post;
+import com.aetherblog.blog.repository.AiUsageLogRepository;
 import com.aetherblog.blog.repository.CategoryRepository;
 import com.aetherblog.blog.repository.CommentRepository;
 import com.aetherblog.blog.repository.PostRepository;
@@ -9,13 +11,20 @@ import com.aetherblog.blog.repository.VisitRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -33,6 +42,7 @@ public class StatsService {
     private final TagRepository tagRepository;
     private final CommentRepository commentRepository;
     private final VisitRecordRepository visitRecordRepository;
+    private final AiUsageLogRepository aiUsageLogRepository;
     private final Clock clock;
 
     /**
@@ -58,9 +68,10 @@ public class StatsService {
                 .mapToLong(Post::getWordCount)
                 .sum();
 
-        // TODO: AI tokens 和费用需要从 AI 使用记录表中统计
-        long aiTokens = 0L;
-        double aiCost = 0.0;
+        LocalDateTime startTime = LocalDateTime.of(2020, 1, 1, 0, 0);
+        long aiTokens = Optional.ofNullable(aiUsageLogRepository.sumTotalTokensByCreatedAtAfter(startTime)).orElse(0L);
+        BigDecimal aiCost = Optional.ofNullable(aiUsageLogRepository.sumEstimatedCostByCreatedAtAfter(startTime))
+                .orElse(BigDecimal.ZERO);
 
         return new DashboardStats(
                 postCount,
@@ -71,8 +82,215 @@ public class StatsService {
                 totalVisitors,
                 totalWords,
                 aiTokens,
-                aiCost
+                aiCost.doubleValue()
         );
+    }
+
+    public AiAnalyticsDashboard getAiAnalyticsDashboard(int days, int pageNum, int pageSize,
+                                                        String taskType, String modelId, Boolean success, String keyword) {
+        if (days <= 0) {
+            days = 7;
+        }
+        if (days > 180) {
+            days = 180;
+        }
+
+        if (pageNum <= 0) {
+            pageNum = 1;
+        }
+        if (pageSize <= 0) {
+            pageSize = 20;
+        }
+        if (pageSize > 100) {
+            pageSize = 100;
+        }
+
+        LocalDate today = LocalDate.now(clock);
+        LocalDateTime startTime = today.minusDays(days - 1L).atStartOfDay();
+        LocalDateTime endTime = today.plusDays(1).atStartOfDay().minusNanos(1);
+
+        Object[] overviewRaw = aiUsageLogRepository.aggregateOverview(startTime, endTime);
+        long totalCalls = overviewRaw != null && overviewRaw[0] != null ? ((Number) overviewRaw[0]).longValue() : 0L;
+        long successCalls = overviewRaw != null && overviewRaw[1] != null ? ((Number) overviewRaw[1]).longValue() : 0L;
+        long errorCalls = overviewRaw != null && overviewRaw[2] != null ? ((Number) overviewRaw[2]).longValue() : 0L;
+        long totalTokens = overviewRaw != null && overviewRaw[3] != null ? ((Number) overviewRaw[3]).longValue() : 0L;
+        BigDecimal totalCost = overviewRaw != null && overviewRaw[4] != null
+                ? toBigDecimal(overviewRaw[4])
+                : BigDecimal.ZERO;
+        double avgLatencyMs = overviewRaw != null && overviewRaw[5] != null ? ((Number) overviewRaw[5]).doubleValue() : 0.0;
+        long cacheHits = overviewRaw != null && overviewRaw[6] != null ? ((Number) overviewRaw[6]).longValue() : 0L;
+
+        int successRate = totalCalls > 0 ? (int) Math.round(successCalls * 100.0 / totalCalls) : 0;
+        int cacheHitRate = totalCalls > 0 ? (int) Math.round(cacheHits * 100.0 / totalCalls) : 0;
+        double avgTokensPerCall = totalCalls > 0 ? ((double) totalTokens / totalCalls) : 0.0;
+        double avgCostPerCall = totalCalls > 0 ? totalCost.doubleValue() / totalCalls : 0.0;
+
+        List<AiTrendPoint> trend = buildAiTrend(startTime, days);
+        List<AiModelDistribution> modelDistribution = buildAiModelDistribution(startTime, endTime, totalCalls);
+        List<AiTaskDistribution> taskDistribution = buildAiTaskDistribution(startTime, endTime, totalCalls);
+
+        Pageable pageable = PageRequest.of(pageNum - 1, pageSize);
+        var page = aiUsageLogRepository.findRecords(
+                startTime,
+                endTime,
+                blankToNull(taskType),
+                blankToNull(modelId),
+                success,
+                blankToNull(keyword),
+                pageable
+        );
+        List<AiCallRecord> records = page.getContent().stream()
+                .map(this::toAiCallRecord)
+                .toList();
+
+        AiOverview overview = new AiOverview(
+                totalCalls,
+                successCalls,
+                errorCalls,
+                successRate,
+                cacheHitRate,
+                totalTokens,
+                totalCost.doubleValue(),
+                avgTokensPerCall,
+                avgCostPerCall,
+                avgLatencyMs
+        );
+
+        AiRecordsPage recordsPage = new AiRecordsPage(
+                records,
+                pageNum,
+                pageSize,
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
+
+        return new AiAnalyticsDashboard(days, overview, trend, modelDistribution, taskDistribution, recordsPage);
+    }
+
+    private List<AiTrendPoint> buildAiTrend(LocalDateTime startTime, int days) {
+        List<Object[]> raw = aiUsageLogRepository.aggregateDailyTrend(startTime, LocalDate.now(clock).plusDays(1).atStartOfDay().minusNanos(1));
+        Map<LocalDate, AiTrendPoint> pointMap = new HashMap<>();
+
+        if (raw != null) {
+            for (Object[] row : raw) {
+                if (row == null || row.length < 4) {
+                    continue;
+                }
+
+                LocalDate date = toLocalDate(row[0]);
+                if (date == null) {
+                    continue;
+                }
+
+                long calls = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+                long tokens = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+                double cost = row[3] != null ? toBigDecimal(row[3]).doubleValue() : 0.0;
+                pointMap.put(date, new AiTrendPoint(date.toString(), calls, tokens, cost));
+            }
+        }
+
+        List<AiTrendPoint> result = new ArrayList<>();
+        LocalDate today = LocalDate.now(clock);
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate date = today.minusDays(i);
+            result.add(pointMap.getOrDefault(date, new AiTrendPoint(date.toString(), 0, 0, 0.0)));
+        }
+        return result;
+    }
+
+    private List<AiModelDistribution> buildAiModelDistribution(LocalDateTime startTime, LocalDateTime endTime, long totalCalls) {
+        List<Object[]> raw = aiUsageLogRepository.aggregateModelDistribution(startTime, endTime);
+        if (raw == null || raw.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return raw.stream().map(row -> {
+            String model = row[0] != null ? row[0].toString() : "unknown";
+            String providerCode = row[1] != null ? row[1].toString() : "";
+            long calls = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+            long tokens = row[3] != null ? ((Number) row[3]).longValue() : 0L;
+            double cost = row[4] != null ? toBigDecimal(row[4]).doubleValue() : 0.0;
+            int percentage = totalCalls > 0 ? (int) Math.round(calls * 100.0 / totalCalls) : 0;
+            return new AiModelDistribution(model, providerCode, calls, percentage, tokens, cost);
+        }).toList();
+    }
+
+    private List<AiTaskDistribution> buildAiTaskDistribution(LocalDateTime startTime, LocalDateTime endTime, long totalCalls) {
+        List<Object[]> raw = aiUsageLogRepository.aggregateTaskDistribution(startTime, endTime);
+        if (raw == null || raw.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return raw.stream().map(row -> {
+            String task = row[0] != null ? row[0].toString() : "unknown";
+            long calls = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+            long tokens = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+            double cost = row[3] != null ? toBigDecimal(row[3]).doubleValue() : 0.0;
+            int percentage = totalCalls > 0 ? (int) Math.round(calls * 100.0 / totalCalls) : 0;
+            return new AiTaskDistribution(task, calls, percentage, tokens, cost);
+        }).toList();
+    }
+
+    private AiCallRecord toAiCallRecord(AiUsageLog logItem) {
+        return new AiCallRecord(
+                logItem.getId(),
+                logItem.getTaskType(),
+                logItem.getProviderCode(),
+                logItem.getModelId() != null ? logItem.getModelId() : logItem.getModel(),
+                logItem.getTokensIn() != null ? logItem.getTokensIn() : 0,
+                logItem.getTokensOut() != null ? logItem.getTokensOut() : 0,
+                logItem.getTotalTokens() != null ? logItem.getTotalTokens() : 0,
+                logItem.getEstimatedCost() != null ? logItem.getEstimatedCost().doubleValue() : 0.0,
+                logItem.getLatencyMs() != null ? logItem.getLatencyMs() : 0,
+                Boolean.TRUE.equals(logItem.getSuccess()),
+                Boolean.TRUE.equals(logItem.getCached()),
+                logItem.getErrorCode(),
+                logItem.getCreatedAt() != null ? logItem.getCreatedAt().toString() : null
+        );
+    }
+
+    private LocalDate toLocalDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value instanceof java.util.Date utilDate) {
+            return utilDate.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+        }
+        try {
+            return LocalDate.parse(value.toString());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        try {
+            return new BigDecimal(value.toString());
+        } catch (Exception ignored) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
 
@@ -312,5 +530,75 @@ public class StatsService {
             int commentsTrend,      // 评论增长趋势
             int wordsTrend,         // 字数增长趋势
             int postsThisMonth      // 本月新增文章数
+    ) {}
+
+    public record AiAnalyticsDashboard(
+            int rangeDays,
+            AiOverview overview,
+            List<AiTrendPoint> trend,
+            List<AiModelDistribution> modelDistribution,
+            List<AiTaskDistribution> taskDistribution,
+            AiRecordsPage records
+    ) {}
+
+    public record AiOverview(
+            long totalCalls,
+            long successCalls,
+            long errorCalls,
+            int successRate,
+            int cacheHitRate,
+            long totalTokens,
+            double totalCost,
+            double avgTokensPerCall,
+            double avgCostPerCall,
+            double avgLatencyMs
+    ) {}
+
+    public record AiTrendPoint(
+            String date,
+            long calls,
+            long tokens,
+            double cost
+    ) {}
+
+    public record AiModelDistribution(
+            String model,
+            String providerCode,
+            long calls,
+            int percentage,
+            long tokens,
+            double cost
+    ) {}
+
+    public record AiTaskDistribution(
+            String task,
+            long calls,
+            int percentage,
+            long tokens,
+            double cost
+    ) {}
+
+    public record AiCallRecord(
+            Long id,
+            String taskType,
+            String providerCode,
+            String model,
+            int tokensIn,
+            int tokensOut,
+            int totalTokens,
+            double cost,
+            int latencyMs,
+            boolean success,
+            boolean cached,
+            String errorCode,
+            String createdAt
+    ) {}
+
+    public record AiRecordsPage(
+            List<AiCallRecord> list,
+            int pageNum,
+            int pageSize,
+            long total,
+            int pages
     ) {}
 }

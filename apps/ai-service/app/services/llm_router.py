@@ -26,6 +26,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ai-service")
 
 
+def _normalize_model_parts(model: str | None) -> tuple[str | None, str | None]:
+    if not model:
+        return None, None
+    if "/" not in model:
+        return None, model
+    provider_code, model_id = model.split("/", 1)
+    return provider_code, model_id
+
+
 class LlmRouter:
     """
     LLM Router with dynamic configuration support.
@@ -88,6 +97,10 @@ class LlmRouter:
     @dataclass
     class _ResolvedRoute:
         model: str
+        provider_code: str | None
+        model_id: str | None
+        input_cost_per_1k: float | None
+        output_cost_per_1k: float | None
         api_key: str | None
         api_base: str | None
         temperature: float
@@ -131,6 +144,10 @@ class LlmRouter:
 
         return LlmRouter._ResolvedRoute(
             model=prefixed_model,
+            provider_code=model.provider_code,
+            model_id=model.model_id,
+            input_cost_per_1k=model.input_cost_per_1k,
+            output_cost_per_1k=model.output_cost_per_1k,
             api_key=credential.api_key,
             api_base=credential.base_url,
             temperature=0.7,
@@ -158,6 +175,10 @@ class LlmRouter:
             )
             return LlmRouter._ResolvedRoute(
                 model=prefixed_model,
+                provider_code=routing.model.provider_code,
+                model_id=routing.model.model_id,
+                input_cost_per_1k=routing.model.input_cost_per_1k,
+                output_cost_per_1k=routing.model.output_cost_per_1k,
                 api_key=routing.credential.api_key,
                 api_base=routing.credential.base_url,
                 temperature=routing.config.get("temperature", 0.7),
@@ -166,8 +187,13 @@ class LlmRouter:
                 override=False,
             )
 
+        provider_code, model_id = _normalize_model_parts(self.resolve_model(model_alias))
         return LlmRouter._ResolvedRoute(
             model=self.resolve_model(model_alias),
+            provider_code=provider_code,
+            model_id=model_id,
+            input_cost_per_1k=None,
+            output_cost_per_1k=None,
             api_key=self.settings.openai_api_key,
             api_base=self.settings.openai_base_url,
             temperature=0.7,
@@ -175,6 +201,30 @@ class LlmRouter:
             prompt_template=None,
             override=False,
         )
+
+    async def resolve_usage_context(
+        self,
+        model_alias: str,
+        user_id: int | None = None,
+        model_id: str | None = None,
+        provider_code: str | None = None,
+    ) -> dict[str, str | float | None]:
+        resolved = await self._resolve_route(
+            model_alias=model_alias,
+            user_id=user_id,
+            model_id=model_id,
+            provider_code=provider_code,
+        )
+        normalized_provider, normalized_model_id = _normalize_model_parts(resolved.model)
+        effective_provider = resolved.provider_code or normalized_provider
+        effective_model_id = resolved.model_id or normalized_model_id or resolved.model
+        return {
+            "model": resolved.model,
+            "provider_code": effective_provider,
+            "model_id": effective_model_id,
+            "input_cost_per_1k": resolved.input_cost_per_1k,
+            "output_cost_per_1k": resolved.output_cost_per_1k,
+        }
 
     async def resolve_effective_model(
         self,
@@ -255,8 +305,12 @@ class LlmRouter:
                 logger.warning(f"Primary model failed, trying fallback: {e}")
                 fallback_routing = await self._get_routing_for_fallback(routing)
                 if fallback_routing:
+                    fallback_model = self._prefix_model_for_litellm(
+                        fallback_routing.model.model_id,
+                        fallback_routing.credential.api_type,
+                    )
                     response = await acompletion(
-                        model=fallback_routing.model.model_id,
+                        model=fallback_model,
                         messages=[{"role": "user", "content": prompt}],
                         api_key=fallback_routing.credential.api_key,
                         api_base=fallback_routing.credential.base_url,
@@ -440,4 +494,3 @@ class LlmRouter:
             yield {"type": "delta", "content": buffer, "isThink": in_think}
         
         yield {"type": "done"}
-

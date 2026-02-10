@@ -24,5 +24,11 @@
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@codemirror/state": "6.5.4",
+      "@codemirror/view": "6.26.0"
+    }
   }
 }

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Tech Stack:**
 - Frontend: React 19, Next.js 15 (blog), Vite (admin)
-- Backend: Spring Boot 3.4, JDK 21
+- Backend: Spring Boot 4.0, JDK 25
 - AI: 独立 AI 服务 (FastAPI + LiteLLM)
 - Database: PostgreSQL 17 with pgvector
 - Cache: Redis 7
