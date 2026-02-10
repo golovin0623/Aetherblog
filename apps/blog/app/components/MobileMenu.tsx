@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Sun, Moon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings } from '../lib/services';
@@ -73,6 +74,19 @@ export default function MobileMenu() {
     setIsOpen(false);
   }, [pathname]);
 
+  // 键盘导航 - ESC关闭
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   // 禁止背景滚动
   useEffect(() => {
     if (isOpen) {
@@ -133,6 +147,10 @@ export default function MobileMenu() {
 
           {/* 菜单抽屉 - 高级通透玻璃质感 (主题自适应) + GPU加速 */}
           <motion.div
+            id="mobile-menu-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile Navigation"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -145,10 +163,12 @@ export default function MobileMenu() {
                 <div className="relative w-14 h-14 mb-2 group">
                   <div className="absolute inset-0 bg-gradient-to-tr from-primary to-purple-500 rounded-full blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
                   <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-[var(--border-default)] group-hover:border-primary transition-colors">
-                    <img
+                    <Image
                       src={authorAvatar}
                       alt={authorName}
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="56px"
+                      className="object-cover"
                     />
                   </div>
                 </div>
@@ -165,9 +185,11 @@ export default function MobileMenu() {
                 {socialLinks.length > 0 ? (
                   socialLinks.map((link) => {
                     const icon = link.iconUrl ? (
-                      <img
+                      <Image
                         src={link.iconUrl}
                         alt={link.label}
+                        width={12}
+                        height={12}
                         className="w-3 h-3 object-contain"
                       />
                     ) : (
@@ -260,6 +282,9 @@ export default function MobileMenu() {
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         aria-label="Toggle Menu"
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-controls="mobile-menu-drawer"
       >
         <Menu size={24} />
       </button>
