@@ -367,17 +367,36 @@ export function CreatePostPage() {
   const tocItems = useMemo((): TocItem[] => {
     const lines = content.split('\n');
     const items: TocItem[] = [];
-    let inCodeBlock = false;
+    
+    // 追踪代码块状态：存储开始围栏的字符和长度
+    let fenceChar: string | null = null;
+    let fenceLength = 0;
     
     lines.forEach((line, index) => {
-      // 检测代码块边界 (```xxx 或 ~~~xxx)
-      if (/^(`{3,}|~{3,})/.test(line.trim())) {
-        inCodeBlock = !inCodeBlock;
+      const trimmedLine = line.trim();
+      
+      // 检测代码块边界
+      const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
+      
+      if (fenceMatch) {
+        const matchedChar = fenceMatch[1][0];
+        const matchedLength = fenceMatch[1].length;
+        
+        if (fenceChar === null) {
+          // 开始新的代码块
+          fenceChar = matchedChar;
+          fenceLength = matchedLength;
+        } else if (matchedChar === fenceChar && matchedLength >= fenceLength) {
+          // 闭合当前代码块（相同字符，相同或更多长度）
+          fenceChar = null;
+          fenceLength = 0;
+        }
+        // 如果是不同字符或更少长度，视为代码块内的内容，忽略
         return;
       }
       
       // 只在非代码块中识别标题
-      if (!inCodeBlock) {
+      if (fenceChar === null) {
         const match = line.match(/^(#{1,6})\s+(.+)$/);
         if (match) {
           items.push({
