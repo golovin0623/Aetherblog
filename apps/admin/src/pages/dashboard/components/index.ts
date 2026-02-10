@@ -7,3 +7,6 @@ export * from './SystemTrends';
 export * from './RecentActivity';
 export * from './ContainerStatus';
 export * from './RealtimeLogViewer';
+export * from './AiUsageTrendChart';
+export * from './AiModelDistributionChart';
+export * from './AiUsageRecordsTable';

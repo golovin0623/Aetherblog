@@ -32,6 +32,7 @@ import { authService } from '@/services/authService';
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
+  { path: '/analytics', icon: Activity, label: '数据分析' },
   { path: '/posts', icon: FileText, label: '文章管理' },
   { path: '/media', icon: Image, label: '媒体库' },
   { path: '/categories', icon: FolderTree, label: '分类标签' },

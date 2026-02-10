@@ -61,8 +61,8 @@ export const FriendCard: React.FC<FriendCardProps> = ({
   const imageClass = isSquareImage === null
     ? "h-full w-full object-contain p-1.5 opacity-0" // 加载中先隐藏，避免闪烁
     : isSquareImage
-      ? "h-full w-full object-cover transition-opacity duration-200"
-      : "h-full w-full object-contain p-1.5 transition-opacity duration-200";
+      ? "h-full w-full object-cover opacity-100 transition-opacity duration-200"
+      : "h-full w-full object-contain p-1.5 opacity-100 transition-opacity duration-200";
   
   // 是否显示回退的首字母头像
   const showFallback = !hasValidAvatar || imageError;
