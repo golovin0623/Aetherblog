@@ -142,7 +142,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
           </div>
         </div>
         <div className="p-2 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors text-[var(--text-muted)]">
-          {isSectionExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+{isSectionExpanded ? <ChevronUp aria-hidden="true" className="w-5 h-5" /> : <ChevronDown aria-hidden="true" className="w-5 h-5" />}
         </div>
       </button>
 
