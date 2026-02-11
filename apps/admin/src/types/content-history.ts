@@ -172,6 +172,7 @@ export type HistoryEvent =
   | { type: 'undo'; snapshot: ContentSnapshot }
   | { type: 'redo'; snapshot: ContentSnapshot }
   | { type: 'jumped'; snapshot: ContentSnapshot }
-  | { type: 'bookmark-toggled'; snapshotId: string; isBookmark: boolean };
+  | { type: 'bookmark-toggled'; snapshotId: string; isBookmark: boolean }
+  | { type: 'auto-save-tick' };
 
 export type HistoryEventHandler = (event: HistoryEvent) => void;

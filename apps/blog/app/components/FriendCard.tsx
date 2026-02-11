@@ -48,8 +48,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
     return () => clearTimeout(timeout);
   }, [hasValidAvatar, imageLoaded]);
 
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
+  const handleImageLoad = (img: HTMLImageElement) => {
     const aspectRatio = img.naturalWidth / img.naturalHeight;
     // 宽高比在 0.7~1.4 之间视为"接近正方形"，使用填充模式
     setIsSquareImage(aspectRatio >= 0.7 && aspectRatio <= 1.4);
@@ -120,7 +119,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
                   alt={name}
                   fill
                   sizes="56px"
-                  onLoad={handleImageLoad}
+                  onLoadingComplete={handleImageLoad}
                   onError={() => setImageError(true)}
                   className={imageClass}
                 />
