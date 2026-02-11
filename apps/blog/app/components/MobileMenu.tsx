@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings } from '../lib/services';
 import { extractSocialLinks } from '../lib/socialLinks';
 import { useTheme } from '@aetherblog/hooks';
+import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 // 导航页面类型
 type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
@@ -26,6 +27,9 @@ export default function MobileMenu() {
   const pathname = usePathname();
   const router = useRouter();
   const { isDark, toggleThemeWithAnimation } = useTheme();
+  const triggerButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // 当前激活的导航页面（用于乐观更新）
   const [activePage, setActivePage] = useState<NavPage>(() => {
@@ -48,7 +52,10 @@ export default function MobileMenu() {
   });
 
   const authorName = settings?.author_name || settings?.authorName || 'Golovin';
-  const authorAvatar = settings?.author_avatar || settings?.authorAvatar || 'https://github.com/shadcn.png';
+  const authorAvatar = sanitizeImageUrl(
+    settings?.author_avatar || settings?.authorAvatar || '',
+    'https://github.com/shadcn.png'
+  );
   const authorBio = settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);
 
@@ -74,13 +81,43 @@ export default function MobileMenu() {
     setIsOpen(false);
   }, [pathname]);
 
-  // 键盘导航 - ESC关闭
+  // 键盘导航 - ESC关闭 + 焦点陷阱 (fix: #130)
   useEffect(() => {
     if (!isOpen) return;
+
+    // 打开时聚焦到关闭按钮
+    requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+    });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsOpen(false);
+        triggerButtonRef.current?.focus(); // 恢复焦点
+        return;
+      }
+
+      // 焦点陷阱: Tab 键循环在对话框内
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -147,6 +184,7 @@ export default function MobileMenu() {
 
           {/* 菜单抽屉 - 高级通透玻璃质感 (主题自适应) + GPU加速 */}
           <motion.div
+            ref={drawerRef}
             id="mobile-menu-drawer"
             role="dialog"
             aria-modal="true"
@@ -157,6 +195,15 @@ export default function MobileMenu() {
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform"
           >
+            {/* 关闭按钮 - 焦点陷阱入口 */}
+            <button
+              ref={closeButtonRef}
+              onClick={() => { setIsOpen(false); triggerButtonRef.current?.focus(); }}
+              className="absolute top-3 right-3 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
+              aria-label="关闭菜单"
+            >
+              <X size={18} />
+            </button>
             {/* 1. 顶部区域：个人资料 (去除了强分割线) */}
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
               <div className="mt-6 flex flex-col items-center text-center">
@@ -279,6 +326,7 @@ export default function MobileMenu() {
     <div className="md:hidden">
       {/* 汉堡按钮 */}
       <button
+        ref={triggerButtonRef}
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         aria-label="Toggle Menu"
