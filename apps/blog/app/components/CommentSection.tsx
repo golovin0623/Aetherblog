@@ -125,9 +125,12 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   return (
     <section className="mt-20 max-w-4xl mx-auto">
       {/* 带折叠切换的头部 */}
-      <div 
+      <button
+        type="button"
         onClick={() => setIsSectionExpanded(!isSectionExpanded)}
-        className="flex items-center justify-between mb-8 pb-4 border-b border-[var(--border-subtle)] cursor-pointer group select-none"
+        aria-expanded={isSectionExpanded}
+        aria-controls="comments-content"
+        className="w-full text-left flex items-center justify-between mb-8 pb-4 border-b border-[var(--border-subtle)] cursor-pointer group select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 rounded-lg"
       >
         <div className="flex items-center gap-3">
           <div className="p-2 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl border border-indigo-500/20 group-hover:bg-indigo-500/30 transition-colors">
@@ -139,13 +142,14 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
           </div>
         </div>
         <div className="p-2 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors text-[var(--text-muted)]">
-          {isSectionExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+{isSectionExpanded ? <ChevronUp aria-hidden="true" className="w-5 h-5" /> : <ChevronDown aria-hidden="true" className="w-5 h-5" />}
         </div>
-      </div>
+      </button>
 
       <AnimatePresence>
         {isSectionExpanded && (
           <motion.div
+            id="comments-content"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -203,8 +207,9 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                     <form onSubmit={handleSubmit} className="relative z-10 space-y-5">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                         <div className="group/input relative">
-                          <ShieldCheck className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                          <ShieldCheck aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
                           <input
+                            aria-label="昵称"
                             className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                             placeholder="昵称 *"
                             value={nickname}
@@ -213,8 +218,9 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                           />
                         </div>
                         <div className="group/input relative">
-                          <Mail className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                          <Mail aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
                           <input
+                            aria-label="邮箱"
                             className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                             placeholder="邮箱 (保密) *"
                             type="email"
@@ -226,8 +232,10 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                       </div>
                       
                       <div className="group/input relative">
-                        <Globe className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                        <Globe aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
                         <input
+type="url"
+                          aria-label="网站"
                           className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                           placeholder="网站 (https://...)"
                           value={website}
@@ -237,6 +245,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
 
                       <div className="relative">
                         <textarea
+                          aria-label="评论内容"
                           className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all min-h-[140px] resize-y leading-relaxed"
                           placeholder="写点什么吧..."
                           value={content}
