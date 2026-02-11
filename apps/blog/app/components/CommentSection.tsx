@@ -234,6 +234,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                       <div className="group/input relative">
                         <Globe aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
                         <input
+type="url"
                           aria-label="网站"
                           className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                           placeholder="网站 (https://...)"
