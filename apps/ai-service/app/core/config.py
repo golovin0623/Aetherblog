@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     mock_mode: bool = Field(default=True, alias="AI_MOCK_MODE")
 
     jwt_mode: Literal["HMAC", "JWKS"] = Field(default="HMAC", validation_alias="AI_JWT_MODE")
-    jwt_secret: str = Field(default="change-me", validation_alias="JWT_SECRET")  # 与后端共用
+    # 与后端共用 (必须配置，无默认值)
+    jwt_secret: str = Field(..., validation_alias="JWT_SECRET")
     jwt_jwks_url: str | None = Field(default=None, validation_alias="AI_JWT_JWKS_URL")
     jwt_issuer: str | None = Field(default=None, validation_alias="AI_JWT_ISSUER")
     jwt_audience: str | None = Field(default=None, validation_alias="AI_JWT_AUDIENCE")
@@ -56,10 +57,8 @@ class Settings(BaseSettings):
     rate_limit_global_per_min: int = Field(default=100, alias="AI_RATE_LIMIT_GLOBAL_PER_MIN")
 
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
-    postgres_dsn: str = Field(
-        default="postgresql://aetherblog:aetherblog123@localhost:5432/aetherblog",
-        alias="POSTGRES_DSN",
-    )
+    # 必须配置，无默认值
+    postgres_dsn: str = Field(..., alias="POSTGRES_DSN")
     vector_dim: int = Field(default=1536, alias="AI_VECTOR_DIM")
     search_threshold: float = Field(default=0.6, alias="AI_SEARCH_THRESHOLD")
     reindex_batch_size: int = Field(default=200, alias="AI_REINDEX_BATCH")

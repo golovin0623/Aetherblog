@@ -67,7 +67,6 @@ packages/**/src/**/*.jpeg
 packages/**/src/**/*.gif
 packages/**/src/**/*.webp
 .pids/ai-service.pid
-apps/ai-service/tests/conftest.py
 apps/ai-service/tests/test_ai_endpoints.py
 apps/ai-service/tests/test_auth.py
 apps/ai-service/tests/test_cache.py
