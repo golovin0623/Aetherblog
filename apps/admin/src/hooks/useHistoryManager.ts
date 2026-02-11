@@ -352,8 +352,8 @@ export function useHistoryManager(options: UseHistoryManagerOptions = {}) {
 
     // 设置新定时器
     autoSaveTimerRef.current = setInterval(() => {
-      // 由外部调用 createSnapshot
-      // 这里只触发事件，不直接创建快照
+      // 触发自动保存事件，由外部监听者决定是否创建快照
+      emitEvent({ type: 'auto-save-tick' });
     }, config.autoSaveInterval * 1000);
 
     return () => {
