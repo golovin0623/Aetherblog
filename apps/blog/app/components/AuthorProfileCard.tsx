@@ -3,11 +3,13 @@
 import React, { useState, useMemo } from 'react';
 import { Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings, getSiteStats } from '../lib/services';
 import { extractSocialLinks, type SocialLinkItem } from '../lib/socialLinks';
 import { useTheme } from '@aetherblog/hooks';
 import { motion, AnimatePresence } from 'framer-motion';
+import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 // 社交链接分页轮播组件
 interface SocialLinksCarouselProps {
@@ -197,7 +199,10 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
   // 合并资料数据: Props > 已获取 (snake_case 优先) > 已获取 (旧版) > 默认
   const name = profile?.name || settings?.author_name || settings?.authorName || 'Golovin';
-  const avatar = profile?.avatar || settings?.author_avatar || settings?.authorAvatar;
+  const avatar = sanitizeImageUrl(
+    profile?.avatar || settings?.author_avatar || settings?.authorAvatar || '',
+    'https://github.com/shadcn.png'
+  );
   const bio = profile?.bio || settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const stats = profile?.stats || siteStats || { posts: 70, categories: 11, tags: 13 };
 
@@ -298,10 +303,12 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
           {/* 头像容器 - 带有增强的圆环 */}
           <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg">
-            <img
-              src={avatar || "https://github.com/shadcn.png"}
+            <Image
+              src={avatar || 'https://github.com/shadcn.png'}
               alt={name}
-              className="w-full h-full object-cover group-hover/avatar:scale-105 transition-transform duration-500"
+              fill
+              sizes="96px"
+              className="object-cover group-hover/avatar:scale-105 transition-transform duration-500"
             />
           </div>
 
