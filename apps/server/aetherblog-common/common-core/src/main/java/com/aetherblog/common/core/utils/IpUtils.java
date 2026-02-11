@@ -21,7 +21,13 @@ public class IpUtils {
             return UNKNOWN;
         }
 
-        String ip = request.getHeader("x-forwarded-for");
+        // Security Fix: Prioritize X-Real-IP (set by trusted Nginx) to prevent IP spoofing
+        // Users can manipulate X-Forwarded-For, but X-Real-IP is overwritten by Nginx
+        String ip = request.getHeader("X-Real-IP");
+
+        if (isUnknown(ip)) {
+            ip = request.getHeader("x-forwarded-for");
+        }
         if (isUnknown(ip)) {
             ip = request.getHeader("Proxy-Client-IP");
         }
@@ -30,9 +36,6 @@ public class IpUtils {
         }
         if (isUnknown(ip)) {
             ip = request.getHeader("WL-Proxy-Client-IP");
-        }
-        if (isUnknown(ip)) {
-            ip = request.getHeader("X-Real-IP");
         }
         if (isUnknown(ip)) {
             ip = request.getRemoteAddr();
