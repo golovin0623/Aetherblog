@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { marked, Renderer } from 'marked';
+import { marked, Renderer, type TokenizerExtension, type RendererExtension, type Tokens } from 'marked';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 import katex from 'katex';
 import mermaid from 'mermaid';
@@ -7,6 +7,82 @@ import DOMPurify from 'dompurify';
 
 // 导入 KaTeX CSS
 import 'katex/dist/katex.min.css';
+
+/**
+ * 自定义围栏代码块扩展 - 正确处理嵌套代码块
+ * 
+ * 标准 CommonMark 规范：外层围栏的反引号数量必须多于内层任何反引号序列
+ * 例如：`````markdown 可以包含 ``` 块，因为 5 > 3
+ */
+const nestedFencesExtension: TokenizerExtension & RendererExtension = {
+  name: 'fences',
+  level: 'block',
+  
+  // 检测代码围栏的起始位置
+  start(src: string) {
+    const match = src.match(/^(`{3,}|~{3,})/m);
+    return match ? match.index : -1;
+  },
+  
+  // 解析围栏代码块
+  tokenizer(src: string): Tokens.Code | undefined {
+    // 匹配开头的围栏：至少3个反引号或波浪线，可选的语言标识
+    const openMatch = src.match(/^(`{3,}|~{3,})([^\n`]*)\n/);
+    if (!openMatch) return undefined;
+    
+    const fence = openMatch[1];
+    const fenceChar = fence[0];
+    const fenceLength = fence.length;
+    const lang = openMatch[2].trim();
+    
+    // 查找匹配的闭合围栏（相同字符，相同或更多长度）
+    const closePattern = new RegExp(`^${fenceChar}{${fenceLength},}\\s*$`, 'm');
+    const remaining = src.slice(openMatch[0].length);
+    
+    let codeContent = '';
+    let consumed = openMatch[0].length;
+    
+    const lines = remaining.split('\n');
+    let foundClose = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // 检查是否是闭合围栏
+      if (closePattern.test(line)) {
+        foundClose = true;
+        consumed += lines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0) + line.length + 1;
+        break;
+      }
+      
+      // 添加到代码内容
+      if (i > 0) codeContent += '\n';
+      codeContent += line;
+    }
+    
+    // 如果没找到闭合，消费到文档末尾
+    if (!foundClose) {
+      codeContent = remaining;
+      consumed = src.length;
+    }
+    
+    return {
+      type: 'code',
+      raw: src.slice(0, consumed),
+      text: codeContent,
+      lang: lang || undefined
+    };
+  },
+  
+  // 渲染器（返回 false 使用默认渲染）
+  renderer(): string | false {
+    return false;
+  }
+};
+
+// 配置 marked 使用自定义扩展
+marked.use({ extensions: [nestedFencesExtension] });
+
 
 export interface MarkdownPreviewProps {
   content: string;
