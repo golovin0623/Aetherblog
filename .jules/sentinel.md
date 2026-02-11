@@ -19,3 +19,8 @@
 **Vulnerability:** Admin endpoints (`/v1/admin/**`) were accessible to any authenticated user (e.g. self-registered users) because `SecurityConfig` only checked `.authenticated()` without role validation.
 **Learning:** Spring Security's `authenticated()` is insufficient for privileged routes; it only verifies identity, not authorization. Default "User" roles must not inherit Admin privileges.
 **Prevention:** Explicitly restrict sensitive path patterns (like `/v1/admin/**`) to specific roles (e.g., `.hasRole("ADMIN")`) in the security filter chain.
+
+## 2026-02-11 - IP Spoofing via X-Forwarded-For
+**Vulnerability:** The application trusted the first IP in the `X-Forwarded-For` header for client IP resolution, allowing attackers to bypass IP-based rate limiting by injecting a spoofed IP.
+**Learning:** `X-Forwarded-For` is a client-controlled header unless strictly managed by a trusted proxy chain. Taking the first IP is dangerous if the proxy appends to the header.
+**Prevention:** Modified `IpUtils` to prioritize `X-Real-IP` (set by the trusted Nginx gateway) over `X-Forwarded-For`. Always rely on trusted headers from the immediate upstream proxy.
