@@ -13,13 +13,13 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'github.com' },
       // 本地开发
       { protocol: 'http', hostname: 'localhost' },
-      // 生产环境: 通过环境变量添加额外可信域名
+      // 生产环境: 通过环境变量添加额外可信域名 (不设置则仅允许上述白名单)
       ...(process.env.NEXT_PUBLIC_IMAGE_DOMAINS
         ? process.env.NEXT_PUBLIC_IMAGE_DOMAINS.split(',').map(h => ({
             protocol: 'https' as const,
             hostname: h.trim(),
           }))
-        : [{ protocol: 'http' as const, hostname: '**' }, { protocol: 'https' as const, hostname: '**' }]),
+        : []),
     ],
   },
   async rewrites() {
