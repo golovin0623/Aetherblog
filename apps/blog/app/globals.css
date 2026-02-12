@@ -383,6 +383,31 @@ body {
   line-height: var(--markdown-line-height);  /* 1.8 */
 }
 
+.markdown-body .heading-anchor {
+  opacity: 0;
+  margin-right: 0.4rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-bottom: none;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-productive), color var(--motion-duration-fast) var(--motion-ease-productive);
+}
+
+.markdown-body h1:hover .heading-anchor,
+.markdown-body h2:hover .heading-anchor,
+.markdown-body h3:hover .heading-anchor,
+.markdown-body h4:hover .heading-anchor,
+.markdown-body h5:hover .heading-anchor,
+.markdown-body h6:hover .heading-anchor,
+.markdown-body .heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.markdown-body .heading-anchor:hover,
+.markdown-body .heading-anchor:focus-visible {
+  color: var(--color-primary);
+  outline: none;
+}
+
 .markdown-body h1 {
   font-size: 2em;
   font-weight: 800;      /* 从 700 提升 */
@@ -592,6 +617,10 @@ body {
   border: 1px solid var(--border-subtle);
 }
 
+.markdown-body .markdown-table-wrapper {
+  border-radius: 12px;
+}
+
 .markdown-body th, .markdown-body td {
   border: 1px solid var(--border-subtle);
   padding: 0.75em 1.25em;  /* 从 0.5em 1em 增加 */
@@ -615,6 +644,17 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.markdown-body .markdown-image {
+  display: inline-flex;
+  flex-direction: column;
+  margin-inline: auto;
+}
+
+.markdown-body .markdown-image figcaption {
+  max-width: 100%;
+  word-break: break-word;
+}
+
 /* 任务列表样式 */
 .markdown-body input[type="checkbox"] {
   margin-right: 0.5em;
@@ -627,6 +667,56 @@ body {
 .markdown-body li:has(> input[type="checkbox"]) {
   list-style: none;
   margin-left: -1.5em;
+}
+
+.markdown-body .contains-task-list {
+  padding-left: 0;
+}
+
+.markdown-body .task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+
+.markdown-body .task-list-item input[type="checkbox"] {
+  margin-top: 0.25em;
+  flex-shrink: 0;
+}
+
+.markdown-body .task-list-item p {
+  margin: 0;
+}
+
+.markdown-body .footnotes {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px dashed var(--border-default);
+}
+
+.markdown-body .footnotes ol {
+  padding-left: 1.25em;
+}
+
+.markdown-body .footnotes li {
+  margin: 0.5em 0;
+  color: var(--text-secondary);
+}
+
+.markdown-body .footnote-ref,
+.markdown-body .footnote-backref {
+  font-size: 0.85em;
+  margin-left: 0.2em;
+}
+
+.markdown-body .markdown-render-error {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.1);
+  color: rgb(248, 113, 113);
+  font-size: 0.85em;
 }
 
 /* 移动端优化 */
@@ -943,4 +1033,3 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
     animation: none !important;
   }
 }
-

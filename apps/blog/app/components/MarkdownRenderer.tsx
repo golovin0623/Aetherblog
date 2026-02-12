@@ -28,6 +28,8 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+
 // ============================================================================
 // 语言配置 - 按需加载优化
 // ============================================================================
@@ -142,6 +144,102 @@ function extractTextContent(children: React.ReactNode): string {
   return '';
 }
 
+function normalizeHeadingText(raw: string): string {
+  const normalized = raw
+    .toLowerCase()
+    .trim()
+    .replace(/[\u2000-\u206F\u2E00-\u2E7F'"!@#$%^&*()+=[\]{}|\\;:,.<>/?`~]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  return normalized || 'section';
+}
+
+function createHeadingIdFactory() {
+  const usedHeadingIds = new Map<string, number>();
+
+  return (rawText: string): string => {
+    const baseId = normalizeHeadingText(rawText);
+    const previousCount = usedHeadingIds.get(baseId) ?? 0;
+    const nextCount = previousCount + 1;
+    usedHeadingIds.set(baseId, nextCount);
+    return nextCount === 1 ? baseId : `${baseId}-${nextCount}`;
+  };
+}
+
+function createHeadingRenderer(tag: HeadingTag, getHeadingId: (text: string) => string): Components[HeadingTag] {
+  const HeadingRenderer: Components[HeadingTag] = ({ children, id, className, ...props }) => {
+    const headingText = extractTextContent(children).trim();
+    const headingId = typeof id === 'string' && id ? id : getHeadingId(headingText || tag);
+    const mergedClassName = ['group/heading scroll-mt-24', className].filter(Boolean).join(' ');
+
+    return React.createElement(
+      tag,
+      {
+        ...props,
+        id: headingId,
+        className: mergedClassName,
+      },
+      <a
+        href={`#${headingId}`}
+        className="heading-anchor"
+        aria-label={`复制标题锚点：${headingText || headingId}`}
+      >
+        #
+      </a>,
+      children,
+    );
+  };
+
+  (HeadingRenderer as { displayName?: string }).displayName = `MarkdownHeading(${tag.toUpperCase()})`;
+  return HeadingRenderer;
+}
+
+function parseMarkdownLink(href?: string): { href: string; isExternal: boolean } | null {
+  if (!href) {
+    return null;
+  }
+
+  const trimmed = href.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lowerHref = trimmed.toLowerCase();
+  const blockedProtocols = ['javascript:', 'data:', 'vbscript:', 'file:'];
+  if (blockedProtocols.some((protocol) => lowerHref.startsWith(protocol))) {
+    return null;
+  }
+
+  if (trimmed.startsWith('//')) {
+    return { href: trimmed, isExternal: true };
+  }
+
+  if (
+    trimmed.startsWith('#')
+    || trimmed.startsWith('/')
+    || trimmed.startsWith('./')
+    || trimmed.startsWith('../')
+    || trimmed.startsWith('?')
+  ) {
+    return { href: trimmed, isExternal: false };
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return { href: trimmed, isExternal: true };
+    }
+    if (parsed.protocol === 'mailto:' || parsed.protocol === 'tel:') {
+      return { href: trimmed, isExternal: false };
+    }
+    return null;
+  } catch {
+    return { href: trimmed, isExternal: false };
+  }
+}
+
 function legacyCopyText(text: string): boolean {
   if (typeof document === 'undefined') {
     return false;
@@ -191,7 +289,7 @@ async function copyCodeToClipboard(text: string): Promise<void> {
 type MermaidTheme = 'dark' | 'default';
 
 // Mermaid 图表组件
-const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }) => {
+const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string }> = ({ code, theme, fallbackText }) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -232,14 +330,14 @@ const MermaidBlock: React.FC<{ code: string; theme: string }> = ({ code, theme }
         setError(null);
       } catch (e) {
         logger.error('Mermaid render error:', e, 'Code:', code);
-        setError('图表渲染失败');
+        setError(fallbackText);
       } finally {
         setIsLoading(false);
       }
     };
     
     renderMermaid();
-  }, [code, theme]); // 主题变更时重新渲染
+  }, [code, theme, fallbackText]); // 主题变更时重新渲染
 
   if (!code || !code.trim()) {
     return (
@@ -448,7 +546,18 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 
 // 创建自定义组件映射
 function createComponents(highlighter: Highlighter | null, theme: string): Components {
+  const getHeadingId = createHeadingIdFactory();
+  const fallbackMathErrorText = '数学公式渲染失败';
+  const fallbackMermaidErrorText = '图表渲染失败';
+
   return {
+    h1: createHeadingRenderer('h1', getHeadingId),
+    h2: createHeadingRenderer('h2', getHeadingId),
+    h3: createHeadingRenderer('h3', getHeadingId),
+    h4: createHeadingRenderer('h4', getHeadingId),
+    h5: createHeadingRenderer('h5', getHeadingId),
+    h6: createHeadingRenderer('h6', getHeadingId),
+
     // 处理 pre 标签 - 捕获所有代码块
     pre: ({ children, ...props }) => {
       const child = React.Children.toArray(children)[0];
@@ -463,7 +572,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         
         // Mermaid 图表
         if (language === 'mermaid') {
-          return <MermaidBlock code={codeContent} theme={theme} />;
+        return <MermaidBlock code={codeContent} theme={theme} fallbackText={fallbackMermaidErrorText} />;
         }
         
         return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
@@ -509,26 +618,28 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
       }
 
       return (
-        <span className="block my-4 text-center">
+        <figure
+          className="markdown-image my-4"
+          style={width ? { width, maxWidth: '100%' } : undefined}
+        >
           <img
             src={src}
             alt={displayAlt}
             loading="lazy"
-            className="max-w-full rounded-lg border border-[var(--border-subtle)] inline-block transition-all duration-300"
+            className="w-full max-w-full rounded-lg border border-[var(--border-subtle)] inline-block transition-all duration-300"
             style={{
-              width: width,
               boxShadow: 'var(--shadow-md)'
             }}
             {...props}
           />
-          {displayAlt && <span className="block text-center text-sm text-[var(--text-muted)] mt-2">{displayAlt}</span>}
-        </span>
+          {displayAlt && <figcaption className="mt-2 text-center text-sm text-[var(--text-muted)]">{displayAlt}</figcaption>}
+        </figure>
       );
     },
     
     // 表格
     table: ({ children }) => (
-      <div className="overflow-x-auto my-4">
+      <div className="markdown-table-wrapper overflow-x-auto my-4">
         <table className="w-full border-collapse border border-[var(--border-subtle)] rounded-lg overflow-hidden">
           {children}
         </table>
@@ -556,16 +667,64 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
     
     // 链接
     a: ({ href, children, ...props }) => (
-      <a
-        href={href}
-        target={href?.startsWith('http') ? '_blank' : undefined}
-        rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-        className="text-primary hover:text-primary/80 no-underline border-b border-transparent hover:border-primary transition-colors"
-        {...props}
-      >
-        {children}
-      </a>
+      (() => {
+        const parsed = parseMarkdownLink(href);
+        if (!parsed) {
+          return (
+            <span className="text-[var(--text-muted)] border-b border-dashed border-[var(--border-default)]" title="链接已被安全策略拦截">
+              {children}
+            </span>
+          );
+        }
+
+        return (
+          <a
+            href={parsed.href}
+            target={parsed.isExternal ? '_blank' : undefined}
+            rel={parsed.isExternal ? 'noopener noreferrer' : undefined}
+            className="text-primary hover:text-primary/80 no-underline border-b border-transparent hover:border-primary transition-colors"
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      })()
     ),
+
+    input: ({ type, checked, ...props }) => {
+      if (type === 'checkbox') {
+        const isChecked = Boolean(checked);
+        return (
+          <input
+            {...props}
+            type="checkbox"
+            checked={isChecked}
+            disabled
+            readOnly
+            aria-label={isChecked ? '任务已完成' : '任务未完成'}
+          />
+        );
+      }
+
+      return <input {...props} type={type} />;
+    },
+
+    span: ({ className, children, ...props }) => {
+      if (typeof className === 'string' && className.includes('katex-error')) {
+        const source = extractTextContent(children).trim();
+        return (
+          <span
+            {...props}
+            className="markdown-render-error"
+            title={source ? `${fallbackMathErrorText}：${source}` : fallbackMathErrorText}
+          >
+            {fallbackMathErrorText}
+          </span>
+        );
+      }
+
+      return <span className={className} {...props}>{children}</span>;
+    },
     
     // 水平线
     hr: () => <hr className="my-8 border-t border-white/10" />,
@@ -599,7 +758,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeRaw]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw]}
         components={components}
       >
         {content}
