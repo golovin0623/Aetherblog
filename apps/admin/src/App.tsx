@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Toaster } from 'sonner';
 
 // Lazy load pages
@@ -52,44 +53,46 @@ function App() {
   return (
     <BrowserRouter basename={basename === '/' ? undefined : basename}>
       <Toaster richColors position="top-center" />
-      <Suspense fallback={
-        <div className="flex h-screen items-center justify-center">
-          <LoadingSpinner size="lg" />
-        </div>
-      }>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
-          <Route
-            path="/"
-            element={
-              <AuthGuard>
-                <AdminLayout />
-              </AuthGuard>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="posts" element={<PostsPage />} />
-            <Route path="posts/new" element={<CreatePostPage />} />
-            <Route path="posts/:id/edit" element={<CreatePostPage />} />
-            <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
-            <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
-            <Route path="media" element={<MediaPage />} />
-            <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
-            <Route path="categories" element={<CategoriesPage />} />
-            <Route path="comments" element={<CommentsPage />} />
-            <Route path="friends" element={<FriendsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="ai-tools" element={<AIToolsPage />} />
-            <Route path="ai-test" element={<AiTestPage />} />
-            <Route path="ai-config" element={<AiConfigPage />} />
-            <Route path="analytics" element={<AnalyticsPage />} />
-            <Route path="monitor" element={<MonitorPage />} />
-            <Route path="activities" element={<ActivitiesPage />} />
-          </Route>
-        </Routes>
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={
+          <div className="flex h-screen items-center justify-center">
+            <LoadingSpinner size="lg" />
+          </div>
+        }>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
+            <Route
+              path="/"
+              element={
+                <AuthGuard>
+                  <AdminLayout />
+                </AuthGuard>
+              }
+            >
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="posts" element={<PostsPage />} />
+              <Route path="posts/new" element={<CreatePostPage />} />
+              <Route path="posts/:id/edit" element={<CreatePostPage />} />
+              <Route path="posts/ai-writing/new" element={<AiWritingWorkspacePage />} />
+              <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
+              <Route path="media" element={<MediaPage />} />
+              <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
+              <Route path="categories" element={<CategoriesPage />} />
+              <Route path="comments" element={<CommentsPage />} />
+              <Route path="friends" element={<FriendsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="ai-tools" element={<AIToolsPage />} />
+              <Route path="ai-test" element={<AiTestPage />} />
+              <Route path="ai-config" element={<AiConfigPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
+              <Route path="monitor" element={<MonitorPage />} />
+              <Route path="activities" element={<ActivitiesPage />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

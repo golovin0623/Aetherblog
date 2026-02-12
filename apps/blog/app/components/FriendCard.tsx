@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { ExternalLink } from 'lucide-react';
+import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 interface FriendCardProps {
   name: string;
@@ -32,8 +33,12 @@ export const FriendCard: React.FC<FriendCardProps> = ({
   // 智能检测图片宽高比
   const [isSquareImage, setIsSquareImage] = useState<boolean | null>(null);
 
+  // 安全验证: 防止 XSS 注入 (#136)
+  const safeAvatar = sanitizeImageUrl(avatar, '');
+  const safeUrl = sanitizeImageUrl(url, '#');
+
   // 检测是否有有效的头像 URL
-  const hasValidAvatar = avatar && avatar.trim() !== '';
+  const hasValidAvatar = safeAvatar !== '' && safeAvatar.trim() !== '';
 
   // 图片加载超时处理
   useEffect(() => {
@@ -69,7 +74,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
 
   return (
     <a
-      href={url}
+      href={safeUrl}
       target="_blank"
       rel="noopener noreferrer"
       className="group relative block overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-lg transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl antialiased"
@@ -115,7 +120,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
             <div className="relative h-14 w-14 rounded-full overflow-hidden ring-2 ring-[var(--border-subtle)] group-hover:ring-[var(--border-hover)] transition-all bg-[var(--bg-secondary)]">
               {!showFallback ? (
                 <Image
-                  src={avatar}
+                  src={safeAvatar}
                   alt={name}
                   fill
                   sizes="56px"
