@@ -1,4 +1,6 @@
 import { PencilLine } from 'lucide-react';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 import FadeIn from '../../../components/FadeIn';
@@ -27,6 +29,9 @@ interface Post {
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
+
+const MARKDOWN_AUDIT_SLUG = '__markdown_audit__';
+const MARKDOWN_AUDIT_FILE = join(process.cwd(), 'docs', 'blog-markdown-regression-sample.md');
 
 async function getPost(slug: string): Promise<Post | null> {
   try {
@@ -61,9 +66,29 @@ async function getPost(slug: string): Promise<Post | null> {
   }
 }
 
+async function getMarkdownAuditPost(): Promise<Post | null> {
+  try {
+    const markdownContent = await readFile(MARKDOWN_AUDIT_FILE, 'utf-8');
+    return {
+      id: -1,
+      title: 'Markdown 覆盖样例验收页',
+      slug: MARKDOWN_AUDIT_SLUG,
+      content: markdownContent,
+      summary: '用于验证详情页 Markdown 渲染边界的一次性回归样例。',
+      categoryName: 'Regression',
+      tags: ['markdown', 'regression', 'audit'],
+      viewCount: 0,
+      publishedAt: '2026-02-12',
+    };
+  } catch (error) {
+    logger.error('Failed to load markdown regression sample:', error);
+    return null;
+  }
+}
+
 export default async function PostDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  const post = await getPost(slug);
+  const post = slug === MARKDOWN_AUDIT_SLUG ? await getMarkdownAuditPost() : await getPost(slug);
   const settings = await getSiteSettings();
 
   if (!post) {
@@ -145,7 +170,13 @@ export default async function PostDetailPage({ params }: PageProps) {
         </FadeIn>
 
         <FadeIn delay={0.3}>
-          <CommentSection postId={post.id} settings={settings} />
+          {post.id > 0 ? (
+            <CommentSection postId={post.id} settings={settings} />
+          ) : (
+            <div className="mt-10 rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-muted)]">
+              当前为 Markdown 样例验收页，不启用评论区。
+            </div>
+          )}
         </FadeIn>
       </article>
     </div>
