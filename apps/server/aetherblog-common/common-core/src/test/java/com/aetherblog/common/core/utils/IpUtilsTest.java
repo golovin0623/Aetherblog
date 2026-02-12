@@ -51,4 +51,20 @@ class IpUtilsTest {
         String ip = IpUtils.getIpAddr(request);
         assertEquals(clientIp, ip);
     }
+
+    @Test
+    void shouldTakeLastIpFromXForwardedForWhenSpoofed() {
+        // Given: attacker prepends a spoofed IP to X-Forwarded-For
+        String realIp = "192.168.1.100";
+        String spoofedIp = "6.6.6.6";
+        String forwardedFor = spoofedIp + ", " + realIp;
+
+        // When: X-Real-IP is absent (no trusted proxy header)
+        when(request.getHeader("X-Real-IP")).thenReturn(null);
+        when(request.getHeader("x-forwarded-for")).thenReturn(forwardedFor);
+
+        // Then: should take the last (proxy-added) IP, not the spoofed first one
+        String ip = IpUtils.getIpAddr(request);
+        assertEquals(realIp, ip, "Should take the last IP from X-Forwarded-For to avoid spoofing");
+    }
 }
