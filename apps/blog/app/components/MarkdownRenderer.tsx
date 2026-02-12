@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -142,6 +142,51 @@ function extractTextContent(children: React.ReactNode): string {
   return '';
 }
 
+function legacyCopyText(text: string): boolean {
+  if (typeof document === 'undefined') {
+    return false;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-9999px';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+
+  textarea.focus();
+  textarea.select();
+
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+
+  return copied;
+}
+
+async function copyCodeToClipboard(text: string): Promise<void> {
+  if (
+    typeof navigator !== 'undefined'
+    && typeof window !== 'undefined'
+    && window.isSecureContext
+    && navigator.clipboard?.writeText
+  ) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const copied = legacyCopyText(text);
+  if (!copied) {
+    throw new Error('Clipboard API unavailable and legacy copy failed');
+  }
+}
+
 // mermaid 主题类型
 type MermaidTheme = 'dark' | 'default';
 
@@ -236,9 +281,10 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
   highlighter,
   theme
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'success' | 'error'>('idle');
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const copyStateTimerRef = useRef<number | null>(null);
 
   // 计算代码行数
   const lineCount = code.split('\n').length;
@@ -250,6 +296,12 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
       setIsCollapsed(true);
     }
   }, [shouldShowToggle]);
+
+  useEffect(() => () => {
+    if (copyStateTimerRef.current) {
+      window.clearTimeout(copyStateTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (!highlighter || !code) return;
@@ -296,11 +348,25 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
     highlight();
   }, [highlighter, code, language, theme]);
 
+  const setTransientCopyState = useCallback((state: 'success' | 'error') => {
+    setCopyState(state);
+    if (copyStateTimerRef.current) {
+      window.clearTimeout(copyStateTimerRef.current);
+    }
+    copyStateTimerRef.current = window.setTimeout(() => {
+      setCopyState('idle');
+    }, 1600);
+  }, []);
+
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [code]);
+    try {
+      await copyCodeToClipboard(code);
+      setTransientCopyState('success');
+    } catch (error) {
+      logger.warn('Copy code block failed:', error);
+      setTransientCopyState('error');
+    }
+  }, [code, setTransientCopyState]);
 
   const langDisplay = language?.toUpperCase() || 'TEXT';
 
@@ -312,15 +378,27 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
           {langDisplay}
         </span>
         <button
+          type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-transparent hover:bg-[var(--bg-card-hover)] rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+          className="inline-flex min-h-8 min-w-[72px] items-center justify-center gap-1 rounded px-2 py-1 text-xs bg-transparent text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          aria-live="polite"
+          aria-label={copyState === 'success' ? '代码已复制' : copyState === 'error' ? '复制失败，请手动复制' : '复制代码'}
         >
-          {copied ? (
+          {copyState === 'success' ? (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
               已复制
+            </>
+          ) : copyState === 'error' ? (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M15 9l-6 6"/>
+                <path d="M9 9l6 6"/>
+              </svg>
+              复制失败
             </>
           ) : (
             <>
@@ -379,7 +457,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         const childProps = child.props as { className?: string; children?: React.ReactNode };
         const className = childProps.className || '';
         const match = /language-(\w+)/.exec(className);
-        const language = match?.[1] || '';
+        const language = match?.[1] || 'text';
         
         const codeContent = extractTextContent(childProps.children).replace(/\n$/, '');
         
@@ -388,10 +466,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
           return <MermaidBlock code={codeContent} theme={theme} />;
         }
         
-        // 使用 Shiki 高亮的代码块
-        if (language) {
-          return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
-        }
+        return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
       }
       
       // 默认 pre
