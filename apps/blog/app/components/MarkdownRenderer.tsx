@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useContext, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -141,6 +141,19 @@ function extractTextContent(children: React.ReactNode): string {
   }
   return '';
 }
+
+// Plugin arrays defined outside to prevent recreation
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex, rehypeRaw];
+
+// Context for passing highlighter and theme
+const MarkdownContext = React.createContext<{
+  highlighter: Highlighter | null;
+  theme: string;
+}>({
+  highlighter: null,
+  theme: 'dark'
+});
 
 // mermaid 主题类型
 type MermaidTheme = 'dark' | 'default';
@@ -368,134 +381,125 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
   );
 };
 
-// 创建自定义组件映射
-function createComponents(highlighter: Highlighter | null, theme: string): Components {
-  return {
-    // 处理 pre 标签 - 捕获所有代码块
-    pre: ({ children, ...props }) => {
-      const child = React.Children.toArray(children)[0];
-      
-      if (React.isValidElement(child) && (child.type === 'code' || (child.props as { className?: string })?.className)) {
-        const childProps = child.props as { className?: string; children?: React.ReactNode };
-        const className = childProps.className || '';
-        const match = /language-(\w+)/.exec(className);
-        const language = match?.[1] || '';
-        
-        const codeContent = extractTextContent(childProps.children).replace(/\n$/, '');
-        
-        // Mermaid 图表
-        if (language === 'mermaid') {
-          return <MermaidBlock code={codeContent} theme={theme} />;
-        }
-        
-        // 使用 Shiki 高亮的代码块
-        if (language) {
-          return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
-        }
-      }
-      
-      // 默认 pre
-      return <pre className="overflow-x-auto p-4 bg-slate-900/80 border border-white/5 rounded-lg my-4" {...props}>{children}</pre>;
-    },
-    
-    // 行内代码
-    code: ({ className, children, ...props }) => {
-      if (className) {
-        return <code className={className} {...props}>{children}</code>;
-      }
-      return (
-        <code className="bg-[var(--markdown-bg-code-inline)] text-[var(--markdown-text-code)] px-[0.25em] py-[0.5em] rounded text-sm font-mono" {...props}>
-          {children}
-        </code>
-      );
-    },
-    
-    // 图片
-    img: ({ src, alt, ...props }) => {
-      // 解析 alt 文本中的大小设置 ![alt|size](url)
-      // 支持多种 CSS 单位: px, %, vw, vh, em, rem
-      let width: string | undefined = undefined;
-      let displayAlt = alt;
+// Stable component definitions
+const PreBlock: React.FC<any> = ({ children, ...props }) => {
+  const { highlighter, theme } = useContext(MarkdownContext);
+  const child = React.Children.toArray(children)[0];
 
-      if (alt && alt.includes('|')) {
-        const parts = alt.split('|');
-        // 取最后一部分作为大小，其余部分合并作为 alt
-        const sizePart = parts.pop();
+  if (React.isValidElement(child) && (child.type === 'code' || (child.props as { className?: string })?.className)) {
+    const childProps = child.props as { className?: string; children?: React.ReactNode };
+    const className = childProps.className || '';
+    const match = /language-(\w+)/.exec(className);
+    const language = match?.[1] || '';
 
-        // 支持: 纯数字(默认px)、数字+单位(px/%/vw/vh/em/rem)
-        if (sizePart && /^\d+(px|%|vw|vh|em|rem)?$/i.test(sizePart)) {
-          // 纯数字默认添加 px
-          width = /^\d+$/.test(sizePart) ? `${sizePart}px` : sizePart;
-          displayAlt = parts.join('|');
-        } else {
-          // 如果最后一部分不是有效的大小格式，则不进行分割
-          displayAlt = alt;
-        }
-      }
+    const codeContent = extractTextContent(childProps.children).replace(/\n$/, '');
 
-      return (
-        <span className="block my-4 text-center">
-          <img
-            src={src}
-            alt={displayAlt}
-            loading="lazy"
-            className="max-w-full rounded-lg border border-[var(--border-subtle)] inline-block transition-all duration-300"
-            style={{
-              width: width,
-              boxShadow: 'var(--shadow-md)'
-            }}
-            {...props}
-          />
-          {displayAlt && <span className="block text-center text-sm text-[var(--text-muted)] mt-2">{displayAlt}</span>}
-        </span>
-      );
-    },
-    
-    // 表格
-    table: ({ children }) => (
-      <div className="overflow-x-auto my-4">
-        <table className="w-full border-collapse border border-[var(--border-subtle)] rounded-lg overflow-hidden">
-          {children}
-        </table>
-      </div>
-    ),
-    
-    th: ({ children }) => (
-      <th className="bg-[var(--bg-secondary)] px-4 py-2 text-left font-semibold text-[var(--text-primary)] border border-[var(--border-subtle)]">
-        {children}
-      </th>
-    ),
-    
-    td: ({ children }) => (
-      <td className="px-4 py-2 text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-        {children}
-      </td>
-    ),
-    
-    // 引用
-    blockquote: ({ children }) => (
-      <blockquote className="border-l-[3px] border-[var(--markdown-border-quote)] pl-4 my-4 text-[var(--text-secondary)] bg-[var(--markdown-bg-quote)] py-2 pr-4 rounded-r">
-        {children}
-      </blockquote>
-    ),
-    
-    // 链接
-    a: ({ href, children, ...props }) => (
-      <a
-        href={href}
-        target={href?.startsWith('http') ? '_blank' : undefined}
-        rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-        className="text-primary hover:text-primary/80 no-underline border-b border-transparent hover:border-primary transition-colors"
+    // Mermaid 图表
+    if (language === 'mermaid') {
+      return <MermaidBlock code={codeContent} theme={theme} />;
+    }
+
+    // 使用 Shiki 高亮的代码块
+    if (language) {
+      return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
+    }
+  }
+
+  // 默认 pre
+  return <pre className="overflow-x-auto p-4 bg-slate-900/80 border border-white/5 rounded-lg my-4" {...props}>{children}</pre>;
+};
+
+const CodeBlock: React.FC<any> = ({ className, children, ...props }) => {
+  if (className) {
+    return <code className={className} {...props}>{children}</code>;
+  }
+  return (
+    <code className="bg-[var(--markdown-bg-code-inline)] text-[var(--markdown-text-code)] px-[0.25em] py-[0.5em] rounded text-sm font-mono" {...props}>
+      {children}
+    </code>
+  );
+};
+
+const ImageBlock: React.FC<any> = ({ src, alt, ...props }) => {
+  // 解析 alt 文本中的大小设置 ![alt|size](url)
+  // 支持多种 CSS 单位: px, %, vw, vh, em, rem
+  let width: string | undefined = undefined;
+  let displayAlt = alt;
+
+  if (alt && alt.includes('|')) {
+    const parts = alt.split('|');
+    // 取最后一部分作为大小，其余部分合并作为 alt
+    const sizePart = parts.pop();
+
+    // 支持: 纯数字(默认px)、数字+单位(px/%/vw/vh/em/rem)
+    if (sizePart && /^\d+(px|%|vw|vh|em|rem)?$/i.test(sizePart)) {
+      // 纯数字默认添加 px
+      width = /^\d+$/.test(sizePart) ? `${sizePart}px` : sizePart;
+      displayAlt = parts.join('|');
+    } else {
+      // 如果最后一部分不是有效的大小格式，则不进行分割
+      displayAlt = alt;
+    }
+  }
+
+  return (
+    <span className="block my-4 text-center">
+      <img
+        src={src}
+        alt={displayAlt}
+        loading="lazy"
+        className="max-w-full rounded-lg border border-[var(--border-subtle)] inline-block transition-all duration-300"
+        style={{
+          width: width,
+          boxShadow: 'var(--shadow-md)'
+        }}
         {...props}
-      >
+      />
+      {displayAlt && <span className="block text-center text-sm text-[var(--text-muted)] mt-2">{displayAlt}</span>}
+    </span>
+  );
+};
+
+// Stable components map
+const COMPONENTS: Components = {
+  pre: PreBlock,
+  code: CodeBlock,
+  img: ImageBlock,
+  table: ({ children }) => (
+    <div className="overflow-x-auto my-4">
+      <table className="w-full border-collapse border border-[var(--border-subtle)] rounded-lg overflow-hidden">
         {children}
-      </a>
-    ),
-    
-    // 水平线
-    hr: () => <hr className="my-8 border-t border-white/10" />,
-  };
-}
+      </table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="bg-[var(--bg-secondary)] px-4 py-2 text-left font-semibold text-[var(--text-primary)] border border-[var(--border-subtle)]">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="px-4 py-2 text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+      {children}
+    </td>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-[3px] border-[var(--markdown-border-quote)] pl-4 my-4 text-[var(--text-secondary)] bg-[var(--markdown-bg-quote)] py-2 pr-4 rounded-r">
+      {children}
+    </blockquote>
+  ),
+  a: ({ href, children, ...props }) => (
+    <a
+      href={href}
+      target={href?.startsWith('http') ? '_blank' : undefined}
+      rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+      className="text-primary hover:text-primary/80 no-underline border-b border-transparent hover:border-primary transition-colors"
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+  hr: () => <hr className="my-8 border-t border-white/10" />,
+};
 
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
@@ -515,20 +519,24 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
 
   const { resolvedTheme } = useTheme();
 
-  // 基于 highlighter 状态和主题创建组件
-  const components = useMemo(() => createComponents(highlighter, resolvedTheme || 'dark'), [highlighter, resolvedTheme]);
+  const contextValue = useMemo(() => ({
+    highlighter,
+    theme: resolvedTheme || 'dark'
+  }), [highlighter, resolvedTheme]);
 
   if (!content) return null;
 
   return (
     <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeRaw]}
-        components={components}
-      >
-        {content}
-      </ReactMarkdown>
+      <MarkdownContext.Provider value={contextValue}>
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          rehypePlugins={REHYPE_PLUGINS}
+          components={COMPONENTS}
+        >
+          {content}
+        </ReactMarkdown>
+      </MarkdownContext.Provider>
     </div>
   );
 }
