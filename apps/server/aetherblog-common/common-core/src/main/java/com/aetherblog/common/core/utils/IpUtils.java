@@ -41,9 +41,11 @@ public class IpUtils {
             ip = request.getRemoteAddr();
         }
 
-        // 多个代理时取第一个IP
+        // Security Fix: Take the LAST IP from comma-separated list to prevent spoofing.
+        // The first IP is client-controlled; the last is added by the closest trusted proxy.
         if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
+            String[] ips = ip.split(",");
+            ip = ips[ips.length - 1].trim();
         }
 
         // 转换本地IPv6为IPv4
