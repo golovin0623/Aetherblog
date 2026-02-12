@@ -1,10 +1,10 @@
-import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { PencilLine } from 'lucide-react';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 import FadeIn from '../../../components/FadeIn';
 import CommentSection from '../../../components/CommentSection';
 import { SERVER_API_URL } from '../../../lib/api';
+import { buildAdminPostEditUrl, getAdminLinkConfig } from '../../../lib/adminUrl';
 import { logger } from '../../../lib/logger';
 import { getSiteSettings } from '../../../lib/services';
 
@@ -80,6 +80,9 @@ export default async function PostDetailPage({ params }: PageProps) {
     );
   }
 
+  const adminEditUrl = buildAdminPostEditUrl(post.id);
+  const adminLinkConfig = getAdminLinkConfig();
+
   return (
     <div className="min-h-screen bg-background">
       {/* 带有淡入动画的文章 */}
@@ -93,10 +96,29 @@ export default async function PostDetailPage({ params }: PageProps) {
         </FadeIn>
 
         <FadeIn delay={0.15}>
-          <div className="flex items-center gap-4 text-sm text-[var(--text-muted)] mb-8">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
             <time>{post.publishedAt}</time>
             {post.categoryName && <span>{post.categoryName}</span>}
             <span>{post.viewCount} 阅读</span>
+            {adminEditUrl ? (
+              <a
+                href={adminEditUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border-default)] px-2 py-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-primary/40 transition-colors"
+                title={`编辑文章 #${post.id}`}
+              >
+                <PencilLine size={14} />
+                编辑此文
+              </a>
+            ) : (
+              <span
+                className="inline-flex items-center text-xs text-[var(--text-muted)]"
+                title={adminLinkConfig.reason}
+              >
+                编辑入口未配置
+              </span>
+            )}
           </div>
         </FadeIn>
 
@@ -129,4 +151,3 @@ export default async function PostDetailPage({ params }: PageProps) {
     </div>
   );
 }
-
