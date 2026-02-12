@@ -44,7 +44,7 @@ def test_semantic_search_content_limit():
         # Ensure it's significantly larger than the limit
         large_q = "a" * (settings.max_input_chars + 100)
 
-        response = client.get(f"/api/v1/search/semantic", params={"q": large_q})
+        response = client.get("/api/v1/search/semantic", params={"q": large_q})
 
         assert response.status_code == 413
     finally:
