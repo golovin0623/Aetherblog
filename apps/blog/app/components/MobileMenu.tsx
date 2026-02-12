@@ -11,6 +11,7 @@ import { getSiteSettings } from '../lib/services';
 import { extractSocialLinks } from '../lib/socialLinks';
 import { useTheme } from '@aetherblog/hooks';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
+import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 
 // 导航页面类型
 type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
@@ -58,6 +59,9 @@ export default function MobileMenu() {
   );
   const authorBio = settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);
+  const adminLinkConfig = getAdminLinkConfig();
+  const adminHomeUrl = buildAdminUrl('/');
+  const isAdminLinkAvailable = Boolean(adminHomeUrl);
 
   // 同步 pathname 到 activePage（用于浏览器前进/后退等情况）
   useEffect(() => {
@@ -80,6 +84,10 @@ export default function MobileMenu() {
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    reportAdminLinkIssueOnce();
+  }, []);
 
   // 键盘导航 - ESC关闭 + 焦点陷阱 (fix: #130)
   useEffect(() => {
@@ -306,15 +314,28 @@ export default function MobileMenu() {
               </button>
 
               {/* 管理后台 */}
-              <a
-                href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm"
-              >
-                <Settings2 size={16} />
-                管理后台
-              </a>
+              {isAdminLinkAvailable ? (
+                <a
+                  href={adminHomeUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm"
+                >
+                  <Settings2 size={16} />
+                  管理后台
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  aria-label="管理后台未配置"
+                  title={`管理后台未配置：${adminLinkConfig.reason}`}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black/50 dark:text-[var(--text-secondary)]/50 bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 cursor-not-allowed"
+                >
+                  <Settings2 size={16} />
+                  管理后台未配置
+                </button>
+              )}
             </div>
           </motion.div>
         </>

@@ -7,6 +7,7 @@ import { Settings2 } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
+import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 
 /**
  * 博客共享头部组件
@@ -22,6 +23,9 @@ export default function BlogHeader() {
   const isTimelinePage = pathname === '/timeline';
   const isPostsPage = pathname === '/posts';
   const isArticleDetail = pathname.startsWith('/posts/') && pathname !== '/posts';
+  const adminLinkConfig = getAdminLinkConfig();
+  const adminHomeUrl = buildAdminUrl('/');
+  const isAdminLinkAvailable = Boolean(adminHomeUrl);
 
   // 导航页面类型
   type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
@@ -64,6 +68,10 @@ export default function BlogHeader() {
       setActivePage(null);
     }
   }, [pathname, isArticleDetail]);
+
+  useEffect(() => {
+    reportAdminLinkIssueOnce();
+  }, []);
 
   // 乐观更新：点击时立即切换 UI 状态，然后触发路由导航
   const handleNavClick = useCallback((target: NavPage) => {
@@ -342,15 +350,27 @@ export default function BlogHeader() {
               {/* 主题切换 */}
               <ThemeToggle size="sm" />
               
-              <a 
-                href={process.env.NEXT_PUBLIC_ADMIN_URL || "/admin/"} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
-                title="管理后台"
-              >
-                <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
-              </a>
+              {isAdminLinkAvailable ? (
+                <a 
+                  href={adminHomeUrl!}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
+                  title="管理后台"
+                >
+                  <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  aria-label="管理后台未配置"
+                  title={`管理后台未配置：${adminLinkConfig.reason}`}
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-[var(--text-muted)] opacity-50 cursor-not-allowed"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </button>
+              )}
             </nav>
 
             {/* 移动端导航 */}
