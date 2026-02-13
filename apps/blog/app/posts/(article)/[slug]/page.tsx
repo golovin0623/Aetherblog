@@ -112,9 +112,7 @@ export default async function PostDetailPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* 带有淡入动画的文章 */}
-      <article className="mx-auto w-full max-w-7xl px-4 pt-28 pb-12">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="mx-auto w-full max-w-4xl">
+      <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
         <FadeIn>
           <BackButton fallbackHref="/posts" className="mb-8" />
         </FadeIn>
@@ -133,11 +131,11 @@ export default async function PostDetailPage({ params }: PageProps) {
                 href={adminEditUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--border-default)] px-2 py-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-primary/40 transition-colors"
+                className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-primary/40 transition-colors"
                 title={`编辑文章 #${post.id}`}
+                aria-label={`编辑文章 #${post.id}`}
               >
                 <PencilLine size={14} />
-                编辑此文
               </a>
             ) : (
               <span
@@ -181,14 +179,9 @@ export default async function PostDetailPage({ params }: PageProps) {
             </div>
           )}
         </FadeIn>
-          </div>
-
-          <aside className="hidden lg:block">
-            <FadeIn delay={0.2}>
-              <TableOfContents content={post.content} className="max-h-[calc(100vh-120px)] overflow-y-auto pr-1" />
-            </FadeIn>
-          </aside>
-        </div>
+        <FadeIn delay={0.2}>
+          <TableOfContents content={post.content} className="max-h-[calc(100vh-120px)]" />
+        </FadeIn>
       </article>
     </div>
   );
