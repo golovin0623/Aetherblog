@@ -9,6 +9,7 @@ import com.aetherblog.blog.repository.TagRepository;
 import com.aetherblog.blog.repository.VisitRecordRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -142,4 +144,50 @@ public class StatsServiceTest {
         assertFalse(dashboard.modelDistribution().isEmpty());
         assertFalse(dashboard.records().list().isEmpty());
     }
+
+    @Test
+    void testGetAiAnalyticsDashboardNormalizesBoundsAndFallbackTotalTokens() {
+        LocalDateTime fixedTime = LocalDateTime.of(2024, 1, 15, 10, 0);
+        when(clock.instant()).thenReturn(fixedTime.toInstant(ZoneOffset.UTC));
+        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
+
+        when(aiUsageLogRepository.aggregateOverview(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(new Object[]{1L, 1L, 0L, 0L, BigDecimal.ZERO, 90.0, 0L});
+        when(aiUsageLogRepository.aggregateDailyTrend(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.aggregateModelDistribution(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.aggregateTaskDistribution(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        AiUsageLog log = new AiUsageLog();
+        log.setId(2L);
+        log.setTaskType("summary");
+        log.setProviderCode("openai");
+        log.setModelId("gpt-5-mini");
+        log.setTokensIn(40);
+        log.setTokensOut(20);
+        log.setTotalTokens(0);
+        log.setEstimatedCost(BigDecimal.ZERO);
+        log.setLatencyMs(80);
+        log.setSuccess(true);
+        log.setCached(false);
+        log.setCreatedAt(LocalDateTime.of(2024, 1, 15, 8, 0));
+
+        when(aiUsageLogRepository.findRecords(any(LocalDateTime.class), any(LocalDateTime.class), any(), any(), eq(null), eq(null), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(log), PageRequest.of(0, 100), 1));
+
+        StatsService.AiAnalyticsDashboard dashboard = statsService.getAiAnalyticsDashboard(0, 0, 1000, null, null, null, null);
+
+        assertEquals(7, dashboard.rangeDays());
+        assertEquals(1, dashboard.records().pageNum());
+        assertEquals(100, dashboard.records().pageSize());
+        assertEquals(60, dashboard.records().list().get(0).totalTokens());
+
+        ArgumentCaptor<PageRequest> pageRequestCaptor = ArgumentCaptor.forClass(PageRequest.class);
+        verify(aiUsageLogRepository).findRecords(any(LocalDateTime.class), any(LocalDateTime.class), any(), any(), eq(null), eq(null), pageRequestCaptor.capture());
+        assertEquals(0, pageRequestCaptor.getValue().getPageNumber());
+        assertEquals(100, pageRequestCaptor.getValue().getPageSize());
+    }
+
 }
