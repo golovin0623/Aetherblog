@@ -5,6 +5,7 @@ import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 import FadeIn from '../../../components/FadeIn';
 import CommentSection from '../../../components/CommentSection';
+import TableOfContents from '../../../components/TableOfContents';
 import { SERVER_API_URL } from '../../../lib/api';
 import { buildAdminPostEditUrl, getAdminLinkConfig } from '../../../lib/adminUrl';
 import { logger } from '../../../lib/logger';
@@ -111,7 +112,9 @@ export default async function PostDetailPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* 带有淡入动画的文章 */}
-      <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
+      <article className="mx-auto w-full max-w-7xl px-4 pt-28 pb-12">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="mx-auto w-full max-w-4xl">
         <FadeIn>
           <BackButton fallbackHref="/posts" className="mb-8" />
         </FadeIn>
@@ -178,6 +181,14 @@ export default async function PostDetailPage({ params }: PageProps) {
             </div>
           )}
         </FadeIn>
+          </div>
+
+          <aside className="hidden lg:block">
+            <FadeIn delay={0.2}>
+              <TableOfContents content={post.content} className="max-h-[calc(100vh-120px)] overflow-y-auto pr-1" />
+            </FadeIn>
+          </aside>
+        </div>
       </article>
     </div>
   );
