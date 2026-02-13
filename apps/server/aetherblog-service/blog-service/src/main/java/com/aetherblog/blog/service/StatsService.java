@@ -239,7 +239,7 @@ public class StatsService {
                 logItem.getModelId() != null ? logItem.getModelId() : logItem.getModel(),
                 logItem.getTokensIn() != null ? logItem.getTokensIn() : 0,
                 logItem.getTokensOut() != null ? logItem.getTokensOut() : 0,
-                logItem.getTotalTokens() != null ? logItem.getTotalTokens() : 0,
+                resolveTotalTokens(logItem),
                 logItem.getEstimatedCost() != null ? logItem.getEstimatedCost().doubleValue() : 0.0,
                 logItem.getLatencyMs() != null ? logItem.getLatencyMs() : 0,
                 Boolean.TRUE.equals(logItem.getSuccess()),
@@ -247,6 +247,16 @@ public class StatsService {
                 logItem.getErrorCode(),
                 logItem.getCreatedAt() != null ? logItem.getCreatedAt().toString() : null
         );
+    }
+
+    private int resolveTotalTokens(AiUsageLog logItem) {
+        int explicitTokens = logItem.getTotalTokens() != null ? logItem.getTotalTokens() : 0;
+        if (explicitTokens > 0) {
+            return explicitTokens;
+        }
+        int tokensIn = logItem.getTokensIn() != null ? logItem.getTokensIn() : 0;
+        int tokensOut = logItem.getTokensOut() != null ? logItem.getTokensOut() : 0;
+        return Math.max(0, tokensIn + tokensOut);
     }
 
     private LocalDate toLocalDate(Object value) {

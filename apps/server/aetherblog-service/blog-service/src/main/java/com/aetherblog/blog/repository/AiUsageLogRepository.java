@@ -15,7 +15,7 @@ import java.util.List;
 @Repository
 public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
 
-    @Query("SELECT COALESCE(SUM(a.totalTokens), 0) FROM AiUsageLog a WHERE a.createdAt >= :startTime")
+    @Query("SELECT COALESCE(SUM(CASE WHEN a.totalTokens IS NULL OR a.totalTokens = 0 THEN COALESCE(a.tokensIn, 0) + COALESCE(a.tokensOut, 0) ELSE a.totalTokens END), 0) FROM AiUsageLog a WHERE a.createdAt >= :startTime")
     Long sumTotalTokensByCreatedAtAfter(@Param("startTime") LocalDateTime startTime);
 
     @Query("SELECT COALESCE(SUM(a.estimatedCost), 0) FROM AiUsageLog a WHERE a.createdAt >= :startTime")
@@ -25,7 +25,7 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
             SELECT COUNT(a),
                    SUM(CASE WHEN a.success = true THEN 1 ELSE 0 END),
                    SUM(CASE WHEN a.success = false THEN 1 ELSE 0 END),
-                   COALESCE(SUM(a.totalTokens), 0),
+                   COALESCE(SUM(CASE WHEN a.totalTokens IS NULL OR a.totalTokens = 0 THEN COALESCE(a.tokensIn, 0) + COALESCE(a.tokensOut, 0) ELSE a.totalTokens END), 0),
                    COALESCE(SUM(a.estimatedCost), 0),
                    COALESCE(AVG(a.latencyMs), 0),
                    SUM(CASE WHEN a.cached = true THEN 1 ELSE 0 END)
@@ -40,7 +40,7 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
     @Query("""
             SELECT function('date', a.createdAt),
                    COUNT(a),
-                   COALESCE(SUM(a.totalTokens), 0),
+                   COALESCE(SUM(CASE WHEN a.totalTokens IS NULL OR a.totalTokens = 0 THEN COALESCE(a.tokensIn, 0) + COALESCE(a.tokensOut, 0) ELSE a.totalTokens END), 0),
                    COALESCE(SUM(a.estimatedCost), 0)
             FROM AiUsageLog a
             WHERE a.createdAt BETWEEN :startTime AND :endTime
@@ -56,7 +56,7 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
             SELECT COALESCE(a.modelId, a.model),
                    COALESCE(a.providerCode, ''),
                    COUNT(a),
-                   COALESCE(SUM(a.totalTokens), 0),
+                   COALESCE(SUM(CASE WHEN a.totalTokens IS NULL OR a.totalTokens = 0 THEN COALESCE(a.tokensIn, 0) + COALESCE(a.tokensOut, 0) ELSE a.totalTokens END), 0),
                    COALESCE(SUM(a.estimatedCost), 0)
             FROM AiUsageLog a
             WHERE a.createdAt BETWEEN :startTime AND :endTime
@@ -71,7 +71,7 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
     @Query("""
             SELECT COALESCE(a.taskType, 'unknown'),
                    COUNT(a),
-                   COALESCE(SUM(a.totalTokens), 0),
+                   COALESCE(SUM(CASE WHEN a.totalTokens IS NULL OR a.totalTokens = 0 THEN COALESCE(a.tokensIn, 0) + COALESCE(a.tokensOut, 0) ELSE a.totalTokens END), 0),
                    COALESCE(SUM(a.estimatedCost), 0)
             FROM AiUsageLog a
             WHERE a.createdAt BETWEEN :startTime AND :endTime
