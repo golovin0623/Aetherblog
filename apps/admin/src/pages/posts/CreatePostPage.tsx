@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
   Save, Settings, Sparkles, ArrowLeft, Send, 
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
@@ -112,6 +112,7 @@ export function CreatePostPage() {
   const [showAllTags, setShowAllTags] = useState(false);
   const [aiModelId, setAiModelId] = useState<string | undefined>(undefined);
   const [aiProviderCode, setAiProviderCode] = useState<string | undefined>(undefined);
+  const prefersReducedMotion = useReducedMotion();
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
@@ -411,6 +412,67 @@ export function CreatePostPage() {
     
     return items;
   }, [content]);
+
+  const tocPanelVariants = useMemo(() => {
+    const enterDuration = prefersReducedMotion ? 0.12 : 0.24;
+    const exitDuration = prefersReducedMotion ? 0.1 : 0.2;
+
+    return {
+      hidden: {
+        width: 0,
+        opacity: 0,
+        x: prefersReducedMotion ? 0 : 20,
+      },
+      show: {
+        width: 320,
+        opacity: 1,
+        x: 0,
+        transition: {
+          duration: enterDuration,
+          ease: [0.22, 1, 0.36, 1],
+          when: 'beforeChildren',
+          delayChildren: prefersReducedMotion ? 0 : 0.04,
+          staggerChildren: prefersReducedMotion ? 0 : 0.018,
+        },
+      },
+      exit: {
+        width: 0,
+        opacity: 0,
+        x: prefersReducedMotion ? 0 : 24,
+        transition: {
+          duration: exitDuration,
+          ease: [0.4, 0, 1, 1],
+          when: 'afterChildren',
+          staggerChildren: prefersReducedMotion ? 0 : 0.01,
+          staggerDirection: -1,
+        },
+      },
+    };
+  }, [prefersReducedMotion]);
+
+  const tocItemVariants = useMemo(() => ({
+    hidden: {
+      opacity: 0,
+      y: prefersReducedMotion ? 0 : 6,
+      scale: prefersReducedMotion ? 1 : 0.99,
+    },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: prefersReducedMotion ? 0.08 : 0.16,
+        ease: [0.22, 1, 0.36, 1],
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: prefersReducedMotion ? 0 : -4,
+      transition: {
+        duration: prefersReducedMotion ? 0.06 : 0.12,
+      },
+    },
+  }), [prefersReducedMotion]);
 
   // 用于在 TOC 导航期间存储原始同步滚动状态的 Ref
   const syncScrollBeforeNavRef = useRef(false);
@@ -2010,25 +2072,10 @@ export function CreatePostPage() {
         <AnimatePresence mode="wait">
           {showToc && (
             <motion.div
-              initial={{ width: 0, opacity: 0, x: 30 }}
-              animate={{ width: 320, opacity: 1, x: 0 }}
-              exit={{ 
-                width: 0, 
-                opacity: 0, 
-                x: 60,
-                transition: {
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 40,
-                  opacity: { duration: 0.2 }
-                }
-              }}
-              transition={{ 
-                type: "spring",
-                stiffness: 350,
-                damping: 32,
-                mass: 0.6
-              }}
+              initial="hidden"
+              animate="show"
+              exit="exit"
+              variants={tocPanelVariants}
               className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
             >
               {/* Cinematic Edge Highlight */}
@@ -2065,37 +2112,11 @@ export function CreatePostPage() {
                     </p>
                   </motion.div>
                 ) : (
-                  <motion.div 
-                    initial="hidden"
-                    animate="show"
-                    variants={{
-                      show: {
-                        transition: {
-                          staggerChildren: 0.04,
-                          delayChildren: 0.2,
-                          staggerDirection: 1
-                        }
-                      }
-                    }}
-                    className="space-y-0.5 px-3"
-                  >
+                  <div className="space-y-0.5 px-3">
                     {tocItems.map((item, index) => (
                       <motion.button
                         key={`${item.line}-${index}`}
-                        variants={{
-                          hidden: { opacity: 0, y: 15, scale: 0.95, filter: "blur(4px)" },
-                          show: { 
-                            opacity: 1, 
-                            y: 0, 
-                            scale: 1, 
-                            filter: "blur(0px)",
-                            transition: {
-                              type: "spring",
-                              stiffness: 260,
-                              damping: 20
-                            }
-                          }
-                        }}
+                        variants={tocItemVariants}
                         onClick={() => scrollToHeading(item.text, item.line)}
                         className={cn(
                           'w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-300 group relative flex items-center gap-3',
@@ -2124,7 +2145,7 @@ export function CreatePostPage() {
                         </span>
                       </motion.button>
                     ))}
-                  </motion.div>
+                  </div>
                 )}
               </div>
             </motion.div>
