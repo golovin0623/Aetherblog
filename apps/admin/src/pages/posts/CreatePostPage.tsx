@@ -60,6 +60,17 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
   );
 }
 
+type SaveStatusType = 'saving' | 'saved' | 'error' | 'disabled';
+type SaveStatusSource = 'auto' | 'manual' | 'publish' | 'system';
+
+interface SaveStatusState {
+  type: SaveStatusType;
+  source: SaveStatusSource;
+  label: string;
+  detail?: string;
+  updatedAt: number | null;
+}
+
 export function CreatePostPage() {
   const navigate = useNavigate();
   // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
@@ -113,6 +124,45 @@ export function CreatePostPage() {
   const [aiModelId, setAiModelId] = useState<string | undefined>(undefined);
   const [aiProviderCode, setAiProviderCode] = useState<string | undefined>(undefined);
   const prefersReducedMotion = useReducedMotion();
+  const [saveStatus, setSaveStatus] = useState<SaveStatusState>({
+    type: 'saved',
+    source: 'system',
+    label: '待保存',
+    detail: '尚未产生保存记录',
+    updatedAt: null,
+  });
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [saveStatusTick, setSaveStatusTick] = useState(Date.now());
+
+  const updateSaveStatus = useCallback((next: Omit<SaveStatusState, 'updatedAt'>, markSuccess = false) => {
+    const now = Date.now();
+    setSaveStatus({ ...next, updatedAt: now });
+    if (markSuccess) {
+      setLastSavedAt(now);
+    }
+  }, []);
+
+  const relativeSavedText = useMemo(() => {
+    if (!lastSavedAt) {
+      return '尚未成功保存';
+    }
+
+    const diffMs = Math.max(0, saveStatusTick - lastSavedAt);
+    const diffSeconds = Math.floor(diffMs / 1000);
+    if (diffSeconds < 60) {
+      return '刚刚';
+    }
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) {
+      return `${diffMinutes} 分钟前`;
+    }
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+      return `${diffHours} 小时前`;
+    }
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} 天前`;
+  }, [lastSavedAt, saveStatusTick]);
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
@@ -122,6 +172,34 @@ export function CreatePostPage() {
   const editorViewRef = useRef<EditorView | null>(null);
   const aiPanelRef = useRef<AiSidePanelHandle | null>(null);
   const [pendingAiAction, setPendingAiAction] = useState<AiPanelAction | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSaveStatusTick(Date.now());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isAutoSaveEnabled) {
+      updateSaveStatus({
+        type: 'disabled',
+        source: 'auto',
+        label: '自动保存已关闭',
+        detail: '仅支持手动保存',
+      });
+      return;
+    }
+
+    if (saveStatus.type === 'disabled') {
+      updateSaveStatus({
+        type: lastSavedAt ? 'saved' : 'saving',
+        source: 'auto',
+        label: lastSavedAt ? '自动保存已恢复' : '等待自动保存',
+        detail: lastSavedAt ? `最近成功 ${relativeSavedText}` : '编辑内容后将自动保存',
+      });
+    }
+  }, [isAutoSaveEnabled, lastSavedAt, relativeSavedText, saveStatus.type, updateSaveStatus]);
 
   // 侧边栏自动折叠
   const { setAutoCollapse } = useSidebarStore();
@@ -159,6 +237,13 @@ export function CreatePostPage() {
       // 仅当内容存在时自动保存
       if (!data.title && !data.content) return;
 
+      updateSaveStatus({
+        type: 'saving',
+        source: 'auto',
+        label: '自动保存中',
+        detail: '正在同步草稿缓存',
+      });
+
       // 自动保存到草稿缓存 (Redis)
       postService.autoSave(postId, {
         title: data.title,
@@ -171,11 +256,25 @@ export function CreatePostPage() {
         // 触发微妙的保存闪烁动画
         setAutoSaveFlash(true);
         setTimeout(() => setAutoSaveFlash(false), 1500);
-      }).catch(err => logger.error('Auto save failed', err));
+        updateSaveStatus({
+          type: 'saved',
+          source: 'auto',
+          label: '自动保存成功',
+          detail: `最近成功 ${relativeSavedText}`,
+        }, true);
+      }).catch(err => {
+        logger.error('Auto save failed', err);
+        updateSaveStatus({
+          type: 'error',
+          source: 'auto',
+          label: '自动保存失败',
+          detail: '请检查网络或点击刷新重试',
+        });
+      });
     }, 30000);
 
     return () => clearInterval(timer);
-  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled]);
+  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled, relativeSavedText, updateSaveStatus]);
 
   // 视图配置自动化
   useEffect(() => {
@@ -981,6 +1080,12 @@ export function CreatePostPage() {
     
     setIsSaving(true);
     setSaveMessage(null);
+    updateSaveStatus({
+      type: 'saving',
+      source: 'manual',
+      label: '手动保存中',
+      detail: '正在提交保存请求',
+    });
     
     try {
       // 如果正在编辑已发布的文章，"保存" 仅更新草稿缓存
@@ -995,6 +1100,12 @@ export function CreatePostPage() {
             status: 'PUBLISHED',
          });
          setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
+         updateSaveStatus({
+           type: 'saved',
+           source: 'manual',
+           label: '草稿已保存',
+           detail: `最近成功 ${relativeSavedText}`,
+         }, true);
       } else {
         // 正常保存到数据库
         const res = isEditMode && postId
@@ -1017,17 +1128,35 @@ export function CreatePostPage() {
         
         if (res.code === 200 && res.data) {
           setSaveMessage({ type: 'success', text: '保存成功！' });
+          updateSaveStatus({
+            type: 'saved',
+            source: 'manual',
+            label: '保存成功',
+            detail: `最近成功 ${relativeSavedText}`,
+          }, true);
           // 如果是新文章，导航到编辑页面
           if (!isEditMode && res.data.id) {
             setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
           }
         } else {
           setSaveMessage({ type: 'error', text: res.message || '保存失败' });
+          updateSaveStatus({
+            type: 'error',
+            source: 'manual',
+            label: '保存失败',
+            detail: res.message || '请稍后重试',
+          });
         }
       }
     } catch (error) {
       logger.error('Save error:', error);
       setSaveMessage({ type: 'error', text: '保存失败，请重试' });
+      updateSaveStatus({
+        type: 'error',
+        source: 'manual',
+        label: '保存失败',
+        detail: '请检查网络后重试',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -1039,6 +1168,12 @@ export function CreatePostPage() {
     
     setIsPublishing(true);
     setSaveMessage(null);
+    updateSaveStatus({
+      type: 'saving',
+      source: 'publish',
+      label: '发布中',
+      detail: '正在提交发布请求',
+    });
     
     try {
       const res = isEditMode && postId
@@ -1061,13 +1196,31 @@ export function CreatePostPage() {
       
       if (res.code === 200 && res.data) {
         setSaveMessage({ type: 'success', text: '文章发布成功！' });
+        updateSaveStatus({
+          type: 'saved',
+          source: 'publish',
+          label: '发布成功',
+          detail: `最近成功 ${relativeSavedText}`,
+        }, true);
         setTimeout(() => navigate('/posts'), 1500);
       } else {
         setSaveMessage({ type: 'error', text: res.message || '发布失败' });
+        updateSaveStatus({
+          type: 'error',
+          source: 'publish',
+          label: '发布失败',
+          detail: res.message || '请稍后重试',
+        });
       }
     } catch (error) {
       logger.error('Publish error:', error);
       setSaveMessage({ type: 'error', text: '发布失败，请重试' });
+      updateSaveStatus({
+        type: 'error',
+        source: 'publish',
+        label: '发布失败',
+        detail: '请检查网络后重试',
+      });
     } finally {
       setIsPublishing(false);
     }
@@ -1111,6 +1264,58 @@ export function CreatePostPage() {
   const removeTag = (tagId: number) => {
     setSelectedTags(selectedTags.filter(t => t.id !== tagId));
   };
+
+  const handleRetrySaveStatus = useCallback(async () => {
+    if (isSaving || isPublishing) {
+      return;
+    }
+
+    if (!isEditMode || !postId) {
+      updateSaveStatus({
+        type: 'error',
+        source: 'manual',
+        label: '无法刷新',
+        detail: '新建文章请先手动保存一次',
+      });
+      return;
+    }
+
+    updateSaveStatus({
+      type: 'saving',
+      source: 'manual',
+      label: '刷新状态中',
+      detail: '正在重试保存请求',
+    });
+
+    try {
+      const data = latestDataRef.current;
+      await postService.autoSave(postId, {
+        title: data.title,
+        content: data.content,
+        summary: data.summary,
+        categoryId: data.selectedCategory?.id,
+        tagIds: data.selectedTags.map((tag) => tag.id),
+        status: _postStatus,
+      });
+
+      updateSaveStatus({
+        type: 'saved',
+        source: 'manual',
+        label: '状态已刷新',
+        detail: `最近成功 ${relativeSavedText}`,
+      }, true);
+      setSaveMessage({ type: 'success', text: '保存状态已刷新' });
+    } catch (error) {
+      logger.error('Refresh save status failed:', error);
+      updateSaveStatus({
+        type: 'error',
+        source: 'manual',
+        label: '刷新失败',
+        detail: '请稍后重试',
+      });
+      setSaveMessage({ type: 'error', text: '保存状态刷新失败' });
+    }
+  }, [isSaving, isPublishing, isEditMode, postId, updateSaveStatus, _postStatus, relativeSavedText]);
 
 
 
@@ -2158,6 +2363,40 @@ export function CreatePostPage() {
         <div className="flex items-center gap-4">
           <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
           <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
+          <div
+            className={cn(
+              'flex items-center gap-2 px-2 py-1 rounded-md border transition-colors',
+              saveStatus.type === 'error'
+                ? 'border-red-400/40 bg-red-500/10 text-red-300'
+                : saveStatus.type === 'saving'
+                ? 'border-amber-400/40 bg-amber-500/10 text-amber-200'
+                : saveStatus.type === 'disabled'
+                ? 'border-slate-400/30 bg-slate-500/10 text-slate-300'
+                : 'border-emerald-400/35 bg-emerald-500/10 text-emerald-200'
+            )}
+            aria-live="polite"
+          >
+            {saveStatus.type === 'saving' ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : saveStatus.type === 'error' ? (
+              <AlertCircle className="w-3 h-3" />
+            ) : saveStatus.type === 'disabled' ? (
+              <HardDrive className="w-3 h-3" />
+            ) : (
+              <CheckCircle className="w-3 h-3" />
+            )}
+            <span className="font-medium">{saveStatus.label}</span>
+            <span className="text-[11px] opacity-80">{saveStatus.detail || `最近成功 ${relativeSavedText}`}</span>
+            {saveStatus.type === 'error' && (
+              <button
+                type="button"
+                onClick={handleRetrySaveStatus}
+                className="ml-1 px-1.5 py-0.5 rounded border border-current/30 hover:bg-white/10 transition-colors"
+              >
+                刷新
+              </button>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
