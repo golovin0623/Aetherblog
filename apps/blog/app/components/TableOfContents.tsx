@@ -21,6 +21,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
   const [activeId, setActiveId] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isReading, setIsReading] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
@@ -76,6 +77,16 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
       document.body.style.overflow = previousOverflow;
     };
   }, [isDrawerOpen]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsReading(window.scrollY > 220);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const scrollToHeading = (id: string) => {
     const element = document.getElementById(id);
@@ -162,7 +173,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
       <button
         type="button"
         onClick={() => setIsDrawerOpen(true)}
-        className="fixed right-5 bottom-6 z-[55] inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 px-4 py-2 text-sm text-[var(--text-primary)] shadow-lg backdrop-blur"
+        className={`fixed right-5 bottom-6 z-[55] inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 px-4 py-2 text-sm text-[var(--text-primary)] backdrop-blur transition-all duration-300 ${
+          isReading ? 'opacity-55 shadow-md scale-[0.97]' : 'opacity-95 shadow-lg'
+        } hover:opacity-100 hover:shadow-xl hover:scale-100`}
       >
         <List className="h-4 w-4 text-primary" />
         目录
