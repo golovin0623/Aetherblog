@@ -5,6 +5,7 @@ export interface R<T> {
   data: T;
   timestamp: number;
   traceId?: string;
+  errorCategory?: string;
 }
 
 export interface AiServiceResponse<T> {
