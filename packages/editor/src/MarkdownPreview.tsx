@@ -231,16 +231,121 @@ function createLineTrackingRenderer(
 ): Renderer {
   const renderer = new Renderer();
   const lines = content.split('\n');
-  
-  // 查找给定文本的行号
+
+  const normalizeForMatch = (value: string): string => {
+    return value
+      .replace(/&[a-z0-9#]+;/gi, ' ')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/^\s*>\s*/gm, '')
+      .replace(/^\s*#{1,6}\s+/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .replace(/[`*_~\[\]()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  };
+
+  const buildCandidateKeys = (text: string): string[] => {
+    const normalizedWhole = normalizeForMatch(text);
+    const lineParts = text
+      .split('\n')
+      .map((line) => normalizeForMatch(line))
+      .filter((line) => line.length > 0)
+      .slice(0, 3);
+
+    const keys = new Set<string>();
+    if (normalizedWhole) {
+      keys.add(normalizedWhole);
+      keys.add(normalizedWhole.slice(0, 80));
+    }
+
+    for (const part of lineParts) {
+      keys.add(part);
+      keys.add(part.slice(0, 80));
+    }
+
+    return Array.from(keys).filter((key) => key.length > 0);
+  };
+
+  const normalizedSourceLines = lines.map((line) => normalizeForMatch(line));
+  const lineIndexMap = new Map<string, number[]>();
+  const keyCursorMap = new Map<string, number>();
+
+  for (let i = 0; i < normalizedSourceLines.length; i++) {
+    const normalized = normalizedSourceLines[i];
+    if (!normalized) continue;
+
+    const found = lineIndexMap.get(normalized);
+    if (found) {
+      found.push(i + 1);
+    } else {
+      lineIndexMap.set(normalized, [i + 1]);
+    }
+  }
+
+  let lastMatchedLine = 1;
+
   const findLineNumber = (text: string): number => {
-    const trimmedText = text.trim().replace(/^#+\s*/, '');
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(trimmedText)) {
-        return i + 1;
+    const keys = buildCandidateKeys(text);
+    let matchedLine = -1;
+
+    for (const key of keys) {
+      const candidates = lineIndexMap.get(key);
+      if (!candidates || candidates.length === 0) {
+        continue;
+      }
+
+      const usedCursor = keyCursorMap.get(key) ?? 0;
+      let chosenCursor = usedCursor;
+
+      while (chosenCursor < candidates.length && candidates[chosenCursor] < lastMatchedLine) {
+        chosenCursor += 1;
+      }
+
+      if (chosenCursor >= candidates.length) {
+        chosenCursor = Math.min(usedCursor, candidates.length - 1);
+      }
+
+      matchedLine = candidates[chosenCursor];
+      keyCursorMap.set(key, Math.min(chosenCursor + 1, candidates.length));
+      break;
+    }
+
+    if (matchedLine < 0) {
+      for (const key of keys) {
+        const shortKey = key.slice(0, 80);
+        if (!shortKey) continue;
+
+        for (let i = lastMatchedLine - 1; i < normalizedSourceLines.length; i++) {
+          if (normalizedSourceLines[i].includes(shortKey)) {
+            matchedLine = i + 1;
+            break;
+          }
+        }
+
+        if (matchedLine > 0) {
+          break;
+        }
+
+        for (let i = 0; i < lastMatchedLine - 1; i++) {
+          if (normalizedSourceLines[i].includes(shortKey)) {
+            matchedLine = i + 1;
+            break;
+          }
+        }
+
+        if (matchedLine > 0) {
+          break;
+        }
       }
     }
-    return -1;
+
+    if (matchedLine > 0) {
+      lastMatchedLine = Math.max(lastMatchedLine, matchedLine);
+    }
+
+    return matchedLine;
   };
 
   // 覆盖标题渲染器以添加 data-source-line

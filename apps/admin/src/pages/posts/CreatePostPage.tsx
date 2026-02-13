@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { 
   Save, Settings, Sparkles, ArrowLeft, Send, 
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
@@ -60,6 +60,17 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
   );
 }
 
+type SaveStatusType = 'saving' | 'saved' | 'error' | 'disabled';
+type SaveStatusSource = 'auto' | 'manual' | 'publish' | 'system';
+
+interface SaveStatusState {
+  type: SaveStatusType;
+  source: SaveStatusSource;
+  label: string;
+  detail?: string;
+  updatedAt: number | null;
+}
+
 export function CreatePostPage() {
   const navigate = useNavigate();
   // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
@@ -76,6 +87,7 @@ export function CreatePostPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
+  const [activeTocLine, setActiveTocLine] = useState<number | null>(null);
   // 字号控制 - 分离编辑器和预览字号
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [previewFontSize, setPreviewFontSize] = useState(16);
@@ -111,6 +123,46 @@ export function CreatePostPage() {
   const [showAllTags, setShowAllTags] = useState(false);
   const [aiModelId, setAiModelId] = useState<string | undefined>(undefined);
   const [aiProviderCode, setAiProviderCode] = useState<string | undefined>(undefined);
+  const prefersReducedMotion = useReducedMotion();
+  const [saveStatus, setSaveStatus] = useState<SaveStatusState>({
+    type: 'saved',
+    source: 'system',
+    label: '待保存',
+    detail: '尚未产生保存记录',
+    updatedAt: null,
+  });
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [saveStatusTick, setSaveStatusTick] = useState(Date.now());
+
+  const updateSaveStatus = useCallback((next: Omit<SaveStatusState, 'updatedAt'>, markSuccess = false) => {
+    const now = Date.now();
+    setSaveStatus({ ...next, updatedAt: now });
+    if (markSuccess) {
+      setLastSavedAt(now);
+    }
+  }, []);
+
+  const relativeSavedText = useMemo(() => {
+    if (!lastSavedAt) {
+      return '尚未成功保存';
+    }
+
+    const diffMs = Math.max(0, saveStatusTick - lastSavedAt);
+    const diffSeconds = Math.floor(diffMs / 1000);
+    if (diffSeconds < 60) {
+      return '刚刚';
+    }
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) {
+      return `${diffMinutes} 分钟前`;
+    }
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+      return `${diffHours} 小时前`;
+    }
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} 天前`;
+  }, [lastSavedAt, saveStatusTick]);
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
@@ -120,6 +172,34 @@ export function CreatePostPage() {
   const editorViewRef = useRef<EditorView | null>(null);
   const aiPanelRef = useRef<AiSidePanelHandle | null>(null);
   const [pendingAiAction, setPendingAiAction] = useState<AiPanelAction | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSaveStatusTick(Date.now());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isAutoSaveEnabled) {
+      updateSaveStatus({
+        type: 'disabled',
+        source: 'auto',
+        label: '自动保存已关闭',
+        detail: '仅支持手动保存',
+      });
+      return;
+    }
+
+    if (saveStatus.type === 'disabled') {
+      updateSaveStatus({
+        type: lastSavedAt ? 'saved' : 'saving',
+        source: 'auto',
+        label: lastSavedAt ? '自动保存已恢复' : '等待自动保存',
+        detail: lastSavedAt ? `最近成功 ${relativeSavedText}` : '编辑内容后将自动保存',
+      });
+    }
+  }, [isAutoSaveEnabled, lastSavedAt, relativeSavedText, saveStatus.type, updateSaveStatus]);
 
   // 侧边栏自动折叠
   const { setAutoCollapse } = useSidebarStore();
@@ -157,6 +237,13 @@ export function CreatePostPage() {
       // 仅当内容存在时自动保存
       if (!data.title && !data.content) return;
 
+      updateSaveStatus({
+        type: 'saving',
+        source: 'auto',
+        label: '自动保存中',
+        detail: '正在同步草稿缓存',
+      });
+
       // 自动保存到草稿缓存 (Redis)
       postService.autoSave(postId, {
         title: data.title,
@@ -169,11 +256,25 @@ export function CreatePostPage() {
         // 触发微妙的保存闪烁动画
         setAutoSaveFlash(true);
         setTimeout(() => setAutoSaveFlash(false), 1500);
-      }).catch(err => logger.error('Auto save failed', err));
+        updateSaveStatus({
+          type: 'saved',
+          source: 'auto',
+          label: '自动保存成功',
+          detail: `最近成功 ${relativeSavedText}`,
+        }, true);
+      }).catch(err => {
+        logger.error('Auto save failed', err);
+        updateSaveStatus({
+          type: 'error',
+          source: 'auto',
+          label: '自动保存失败',
+          detail: '请检查网络或点击刷新重试',
+        });
+      });
     }, 30000);
 
     return () => clearInterval(timer);
-  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled]);
+  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled, relativeSavedText, updateSaveStatus]);
 
   // 视图配置自动化
   useEffect(() => {
@@ -411,145 +512,273 @@ export function CreatePostPage() {
     return items;
   }, [content]);
 
+  const tocPanelVariants = useMemo(() => {
+    const enterDuration = prefersReducedMotion ? 0.12 : 0.24;
+    const exitDuration = prefersReducedMotion ? 0.1 : 0.2;
+
+    return {
+      hidden: {
+        width: 0,
+        opacity: 0,
+        x: prefersReducedMotion ? 0 : 20,
+      },
+      show: {
+        width: 320,
+        opacity: 1,
+        x: 0,
+        transition: {
+          duration: enterDuration,
+          ease: [0.22, 1, 0.36, 1],
+          when: 'beforeChildren',
+          delayChildren: prefersReducedMotion ? 0 : 0.04,
+          staggerChildren: prefersReducedMotion ? 0 : 0.018,
+        },
+      },
+      exit: {
+        width: 0,
+        opacity: 0,
+        x: prefersReducedMotion ? 0 : 24,
+        transition: {
+          duration: exitDuration,
+          ease: [0.4, 0, 1, 1],
+          when: 'afterChildren',
+          staggerChildren: prefersReducedMotion ? 0 : 0.01,
+          staggerDirection: -1,
+        },
+      },
+    };
+  }, [prefersReducedMotion]);
+
+  const tocItemVariants = useMemo(() => ({
+    hidden: {
+      opacity: 0,
+      y: prefersReducedMotion ? 0 : 6,
+      scale: prefersReducedMotion ? 1 : 0.99,
+    },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: prefersReducedMotion ? 0.08 : 0.16,
+        ease: [0.22, 1, 0.36, 1],
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: prefersReducedMotion ? 0 : -4,
+      transition: {
+        duration: prefersReducedMotion ? 0.06 : 0.12,
+      },
+    },
+  }), [prefersReducedMotion]);
+
   // 用于在 TOC 导航期间存储原始同步滚动状态的 Ref
   const syncScrollBeforeNavRef = useRef(false);
 
-  // 滚动到标题 - 虚拟 DOM 准确性的两阶段方法
-  const scrollToHeading = useCallback((headingText: string, lineNumber: number) => {
-    const editorContainer = editorContainerRef.current;
-    if (!editorContainer) return;
-    
-    // 暂时禁用同步滚动以防止干扰
-    syncScrollBeforeNavRef.current = isSyncScroll;
-    if (isSyncScroll) {
-      setIsSyncScroll(false);
+  const getNavigationTarget = useCallback((mode: ViewMode): 'editor' | 'preview' | 'both' => {
+    if (mode === 'edit') {
+      return 'editor';
     }
-    
-    const cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
-    const cmContent = editorContainer.querySelector('.cm-content') as HTMLElement | null;
+    if (mode === 'preview') {
+      return 'preview';
+    }
+    return 'both';
+  }, []);
 
-    // 将执行包装在 setTimeout 中，以确保 setIsSyncScroll(false) 已传播到子组件
-    setTimeout(() => {
-    // 辅助函数：在编辑器 DOM 中查找标题
+  const getPreviewScrollContainer = useCallback((container: HTMLElement): HTMLElement | null => {
+    const markdownPreview = container.querySelector('.markdown-preview') as HTMLElement | null;
+    if (markdownPreview) {
+      const previewPanel = markdownPreview.closest('[class*="overflow-y-auto"]') as HTMLElement | null;
+      if (previewPanel) {
+        return previewPanel;
+      }
+    }
+
+    const candidates = container.querySelectorAll('[class*="overflow-y-auto"]');
+    for (const node of Array.from(candidates)) {
+      const panel = node as HTMLElement;
+      if (panel.querySelector('.markdown-preview')) {
+        return panel;
+      }
+    }
+
+    return null;
+  }, []);
+
+  const navigatePreviewToHeading = useCallback((container: HTMLElement, headingText: string): boolean => {
+    const previewPanel = getPreviewScrollContainer(container);
+    if (!previewPanel) {
+      logger.warn('TOC preview panel not found', { headingText, viewMode });
+      return false;
+    }
+
+    const normalizedHeading = headingText.trim();
+    const headingElements = previewPanel.querySelectorAll('h1, h2, h3, h4, h5, h6');
+
+    let targetHeading: HTMLElement | null = null;
+    for (const node of Array.from(headingElements)) {
+      const heading = node as HTMLElement;
+      if ((heading.textContent || '').trim() === normalizedHeading) {
+        targetHeading = heading;
+        break;
+      }
+    }
+
+    if (!targetHeading) {
+      for (const node of Array.from(headingElements)) {
+        const heading = node as HTMLElement;
+        if ((heading.textContent || '').trim().includes(normalizedHeading)) {
+          targetHeading = heading;
+          break;
+        }
+      }
+    }
+
+    if (!targetHeading) {
+      logger.warn('TOC preview heading not found', { headingText, viewMode });
+      return false;
+    }
+
+    const containerRect = previewPanel.getBoundingClientRect();
+    const targetRect = targetHeading.getBoundingClientRect();
+    const currentScrollTop = previewPanel.scrollTop;
+    const targetScrollTop = currentScrollTop + (targetRect.top - containerRect.top) - 60;
+    previewPanel.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+    return true;
+  }, [getPreviewScrollContainer, viewMode]);
+
+  const navigateEditorToHeading = useCallback((container: HTMLElement, headingText: string, lineNumber: number): boolean => {
+    const cmScroller = container.querySelector('.cm-scroller') as HTMLElement | null;
+    const cmContent = container.querySelector('.cm-content') as HTMLElement | null;
+
+    if (!cmScroller || !cmContent) {
+      logger.warn('TOC editor container not found', { headingText, lineNumber, viewMode });
+      return false;
+    }
+
+    const normalizedHeading = headingText.trim();
+
     const findHeadingInEditor = (): HTMLElement | null => {
-      if (!cmContent) return null;
       const lines = cmContent.querySelectorAll('.cm-line');
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] as HTMLElement;
+      for (const node of Array.from(lines)) {
+        const line = node as HTMLElement;
         const text = (line.textContent || '').trim();
-        if (text.includes(headingText) && /^#+\s/.test(text)) {
+        if (!/^#+\s/.test(text)) {
+          continue;
+        }
+
+        const normalizedLineHeading = text.replace(/^#{1,6}\s*/, '').trim();
+        if (normalizedLineHeading === normalizedHeading || normalizedLineHeading.includes(normalizedHeading)) {
           return line;
         }
       }
       return null;
     };
 
-    // 辅助函数：将编辑器滚动到元素
     const scrollEditorToElement = (element: HTMLElement) => {
-      if (!cmScroller || !cmContent) return;
       const lineTop = element.offsetTop - cmContent.offsetTop;
       cmScroller.scrollTo({ top: Math.max(0, lineTop - 50), behavior: 'smooth' });
     };
 
-    // 辅助函数：将预览滚动到标题
-    const scrollPreviewToHeading = () => {
-      const previewPanels = editorContainer.querySelectorAll('[class*="overflow-y-auto"]');
-      previewPanels.forEach(panel => {
-        const pEl = panel as HTMLElement;
-        const headings = pEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        
-        for (let i = 0; i < headings.length; i++) {
-          const heading = headings[i] as HTMLElement;
-          if (heading.textContent?.trim() === headingText) {
-            const containerRect = pEl.getBoundingClientRect();
-            const targetRect = heading.getBoundingClientRect();
-            const currentScrollTop = pEl.scrollTop;
-            const targetScrollTop = currentScrollTop + (targetRect.top - containerRect.top) - 60;
-            pEl.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
-            break;
-          }
-        }
-      });
-    };
-
-    // 阶段 1：首先尝试直接文本匹配
-    let foundLine = findHeadingInEditor();
-    
-    if (foundLine) {
-      // 标题在可见 DOM 中 - 直接滚动（均平滑）
-      scrollEditorToElement(foundLine);
-      scrollPreviewToHeading(); // 预览总是有 DOM，所以这行得通
-    } else if (cmScroller && cmContent) {
-      // 阶段 2：标题不在 DOM 中 - 使用 "Seek & Lock" 方法
-      
-      // 2a: 启动平滑滚动到编辑器的估计位置
-      const lineHeight = 24;
-      const estimatedTop = (lineNumber - 1) * lineHeight;
-      cmScroller.scrollTo({ top: Math.max(0, estimatedTop - 50), behavior: 'smooth' });
-      
-      // 2b: 预览没有虚拟化，所以我们总是可以直接且平滑地找到并滚动到它
-      // 我们不需要预览的估计，只需强制搜索
-      scrollPreviewToHeading();
-      
-      // 2c: MutationObserver (零开销)
-      // 我们不每帧轮询，而是等待浏览器通知我们 DOM 更新
-      
-      const observerTimeout = setTimeout(() => {
-        observer.disconnect();
-      }, 2000); // 安全超时
-
-      const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          if (mutation.type === 'childList') {
-            // 仅检查新添加的节点
-            mutation.addedNodes.forEach((node) => {
-              if (node.nodeType === 1) { // 元素节点
-                const el = node as HTMLElement;
-                // 检查这个新节点是否包含我们的标题的行
-                if (el.classList.contains('cm-line')) {
-                  const text = el.textContent || '';
-                  if (text.includes(headingText) && /^#+\s/.test(text)) {
-                    // 目标已获取！
-                    // 仅当偏差显著 (> 50px) 时才更正，以避免视觉抖动
-                    // 仅当估计目标和实际目标之间的偏差显著时才更正
-                    // 如果我们已经去了正确的地方，这可以防止中断平滑滚动
-                    const targetTop = el.offsetTop - (cmContent?.offsetTop || 0) - 50;
-                    if (Math.abs(estimatedTop - targetTop) > 50) {
-                       scrollEditorToElement(el);
-                    }
-                    observer.disconnect();
-                    clearTimeout(observerTimeout);
-                  }
-                }
-              }
-            });
-          }
-        }
-      });
-
-      if (cmContent) {
-        // 开始观察行添加
-        observer.observe(cmContent, { childList: true, subtree: true });
-        
-        // 最终检查：以防它在观察开始前刚刚出现
-        const finalLine = findHeadingInEditor();
-        if (finalLine) {
-          scrollEditorToElement(finalLine);
-          observer.disconnect();
-          clearTimeout(observerTimeout);
-        }
-      }
+    const immediateLine = findHeadingInEditor();
+    if (immediateLine) {
+      scrollEditorToElement(immediateLine);
+      return true;
     }
 
-    // 在足够的时间让所有动画完成后恢复同步滚动
-    // 增加到 1500ms 以覆盖长滚动和轮询时间
+    const estimatedTop = Math.max(0, (lineNumber - 1) * 24 - 50);
+    cmScroller.scrollTo({ top: estimatedTop, behavior: 'smooth' });
+
+    const observerTimeout = setTimeout(() => {
+      observer.disconnect();
+    }, 1200);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type !== 'childList') {
+          continue;
+        }
+
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (node.nodeType !== 1) {
+            continue;
+          }
+          const el = node as HTMLElement;
+          if (!el.classList.contains('cm-line')) {
+            continue;
+          }
+
+          const text = (el.textContent || '').trim();
+          if (!/^#+\s/.test(text)) {
+            continue;
+          }
+
+          const normalizedLineHeading = text.replace(/^#{1,6}\s*/, '').trim();
+          if (normalizedLineHeading === normalizedHeading || normalizedLineHeading.includes(normalizedHeading)) {
+            scrollEditorToElement(el);
+            observer.disconnect();
+            clearTimeout(observerTimeout);
+            return;
+          }
+        }
+      }
+    });
+
+    observer.observe(cmContent, { childList: true, subtree: true });
+    return true;
+  }, [viewMode]);
+
+  // 统一 TOC 导航执行器（按 viewMode 选择目标容器）
+  const scrollToHeading = useCallback((headingText: string, lineNumber: number) => {
+    const editorContainer = editorContainerRef.current;
+    if (!editorContainer) return;
+
+    const navigationTarget = getNavigationTarget(viewMode);
+    const shouldNavigateEditor = navigationTarget === 'editor' || navigationTarget === 'both';
+    const shouldNavigatePreview = navigationTarget === 'preview' || navigationTarget === 'both';
+    const shouldTemporarilyDisableSync = navigationTarget === 'both' && isSyncScroll;
+
+    setActiveTocLine(lineNumber);
+
+    if (shouldTemporarilyDisableSync) {
+      syncScrollBeforeNavRef.current = true;
+      setIsSyncScroll(false);
+    } else {
+      syncScrollBeforeNavRef.current = false;
+    }
+
+    const executeNavigation = () => {
+      const editorMatched = shouldNavigateEditor
+        ? navigateEditorToHeading(editorContainer, headingText, lineNumber)
+        : false;
+      const previewMatched = shouldNavigatePreview
+        ? navigatePreviewToHeading(editorContainer, headingText)
+        : false;
+
+      if (!editorMatched && !previewMatched) {
+        logger.warn('TOC navigation target not found', {
+          headingText,
+          lineNumber,
+          viewMode,
+          navigationTarget,
+        });
+      }
+    };
+
+    if (shouldTemporarilyDisableSync) {
+      setTimeout(executeNavigation, 10);
+    } else {
+      executeNavigation();
+    }
+
     setTimeout(() => {
       if (syncScrollBeforeNavRef.current) {
         setIsSyncScroll(true);
       }
-    }, 1500);
-    }, 10);
-  }, [isSyncScroll, stats.lines]);
+      syncScrollBeforeNavRef.current = false;
+    }, 1200);
+  }, [getNavigationTarget, isSyncScroll, navigateEditorToHeading, navigatePreviewToHeading, viewMode]);
 
   // 滚动到顶部函数 - 针对 CodeMirror 的内部滚动条
   const scrollToTop = useCallback(() => {
@@ -851,6 +1080,12 @@ export function CreatePostPage() {
     
     setIsSaving(true);
     setSaveMessage(null);
+    updateSaveStatus({
+      type: 'saving',
+      source: 'manual',
+      label: '手动保存中',
+      detail: '正在提交保存请求',
+    });
     
     try {
       // 如果正在编辑已发布的文章，"保存" 仅更新草稿缓存
@@ -865,6 +1100,12 @@ export function CreatePostPage() {
             status: 'PUBLISHED',
          });
          setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
+         updateSaveStatus({
+           type: 'saved',
+           source: 'manual',
+           label: '草稿已保存',
+           detail: `最近成功 ${relativeSavedText}`,
+         }, true);
       } else {
         // 正常保存到数据库
         const res = isEditMode && postId
@@ -887,17 +1128,35 @@ export function CreatePostPage() {
         
         if (res.code === 200 && res.data) {
           setSaveMessage({ type: 'success', text: '保存成功！' });
+          updateSaveStatus({
+            type: 'saved',
+            source: 'manual',
+            label: '保存成功',
+            detail: `最近成功 ${relativeSavedText}`,
+          }, true);
           // 如果是新文章，导航到编辑页面
           if (!isEditMode && res.data.id) {
             setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
           }
         } else {
           setSaveMessage({ type: 'error', text: res.message || '保存失败' });
+          updateSaveStatus({
+            type: 'error',
+            source: 'manual',
+            label: '保存失败',
+            detail: res.message || '请稍后重试',
+          });
         }
       }
     } catch (error) {
       logger.error('Save error:', error);
       setSaveMessage({ type: 'error', text: '保存失败，请重试' });
+      updateSaveStatus({
+        type: 'error',
+        source: 'manual',
+        label: '保存失败',
+        detail: '请检查网络后重试',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -909,6 +1168,12 @@ export function CreatePostPage() {
     
     setIsPublishing(true);
     setSaveMessage(null);
+    updateSaveStatus({
+      type: 'saving',
+      source: 'publish',
+      label: '发布中',
+      detail: '正在提交发布请求',
+    });
     
     try {
       const res = isEditMode && postId
@@ -931,13 +1196,31 @@ export function CreatePostPage() {
       
       if (res.code === 200 && res.data) {
         setSaveMessage({ type: 'success', text: '文章发布成功！' });
+        updateSaveStatus({
+          type: 'saved',
+          source: 'publish',
+          label: '发布成功',
+          detail: `最近成功 ${relativeSavedText}`,
+        }, true);
         setTimeout(() => navigate('/posts'), 1500);
       } else {
         setSaveMessage({ type: 'error', text: res.message || '发布失败' });
+        updateSaveStatus({
+          type: 'error',
+          source: 'publish',
+          label: '发布失败',
+          detail: res.message || '请稍后重试',
+        });
       }
     } catch (error) {
       logger.error('Publish error:', error);
       setSaveMessage({ type: 'error', text: '发布失败，请重试' });
+      updateSaveStatus({
+        type: 'error',
+        source: 'publish',
+        label: '发布失败',
+        detail: '请检查网络后重试',
+      });
     } finally {
       setIsPublishing(false);
     }
@@ -981,6 +1264,58 @@ export function CreatePostPage() {
   const removeTag = (tagId: number) => {
     setSelectedTags(selectedTags.filter(t => t.id !== tagId));
   };
+
+  const handleRetrySaveStatus = useCallback(async () => {
+    if (isSaving || isPublishing) {
+      return;
+    }
+
+    if (!isEditMode || !postId) {
+      updateSaveStatus({
+        type: 'error',
+        source: 'manual',
+        label: '无法刷新',
+        detail: '新建文章请先手动保存一次',
+      });
+      return;
+    }
+
+    updateSaveStatus({
+      type: 'saving',
+      source: 'manual',
+      label: '刷新状态中',
+      detail: '正在重试保存请求',
+    });
+
+    try {
+      const data = latestDataRef.current;
+      await postService.autoSave(postId, {
+        title: data.title,
+        content: data.content,
+        summary: data.summary,
+        categoryId: data.selectedCategory?.id,
+        tagIds: data.selectedTags.map((tag) => tag.id),
+        status: _postStatus,
+      });
+
+      updateSaveStatus({
+        type: 'saved',
+        source: 'manual',
+        label: '状态已刷新',
+        detail: `最近成功 ${relativeSavedText}`,
+      }, true);
+      setSaveMessage({ type: 'success', text: '保存状态已刷新' });
+    } catch (error) {
+      logger.error('Refresh save status failed:', error);
+      updateSaveStatus({
+        type: 'error',
+        source: 'manual',
+        label: '刷新失败',
+        detail: '请稍后重试',
+      });
+      setSaveMessage({ type: 'error', text: '保存状态刷新失败' });
+    }
+  }, [isSaving, isPublishing, isEditMode, postId, updateSaveStatus, _postStatus, relativeSavedText]);
 
 
 
@@ -1942,25 +2277,10 @@ export function CreatePostPage() {
         <AnimatePresence mode="wait">
           {showToc && (
             <motion.div
-              initial={{ width: 0, opacity: 0, x: 30 }}
-              animate={{ width: 320, opacity: 1, x: 0 }}
-              exit={{ 
-                width: 0, 
-                opacity: 0, 
-                x: 60,
-                transition: {
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 40,
-                  opacity: { duration: 0.2 }
-                }
-              }}
-              transition={{ 
-                type: "spring",
-                stiffness: 350,
-                damping: 32,
-                mass: 0.6
-              }}
+              initial="hidden"
+              animate="show"
+              exit="exit"
+              variants={tocPanelVariants}
               className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
             >
               {/* Cinematic Edge Highlight */}
@@ -1997,47 +2317,28 @@ export function CreatePostPage() {
                     </p>
                   </motion.div>
                 ) : (
-                  <motion.div 
-                    initial="hidden"
-                    animate="show"
-                    variants={{
-                      show: {
-                        transition: {
-                          staggerChildren: 0.04,
-                          delayChildren: 0.2,
-                          staggerDirection: 1
-                        }
-                      }
-                    }}
-                    className="space-y-0.5 px-3"
-                  >
+                  <div className="space-y-0.5 px-3">
                     {tocItems.map((item, index) => (
                       <motion.button
                         key={`${item.line}-${index}`}
-                        variants={{
-                          hidden: { opacity: 0, y: 15, scale: 0.95, filter: "blur(4px)" },
-                          show: { 
-                            opacity: 1, 
-                            y: 0, 
-                            scale: 1, 
-                            filter: "blur(0px)",
-                            transition: {
-                              type: "spring",
-                              stiffness: 260,
-                              damping: 20
-                            }
-                          }
-                        }}
+                        variants={tocItemVariants}
                         onClick={() => scrollToHeading(item.text, item.line)}
                         className={cn(
                           'w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-300 group relative flex items-center gap-3',
-                          'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                          activeTocLine === item.line
+                            ? 'bg-primary/12 text-[var(--text-primary)]'
+                            : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         )}
                         style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         title={item.text}
                       >
                         {/* Elegant Hover Indicator */}
-                        <div className="absolute left-1 w-0.5 h-0 bg-primary group-hover:h-3/5 transition-all duration-400 ease-out-expo rounded-full opacity-0 group-hover:opacity-100 shadow-[0_0_8px_#8b5cf6]" />
+                        <div className={cn(
+                          'absolute left-1 w-0.5 bg-primary transition-all duration-400 ease-out-expo rounded-full shadow-[0_0_8px_#8b5cf6]',
+                          activeTocLine === item.line
+                            ? 'h-3/5 opacity-100'
+                            : 'h-0 opacity-0 group-hover:h-3/5 group-hover:opacity-100'
+                        )} />
                         
                         <span className={cn(
                           "truncate transition-all duration-500",
@@ -2049,7 +2350,7 @@ export function CreatePostPage() {
                         </span>
                       </motion.button>
                     ))}
-                  </motion.div>
+                  </div>
                 )}
               </div>
             </motion.div>
@@ -2062,6 +2363,40 @@ export function CreatePostPage() {
         <div className="flex items-center gap-4">
           <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
           <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
+          <div
+            className={cn(
+              'flex items-center gap-2 px-2 py-1 rounded-md border transition-colors',
+              saveStatus.type === 'error'
+                ? 'border-red-400/40 bg-red-500/10 text-red-300'
+                : saveStatus.type === 'saving'
+                ? 'border-amber-400/40 bg-amber-500/10 text-amber-200'
+                : saveStatus.type === 'disabled'
+                ? 'border-slate-400/30 bg-slate-500/10 text-slate-300'
+                : 'border-emerald-400/35 bg-emerald-500/10 text-emerald-200'
+            )}
+            aria-live="polite"
+          >
+            {saveStatus.type === 'saving' ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : saveStatus.type === 'error' ? (
+              <AlertCircle className="w-3 h-3" />
+            ) : saveStatus.type === 'disabled' ? (
+              <HardDrive className="w-3 h-3" />
+            ) : (
+              <CheckCircle className="w-3 h-3" />
+            )}
+            <span className="font-medium">{saveStatus.label}</span>
+            <span className="text-[11px] opacity-80">{saveStatus.detail || `最近成功 ${relativeSavedText}`}</span>
+            {saveStatus.type === 'error' && (
+              <button
+                type="button"
+                onClick={handleRetrySaveStatus}
+                className="ml-1 px-1.5 py-0.5 rounded border border-current/30 hover:bg-white/10 transition-colors"
+              >
+                刷新
+              </button>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
