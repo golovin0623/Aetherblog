@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import { systemService } from '@/services/systemService';
 import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, Filter, ArrowDown, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,7 +12,135 @@ interface RealtimeLogViewerProps {
   className?: string;
 }
 
-type LogStatus = 'idle' | 'healthy' | 'no_data' | 'error';
+type LogLifecycleState = 'idle' | 'loading' | 'healthy' | 'no_data' | 'error' | 'paused';
+type LogViewMode = 'embedded' | 'fullscreen';
+type ActiveLogLifecycle = Exclude<LogLifecycleState, 'paused'>;
+
+interface LogViewState {
+  lifecycle: LogLifecycleState;
+  mode: LogViewMode;
+  lastActiveLifecycle: ActiveLogLifecycle;
+  message: string;
+  errorCategory: string | null;
+  transitionTrace: string;
+}
+
+type LogViewAction =
+  | { type: 'RESET_CONTEXT' }
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; hasData: boolean }
+  | { type: 'FETCH_NO_DATA'; message: string; errorCategory?: string | null }
+  | { type: 'FETCH_ERROR'; message: string; errorCategory?: string | null }
+  | { type: 'TOGGLE_PAUSE' }
+  | { type: 'ENTER_FULLSCREEN' }
+  | { type: 'EXIT_FULLSCREEN' };
+
+const INITIAL_LOG_VIEW_STATE: LogViewState = {
+  lifecycle: 'idle',
+  mode: 'embedded',
+  lastActiveLifecycle: 'idle',
+  message: '',
+  errorCategory: null,
+  transitionTrace: 'init',
+};
+
+function reduceLogViewState(state: LogViewState, action: LogViewAction): LogViewState {
+  switch (action.type) {
+    case 'RESET_CONTEXT':
+      return {
+        ...state,
+        lifecycle: 'idle',
+        lastActiveLifecycle: 'idle',
+        message: '',
+        errorCategory: null,
+        transitionTrace: 'reset_context',
+      };
+    case 'FETCH_START':
+      if (state.lifecycle === 'paused') {
+        return {
+          ...state,
+          transitionTrace: 'blocked:fetch_start_when_paused',
+        };
+      }
+      return {
+        ...state,
+        lifecycle: 'loading',
+        message: '',
+        errorCategory: null,
+        transitionTrace: `fetch_start_from_${state.lifecycle}`,
+      };
+    case 'FETCH_SUCCESS': {
+      const nextLifecycle: ActiveLogLifecycle = action.hasData ? 'healthy' : 'no_data';
+      return {
+        ...state,
+        lifecycle: nextLifecycle,
+        lastActiveLifecycle: nextLifecycle,
+        message: action.hasData ? '' : '当前无可展示日志',
+        errorCategory: null,
+        transitionTrace: `fetch_success_to_${nextLifecycle}`,
+      };
+    }
+    case 'FETCH_NO_DATA':
+      return {
+        ...state,
+        lifecycle: 'no_data',
+        lastActiveLifecycle: 'no_data',
+        message: action.message,
+        errorCategory: action.errorCategory || null,
+        transitionTrace: 'fetch_no_data',
+      };
+    case 'FETCH_ERROR':
+      return {
+        ...state,
+        lifecycle: 'error',
+        lastActiveLifecycle: 'error',
+        message: action.message,
+        errorCategory: action.errorCategory || null,
+        transitionTrace: 'fetch_error',
+      };
+    case 'TOGGLE_PAUSE':
+      if (state.lifecycle === 'paused') {
+        return {
+          ...state,
+          lifecycle: state.lastActiveLifecycle,
+          message: state.lastActiveLifecycle === 'healthy' ? '' : state.message,
+          transitionTrace: `resume_to_${state.lastActiveLifecycle}`,
+        };
+      }
+      return {
+        ...state,
+        lifecycle: 'paused',
+        lastActiveLifecycle: state.lifecycle,
+        transitionTrace: `pause_from_${state.lifecycle}`,
+      };
+    case 'ENTER_FULLSCREEN':
+      if (state.mode === 'fullscreen') {
+        return {
+          ...state,
+          transitionTrace: 'blocked:enter_fullscreen_when_fullscreen',
+        };
+      }
+      return {
+        ...state,
+        mode: 'fullscreen',
+        transitionTrace: 'enter_fullscreen',
+      };
+    case 'EXIT_FULLSCREEN':
+      if (state.mode === 'embedded') {
+        return {
+          ...state,
+          transitionTrace: 'blocked:exit_fullscreen_when_embedded',
+        };
+      }
+      return {
+        ...state,
+        mode: 'embedded',
+        transitionTrace: 'exit_fullscreen',
+      };
+    default:
+      return state;
+  }
+}
 
 export function RealtimeLogViewer({
   containerId,
@@ -22,20 +150,28 @@ export function RealtimeLogViewer({
   className
 }: RealtimeLogViewerProps) {
   const [logs, setLogs] = useState<string[]>([]);
-  const [paused, setPaused] = useState(false);
   const [fontSize, setFontSize] = useState(12);
   const [filterLevel, setFilterLevel] = useState<string>('ALL');
-  const [isFullScreen, setIsFullScreen] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [loading, setLoading] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [viewState, dispatchViewState] = useReducer(reduceLogViewState, INITIAL_LOG_VIEW_STATE);
 
-  const [logStatus, setLogStatus] = useState<LogStatus>('idle');
-  const [logMessage, setLogMessage] = useState('');
-  const [logErrorCategory, setLogErrorCategory] = useState<string | null>(null);
   const [lastSuccessAt, setLastSuccessAt] = useState<Date | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isPaused = viewState.lifecycle === 'paused';
+  const isLoading = viewState.lifecycle === 'loading';
+  const isFullScreen = viewState.mode === 'fullscreen';
+
+  useEffect(() => {
+    if (viewState.transitionTrace.startsWith('blocked:')) {
+      logger.warn('Log viewer transition blocked', {
+        trace: viewState.transitionTrace,
+        lifecycle: viewState.lifecycle,
+        mode: viewState.mode,
+      });
+    }
+  }, [viewState.transitionTrace, viewState.lifecycle, viewState.mode]);
 
   const getTitle = useCallback(() => {
     if (useAppLogs) {
@@ -46,44 +182,50 @@ export function RealtimeLogViewer({
 
   useEffect(() => {
     setLogs([]);
-    setPaused(false);
     setAutoScroll(true);
-    setLogStatus('idle');
-    setLogMessage('');
-    setLogErrorCategory(null);
+    dispatchViewState({ type: 'RESET_CONTEXT' });
   }, [filterLevel, containerId, useAppLogs]);
 
   useEffect(() => {
-    if (paused) return;
+    if (isPaused) return;
     if (!useAppLogs && !containerId) return;
 
     const fetchLogs = async () => {
-      setLoading(true);
+      dispatchViewState({ type: 'FETCH_START' });
       try {
         if (useAppLogs) {
           const result = await systemService.getLogs(filterLevel, 2000);
           setLogs(result.lines);
 
           if (result.status === 'ok') {
-            setLogStatus('healthy');
-            setLogMessage('');
-            setLogErrorCategory(null);
+            dispatchViewState({ type: 'FETCH_SUCCESS', hasData: result.lines.length > 0 });
             setLastSuccessAt(new Date());
           } else if (result.status === 'no_data') {
-            setLogStatus('no_data');
-            setLogMessage(result.message || '当前级别暂无日志');
-            setLogErrorCategory(result.errorCategory || null);
+            dispatchViewState({
+              type: 'FETCH_NO_DATA',
+              message: result.message || '当前级别暂无日志',
+              errorCategory: result.errorCategory || null,
+            });
           } else {
-            setLogStatus('error');
-            setLogMessage(result.message || '日志读取失败');
-            setLogErrorCategory(result.errorCategory || null);
+            dispatchViewState({
+              type: 'FETCH_ERROR',
+              message: result.message || '日志读取失败',
+              errorCategory: result.errorCategory || null,
+            });
           }
         } else {
           const data = await systemService.getContainerLogs(containerId!);
           if (Array.isArray(data)) {
             setLogs(data);
-            setLogStatus(data.length > 0 ? 'healthy' : 'no_data');
-            setLogMessage(data.length > 0 ? '' : '容器当前无可显示日志');
+            if (data.length > 0) {
+              dispatchViewState({ type: 'FETCH_SUCCESS', hasData: true });
+            } else {
+              dispatchViewState({
+                type: 'FETCH_NO_DATA',
+                message: '容器当前无可显示日志',
+                errorCategory: null,
+              });
+            }
             if (data.length > 0) {
               setLastSuccessAt(new Date());
             }
@@ -98,26 +240,26 @@ export function RealtimeLogViewer({
           ? String((err as { errorCategory?: unknown }).errorCategory || '')
           : '';
 
-        setLogStatus('error');
-        setLogMessage(message || '日志请求失败');
-        setLogErrorCategory(errorCategory || null);
+        dispatchViewState({
+          type: 'FETCH_ERROR',
+          message: message || '日志请求失败',
+          errorCategory: errorCategory || null,
+        });
         setLogs([]);
-      } finally {
-        setLoading(false);
       }
     };
 
-    fetchLogs();
+    void fetchLogs();
     const timer = setInterval(fetchLogs, refreshInterval * 1000);
     return () => clearInterval(timer);
-  }, [containerId, refreshInterval, paused, useAppLogs, filterLevel, refreshTick]);
+  }, [containerId, refreshInterval, isPaused, useAppLogs, filterLevel, refreshTick]);
 
   useEffect(() => {
-    if (autoScroll && !paused && scrollRef.current) {
+    if (autoScroll && !isPaused && scrollRef.current) {
       const { scrollHeight, clientHeight } = scrollRef.current;
       scrollRef.current.scrollTop = scrollHeight - clientHeight;
     }
-  }, [logs, paused, autoScroll]);
+  }, [logs, isPaused, autoScroll]);
 
   const handleScroll = () => {
     if (scrollRef.current) {
@@ -137,7 +279,9 @@ export function RealtimeLogViewer({
   };
 
   const handleManualRefresh = () => {
-    setPaused(false);
+    if (isPaused) {
+      dispatchViewState({ type: 'TOGGLE_PAUSE' });
+    }
     setRefreshTick(value => value + 1);
   };
 
@@ -150,23 +294,26 @@ export function RealtimeLogViewer({
     );
   }
 
-  const statusLabel =
-    logStatus === 'healthy'
-      ? '运行正常'
-      : logStatus === 'no_data'
-        ? '暂无日志'
-        : logStatus === 'error'
-          ? '降级中'
-          : '初始化中';
+  const statusLabelMap: Record<LogLifecycleState, string> = {
+    idle: '初始化中',
+    loading: '加载中',
+    healthy: '运行正常',
+    no_data: '暂无日志',
+    error: '降级中',
+    paused: '已暂停',
+  };
 
-  const statusClassName =
-    logStatus === 'healthy'
-      ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-      : logStatus === 'no_data'
-        ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
-        : logStatus === 'error'
-          ? 'bg-red-500/10 text-red-600 border-red-500/30'
-          : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)]';
+  const statusClassMap: Record<LogLifecycleState, string> = {
+    idle: 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)]',
+    loading: 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)]',
+    healthy: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+    no_data: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+    error: 'bg-red-500/10 text-red-600 border-red-500/30',
+    paused: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
+  };
+
+  const statusLabel = statusLabelMap[viewState.lifecycle];
+  const statusClassName = statusClassMap[viewState.lifecycle];
 
   const renderContent = () => (
     <>
@@ -175,9 +322,9 @@ export function RealtimeLogViewer({
           <Terminal className="w-4 h-4 text-primary shrink-0" />
           <span className="font-mono font-medium truncate">{getTitle()}</span>
           <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-          {paused && <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded ml-1 shrink-0">已暂停</span>}
-          {!autoScroll && !paused && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
-          {loading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
+          {isFullScreen && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
+          {!autoScroll && !isPaused && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
+          {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
@@ -231,7 +378,7 @@ export function RealtimeLogViewer({
               onClick={handleManualRefresh}
               title="立即重试"
             >
-              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+              <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
             </button>
             <button
               className={cn('p-1.5 rounded transition-colors', autoScroll ? 'text-primary bg-primary/10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]')}
@@ -242,10 +389,10 @@ export function RealtimeLogViewer({
             </button>
             <button
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={() => setPaused(!paused)}
-              title={paused ? '继续滚动' : '暂停滚动'}
+              onClick={() => dispatchViewState({ type: 'TOGGLE_PAUSE' })}
+              title={isPaused ? '继续滚动' : '暂停滚动'}
             >
-              {paused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+              {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
             </button>
             <button
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
@@ -256,7 +403,7 @@ export function RealtimeLogViewer({
             </button>
             <button
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={() => setIsFullScreen(!isFullScreen)}
+              onClick={() => dispatchViewState({ type: isFullScreen ? 'EXIT_FULLSCREEN' : 'ENTER_FULLSCREEN' })}
               title={isFullScreen ? '退出全屏' : '全屏显示'}
             >
               {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -265,15 +412,15 @@ export function RealtimeLogViewer({
         </div>
       </div>
 
-      {(logStatus === 'error' || logStatus === 'no_data') && (
+      {(viewState.lifecycle === 'error' || viewState.lifecycle === 'no_data') && (
         <div className={cn(
           'mx-4 mt-3 rounded-md px-3 py-2 text-xs border',
-          logStatus === 'error'
+          viewState.lifecycle === 'error'
             ? 'bg-red-500/10 text-red-600 border-red-500/30'
             : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
         )}>
-          {logMessage || (logStatus === 'error' ? '日志服务异常' : '当前暂无日志')}
-          {logErrorCategory && <span className="ml-2 opacity-80">({logErrorCategory})</span>}
+          {viewState.message || (viewState.lifecycle === 'error' ? '日志服务异常' : '当前暂无日志')}
+          {viewState.errorCategory && <span className="ml-2 opacity-80">({viewState.errorCategory})</span>}
         </div>
       )}
 
@@ -283,7 +430,7 @@ export function RealtimeLogViewer({
         className="flex-1 overflow-y-auto p-4 font-mono text-[var(--text-secondary)] leading-relaxed custom-scrollbar bg-[var(--bg-card)]"
         style={{ fontSize: `${fontSize}px` }}
       >
-        {loading && logs.length === 0 && logStatus === 'idle' ? (
+        {isLoading && logs.length === 0 && viewState.lastActiveLifecycle === 'idle' ? (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
             <RefreshCw className="w-4 h-4 animate-spin mr-2" />
             正在加载日志...
@@ -302,7 +449,7 @@ export function RealtimeLogViewer({
           ))
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
-            {logStatus === 'error' ? '日志服务异常，点击右上角重试' : '当前无可展示日志'}
+            {viewState.lifecycle === 'error' ? '日志服务异常，点击右上角重试' : '当前无可展示日志'}
           </div>
         )}
       </div>
@@ -313,7 +460,7 @@ export function RealtimeLogViewer({
     <>
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9998]"
-        onClick={() => setIsFullScreen(false)}
+        onClick={() => dispatchViewState({ type: 'EXIT_FULLSCREEN' })}
       />
 
       <div className={cn(
