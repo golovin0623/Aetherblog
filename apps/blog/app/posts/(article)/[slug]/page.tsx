@@ -1,10 +1,13 @@
-import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { PencilLine } from 'lucide-react';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import MarkdownRenderer from '../../../components/MarkdownRenderer';
 import BackButton from '../../../components/BackButton';
 import FadeIn from '../../../components/FadeIn';
 import CommentSection from '../../../components/CommentSection';
+import TableOfContents from '../../../components/TableOfContents';
 import { SERVER_API_URL } from '../../../lib/api';
+import { buildAdminPostEditUrl, getAdminLinkConfig } from '../../../lib/adminUrl';
 import { logger } from '../../../lib/logger';
 import { getSiteSettings } from '../../../lib/services';
 
@@ -27,6 +30,9 @@ interface Post {
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
+
+const MARKDOWN_AUDIT_SLUG = '__markdown_audit__';
+const MARKDOWN_AUDIT_FILE = join(process.cwd(), 'docs', 'blog-markdown-regression-sample.md');
 
 async function getPost(slug: string): Promise<Post | null> {
   try {
@@ -61,9 +67,29 @@ async function getPost(slug: string): Promise<Post | null> {
   }
 }
 
+async function getMarkdownAuditPost(): Promise<Post | null> {
+  try {
+    const markdownContent = await readFile(MARKDOWN_AUDIT_FILE, 'utf-8');
+    return {
+      id: -1,
+      title: 'Markdown 覆盖样例验收页',
+      slug: MARKDOWN_AUDIT_SLUG,
+      content: markdownContent,
+      summary: '用于验证详情页 Markdown 渲染边界的一次性回归样例。',
+      categoryName: 'Regression',
+      tags: ['markdown', 'regression', 'audit'],
+      viewCount: 0,
+      publishedAt: '2026-02-12',
+    };
+  } catch (error) {
+    logger.error('Failed to load markdown regression sample:', error);
+    return null;
+  }
+}
+
 export default async function PostDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  const post = await getPost(slug);
+  const post = slug === MARKDOWN_AUDIT_SLUG ? await getMarkdownAuditPost() : await getPost(slug);
   const settings = await getSiteSettings();
 
   if (!post) {
@@ -80,10 +106,15 @@ export default async function PostDetailPage({ params }: PageProps) {
     );
   }
 
+  const adminEditUrl = buildAdminPostEditUrl(post.id);
+  const adminLinkConfig = getAdminLinkConfig();
+
   return (
     <div className="min-h-screen bg-background">
       {/* 带有淡入动画的文章 */}
-      <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
+      <article className="mx-auto w-full max-w-7xl px-4 pt-28 pb-12">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="mx-auto w-full max-w-4xl">
         <FadeIn>
           <BackButton fallbackHref="/posts" className="mb-8" />
         </FadeIn>
@@ -93,10 +124,29 @@ export default async function PostDetailPage({ params }: PageProps) {
         </FadeIn>
 
         <FadeIn delay={0.15}>
-          <div className="flex items-center gap-4 text-sm text-[var(--text-muted)] mb-8">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
             <time>{post.publishedAt}</time>
             {post.categoryName && <span>{post.categoryName}</span>}
             <span>{post.viewCount} 阅读</span>
+            {adminEditUrl ? (
+              <a
+                href={adminEditUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border-default)] px-2 py-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-primary/40 transition-colors"
+                title={`编辑文章 #${post.id}`}
+              >
+                <PencilLine size={14} />
+                编辑此文
+              </a>
+            ) : (
+              <span
+                className="inline-flex items-center text-xs text-[var(--text-muted)]"
+                title={adminLinkConfig.reason}
+              >
+                编辑入口未配置
+              </span>
+            )}
           </div>
         </FadeIn>
 
@@ -123,10 +173,23 @@ export default async function PostDetailPage({ params }: PageProps) {
         </FadeIn>
 
         <FadeIn delay={0.3}>
-          <CommentSection postId={post.id} settings={settings} />
+          {post.id > 0 ? (
+            <CommentSection postId={post.id} settings={settings} />
+          ) : (
+            <div className="mt-10 rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-muted)]">
+              当前为 Markdown 样例验收页，不启用评论区。
+            </div>
+          )}
         </FadeIn>
+          </div>
+
+          <aside className="hidden lg:block">
+            <FadeIn delay={0.2}>
+              <TableOfContents content={post.content} className="max-h-[calc(100vh-120px)] overflow-y-auto pr-1" />
+            </FadeIn>
+          </aside>
+        </div>
       </article>
     </div>
   );
 }
-

@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { List, ChevronRight } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { List, ChevronRight, X } from 'lucide-react';
+import { extractHeadingsFromMarkdown } from '../lib/headingId';
 
 interface TocItem {
   id: string;
   text: string;
   level: number;
+  line: number;
 }
 
 interface TableOfContentsProps {
@@ -15,46 +17,41 @@ interface TableOfContentsProps {
 }
 
 export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, className = '' }) => {
-  const [headings, setHeadings] = useState<TocItem[]>([]);
+  const headings = useMemo<TocItem[]>(() => extractHeadingsFromMarkdown(content), [content]);
   const [activeId, setActiveId] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState(true);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // 从内容中提取标题
   useEffect(() => {
-    const regex = /^(#{1,6})\s+(.+)$/gm;
-    const items: TocItem[] = [];
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-      const level = match[1].length;
-      const text = match[2].replace(/[*_`]/g, ''); // 移除markdown格式
-      const id = text
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\u4e00-\u9fa5-]/g, '');
-
-      items.push({ id, text, level });
+    if (typeof window === 'undefined' || headings.length === 0) {
+      return;
     }
 
-    setHeadings(items);
-  }, [content]);
-
-  // 监听滚动高亮当前标题
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
     const callback = (entries: IntersectionObserverEntry[]) => {
+      let bestRatio = -1;
+      let bestId = '';
+
       entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          setActiveId(entry.target.id);
+        if (!entry.isIntersecting) {
+          return;
+        }
+
+        const currentId = (entry.target as HTMLElement).id || '';
+        if (entry.intersectionRatio > bestRatio && currentId) {
+          bestRatio = entry.intersectionRatio;
+          bestId = currentId;
         }
       });
+
+      if (bestId) {
+        setActiveId(bestId);
+      }
     };
 
     observerRef.current = new IntersectionObserver(callback, {
-      rootMargin: '-80px 0px -80% 0px',
-      threshold: 0,
+      rootMargin: '-80px 0px -70% 0px',
+      threshold: [0, 0.2, 0.5, 0.8],
     });
 
     headings.forEach(({ id }) => {
@@ -67,23 +64,38 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
     return () => observerRef.current?.disconnect();
   }, [headings]);
 
-  // 滚动到标题
+  useEffect(() => {
+    if (!isMobileOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileOpen]);
+
   const scrollToHeading = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      const offset = 80;
+      const offset = 88;
       const y = element.getBoundingClientRect().top + window.scrollY - offset;
       window.scrollTo({ top: y, behavior: 'smooth' });
+      setActiveId(id);
+      setIsMobileOpen(false);
     }
   };
 
-  if (headings.length === 0) return null;
+  if (headings.length === 0) {
+    return null;
+  }
 
   const minLevel = Math.min(...headings.map((h) => h.level));
 
-  return (
-    <nav className={`sticky top-24 ${className}`}>
-      {/* 标题 */}
+  const tocList = (
+    <>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 w-full text-left mb-4 group"
@@ -99,23 +111,20 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
         />
       </button>
 
-      {/* 目录列表 */}
       {isExpanded && (
         <div className="relative pl-2 space-y-1">
-          {/* 进度条 */}
           <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--border-subtle)] rounded-full">
             <div
               className="absolute left-0 w-full bg-primary rounded-full transition-all duration-300"
               style={{
                 top: `${
-                  (headings.findIndex((h) => h.id === activeId) / headings.length) * 100
+                  Math.max(0, headings.findIndex((h) => h.id === activeId)) / headings.length * 100
                 }%`,
                 height: `${100 / headings.length}%`,
               }}
             />
           </div>
 
-          {/* 标题项 */}
           {headings.map((heading) => (
             <button
               key={heading.id}
@@ -128,6 +137,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
               style={{
                 paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
               }}
+              title={`L${heading.line}`}
             >
               <span className="line-clamp-1">{heading.text}</span>
             </button>
@@ -135,7 +145,6 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
         </div>
       )}
 
-      {/* 返回顶部 */}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         className="mt-4 flex items-center gap-2 w-full text-left py-2 px-3 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
@@ -143,7 +152,46 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
         <span>↑</span>
         <span>返回顶部</span>
       </button>
-    </nav>
+    </>
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setIsMobileOpen(true)}
+        className="fixed bottom-6 right-5 z-40 md:hidden inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 px-4 py-2 text-sm text-[var(--text-primary)] shadow-lg backdrop-blur"
+      >
+        <List className="h-4 w-4 text-primary" />
+        目录
+      </button>
+
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="关闭目录"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setIsMobileOpen(false)}
+          />
+          <div className="absolute right-0 top-0 h-full w-[82vw] max-w-[360px] bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] p-4 overflow-y-auto">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-semibold text-[var(--text-primary)]">文章目录</span>
+              <button
+                type="button"
+                onClick={() => setIsMobileOpen(false)}
+                className="rounded p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {tocList}
+          </div>
+        </div>
+      )}
+
+      <nav className={`sticky top-24 hidden md:block ${className}`}>{tocList}</nav>
+    </>
   );
 };
 

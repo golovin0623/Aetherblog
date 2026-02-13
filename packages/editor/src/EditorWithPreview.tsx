@@ -73,6 +73,7 @@ export function EditorWithPreview({
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
+  const syncSuspendUntilRef = useRef(0);
   
   // 如果提供则使用外部视图模式，否则使用内部状态
   const viewMode = externalViewMode ?? internalViewMode;
@@ -89,119 +90,231 @@ export function EditorWithPreview({
     }
   }, []);
 
-  // 同步滚动逻辑 - 使用基于行的同步以提高准确性
+  // 同步滚动逻辑：锚点分段插值 + 惯性抑制 + 双向节流
   useEffect(() => {
-    if (!isSyncScroll || viewMode !== 'split') return;
+    if (!isSyncScroll || viewMode !== 'split') {
+      return;
+    }
 
     const editorContainer = editorScrollRef.current;
     const previewEl = previewScrollRef.current;
-    if (!editorContainer || !previewEl) return;
+    if (!editorContainer || !previewEl) {
+      return;
+    }
 
-    // 使用 RAF 确保 CodeMirror 已渲染
+    syncSuspendUntilRef.current = Date.now() + 500;
+
+    let editorFrame: number | null = null;
+    let previewFrame: number | null = null;
+    let lastEditorSyncAt = 0;
+    let lastPreviewSyncAt = 0;
+
+    const SYNC_THROTTLE_MS = 24;
+    const SNAP_THRESHOLD = 4;
+    const SCROLL_OFFSET = 50;
+
     const rafId = requestAnimationFrame(() => {
-      // 查找 CodeMirror 的内部滚动容器和行元素
       const editorEl = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
       const cmContent = editorContainer.querySelector('.cm-content') as HTMLElement | null;
-      if (!editorEl || !cmContent) return;
+      if (!editorEl || !cmContent) {
+        return;
+      }
 
-      // 获取编辑器中当前顶部可见的行
-      const getEditorTopLine = (): number => {
-        const scrollTop = editorEl.scrollTop;
-        const paddingTop = parseFloat(getComputedStyle(cmContent).paddingTop) || 0;
-        
-        // 从第一行可见行动态测量行高
-        const firstLine = cmContent.querySelector('.cm-line');
-        // 如果未找到行，则默认为 fontSize * 1.5（1.5 是标准行高）
-        const lineHeight = firstLine ? firstLine.clientHeight : (fontSize || 16) * 1.5;
-        
-        if (!lineHeight) return 1;
+      type AnchorPoint = { line: number; top: number };
 
-        // 根据滚动位置计算行号
-        // 减去内边距以获取内容滚动位置
-        const contentScrollTop = Math.max(0, scrollTop - paddingTop);
-        return Math.floor(contentScrollTop / lineHeight) + 1;
+      const getLineHeight = (): number => {
+        const firstLine = cmContent.querySelector('.cm-line') as HTMLElement | null;
+        return firstLine?.clientHeight || (fontSize || 16) * 1.5;
       };
 
-      // 在预览中查找具有 data-source-line 的最近元素
-      const scrollPreviewToLine = (lineNum: number): void => {
-        // 查找具有 data-source-line 属性的元素
+      const getEditorMetrics = () => {
+        const lineHeight = Math.max(1, getLineHeight());
+        const paddingTop = parseFloat(getComputedStyle(cmContent).paddingTop) || 0;
+        return { lineHeight, paddingTop };
+      };
+
+      const readAnchors = (): AnchorPoint[] => {
         const elements = previewEl.querySelectorAll('[data-source-line]');
-        let closestElement: HTMLElement | null = null;
-        let closestLine = 0;
+        const points: AnchorPoint[] = [];
+        const seen = new Set<number>();
 
-        elements.forEach(el => {
-          const sourceLine = parseInt(el.getAttribute('data-source-line') || '0', 10);
-          if (sourceLine > 0 && sourceLine <= lineNum && sourceLine > closestLine) {
-            closestLine = sourceLine;
-            closestElement = el as HTMLElement;
+        for (const node of Array.from(elements)) {
+          const el = node as HTMLElement;
+          const line = Number.parseInt(el.dataset.sourceLine || '0', 10);
+          if (!Number.isFinite(line) || line <= 0 || seen.has(line)) {
+            continue;
           }
-        });
+          seen.add(line);
+          points.push({ line, top: el.offsetTop });
+        }
 
-        if (closestElement !== null) {
-          // 计算偏移位置
-          const elementTop = (closestElement as HTMLElement).offsetTop;
-          const lineDiff = lineNum - closestLine;
-          // 计算动态行高
-          const firstLine = cmContent.querySelector('.cm-line');
-          const lineHeight = firstLine ? firstLine.clientHeight : (fontSize || 16) * 1.5;
+        return points.sort((a, b) => a.line - b.line);
+      };
 
-          // 根据行差估计额外滚动
-          const additionalScroll = lineDiff * lineHeight;
-          
-          previewEl.scrollTop = Math.max(0, elementTop + additionalScroll - 50);
-        } else {
-          // 回退到基于百分比的同步
+      const interpolatePreviewTopFromLine = (lineNum: number, anchors: AnchorPoint[], lineHeight: number): number => {
+        if (anchors.length === 0) {
           const editorScrollable = editorEl.scrollHeight - editorEl.clientHeight;
           const previewScrollable = previewEl.scrollHeight - previewEl.clientHeight;
-          if (editorScrollable > 0 && previewScrollable > 0) {
-            const scrollPercentage = editorEl.scrollTop / editorScrollable;
-            previewEl.scrollTop = scrollPercentage * previewScrollable;
+          if (editorScrollable <= 0 || previewScrollable <= 0) {
+            return 0;
           }
+          return (editorEl.scrollTop / editorScrollable) * previewScrollable;
         }
+
+        let prev: AnchorPoint | null = null;
+        let next: AnchorPoint | null = null;
+
+        for (const anchor of anchors) {
+          if (anchor.line <= lineNum) {
+            prev = anchor;
+            continue;
+          }
+          next = anchor;
+          break;
+        }
+
+        if (prev && next) {
+          const lineSpan = Math.max(1, next.line - prev.line);
+          const ratio = (lineNum - prev.line) / lineSpan;
+          return prev.top + ratio * (next.top - prev.top) - SCROLL_OFFSET;
+        }
+
+        if (prev) {
+          return prev.top + (lineNum - prev.line) * lineHeight - SCROLL_OFFSET;
+        }
+
+        const firstAnchor = anchors[0];
+        return Math.max(0, firstAnchor.top - (firstAnchor.line - lineNum) * lineHeight - SCROLL_OFFSET);
       };
 
-      // 从预览滚动同步编辑器
-      const scrollEditorToPreviewPosition = (): void => {
-        const previewScrollable = previewEl.scrollHeight - previewEl.clientHeight;
-        if (previewScrollable <= 0) return;
-        
-        const scrollPercentage = previewEl.scrollTop / previewScrollable;
-        const editorScrollable = editorEl.scrollHeight - editorEl.clientHeight;
-        editorEl.scrollTop = scrollPercentage * editorScrollable;
+      const interpolateLineFromPreviewTop = (previewTop: number, anchors: AnchorPoint[], lineHeight: number): number => {
+        if (anchors.length === 0) {
+          const previewScrollable = previewEl.scrollHeight - previewEl.clientHeight;
+          const editorScrollable = editorEl.scrollHeight - editorEl.clientHeight;
+          if (previewScrollable <= 0 || editorScrollable <= 0) {
+            return 1;
+          }
+          const ratio = previewEl.scrollTop / previewScrollable;
+          const estimatedEditorTop = ratio * editorScrollable;
+          return Math.max(1, Math.floor(estimatedEditorTop / lineHeight) + 1);
+        }
+
+        const targetTop = previewTop + SCROLL_OFFSET;
+        let prev: AnchorPoint | null = null;
+        let next: AnchorPoint | null = null;
+
+        for (const anchor of anchors) {
+          if (anchor.top <= targetTop) {
+            prev = anchor;
+            continue;
+          }
+          next = anchor;
+          break;
+        }
+
+        if (prev && next) {
+          const topSpan = Math.max(1, next.top - prev.top);
+          const ratio = (targetTop - prev.top) / topSpan;
+          return Math.max(1, Math.round(prev.line + ratio * (next.line - prev.line)));
+        }
+
+        if (prev) {
+          return Math.max(1, Math.round(prev.line + (targetTop - prev.top) / lineHeight));
+        }
+
+        const firstAnchor = anchors[0];
+        return Math.max(1, Math.round(firstAnchor.line - (firstAnchor.top - targetTop) / lineHeight));
       };
 
-      // 注意：我们特意不立即在启用时同步
-      // 这可以防止在 TOC 导航后恢复同步时出现位置跳跃
+      const syncEditorToPreview = () => {
+        const now = Date.now();
+        if (now < syncSuspendUntilRef.current || now - lastEditorSyncAt < SYNC_THROTTLE_MS) {
+          return;
+        }
+
+        lastEditorSyncAt = now;
+        const { lineHeight, paddingTop } = getEditorMetrics();
+        const contentScrollTop = Math.max(0, editorEl.scrollTop - paddingTop);
+        const topLine = Math.floor(contentScrollTop / lineHeight) + 1;
+        const anchors = readAnchors();
+        const targetTop = Math.max(0, interpolatePreviewTopFromLine(topLine, anchors, lineHeight));
+
+        if (Math.abs(previewEl.scrollTop - targetTop) <= SNAP_THRESHOLD) {
+          return;
+        }
+
+        previewEl.scrollTop = targetTop;
+      };
+
+      const syncPreviewToEditor = () => {
+        const now = Date.now();
+        if (now < syncSuspendUntilRef.current || now - lastPreviewSyncAt < SYNC_THROTTLE_MS) {
+          return;
+        }
+
+        lastPreviewSyncAt = now;
+        const { lineHeight, paddingTop } = getEditorMetrics();
+        const anchors = readAnchors();
+        const targetLine = interpolateLineFromPreviewTop(previewEl.scrollTop, anchors, lineHeight);
+        const targetEditorTop = Math.max(0, paddingTop + (targetLine - 1) * lineHeight - SCROLL_OFFSET);
+
+        if (Math.abs(editorEl.scrollTop - targetEditorTop) <= SNAP_THRESHOLD) {
+          return;
+        }
+
+        editorEl.scrollTop = targetEditorTop;
+      };
 
       const handleEditorScroll = () => {
-        if (isSyncingRef.current) return;
-        isSyncingRef.current = true;
-        
-        scrollPreviewToLine(getEditorTopLine());
-        
-        requestAnimationFrame(() => {
-          isSyncingRef.current = false;
+        if (isSyncingRef.current) {
+          return;
+        }
+        if (editorFrame !== null) {
+          cancelAnimationFrame(editorFrame);
+        }
+
+        editorFrame = requestAnimationFrame(() => {
+          editorFrame = null;
+          isSyncingRef.current = true;
+          syncEditorToPreview();
+          requestAnimationFrame(() => {
+            isSyncingRef.current = false;
+          });
         });
       };
 
       const handlePreviewScroll = () => {
-        if (isSyncingRef.current) return;
-        isSyncingRef.current = true;
-        
-        scrollEditorToPreviewPosition();
-        
-        requestAnimationFrame(() => {
-          isSyncingRef.current = false;
+        if (isSyncingRef.current) {
+          return;
+        }
+        if (previewFrame !== null) {
+          cancelAnimationFrame(previewFrame);
+        }
+
+        previewFrame = requestAnimationFrame(() => {
+          previewFrame = null;
+          isSyncingRef.current = true;
+          syncPreviewToEditor();
+          requestAnimationFrame(() => {
+            isSyncingRef.current = false;
+          });
         });
       };
 
       editorEl.addEventListener('scroll', handleEditorScroll, { passive: true });
       previewEl.addEventListener('scroll', handlePreviewScroll, { passive: true });
 
-      // 存储清理函数
       (editorContainer as any).__scrollCleanup = () => {
         editorEl.removeEventListener('scroll', handleEditorScroll);
         previewEl.removeEventListener('scroll', handlePreviewScroll);
+        if (editorFrame !== null) {
+          cancelAnimationFrame(editorFrame);
+          editorFrame = null;
+        }
+        if (previewFrame !== null) {
+          cancelAnimationFrame(previewFrame);
+          previewFrame = null;
+        }
       };
     });
 
@@ -213,7 +326,7 @@ export function EditorWithPreview({
         delete (editorContainer as any).__scrollCleanup;
       }
     };
-  }, [isSyncScroll, viewMode]); // 移除 'value' 以避免每次按键时重新绑定
+  }, [fontSize, isSyncScroll, viewMode]);
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
