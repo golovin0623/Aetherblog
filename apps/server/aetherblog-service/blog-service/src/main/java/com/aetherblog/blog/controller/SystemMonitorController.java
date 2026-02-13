@@ -103,17 +103,37 @@ public class SystemMonitorController {
      */
     @Operation(summary = "按级别获取应用日志")
     @GetMapping("/logs")
-    public R<List<String>> getLogs(
+    public R<Object> getLogs(
             @RequestParam(defaultValue = "ALL") String level,
-            @RequestParam(defaultValue = "2000") int lines) {
-        LogViewerService.LogReadResult result = logViewerService.queryLogsByLevel(level, lines);
+            @RequestParam(defaultValue = "2000") int lines,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String cursor) {
+        LogViewerService.LogReadResult result = logViewerService.queryLogs(level, lines, limit, keyword, cursor);
+        boolean enhancedQuery = (limit != null)
+                || (keyword != null && !keyword.isBlank())
+                || (cursor != null && !cursor.isBlank());
+
         if (result.isError()) {
             return R.fail(500, result.getMessage(), result.getErrorCategory());
         }
-        if (result.isNoData()) {
-            return R.ok(result.getLogs(), result.getMessage(), result.getErrorCategory());
+
+        if (!enhancedQuery) {
+            if (result.isNoData()) {
+                return R.ok(result.getLogs(), result.getMessage(), result.getErrorCategory());
+            }
+            return R.ok(result.getLogs());
         }
-        return R.ok(result.getLogs());
+
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("lines", result.getLogs());
+        payload.put("cursor", result.getCursor());
+        payload.put("nextCursor", result.getNextCursor());
+
+        if (result.isNoData()) {
+            return R.ok(payload, result.getMessage(), result.getErrorCategory());
+        }
+        return R.ok(payload);
     }
 
     /**

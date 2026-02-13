@@ -18,6 +18,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 日志查看服务
@@ -62,6 +63,8 @@ public class LogViewerService {
         private final String status;
         private final String message;
         private final String errorCategory;
+        private final String cursor;
+        private final String nextCursor;
 
         public boolean isError() {
             return "ERROR".equals(status);
@@ -72,15 +75,27 @@ public class LogViewerService {
         }
 
         public static LogReadResult ok(List<String> logs) {
-            return new LogReadResult(logs, "OK", null, null);
+            return ok(logs, null, null);
+        }
+
+        public static LogReadResult ok(List<String> logs, String cursor, String nextCursor) {
+            return new LogReadResult(logs, "OK", null, null, cursor, nextCursor);
         }
 
         public static LogReadResult noData(String message, String errorCategory) {
-            return new LogReadResult(Collections.emptyList(), "NO_DATA", message, errorCategory);
+            return noData(message, errorCategory, null, null);
+        }
+
+        public static LogReadResult noData(String message, String errorCategory, String cursor, String nextCursor) {
+            return new LogReadResult(Collections.emptyList(), "NO_DATA", message, errorCategory, cursor, nextCursor);
         }
 
         public static LogReadResult error(String message, String errorCategory) {
-            return new LogReadResult(Collections.emptyList(), "ERROR", message, errorCategory);
+            return error(message, errorCategory, null, null);
+        }
+
+        public static LogReadResult error(String message, String errorCategory, String cursor, String nextCursor) {
+            return new LogReadResult(Collections.emptyList(), "ERROR", message, errorCategory, cursor, nextCursor);
         }
     }
 
@@ -94,25 +109,60 @@ public class LogViewerService {
      * @return 日志读取结果
      */
     public LogReadResult queryLogsByLevel(String level, int lines) {
+        return queryLogs(level, lines, null, null, null);
+    }
+
+    /**
+     * 扩展日志查询（兼容 level+lines，同时支持 keyword/limit/cursor）
+     */
+    public LogReadResult queryLogs(String level, Integer lines, Integer limit, String keyword, String cursor) {
         String normalizedLevel = normalizeLevel(level);
-        int normalizedLines = normalizeLines(lines);
+        int normalizedLines = normalizeLimit(limit != null ? limit : lines);
         String filename = LEVEL_FILE_MAP.getOrDefault(normalizedLevel, "aetherblog.log");
         Path logFile = Paths.get(logPath, filename);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        boolean enhancedQuery = (limit != null)
+                || normalizedKeyword != null
+                || (cursor != null && !cursor.isBlank());
 
         if (!Files.exists(logFile)) {
             log.info("Log file not found: {}", logFile);
-            return LogReadResult.noData("日志文件不存在", "LOG_FILE_NOT_FOUND");
+            return LogReadResult.noData("日志文件不存在", "LOG_FILE_NOT_FOUND", cursor, null);
         }
 
         try {
-            List<String> logs = readLastLines(logFile, normalizedLines);
-            if (logs.isEmpty()) {
-                return LogReadResult.noData("日志文件为空", "LOG_FILE_EMPTY");
+            if (!enhancedQuery) {
+                List<String> legacyLogs = readLastLines(logFile, normalizedLines);
+                if (legacyLogs.isEmpty()) {
+                    return LogReadResult.noData("日志文件为空", "LOG_FILE_EMPTY", cursor, null);
+                }
+                return LogReadResult.ok(legacyLogs, "0", null);
             }
-            return LogReadResult.ok(logs);
+
+            List<String> logs = readLastLines(logFile, MAX_LINES);
+            if (logs.isEmpty()) {
+                return LogReadResult.noData("日志文件为空", "LOG_FILE_EMPTY", cursor, null);
+            }
+
+            List<String> filteredLogs = filterByKeyword(logs, normalizedKeyword);
+            if (filteredLogs.isEmpty()) {
+                String errorCategory = normalizedKeyword != null ? "LOG_FILTER_NO_MATCH" : "LOG_FILE_EMPTY";
+                String message = normalizedKeyword != null ? "关键字无匹配日志" : "日志文件为空";
+                return LogReadResult.noData(message, errorCategory, cursor, null);
+            }
+
+            int startIndex = normalizeCursor(cursor, filteredLogs.size());
+            if (startIndex >= filteredLogs.size()) {
+                return LogReadResult.noData("没有更多日志", "LOG_CURSOR_EXHAUSTED", cursor, null);
+            }
+
+            int endIndex = Math.min(startIndex + normalizedLines, filteredLogs.size());
+            List<String> pageLogs = filteredLogs.subList(startIndex, endIndex);
+            String nextCursor = endIndex < filteredLogs.size() ? String.valueOf(endIndex) : null;
+            return LogReadResult.ok(pageLogs, String.valueOf(startIndex), nextCursor);
         } catch (Exception e) {
             log.error("Failed to read log file: {}", logFile, e);
-            return LogReadResult.error("读取日志失败", "LOG_READ_FAILURE");
+            return LogReadResult.error("读取日志失败", "LOG_READ_FAILURE", cursor, null);
         }
     }
 
@@ -183,10 +233,44 @@ public class LogViewerService {
     }
 
     private static int normalizeLines(int lines) {
+        return normalizeLimit(lines);
+    }
+
+    private static int normalizeLimit(Integer lines) {
+        if (lines == null) {
+            return DEFAULT_LINES;
+        }
         if (lines <= 0) {
             return DEFAULT_LINES;
         }
         return Math.min(lines, MAX_LINES);
+    }
+
+    private static int normalizeCursor(String cursor, int size) {
+        if (cursor == null || cursor.isBlank()) {
+            return 0;
+        }
+        try {
+            return Math.min(Math.max(Integer.parseInt(cursor.trim()), 0), size);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        return keyword.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static List<String> filterByKeyword(List<String> logs, String keyword) {
+        if (keyword == null) {
+            return logs;
+        }
+        return logs.stream()
+                .filter(line -> line != null && line.toLowerCase(Locale.ROOT).contains(keyword))
+                .collect(Collectors.toList());
     }
 
     /**
