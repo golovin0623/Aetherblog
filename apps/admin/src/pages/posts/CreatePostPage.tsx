@@ -71,6 +71,44 @@ interface SaveStatusState {
   updatedAt: number | null;
 }
 
+function buildDraftFingerprint(params: {
+  title: string;
+  content: string;
+  summary: string;
+  categoryId?: number;
+  tagIds: number[];
+}): string {
+  return JSON.stringify({
+    title: params.title.trim(),
+    content: params.content,
+    summary: params.summary.trim(),
+    categoryId: params.categoryId ?? null,
+    tagIds: [...params.tagIds].sort((first, second) => first - second),
+  });
+}
+
+function formatRelativeTime(timestamp: number | null, now: number, emptyText: string): string {
+  if (!timestamp) {
+    return emptyText;
+  }
+
+  const diffMs = Math.max(0, now - timestamp);
+  const diffSeconds = Math.floor(diffMs / 1000);
+  if (diffSeconds < 60) {
+    return '刚刚';
+  }
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `${diffMinutes} 分钟前`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} 天前`;
+}
+
 export function CreatePostPage() {
   const navigate = useNavigate();
   // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
@@ -127,42 +165,135 @@ export function CreatePostPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>({
     type: 'saved',
     source: 'system',
-    label: '待保存',
-    detail: '尚未产生保存记录',
+    label: '编辑就绪',
+    detail: '开始编辑后将自动保存',
     updatedAt: null,
   });
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<number | null>(null);
+  const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(null);
   const [saveStatusTick, setSaveStatusTick] = useState(Date.now());
 
-  const updateSaveStatus = useCallback((next: Omit<SaveStatusState, 'updatedAt'>, markSuccess = false) => {
+  const currentFingerprint = useMemo(() => buildDraftFingerprint({
+    title,
+    content,
+    summary,
+    categoryId: selectedCategory?.id,
+    tagIds: selectedTags.map((tag) => tag.id),
+  }), [title, content, summary, selectedCategory?.id, selectedTags]);
+
+  const hasDraftContent = useMemo(() => {
+    return Boolean(title.trim() || content.trim() || summary.trim());
+  }, [title, content, summary]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!hasDraftContent) {
+      return false;
+    }
+
+    if (!lastSavedFingerprint) {
+      return true;
+    }
+
+    return currentFingerprint !== lastSavedFingerprint;
+  }, [currentFingerprint, hasDraftContent, lastSavedFingerprint]);
+
+  const updateSaveStatus = useCallback((
+    next: Omit<SaveStatusState, 'updatedAt'>,
+    options?: { markSuccess?: boolean; fingerprint?: string; autoSaved?: boolean }
+  ) => {
     const now = Date.now();
     setSaveStatus({ ...next, updatedAt: now });
-    if (markSuccess) {
+    if (options?.markSuccess) {
       setLastSavedAt(now);
+      if (options.fingerprint) {
+        setLastSavedFingerprint(options.fingerprint);
+      }
+      if (options.autoSaved) {
+        setLastAutoSavedAt(now);
+      }
     }
   }, []);
 
   const relativeSavedText = useMemo(() => {
+    return formatRelativeTime(lastSavedAt, saveStatusTick, '尚未成功保存');
+  }, [lastSavedAt, saveStatusTick]);
+
+  const relativeAutoSavedText = useMemo(() => {
+    return formatRelativeTime(lastAutoSavedAt, saveStatusTick, '尚无自动保存记录');
+  }, [lastAutoSavedAt, saveStatusTick]);
+
+
+  const saveTimelineText = useMemo(() => {
+    const latestAutoSaved = `最新自动保存：${relativeAutoSavedText}`;
     if (!lastSavedAt) {
-      return '尚未成功保存';
+      return latestAutoSaved;
+    }
+    return `${latestAutoSaved} · 最近保存：${relativeSavedText}`;
+  }, [lastSavedAt, relativeAutoSavedText, relativeSavedText]);
+
+  const saveStatusDisplay = useMemo(() => {
+    if (saveStatus.type === 'error') {
+      return {
+        label: saveStatus.label || '保存失败',
+        detail: saveStatus.detail || '请检查网络或稍后重试',
+        toneClass: 'text-red-600 dark:text-red-300',
+        dotClass: 'bg-red-500 dark:bg-red-400',
+        icon: <AlertCircle className="w-3.5 h-3.5" />,
+        showRetry: true,
+      };
     }
 
-    const diffMs = Math.max(0, saveStatusTick - lastSavedAt);
-    const diffSeconds = Math.floor(diffMs / 1000);
-    if (diffSeconds < 60) {
-      return '刚刚';
+    if (saveStatus.type === 'saving' || isSaving || isPublishing) {
+      return {
+        label: saveStatus.label || '保存中',
+        detail: saveStatus.detail || '正在同步草稿内容',
+        toneClass: 'text-sky-600 dark:text-sky-300',
+        dotClass: 'bg-sky-500 dark:bg-sky-400',
+        icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />,
+        showRetry: false,
+      };
     }
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    if (diffMinutes < 60) {
-      return `${diffMinutes} 分钟前`;
+
+    if (hasUnsavedChanges) {
+      return {
+        label: '有改动待保存',
+        detail: saveTimelineText,
+        toneClass: 'text-amber-600 dark:text-amber-300',
+        dotClass: 'bg-amber-500 dark:bg-amber-400',
+        icon: <Clock className="w-3.5 h-3.5" />,
+        showRetry: false,
+      };
     }
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) {
-      return `${diffHours} 小时前`;
+
+    if (saveStatus.type === 'disabled') {
+      return {
+        label: '自动保存已关闭',
+        detail: saveTimelineText,
+        toneClass: 'text-slate-600 dark:text-slate-300',
+        dotClass: 'bg-slate-500 dark:bg-slate-400',
+        icon: <HardDrive className="w-3.5 h-3.5" />,
+        showRetry: false,
+      };
     }
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays} 天前`;
-  }, [lastSavedAt, saveStatusTick]);
+
+    return {
+      label: '内容已同步',
+      detail: saveTimelineText,
+      toneClass: 'text-emerald-600 dark:text-emerald-300',
+      dotClass: 'bg-emerald-500 dark:bg-emerald-400',
+      icon: <CheckCircle className="w-3.5 h-3.5" />,
+      showRetry: false,
+    };
+  }, [
+    hasUnsavedChanges,
+    isPublishing,
+    isSaving,
+    saveStatus.detail,
+    saveStatus.label,
+    saveStatus.type,
+    saveTimelineText,
+  ]);
 
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
@@ -186,20 +317,20 @@ export function CreatePostPage() {
         type: 'disabled',
         source: 'auto',
         label: '自动保存已关闭',
-        detail: '仅支持手动保存',
+        detail: `最近自动保存 ${relativeAutoSavedText}`,
       });
       return;
     }
 
     if (saveStatus.type === 'disabled') {
       updateSaveStatus({
-        type: lastSavedAt ? 'saved' : 'saving',
+        type: 'saved',
         source: 'auto',
-        label: lastSavedAt ? '自动保存已恢复' : '等待自动保存',
-        detail: lastSavedAt ? `最近成功 ${relativeSavedText}` : '编辑内容后将自动保存',
+        label: '自动保存已恢复',
+        detail: `最近自动保存 ${relativeAutoSavedText}`,
       });
     }
-  }, [isAutoSaveEnabled, lastSavedAt, relativeSavedText, saveStatus.type, updateSaveStatus]);
+  }, [isAutoSaveEnabled, relativeAutoSavedText, saveStatus.type, updateSaveStatus]);
 
   // 侧边栏自动折叠
   const { setAutoCollapse } = useSidebarStore();
@@ -237,6 +368,14 @@ export function CreatePostPage() {
       // 仅当内容存在时自动保存
       if (!data.title && !data.content) return;
 
+      const savedFingerprint = buildDraftFingerprint({
+        title: data.title,
+        content: data.content,
+        summary: data.summary ?? '',
+        categoryId: data.selectedCategory?.id,
+        tagIds: data.selectedTags.map((tag) => tag.id),
+      });
+
       updateSaveStatus({
         type: 'saving',
         source: 'auto',
@@ -260,8 +399,12 @@ export function CreatePostPage() {
           type: 'saved',
           source: 'auto',
           label: '自动保存成功',
-          detail: `最近成功 ${relativeSavedText}`,
-        }, true);
+          detail: '草稿已同步',
+        }, {
+          markSuccess: true,
+          fingerprint: savedFingerprint,
+          autoSaved: true,
+        });
       }).catch(err => {
         logger.error('Auto save failed', err);
         updateSaveStatus({
@@ -274,7 +417,7 @@ export function CreatePostPage() {
     }, 30000);
 
     return () => clearInterval(timer);
-  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled, relativeSavedText, updateSaveStatus]);
+  }, [isEditMode, postId, _postStatus, isAutoSaveEnabled, updateSaveStatus]);
 
   // 视图配置自动化
   useEffect(() => {
@@ -380,24 +523,38 @@ export function CreatePostPage() {
             const useDraft = !!draft;
 
             // 如果可用，优先使用草稿内容
-            setTitle(useDraft ? draft.title : post.title);
-            setContent(useDraft ? draft.content : post.content);
-            setSummary((useDraft ? draft.summary : post.summary) || '');
+            const loadedTitle = useDraft ? draft.title : post.title;
+            const loadedContent = useDraft ? draft.content : post.content;
+            const loadedSummary = (useDraft ? draft.summary : post.summary) || '';
+            const loadedCategory = post.category ? (post.category as Category) : null;
+            const loadedTags = post.tags && post.tags.length > 0 ? (post.tags as Tag[]) : [];
+            const loadedFingerprint = buildDraftFingerprint({
+              title: loadedTitle,
+              content: loadedContent,
+              summary: loadedSummary,
+              categoryId: loadedCategory?.id,
+              tagIds: loadedTags.map((tag) => tag.id),
+            });
+
+            setTitle(loadedTitle);
+            setContent(loadedContent);
+            setSummary(loadedSummary);
             setPostStatus(post.status as 'DRAFT' | 'PUBLISHED');
-            
+            setSelectedCategory(loadedCategory);
+            setSelectedTags(loadedTags);
+            updateSaveStatus({
+              type: 'saved',
+              source: useDraft ? 'auto' : 'system',
+              label: useDraft ? '草稿已恢复' : '内容已同步',
+              detail: useDraft ? '已载入草稿版本，继续编辑将自动保存' : '当前内容与已保存版本一致',
+            }, {
+              markSuccess: true,
+              fingerprint: loadedFingerprint,
+            });
+
             if (useDraft) {
               setSaveMessage({ type: 'success', text: '已自动恢复未发布的草稿内容' });
               setTimeout(() => setSaveMessage(null), 3000);
-            }
-            
-            // 对于关系，我们最初优先考虑数据库值，以确保拥有完整的对象
-            // 未来改进：如果可能，从草稿 ID 中恢复分类/标签
-            if (post.category) {
-              setSelectedCategory(post.category as Category);
-            }
-            
-            if (post.tags && post.tags.length > 0) {
-              setSelectedTags(post.tags as Tag[]);
             }
           }
         } catch (error) {
@@ -410,7 +567,7 @@ export function CreatePostPage() {
       
       loadPost();
     }
-  }, [isEditMode, postId]);
+  }, [isEditMode, postId, updateSaveStatus]);
 
   // 点击外部关闭下拉菜单
   useEffect(() => {
@@ -1104,8 +1261,11 @@ export function CreatePostPage() {
            type: 'saved',
            source: 'manual',
            label: '草稿已保存',
-           detail: `最近成功 ${relativeSavedText}`,
-         }, true);
+           detail: '当前改动已写入草稿缓存',
+         }, {
+           markSuccess: true,
+           fingerprint: currentFingerprint,
+         });
       } else {
         // 正常保存到数据库
         const res = isEditMode && postId
@@ -1132,8 +1292,11 @@ export function CreatePostPage() {
             type: 'saved',
             source: 'manual',
             label: '保存成功',
-            detail: `最近成功 ${relativeSavedText}`,
-          }, true);
+            detail: '当前改动已保存',
+          }, {
+            markSuccess: true,
+            fingerprint: currentFingerprint,
+          });
           // 如果是新文章，导航到编辑页面
           if (!isEditMode && res.data.id) {
             setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
@@ -1200,8 +1363,11 @@ export function CreatePostPage() {
           type: 'saved',
           source: 'publish',
           label: '发布成功',
-          detail: `最近成功 ${relativeSavedText}`,
-        }, true);
+          detail: '已发布并同步最新内容',
+        }, {
+          markSuccess: true,
+          fingerprint: currentFingerprint,
+        });
         setTimeout(() => navigate('/posts'), 1500);
       } else {
         setSaveMessage({ type: 'error', text: res.message || '发布失败' });
@@ -1289,6 +1455,14 @@ export function CreatePostPage() {
 
     try {
       const data = latestDataRef.current;
+      const refreshedFingerprint = buildDraftFingerprint({
+        title: data.title,
+        content: data.content,
+        summary: data.summary ?? '',
+        categoryId: data.selectedCategory?.id,
+        tagIds: data.selectedTags.map((tag) => tag.id),
+      });
+
       await postService.autoSave(postId, {
         title: data.title,
         content: data.content,
@@ -1302,8 +1476,12 @@ export function CreatePostPage() {
         type: 'saved',
         source: 'manual',
         label: '状态已刷新',
-        detail: `最近成功 ${relativeSavedText}`,
-      }, true);
+        detail: '草稿缓存已同步',
+      }, {
+        markSuccess: true,
+        fingerprint: refreshedFingerprint,
+        autoSaved: true,
+      });
       setSaveMessage({ type: 'success', text: '保存状态已刷新' });
     } catch (error) {
       logger.error('Refresh save status failed:', error);
@@ -1315,7 +1493,7 @@ export function CreatePostPage() {
       });
       setSaveMessage({ type: 'error', text: '保存状态刷新失败' });
     }
-  }, [isSaving, isPublishing, isEditMode, postId, updateSaveStatus, _postStatus, relativeSavedText]);
+  }, [isSaving, isPublishing, isEditMode, postId, updateSaveStatus, _postStatus]);
 
 
 
@@ -2363,35 +2541,24 @@ export function CreatePostPage() {
         <div className="flex items-center gap-4">
           <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
           <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
-          <div
-            className={cn(
-              'flex items-center gap-2 px-2 py-1 rounded-md border transition-colors',
-              saveStatus.type === 'error'
-                ? 'border-red-400/40 bg-red-500/10 text-red-300'
-                : saveStatus.type === 'saving'
-                ? 'border-amber-400/40 bg-amber-500/10 text-amber-200'
-                : saveStatus.type === 'disabled'
-                ? 'border-slate-400/30 bg-slate-500/10 text-slate-300'
-                : 'border-emerald-400/35 bg-emerald-500/10 text-emerald-200'
-            )}
-            aria-live="polite"
-          >
-            {saveStatus.type === 'saving' ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : saveStatus.type === 'error' ? (
-              <AlertCircle className="w-3 h-3" />
-            ) : saveStatus.type === 'disabled' ? (
-              <HardDrive className="w-3 h-3" />
-            ) : (
-              <CheckCircle className="w-3 h-3" />
-            )}
-            <span className="font-medium">{saveStatus.label}</span>
-            <span className="text-[11px] opacity-80">{saveStatus.detail || `最近成功 ${relativeSavedText}`}</span>
-            {saveStatus.type === 'error' && (
+          <div className="flex min-w-0 items-center gap-2 pl-3 border-l border-[var(--border-subtle)]" aria-live="polite">
+            <span
+              className={cn(
+                'inline-flex h-2 w-2 flex-shrink-0 rounded-full transition-colors',
+                saveStatusDisplay.dotClass,
+                (saveStatus.type === 'saving' || isSaving || isPublishing) && 'animate-pulse'
+              )}
+            />
+            <span className={cn('inline-flex items-center gap-1 text-[11px] font-medium', saveStatusDisplay.toneClass)}>
+              {saveStatusDisplay.icon}
+              {saveStatusDisplay.label}
+            </span>
+            <span className="truncate text-[11px] text-[var(--text-muted)]">{saveStatusDisplay.detail}</span>
+            {saveStatusDisplay.showRetry && (
               <button
                 type="button"
                 onClick={handleRetrySaveStatus}
-                className="ml-1 px-1.5 py-0.5 rounded border border-current/30 hover:bg-white/10 transition-colors"
+                className="ml-1 rounded border border-red-500/30 px-1.5 py-0.5 text-[11px] text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-300"
               >
                 刷新
               </button>
