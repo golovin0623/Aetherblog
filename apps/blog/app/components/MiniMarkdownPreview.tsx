@@ -10,6 +10,9 @@ import type { Components } from 'react-markdown';
 // 引入 KaTeX CSS (与 MarkdownRenderer 共享)
 import 'katex/dist/katex.min.css';
 
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex];
+
 interface MiniPreviewProps {
   content: string;
   maxLength?: number;
@@ -171,7 +174,7 @@ const components: Components = {
   hr: () => <hr className="my-2 border-t border-white/10" />,
 };
 
-export function MiniMarkdownPreview({ content, maxLength = 2000 }: MiniPreviewProps) {
+const MiniMarkdownPreviewBase = ({ content, maxLength = 2000 }: MiniPreviewProps) => {
   if (!content) return null;
 
   // 截断内容用于预览
@@ -180,14 +183,15 @@ export function MiniMarkdownPreview({ content, maxLength = 2000 }: MiniPreviewPr
   return (
     <div className="mini-preview text-sm leading-relaxed text-[var(--text-secondary)] w-full" style={{ maxWidth: '100%', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         components={components}
       >
         {truncatedContent}
       </ReactMarkdown>
     </div>
   );
-}
+};
 
+export const MiniMarkdownPreview = React.memo(MiniMarkdownPreviewBase);
 export default MiniMarkdownPreview;
