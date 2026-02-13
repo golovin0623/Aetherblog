@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useReducer } from 'react';
+import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
 import { systemService } from '@/services/systemService';
 import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, Filter, ArrowDown, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -198,6 +198,10 @@ export function RealtimeLogViewer({
   const [logs, setLogs] = useState<string[]>([]);
   const [fontSize, setFontSize] = useState(12);
   const [filterLevel, setFilterLevel] = useState<string>('ALL');
+  const [keyword, setKeyword] = useState('');
+  const [wrapLines, setWrapLines] = useState(true);
+  const [compactMode, setCompactMode] = useState(false);
+  const [showLineMeta, setShowLineMeta] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
   const [manualPaused, setManualPaused] = useState(false);
@@ -303,7 +307,7 @@ export function RealtimeLogViewer({
     shouldMergeOnRecoveryRef.current = false;
     setAutoScroll(true);
     dispatchViewState({ type: 'RESET_CONTEXT' });
-  }, [filterLevel, containerId, useAppLogs]);
+  }, [containerId, useAppLogs]);
 
   useEffect(() => {
     if (isPaused) return;
@@ -432,6 +436,32 @@ export function RealtimeLogViewer({
     }
   }, [logs, isPaused, autoScroll]);
 
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  const visibleLogs = useMemo(() => {
+    if (!normalizedKeyword) {
+      return logs;
+    }
+    return logs.filter((line) => line.toLowerCase().includes(normalizedKeyword));
+  }, [logs, normalizedKeyword]);
+
+  const preserveScrollContext = (updater: () => void) => {
+    const previousScrollTop = scrollRef.current?.scrollTop ?? null;
+    updater();
+    if (previousScrollTop === null) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = previousScrollTop;
+      }
+    });
+  };
+
+  const extractLineTime = (line: string) => {
+    const match = line.match(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/);
+    return match ? match[0] : null;
+  };
+
   const handleScroll = () => {
     if (scrollRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -484,6 +514,7 @@ export function RealtimeLogViewer({
   const statusLabel = statusLabelMap[viewState.lifecycle];
   const statusClassName = statusClassMap[viewState.lifecycle];
   const pauseReasonLabel = viewState.pauseReason === 'hidden' ? '页面隐藏自动暂停' : '手动暂停';
+  const quickLevelOptions = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
 
   const renderContent = () => (
     <>
@@ -523,7 +554,12 @@ export function RealtimeLogViewer({
               <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
               <select
                 value={filterLevel}
-                onChange={(e) => setFilterLevel(e.target.value)}
+                onChange={(e) => {
+                  const nextLevel = e.target.value;
+                  preserveScrollContext(() => {
+                    setFilterLevel(nextLevel);
+                  });
+                }}
                 className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pr-6 pl-1"
               >
                 <option value="ALL">全部日志</option>
@@ -533,6 +569,62 @@ export function RealtimeLogViewer({
                 <option value="DEBUG">DEBUG</option>
               </select>
             </div>
+
+            <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5">
+              {quickLevelOptions.map((levelOption) => (
+                <button
+                  key={levelOption}
+                  type="button"
+                  className={cn(
+                    'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                    filterLevel === levelOption
+                      ? 'bg-primary/15 text-primary'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                  )}
+                  onClick={() => {
+                    preserveScrollContext(() => {
+                      setFilterLevel(levelOption);
+                    });
+                  }}
+                >
+                  {levelOption}
+                </button>
+              ))}
+            </div>
+
+            <input
+              value={keyword}
+              onChange={(event) => {
+                const nextKeyword = event.target.value;
+                preserveScrollContext(() => {
+                  setKeyword(nextKeyword);
+                });
+              }}
+              placeholder="关键字过滤"
+              className="h-7 w-36 sm:w-44 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 text-[10px] sm:text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+
+            <button
+              type="button"
+              className={cn('px-2 py-1 text-[10px] rounded border transition-colors', wrapLines ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
+              onClick={() => preserveScrollContext(() => setWrapLines(previous => !previous))}
+            >
+              换行
+            </button>
+            <button
+              type="button"
+              className={cn('px-2 py-1 text-[10px] rounded border transition-colors', compactMode ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
+              onClick={() => preserveScrollContext(() => setCompactMode(previous => !previous))}
+            >
+              紧凑
+            </button>
+            <button
+              type="button"
+              className={cn('px-2 py-1 text-[10px] rounded border transition-colors', showLineMeta ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
+              onClick={() => preserveScrollContext(() => setShowLineMeta(previous => !previous))}
+            >
+              行信息
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-1">
@@ -608,21 +700,33 @@ export function RealtimeLogViewer({
             <RefreshCw className="w-4 h-4 animate-spin mr-2" />
             正在加载日志...
           </div>
-        ) : logs.length > 0 ? (
-          logs.map((line, i) => (
-            <div key={i} className={cn(
-              'whitespace-pre-wrap break-all hover:bg-[var(--bg-card-hover)] px-1 py-0.5 rounded transition-colors border-l-2',
-              line.includes('ERROR') ? 'border-red-500/50 bg-red-500/5 dark:bg-red-500/10' :
-              line.includes('WARN') ? 'border-yellow-500/50 bg-yellow-500/5 dark:bg-yellow-500/10' :
-              line.includes('DEBUG') ? 'border-blue-500/50' :
-              'border-transparent hover:border-[var(--border-subtle)]'
-            )}>
-              {line}
-            </div>
-          ))
+        ) : visibleLogs.length > 0 ? (
+          visibleLogs.map((line, index) => {
+            const lineTime = showLineMeta ? extractLineTime(line) : null;
+            return (
+              <div key={`${index}-${line.slice(0, 24)}`} className={cn(
+                wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto',
+                compactMode ? 'px-1 py-0 leading-snug' : 'px-1 py-0.5',
+                'hover:bg-[var(--bg-card-hover)] rounded transition-colors border-l-2',
+                line.includes('ERROR') ? 'border-red-500/50 bg-red-500/5 dark:bg-red-500/10' :
+                line.includes('WARN') ? 'border-yellow-500/50 bg-yellow-500/5 dark:bg-yellow-500/10' :
+                line.includes('DEBUG') ? 'border-blue-500/50' :
+                'border-transparent hover:border-[var(--border-subtle)]'
+              )}>
+                {showLineMeta && (
+                  <div className="text-[10px] text-[var(--text-muted)] mb-0.5">
+                    #{index + 1}{lineTime ? ` · ${lineTime}` : ''}
+                  </div>
+                )}
+                <div>{line}</div>
+              </div>
+            );
+          })
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
-            {viewState.lifecycle === 'error' ? '日志服务异常，点击右上角重试' : '当前无可展示日志'}
+            {normalizedKeyword && logs.length > 0
+              ? '关键字无匹配日志'
+              : (viewState.lifecycle === 'error' ? '日志服务异常，点击右上角重试' : '当前无可展示日志')}
           </div>
         )}
       </div>
