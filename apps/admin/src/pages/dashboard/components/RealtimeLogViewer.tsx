@@ -202,6 +202,8 @@ export function RealtimeLogViewer({
   const [wrapLines, setWrapLines] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
   const [showLineMeta, setShowLineMeta] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
   const [manualPaused, setManualPaused] = useState(false);
@@ -293,6 +295,20 @@ export function RealtimeLogViewer({
     };
   }, [isFullScreen]);
 
+  useEffect(() => {
+    if (!downloadFeedback) {
+      return;
+    }
+
+    const feedbackTimer = window.setTimeout(() => {
+      setDownloadFeedback(null);
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(feedbackTimer);
+    };
+  }, [downloadFeedback]);
+
   const getTitle = useCallback(() => {
     if (useAppLogs) {
       return 'Backend (Java)';
@@ -306,6 +322,8 @@ export function RealtimeLogViewer({
     retryAttemptRef.current = 0;
     shouldMergeOnRecoveryRef.current = false;
     setAutoScroll(true);
+    setExporting(false);
+    setDownloadFeedback(null);
     dispatchViewState({ type: 'RESET_CONTEXT' });
   }, [containerId, useAppLogs]);
 
@@ -472,11 +490,76 @@ export function RealtimeLogViewer({
     }
   };
 
-  const handleDownload = () => {
-    if (useAppLogs) {
-      const url = systemService.getLogDownloadUrl(filterLevel);
-      window.open(url, '_blank');
+  const buildExportFilename = (type: 'raw' | 'view' | 'recent') => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return `aetherblog-${type}-${filterLevel.toLowerCase()}-${timestamp}.log`;
+  };
+
+  const triggerFileDownload = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = async () => {
+    if (!useAppLogs) {
+      return;
     }
+
+    setExporting(true);
+    setDownloadFeedback(null);
+
+    try {
+      const url = systemService.getLogDownloadUrl(filterLevel);
+      const response = await fetch(url, { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error('日志文件下载失败');
+      }
+
+      const content = await response.text();
+      if (!content.trim()) {
+        throw new Error('日志文件为空，无法下载');
+      }
+
+      triggerFileDownload(content, buildExportFilename('raw'));
+      setDownloadFeedback('原始日志下载完成');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '日志文件下载失败';
+      setDownloadFeedback(message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportCurrentView = () => {
+    setDownloadFeedback(null);
+
+    if (visibleLogs.length === 0) {
+      setDownloadFeedback('当前筛选无日志可导出');
+      return;
+    }
+
+    triggerFileDownload(`${visibleLogs.join('\n')}\n`, buildExportFilename('view'));
+    setDownloadFeedback(`已导出当前筛选 ${visibleLogs.length} 行`);
+  };
+
+  const handleExportRecentLines = (lineCount: number) => {
+    setDownloadFeedback(null);
+
+    if (visibleLogs.length === 0) {
+      setDownloadFeedback('当前筛选无日志可导出');
+      return;
+    }
+
+    const recentLogs = visibleLogs.slice(-lineCount);
+    triggerFileDownload(`${recentLogs.join('\n')}\n`, buildExportFilename('recent'));
+    setDownloadFeedback(`已导出最近 ${recentLogs.length} 行`);
   };
 
   const handleManualRefresh = () => {
@@ -515,6 +598,16 @@ export function RealtimeLogViewer({
   const statusClassName = statusClassMap[viewState.lifecycle];
   const pauseReasonLabel = viewState.pauseReason === 'hidden' ? '页面隐藏自动暂停' : '手动暂停';
   const quickLevelOptions = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
+  const isRawDownloadDisabled = exporting || isLoading;
+  const isViewExportDisabled = exporting || visibleLogs.length === 0;
+  const downloadFeedbackTone =
+    !downloadFeedback
+      ? 'neutral'
+      : downloadFeedback.includes('失败') || downloadFeedback.includes('为空')
+        ? 'error'
+        : downloadFeedback.includes('无日志')
+          ? 'warn'
+          : 'success';
 
   const renderContent = () => (
     <>
@@ -630,13 +723,59 @@ export function RealtimeLogViewer({
           <div className="flex flex-wrap items-center gap-1">
             {useAppLogs && (
               <button
-                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+                className={cn(
+                  'p-1.5 rounded transition-colors',
+                  isRawDownloadDisabled
+                    ? 'cursor-not-allowed text-[var(--text-muted)]/60'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                )}
                 onClick={handleDownload}
-                title="下载日志文件"
+                title={exporting ? '正在下载日志文件' : '按级别下载原始日志文件'}
+                disabled={isRawDownloadDisabled}
               >
-                <Download className="w-3.5 h-3.5" />
+                {exporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
               </button>
             )}
+            <button
+              type="button"
+              className={cn(
+                'px-2 py-1 text-[10px] rounded border transition-colors',
+                isViewExportDisabled
+                  ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
+                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              )}
+              onClick={handleExportCurrentView}
+              title={
+                exporting
+                  ? '导出处理中'
+                  : visibleLogs.length === 0
+                    ? '当前筛选无日志可导出'
+                    : '导出当前筛选日志'
+              }
+              disabled={isViewExportDisabled}
+            >
+              导出当前
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'px-2 py-1 text-[10px] rounded border transition-colors',
+                isViewExportDisabled
+                  ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
+                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              )}
+              onClick={() => handleExportRecentLines(500)}
+              title={
+                exporting
+                  ? '导出处理中'
+                  : visibleLogs.length === 0
+                    ? '当前筛选无日志可导出'
+                    : '导出最近500行日志'
+              }
+              disabled={isViewExportDisabled}
+            >
+              导出最近500
+            </button>
             <button
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
               onClick={handleManualRefresh}
@@ -676,6 +815,23 @@ export function RealtimeLogViewer({
           </div>
         </div>
       </div>
+
+      {downloadFeedback && (
+        <div
+          className={cn(
+            'mx-4 mt-2 rounded-md border px-3 py-2 text-[11px]',
+            downloadFeedbackTone === 'error'
+              ? 'border-red-500/30 bg-red-500/10 text-red-600'
+              : downloadFeedbackTone === 'warn'
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-700'
+                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+          )}
+          role={downloadFeedbackTone === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          {downloadFeedback}
+        </div>
+      )}
 
       {(viewState.lifecycle === 'error' || viewState.lifecycle === 'no_data') && (
         <div className={cn(
