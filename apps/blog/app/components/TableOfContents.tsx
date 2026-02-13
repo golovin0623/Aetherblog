@@ -29,20 +29,23 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
     }
 
     const callback = (entries: IntersectionObserverEntry[]) => {
-      let bestEntry: IntersectionObserverEntry | null = null;
+      let bestRatio = -1;
+      let bestId = '';
 
       entries.forEach((entry) => {
         if (!entry.isIntersecting) {
           return;
         }
 
-        if (!bestEntry || entry.intersectionRatio > bestEntry.intersectionRatio) {
-          bestEntry = entry;
+        const currentId = (entry.target as HTMLElement).id || '';
+        if (entry.intersectionRatio > bestRatio && currentId) {
+          bestRatio = entry.intersectionRatio;
+          bestId = currentId;
         }
       });
 
-      if (bestEntry?.target?.id) {
-        setActiveId(bestEntry.target.id);
+      if (bestId) {
+        setActiveId(bestId);
       }
     };
 
