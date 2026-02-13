@@ -15,6 +15,7 @@ interface RealtimeLogViewerProps {
 type LogLifecycleState = 'idle' | 'loading' | 'healthy' | 'no_data' | 'error' | 'paused';
 type LogViewMode = 'embedded' | 'fullscreen';
 type ActiveLogLifecycle = Exclude<LogLifecycleState, 'paused'>;
+type LogPauseReason = 'manual' | 'hidden';
 
 interface LogViewState {
   lifecycle: LogLifecycleState;
@@ -22,6 +23,7 @@ interface LogViewState {
   lastActiveLifecycle: ActiveLogLifecycle;
   message: string;
   errorCategory: string | null;
+  pauseReason: LogPauseReason | null;
   transitionTrace: string;
 }
 
@@ -31,7 +33,7 @@ type LogViewAction =
   | { type: 'FETCH_SUCCESS'; hasData: boolean }
   | { type: 'FETCH_NO_DATA'; message: string; errorCategory?: string | null }
   | { type: 'FETCH_ERROR'; message: string; errorCategory?: string | null }
-  | { type: 'TOGGLE_PAUSE' }
+  | { type: 'SET_PAUSED'; paused: boolean; reason?: LogPauseReason | null }
   | { type: 'ENTER_FULLSCREEN' }
   | { type: 'EXIT_FULLSCREEN' };
 
@@ -41,6 +43,7 @@ const INITIAL_LOG_VIEW_STATE: LogViewState = {
   lastActiveLifecycle: 'idle',
   message: '',
   errorCategory: null,
+  pauseReason: null,
   transitionTrace: 'init',
 };
 
@@ -53,6 +56,7 @@ function reduceLogViewState(state: LogViewState, action: LogViewAction): LogView
         lastActiveLifecycle: 'idle',
         message: '',
         errorCategory: null,
+        pauseReason: null,
         transitionTrace: 'reset_context',
       };
     case 'FETCH_START':
@@ -67,6 +71,7 @@ function reduceLogViewState(state: LogViewState, action: LogViewAction): LogView
         lifecycle: 'loading',
         message: '',
         errorCategory: null,
+        pauseReason: null,
         transitionTrace: `fetch_start_from_${state.lifecycle}`,
       };
     case 'FETCH_SUCCESS': {
@@ -77,6 +82,7 @@ function reduceLogViewState(state: LogViewState, action: LogViewAction): LogView
         lastActiveLifecycle: nextLifecycle,
         message: action.hasData ? '' : '当前无可展示日志',
         errorCategory: null,
+        pauseReason: null,
         transitionTrace: `fetch_success_to_${nextLifecycle}`,
       };
     }
@@ -87,6 +93,7 @@ function reduceLogViewState(state: LogViewState, action: LogViewAction): LogView
         lastActiveLifecycle: 'no_data',
         message: action.message,
         errorCategory: action.errorCategory || null,
+        pauseReason: null,
         transitionTrace: 'fetch_no_data',
       };
     case 'FETCH_ERROR':
@@ -96,22 +103,37 @@ function reduceLogViewState(state: LogViewState, action: LogViewAction): LogView
         lastActiveLifecycle: 'error',
         message: action.message,
         errorCategory: action.errorCategory || null,
+        pauseReason: null,
         transitionTrace: 'fetch_error',
       };
-    case 'TOGGLE_PAUSE':
-      if (state.lifecycle === 'paused') {
+    case 'SET_PAUSED':
+      if (!action.paused && state.lifecycle === 'paused') {
         return {
           ...state,
           lifecycle: state.lastActiveLifecycle,
+          pauseReason: null,
           message: state.lastActiveLifecycle === 'healthy' ? '' : state.message,
           transitionTrace: `resume_to_${state.lastActiveLifecycle}`,
+        };
+      }
+      if (!action.paused) {
+        return {
+          ...state,
+          transitionTrace: 'blocked:resume_when_not_paused',
+        };
+      }
+      if (state.lifecycle === 'paused' && state.pauseReason === action.reason) {
+        return {
+          ...state,
+          transitionTrace: `blocked:already_paused_${action.reason || 'unknown'}`,
         };
       }
       return {
         ...state,
         lifecycle: 'paused',
-        lastActiveLifecycle: state.lifecycle,
-        transitionTrace: `pause_from_${state.lifecycle}`,
+        lastActiveLifecycle: state.lifecycle === 'paused' ? state.lastActiveLifecycle : state.lifecycle,
+        pauseReason: action.reason || state.pauseReason || 'manual',
+        transitionTrace: `pause_from_${state.lifecycle}_${action.reason || 'manual'}`,
       };
     case 'ENTER_FULLSCREEN':
       if (state.mode === 'fullscreen') {
@@ -142,6 +164,29 @@ function reduceLogViewState(state: LogViewState, action: LogViewAction): LogView
   }
 }
 
+function mergeLogsIncrementally(previous: string[], incoming: string[], maxLines: number): string[] {
+  if (previous.length === 0) {
+    return incoming.slice(-maxLines);
+  }
+  if (incoming.length === 0) {
+    return previous.slice(-maxLines);
+  }
+
+  const maxOverlap = Math.min(previous.length, incoming.length, 300);
+  let overlapSize = 0;
+
+  for (let size = maxOverlap; size > 0; size--) {
+    const previousTail = previous.slice(previous.length - size).join('\n');
+    const incomingHead = incoming.slice(0, size).join('\n');
+    if (previousTail === incomingHead) {
+      overlapSize = size;
+      break;
+    }
+  }
+
+  return [...previous, ...incoming.slice(overlapSize)].slice(-maxLines);
+}
+
 export function RealtimeLogViewer({
   containerId,
   containerName,
@@ -149,19 +194,52 @@ export function RealtimeLogViewer({
   refreshInterval = 3,
   className
 }: RealtimeLogViewerProps) {
+  const MAX_LOG_LINES = 2000;
   const [logs, setLogs] = useState<string[]>([]);
   const [fontSize, setFontSize] = useState(12);
   const [filterLevel, setFilterLevel] = useState<string>('ALL');
   const [autoScroll, setAutoScroll] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [manualPaused, setManualPaused] = useState(false);
+  const [hiddenPaused, setHiddenPaused] = useState(
+    typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false
+  );
   const [viewState, dispatchViewState] = useReducer(reduceLogViewState, INITIAL_LOG_VIEW_STATE);
 
   const [lastSuccessAt, setLastSuccessAt] = useState<Date | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const retryAttemptRef = useRef(0);
+  const shouldMergeOnRecoveryRef = useRef(false);
+
+  const effectivePauseReason: LogPauseReason | null = manualPaused ? 'manual' : hiddenPaused ? 'hidden' : null;
   const isPaused = viewState.lifecycle === 'paused';
   const isLoading = viewState.lifecycle === 'loading';
   const isFullScreen = viewState.mode === 'fullscreen';
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setHiddenPaused(document.visibilityState === 'hidden');
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (effectivePauseReason) {
+      shouldMergeOnRecoveryRef.current = true;
+      if (viewState.lifecycle !== 'paused' || viewState.pauseReason !== effectivePauseReason) {
+        dispatchViewState({ type: 'SET_PAUSED', paused: true, reason: effectivePauseReason });
+      }
+      return;
+    }
+
+    if (viewState.lifecycle === 'paused') {
+      dispatchViewState({ type: 'SET_PAUSED', paused: false });
+    }
+  }, [effectivePauseReason, viewState.lifecycle, viewState.pauseReason]);
 
   useEffect(() => {
     if (viewState.transitionTrace.startsWith('blocked:')) {
@@ -169,9 +247,10 @@ export function RealtimeLogViewer({
         trace: viewState.transitionTrace,
         lifecycle: viewState.lifecycle,
         mode: viewState.mode,
+        pauseReason: viewState.pauseReason,
       });
     }
-  }, [viewState.transitionTrace, viewState.lifecycle, viewState.mode]);
+  }, [viewState.transitionTrace, viewState.lifecycle, viewState.mode, viewState.pauseReason]);
 
   const getTitle = useCallback(() => {
     if (useAppLogs) {
@@ -182,6 +261,9 @@ export function RealtimeLogViewer({
 
   useEffect(() => {
     setLogs([]);
+    setManualPaused(false);
+    retryAttemptRef.current = 0;
+    shouldMergeOnRecoveryRef.current = false;
     setAutoScroll(true);
     dispatchViewState({ type: 'RESET_CONTEXT' });
   }, [filterLevel, containerId, useAppLogs]);
@@ -194,37 +276,60 @@ export function RealtimeLogViewer({
       dispatchViewState({ type: 'FETCH_START' });
       try {
         if (useAppLogs) {
-          const result = await systemService.getLogs(filterLevel, 2000);
-          setLogs(result.lines);
+          const result = await systemService.getLogs(filterLevel, MAX_LOG_LINES);
 
           if (result.status === 'ok') {
+            const nextLines = Array.isArray(result.lines) ? result.lines : [];
+            setLogs((previous) => {
+              if (!shouldMergeOnRecoveryRef.current) {
+                return nextLines.slice(-MAX_LOG_LINES);
+              }
+              return mergeLogsIncrementally(previous, nextLines, MAX_LOG_LINES);
+            });
             dispatchViewState({ type: 'FETCH_SUCCESS', hasData: result.lines.length > 0 });
             setLastSuccessAt(new Date());
+            retryAttemptRef.current = 0;
+            shouldMergeOnRecoveryRef.current = false;
           } else if (result.status === 'no_data') {
+            setLogs([]);
             dispatchViewState({
               type: 'FETCH_NO_DATA',
               message: result.message || '当前级别暂无日志',
               errorCategory: result.errorCategory || null,
             });
+            retryAttemptRef.current = 0;
+            shouldMergeOnRecoveryRef.current = false;
           } else {
             dispatchViewState({
               type: 'FETCH_ERROR',
               message: result.message || '日志读取失败',
               errorCategory: result.errorCategory || null,
             });
+            retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 5);
+            shouldMergeOnRecoveryRef.current = true;
           }
         } else {
           const data = await systemService.getContainerLogs(containerId!);
           if (Array.isArray(data)) {
-            setLogs(data);
+            const nextLines = data.slice(-MAX_LOG_LINES);
+            setLogs((previous) => {
+              if (!shouldMergeOnRecoveryRef.current) {
+                return nextLines;
+              }
+              return mergeLogsIncrementally(previous, nextLines, MAX_LOG_LINES);
+            });
             if (data.length > 0) {
               dispatchViewState({ type: 'FETCH_SUCCESS', hasData: true });
+              retryAttemptRef.current = 0;
+              shouldMergeOnRecoveryRef.current = false;
             } else {
               dispatchViewState({
                 type: 'FETCH_NO_DATA',
                 message: '容器当前无可显示日志',
                 errorCategory: null,
               });
+              retryAttemptRef.current = 0;
+              shouldMergeOnRecoveryRef.current = false;
             }
             if (data.length > 0) {
               setLastSuccessAt(new Date());
@@ -245,14 +350,43 @@ export function RealtimeLogViewer({
           message: message || '日志请求失败',
           errorCategory: errorCategory || null,
         });
-        setLogs([]);
+        retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 5);
+        shouldMergeOnRecoveryRef.current = true;
       }
     };
 
-    void fetchLogs();
-    const timer = setInterval(fetchLogs, refreshInterval * 1000);
-    return () => clearInterval(timer);
-  }, [containerId, refreshInterval, isPaused, useAppLogs, filterLevel, refreshTick]);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNext = () => {
+      if (stopped) {
+        return;
+      }
+      const delaySeconds = retryAttemptRef.current > 0
+        ? Math.min(refreshInterval * Math.pow(2, retryAttemptRef.current), 60)
+        : refreshInterval;
+      timer = setTimeout(() => {
+        void runCycle();
+      }, delaySeconds * 1000);
+    };
+
+    const runCycle = async () => {
+      if (stopped) {
+        return;
+      }
+      await fetchLogs();
+      scheduleNext();
+    };
+
+    void runCycle();
+
+    return () => {
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [containerId, refreshInterval, isPaused, useAppLogs, filterLevel, refreshTick, MAX_LOG_LINES]);
 
   useEffect(() => {
     if (autoScroll && !isPaused && scrollRef.current) {
@@ -279,9 +413,7 @@ export function RealtimeLogViewer({
   };
 
   const handleManualRefresh = () => {
-    if (isPaused) {
-      dispatchViewState({ type: 'TOGGLE_PAUSE' });
-    }
+    setManualPaused(false);
     setRefreshTick(value => value + 1);
   };
 
@@ -314,6 +446,7 @@ export function RealtimeLogViewer({
 
   const statusLabel = statusLabelMap[viewState.lifecycle];
   const statusClassName = statusClassMap[viewState.lifecycle];
+  const pauseReasonLabel = viewState.pauseReason === 'hidden' ? '页面隐藏自动暂停' : '手动暂停';
 
   const renderContent = () => (
     <>
@@ -322,6 +455,7 @@ export function RealtimeLogViewer({
           <Terminal className="w-4 h-4 text-primary shrink-0" />
           <span className="font-mono font-medium truncate">{getTitle()}</span>
           <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
+          {isPaused && <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
           {isFullScreen && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
           {!autoScroll && !isPaused && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
           {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
@@ -389,10 +523,10 @@ export function RealtimeLogViewer({
             </button>
             <button
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={() => dispatchViewState({ type: 'TOGGLE_PAUSE' })}
-              title={isPaused ? '继续滚动' : '暂停滚动'}
+              onClick={() => setManualPaused(previous => !previous)}
+              title={manualPaused ? '继续滚动' : '暂停滚动'}
             >
-              {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+              {manualPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
             </button>
             <button
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
