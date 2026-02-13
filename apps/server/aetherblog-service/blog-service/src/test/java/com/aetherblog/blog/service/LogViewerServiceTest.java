@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LogViewerServiceTest {
@@ -56,5 +58,42 @@ class LogViewerServiceTest {
         assertTrue(result.isError());
         assertEquals("LOG_READ_FAILURE", result.getErrorCategory());
         assertTrue(result.getLogs().isEmpty());
+    }
+
+    @Test
+    void queryLogsSupportsKeywordLimitAndCursor() throws Exception {
+        Path allLog = tempDir.resolve("aetherblog.log");
+        Files.writeString(allLog, String.join("\n", List.of(
+                "INFO startup",
+                "ERROR db timeout",
+                "WARN cache miss",
+                "ERROR http 500",
+                "ERROR payment failed"
+        )));
+
+        LogViewerService.LogReadResult firstPage = logViewerService.queryLogs("ALL", 2000, 2, "error", null);
+
+        assertEquals("OK", firstPage.getStatus());
+        assertEquals(List.of("ERROR db timeout", "ERROR http 500"), firstPage.getLogs());
+        assertEquals("0", firstPage.getCursor());
+        assertEquals("2", firstPage.getNextCursor());
+
+        LogViewerService.LogReadResult secondPage = logViewerService.queryLogs("ALL", 2000, 2, "error", firstPage.getNextCursor());
+        assertEquals("OK", secondPage.getStatus());
+        assertEquals(List.of("ERROR payment failed"), secondPage.getLogs());
+        assertEquals("2", secondPage.getCursor());
+        assertNull(secondPage.getNextCursor());
+    }
+
+    @Test
+    void queryLogsReturnsNoDataForExhaustedCursor() throws Exception {
+        Path allLog = tempDir.resolve("aetherblog.log");
+        Files.writeString(allLog, String.join("\n", List.of("line-1", "line-2")));
+
+        LogViewerService.LogReadResult result = logViewerService.queryLogs("ALL", 2000, 1, null, "9");
+
+        assertTrue(result.isNoData());
+        assertEquals("LOG_CURSOR_EXHAUSTED", result.getErrorCategory());
+        assertNotNull(result.getMessage());
     }
 }

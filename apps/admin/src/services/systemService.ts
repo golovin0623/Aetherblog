@@ -135,11 +135,25 @@ export interface LogFileInfo {
 
 export type AppLogFetchStatus = 'ok' | 'no_data' | 'error';
 
+export interface AppLogQueryPayload {
+  lines: string[];
+  cursor?: string | null;
+  nextCursor?: string | null;
+}
+
+export interface AppLogQueryParams {
+  keyword?: string;
+  limit?: number;
+  cursor?: string;
+}
+
 export interface AppLogFetchResult {
   lines: string[];
   status: AppLogFetchStatus;
   message?: string;
   errorCategory?: string;
+  cursor?: string | null;
+  nextCursor?: string | null;
 }
 
 // ========== 告警类型 ==========
@@ -244,16 +258,35 @@ export const systemService = {
    * @param level 日志级别 (ALL/INFO/WARN/ERROR/DEBUG)
    * @param lines 行数限制，默认 2000
    */
-  getLogs: async (level: string = 'ALL', lines: number = 2000): Promise<AppLogFetchResult> => {
+  getLogs: async (level: string = 'ALL', lines: number = 2000, params: AppLogQueryParams = {}): Promise<AppLogFetchResult> => {
     try {
-      const response = await api.get<R<string[]>>(`/v1/admin/system/logs?level=${level}&lines=${lines}`);
+      const query = new URLSearchParams();
+      query.set('level', level);
+      query.set('lines', String(lines));
+      if (typeof params.limit === 'number' && Number.isFinite(params.limit)) {
+        query.set('limit', String(params.limit));
+      }
+      if (params.keyword && params.keyword.trim()) {
+        query.set('keyword', params.keyword.trim());
+      }
+      if (params.cursor && params.cursor.trim()) {
+        query.set('cursor', params.cursor.trim());
+      }
+
+      const response = await api.get<R<string[] | AppLogQueryPayload>>(`/v1/admin/system/logs?${query.toString()}`);
+      const payload = Array.isArray(response.data)
+        ? { lines: response.data }
+        : (response.data || { lines: [] });
+
       return {
-        lines: Array.isArray(response.data) ? response.data : [],
+        lines: Array.isArray(payload.lines) ? payload.lines : [],
         status: response.code === 200
           ? (response.errorCategory ? 'no_data' : 'ok')
           : 'error',
         message: response.message,
         errorCategory: response.errorCategory,
+        cursor: typeof payload.cursor === 'string' || payload.cursor === null ? payload.cursor : undefined,
+        nextCursor: typeof payload.nextCursor === 'string' || payload.nextCursor === null ? payload.nextCursor : undefined,
       };
     } catch (error: unknown) {
       const message = typeof error === 'object' && error && 'message' in error
@@ -268,6 +301,8 @@ export const systemService = {
         status: 'error',
         message,
         errorCategory: errorCategory || undefined,
+        cursor: undefined,
+        nextCursor: undefined,
       };
     }
   },
@@ -372,4 +407,3 @@ export const REFRESH_OPTIONS = [
 ];
 
 export default systemService;
-
