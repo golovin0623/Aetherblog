@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign } from 'lucide-react';
+import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign, RefreshCw } from 'lucide-react';
 import { 
   StatsCard, 
   VisitorChart, 
@@ -22,11 +22,12 @@ import {
   type AiCallRecord,
 } from '@/services/analyticsService';
 import { logger } from '@/lib/logger';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const AI_DASHBOARD_PAGE_SIZE = 20;
 
-const MOCK_AI_DASHBOARD: AiDashboardData = {
+const EMPTY_AI_DASHBOARD: AiDashboardData = {
   rangeDays: 30,
   overview: {
     totalCalls: 0,
@@ -56,18 +57,34 @@ function uniqueBy<T>(items: T[], mapper: (item: T) => string): string[] {
   return Array.from(new Set(items.map(mapper).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }
 
+function extractApiIssue(error: unknown): { message: string; category?: string } {
+  if (typeof error === 'object' && error) {
+    const message = 'message' in error ? String((error as { message?: unknown }).message || '请求失败') : '请求失败';
+    const category = 'errorCategory' in error
+      ? String((error as { errorCategory?: unknown }).errorCategory || '')
+      : '';
+    return { message, category: category || undefined };
+  }
+  return { message: '请求失败' };
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiData, setAiData] = useState<AiDashboardData>(MOCK_AI_DASHBOARD);
+  const [aiData, setAiData] = useState<AiDashboardData>(EMPTY_AI_DASHBOARD);
   const [aiDays, setAiDays] = useState<7 | 30 | 90>(30);
   const [aiPage, setAiPage] = useState(1);
   const [aiTaskType, setAiTaskType] = useState('');
   const [aiModelId, setAiModelId] = useState('');
   const [aiKeyword, setAiKeyword] = useState('');
   const [aiSuccessFilter, setAiSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
+  const [aiStatus, setAiStatus] = useState<'healthy' | 'degraded'>('healthy');
+  const [aiIssueMessage, setAiIssueMessage] = useState('');
+  const [aiIssueCategory, setAiIssueCategory] = useState<string | undefined>();
+  const [aiLastSuccessAt, setAiLastSuccessAt] = useState<Date | null>(null);
+  const [aiReloadTick, setAiReloadTick] = useState(0);
   
   // 容器日志状态
   const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
@@ -158,21 +175,29 @@ export default function DashboardPage() {
 
         if (response.code === 200 && response.data) {
           setAiData(response.data);
+          setAiStatus('healthy');
+          setAiIssueMessage('');
+          setAiIssueCategory(undefined);
+          setAiLastSuccessAt(new Date());
         } else {
-          logger.warn('AI dashboard API returned non-200, using empty data');
-          setAiData(MOCK_AI_DASHBOARD);
+          logger.warn('AI dashboard API returned degraded response', response);
+          setAiStatus('degraded');
+          setAiIssueMessage(response.message || 'AI 看板请求失败');
+          setAiIssueCategory(response.errorCategory);
         }
       } catch (error) {
         logger.error('Failed to fetch AI dashboard:', error);
-        toast.error('AI 看板数据加载失败，显示空状态');
-        setAiData(MOCK_AI_DASHBOARD);
+        const issue = extractApiIssue(error);
+        setAiStatus('degraded');
+        setAiIssueMessage(issue.message || 'AI 看板请求失败');
+        setAiIssueCategory(issue.category);
       } finally {
         setAiLoading(false);
       }
     };
 
     fetchAiDashboard();
-  }, [aiDays, aiPage, aiTaskType, aiModelId, aiSuccessFilter, aiKeyword]);
+  }, [aiDays, aiPage, aiTaskType, aiModelId, aiSuccessFilter, aiKeyword, aiReloadTick]);
 
   // 当时间范围改变时重新获取访客趋势
   const [trendLoading, setTrendLoading] = useState(false);
@@ -361,7 +386,7 @@ export default function DashboardPage() {
   // 使用专用获取的 visitorTrend，回退到 data.visitorTrend，然后是 mockData
   const chartData = visitorTrend || data?.visitorTrend || mockData.visitorTrend;
   const topPostsData = data?.topPosts || mockData.topPosts;
-  const aiOverview = aiData.overview || MOCK_AI_DASHBOARD.overview;
+  const aiOverview = aiData.overview || EMPTY_AI_DASHBOARD.overview;
   const aiModelOptions = uniqueBy(aiData.modelDistribution, item => item.model);
   const aiTaskOptions = uniqueBy(aiData.taskDistribution, item => item.task);
   const aiRecords: AiCallRecord[] = aiData.records?.list || [];
@@ -457,7 +482,33 @@ export default function DashboardPage() {
       {/* AI 调用分析 */}
       <div className="space-y-4 pt-2">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI 记录与统计看板</h2>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI 记录与统计看板</h2>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className={cn(
+                'px-2 py-0.5 rounded-md border',
+                aiStatus === 'healthy'
+                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                  : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+              )}>
+                {aiStatus === 'healthy' ? '运行正常' : '降级中'}
+              </span>
+              <span className="text-[var(--text-muted)]">
+                最近成功: {aiLastSuccessAt ? aiLastSuccessAt.toLocaleTimeString() : '尚无'}
+              </span>
+              {aiIssueCategory && (
+                <span className="text-[var(--text-muted)]">诊断: {aiIssueCategory}</span>
+              )}
+              <button
+                onClick={() => setAiReloadTick(value => value + 1)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                disabled={aiLoading}
+              >
+                <RefreshCw className={cn('w-3 h-3', aiLoading && 'animate-spin')} />
+                重试
+              </button>
+            </div>
+          </div>
           <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] self-start">
             {([7, 30, 90] as const).map(days => (
               <button
@@ -477,6 +528,13 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+
+        {aiStatus === 'degraded' && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+            AI 看板已进入降级模式：{aiIssueMessage || '请求失败'}。
+            当前展示最近一次成功数据，可点击“重试”恢复。
+          </div>
+        )}
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
           <StatsCard
