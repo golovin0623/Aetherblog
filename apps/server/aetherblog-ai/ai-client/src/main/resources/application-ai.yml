@@ -8,3 +8,6 @@ aetherblog:
     max-retries: 2
     circuit-breaker-enabled: true
     circuit-breaker-threshold: 5
+    preflight-enabled: ${AI_PREFLIGHT_ENABLED:true}
+    preflight-fail-fast: ${AI_PREFLIGHT_FAIL_FAST:false}
+    preflight-timeout-ms: ${AI_PREFLIGHT_TIMEOUT_MS:3000}

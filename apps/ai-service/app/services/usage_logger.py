@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 
+from app.services.metrics import MetricsStore
+
 logger = logging.getLogger(__name__)
 
 try:  # optional dependency
@@ -24,8 +26,9 @@ def estimate_tokens(text: str) -> int:
 
 
 class UsageLogger:
-    def __init__(self, pool) -> None:
+    def __init__(self, pool, metrics: MetricsStore | None = None) -> None:
         self.pool = pool
+        self.metrics = metrics
 
     @staticmethod
     def _extract_task(endpoint: str) -> str:
@@ -52,6 +55,34 @@ class UsageLogger:
         in_cost = Decimal(str(input_cost_per_1k or 0)) * (Decimal(tokens_in) / Decimal(1000))
         out_cost = Decimal(str(output_cost_per_1k or 0)) * (Decimal(tokens_out) / Decimal(1000))
         return (in_cost + out_cost).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _classify_error(exc: Exception) -> str:
+        error_text = str(exc).lower()
+        error_type = exc.__class__.__name__.lower()
+
+        if "timeout" in error_text or "timeout" in error_type:
+            return "timeout"
+
+        network_keywords = ("connection", "network", "closed", "refused", "broken pipe", "reset by peer")
+        if any(keyword in error_text for keyword in network_keywords) or "connection" in error_type:
+            return "network"
+
+        db_write_keywords = (
+            "duplicate",
+            "constraint",
+            "violates",
+            "null value",
+            "not-null",
+            "read-only",
+            "permission denied",
+            "deadlock",
+            "lock timeout",
+        )
+        if any(keyword in error_text for keyword in db_write_keywords):
+            return "db_write"
+
+        return "unknown"
 
     async def record(
         self,
@@ -112,4 +143,46 @@ class UsageLogger:
                     request_id,
                 )
         except Exception as exc:  # pragma: no cover - don't fail request
-            logger.warning("ai_usage_log_failed", extra={"error": str(exc)})
+            error_category = self._classify_error(exc)
+            metric_result = {
+                "failure_count": 0,
+                "degraded_success_count": 0,
+                "alert_triggered": False,
+            }
+            if self.metrics is not None:
+                metric_result = self.metrics.record_usage_log_failure(
+                    endpoint=endpoint,
+                    error_category=error_category,
+                    error_message=str(exc),
+                    request_id=request_id,
+                    business_success=bool(success),
+                )
+
+            failure_count = int(metric_result.get("failure_count", 0))
+            alert_triggered = bool(metric_result.get("alert_triggered", False))
+
+            log_extra = {
+                "endpoint": endpoint,
+                "request_id": request_id,
+                "error_category": error_category,
+                "error": str(exc),
+                "degraded": bool(success),
+                "failure_count": failure_count,
+                "alert_triggered": alert_triggered,
+            }
+            should_warn = self.metrics is None or failure_count <= 3 or alert_triggered
+            if should_warn:
+                logger.warning("ai_usage_log_failed", extra=log_extra)
+            else:
+                logger.debug("ai_usage_log_failed.sampled", extra=log_extra)
+
+            if alert_triggered:
+                logger.error(
+                    "ai_usage_log_failed.alert",
+                    extra={
+                        "endpoint": endpoint,
+                        "request_id": request_id,
+                        "error_category": error_category,
+                        "failure_count": failure_count,
+                    },
+                )

@@ -106,7 +106,14 @@ public class SystemMonitorController {
     public R<List<String>> getLogs(
             @RequestParam(defaultValue = "ALL") String level,
             @RequestParam(defaultValue = "2000") int lines) {
-        return R.ok(logViewerService.getLogsByLevel(level, lines));
+        LogViewerService.LogReadResult result = logViewerService.queryLogsByLevel(level, lines);
+        if (result.isError()) {
+            return R.fail(500, result.getMessage(), result.getErrorCategory());
+        }
+        if (result.isNoData()) {
+            return R.ok(result.getLogs(), result.getMessage(), result.getErrorCategory());
+        }
+        return R.ok(result.getLogs());
     }
 
     /**

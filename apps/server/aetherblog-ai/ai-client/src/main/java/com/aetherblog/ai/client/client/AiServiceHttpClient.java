@@ -50,7 +50,7 @@ public class AiServiceHttpClient implements AiServiceClient {
         return aiWebClient.post()
             .uri("/api/v1/ai/summary/stream")
             .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .accept(MediaType.TEXT_EVENT_STREAM)
             .bodyValue(request)
             .retrieve()
@@ -106,7 +106,7 @@ public class AiServiceHttpClient implements AiServiceClient {
     public Mono<AiResponse<PromptConfigResponse>> getPromptConfig(String taskType, String token) {
         return aiWebClient.get()
             .uri("/api/v1/admin/ai/prompts/{taskType}", taskType)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
             .bodyToMono(new ParameterizedTypeReference<AiResponse<PromptConfigResponse>>() {})
@@ -119,7 +119,7 @@ public class AiServiceHttpClient implements AiServiceClient {
     public Mono<AiResponse<java.util.List<PromptConfigResponse>>> listPromptConfigs(String token) {
         return aiWebClient.get()
             .uri("/api/v1/admin/ai/prompts")
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
             .bodyToMono(new ParameterizedTypeReference<AiResponse<java.util.List<PromptConfigResponse>>>() {})
@@ -133,7 +133,7 @@ public class AiServiceHttpClient implements AiServiceClient {
         return aiWebClient.put()
             .uri("/api/v1/admin/ai/prompts/{taskType}", taskType)
             .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
@@ -157,7 +157,7 @@ public class AiServiceHttpClient implements AiServiceClient {
     public Mono<AiResponse<java.util.List<AiTaskTypeResponse>>> listTaskTypes(String token) {
         return aiWebClient.get()
             .uri("/api/v1/admin/ai/tasks")
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
             .bodyToMono(new ParameterizedTypeReference<AiResponse<java.util.List<AiTaskTypeResponse>>>() {})
@@ -171,7 +171,7 @@ public class AiServiceHttpClient implements AiServiceClient {
         return aiWebClient.post()
             .uri("/api/v1/admin/ai/tasks")
             .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
@@ -186,7 +186,7 @@ public class AiServiceHttpClient implements AiServiceClient {
         return aiWebClient.put()
             .uri("/api/v1/admin/ai/tasks/{code}", code)
             .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
@@ -200,7 +200,7 @@ public class AiServiceHttpClient implements AiServiceClient {
     public Mono<AiResponse<Boolean>> deleteTaskType(String code, String token) {
         return aiWebClient.delete()
             .uri("/api/v1/admin/ai/tasks/{code}", code)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
             .bodyToMono(new ParameterizedTypeReference<AiResponse<Boolean>>() {})
@@ -210,6 +210,13 @@ public class AiServiceHttpClient implements AiServiceClient {
     }
 
     
+    private String requireAuthorizationToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Authorization token is required for AI service requests");
+        }
+        return token;
+    }
+
     /**
      * 执行通用请求
      */
@@ -222,7 +229,7 @@ public class AiServiceHttpClient implements AiServiceClient {
         return aiWebClient.post()
             .uri(uri)
             .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", token)
+            .header("Authorization", requireAuthorizationToken(token))
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), this::handleErrorResponse)
