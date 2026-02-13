@@ -487,54 +487,55 @@ export function RealtimeLogViewer({
 
   const renderContent = () => (
     <>
-      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] shrink-0 gap-2">
-        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
-          <Terminal className="w-4 h-4 text-primary shrink-0" />
-          <span className="font-mono font-medium truncate">{getTitle()}</span>
-          <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-          {isPaused && <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
-          {isFullScreen && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
-          {!autoScroll && !isPaused && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
-          {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+      <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] shrink-0">
+        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
+            <Terminal className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-mono font-medium truncate">{getTitle()}</span>
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
+            {isPaused && <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
+            {isFullScreen && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
+            {!autoScroll && !isPaused && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
+            {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
+          </div>
           <div className="text-[10px] text-[var(--text-muted)]">
             最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
           </div>
+        </div>
 
-          <div className="flex items-center gap-2 group">
-            <Type className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
-            <input
-              type="range"
-              min="10"
-              max="20"
-              step="1"
-              value={fontSize}
-              onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-              className="w-20 h-1 bg-[var(--bg-secondary)] rounded-lg appearance-none cursor-pointer accent-primary"
-              title={`字体大小: ${fontSize}px`}
-            />
+        <div className="px-4 py-2 border-t border-[var(--border-subtle)] flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 group">
+              <Type className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+              <input
+                type="range"
+                min="10"
+                max="20"
+                step="1"
+                value={fontSize}
+                onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
+                className="w-20 h-1 bg-[var(--bg-secondary)] rounded-lg appearance-none cursor-pointer accent-primary"
+                title={`字体大小: ${fontSize}px`}
+              />
+            </div>
+
+            <div className="flex items-center gap-1 bg-[var(--bg-card)] rounded p-0.5 border border-[var(--border-subtle)]">
+              <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
+              <select
+                value={filterLevel}
+                onChange={(e) => setFilterLevel(e.target.value)}
+                className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pr-6 pl-1"
+              >
+                <option value="ALL">全部日志</option>
+                <option value="INFO">INFO</option>
+                <option value="WARN">WARN</option>
+                <option value="ERROR">ERROR</option>
+                <option value="DEBUG">DEBUG</option>
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1 bg-[var(--bg-card)] rounded p-0.5 border border-[var(--border-subtle)]">
-            <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
-            <select
-              value={filterLevel}
-              onChange={(e) => setFilterLevel(e.target.value)}
-              className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pr-6 pl-1"
-            >
-              <option value="ALL">全部日志</option>
-              <option value="INFO">INFO</option>
-              <option value="WARN">WARN</option>
-              <option value="ERROR">ERROR</option>
-              <option value="DEBUG">DEBUG</option>
-            </select>
-          </div>
-
-          <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
-
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {useAppLogs && (
               <button
                 className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
