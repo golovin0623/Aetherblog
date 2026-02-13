@@ -10,6 +10,7 @@ import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
+import { createHeadingIdFactory } from '../lib/headingId';
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
@@ -142,30 +143,6 @@ function extractTextContent(children: React.ReactNode): string {
     return extractTextContent(props.children);
   }
   return '';
-}
-
-function normalizeHeadingText(raw: string): string {
-  const normalized = raw
-    .toLowerCase()
-    .trim()
-    .replace(/[\u2000-\u206F\u2E00-\u2E7F'"!@#$%^&*()+=[\]{}|\\;:,.<>/?`~]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return normalized || 'section';
-}
-
-function createHeadingIdFactory() {
-  const usedHeadingIds = new Map<string, number>();
-
-  return (rawText: string): string => {
-    const baseId = normalizeHeadingText(rawText);
-    const previousCount = usedHeadingIds.get(baseId) ?? 0;
-    const nextCount = previousCount + 1;
-    usedHeadingIds.set(baseId, nextCount);
-    return nextCount === 1 ? baseId : `${baseId}-${nextCount}`;
-  };
 }
 
 function createHeadingRenderer(tag: HeadingTag, getHeadingId: (text: string) => string): Components[HeadingTag] {
