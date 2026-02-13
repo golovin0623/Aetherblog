@@ -1,0 +1,2 @@
+timestamp,total_calls,error_calls,error_rate,empty_data_ratio,usage_log_failures,usage_log_failure_ratio,usage_log_success_rate,status
+2026-02-13T19:08:37+08:00,120,6,0.050000,0,3,0.025000,0.975000,warning
