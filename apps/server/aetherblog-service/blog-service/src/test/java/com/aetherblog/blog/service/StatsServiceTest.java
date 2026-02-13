@@ -190,4 +190,33 @@ public class StatsServiceTest {
         assertEquals(100, pageRequestCaptor.getValue().getPageSize());
     }
 
+    @Test
+    void testGetAiAnalyticsDashboardSupportsNestedOverviewRow() {
+        LocalDateTime fixedTime = LocalDateTime.of(2024, 1, 15, 10, 0);
+        when(clock.instant()).thenReturn(fixedTime.toInstant(ZoneOffset.UTC));
+        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
+
+        when(aiUsageLogRepository.aggregateOverview(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(new Object[]{
+                        new Object[]{20L, 18L, 2L, 5000L, new BigDecimal("2.50000000"), 140.0, 6L}
+                });
+        when(aiUsageLogRepository.aggregateDailyTrend(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.aggregateModelDistribution(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.aggregateTaskDistribution(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.findRecords(any(LocalDateTime.class), any(LocalDateTime.class), any(), any(), eq(null), eq(null), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+        StatsService.AiAnalyticsDashboard dashboard = statsService.getAiAnalyticsDashboard(7, 1, 20, null, null, null, null);
+
+        assertEquals(20L, dashboard.overview().totalCalls());
+        assertEquals(18L, dashboard.overview().successCalls());
+        assertEquals(2L, dashboard.overview().errorCalls());
+        assertEquals(5000L, dashboard.overview().totalTokens());
+        assertEquals(2.5, dashboard.overview().totalCost(), 0.000001);
+        assertEquals(140.0, dashboard.overview().avgLatencyMs(), 0.000001);
+    }
+
 }
