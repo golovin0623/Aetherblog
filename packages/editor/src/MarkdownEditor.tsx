@@ -76,6 +76,22 @@ export function MarkdownEditor({
       // Markdown 代码块语法高亮
       markdown({ codeLanguages: languages }),
       EditorView.lineWrapping,
+      // 选区在失焦（例如 AI 面板打开）时也保持可见，避免默认样式降级过深
+      EditorView.theme({
+        '&.cm-editor': {
+          '--ab-selection-focused': theme === 'light' ? 'rgba(99, 102, 241, 0.32)' : 'rgba(139, 92, 246, 0.36)',
+          '--ab-selection-blurred': theme === 'light' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(139, 92, 246, 0.24)',
+        },
+        '.cm-selectionLayer .cm-selectionBackground, .cm-content ::selection': {
+          backgroundColor: 'var(--ab-selection-focused) !important',
+        },
+        '&:not(.cm-focused) .cm-selectionLayer .cm-selectionBackground, &:not(.cm-focused) .cm-content ::selection': {
+          backgroundColor: 'var(--ab-selection-blurred) !important',
+        },
+        '&.cm-focused .cm-selectionLayer .cm-selectionBackground, &.cm-focused .cm-content ::selection': {
+          backgroundColor: 'var(--ab-selection-focused) !important',
+        },
+      }),
       EditorView.theme({
         '&': {
           fontSize: `${fontSize}px`,
@@ -123,7 +139,14 @@ export function MarkdownEditor({
           backgroundColor: theme === 'light' ? '#f1f5f9' : 'rgba(255, 255, 255, 0.05)',
         },
         '.cm-selectionBackground': {
-          backgroundColor: 'rgba(139, 92, 246, 0.3) !important',
+          backgroundColor: 'var(--ab-selection-focused) !important',
+        },
+        '.cm-selectionLayer .cm-selectionBackground': {
+          backgroundColor: 'var(--ab-selection-focused) !important',
+        },
+        '.cm-content ::selection': {
+          backgroundColor: 'var(--ab-selection-focused) !important',
+          color: 'inherit',
         },
         '&.cm-focused .cm-cursor': {
           borderLeftColor: '#8b5cf6',
