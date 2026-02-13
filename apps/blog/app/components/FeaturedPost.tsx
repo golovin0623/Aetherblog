@@ -135,6 +135,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
                 {/* 阅读更多按钮 */}
                 <Link
                     href={`/posts/${post.slug}`}
+                    aria-label={`阅读全文: ${post.title}`}
                     className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 shadow-[var(--shadow-primary)] hover:shadow-[var(--shadow-primary-lg)] text-xs shrink-0"
                 >
                     <span>阅读全文</span>
