@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     vector_dim: int = Field(default=1536, alias="AI_VECTOR_DIM")
     search_threshold: float = Field(default=0.6, alias="AI_SEARCH_THRESHOLD")
     reindex_batch_size: int = Field(default=200, alias="AI_REINDEX_BATCH")
+    usage_log_failure_alert_threshold: int = Field(default=10, alias="AI_USAGE_LOG_FAILURE_ALERT_THRESHOLD")
+    usage_log_failure_sample_limit: int = Field(default=50, alias="AI_USAGE_LOG_FAILURE_SAMPLE_LIMIT")
 
     default_provider: str = Field(default="openai", alias="AI_DEFAULT_PROVIDER")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")

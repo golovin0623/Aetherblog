@@ -113,7 +113,7 @@ async def get_usage_logger() -> UsageLogger:
     global _usage_logger
     if _usage_logger is None:
         pool = await get_pg_pool()
-        _usage_logger = UsageLogger(pool)
+        _usage_logger = UsageLogger(pool, get_metrics_store())
     return _usage_logger
 
 
