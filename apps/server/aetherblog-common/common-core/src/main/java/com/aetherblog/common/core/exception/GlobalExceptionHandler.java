@@ -31,7 +31,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public R<Void> handleBusinessException(BusinessException e) {
         log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
-        return R.fail(e.getCode(), e.getMessage());
+        return R.fail(e.getCode(), e.getMessage(), "business_error");
     }
 
     /**
@@ -44,7 +44,7 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
         log.warn("参数校验失败: {}", message);
-        return R.fail(ResultCode.BAD_REQUEST.getCode(), message);
+        return R.fail(ResultCode.BAD_REQUEST.getCode(), message, "validation_error");
     }
 
     /**
@@ -53,7 +53,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoHandlerFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public R<Void> handleNotFoundException(NoHandlerFoundException e) {
-        return R.fail(ResultCode.NOT_FOUND);
+        return R.fail(ResultCode.NOT_FOUND.getCode(), ResultCode.NOT_FOUND.getMessage(), "resource_not_found");
     }
 
     /**
@@ -65,8 +65,8 @@ public class GlobalExceptionHandler {
         log.error("系统异常", e);
         // 仅在开发/测试配置中暴露异常详情以便于调试。
         if (environment.matchesProfiles("dev", "test", "local")) {
-            return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常: " + e.getMessage());
+            return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常: " + e.getMessage(), "internal_error");
         }
-        return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常");
+        return R.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统异常", "internal_error");
     }
 }
