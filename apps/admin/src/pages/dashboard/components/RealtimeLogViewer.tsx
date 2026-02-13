@@ -209,6 +209,9 @@ export function RealtimeLogViewer({
   const [lastSuccessAt, setLastSuccessAt] = useState<Date | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fullscreenPanelRef = useRef<HTMLDivElement>(null);
+  const fullscreenTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const retryAttemptRef = useRef(0);
   const shouldMergeOnRecoveryRef = useRef(false);
 
@@ -251,6 +254,40 @@ export function RealtimeLogViewer({
       });
     }
   }, [viewState.transitionTrace, viewState.lifecycle, viewState.mode, viewState.pauseReason]);
+
+  useEffect(() => {
+    if (!isFullScreen) {
+      return;
+    }
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    const originalBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dispatchViewState({ type: 'EXIT_FULLSCREEN' });
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+
+    const focusTimer = window.setTimeout(() => {
+      fullscreenPanelRef.current?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = originalBodyOverflow;
+      const fallbackTarget = previousFocusRef.current ?? fullscreenTriggerRef.current;
+      fallbackTarget?.focus();
+    };
+  }, [isFullScreen]);
 
   const getTitle = useCallback(() => {
     if (useAppLogs) {
@@ -450,7 +487,7 @@ export function RealtimeLogViewer({
 
   const renderContent = () => (
     <>
-      <div className="flex flex-wrap items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] shrink-0 gap-2">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between px-4 py-3 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] shrink-0 gap-2">
         <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
           <Terminal className="w-4 h-4 text-primary shrink-0" />
           <span className="font-mono font-medium truncate">{getTitle()}</span>
@@ -536,6 +573,7 @@ export function RealtimeLogViewer({
               <Trash2 className="w-3.5 h-3.5" />
             </button>
             <button
+              ref={fullscreenTriggerRef}
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
               onClick={() => dispatchViewState({ type: isFullScreen ? 'EXIT_FULLSCREEN' : 'ENTER_FULLSCREEN' })}
               title={isFullScreen ? '退出全屏' : '全屏显示'}
@@ -600,7 +638,13 @@ export function RealtimeLogViewer({
       <div className={cn(
         'fixed inset-4 z-[9999] rounded-xl border border-[var(--border-subtle)] flex flex-col overflow-hidden shadow-2xl bg-[var(--bg-primary)]',
         className
-      )}>
+      )}
+        ref={fullscreenPanelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="日志全屏预览"
+        tabIndex={-1}
+      >
         {renderContent()}
       </div>
     </>
