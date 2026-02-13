@@ -52,4 +52,20 @@ public class AiServiceProperties {
      * 熔断器失败阈值
      */
     private int circuitBreakerThreshold = 5;
+
+
+    /**
+     * 是否启用 AI 服务启动预检
+     */
+    private boolean preflightEnabled = true;
+
+    /**
+     * 预检失败时是否启动失败（fail-fast）
+     */
+    private boolean preflightFailFast = false;
+
+    /**
+     * 预检探活超时时间（毫秒）
+     */
+    private int preflightTimeoutMs = 3000;
 }

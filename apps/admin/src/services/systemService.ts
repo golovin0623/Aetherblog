@@ -133,6 +133,15 @@ export interface LogFileInfo {
   exists: boolean;
 }
 
+export type AppLogFetchStatus = 'ok' | 'no_data' | 'error';
+
+export interface AppLogFetchResult {
+  lines: string[];
+  status: AppLogFetchStatus;
+  message?: string;
+  errorCategory?: string;
+}
+
 // ========== 告警类型 ==========
 
 export interface Alert {
@@ -235,8 +244,33 @@ export const systemService = {
    * @param level 日志级别 (ALL/INFO/WARN/ERROR/DEBUG)
    * @param lines 行数限制，默认 2000
    */
-  getLogs: (level: string = 'ALL', lines: number = 2000) =>
-    api.get<R<string[]>>(`/v1/admin/system/logs?level=${level}&lines=${lines}`).then(res => res.data),
+  getLogs: async (level: string = 'ALL', lines: number = 2000): Promise<AppLogFetchResult> => {
+    try {
+      const response = await api.get<R<string[]>>(`/v1/admin/system/logs?level=${level}&lines=${lines}`);
+      return {
+        lines: Array.isArray(response.data) ? response.data : [],
+        status: response.code === 200
+          ? (response.errorCategory ? 'no_data' : 'ok')
+          : 'error',
+        message: response.message,
+        errorCategory: response.errorCategory,
+      };
+    } catch (error: unknown) {
+      const message = typeof error === 'object' && error && 'message' in error
+        ? String((error as { message?: unknown }).message || '日志请求失败')
+        : '日志请求失败';
+      const errorCategory = typeof error === 'object' && error && 'errorCategory' in error
+        ? String((error as { errorCategory?: unknown }).errorCategory || '')
+        : '';
+
+      return {
+        lines: [],
+        status: 'error',
+        message,
+        errorCategory: errorCategory || undefined,
+      };
+    }
+  },
 
   /**
    * 获取可用日志文件列表

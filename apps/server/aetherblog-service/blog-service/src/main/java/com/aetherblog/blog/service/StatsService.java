@@ -45,6 +45,12 @@ public class StatsService {
     private final AiUsageLogRepository aiUsageLogRepository;
     private final Clock clock;
 
+    private static final int DEFAULT_RANGE_DAYS = 7;
+    private static final int MAX_RANGE_DAYS = 180;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_PAGE_NUM = 10000;
+
     /**
      * 获取 Dashboard 概览统计
      */
@@ -88,22 +94,9 @@ public class StatsService {
 
     public AiAnalyticsDashboard getAiAnalyticsDashboard(int days, int pageNum, int pageSize,
                                                         String taskType, String modelId, Boolean success, String keyword) {
-        if (days <= 0) {
-            days = 7;
-        }
-        if (days > 180) {
-            days = 180;
-        }
-
-        if (pageNum <= 0) {
-            pageNum = 1;
-        }
-        if (pageSize <= 0) {
-            pageSize = 20;
-        }
-        if (pageSize > 100) {
-            pageSize = 100;
-        }
+        days = normalizeDays(days);
+        pageNum = normalizePageNum(pageNum);
+        pageSize = normalizePageSize(pageSize);
 
         LocalDate today = LocalDate.now(clock);
         LocalDateTime startTime = today.minusDays(days - 1L).atStartOfDay();
@@ -239,7 +232,7 @@ public class StatsService {
                 logItem.getModelId() != null ? logItem.getModelId() : logItem.getModel(),
                 logItem.getTokensIn() != null ? logItem.getTokensIn() : 0,
                 logItem.getTokensOut() != null ? logItem.getTokensOut() : 0,
-                logItem.getTotalTokens() != null ? logItem.getTotalTokens() : 0,
+                resolveTotalTokens(logItem),
                 logItem.getEstimatedCost() != null ? logItem.getEstimatedCost().doubleValue() : 0.0,
                 logItem.getLatencyMs() != null ? logItem.getLatencyMs() : 0,
                 Boolean.TRUE.equals(logItem.getSuccess()),
@@ -247,6 +240,16 @@ public class StatsService {
                 logItem.getErrorCode(),
                 logItem.getCreatedAt() != null ? logItem.getCreatedAt().toString() : null
         );
+    }
+
+    private int resolveTotalTokens(AiUsageLog logItem) {
+        int explicitTokens = logItem.getTotalTokens() != null ? logItem.getTotalTokens() : 0;
+        if (explicitTokens > 0) {
+            return explicitTokens;
+        }
+        int tokensIn = logItem.getTokensIn() != null ? logItem.getTokensIn() : 0;
+        int tokensOut = logItem.getTokensOut() != null ? logItem.getTokensOut() : 0;
+        return Math.max(0, tokensIn + tokensOut);
     }
 
     private LocalDate toLocalDate(Object value) {
@@ -293,6 +296,26 @@ public class StatsService {
         return value.trim();
     }
 
+    private int normalizeDays(int days) {
+        if (days <= 0) {
+            return DEFAULT_RANGE_DAYS;
+        }
+        return Math.min(days, MAX_RANGE_DAYS);
+    }
+
+    private int normalizePageNum(int pageNum) {
+        if (pageNum <= 0) {
+            return 1;
+        }
+        return Math.min(pageNum, MAX_PAGE_NUM);
+    }
+
+    private int normalizePageSize(int pageSize) {
+        if (pageSize <= 0) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(pageSize, MAX_PAGE_SIZE);
+    }
 
     /**
      * 获取带趋势计算的 Dashboard 统计

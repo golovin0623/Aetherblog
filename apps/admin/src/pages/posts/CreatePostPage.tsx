@@ -94,8 +94,11 @@ function formatRelativeTime(timestamp: number | null, now: number, emptyText: st
 
   const diffMs = Math.max(0, now - timestamp);
   const diffSeconds = Math.floor(diffMs / 1000);
-  if (diffSeconds < 60) {
+  if (diffSeconds < 10) {
     return '刚刚';
+  }
+  if (diffSeconds < 60) {
+    return `${diffSeconds} 秒前`;
   }
   const diffMinutes = Math.floor(diffSeconds / 60);
   if (diffMinutes < 60) {
@@ -107,6 +110,19 @@ function formatRelativeTime(timestamp: number | null, now: number, emptyText: st
   }
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays} 天前`;
+}
+
+
+function formatAbsoluteTime(timestamp: number | null, emptyText: string): string {
+  if (!timestamp) {
+    return emptyText;
+  }
+
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
 }
 
 export function CreatePostPage() {
@@ -205,32 +221,50 @@ export function CreatePostPage() {
     const now = Date.now();
     setSaveStatus({ ...next, updatedAt: now });
     if (options?.markSuccess) {
-      setLastSavedAt(now);
-      if (options.fingerprint) {
-        setLastSavedFingerprint(options.fingerprint);
-      }
       if (options.autoSaved) {
         setLastAutoSavedAt(now);
+      } else {
+        setLastSavedAt(now);
+      }
+      if (options.fingerprint) {
+        setLastSavedFingerprint(options.fingerprint);
       }
     }
   }, []);
 
   const relativeSavedText = useMemo(() => {
-    return formatRelativeTime(lastSavedAt, saveStatusTick, '尚未成功保存');
+    return formatRelativeTime(lastSavedAt, saveStatusTick, '尚未手动保存');
   }, [lastSavedAt, saveStatusTick]);
 
   const relativeAutoSavedText = useMemo(() => {
     return formatRelativeTime(lastAutoSavedAt, saveStatusTick, '尚无自动保存记录');
   }, [lastAutoSavedAt, saveStatusTick]);
 
+  const absoluteSavedText = useMemo(() => {
+    return formatAbsoluteTime(lastSavedAt, '尚未手动保存');
+  }, [lastSavedAt]);
+
+  const absoluteAutoSavedText = useMemo(() => {
+    return formatAbsoluteTime(lastAutoSavedAt, '尚无自动保存记录');
+  }, [lastAutoSavedAt]);
 
   const saveTimelineText = useMemo(() => {
-    const latestAutoSaved = `最新自动保存：${relativeAutoSavedText}`;
-    if (!lastSavedAt) {
-      return latestAutoSaved;
-    }
-    return `${latestAutoSaved} · 最近保存：${relativeSavedText}`;
-  }, [lastSavedAt, relativeAutoSavedText, relativeSavedText]);
+    const latestAutoSaved = lastAutoSavedAt
+      ? `最新自动保存：${absoluteAutoSavedText}（${relativeAutoSavedText}）`
+      : `最新自动保存：${absoluteAutoSavedText}`;
+    const latestSaved = lastSavedAt
+      ? `最近保存：${absoluteSavedText}（${relativeSavedText}）`
+      : `最近保存：${absoluteSavedText}`;
+
+    return `${latestAutoSaved} · ${latestSaved}`;
+  }, [
+    absoluteAutoSavedText,
+    absoluteSavedText,
+    lastAutoSavedAt,
+    lastSavedAt,
+    relativeAutoSavedText,
+    relativeSavedText,
+  ]);
 
   const saveStatusDisplay = useMemo(() => {
     if (saveStatus.type === 'error') {
