@@ -108,24 +108,18 @@ export default function BlogHeader() {
   // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
   const lastScrollYRef = useRef(0);
 
-  // 文章详情页自动隐藏逻辑
+  // 文章详情页显隐初始化：不再进入详情页后自动收折
   useEffect(() => {
     if (!isArticleDetail) {
       setIsVisible(true);
       return;
     }
 
-    // 进入文章详情页后 2 秒自动隐藏
-    const timer = setTimeout(() => {
-      if (!isHovering) {
-        setIsVisible(false);
-      }
-    }, 2000);
+    setIsVisible(true);
+    lastScrollYRef.current = typeof window === 'undefined' ? 0 : window.scrollY;
+  }, [isArticleDetail, pathname]);
 
-    return () => clearTimeout(timer);
-  }, [isArticleDetail, isHovering, pathname]);
-
-  // 滚动隐藏逻辑 - 下滑隐藏，上滑或靠近顶部时显示
+  // 滚动隐藏逻辑 - 上滑手势（页面向下滚动）触发收折，向上滚动恢复
   useEffect(() => {
     if (!isArticleDetail) return;
 
@@ -136,11 +130,11 @@ export default function BlogHeader() {
       // 靠近顶部时始终显示
       if (currentScrollY < 100) {
         setIsVisible(true);
-      } else if (currentScrollY > lastScrollY + 10) {
-        // 下滑超过 10px 时隐藏
+      } else if (currentScrollY > lastScrollY + 18) {
+        // 手指上滑（内容下行）超过阈值后收折
         setIsVisible(false);
-      } else if (currentScrollY < lastScrollY - 30) {
-        // 上滑超过 30px 时显示
+      } else if (currentScrollY < lastScrollY - 28) {
+        // 内容上行时恢复
         setIsVisible(true);
       }
       
@@ -201,8 +195,8 @@ export default function BlogHeader() {
       )}
 
       <header
-        className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-500 ease-out group ${
-          isVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+        className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-300 ease-out will-change-transform group ${
+          isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
         }`}
         style={{
           background: 'var(--bg-overlay)',

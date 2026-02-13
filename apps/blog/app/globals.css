@@ -575,6 +575,24 @@ body {
   color: var(--text-secondary);
 }
 
+.markdown-body ul {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
+.markdown-body li > ol {
+  list-style-type: decimal;
+}
+
+.markdown-body li > ul {
+  list-style-type: circle;
+}
+
 .markdown-body li {
   margin: 0.25em 0;
 }

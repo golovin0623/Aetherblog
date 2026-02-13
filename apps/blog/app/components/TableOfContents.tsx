@@ -20,7 +20,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
   const headings = useMemo<TocItem[]>(() => extractHeadingsFromMarkdown(content), [content]);
   const [activeId, setActiveId] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState(true);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
   }, [headings]);
 
   useEffect(() => {
-    if (!isMobileOpen) {
+    if (!isDrawerOpen) {
       return;
     }
 
@@ -75,7 +75,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isMobileOpen]);
+  }, [isDrawerOpen]);
 
   const scrollToHeading = (id: string) => {
     const element = document.getElementById(id);
@@ -84,7 +84,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
       const y = element.getBoundingClientRect().top + window.scrollY - offset;
       window.scrollTo({ top: y, behavior: 'smooth' });
       setActiveId(id);
-      setIsMobileOpen(false);
+      setIsDrawerOpen(false);
     }
   };
 
@@ -159,27 +159,27 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
     <>
       <button
         type="button"
-        onClick={() => setIsMobileOpen(true)}
-        className="fixed bottom-6 right-5 z-40 md:hidden inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 px-4 py-2 text-sm text-[var(--text-primary)] shadow-lg backdrop-blur"
+        onClick={() => setIsDrawerOpen(true)}
+        className="fixed right-5 bottom-6 md:bottom-auto md:top-24 z-40 inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 px-4 py-2 text-sm text-[var(--text-primary)] shadow-lg backdrop-blur"
       >
         <List className="h-4 w-4 text-primary" />
         目录
       </button>
 
-      {isMobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-50">
           <button
             type="button"
             aria-label="关闭目录"
             className="absolute inset-0 bg-black/45"
-            onClick={() => setIsMobileOpen(false)}
+            onClick={() => setIsDrawerOpen(false)}
           />
-          <div className="absolute right-0 top-0 h-full w-[82vw] max-w-[360px] bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] p-4 overflow-y-auto">
+          <div className={`absolute right-0 top-0 h-full w-[82vw] md:w-[360px] max-w-[420px] bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] p-4 overflow-y-auto ${className}`}>
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold text-[var(--text-primary)]">文章目录</span>
               <button
                 type="button"
-                onClick={() => setIsMobileOpen(false)}
+                onClick={() => setIsDrawerOpen(false)}
                 className="rounded p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
               >
                 <X className="h-4 w-4" />
@@ -189,8 +189,6 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({ content, class
           </div>
         </div>
       )}
-
-      <nav className={`sticky top-24 hidden md:block ${className}`}>{tocList}</nav>
     </>
   );
 };
