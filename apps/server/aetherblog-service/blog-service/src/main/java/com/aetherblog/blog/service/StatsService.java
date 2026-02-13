@@ -102,16 +102,14 @@ public class StatsService {
         LocalDateTime startTime = today.minusDays(days - 1L).atStartOfDay();
         LocalDateTime endTime = today.plusDays(1).atStartOfDay().minusNanos(1);
 
-        Object[] overviewRaw = aiUsageLogRepository.aggregateOverview(startTime, endTime);
-        long totalCalls = overviewRaw != null && overviewRaw[0] != null ? ((Number) overviewRaw[0]).longValue() : 0L;
-        long successCalls = overviewRaw != null && overviewRaw[1] != null ? ((Number) overviewRaw[1]).longValue() : 0L;
-        long errorCalls = overviewRaw != null && overviewRaw[2] != null ? ((Number) overviewRaw[2]).longValue() : 0L;
-        long totalTokens = overviewRaw != null && overviewRaw[3] != null ? ((Number) overviewRaw[3]).longValue() : 0L;
-        BigDecimal totalCost = overviewRaw != null && overviewRaw[4] != null
-                ? toBigDecimal(overviewRaw[4])
-                : BigDecimal.ZERO;
-        double avgLatencyMs = overviewRaw != null && overviewRaw[5] != null ? ((Number) overviewRaw[5]).doubleValue() : 0.0;
-        long cacheHits = overviewRaw != null && overviewRaw[6] != null ? ((Number) overviewRaw[6]).longValue() : 0L;
+        Object[] overviewRow = normalizeOverviewRow(aiUsageLogRepository.aggregateOverview(startTime, endTime));
+        long totalCalls = toLong(valueAt(overviewRow, 0));
+        long successCalls = toLong(valueAt(overviewRow, 1));
+        long errorCalls = toLong(valueAt(overviewRow, 2));
+        long totalTokens = toLong(valueAt(overviewRow, 3));
+        BigDecimal totalCost = toBigDecimal(valueAt(overviewRow, 4));
+        double avgLatencyMs = toDouble(valueAt(overviewRow, 5));
+        long cacheHits = toLong(valueAt(overviewRow, 6));
 
         int successRate = totalCalls > 0 ? (int) Math.round(successCalls * 100.0 / totalCalls) : 0;
         int cacheHitRate = totalCalls > 0 ? (int) Math.round(cacheHits * 100.0 / totalCalls) : 0;
@@ -272,7 +270,61 @@ public class StatsService {
         }
     }
 
+    private Object[] normalizeOverviewRow(Object[] rawOverview) {
+        if (rawOverview == null) {
+            return new Object[0];
+        }
+        if (rawOverview.length == 1 && rawOverview[0] instanceof Object[] nestedRow) {
+            return nestedRow;
+        }
+        return rawOverview;
+    }
+
+    private Object valueAt(Object[] row, int index) {
+        if (row == null || index < 0 || index >= row.length) {
+            return null;
+        }
+        return unwrapArrayValue(row[index]);
+    }
+
+    private Object unwrapArrayValue(Object value) {
+        Object current = value;
+        while (current instanceof Object[] nested && nested.length == 1) {
+            current = nested[0];
+        }
+        return current;
+    }
+
+    private long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return new BigDecimal(value.toString()).longValue();
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+    private double toDouble(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (Exception ignored) {
+            return 0.0;
+        }
+    }
+
     private BigDecimal toBigDecimal(Object value) {
+        value = unwrapArrayValue(value);
         if (value == null) {
             return BigDecimal.ZERO;
         }
