@@ -1,5 +1,6 @@
 package com.aetherblog.blog.service;
 
+import com.aetherblog.ai.client.config.AiServicePreflightChecker;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ public class SystemMonitorService {
     private final DataSource dataSource;
     private final RedisConnectionFactory redisConnectionFactory;
     private final RestHighLevelClient elasticsearchClient;
+    private final AiServicePreflightChecker aiServicePreflightChecker;
 
     // 网络速率计算缓存
     private static volatile long lastNetworkIn = 0;
@@ -821,15 +823,17 @@ public class SystemMonitorService {
             var pgFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkPostgreSQL, executor);
             var redisFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkRedis, executor);
             var esFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkElasticsearch, executor);
+            var aiFuture = java.util.concurrent.CompletableFuture.supplyAsync(this::checkAiService, executor);
 
             try {
                 // 等待所有任务完成（带超时）
-                java.util.concurrent.CompletableFuture.allOf(pgFuture, redisFuture, esFuture)
+                java.util.concurrent.CompletableFuture.allOf(pgFuture, redisFuture, esFuture, aiFuture)
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
 
                 services.add(pgFuture.get());
                 services.add(redisFuture.get());
                 services.add(esFuture.get());
+                services.add(aiFuture.get());
             } catch (Exception e) {
                 log.warn("Health check timeout or interrupted", e);
                 // 即使发生超时或错误，也尝试获取已完成的结果（乐观策略）
@@ -838,6 +842,7 @@ public class SystemMonitorService {
                 if (!pgFuture.isCompletedExceptionally() && pgFuture.isDone()) services.add(pgFuture.join());
                 if (!redisFuture.isCompletedExceptionally() && redisFuture.isDone()) services.add(redisFuture.join());
                 if (!esFuture.isCompletedExceptionally() && esFuture.isDone()) services.add(esFuture.join());
+                if (!aiFuture.isCompletedExceptionally() && aiFuture.isDone()) services.add(aiFuture.join());
             }
         }
 
@@ -1017,6 +1022,28 @@ public class SystemMonitorService {
         } catch (Exception e) {
             log.warn("Elasticsearch health check failed", e);
             return new ServiceHealth("Elasticsearch", "down", 0, e.getMessage());
+        }
+    }
+
+
+    private ServiceHealth checkAiService() {
+        long start = System.currentTimeMillis();
+        try {
+            AiServicePreflightChecker.PreflightResult result = aiServicePreflightChecker.checkNow();
+            long latency = result.latencyMs() > 0 ? result.latencyMs() : (System.currentTimeMillis() - start);
+
+            if (result.skipped()) {
+                return new ServiceHealth("AI Service", "warning", latency, result.message());
+            }
+
+            if (result.success()) {
+                return new ServiceHealth("AI Service", "up", latency, result.message());
+            }
+
+            return new ServiceHealth("AI Service", "down", latency, result.message());
+        } catch (Exception e) {
+            log.warn("AI service health check failed", e);
+            return new ServiceHealth("AI Service", "down", 0, e.getMessage());
         }
     }
 
