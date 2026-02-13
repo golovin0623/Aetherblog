@@ -76,6 +76,7 @@ export function CreatePostPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
+  const [activeTocLine, setActiveTocLine] = useState<number | null>(null);
   // 字号控制 - 分离编辑器和预览字号
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [previewFontSize, setPreviewFontSize] = useState(16);
@@ -414,142 +415,209 @@ export function CreatePostPage() {
   // 用于在 TOC 导航期间存储原始同步滚动状态的 Ref
   const syncScrollBeforeNavRef = useRef(false);
 
-  // 滚动到标题 - 虚拟 DOM 准确性的两阶段方法
-  const scrollToHeading = useCallback((headingText: string, lineNumber: number) => {
-    const editorContainer = editorContainerRef.current;
-    if (!editorContainer) return;
-    
-    // 暂时禁用同步滚动以防止干扰
-    syncScrollBeforeNavRef.current = isSyncScroll;
-    if (isSyncScroll) {
-      setIsSyncScroll(false);
+  const getNavigationTarget = useCallback((mode: ViewMode): 'editor' | 'preview' | 'both' => {
+    if (mode === 'edit') {
+      return 'editor';
     }
-    
-    const cmScroller = editorContainer.querySelector('.cm-scroller') as HTMLElement | null;
-    const cmContent = editorContainer.querySelector('.cm-content') as HTMLElement | null;
+    if (mode === 'preview') {
+      return 'preview';
+    }
+    return 'both';
+  }, []);
 
-    // 将执行包装在 setTimeout 中，以确保 setIsSyncScroll(false) 已传播到子组件
-    setTimeout(() => {
-    // 辅助函数：在编辑器 DOM 中查找标题
+  const getPreviewScrollContainer = useCallback((container: HTMLElement): HTMLElement | null => {
+    const markdownPreview = container.querySelector('.markdown-preview') as HTMLElement | null;
+    if (markdownPreview) {
+      const previewPanel = markdownPreview.closest('[class*="overflow-y-auto"]') as HTMLElement | null;
+      if (previewPanel) {
+        return previewPanel;
+      }
+    }
+
+    const candidates = container.querySelectorAll('[class*="overflow-y-auto"]');
+    for (const node of Array.from(candidates)) {
+      const panel = node as HTMLElement;
+      if (panel.querySelector('.markdown-preview')) {
+        return panel;
+      }
+    }
+
+    return null;
+  }, []);
+
+  const navigatePreviewToHeading = useCallback((container: HTMLElement, headingText: string): boolean => {
+    const previewPanel = getPreviewScrollContainer(container);
+    if (!previewPanel) {
+      logger.warn('TOC preview panel not found', { headingText, viewMode });
+      return false;
+    }
+
+    const normalizedHeading = headingText.trim();
+    const headingElements = previewPanel.querySelectorAll('h1, h2, h3, h4, h5, h6');
+
+    let targetHeading: HTMLElement | null = null;
+    for (const node of Array.from(headingElements)) {
+      const heading = node as HTMLElement;
+      if ((heading.textContent || '').trim() === normalizedHeading) {
+        targetHeading = heading;
+        break;
+      }
+    }
+
+    if (!targetHeading) {
+      for (const node of Array.from(headingElements)) {
+        const heading = node as HTMLElement;
+        if ((heading.textContent || '').trim().includes(normalizedHeading)) {
+          targetHeading = heading;
+          break;
+        }
+      }
+    }
+
+    if (!targetHeading) {
+      logger.warn('TOC preview heading not found', { headingText, viewMode });
+      return false;
+    }
+
+    const containerRect = previewPanel.getBoundingClientRect();
+    const targetRect = targetHeading.getBoundingClientRect();
+    const currentScrollTop = previewPanel.scrollTop;
+    const targetScrollTop = currentScrollTop + (targetRect.top - containerRect.top) - 60;
+    previewPanel.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+    return true;
+  }, [getPreviewScrollContainer, viewMode]);
+
+  const navigateEditorToHeading = useCallback((container: HTMLElement, headingText: string, lineNumber: number): boolean => {
+    const cmScroller = container.querySelector('.cm-scroller') as HTMLElement | null;
+    const cmContent = container.querySelector('.cm-content') as HTMLElement | null;
+
+    if (!cmScroller || !cmContent) {
+      logger.warn('TOC editor container not found', { headingText, lineNumber, viewMode });
+      return false;
+    }
+
+    const normalizedHeading = headingText.trim();
+
     const findHeadingInEditor = (): HTMLElement | null => {
-      if (!cmContent) return null;
       const lines = cmContent.querySelectorAll('.cm-line');
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] as HTMLElement;
+      for (const node of Array.from(lines)) {
+        const line = node as HTMLElement;
         const text = (line.textContent || '').trim();
-        if (text.includes(headingText) && /^#+\s/.test(text)) {
+        if (!/^#+\s/.test(text)) {
+          continue;
+        }
+
+        const normalizedLineHeading = text.replace(/^#{1,6}\s*/, '').trim();
+        if (normalizedLineHeading === normalizedHeading || normalizedLineHeading.includes(normalizedHeading)) {
           return line;
         }
       }
       return null;
     };
 
-    // 辅助函数：将编辑器滚动到元素
     const scrollEditorToElement = (element: HTMLElement) => {
-      if (!cmScroller || !cmContent) return;
       const lineTop = element.offsetTop - cmContent.offsetTop;
       cmScroller.scrollTo({ top: Math.max(0, lineTop - 50), behavior: 'smooth' });
     };
 
-    // 辅助函数：将预览滚动到标题
-    const scrollPreviewToHeading = () => {
-      const previewPanels = editorContainer.querySelectorAll('[class*="overflow-y-auto"]');
-      previewPanels.forEach(panel => {
-        const pEl = panel as HTMLElement;
-        const headings = pEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        
-        for (let i = 0; i < headings.length; i++) {
-          const heading = headings[i] as HTMLElement;
-          if (heading.textContent?.trim() === headingText) {
-            const containerRect = pEl.getBoundingClientRect();
-            const targetRect = heading.getBoundingClientRect();
-            const currentScrollTop = pEl.scrollTop;
-            const targetScrollTop = currentScrollTop + (targetRect.top - containerRect.top) - 60;
-            pEl.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
-            break;
-          }
-        }
-      });
-    };
-
-    // 阶段 1：首先尝试直接文本匹配
-    let foundLine = findHeadingInEditor();
-    
-    if (foundLine) {
-      // 标题在可见 DOM 中 - 直接滚动（均平滑）
-      scrollEditorToElement(foundLine);
-      scrollPreviewToHeading(); // 预览总是有 DOM，所以这行得通
-    } else if (cmScroller && cmContent) {
-      // 阶段 2：标题不在 DOM 中 - 使用 "Seek & Lock" 方法
-      
-      // 2a: 启动平滑滚动到编辑器的估计位置
-      const lineHeight = 24;
-      const estimatedTop = (lineNumber - 1) * lineHeight;
-      cmScroller.scrollTo({ top: Math.max(0, estimatedTop - 50), behavior: 'smooth' });
-      
-      // 2b: 预览没有虚拟化，所以我们总是可以直接且平滑地找到并滚动到它
-      // 我们不需要预览的估计，只需强制搜索
-      scrollPreviewToHeading();
-      
-      // 2c: MutationObserver (零开销)
-      // 我们不每帧轮询，而是等待浏览器通知我们 DOM 更新
-      
-      const observerTimeout = setTimeout(() => {
-        observer.disconnect();
-      }, 2000); // 安全超时
-
-      const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          if (mutation.type === 'childList') {
-            // 仅检查新添加的节点
-            mutation.addedNodes.forEach((node) => {
-              if (node.nodeType === 1) { // 元素节点
-                const el = node as HTMLElement;
-                // 检查这个新节点是否包含我们的标题的行
-                if (el.classList.contains('cm-line')) {
-                  const text = el.textContent || '';
-                  if (text.includes(headingText) && /^#+\s/.test(text)) {
-                    // 目标已获取！
-                    // 仅当偏差显著 (> 50px) 时才更正，以避免视觉抖动
-                    // 仅当估计目标和实际目标之间的偏差显著时才更正
-                    // 如果我们已经去了正确的地方，这可以防止中断平滑滚动
-                    const targetTop = el.offsetTop - (cmContent?.offsetTop || 0) - 50;
-                    if (Math.abs(estimatedTop - targetTop) > 50) {
-                       scrollEditorToElement(el);
-                    }
-                    observer.disconnect();
-                    clearTimeout(observerTimeout);
-                  }
-                }
-              }
-            });
-          }
-        }
-      });
-
-      if (cmContent) {
-        // 开始观察行添加
-        observer.observe(cmContent, { childList: true, subtree: true });
-        
-        // 最终检查：以防它在观察开始前刚刚出现
-        const finalLine = findHeadingInEditor();
-        if (finalLine) {
-          scrollEditorToElement(finalLine);
-          observer.disconnect();
-          clearTimeout(observerTimeout);
-        }
-      }
+    const immediateLine = findHeadingInEditor();
+    if (immediateLine) {
+      scrollEditorToElement(immediateLine);
+      return true;
     }
 
-    // 在足够的时间让所有动画完成后恢复同步滚动
-    // 增加到 1500ms 以覆盖长滚动和轮询时间
+    const estimatedTop = Math.max(0, (lineNumber - 1) * 24 - 50);
+    cmScroller.scrollTo({ top: estimatedTop, behavior: 'smooth' });
+
+    const observerTimeout = setTimeout(() => {
+      observer.disconnect();
+    }, 1200);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type !== 'childList') {
+          continue;
+        }
+
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (node.nodeType !== 1) {
+            continue;
+          }
+          const el = node as HTMLElement;
+          if (!el.classList.contains('cm-line')) {
+            continue;
+          }
+
+          const text = (el.textContent || '').trim();
+          if (!/^#+\s/.test(text)) {
+            continue;
+          }
+
+          const normalizedLineHeading = text.replace(/^#{1,6}\s*/, '').trim();
+          if (normalizedLineHeading === normalizedHeading || normalizedLineHeading.includes(normalizedHeading)) {
+            scrollEditorToElement(el);
+            observer.disconnect();
+            clearTimeout(observerTimeout);
+            return;
+          }
+        }
+      }
+    });
+
+    observer.observe(cmContent, { childList: true, subtree: true });
+    return true;
+  }, [viewMode]);
+
+  // 统一 TOC 导航执行器（按 viewMode 选择目标容器）
+  const scrollToHeading = useCallback((headingText: string, lineNumber: number) => {
+    const editorContainer = editorContainerRef.current;
+    if (!editorContainer) return;
+
+    const navigationTarget = getNavigationTarget(viewMode);
+    const shouldNavigateEditor = navigationTarget === 'editor' || navigationTarget === 'both';
+    const shouldNavigatePreview = navigationTarget === 'preview' || navigationTarget === 'both';
+    const shouldTemporarilyDisableSync = navigationTarget === 'both' && isSyncScroll;
+
+    setActiveTocLine(lineNumber);
+
+    if (shouldTemporarilyDisableSync) {
+      syncScrollBeforeNavRef.current = true;
+      setIsSyncScroll(false);
+    } else {
+      syncScrollBeforeNavRef.current = false;
+    }
+
+    const executeNavigation = () => {
+      const editorMatched = shouldNavigateEditor
+        ? navigateEditorToHeading(editorContainer, headingText, lineNumber)
+        : false;
+      const previewMatched = shouldNavigatePreview
+        ? navigatePreviewToHeading(editorContainer, headingText)
+        : false;
+
+      if (!editorMatched && !previewMatched) {
+        logger.warn('TOC navigation target not found', {
+          headingText,
+          lineNumber,
+          viewMode,
+          navigationTarget,
+        });
+      }
+    };
+
+    if (shouldTemporarilyDisableSync) {
+      setTimeout(executeNavigation, 10);
+    } else {
+      executeNavigation();
+    }
+
     setTimeout(() => {
       if (syncScrollBeforeNavRef.current) {
         setIsSyncScroll(true);
       }
-    }, 1500);
-    }, 10);
-  }, [isSyncScroll, stats.lines]);
+      syncScrollBeforeNavRef.current = false;
+    }, 1200);
+  }, [getNavigationTarget, isSyncScroll, navigateEditorToHeading, navigatePreviewToHeading, viewMode]);
 
   // 滚动到顶部函数 - 针对 CodeMirror 的内部滚动条
   const scrollToTop = useCallback(() => {
@@ -2031,13 +2099,20 @@ export function CreatePostPage() {
                         onClick={() => scrollToHeading(item.text, item.line)}
                         className={cn(
                           'w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-300 group relative flex items-center gap-3',
-                          'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                          activeTocLine === item.line
+                            ? 'bg-primary/12 text-[var(--text-primary)]'
+                            : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         )}
                         style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         title={item.text}
                       >
                         {/* Elegant Hover Indicator */}
-                        <div className="absolute left-1 w-0.5 h-0 bg-primary group-hover:h-3/5 transition-all duration-400 ease-out-expo rounded-full opacity-0 group-hover:opacity-100 shadow-[0_0_8px_#8b5cf6]" />
+                        <div className={cn(
+                          'absolute left-1 w-0.5 bg-primary transition-all duration-400 ease-out-expo rounded-full shadow-[0_0_8px_#8b5cf6]',
+                          activeTocLine === item.line
+                            ? 'h-3/5 opacity-100'
+                            : 'h-0 opacity-0 group-hover:h-3/5 group-hover:opacity-100'
+                        )} />
                         
                         <span className={cn(
                           "truncate transition-all duration-500",
