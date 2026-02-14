@@ -382,7 +382,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 };
 
 // Stable component definitions
-const PreBlock: React.FC<any> = ({ children, ...props }) => {
+const PreBlock: React.FC<React.ComponentPropsWithoutRef<'pre'>> = ({ children, ...props }) => {
   const { highlighter, theme } = useContext(MarkdownContext);
   const child = React.Children.toArray(children)[0];
 
