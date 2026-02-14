@@ -54,11 +54,11 @@ public class AuthControllerIpTest {
         LoginRequest loginRequest = new LoginRequest("admin", "password");
 
         // Act
-        try {
+        // We expect a BusinessException because the full login flow is not mocked.
+        // This is acceptable as we are only testing the IP verification step.
+        org.junit.jupiter.api.Assertions.assertThrows(com.aetherblog.common.core.exception.BusinessException.class, () -> {
             authController.login(loginRequest, request, response);
-        } catch (Exception e) {
-            // Ignore logic errors
-        }
+        });
 
         // Assert
         // Should use X-Real-IP (2.2.2.2)
