@@ -78,18 +78,24 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
     try {
       // 模拟API调用
       await new Promise((r) => setTimeout(r, 300));
-      setResults([
-        {
-          id: '1',
-          title: `关于 ${searchQuery} 的技术实践`,
-          slug: 'example-post',
-          highlight: `这篇文章详细介绍了 ${searchQuery} 的最佳实践...`,
-          category: '技术分享',
-          tags: [searchQuery, 'Tutorial'],
-          publishedAt: '2026-01-01',
-          score: 0.95,
-        },
-      ]);
+
+      // 模拟无结果的情况
+      if (/empty|null/.test(searchQuery.toLowerCase())) {
+        setResults([]);
+      } else {
+        setResults([
+          {
+            id: '1',
+            title: `关于 ${searchQuery} 的技术实践`,
+            slug: 'example-post',
+            highlight: `这篇文章详细介绍了 ${searchQuery} 的最佳实践...`,
+            category: '技术分享',
+            tags: [searchQuery, 'Tutorial'],
+            publishedAt: '2026-01-01',
+            score: 0.95,
+          },
+        ]);
+      }
       setIsLoading(false);
 
       // AI回答
@@ -343,13 +349,28 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
 
           {/* 无结果 */}
           {!showHistory && !isLoading && query && results.length === 0 && (
-            <div className="py-12 text-center">
+            <div className="py-12 text-center" role="alert">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--bg-secondary)] mb-4">
                 <Search className="h-8 w-8 text-[var(--text-muted)]" />
               </div>
-              <p className="text-[var(--text-secondary)] mb-2">
+              <p className="text-[var(--text-secondary)] mb-6">
                 未找到与 &quot;<span className="text-[var(--text-primary)]">{query}</span>&quot; 相关的内容
               </p>
+
+              <div className="text-left px-8 max-w-lg mx-auto">
+                <p className="text-xs text-[var(--text-muted)] mb-3 text-center">试试搜索以下热门话题：</p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {TRENDING_SEARCHES.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => setQuery(item)}
+                      className="px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
