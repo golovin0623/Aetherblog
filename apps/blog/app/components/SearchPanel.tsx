@@ -80,7 +80,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
       await new Promise((r) => setTimeout(r, 300));
 
       // 模拟无结果的情况
-      if (searchQuery.toLowerCase().includes('empty') || searchQuery.toLowerCase().includes('null')) {
+      if (/empty|null/.test(searchQuery.toLowerCase())) {
         setResults([]);
       } else {
         setResults([
