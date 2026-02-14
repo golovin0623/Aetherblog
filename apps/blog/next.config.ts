@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: 'standalone',
   images: {
     remotePatterns: [
       // 可信的头像/CDN 域名
