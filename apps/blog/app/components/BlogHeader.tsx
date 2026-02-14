@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Settings2 } from 'lucide-react';
+import { Settings2, Search } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
+import { SearchPanel } from './SearchPanel';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 
 /**
@@ -104,6 +105,7 @@ export default function BlogHeader() {
   // 鼠标位置状态
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState(true);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
   const lastScrollYRef = useRef(0);
@@ -241,7 +243,15 @@ export default function BlogHeader() {
           {/* 桌面端导航 */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 ml-auto">
             {/* 移动端视图切换 - 右对齐且稳定 */}
-            <div className="md:hidden flex items-center justify-center">
+            <div className="md:hidden flex items-center justify-center gap-2">
+              <button
+                type="button"
+                aria-label="搜索"
+                onClick={() => setIsSearchOpen(true)}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                <Search className="w-4 h-4" />
+              </button>
               <MobileNavSwitch />
             </div>
 
@@ -341,6 +351,16 @@ export default function BlogHeader() {
               {/* 管理后台入口 */}
               <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
               
+              {/* 搜索按钮 */}
+              <button
+                type="button"
+                aria-label="搜索"
+                onClick={() => setIsSearchOpen(true)}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search"
+              >
+                <Search className="w-4 h-4 group-hover/search:scale-110 transition-transform" />
+              </button>
+
               {/* 主题切换 */}
               <ThemeToggle size="sm" />
               
@@ -372,6 +392,8 @@ export default function BlogHeader() {
           </div>
         </div>
       </header>
+
+      <SearchPanel isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
     </>
   );
 }
