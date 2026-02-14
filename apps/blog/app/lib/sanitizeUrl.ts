@@ -34,6 +34,10 @@ export function sanitizeImageUrl(url: string | undefined | null, fallback: strin
     if (url.startsWith('/')) {
       return url;
     }
+    // 处理上传路径（如果缺失前导斜杠）
+    if (url.startsWith('uploads/')) {
+      return '/' + url;
+    }
   }
 
   return fallback;
