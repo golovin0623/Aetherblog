@@ -24,3 +24,8 @@
 **Vulnerability:** The application trusted the first IP in the `X-Forwarded-For` header for client IP resolution, allowing attackers to bypass IP-based rate limiting by injecting a spoofed IP.
 **Learning:** `X-Forwarded-For` is a client-controlled header unless strictly managed by a trusted proxy chain. Taking the first IP is dangerous if the proxy appends to the header.
 **Prevention:** Modified `IpUtils` to prioritize `X-Real-IP` (set by the trusted Nginx gateway) over `X-Forwarded-For`. Always rely on trusted headers from the immediate upstream proxy.
+
+## 2026-02-14 - Inconsistent Security Implementation
+**Vulnerability:** The `AuthController` manually implemented insecure IP resolution logic (`getClientIp`) instead of using the secure central utility `IpUtils`, re-introducing an IP spoofing vulnerability fixed elsewhere.
+**Learning:** Security fixes in shared utilities (like `IpUtils`) are useless if consuming code re-implements the logic (incorrectly). "Not Invented Here" syndrome in security functions leads to regression.
+**Prevention:** Audit codebase for redundant implementations of security critical functions (like IP resolution, sanitization) and enforce usage of the central, vetted utility.
