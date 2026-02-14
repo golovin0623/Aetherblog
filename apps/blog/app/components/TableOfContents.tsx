@@ -31,6 +31,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isReading, setIsReading] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const visibleHeadingsRef = useRef<Set<string>>(new Set());
 
   // 监听标题可见性以更新当前活动项
   useEffect(() => {
@@ -39,13 +40,19 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
     }
 
     const callback = (entries: IntersectionObserverEntry[]) => {
-      // 找到当前在屏幕中且最靠近顶部的标题
-      const visibleHeadings = entries
-        .filter(entry => entry.isIntersecting)
-        .sort((a, b) => a.target.getBoundingClientRect().top - b.target.getBoundingClientRect().top);
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          visibleHeadingsRef.current.add(entry.target.id);
+        } else {
+          visibleHeadingsRef.current.delete(entry.target.id);
+        }
+      });
 
-      if (visibleHeadings.length > 0) {
-        setActiveId(visibleHeadings[0].target.id);
+      // 找到第一个在可见集合中的标题（利用 headings 的 DOM 顺序）
+      // 这样避免了使用 getBoundingClientRect() 导致的重排 (Reflow)
+      const firstVisible = headings.find((heading) => visibleHeadingsRef.current.has(heading.id));
+      if (firstVisible) {
+        setActiveId(firstVisible.id);
       }
     };
 
@@ -61,7 +68,10 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       }
     });
 
-    return () => observerRef.current?.disconnect();
+    return () => {
+      observerRef.current?.disconnect();
+      visibleHeadingsRef.current.clear();
+    };
   }, [headings]);
 
   // 禁止背景滚动
@@ -80,13 +90,25 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
 
   // 监听滚动以更新“正在阅读”状态
   useEffect(() => {
+    let rafId: number | null = null;
+
     const handleScroll = () => {
-      setIsReading(window.scrollY > 400);
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          setIsReading(window.scrollY > 400);
+          rafId = null;
+        });
+      }
     };
 
     handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   const scrollToHeading = (id: string) => {
