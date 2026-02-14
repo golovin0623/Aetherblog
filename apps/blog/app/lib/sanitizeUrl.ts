@@ -19,15 +19,24 @@ export function sanitizeImageUrl(url: string | undefined | null, fallback: strin
     return fallback;
   }
 
+  // 处理可能的双重斜杠 (如 //example.com/image.png)
+  if (url.startsWith('//')) {
+    url = 'https:' + url;
+  }
+
   try {
     const parsed = new URL(url);
     if (['http:', 'https:', 'data:'].includes(parsed.protocol)) {
       return url;
     }
   } catch {
-    // 相对路径也是安全的 (如 /uploads/xxx.png)
+    // 相对路径也是安全的 (如 /uploads/xxx.png 或 /api/uploads/xxx.png)
     if (url.startsWith('/')) {
       return url;
+    }
+    // 处理上传路径（如果缺失前导斜杠）
+    if (url.startsWith('uploads/')) {
+      return '/' + url;
     }
   }
 
