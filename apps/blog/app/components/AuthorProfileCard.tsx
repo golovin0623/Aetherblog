@@ -201,7 +201,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
   const name = profile?.name || settings?.author_name || settings?.authorName || 'Golovin';
   const avatar = sanitizeImageUrl(
     profile?.avatar || settings?.author_avatar || settings?.authorAvatar || '',
-    'https://github.com/shadcn.png'
+    'https://cravatar.cn/avatar/00000000000000000000000000000000?d=mp&s=200'
   );
   const bio = profile?.bio || settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const stats = profile?.stats || siteStats || { posts: 70, categories: 11, tags: 13 };
@@ -304,7 +304,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           {/* 头像容器 - 带有增强的圆环 */}
           <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg">
             <Image
-              src={avatar || 'https://github.com/shadcn.png'}
+              src={avatar || 'https://cravatar.cn/avatar/00000000000000000000000000000000?d=mp&s=200'}
               alt={name}
               fill
               sizes="96px"
