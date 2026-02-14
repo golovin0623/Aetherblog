@@ -111,78 +111,97 @@ export default async function PostDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* 带有淡入动画的文章 */}
-      <article className="max-w-4xl mx-auto px-4 pt-28 pb-12">
-        <FadeIn>
-          <BackButton fallbackHref="/posts" className="mb-8" />
-        </FadeIn>
+      {/* 响应式布局容器：PC端显示侧边目录，移动端隐藏 */}
+      <div className="max-w-7xl mx-auto flex justify-center gap-12 px-4 pt-28 pb-12">
+        {/* 主要文章内容 */}
+        <article className="w-full max-w-4xl min-w-0">
+          <FadeIn>
+            <BackButton fallbackHref="/posts" className="mb-8" />
+          </FadeIn>
 
-        <FadeIn delay={0.1}>
-          <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4">{post.title}</h1>
-        </FadeIn>
+          <FadeIn delay={0.1}>
+            <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4">{post.title}</h1>
+          </FadeIn>
 
-        <FadeIn delay={0.15}>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
-            <time>{post.publishedAt}</time>
-            {post.categoryName && <span>{post.categoryName}</span>}
-            <span>{post.viewCount} 阅读</span>
-            {adminEditUrl ? (
-              <a
-                href={adminEditUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-primary/40 transition-colors"
-                title={`编辑文章 #${post.id}`}
-                aria-label={`编辑文章 #${post.id}`}
-              >
-                <PencilLine size={14} />
-              </a>
-            ) : (
-              <span
-                className="inline-flex items-center text-xs text-[var(--text-muted)]"
-                title={adminLinkConfig.reason}
-              >
-                编辑入口未配置
-              </span>
-            )}
-          </div>
-        </FadeIn>
-
-        {post.tags.length > 0 && (
-          <FadeIn delay={0.2}>
-            <div className="flex gap-2 mb-8">
-              {post.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-3 py-1 rounded-full text-xs bg-primary/20 text-primary"
-                >
-                  {tag}
-                </span>
-              ))}
+          <FadeIn delay={0.15}>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
+              <time>{post.publishedAt}</time>
+              {post.categoryName && <span>{post.categoryName}</span>}
+              <span>{post.viewCount} 阅读</span>
+              <div className="flex items-center gap-2 ml-1">
+                {adminEditUrl ? (
+                  <a
+                    href={adminEditUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40 transition-colors"
+                    title={`编辑文章 #${post.id}`}
+                    aria-label={`编辑文章 #${post.id}`}
+                  >
+                    <PencilLine size={14} />
+                  </a>
+                ) : (
+                  <span
+                    className="inline-flex items-center text-xs text-[var(--text-muted)]"
+                    title={adminLinkConfig.reason}
+                  >
+                    编辑入口未配置
+                  </span>
+                )}
+                {/* 目录触发按钮 - 图标形式，在非宽屏下显示，位置紧邻编辑按钮 */}
+                <div className="xl:hidden">
+                  <TableOfContents content={post.content} variant="icon" />
+                </div>
+              </div>
             </div>
           </FadeIn>
-        )}
 
-        <FadeIn delay={0.25} duration={0.8}>
-          <MarkdownRenderer
-            content={post.content}
-            className="max-w-none"
-          />
-        </FadeIn>
-
-        <FadeIn delay={0.3}>
-          {post.id > 0 ? (
-            <CommentSection postId={post.id} settings={settings} />
-          ) : (
-            <div className="mt-10 rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-muted)]">
-              当前为 Markdown 样例验收页，不启用评论区。
-            </div>
+          {post.tags.length > 0 && (
+            <FadeIn delay={0.2}>
+              <div className="flex gap-2 mb-8">
+                {post.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-3 py-1 rounded-full text-xs bg-primary/20 text-primary"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </FadeIn>
           )}
-        </FadeIn>
-        <FadeIn delay={0.2}>
-          <TableOfContents content={post.content} className="max-h-[calc(100vh-120px)]" />
-        </FadeIn>
-      </article>
+
+          <FadeIn delay={0.25} duration={0.8}>
+            <MarkdownRenderer
+              content={post.content}
+              className="max-w-none"
+            />
+          </FadeIn>
+
+          <FadeIn delay={0.3}>
+            {post.id > 0 ? (
+              <CommentSection postId={post.id} settings={settings} />
+            ) : (
+              <div className="mt-10 rounded-lg border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-muted)]">
+                当前为 Markdown 样例验收页，不启用评论区。
+              </div>
+            )}
+          </FadeIn>
+        </article>
+
+        {/* PC端侧边栏目录 - 仅在宽屏显示且不影响正文布局 */}
+        <aside className="hidden xl:block w-72 flex-shrink-0">
+          <div className="sticky top-28">
+            <FadeIn delay={0.2}>
+              <TableOfContents
+                content={post.content}
+                variant="sidebar"
+                className="max-h-[calc(100vh-140px)]"
+              />
+            </FadeIn>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

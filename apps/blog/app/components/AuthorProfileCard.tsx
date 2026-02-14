@@ -1,137 +1,120 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Sparkles } from 'lucide-react';
-import Link from 'next/link';
 import Image from 'next/image';
-import { useQuery } from '@tanstack/react-query';
-import { getSiteSettings, getSiteStats } from '../lib/services';
-import { extractSocialLinks, type SocialLinkItem } from '../lib/socialLinks';
-import { useTheme } from '@aetherblog/hooks';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, User, Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { useTheme } from '@aetherblog/hooks';
+import { getSiteSettings, getSiteStats } from '../lib/services';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
-// 社交链接分页轮播组件
-interface SocialLinksCarouselProps {
-  socialLinks: SocialLinkItem[];
-}
+// 社交链接提取工具
+const extractSocialLinks = (settings: any) => {
+  if (!settings) return [];
 
-const SocialLinksCarousel: React.FC<SocialLinksCarouselProps> = ({ socialLinks }) => {
-  const [currentPage, setCurrentPage] = useState(0);
-  const linksPerPage = 4;
-  const totalPages = Math.ceil(socialLinks.length / linksPerPage);
+  const links = [];
   
-  // 分页数据
-  const paginatedLinks = useMemo(() => {
-    const pages: SocialLinkItem[][] = [];
-    for (let i = 0; i < socialLinks.length; i += linksPerPage) {
-      pages.push(socialLinks.slice(i, i + linksPerPage));
+  // 处理社交链接 JSON
+  if (settings.social_links) {
+    try {
+      const parsed = typeof settings.social_links === 'string'
+        ? JSON.parse(settings.social_links)
+        : settings.social_links;
+      if (Array.isArray(parsed)) {
+        links.push(...parsed.map((item: any) => ({
+          platform: item.platform || item.name,
+          url: item.url,
+          icon: getPlatformIcon(item.platform || item.name)
+        })));
+      }
+    } catch (e) {
+      console.warn('Failed to parse social links:', e);
     }
-    return pages;
-  }, [socialLinks]);
-
-  const handlePrev = () => {
-    setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
-  };
-
-  const handleNext = () => {
-    setCurrentPage((prev) => (prev < totalPages - 1 ? prev + 1 : 0));
-  };
-
-  const linkClass = "group/link flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] hover:text-primary transition-all duration-200 rounded-xl bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-primary/30 antialiased w-full h-[42px]";
-
-  // 如果没有社交链接，显示占位提示
-  if (socialLinks.length === 0) {
-    return (
-      <div className="w-full mt-2 text-center text-sm text-[var(--text-muted)] py-4">
-        暂无社交链接，请在后台设置中配置
-      </div>
-    );
   }
 
+  // 回退到老字段
+  if (links.length === 0) {
+    if (settings.github_url) links.push({ platform: 'GitHub', url: settings.github_url, icon: Github });
+    if (settings.twitter_url) links.push({ platform: 'Twitter', url: settings.twitter_url, icon: Twitter });
+    if (settings.author_email) links.push({ platform: 'Email', url: `mailto:${settings.author_email}`, icon: Mail });
+  }
+
+  return links;
+};
+
+const getPlatformIcon = (platform: string) => {
+  const p = platform.toLowerCase();
+  if (p.includes('github')) return Github;
+  if (p.includes('twitter') || p.includes('x')) return Twitter;
+  if (p.includes('mail') || p.includes('email')) return Mail;
+  if (p.includes('blog') || p.includes('web')) return Globe;
+  return ExternalLink;
+};
+
+// 社交链接轮播组件
+const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const itemsPerPage = 4;
+  const totalPages = Math.ceil(socialLinks.length / itemsPerPage);
+
+  const currentItems = socialLinks.slice(
+    currentPage * itemsPerPage,
+    (currentPage + 1) * itemsPerPage
+  );
+
+  if (socialLinks.length === 0) return null;
+
   return (
-    <div className="w-full mt-2 relative pb-6">
-      {/* 轮播容器 - 增加高度防止底部遮挡 (42px * 2 + gap + buffer) */}
-      <div className="relative h-[104px] w-full">
-        
-        {/* 左箭头 - 绝对定位靠左，极淡透明，大角度 */}
+    <div className="relative w-full group/carousel px-1">
+      <div className="flex items-center justify-center gap-3">
         {totalPages > 1 && (
-          <div className="absolute left-0 top-0 bottom-0 flex items-center justify-start z-10 w-6">
-            <button
-              onClick={handlePrev}
-              className="p-1 opacity-[0.08] hover:opacity-[0.25] transition-opacity cursor-pointer active:scale-95"
-              aria-label="上一页"
-            >
-              <svg className="w-5 h-5 text-black dark:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 4L6 12L14 20" />
-              </svg>
-            </button>
-          </div>
+          <button
+            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+            disabled={currentPage === 0}
+            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
         )}
 
-        {/* 内容显示窗口 - 左右留出空间给箭头 */}
-        <div className="h-full px-7 overflow-hidden">
+        <div className="flex items-center gap-2 py-1">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentPage}
-              initial={{ opacity: 0, x: 20 }}
+              initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              className="grid grid-cols-2 gap-2"
+              exit={{ opacity: 0, x: -10 }}
+              className="flex items-center gap-3"
             >
-              {paginatedLinks[currentPage]?.map((link) => {
-                const IconComponent = link.icon;
-                const content = (
-                  <>
-                    {link.iconUrl ? (
-                      <img 
-                        src={link.iconUrl} 
-                        alt={link.label} 
-                        className="w-4 h-4 object-contain group-hover/link:scale-110 transition-transform duration-300" 
-                      />
-                    ) : (
-                      IconComponent && <IconComponent className="w-4 h-4 group-hover/link:scale-110 group-hover/link:text-primary transition-all duration-300" />
-                    )}
-                    <span className="font-medium text-xs truncate max-w-[80px]">{link.label}</span>
-                  </>
-                );
-
-                if (link.isExternal) {
-                  return (
-                    <Link key={link.id} href={link.href} target="_blank" className={linkClass}>
-                      {content}
-                    </Link>
-                  );
-                }
-
-                return (
-                  <a key={link.id} href={link.href} className={`${linkClass} cursor-pointer`}>
-                    {content}
-                  </a>
-                );
-              })}
+              {currentItems.map((link, i) => (
+                <a
+                  key={link.url + i}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm"
+                  title={link.platform}
+                >
+                  <link.icon className="w-4 h-4" />
+                </a>
+              ))}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* 右箭头 - 绝对定位靠右，极淡透明，大角度 */}
         {totalPages > 1 && (
-          <div className="absolute right-0 top-0 bottom-0 flex items-center justify-end z-10 w-6">
-            <button
-              onClick={handleNext}
-              className="p-1 opacity-[0.08] hover:opacity-[0.25] transition-opacity cursor-pointer active:scale-95"
-              aria-label="下一页"
-            >
-              <svg className="w-5 h-5 text-black dark:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10 4L18 12L10 20" />
-              </svg>
-            </button>
-          </div>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={currentPage === totalPages - 1}
+            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         )}
       </div>
 
-      {/* 分页指示器 - 绝对定位在底部，不占用流空间 */}
+      {/* 指示点 - 占用更少空间 */}
       {totalPages > 1 && (
         <div className="absolute bottom-[-2px] left-0 right-0 flex items-center justify-center gap-1.5 h-2">
           {Array.from({ length: totalPages }).map((_, index) => (
@@ -198,13 +181,14 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
   });
 
   // 合并资料数据: Props > 已获取 (snake_case 优先) > 已获取 (旧版) > 默认
-  const name = profile?.name || settings?.author_name || settings?.authorName || 'Golovin';
+  // 注意：优先使用 settings?.authorAvatar，因为后端 SiteController 会注入并修正该路径（添加 /api 前缀）
+  const name = profile?.name || settings?.author_name || settings?.authorName || 'Admin';
   const avatar = sanitizeImageUrl(
-    profile?.avatar || settings?.author_avatar || settings?.authorAvatar || '',
-    'https://github.com/shadcn.png'
+    profile?.avatar || settings?.authorAvatar || settings?.author_avatar || '',
+    'https://cravatar.cn/avatar/00000000000000000000000000000000?d=mp&s=200'
   );
-  const bio = profile?.bio || settings?.author_bio || settings?.authorBio || '一只小凉凉';
-  const stats = profile?.stats || siteStats || { posts: 70, categories: 11, tags: 13 };
+  const bio = profile?.bio || settings?.author_bio || settings?.authorBio || '分享技术与生活';
+  const stats = profile?.stats || siteStats || { posts: 0, categories: 0, tags: 0 };
 
   // 从设置中提取社交链接
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);
@@ -243,82 +227,26 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         }}
       />
 
-      {/* 顶部高亮线条 */}
-      <div
-        className="absolute top-0 left-0 right-0 h-px z-10"
-        style={{
-          background: `linear-gradient(to right, transparent, var(--highlight-line), transparent)`
-        }}
-      />
-
-      {/* 大理石纹理 - 非常微妙的不规则裂纹 (仅亮色模式) */}
-      {!isDark && (
-        <>
-          <div
-            className="absolute inset-0 opacity-12 pointer-events-none mix-blend-multiply"
-            style={{
-              background: `
-                radial-gradient(ellipse 180px 520px at 8% 22%, rgba(148, 163, 184, 0.08) 0%, transparent 60%),
-                radial-gradient(ellipse 420px 140px at 92% 58%, rgba(148, 163, 184, 0.06) 0%, transparent 58%),
-                radial-gradient(ellipse 95px 380px at 38% 88%, rgba(148, 163, 184, 0.05) 0%, transparent 55%),
-                radial-gradient(ellipse 280px 95px at 72% 12%, rgba(148, 163, 184, 0.07) 0%, transparent 57%),
-                radial-gradient(ellipse 140px 320px at 18% 68%, rgba(148, 163, 184, 0.04) 0%, transparent 52%),
-                radial-gradient(ellipse 320px 180px at 85% 78%, rgba(148, 163, 184, 0.06) 0%, transparent 54%),
-                radial-gradient(ellipse 220px 85px at 55% 35%, rgba(148, 163, 184, 0.05) 0%, transparent 50%)
-              `,
-            }}
-          />
-
-          {/* 细微的裂纹细节 - 极度微妙 */}
-          <div
-            className="absolute inset-0 opacity-8 pointer-events-none mix-blend-overlay"
-            style={{
-              background: `
-                radial-gradient(ellipse 60px 280px at 15% 45%, rgba(100, 116, 139, 0.06) 0%, transparent 65%),
-                radial-gradient(ellipse 240px 70px at 78% 25%, rgba(100, 116, 139, 0.04) 0%, transparent 62%),
-                radial-gradient(ellipse 85px 190px at 42% 72%, rgba(100, 116, 139, 0.05) 0%, transparent 60%),
-                radial-gradient(ellipse 150px 55px at 65% 88%, rgba(100, 116, 139, 0.07) 0%, transparent 68%)
-              `,
-            }}
-          />
-        </>
-      )}
-
-      {/* 微妙的背景渐变光晕 */}
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08), transparent 60%)',
-        }}
-      />
-
       <div className="relative p-6 flex flex-col items-center text-center">
-        {/* 带增强背景和光晕的头像 */}
+        {/* 头像 */}
         <div className="relative w-24 h-24 mb-3 group/avatar cursor-pointer">
-          {/* 用于对比的白色背景圆 */}
           <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
-
-          {/* 多彩光晕 */}
           <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-purple-500/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
-
-          {/* 头像容器 - 带有增强的圆环 */}
-          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg">
+          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg bg-slate-100">
             <Image
-              src={avatar || 'https://github.com/shadcn.png'}
+              src={avatar}
               alt={name}
               fill
               sizes="96px"
               className="object-cover group-hover/avatar:scale-105 transition-transform duration-500"
+              priority
             />
           </div>
-
-          {/* 闪光徽章 */}
           <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/30">
             <Sparkles className="w-3 h-3 text-white" />
           </div>
         </div>
 
-        {/* 具有更好排版的姓名和简介 */}
         <h2 className="text-lg font-bold text-[var(--text-primary)] mb-1 tracking-tight antialiased truncate w-full px-4" title={name}>
           {name}
         </h2>
@@ -326,7 +254,6 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           {bio}
         </p>
 
-        {/* 更简洁设计的统计数据 - 压缩版 */}
         <div className="w-full mb-3">
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
             <div className="flex flex-col items-center group/stat cursor-pointer">
@@ -350,7 +277,6 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
           </div>
         </div>
 
-        {/* 带分页轮播的社交链接 */}
         <SocialLinksCarousel socialLinks={socialLinks} />
       </div>
     </div>
