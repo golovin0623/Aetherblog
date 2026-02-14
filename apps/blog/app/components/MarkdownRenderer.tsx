@@ -12,6 +12,9 @@ import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
 import { createHeadingIdFactory } from '../lib/headingId';
 
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS: any = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw];
+
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
 function loadKatexCss() {
@@ -708,7 +711,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
   };
 }
 
-export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps) => {
   const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
 
   // 加载 Shiki highlighter
@@ -734,14 +737,15 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   return (
     <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         components={components}
       >
         {content}
       </ReactMarkdown>
     </div>
   );
-}
+};
 
+export const MarkdownRenderer = React.memo(MarkdownRendererBase);
 export default MarkdownRenderer;
