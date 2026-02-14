@@ -2,6 +2,7 @@ package com.aetherblog.blog.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -17,6 +18,7 @@ public class CreateCommentRequest {
     private String email;
 
     @Size(max = 200, message = "网站地址不能超过200个字符")
+@Pattern(regexp = "^$|^(https?)://.*", message = "网站地址必须以 http:// 或 https:// 开头")
     private String website;
 
     @NotBlank(message = "评论内容不能为空")
