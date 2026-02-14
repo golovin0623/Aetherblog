@@ -9,6 +9,7 @@ import com.aetherblog.blog.service.LoginSecurityService;
 import com.aetherblog.blog.service.UserService;
 import com.aetherblog.common.core.domain.R;
 import com.aetherblog.common.core.exception.BusinessException;
+import com.aetherblog.common.core.utils.IpUtils;
 import com.aetherblog.common.security.annotation.RateLimit;
 import com.aetherblog.common.security.constant.AuthCookieConstants;
 import com.aetherblog.common.security.domain.LoginUser;
@@ -66,7 +67,8 @@ public class AuthController {
         log.info("用户登录请求: username={}", request.username());
 
         String identifier = request.username();
-        String clientIp = getClientIp(httpRequest);
+        // Security Fix: Use IpUtils to prevent IP spoofing via X-Forwarded-For
+        String clientIp = IpUtils.getIpAddr(httpRequest);
         loginSecurityService.assertLoginAllowed(identifier, clientIp);
 
         User user = userService.findByUsernameOrEmail(identifier).orElse(null);
@@ -302,24 +304,6 @@ public class AuthController {
         userService.updateAvatar(loginUser.getUserId(), avatarUrl);
 
         return R.ok(avatarUrl);
-    }
-
-    /**
-     * 获取客户端 IP
-     */
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        // 多个代理时取第一个
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
     }
 
     private void recordLoginFailure(String identifier, String clientIp) {
