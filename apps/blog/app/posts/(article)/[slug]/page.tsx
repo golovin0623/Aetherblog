@@ -148,7 +148,7 @@ export default async function PostDetailPage({ params }: PageProps) {
                     编辑入口未配置
                   </span>
                 )}
-                {/* 目录触发按钮 - 图标形式，仅在非宽屏下显示，或作为备用触发器 */}
+                {/* 目录触发按钮 - 图标形式，在非宽屏下显示，位置紧邻编辑按钮 */}
                 <div className="xl:hidden">
                   <TableOfContents content={post.content} variant="icon" />
                 </div>
@@ -201,11 +201,6 @@ export default async function PostDetailPage({ params }: PageProps) {
             </FadeIn>
           </div>
         </aside>
-      </div>
-
-      {/* 移动端/窄屏下的悬浮目录按钮 */}
-      <div className="xl:hidden">
-        <TableOfContents content={post.content} variant="floating" />
       </div>
     </div>
   );
