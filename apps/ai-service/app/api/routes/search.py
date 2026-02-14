@@ -83,6 +83,7 @@ async def semantic_search(
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[SemanticSearchData]:
+    _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
     model = settings.model_embedding
