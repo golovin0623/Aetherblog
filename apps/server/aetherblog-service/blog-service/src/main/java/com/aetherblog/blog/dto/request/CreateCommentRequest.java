@@ -18,7 +18,7 @@ public class CreateCommentRequest {
     private String email;
 
     @Size(max = 200, message = "网站地址不能超过200个字符")
-    @Pattern(regexp = "^$|^(http|https)://.*", message = "网站地址必须以 http:// 或 https:// 开头")
+@Pattern(regexp = "^$|^(https?)://.*", message = "网站地址必须以 http:// 或 https:// 开头")
     private String website;
 
     @NotBlank(message = "评论内容不能为空")
