@@ -44,7 +44,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent navigation if clicking on interactive elements
-    if ((e.target as HTMLElement).closest('a, button')) {
+    if (e.target instanceof Element && e.target.closest('a, button')) {
       return;
     }
     router.push(`/posts/${post.slug}`);
