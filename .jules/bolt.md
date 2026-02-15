@@ -21,3 +21,7 @@
 ## 2026-02-07 - [Throttling Scroll with requestAnimationFrame]
 **Learning:** High-frequency event listeners like `scroll` can fire faster than the screen refresh rate (60fps+). Executing complex logic (especially DOM updates) directly in the event handler blocks the main thread and causes jank.
 **Action:** Always wrap scroll/resize logic in `requestAnimationFrame` to throttle updates to the browser's paint cycle, and use `useRef` to store the animation frame ID for cancellation.
+
+## 2026-02-14 - [Layout Thrashing in IntersectionObserver]
+**Learning:** Using `getBoundingClientRect()` inside an `IntersectionObserver` callback (or scroll handler) forces a synchronous reflow for every visible element, causing significant layout thrashing. This negates the performance benefits of using `IntersectionObserver`.
+**Action:** Avoid querying DOM layout properties (like `top`, `height`) inside high-frequency callbacks. Instead, rely on `IntersectionObserverEntry` properties (which are read-only and don't trigger reflow) or pre-calculated/ordered data structures (like the `headings` array) to determine state.
