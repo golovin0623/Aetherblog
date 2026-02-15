@@ -3,6 +3,7 @@ package com.aetherblog.blog.controller;
 import com.aetherblog.api.dto.auth.LoginRequest;
 import com.aetherblog.api.dto.auth.LoginResponse;
 import com.aetherblog.api.dto.auth.RegisterRequest;
+import com.aetherblog.api.dto.auth.UpdateAvatarRequest;
 import com.aetherblog.blog.entity.User;
 import com.aetherblog.blog.service.AuthSessionService;
 import com.aetherblog.blog.service.LoginSecurityService;
@@ -288,17 +289,13 @@ public class AuthController {
     @PutMapping("/avatar")
     public R<String> updateAvatar(
             @AuthenticationPrincipal LoginUser loginUser,
-            @RequestBody Map<String, String> body) {
+            @Valid @RequestBody UpdateAvatarRequest request) {
 
         if (loginUser == null) {
             throw new BusinessException("未登录");
         }
 
-        String avatarUrl = body.get("avatarUrl");
-        if (avatarUrl == null || avatarUrl.isBlank()) {
-            throw new BusinessException("头像地址不能为空");
-        }
-
+        String avatarUrl = request.getAvatarUrl();
         log.info("用户更新头像: userId={}, avatarUrl={}", loginUser.getUserId(), avatarUrl);
 
         userService.updateAvatar(loginUser.getUserId(), avatarUrl);
