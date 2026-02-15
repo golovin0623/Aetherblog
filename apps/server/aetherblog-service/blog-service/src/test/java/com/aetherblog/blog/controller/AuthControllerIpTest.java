@@ -90,11 +90,10 @@ public class AuthControllerIpTest {
         LoginRequest loginRequest = new LoginRequest("admin", "password");
 
         // Act
-        try {
+        // We expect a BusinessException because the full login flow is not mocked.
+        org.junit.jupiter.api.Assertions.assertThrows(com.aetherblog.common.core.exception.BusinessException.class, () -> {
             authController.login(loginRequest, request, response);
-        } catch (Exception e) {
-            // Ignore
-        }
+        });
 
         // Assert
         // Should use last IP in X-Forwarded-For (2.2.2.2)
