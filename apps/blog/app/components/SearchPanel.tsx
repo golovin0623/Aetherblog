@@ -63,6 +63,14 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
     localStorage.removeItem('searchHistory');
   }, []);
 
+  // 处理热门搜索点击 - 使用 data-* 属性避免为每个按钮创建新函数
+  const handleTrendingClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    const term = e.currentTarget.dataset.term;
+    if (term) {
+      setQuery(term);
+    }
+  }, []);
+
   // 执行搜索
   const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -284,7 +292,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
                   {TRENDING_SEARCHES.map((item, index) => (
                     <button
                       key={item}
-                      onClick={() => setQuery(item)}
+                      onClick={handleTrendingClick}
+                      data-term={item}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all"
                     >
                       <span className="text-xs font-bold text-primary/60">{index + 1}</span>
@@ -363,7 +372,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
                   {TRENDING_SEARCHES.map((item) => (
                     <button
                       key={item}
-                      onClick={() => setQuery(item)}
+                      onClick={handleTrendingClick}
+                      data-term={item}
                       className="px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all"
                     >
                       {item}

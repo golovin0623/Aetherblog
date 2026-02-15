@@ -75,3 +75,4 @@ plan/**
 .locks/
 .coverage
 issues/**
+*.tsbuildinfo

@@ -110,6 +110,15 @@ export default function BlogHeader() {
   // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
   const lastScrollYRef = useRef(0);
 
+  // Stable handlers for search panel using useCallback
+  const openSearchPanel = useCallback(() => {
+    setIsSearchOpen(true);
+  }, []);
+
+  const closeSearchPanel = useCallback(() => {
+    setIsSearchOpen(false);
+  }, []);
+
   // 文章详情页显隐初始化：不再进入详情页后自动收折
   useEffect(() => {
     if (!isArticleDetail) {
@@ -247,7 +256,7 @@ export default function BlogHeader() {
               <button
                 type="button"
                 aria-label="搜索"
-                onClick={() => setIsSearchOpen(true)}
+                onClick={openSearchPanel}
                 className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <Search className="w-4 h-4" />
@@ -355,7 +364,7 @@ export default function BlogHeader() {
               <button
                 type="button"
                 aria-label="搜索"
-                onClick={() => setIsSearchOpen(true)}
+                onClick={openSearchPanel}
                 className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search"
               >
                 <Search className="w-4 h-4 group-hover/search:scale-110 transition-transform" />
@@ -393,7 +402,7 @@ export default function BlogHeader() {
         </div>
       </header>
 
-      <SearchPanel isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      <SearchPanel isOpen={isSearchOpen} onClose={closeSearchPanel} />
     </>
   );
 }
