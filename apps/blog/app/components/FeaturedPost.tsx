@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Calendar, Folder, ArrowRight } from 'lucide-react';
 import MiniMarkdownPreview from './MiniMarkdownPreview';
 
@@ -19,6 +20,11 @@ interface FeaturedPostProps {
 }
 
 export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
+  const router = useRouter();
+  // Ref for spotlight effect to avoid re-renders
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const [isHovering, setIsHovering] = React.useState(false);
+
   // 如果摘要缺失，从内容生成摘要的逻辑
   const displaySummary = post.summary 
     ? post.summary 
@@ -26,17 +32,22 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
         ? post.contentPreview.slice(0, 500) + '...' 
         : '暂无摘要';
 
-  // 鼠标位置状态
-  const [mousePosition, setMousePosition] = React.useState({ x: 0, y: 0 });
-  const [isHovering, setIsHovering] = React.useState(false);
-
-  // 监听鼠标移动，更新光束位置
+  // Update spotlight position directly via DOM
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    if (!spotlightRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    spotlightRef.current.style.background = `radial-gradient(1000px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+  };
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Prevent navigation if clicking on interactive elements
+    if (e.target instanceof Element && e.target.closest('a, button')) {
+      return;
+    }
+    router.push(`/posts/${post.slug}`);
   };
 
   // 根据标题长度动态调整字号
@@ -53,6 +64,7 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
   return (
     <div
         className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.15)] cursor-pointer"
+        onClick={handleCardClick}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
@@ -62,9 +74,10 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
 
         {/* 聚光灯效果层 */}
         <div
+          ref={spotlightRef}
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            background: `radial-gradient(1000px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            // Background is managed via ref
             opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
           }}
         />
