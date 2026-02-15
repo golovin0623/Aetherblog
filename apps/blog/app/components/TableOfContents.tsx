@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { List, ChevronRight, X, ArrowUp } from 'lucide-react';
 import { extractHeadingsFromMarkdown } from '../lib/headingId';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,6 +26,11 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   variant = 'floating',
   triggerClassName = ''
 }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const headings = useMemo<TocItem[]>(() => extractHeadingsFromMarkdown(content), [content]);
   const [activeId, setActiveId] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState(true);
@@ -163,7 +169,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
                 暂无目录项
               </div>
             ) : (
-              <div className="relative pl-1 space-y-0.5 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+              <div className={`relative pl-1 space-y-0.5 ${variant === "sidebar" ? "max-h-[60vh]" : "max-h-[70vh]"} overflow-y-auto custom-scrollbar pr-2`}>
                 {/* 进度轨道 */}
                 <div className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[var(--border-subtle)]/50 rounded-full" />
 
@@ -247,7 +253,8 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       )}
 
       {/* Drawer */}
-      <AnimatePresence>
+      {mounted && createPortal(
+        <AnimatePresence>
         {isDrawerOpen && (
           <div className="fixed inset-0 z-[100]">
             {/* 背景遮罩 */}
@@ -283,7 +290,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+        document.body
+      )}
     </>
   );
 };
