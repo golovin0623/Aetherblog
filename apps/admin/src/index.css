@@ -182,6 +182,14 @@ select {
   padding-right: 2.5rem;
 }
 
+/* Small select variants to prevent arrow overlap on mobile/compact views */
+select.select-mini {
+  padding-left: 0.625rem;
+  padding-right: 1.25rem;
+  background-position: right 0.25rem center;
+  background-size: 1em 1em;
+}
+
 /* Focus states */
 input:focus,
 textarea:focus,
