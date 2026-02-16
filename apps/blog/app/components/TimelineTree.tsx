@@ -203,9 +203,9 @@ const YearSection = React.memo(({
   yearData,
   isExpanded,
   toggleYear,
-  expandedMonths, // Set<string> - careful, if this changes, component re-renders. But MonthSection memoization saves us.
+  expandedMonths,
   toggleMonth,
-  expandedPostsMonths, // Set<string>
+  expandedPostsMonths,
   toggleShowAllPosts,
   highlightedPostId,
   isHighlightFading,
@@ -279,6 +279,44 @@ const YearSection = React.memo(({
       )}
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison function to prevent unnecessary re-renders
+  // Only re-render if:
+  // 1. Year data changed (reference or content)
+  // 2. isExpanded changed for this year
+  // 3. Expansion state changed for months within this year
+  // 4. Other relevant props changed (highlightedPostId, isHighlightFading)
+  
+  // Check if primitive/stable props changed
+  if (
+    prevProps.yearData !== nextProps.yearData ||
+    prevProps.isExpanded !== nextProps.isExpanded ||
+    prevProps.highlightedPostId !== nextProps.highlightedPostId ||
+    prevProps.isHighlightFading !== nextProps.isHighlightFading ||
+    prevProps.animationDelay !== nextProps.animationDelay ||
+    prevProps.toggleYear !== nextProps.toggleYear ||
+    prevProps.toggleMonth !== nextProps.toggleMonth ||
+    prevProps.toggleShowAllPosts !== nextProps.toggleShowAllPosts ||
+    prevProps.handlePostClick !== nextProps.handlePostClick
+  ) {
+    return false; // Props changed, re-render
+  }
+
+  // Check if expansion state changed for months within this year
+  const { year, months } = nextProps.yearData;
+  for (const monthData of months) {
+    const yearMonth = `${year}-${monthData.month}`;
+    const prevMonthExpanded = prevProps.expandedMonths.has(yearMonth);
+    const nextMonthExpanded = nextProps.expandedMonths.has(yearMonth);
+    const prevShowAllPosts = prevProps.expandedPostsMonths.has(yearMonth);
+    const nextShowAllPosts = nextProps.expandedPostsMonths.has(yearMonth);
+
+    if (prevMonthExpanded !== nextMonthExpanded || prevShowAllPosts !== nextShowAllPosts) {
+      return false; // Month state changed, re-render
+    }
+  }
+
+  return true; // No relevant changes, skip re-render
 });
 YearSection.displayName = 'YearSection';
 
