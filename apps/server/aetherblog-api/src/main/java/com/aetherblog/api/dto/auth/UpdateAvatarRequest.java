@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 public class UpdateAvatarRequest {
 
     @NotBlank(message = "头像地址不能为空")
-    @Pattern(regexp = "^(http|https)://.*", message = "头像地址必须以http或https开头")
+    @Pattern(regexp = "^(https?:\\/\\/)\\S+$", message = "头像地址必须以http或https开头，且不包含空格")
     @Size(max = 500, message = "头像地址长度不能超过500个字符")
     private String avatarUrl;
 }
