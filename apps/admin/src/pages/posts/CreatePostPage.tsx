@@ -4,7 +4,7 @@ import {
   Save, Settings, Sparkles, ArrowLeft, Send, 
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Link2, Image, Quote, Heading1, Heading2, Heading3,
-  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
+  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle, MoreVertical,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
   Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
   Undo2, Redo2
@@ -149,6 +149,9 @@ export function CreatePostPage() {
   const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  const [showMobileDrawer, setShowMobileDrawer] = useState(false);
+  const mobileDrawerRef = useRef<HTMLDivElement>(null);
   const [summary, setSummary] = useState('');
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
@@ -611,6 +614,9 @@ export function CreatePostPage() {
       }
       if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
         setShowTagDropdown(false);
+      }
+      if (mobileDrawerRef.current && !mobileDrawerRef.current.contains(e.target as Node)) {
+        setShowMobileDrawer(false);
       }
       if (expandedTagsRef.current && !expandedTagsRef.current.contains(e.target as Node)) {
         setShowAllTags(false);
@@ -1625,9 +1631,9 @@ export function CreatePostPage() {
             transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] relative z-[80]"
           >
-            <div className="flex items-center justify-between px-6 py-3.5 gap-4">
-              {/* 左侧块：返回 + 标题 + 元数据 */}
-              <div className="flex items-center gap-4 flex-1 min-w-0">
+            <div className="flex items-center justify-between px-4 md:px-6 py-3 gap-2 md:gap-4">
+              {/* 左侧块：返回 + 标题 */}
+              <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
                 <button 
                   onClick={() => navigate('/posts')}
                   className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors flex-shrink-0"
@@ -1637,32 +1643,23 @@ export function CreatePostPage() {
                 </button>
                 
                 {/* 标题输入 */}
-                <motion.div className="flex-1 min-w-[150px]">
+                <div className="flex-1 min-w-0">
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="请输入文章标题..."
-                    className="w-full bg-transparent text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none min-w-0"
+                    className="w-full bg-transparent text-lg md:text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none truncate"
                   />
-                </motion.div>
+                </div>
 
-                {/* 分隔线 */}
-                <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0" />
-
-                {/* 元数据：分类和标签 */}
-                <div className="flex items-center gap-3 flex-shrink-0">
+                {/* 元数据：分类和标签 (仅 PC 端) */}
+                <div className="hidden md:flex items-center gap-3 flex-shrink-0">
+                  <div className="w-px h-6 bg-[var(--border-subtle)]" />
                   {/* 分类选择器 */}
                   <div ref={categoryDropdownRef} className="relative">
                     <button
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => {
-                        if (!showCategoryDropdown) {
-                          setShowAllTags(false);
-                          setShowTagDropdown(false);
-                        }
-                        setShowCategoryDropdown(!showCategoryDropdown);
-                      }}
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
                     >
                       <span className={selectedCategory ? 'text-primary font-medium' : 'text-gray-500'}>
@@ -1670,7 +1667,7 @@ export function CreatePostPage() {
                       </span>
                       <ChevronDown className={cn("w-3 h-3 text-gray-500 transition-transform", showCategoryDropdown && "rotate-180")} />
                     </button>
-                    
+                    {/* 分类下拉列表 */}
                     <AnimatePresence>
                       {showCategoryDropdown && (
                         <motion.div
@@ -1687,40 +1684,23 @@ export function CreatePostPage() {
                               onChange={(e) => setCategorySearch(e.target.value)}
                               placeholder="搜索分类..."
                               autoFocus
-                              className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50"
+                              className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none"
                             />
                           </div>
                           <div className="max-h-56 overflow-auto py-2">
-                            {loadingCategories ? (
-                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">加载中...</div>
-                            ) : filteredCategories.length === 0 ? (
-                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">
-                                暂无分类
-                                <button
-                                  onClick={refreshMetaData}
-                                  className="ml-2 text-primary hover:text-primary/80"
-                                >
-                                  刷新
-                                </button>
-                              </div>
-                            ) : (
-                              filteredCategories.map((cat) => (
-                                <button
-                                  key={cat.id}
-                                  onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
-                                  className={cn(
-                                    'w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] transition-colors',
-                                    selectedCategory?.id === cat.id ? 'text-primary' : 'text-[var(--text-secondary)]'
-                                  )}
-                                >
-                                  {cat.name}
-                                </button>
-                              ))
-                            )}
-                            <button
-                              onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }}
-                              className="w-full px-4 py-2 text-left text-xs text-primary hover:bg-[var(--bg-card-hover)] flex items-center gap-2 border-t border-[var(--border-subtle)] mt-2"
-                            >
+                            {categories.map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => { setSelectedCategory(cat); setShowCategoryDropdown(false); }}
+                                className={cn(
+                                  'w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] transition-colors',
+                                  selectedCategory?.id === cat.id ? 'text-primary' : 'text-[var(--text-secondary)]'
+                                )}
+                              >
+                                {cat.name}
+                              </button>
+                            ))}
+                            <button onClick={() => { setShowCategoryDropdown(false); setShowCreateCategoryModal(true); }} className="w-full px-4 py-2 text-left text-xs text-primary hover:bg-[var(--bg-card-hover)] flex items-center gap-2 border-t border-[var(--border-subtle)] mt-2">
                               <Plus className="w-3 h-3" /> 新建分类
                             </button>
                           </div>
@@ -1731,224 +1711,77 @@ export function CreatePostPage() {
 
                   {/* 标签选择器 */}
                   <div ref={tagDropdownRef} className="relative flex items-center gap-1.5">
-                     {/* 稳定标签 - 如果存在，前 2 个始终渲染 */}
-                       {selectedTags.slice(0, 2).map((tag) => (
-                        <motion.span
-                          key={tag.id}
-                          className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs border border-primary/20 whitespace-nowrap overflow-hidden z-10"
-                        >
-                          <span className="flex-shrink-0">{tag.name}</span>
-                          <button onClick={() => removeTag(tag.id)} className="w-4 h-4 flex items-center justify-center hover:text-white flex-shrink-0 rounded-full hover:bg-primary/20 transition-colors"><X className="w-3 h-3" /></button>
-                        </motion.span>
-                      ))}
-
-                     {/* 隐藏标签浮动面板 */}
-                     {selectedTags.length > 2 && (
-                       <div ref={expandedTagsRef} className="relative">
-                         <button
-                           onClick={() => {
-                             if (!showAllTags) {
-                               setShowCategoryDropdown(false);
-                               setShowTagDropdown(false);
-                             }
-                             setShowAllTags(!showAllTags);
-                           }}
-                           className="flex items-center justify-center gap-0.5 w-14 py-0.5 bg-[var(--bg-secondary)] text-[var(--text-muted)] rounded text-xs border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
-                         >
-                           <span>{showAllTags ? '收起' : `+${selectedTags.length - 2}`}</span>
-                           <ChevronDown className={cn("w-3 h-3 transition-transform", showAllTags && "rotate-180")} />
-                         </button>
-                         
-                         <AnimatePresence>
-                          {showAllTags && (
-                            <motion.div
-                              initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                              className="absolute top-full right-0 mt-3 p-3 bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl z-[2000] grid grid-cols-3 gap-2 w-[340px] origin-top-right backdrop-blur-xl"
-                            >
-                               <div className="absolute -top-2 right-6 h-4 w-4 rotate-45 border border-[var(--border-subtle)] bg-[var(--bg-popover)]/95" />
-                               {selectedTags.slice(2).map((tag) => (
-                                <span
-                                  key={tag.id}
-                                  className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded text-xs border border-primary/20 overflow-hidden"
-                                >
-                                  <span className="truncate" title={tag.name}>{tag.name}</span>
-                                  <button onClick={() => removeTag(tag.id)} className="w-4 h-4 flex items-center justify-center hover:text-white rounded-full flex-shrink-0 hover:bg-primary/20 transition-colors"><X className="w-3 h-3" /></button>
-                                </span>
-                              ))}
-                            </motion.div>
-                          )}
-                         </AnimatePresence>
-                       </div>
-                     )}
-
-
-                    <button
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => {
-                        if (!showTagDropdown) {
-                          setShowCategoryDropdown(false);
-                          setShowAllTags(false);
-                        }
-                        setShowTagDropdown(!showTagDropdown);
-                      }}
-                      className={cn(
-                        "p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-colors",
-                         showTagDropdown && "bg-[var(--bg-secondary)] text-primary"
-                      )}
-                    >
+                    {selectedTags.slice(0, 2).map((tag) => (
+                      <span key={tag.id} className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs border border-primary/20">
+                        <span>{tag.name}</span>
+                        <X className="w-3 h-3 cursor-pointer" onClick={() => removeTag(tag.id)} />
+                      </span>
+                    ))}
+                    <button onClick={() => setShowTagDropdown(!showTagDropdown)} className="p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary">
                       <Plus className="w-4 h-4" />
                     </button>
-
-                    <AnimatePresence>
-                      {showTagDropdown && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                          className="absolute top-full right-0 mt-3 w-72 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
-                        >
-                          <div className="absolute -top-2 right-6 h-4 w-4 rotate-45 border border-[var(--border-subtle)] bg-[var(--bg-popover)]/95" />
-                          <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70">
-                            <input
-                              type="text"
-                              value={tagSearch}
-                              onChange={(e) => setTagSearch(e.target.value)}
-                              onKeyDown={handleTagKeyDown}
-                              placeholder="搜索或新建标签..."
-                              autoFocus
-                              className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50"
-                            />
-                          </div>
-                          <div className="max-h-56 overflow-auto py-2">
-                            {loadingTags ? (
-                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">加载中...</div>
-                            ) : filteredTags.length === 0 ? (
-                              <div className="px-4 py-3 text-xs text-[var(--text-muted)]">
-                                暂无标签
-                                <button
-                                  onClick={refreshMetaData}
-                                  className="ml-2 text-primary hover:text-primary/80"
-                                >
-                                  刷新
-                                </button>
-                              </div>
-                            ) : (
-                              filteredTags.map((tag) => {
-                                const isSelected = selectedTags.some(t => t.id === tag.id);
-                                return (
-                                  <button
-                                    key={tag.id}
-                                    onClick={() => { 
-                                      if(isSelected) removeTag(tag.id);
-                                      else setSelectedTags([...selectedTags, tag]);
-                                      setTagSearch('');
-                                    }}
-                                    className={cn(
-                                      'w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] flex justify-between items-center transition-colors',
-                                      isSelected ? 'text-primary' : 'text-[var(--text-secondary)]'
-                                    )}
-                                  >
-                                    {tag.name}
-                                    {isSelected && <CheckCircle className="w-3 h-3" />}
-                                  </button>
-                                );
-                              })
-                            )}
-                            {tagSearch && !filteredTags.some(t => t.name === tagSearch) && (
-                              <div className="px-4 py-2 text-xs text-[var(--text-muted)]">
-                                按回车创建 “{tagSearch}”
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </div>
                 </div>
               </div>
               
-              {/* 右侧按钮 */}
-              <div className="flex items-center gap-2 flex-shrink-0 relative z-30 bg-[var(--bg-card)]">
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    setShowToc(false);
-                    setShowAI(prev => !prev);
-                  }}
-                  className={cn(
-                    'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
-                    showAI ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                  )}
+              {/* 右侧按钮 (PC 端) */}
+              <div className="hidden md:flex items-center gap-2 flex-shrink-0 relative z-30">
+                <button
+                  onClick={() => setShowAI(!showAI)}
+                  className={cn('flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm', showAI ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]')}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  AI
-                </motion.button>
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  <Sparkles className="w-3.5 h-3.5" /> AI
+                </button>
+                <button
                   onClick={() => setShowSettings(true)}
-                  className={cn(
-                    'flex h-8 items-center gap-1.5 px-3 rounded-lg transition-colors text-sm',
-                    showSettings ? 'bg-primary text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                  )}
+                  className="flex h-8 items-center gap-1.5 px-3 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] text-sm"
                 >
                   <Settings className="w-3.5 h-3.5" />
-                </motion.button>
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                </button>
+                <button
                   onClick={handleSave}
-                  disabled={isSaving || isPublishing}
-                  className={cn(
-                    'flex h-8 items-center justify-center gap-1.5 px-3 min-w-[90px] rounded-lg transition-colors text-sm',
-                    isSaving ? 'bg-primary/50 text-white cursor-wait' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                  )}
+                  disabled={isSaving}
+                  className="flex h-8 items-center gap-1.5 px-3 min-w-[80px] justify-center rounded-lg bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] text-sm"
                 >
-                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  {isSaving ? '...' : '保存'}
-                </motion.button>
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 保存
+                </button>
+                <button
                   onClick={handlePublish}
-                  disabled={isSaving || isPublishing}
-                  className={cn(
-                    'flex h-8 items-center justify-center gap-1.5 px-3 min-w-[90px] rounded-lg transition-colors text-sm',
-                    isPublishing ? 'bg-primary/50 cursor-wait' : 'bg-primary hover:bg-primary/90',
-                    'text-white'
-                  )}
+                  disabled={isPublishing}
+                  className="flex h-8 items-center gap-1.5 px-4 rounded-lg bg-primary text-white hover:bg-primary/90 text-sm font-medium shadow-lg shadow-primary/20"
                 >
-                  {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  {isPublishing ? '发布中...' : '发布'}
-                </motion.button>
-                
-                {/* 保存消息提示 */}
-                <AnimatePresence>
-                  {saveMessage && (
-                    <motion.div
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className={cn(
-                        'absolute right-6 top-16 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50',
-                        saveMessage.type === 'success' ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'
-                      )}
-                    >
-                      {saveMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                      {saveMessage.text}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                  {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} 发布
+                </button>
               </div>
+
+              {/* 手机端触发按钮 */}
+              <div className="flex md:hidden items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setShowMobileDrawer(true)}
+                  className="p-2 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 保存消息提示 */}
+              <AnimatePresence>
+                {saveMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className={cn(
+                      'absolute right-6 top-16 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50',
+                      saveMessage.type === 'success' ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'
+                    )}
+                  >
+                    {saveMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                    {saveMessage.text}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            
           </motion.div>
         )}
       </AnimatePresence>
@@ -2746,6 +2579,125 @@ export function CreatePostPage() {
           </>
         )}
       </AnimatePresence>
+        {/* 移动端功能抽屉 */}
+        <AnimatePresence>
+          {showMobileDrawer && (
+            <>
+              {/* 背景遮罩 */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowMobileDrawer(false)}
+                className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm md:hidden"
+              />
+
+              {/* 抽屉内容 */}
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed right-0 top-0 bottom-0 w-[85%] max-w-[320px] z-[101] bg-[var(--bg-popover)] border-l border-[var(--border-subtle)] shadow-2xl flex flex-col md:hidden"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                       <MoreVertical className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="font-bold text-[var(--text-primary)]">更多操作</span>
+                  </div>
+                  <button
+                    onClick={() => setShowMobileDrawer(false)}
+                    className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                  {/* 主要操作 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => { setShowAI(true); setShowMobileDrawer(false); }}
+                      className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-primary/5 border border-primary/10 text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <Sparkles className="w-6 h-6" />
+                      <span className="text-xs font-medium">AI 助手</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowSettings(true); setShowMobileDrawer(false); }}
+                      className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                    >
+                      <Settings className="w-6 h-6" />
+                      <span className="text-xs font-medium">文章设置</span>
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => { handleSave(); setShowMobileDrawer(false); }}
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium"
+                  >
+                    <Save className="w-4 h-4" />
+                    保存草稿
+                  </button>
+
+                  <div className="h-px bg-[var(--border-subtle)] my-2" />
+
+                  {/* 分类选择 */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider px-1">文章分类</label>
+                    <div className="grid grid-cols-1 gap-2">
+                       <button
+                         onClick={() => { setShowCategoryDropdown(true); setShowMobileDrawer(false); }}
+                         className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm"
+                       >
+                         <span className={selectedCategory ? 'text-primary font-medium' : 'text-[var(--text-muted)]'}>
+                           {selectedCategory?.name || '选择分类'}
+                         </span>
+                         <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
+                       </button>
+                    </div>
+                  </div>
+
+                  {/* 标签选择 */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider px-1">文章标签</label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                       {selectedTags.map(tag => (
+                         <span key={tag.id} className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-lg text-xs border border-primary/20">
+                           {tag.name}
+                           <X className="w-3 h-3 cursor-pointer" onClick={() => removeTag(tag.id)} />
+                         </span>
+                       ))}
+                    </div>
+                    <button
+                      onClick={() => { setShowTagDropdown(true); setShowMobileDrawer(false); }}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      管理标签
+                    </button>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-5 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+                   <button
+                    onClick={() => { handlePublish(); setShowMobileDrawer(false); }}
+                    className="w-full py-3 rounded-xl bg-primary text-white font-bold shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                   >
+                     {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                     立即发布
+                   </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
 
         {/* Create Category Modal */}
         <AnimatePresence>
