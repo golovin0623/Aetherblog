@@ -267,7 +267,11 @@ export default function BlogHeader() {
             {/* 桌面端导航 */}
             <nav className="hidden md:flex gap-6 items-center">
               {/* iOS 21 风格分段控制器 */}
-              <div className="relative flex items-center rounded-[14px] p-[3px] backdrop-blur-2xl bg-black/[0.08] dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]">
+              <div
+                role="group"
+                aria-label="视图模式"
+                className="relative flex items-center rounded-[14px] p-[3px] backdrop-blur-2xl bg-black/[0.08] dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.12),inset_0_0.5px_1px_rgba(255,255,255,0.5)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3),inset_0_0.5px_1px_rgba(255,255,255,0.1)]"
+              >
                 {/* 动画胶囊 - 真实 iOS 风格 */}
                 <div
                   className="absolute top-[3px] bottom-[3px] w-[76px] rounded-[11px] transition-all duration-[400ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)]"
@@ -295,6 +299,8 @@ export default function BlogHeader() {
 
                 {/* Segment Buttons - 使用 button + handleNavClick 实现乐观更新 */}
                 <button
+                  type="button"
+                  aria-pressed={!isTimeline}
                   onClick={() => handleNavClick('posts')}
                   className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${
                     !isTimeline
@@ -305,6 +311,8 @@ export default function BlogHeader() {
                   首页
                 </button>
                 <button
+                  type="button"
+                  aria-pressed={isTimeline}
                   onClick={() => handleNavClick('timeline')}
                   className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${
                     isTimeline
@@ -380,6 +388,7 @@ export default function BlogHeader() {
                   rel="noopener noreferrer"
                   className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
                   title="管理后台"
+                  aria-label="管理后台"
                 >
                   <Settings2 className="w-4 h-4 group-hover/admin:rotate-90 transition-transform duration-500" />
                 </a>
