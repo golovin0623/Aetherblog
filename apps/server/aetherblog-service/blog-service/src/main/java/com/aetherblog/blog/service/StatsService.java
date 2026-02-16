@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -149,7 +150,7 @@ public class StatsService {
                     blankToNull(taskType),
                     blankToNull(modelId),
                     success,
-                    blankToNull(keyword),
+                    normalizeKeywordPattern(keyword),
                     pageable
             );
             List<AiCallRecord> records = page.getContent().stream()
@@ -449,6 +450,14 @@ public class StatsService {
             return null;
         }
         return value.trim();
+    }
+
+    private String normalizeKeywordPattern(String value) {
+        String normalized = blankToNull(value);
+        if (normalized == null) {
+            return null;
+        }
+        return "%" + normalized.toLowerCase(Locale.ROOT) + "%";
     }
 
     private int normalizeDays(int days) {
