@@ -5,9 +5,12 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-EXPECTED_FLYWAY_VERSION="${EXPECTED_FLYWAY_VERSION:-2.20}"
+EXPECTED_FLYWAY_VERSION="${EXPECTED_FLYWAY_VERSION:-2.21}"
 GATEWAY_PORT="${GATEWAY_PORT:-7899}"
 GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
+MIN_AI_PROVIDER_COUNT="${MIN_AI_PROVIDER_COUNT:-68}"
+MIN_AI_MODEL_COUNT="${MIN_AI_MODEL_COUNT:-1601}"
+ADMIN_BEARER_TOKEN="${ADMIN_BEARER_TOKEN:-}"
 RUNTIME_CHECKS=true
 
 while [[ $# -gt 0 ]]; do
@@ -126,6 +129,50 @@ main() {
       pass "auth" "log API enforces auth (status=$log_status)"
     else
       fail "auth" "unexpected auth status for log API: ${log_status:-unknown}"
+    fi
+
+    if [[ -n "$ADMIN_BEARER_TOKEN" ]]; then
+      local dashboard_status
+      dashboard_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 \
+        -H "Authorization: Bearer $ADMIN_BEARER_TOKEN" \
+        "$GATEWAY_BASE_URL/api/v1/admin/stats/ai-dashboard?days=7&pageNum=1&pageSize=20" || true)
+      if [[ "$dashboard_status" == "200" ]]; then
+        pass "api" "ai dashboard API reachable with auth (status=200)"
+      else
+        fail "api" "ai dashboard API failed with auth (status=${dashboard_status:-unknown})"
+      fi
+    else
+      skip "api" "skip authenticated ai dashboard check (set ADMIN_BEARER_TOKEN)"
+    fi
+
+    local provider_count
+    if provider_count=$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
+      psql -U aetherblog -d aetherblog -Atc "SELECT COUNT(*) FROM ai_providers;" 2>/dev/null); then
+      if [[ "$provider_count" =~ ^[0-9]+$ ]] && (( provider_count >= MIN_AI_PROVIDER_COUNT )); then
+        pass "migration" "ai_providers count=$provider_count (>= $MIN_AI_PROVIDER_COUNT)"
+      else
+        fail "migration" "ai_providers count too low: ${provider_count:-unknown} (< $MIN_AI_PROVIDER_COUNT)"
+      fi
+    else
+      fail "migration" "failed to query ai_providers count"
+    fi
+
+    local model_count
+    if model_count=$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
+      psql -U aetherblog -d aetherblog -Atc "SELECT COUNT(*) FROM ai_models;" 2>/dev/null); then
+      if [[ "$model_count" =~ ^[0-9]+$ ]] && (( model_count >= MIN_AI_MODEL_COUNT )); then
+        pass "migration" "ai_models count=$model_count (>= $MIN_AI_MODEL_COUNT)"
+      else
+        fail "migration" "ai_models count too low: ${model_count:-unknown} (< $MIN_AI_MODEL_COUNT)"
+      fi
+    else
+      fail "migration" "failed to query ai_models count"
+    fi
+
+    if docker compose -f "$COMPOSE_FILE" logs --tail 400 backend 2>/dev/null | grep -q "AI schema health check found missing columns in ai_usage_logs"; then
+      fail "logs" "backend logs contain ai_usage_logs schema-missing errors"
+    else
+      pass "logs" "backend logs have no ai_usage_logs schema-missing errors in recent window"
     fi
 
     if docker compose -f "$COMPOSE_FILE" exec -T backend \

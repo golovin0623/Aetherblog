@@ -86,14 +86,14 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
     @Query("""
             SELECT a FROM AiUsageLog a
             WHERE a.createdAt BETWEEN :startTime AND :endTime
-              AND (:taskType IS NULL OR a.taskType = :taskType)
-              AND (:modelId IS NULL OR COALESCE(a.modelId, a.model) = :modelId)
+              AND (:taskType IS NULL OR CAST(COALESCE(a.taskType, '') AS string) = :taskType)
+              AND (:modelId IS NULL OR CAST(COALESCE(a.modelId, a.model, '') AS string) = :modelId)
               AND (:success IS NULL OR a.success = :success)
               AND (:keyword IS NULL
-                    OR LOWER(COALESCE(a.modelId, a.model, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                    OR LOWER(COALESCE(a.providerCode, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                    OR LOWER(COALESCE(a.taskType, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                    OR LOWER(COALESCE(a.errorCode, '')) LIKE LOWER(CONCAT('%', :keyword, '%')))
+                    OR LOWER(CAST(COALESCE(a.modelId, a.model, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                    OR LOWER(CAST(COALESCE(a.providerCode, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                    OR LOWER(CAST(COALESCE(a.taskType, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                    OR LOWER(CAST(COALESCE(a.errorCode, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%')))
             ORDER BY a.createdAt DESC
             """)
     Page<AiUsageLog> findRecords(

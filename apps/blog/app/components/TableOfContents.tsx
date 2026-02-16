@@ -272,7 +272,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className={`absolute right-0 top-0 h-full w-[85vw] md:w-[380px] bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] shadow-2xl p-6 overflow-hidden flex flex-col ${className}`}
+              className={`absolute right-0 top-0 h-full w-2/3 md:w-[380px] bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] shadow-2xl p-6 overflow-hidden flex flex-col ${className}`}
             >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-[var(--text-primary)]">文章导航</h3>

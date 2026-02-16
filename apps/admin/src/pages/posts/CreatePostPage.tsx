@@ -4,7 +4,7 @@ import {
   Save, Settings, Sparkles, ArrowLeft, Send, 
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Link2, Image, Quote, Heading1, Heading2, Heading3,
-  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle, MoreVertical,
+  X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
   Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
   Undo2, Redo2
@@ -26,6 +26,7 @@ import { AiSidePanel, type AiPanelAction, type AiSidePanelHandle } from './compo
 import { SlashCommandMenu } from './components/SlashCommandMenu';
 import { useSidebarStore } from '@/stores';
 import { useTheme } from '@aetherblog/hooks';
+import { useMediaQuery } from '@/hooks';
 import { logger } from '@/lib/logger';
 
 // 工具栏的即时提示按钮组件
@@ -62,6 +63,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
 
 type SaveStatusType = 'saving' | 'saved' | 'error' | 'disabled';
 type SaveStatusSource = 'auto' | 'manual' | 'publish' | 'system';
+type MobilePanel = 'none' | 'ai' | 'toc' | 'meta' | 'settings';
 
 interface SaveStatusState {
   type: SaveStatusType;
@@ -129,6 +131,7 @@ export function CreatePostPage() {
   const navigate = useNavigate();
   // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
   const { resolvedTheme } = useTheme();
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
   const postId = id ? parseInt(id, 10) : null;
@@ -150,8 +153,7 @@ export function CreatePostPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
-  const [showMobileDrawer, setShowMobileDrawer] = useState(false);
-  const mobileDrawerRef = useRef<HTMLDivElement>(null);
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>('none');
   const [summary, setSummary] = useState('');
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
@@ -177,7 +179,7 @@ export function CreatePostPage() {
   const [tagSearch, setTagSearch] = useState('');
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(true);
-  const [showAllTags, setShowAllTags] = useState(false);
+  const [_showAllTags, setShowAllTags] = useState(false);
   const [aiModelId, setAiModelId] = useState<string | undefined>(undefined);
   const [aiProviderCode, setAiProviderCode] = useState<string | undefined>(undefined);
   const prefersReducedMotion = useReducedMotion();
@@ -340,6 +342,18 @@ export function CreatePostPage() {
   const editorViewRef = useRef<EditorView | null>(null);
   const aiPanelRef = useRef<AiSidePanelHandle | null>(null);
   const [pendingAiAction, setPendingAiAction] = useState<AiPanelAction | null>(null);
+  const closeMobilePanel = useCallback(() => {
+    setMobilePanel('none');
+  }, []);
+  const openMobilePanel = useCallback((panel: Exclude<MobilePanel, 'none'>) => {
+    setShowCategoryDropdown(false);
+    setShowTagDropdown(false);
+    setShowAllTags(false);
+    setShowAI(false);
+    setShowToc(false);
+    setShowSettings(false);
+    setMobilePanel((prev) => (prev === panel ? 'none' : panel));
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -347,6 +361,29 @@ export function CreatePostPage() {
     }, 30000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      setShowAI(false);
+      setShowToc(false);
+      setShowSettings(false);
+      setShowCategoryDropdown(false);
+      setShowTagDropdown(false);
+      return;
+    }
+    setMobilePanel('none');
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || mobilePanel === 'none') {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobile, mobilePanel]);
 
   useEffect(() => {
     if (!isAutoSaveEnabled) {
@@ -527,13 +564,20 @@ export function CreatePostPage() {
   // 按 Esc 退出全屏
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
+      if (e.key !== 'Escape') {
+        return;
+      }
+      if (isMobile && mobilePanel !== 'none') {
+        closeMobilePanel();
+        return;
+      }
+      if (isFullscreen) {
         setIsFullscreen(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [isFullscreen]);
+  }, [closeMobilePanel, isFullscreen, isMobile, mobilePanel]);
 
   // 处理 Ctrl+S / Cmd+S 保存
   useEffect(() => {
@@ -609,14 +653,11 @@ export function CreatePostPage() {
   // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+      if (!isMobile && categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
         setShowCategoryDropdown(false);
       }
-      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
+      if (!isMobile && tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
         setShowTagDropdown(false);
-      }
-      if (mobileDrawerRef.current && !mobileDrawerRef.current.contains(e.target as Node)) {
-        setShowMobileDrawer(false);
       }
       if (expandedTagsRef.current && !expandedTagsRef.current.contains(e.target as Node)) {
         setShowAllTags(false);
@@ -624,7 +665,7 @@ export function CreatePostPage() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isMobile]);
 
   // 基于搜索过滤分类
   const filteredCategories = useMemo(() => {
@@ -975,7 +1016,10 @@ export function CreatePostPage() {
       }
       syncScrollBeforeNavRef.current = false;
     }, 1200);
-  }, [getNavigationTarget, isSyncScroll, navigateEditorToHeading, navigatePreviewToHeading, viewMode]);
+    if (isMobile) {
+      closeMobilePanel();
+    }
+  }, [closeMobilePanel, getNavigationTarget, isMobile, isSyncScroll, navigateEditorToHeading, navigatePreviewToHeading, viewMode]);
 
   // 滚动到顶部函数 - 针对 CodeMirror 的内部滚动条
   const scrollToTop = useCallback(() => {
@@ -1006,12 +1050,16 @@ export function CreatePostPage() {
   const tableToolbarTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openAiPanel = useCallback((action?: AiPanelAction) => {
-    setShowToc(false);
-    setShowAI(true);
+    if (isMobile) {
+      openMobilePanel('ai');
+    } else {
+      setShowToc(false);
+      setShowAI(true);
+    }
     if (action) {
       setPendingAiAction(action);
     }
-  }, []);
+  }, [isMobile, openMobilePanel]);
 
   useEffect(() => {
     const savedModelId = localStorage.getItem('aetherblog.editor.aiModelId') || undefined;
@@ -1029,12 +1077,14 @@ export function CreatePostPage() {
     localStorage.setItem('aetherblog.editor.aiProviderCode', providerCode);
   }, []);
 
+  const isAiPanelOpen = showAI || (isMobile && mobilePanel === 'ai');
+
   useEffect(() => {
-    if (showAI && pendingAiAction) {
+    if (isAiPanelOpen && pendingAiAction) {
       aiPanelRef.current?.runAction(pendingAiAction);
       setPendingAiAction(null);
     }
-  }, [showAI, pendingAiAction]);
+  }, [isAiPanelOpen, pendingAiAction]);
 
   const insertAiText = useCallback((text: string) => {
     editorCommands.insertText(text);
@@ -1119,6 +1169,12 @@ export function CreatePostPage() {
   });
   // 在选择更改和滚动时检查表格状态
   useEffect(() => {
+    if (isMobile) {
+      setTableInfo(null);
+      setShowTableToolbar(false);
+      return;
+    }
+
     const checkTable = () => {
       const info = tableCommands.getTableInfo();
       setTableInfo(info);
@@ -1145,7 +1201,7 @@ export function CreatePostPage() {
         }
       }
     };
-  }, [tableCommands]);
+  }, [isMobile, tableCommands]);
   
   // 表格工具栏悬停处理程序
   const handleTableTriggerEnter = useCallback(() => {
@@ -1241,9 +1297,13 @@ export function CreatePostPage() {
     // 发布需要分类
     if (forPublish && !selectedCategory) {
       setSaveMessage({ type: 'error', text: '发布文章请先选择分类' });
-      // 打开设置面板并显示分类下拉菜单
-      setShowSettings(true);
-      setShowCategoryDropdown(true);
+      if (isMobile) {
+        openMobilePanel('meta');
+      } else {
+        // 打开设置面板并显示分类下拉菜单
+        setShowSettings(true);
+        setShowCategoryDropdown(true);
+      }
       return false;
     }
     return true;
@@ -1440,31 +1500,46 @@ export function CreatePostPage() {
     }
   }, [saveMessage]);
 
-  const handleTagKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && tagSearch.trim()) {
-      e.preventDefault();
-      // 检查标签是否已存在
-      const existing = tags.find(t => t.name.toLowerCase() === tagSearch.toLowerCase());
-      if (existing) {
-        if (!selectedTags.find(s => s.id === existing.id)) {
-          setSelectedTags([...selectedTags, existing]);
-        }
-      } else {
-        // 创建新标签
-        try {
-          const res = await tagService.create({ name: tagSearch.trim() });
-          if (res.data) {
-            setTags([...tags, res.data]);
-            setSelectedTags([...selectedTags, res.data]);
-          }
-        } catch (error) {
-          logger.error('Failed to create tag:', error);
-
-      }
-      }
-      setTagSearch('');
-      setShowTagDropdown(false);
+  const appendTagByName = useCallback(async (rawName: string) => {
+    const nextName = rawName.trim();
+    if (!nextName) {
+      return;
     }
+
+    const existing = tags.find((tag) => tag.name.toLowerCase() === nextName.toLowerCase());
+    if (existing) {
+      if (!selectedTags.find((tag) => tag.id === existing.id)) {
+        setSelectedTags([...selectedTags, existing]);
+      }
+      return;
+    }
+
+    try {
+      const res = await tagService.create({ name: nextName });
+      if (res.data) {
+        setTags([...tags, res.data]);
+        setSelectedTags([...selectedTags, res.data]);
+      }
+    } catch (error) {
+      logger.error('Failed to create tag:', error);
+    }
+  }, [selectedTags, tags]);
+
+  const handleTagInputConfirm = useCallback(async () => {
+    if (!tagSearch.trim()) {
+      return;
+    }
+    await appendTagByName(tagSearch);
+    setTagSearch('');
+    setShowTagDropdown(false);
+  }, [appendTagByName, tagSearch]);
+
+  const handleTagKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') {
+      return;
+    }
+    e.preventDefault();
+    await handleTagInputConfirm();
   };
 
   const removeTag = (tagId: number) => {
@@ -1618,7 +1693,8 @@ export function CreatePostPage() {
 
   return (
     <div className={cn(
-      "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden"
+      "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden",
+      isMobile && "pb-16"
     )}>
       {/* 顶部头部区域 - 带折叠动画 */}
       <AnimatePresence initial={false}>
@@ -1720,6 +1796,56 @@ export function CreatePostPage() {
                     <button onClick={() => setShowTagDropdown(!showTagDropdown)} className="p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary">
                       <Plus className="w-4 h-4" />
                     </button>
+                    <AnimatePresence>
+                      {showTagDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                          className="absolute top-full right-0 mt-3 w-72 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
+                        >
+                          <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={tagSearch}
+                                onChange={(e) => setTagSearch(e.target.value)}
+                                onKeyDown={handleTagKeyDown}
+                                placeholder="输入标签后回车..."
+                                autoFocus
+                                className="w-full pl-9 pr-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleTagInputConfirm}
+                              className="mt-2 w-full px-3 py-1.5 text-xs rounded-md bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+                            >
+                              添加输入标签
+                            </button>
+                          </div>
+                          <div className="max-h-56 overflow-auto py-2">
+                            {filteredTags.length === 0 ? (
+                              <div className="px-4 py-6 text-center text-xs text-[var(--text-muted)]">
+                                没有可添加的标签
+                              </div>
+                            ) : (
+                              filteredTags.slice(0, 40).map((tag) => (
+                                <button
+                                  key={tag.id}
+                                  type="button"
+                                  onClick={() => setSelectedTags((prev) => prev.find((item) => item.id === tag.id) ? prev : [...prev, tag])}
+                                  className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] transition-colors text-[var(--text-secondary)]"
+                                >
+                                  #{tag.name}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               </div>
@@ -1751,16 +1877,6 @@ export function CreatePostPage() {
                   className="flex h-8 items-center gap-1.5 px-4 rounded-lg bg-primary text-white hover:bg-primary/90 text-sm font-medium shadow-lg shadow-primary/20"
                 >
                   {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} 发布
-                </button>
-              </div>
-
-              {/* 手机端触发按钮 */}
-              <div className="flex md:hidden items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => setShowMobileDrawer(true)}
-                  className="p-2 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
-                >
-                  <MoreVertical className="w-5 h-5" />
                 </button>
               </div>
 
@@ -1976,11 +2092,15 @@ export function CreatePostPage() {
 
           <ToolbarButton 
             onClick={() => {
+              if (isMobile) {
+                openMobilePanel('toc');
+                return;
+              }
               setShowAI(false);
               setShowToc(!showToc);
             }} 
-            tooltip={showToc ? '关闭目录' : '打开目录'}
-            isActive={showToc}
+            tooltip={isMobile ? '打开目录' : showToc ? '关闭目录' : '打开目录'}
+            isActive={isMobile ? mobilePanel === 'toc' : showToc}
           >
             <ListTree className="w-4 h-4" />
           </ToolbarButton>
@@ -2051,12 +2171,16 @@ export function CreatePostPage() {
               theme={resolvedTheme}
             />
 
-            <SelectionAiToolbar
-              editorViewRef={editorViewRef}
-              selectedModelId={aiModelId}
-              selectedProviderCode={aiProviderCode}
-            />
-            <SlashCommandMenu editorViewRef={editorViewRef} onRunAiAction={openAiPanel} />
+            {!isMobile && (
+              <>
+                <SelectionAiToolbar
+                  editorViewRef={editorViewRef}
+                  selectedModelId={aiModelId}
+                  selectedProviderCode={aiProviderCode}
+                />
+                <SlashCommandMenu editorViewRef={editorViewRef} onRunAiAction={openAiPanel} />
+              </>
+            )}
 
             {/* Upload Progress Overlay */}
             {uploads.length > 0 && (
@@ -2069,7 +2193,7 @@ export function CreatePostPage() {
             )}
             
             {/* IDEA-style Table Trigger Zones - Fixed positioning with viewport coordinates */}
-            {tableInfo?.isInTable && tableInfo.tableBounds && tableInfo.rowPositions && editorContainerRef.current && (() => {
+            {!isMobile && tableInfo?.isInTable && tableInfo.tableBounds && tableInfo.rowPositions && editorContainerRef.current && (() => {
               const containerRect = editorContainerRef.current.getBoundingClientRect();
               const isInViewport = tableInfo.tableBounds.top >= containerRect.top - 100 &&
                                    tableInfo.tableBounds.top <= containerRect.bottom + 100;
@@ -2179,7 +2303,7 @@ export function CreatePostPage() {
             
             {/* Floating Table Operations Toolbar */}
             <AnimatePresence>
-              {showTableToolbar && tableInfo?.isInTable && tableInfo.tableBounds && editorContainerRef.current && (
+              {!isMobile && showTableToolbar && tableInfo?.isInTable && tableInfo.tableBounds && editorContainerRef.current && (
                 <motion.div
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -2299,7 +2423,7 @@ export function CreatePostPage() {
 
         {/* AI Side Panel */}
         <AnimatePresence mode="wait">
-          {showAI && (
+          {!isMobile && showAI && (
             <AiSidePanel
               ref={aiPanelRef}
               content={content}
@@ -2320,7 +2444,7 @@ export function CreatePostPage() {
 
         {/* TOC Panel */}
         <AnimatePresence mode="wait">
-          {showToc && (
+          {!isMobile && showToc && (
             <motion.div
               initial="hidden"
               animate="show"
@@ -2404,7 +2528,7 @@ export function CreatePostPage() {
       </div>
 
       {/* 编辑器页脚 */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] text-[var(--text-muted)]">
+      <div className="hidden md:flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] text-[var(--text-muted)]">
         <div className="flex items-center gap-4">
           <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
           <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
@@ -2469,7 +2593,7 @@ export function CreatePostPage() {
 
       {/* 设置面板（替代模态框） */}
       <AnimatePresence>
-        {showSettings && (
+        {!isMobile && showSettings && (
           <>
             {/* 背景遮罩 */}
             <motion.div
@@ -2579,124 +2703,327 @@ export function CreatePostPage() {
           </>
         )}
       </AnimatePresence>
-        {/* 移动端功能抽屉 */}
-        <AnimatePresence>
-          {showMobileDrawer && (
-            <>
-              {/* 背景遮罩 */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setShowMobileDrawer(false)}
-                className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm md:hidden"
+      <AnimatePresence mode="wait">
+        {isMobile && mobilePanel === 'ai' && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeMobilePanel}
+              className="fixed inset-0 z-[120] bg-black/45 backdrop-blur-sm md:hidden"
+            />
+            <div className="fixed inset-0 z-[121] md:hidden">
+              <AiSidePanel
+                isMobile
+                ref={aiPanelRef}
+                content={content}
+                title={title}
+                summary={summary}
+                selectedModelId={aiModelId}
+                selectedProviderCode={aiProviderCode}
+                onModelChange={handleModelChange}
+                onClose={closeMobilePanel}
+                onInsertText={insertAiText}
+                onReplaceContent={replaceAiContent}
+                onUpdateSummary={setSummary}
+                onUpdateTitle={setTitle}
+                onApplyTags={applyAiTags}
               />
+            </div>
+          </>
+        )}
+      </AnimatePresence>
 
-              {/* 抽屉内容 */}
-              <motion.div
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed right-0 top-0 bottom-0 w-[85%] max-w-[320px] z-[101] bg-[var(--bg-popover)] border-l border-[var(--border-subtle)] shadow-2xl flex flex-col md:hidden"
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                       <MoreVertical className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="font-bold text-[var(--text-primary)]">更多操作</span>
-                  </div>
-                  <button
-                    onClick={() => setShowMobileDrawer(false)}
-                    className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+      <AnimatePresence>
+        {isMobile && mobilePanel !== 'none' && mobilePanel !== 'ai' && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeMobilePanel}
+              className="fixed inset-0 z-[120] bg-black/45 backdrop-blur-sm md:hidden"
+            />
+
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 260 }}
+              className="fixed inset-0 z-[121] bg-[var(--bg-primary)] flex flex-col md:hidden"
+            >
+              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3 bg-[var(--bg-secondary)]">
+                <div className="text-sm font-semibold text-[var(--text-primary)]">
+                  {mobilePanel === 'toc' ? '目录' : mobilePanel === 'meta' ? '文章属性' : '文章设置'}
                 </div>
+                <button
+                  type="button"
+                  onClick={closeMobilePanel}
+                  className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-6">
-                  {/* 主要操作 */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {mobilePanel === 'toc' && (
+                  <div className="space-y-2">
+                    {tocItems.length === 0 ? (
+                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 px-4 py-8 text-center text-sm text-[var(--text-muted)]">
+                        暂无目录，请先在正文中添加标题
+                      </div>
+                    ) : (
+                      tocItems.map((item, index) => (
+                        <button
+                          key={`${item.line}-${index}`}
+                          type="button"
+                          onClick={() => scrollToHeading(item.text, item.line)}
+                          className={cn(
+                            'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                            activeTocLine === item.line
+                              ? 'bg-primary/12 text-[var(--text-primary)]'
+                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                          )}
+                          style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
+                        >
+                          {item.text}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {mobilePanel === 'meta' && (
+                  <div className="space-y-5">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-[var(--text-secondary)]">分类</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowCreateCategoryModal(true)}
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                        >
+                          <Plus className="w-3 h-3" />
+                          新建分类
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={categorySearch}
+                          onChange={(e) => setCategorySearch(e.target.value)}
+                          placeholder="搜索分类..."
+                          className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] focus:outline-none"
+                        />
+                      </div>
+                      <div className="max-h-52 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
+                        {filteredCategories.map((cat) => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setSelectedCategory(cat)}
+                            className={cn(
+                              'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              selectedCategory?.id === cat.id
+                                ? 'bg-primary/15 text-primary'
+                                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                            )}
+                          >
+                            {cat.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium text-[var(--text-secondary)]">标签</label>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTags.map((tag) => (
+                          <span key={tag.id} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
+                            #{tag.name}
+                            <button type="button" onClick={() => removeTag(tag.id)}>
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={tagSearch}
+                          onChange={(e) => setTagSearch(e.target.value)}
+                          onKeyDown={handleTagKeyDown}
+                          placeholder="输入标签后回车"
+                          className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleTagInputConfirm}
+                          className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary"
+                        >
+                          添加
+                        </button>
+                      </div>
+                      <div className="max-h-44 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
+                        {filteredTags.slice(0, 60).map((tag) => (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            onClick={() => setSelectedTags((prev) => prev.find((item) => item.id === tag.id) ? prev : [...prev, tag])}
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                          >
+                            #{tag.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {mobilePanel === 'settings' && (
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-[var(--text-secondary)]">发布时间</label>
+                      <input
+                        type="datetime-local"
+                        value={publishTime}
+                        onChange={(e) => setPublishTime(e.target.value)}
+                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none"
+                        style={{ colorScheme: resolvedTheme }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
+                        <button
+                          type="button"
+                          onClick={() => openAiPanel('summary')}
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          AI 生成
+                        </button>
+                      </div>
+                      <textarea
+                        rows={6}
+                        value={summary}
+                        onChange={(e) => setSummary(e.target.value)}
+                        placeholder="输入文章摘要，或使用 AI 生成..."
+                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none"
+                      />
+                    </div>
+                    <label className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 px-3 py-2 text-sm text-[var(--text-secondary)]">
+                      自动保存
+                      <input
+                        type="checkbox"
+                        checked={isAutoSaveEnabled}
+                        onChange={(e) => setIsAutoSaveEnabled(e.target.checked)}
+                        className="w-4 h-4 rounded border-[var(--border-subtle)]"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                {mobilePanel === 'toc' ? (
+                  <button
+                    type="button"
+                    onClick={closeMobilePanel}
+                    className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] py-2.5 text-sm font-medium text-[var(--text-primary)]"
+                  >
+                    关闭目录
+                  </button>
+                ) : (
                   <div className="grid grid-cols-2 gap-3">
                     <button
-                      onClick={() => { setShowAI(true); setShowMobileDrawer(false); }}
-                      className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-primary/5 border border-primary/10 text-primary hover:bg-primary/10 transition-colors"
+                      type="button"
+                      onClick={() => void handleSave()}
+                      disabled={isSaving}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] py-2.5 text-sm font-medium text-[var(--text-primary)] disabled:opacity-60"
                     >
-                      <Sparkles className="w-6 h-6" />
-                      <span className="text-xs font-medium">AI 助手</span>
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      保存草稿
                     </button>
                     <button
-                      onClick={() => { setShowSettings(true); setShowMobileDrawer(false); }}
-                      className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                      type="button"
+                      onClick={closeMobilePanel}
+                      className="rounded-xl bg-primary py-2.5 text-sm font-medium text-white"
                     >
-                      <Settings className="w-6 h-6" />
-                      <span className="text-xs font-medium">文章设置</span>
+                      完成
                     </button>
                   </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-                  <button
-                    onClick={() => { handleSave(); setShowMobileDrawer(false); }}
-                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium"
-                  >
-                    <Save className="w-4 h-4" />
-                    保存草稿
-                  </button>
-
-                  <div className="h-px bg-[var(--border-subtle)] my-2" />
-
-                  {/* 分类选择 */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider px-1">文章分类</label>
-                    <div className="grid grid-cols-1 gap-2">
-                       <button
-                         onClick={() => { setShowCategoryDropdown(true); setShowMobileDrawer(false); }}
-                         className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm"
-                       >
-                         <span className={selectedCategory ? 'text-primary font-medium' : 'text-[var(--text-muted)]'}>
-                           {selectedCategory?.name || '选择分类'}
-                         </span>
-                         <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
-                       </button>
-                    </div>
-                  </div>
-
-                  {/* 标签选择 */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider px-1">文章标签</label>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                       {selectedTags.map(tag => (
-                         <span key={tag.id} className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-lg text-xs border border-primary/20">
-                           {tag.name}
-                           <X className="w-3 h-3 cursor-pointer" onClick={() => removeTag(tag.id)} />
-                         </span>
-                       ))}
-                    </div>
-                    <button
-                      onClick={() => { setShowTagDropdown(true); setShowMobileDrawer(false); }}
-                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] text-sm"
-                    >
-                      <Plus className="w-4 h-4" />
-                      管理标签
-                    </button>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="p-5 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                   <button
-                    onClick={() => { handlePublish(); setShowMobileDrawer(false); }}
-                    className="w-full py-3 rounded-xl bg-primary text-white font-bold shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
-                   >
-                     {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                     立即发布
-                   </button>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+      {isMobile && (
+        <div className="fixed inset-x-0 bottom-0 z-[110] border-t border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-xl px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden">
+          <div className="grid grid-cols-5 gap-1">
+            <button
+              type="button"
+              onClick={() => openMobilePanel('ai')}
+              className={cn(
+                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
+                mobilePanel === 'ai' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
+              )}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI
+            </button>
+            <button
+              type="button"
+              onClick={() => openMobilePanel('toc')}
+              className={cn(
+                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
+                mobilePanel === 'toc' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
+              )}
+            >
+              <ListTree className="w-4 h-4" />
+              目录
+            </button>
+            <button
+              type="button"
+              onClick={() => openMobilePanel('meta')}
+              className={cn(
+                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
+                mobilePanel === 'meta' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
+              )}
+            >
+              <CheckSquare className="w-4 h-4" />
+              属性
+            </button>
+            <button
+              type="button"
+              onClick={() => openMobilePanel('settings')}
+              className={cn(
+                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
+                mobilePanel === 'settings' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
+              )}
+            >
+              <Settings className="w-4 h-4" />
+              设置
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeMobilePanel();
+                void handlePublish();
+              }}
+              disabled={isPublishing}
+              className="flex flex-col items-center justify-center gap-1 rounded-lg bg-primary py-1.5 text-[11px] text-white disabled:opacity-60"
+            >
+              {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              发布
+            </button>
+          </div>
+        </div>
+      )}
 
 
         {/* Create Category Modal */}

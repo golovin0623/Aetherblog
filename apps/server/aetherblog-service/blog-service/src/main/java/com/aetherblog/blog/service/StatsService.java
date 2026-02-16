@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,9 +23,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -43,6 +46,7 @@ public class StatsService {
     private final CommentRepository commentRepository;
     private final VisitRecordRepository visitRecordRepository;
     private final AiUsageLogRepository aiUsageLogRepository;
+    private final JdbcTemplate jdbcTemplate;
     private final Clock clock;
 
     private static final int DEFAULT_RANGE_DAYS = 7;
@@ -50,6 +54,23 @@ public class StatsService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_PAGE_NUM = 10000;
+    private static final List<String> REQUIRED_AI_USAGE_LOG_COLUMNS = List.of(
+            "id",
+            "task_type",
+            "provider_code",
+            "model",
+            "model_id",
+            "tokens_in",
+            "tokens_out",
+            "total_tokens",
+            "estimated_cost",
+            "latency_ms",
+            "success",
+            "cached",
+            "error_code",
+            "created_at"
+    );
+    private volatile boolean aiUsageSchemaHealthLogged = false;
 
     /**
      * 获取 Dashboard 概览统计
@@ -98,64 +119,146 @@ public class StatsService {
         pageNum = normalizePageNum(pageNum);
         pageSize = normalizePageSize(pageSize);
 
+        try {
+            LocalDate today = LocalDate.now(clock);
+            LocalDateTime startTime = today.minusDays(days - 1L).atStartOfDay();
+            LocalDateTime endTime = today.plusDays(1).atStartOfDay().minusNanos(1);
+
+            Object[] overviewRow = normalizeOverviewRow(aiUsageLogRepository.aggregateOverview(startTime, endTime));
+            long totalCalls = toLong(valueAt(overviewRow, 0));
+            long successCalls = toLong(valueAt(overviewRow, 1));
+            long errorCalls = toLong(valueAt(overviewRow, 2));
+            long totalTokens = toLong(valueAt(overviewRow, 3));
+            BigDecimal totalCost = toBigDecimal(valueAt(overviewRow, 4));
+            double avgLatencyMs = toDouble(valueAt(overviewRow, 5));
+            long cacheHits = toLong(valueAt(overviewRow, 6));
+
+            int successRate = totalCalls > 0 ? (int) Math.round(successCalls * 100.0 / totalCalls) : 0;
+            int cacheHitRate = totalCalls > 0 ? (int) Math.round(cacheHits * 100.0 / totalCalls) : 0;
+            double avgTokensPerCall = totalCalls > 0 ? ((double) totalTokens / totalCalls) : 0.0;
+            double avgCostPerCall = totalCalls > 0 ? totalCost.doubleValue() / totalCalls : 0.0;
+
+            List<AiTrendPoint> trend = buildAiTrend(startTime, days);
+            List<AiModelDistribution> modelDistribution = buildAiModelDistribution(startTime, endTime, totalCalls);
+            List<AiTaskDistribution> taskDistribution = buildAiTaskDistribution(startTime, endTime, totalCalls);
+
+            Pageable pageable = PageRequest.of(pageNum - 1, pageSize);
+            var page = aiUsageLogRepository.findRecords(
+                    startTime,
+                    endTime,
+                    blankToNull(taskType),
+                    blankToNull(modelId),
+                    success,
+                    blankToNull(keyword),
+                    pageable
+            );
+            List<AiCallRecord> records = page.getContent().stream()
+                    .map(this::toAiCallRecord)
+                    .toList();
+
+            AiOverview overview = new AiOverview(
+                    totalCalls,
+                    successCalls,
+                    errorCalls,
+                    successRate,
+                    cacheHitRate,
+                    totalTokens,
+                    totalCost.doubleValue(),
+                    avgTokensPerCall,
+                    avgCostPerCall,
+                    avgLatencyMs
+            );
+
+            AiRecordsPage recordsPage = new AiRecordsPage(
+                    records,
+                    pageNum,
+                    pageSize,
+                    page.getTotalElements(),
+                    page.getTotalPages()
+            );
+
+            return new AiAnalyticsDashboard(days, overview, trend, modelDistribution, taskDistribution, recordsPage);
+        } catch (Exception ex) {
+            log.error("AI dashboard query failed, fallback to empty payload. days={}, pageNum={}, pageSize={}, taskType={}, modelId={}, success={}, keyword={}",
+                    days, pageNum, pageSize, taskType, modelId, success, keyword, ex);
+            logAiUsageLogSchemaHealthOnce();
+            return buildEmptyAiAnalyticsDashboard(days, pageNum, pageSize);
+        }
+    }
+
+    private AiAnalyticsDashboard buildEmptyAiAnalyticsDashboard(int days, int pageNum, int pageSize) {
+        List<AiTrendPoint> trend = new ArrayList<>(days);
         LocalDate today = LocalDate.now(clock);
-        LocalDateTime startTime = today.minusDays(days - 1L).atStartOfDay();
-        LocalDateTime endTime = today.plusDays(1).atStartOfDay().minusNanos(1);
-
-        Object[] overviewRow = normalizeOverviewRow(aiUsageLogRepository.aggregateOverview(startTime, endTime));
-        long totalCalls = toLong(valueAt(overviewRow, 0));
-        long successCalls = toLong(valueAt(overviewRow, 1));
-        long errorCalls = toLong(valueAt(overviewRow, 2));
-        long totalTokens = toLong(valueAt(overviewRow, 3));
-        BigDecimal totalCost = toBigDecimal(valueAt(overviewRow, 4));
-        double avgLatencyMs = toDouble(valueAt(overviewRow, 5));
-        long cacheHits = toLong(valueAt(overviewRow, 6));
-
-        int successRate = totalCalls > 0 ? (int) Math.round(successCalls * 100.0 / totalCalls) : 0;
-        int cacheHitRate = totalCalls > 0 ? (int) Math.round(cacheHits * 100.0 / totalCalls) : 0;
-        double avgTokensPerCall = totalCalls > 0 ? ((double) totalTokens / totalCalls) : 0.0;
-        double avgCostPerCall = totalCalls > 0 ? totalCost.doubleValue() / totalCalls : 0.0;
-
-        List<AiTrendPoint> trend = buildAiTrend(startTime, days);
-        List<AiModelDistribution> modelDistribution = buildAiModelDistribution(startTime, endTime, totalCalls);
-        List<AiTaskDistribution> taskDistribution = buildAiTaskDistribution(startTime, endTime, totalCalls);
-
-        Pageable pageable = PageRequest.of(pageNum - 1, pageSize);
-        var page = aiUsageLogRepository.findRecords(
-                startTime,
-                endTime,
-                blankToNull(taskType),
-                blankToNull(modelId),
-                success,
-                blankToNull(keyword),
-                pageable
-        );
-        List<AiCallRecord> records = page.getContent().stream()
-                .map(this::toAiCallRecord)
-                .toList();
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate date = today.minusDays(i);
+            trend.add(new AiTrendPoint(date.toString(), 0, 0, 0.0));
+        }
 
         AiOverview overview = new AiOverview(
-                totalCalls,
-                successCalls,
-                errorCalls,
-                successRate,
-                cacheHitRate,
-                totalTokens,
-                totalCost.doubleValue(),
-                avgTokensPerCall,
-                avgCostPerCall,
-                avgLatencyMs
+                0L,
+                0L,
+                0L,
+                0,
+                0,
+                0L,
+                0.0,
+                0.0,
+                0.0,
+                0.0
         );
-
         AiRecordsPage recordsPage = new AiRecordsPage(
-                records,
+                Collections.emptyList(),
                 pageNum,
                 pageSize,
-                page.getTotalElements(),
-                page.getTotalPages()
+                0L,
+                0
         );
+        return new AiAnalyticsDashboard(
+                days,
+                overview,
+                trend,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                recordsPage
+        );
+    }
 
-        return new AiAnalyticsDashboard(days, overview, trend, modelDistribution, taskDistribution, recordsPage);
+    private void logAiUsageLogSchemaHealthOnce() {
+        if (aiUsageSchemaHealthLogged) {
+            return;
+        }
+
+        synchronized (this) {
+            if (aiUsageSchemaHealthLogged) {
+                return;
+            }
+            try {
+                List<String> existingColumns = jdbcTemplate.queryForList("""
+                                SELECT column_name
+                                FROM information_schema.columns
+                                WHERE table_schema = current_schema()
+                                  AND table_name = 'ai_usage_logs'
+                                """,
+                        String.class
+                );
+                Set<String> normalizedColumns = existingColumns.stream()
+                        .map(String::toLowerCase)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                List<String> missingColumns = REQUIRED_AI_USAGE_LOG_COLUMNS.stream()
+                        .filter(column -> !normalizedColumns.contains(column))
+                        .toList();
+
+                if (missingColumns.isEmpty()) {
+                    log.info("AI schema health check passed for ai_usage_logs, required columns are present.");
+                } else {
+                    log.error("AI schema health check found missing columns in ai_usage_logs: {}", missingColumns);
+                }
+            } catch (Exception schemaEx) {
+                log.warn("Failed to inspect ai_usage_logs schema health", schemaEx);
+            } finally {
+                aiUsageSchemaHealthLogged = true;
+            }
+        }
     }
 
     private List<AiTrendPoint> buildAiTrend(LocalDateTime startTime, int days) {
