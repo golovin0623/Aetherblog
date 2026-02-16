@@ -5,6 +5,41 @@
 -- 幂等：ON CONFLICT DO NOTHING
 -- ============================================================
 
+-- Compatibility guard:
+-- Some legacy environments carry an older/incompatible api_type check constraint
+-- (e.g. does not allow 'azure'). Normalize legacy alias and recreate constraint
+-- before bulk provider seed to avoid Flyway startup failure.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = current_schema()
+          AND table_name = 'ai_providers'
+    ) THEN
+        UPDATE ai_providers
+        SET api_type = 'openai_compat'
+        WHERE api_type IS NULL
+           OR btrim(api_type) = ''
+           OR lower(api_type) = 'openai';
+
+        IF EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'chk_ai_provider_api_type'
+              AND conrelid = 'ai_providers'::regclass
+        ) THEN
+            ALTER TABLE ai_providers
+                DROP CONSTRAINT chk_ai_provider_api_type;
+        END IF;
+
+        ALTER TABLE ai_providers
+            ADD CONSTRAINT chk_ai_provider_api_type CHECK (
+                api_type IN ('openai_compat', 'anthropic', 'google', 'azure', 'custom')
+            ) NOT VALID;
+    END IF;
+END $$;
+
 -- Part 1: Providers (full seed from V2_11)
 INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url, capabilities, priority) VALUES
     ('openai', 'OpenAI', 'OpenAI', 'openai_compat', 'https://api.openai.com/v1', 'https://platform.openai.com/docs/models', '{"source": "builtin", "description": "OpenAI 是全球领先的人工智能研究机构，其开发的模型如GPT系列推动了自然语言处理的前沿。OpenAI 致力于通过创新和高效的AI解决方案改变多个行业。他们的产品具有显著的性能和经济性，广泛用于研究、商业和创新应用。", "apiKeyUrl": "https://platform.openai.com/api-keys?utm_source=lobehub", "modelsUrl": "https://platform.openai.com/docs/models", "url": "https://openai.com", "settings": {"responseAnimation": "smooth", "showModelFetcher": true, "supportResponsesApi": true}, "checkModel": "gpt-5-nano"}', 1000),

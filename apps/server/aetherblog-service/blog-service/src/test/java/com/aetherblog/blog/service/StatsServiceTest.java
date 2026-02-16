@@ -219,4 +219,36 @@ public class StatsServiceTest {
         assertEquals(140.0, dashboard.overview().avgLatencyMs(), 0.000001);
     }
 
+    @Test
+    void testGetAiAnalyticsDashboardNormalizesKeywordPattern() {
+        LocalDateTime fixedTime = LocalDateTime.of(2024, 1, 15, 10, 0);
+        when(clock.instant()).thenReturn(fixedTime.toInstant(ZoneOffset.UTC));
+        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
+
+        when(aiUsageLogRepository.aggregateOverview(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(new Object[]{0L, 0L, 0L, 0L, BigDecimal.ZERO, 0.0, 0L});
+        when(aiUsageLogRepository.aggregateDailyTrend(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.aggregateModelDistribution(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.aggregateTaskDistribution(any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+        when(aiUsageLogRepository.findRecords(any(LocalDateTime.class), any(LocalDateTime.class), any(), any(), eq(null), any(), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+        statsService.getAiAnalyticsDashboard(7, 1, 20, null, null, null, "  GpT-4O  ");
+
+        ArgumentCaptor<String> keywordCaptor = ArgumentCaptor.forClass(String.class);
+        verify(aiUsageLogRepository).findRecords(
+                any(LocalDateTime.class),
+                any(LocalDateTime.class),
+                any(),
+                any(),
+                eq(null),
+                keywordCaptor.capture(),
+                any(PageRequest.class)
+        );
+        assertEquals("%gpt-4o%", keywordCaptor.getValue());
+    }
+
 }
