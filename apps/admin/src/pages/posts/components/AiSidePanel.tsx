@@ -26,6 +26,7 @@ export interface AiSidePanelHandle {
 }
 
 interface AiSidePanelProps {
+  isMobile?: boolean;
   content: string;
   title: string;
   summary: string;
@@ -68,6 +69,7 @@ const languageOptions = [
 
 export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
   ({
+    isMobile = false,
     content,
     title,
     summary,
@@ -184,13 +186,18 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
 
     return (
       <motion.div
-        initial={{ width: 0, opacity: 0, x: 30 }}
-        animate={{ width: 360, opacity: 1, x: 0 }}
-        exit={{ width: 0, opacity: 0, x: 60 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 30, mass: 0.6 }}
-        className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-visible flex flex-col z-30 shadow-xl relative"
+        initial={isMobile ? { y: '100%' } : { width: 0, opacity: 0, x: 30 }}
+        animate={isMobile ? { y: 0 } : { width: 360, opacity: 1, x: 0 }}
+        exit={isMobile ? { y: '100%' } : { width: 0, opacity: 0, x: 60 }}
+        transition={isMobile ? { type: 'spring', damping: 30, stiffness: 260 } : { type: 'spring', stiffness: 320, damping: 30, mass: 0.6 }}
+        className={cn(
+          'overflow-visible flex flex-col relative',
+          isMobile
+            ? 'h-full w-full bg-[var(--bg-primary)]'
+            : 'h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl z-30 shadow-xl'
+        )}
       >
-        <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
+        {!isMobile && <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />}
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
           <div className="flex items-center gap-2">
@@ -200,12 +207,12 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
           <div className="flex items-center gap-2">
             <ModelSelector
               variant="compact"
-              className="w-[160px]"
+              className={cn(isMobile ? 'w-[180px]' : 'w-[160px]')}
               value={selectedModelId}
               selectedProviderCode={selectedProviderCode}
               modelType="chat"
               menuAlign="right"
-              menuClassName="w-[400px] max-w-[80vw]"
+              menuClassName={cn(isMobile ? 'w-[92vw] max-w-[92vw]' : 'w-[400px] max-w-[80vw]')}
               triggerClassName="!bg-[var(--bg-primary)] !border-[var(--border-subtle)] hover:!border-primary/40 !shadow-none"
               showArrow
               onChange={onModelChange}
