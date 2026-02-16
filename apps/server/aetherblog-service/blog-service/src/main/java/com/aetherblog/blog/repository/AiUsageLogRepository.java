@@ -90,10 +90,10 @@ public interface AiUsageLogRepository extends JpaRepository<AiUsageLog, Long> {
               AND (:modelId IS NULL OR CAST(COALESCE(a.modelId, a.model, '') AS string) = :modelId)
               AND (:success IS NULL OR a.success = :success)
               AND (:keyword IS NULL
-                    OR LOWER(CAST(COALESCE(a.modelId, a.model, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                    OR LOWER(CAST(COALESCE(a.providerCode, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                    OR LOWER(CAST(COALESCE(a.taskType, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                    OR LOWER(CAST(COALESCE(a.errorCode, '') AS string)) LIKE LOWER(CONCAT('%', :keyword, '%')))
+                    OR LOWER(CAST(COALESCE(a.modelId, a.model, '') AS string)) LIKE :keyword
+                    OR LOWER(CAST(COALESCE(a.providerCode, '') AS string)) LIKE :keyword
+                    OR LOWER(CAST(COALESCE(a.taskType, '') AS string)) LIKE :keyword
+                    OR LOWER(CAST(COALESCE(a.errorCode, '') AS string)) LIKE :keyword)
             ORDER BY a.createdAt DESC
             """)
     Page<AiUsageLog> findRecords(
