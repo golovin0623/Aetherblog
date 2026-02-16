@@ -19,11 +19,21 @@ interface FeaturedPostProps {
   };
 }
 
-export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
+const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const router = useRouter();
   // Ref for spotlight effect to avoid re-renders
   const spotlightRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number>(0);
   const [isHovering, setIsHovering] = React.useState(false);
+
+  // Clean up animation frame on unmount
+  React.useEffect(() => {
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
 
   // 如果摘要缺失，从内容生成摘要的逻辑
   const displaySummary = post.summary 
@@ -33,14 +43,24 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
         : '暂无摘要';
 
   // Update spotlight position directly via DOM
-  const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+  const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (!spotlightRef.current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
 
-    spotlightRef.current.style.background = `radial-gradient(1000px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
-  };
+    const { clientX, clientY } = e;
+    const target = e.currentTarget;
+
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+    }
+
+    frameRef.current = requestAnimationFrame(() => {
+      if (!spotlightRef.current) return;
+      const rect = target.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      spotlightRef.current.style.background = `radial-gradient(1000px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+    });
+  }, []);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent navigation if clicking on interactive elements
@@ -184,4 +204,5 @@ export const FeaturedPost: React.FC<FeaturedPostProps> = ({ post }) => {
   );
 };
 
+export const FeaturedPost = React.memo(FeaturedPostBase);
 export default FeaturedPost;
