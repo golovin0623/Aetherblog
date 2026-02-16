@@ -9,7 +9,10 @@ EXPECTED_FLYWAY_VERSION="${EXPECTED_FLYWAY_VERSION:-2.21}"
 GATEWAY_PORT="${GATEWAY_PORT:-7899}"
 GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
 MIN_AI_PROVIDER_COUNT="${MIN_AI_PROVIDER_COUNT:-68}"
-MIN_AI_MODEL_COUNT="${MIN_AI_MODEL_COUNT:-1601}"
+# Use a conservative lower bound for seeded builtin models.
+# Raw seed rows can include duplicates by (provider_id, model_id),
+# so the effective reachable count is lower than the raw INSERT row count.
+MIN_AI_MODEL_COUNT="${MIN_AI_MODEL_COUNT:-1591}"
 ADMIN_BEARER_TOKEN="${ADMIN_BEARER_TOKEN:-}"
 RUNTIME_CHECKS=true
 
