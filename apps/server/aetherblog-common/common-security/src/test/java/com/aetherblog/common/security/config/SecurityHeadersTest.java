@@ -52,7 +52,7 @@ public class SecurityHeadersTest {
     public void testSecurityHeaders_Presence() throws Exception {
         mockMvc.perform(get("/test-headers"))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Security-Policy", "default-src 'self'"))
+                .andExpect(header().string("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"))
                 .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
                 .andExpect(header().string("Permissions-Policy", "camera=(), microphone=(), geolocation=()"))
                 .andExpect(header().string("X-Frame-Options", "DENY"))
