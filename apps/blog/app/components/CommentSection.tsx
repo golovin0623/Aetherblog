@@ -38,6 +38,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
 
   const formRef = useRef<HTMLDivElement>(null);
   const formTriggerRef = useRef<HTMLButtonElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 表单状态
   const [nickname, setNickname] = useState('');
@@ -109,7 +110,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     setIsFormExpanded(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // 如果检查 DOM，聚焦 textarea 的逻辑可以放在这里
+      textareaRef.current?.focus({ preventScroll: true });
     }, 100);
   };
 
@@ -247,6 +248,7 @@ type="url"
 
                       <div className="relative">
                         <textarea
+                          ref={textareaRef}
                           aria-label="评论内容"
                           className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all min-h-[140px] resize-y leading-relaxed"
                           placeholder="写点什么吧..."
