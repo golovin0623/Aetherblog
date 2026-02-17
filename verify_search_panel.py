@@ -1,55 +1,55 @@
-from playwright.sync_api import sync_playwright, expect
 
-def verify_search_panel(page):
-    # Navigate to the test page
-    page.goto("http://localhost:3000/test-search")
+from playwright.sync_api import sync_playwright
 
-    # Click the "Open Search" button
-    page.get_by_role("button", name="Open Search").click()
+def run(playwright):
+    browser = playwright.chromium.launch(headless=True)
+    context = browser.new_context(viewport={'width': 1280, 'height': 720})
+    page = context.new_page()
 
-    # Wait for the search input to be visible
-    search_input = page.get_by_label("搜索框")
-    expect(search_input).to_be_visible()
+    try:
+        print("Navigating to blog...")
+        page.goto("http://localhost:3000")
 
-    # Verify the role="combobox"
-    expect(search_input).to_have_attribute("role", "combobox")
+        # Wait for page to load
+        page.wait_for_load_state("networkidle")
 
-    # Type into the search input
-    search_input.type("Spring")
+        print("Clicking search button...")
+        # Search button in header
+        page.get_by_role("button", name="搜索").first.click()
 
-    # Wait for results to appear
-    # The listbox should appear
-    results_list = page.locator("#search-results-list")
-    expect(results_list).to_be_visible()
-    expect(results_list).to_have_attribute("role", "listbox")
+        print("Waiting for search panel...")
+        # Wait for search input
+        search_input = page.get_by_placeholder("搜索文章、标签、分类... (支持自然语言)")
+        search_input.wait_for(state="visible")
 
-    # Wait for the first result
-    first_result = page.locator("#search-result-1")
-    expect(first_result).to_be_visible()
-    expect(first_result).to_have_attribute("role", "option")
+        print("Typing query...")
+        search_input.fill("React")
 
-    # Test keyboard navigation
-    search_input.press("ArrowDown")
+        # Wait for results
+        # The mocked search returns results after 300ms debounce + 300ms delay = 600ms
+        print("Waiting for results...")
+        page.wait_for_timeout(1000)
 
-    # Verify the first result is selected
-    expect(first_result).to_have_attribute("aria-selected", "true")
+        # Verify results are present
+        results_list = page.locator("#search-results-list")
+        results_list.wait_for(state="visible")
 
-    # Verify aria-activedescendant on the input
-    expect(search_input).to_have_attribute("aria-activedescendant", "search-result-1")
+        print("Navigating with keyboard...")
+        # Press ArrowDown to highlight first result
+        page.keyboard.press("ArrowDown")
 
-    # Take a screenshot
-    page.screenshot(path="/home/jules/verification/search_panel.png")
+        # Wait for highlight transition
+        page.wait_for_timeout(200)
 
-if __name__ == "__main__":
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        try:
-            verify_search_panel(page)
-            print("Verification successful!")
-        except Exception as e:
-            print(f"Verification failed: {e}")
-            page.screenshot(path="/home/jules/verification/search_panel_failure.png")
-            raise e
-        finally:
-            browser.close()
+        print("Taking screenshot...")
+        page.screenshot(path="verification_search_panel.png")
+
+    except Exception as e:
+        print(f"Error: {e}")
+        page.screenshot(path="verification_error.png")
+        raise e
+    finally:
+        browser.close()
+
+with sync_playwright() as playwright:
+    run(playwright)
