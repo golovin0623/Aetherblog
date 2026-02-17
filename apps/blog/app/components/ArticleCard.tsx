@@ -19,7 +19,7 @@ interface ArticleCardProps {
   index?: number;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({
+const ArticleCardBase: React.FC<ArticleCardProps> = ({
   title,
   slug,
   summary,
@@ -34,17 +34,39 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
 }) => {
   // Use ref for direct DOM manipulation of background position (high freq)
   const spotlightRef = React.useRef<HTMLDivElement>(null);
+  const frameRef = React.useRef<number>(0);
   // Use state for opacity (low freq), ensures correct style on re-renders
   const [isHovering, setIsHovering] = React.useState(false);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  // Clean up animation frame on unmount
+  React.useEffect(() => {
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
 
-    spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
-  };
+  const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (!spotlightRef.current) return;
+
+    const { clientX, clientY } = e;
+    const target = e.currentTarget;
+
+    // Throttle using requestAnimationFrame to avoid layout thrashing
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+    }
+
+    frameRef.current = requestAnimationFrame(() => {
+      if (!spotlightRef.current) return;
+      const rect = target.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+    });
+  }, []);
 
   // 计算显示的标签数量
   const maxVisibleTags = 4;
@@ -192,4 +214,5 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   );
 };
 
+export const ArticleCard = React.memo(ArticleCardBase);
 export default ArticleCard;
