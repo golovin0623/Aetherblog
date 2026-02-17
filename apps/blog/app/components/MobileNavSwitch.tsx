@@ -42,7 +42,7 @@ export default function MobileNavSwitch() {
   return (
     <div
       role="group"
-      aria-label="View mode"
+      aria-label="视图模式"
       className="flex items-center bg-[var(--bg-secondary)] rounded-full p-1 border border-[var(--border-subtle)] flex-shrink-0"
     >
       <button
