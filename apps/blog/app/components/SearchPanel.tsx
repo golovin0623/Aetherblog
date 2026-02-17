@@ -98,6 +98,12 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(true);
 
+  // Keep query in ref for stable callbacks
+  const queryRef = useRef(query);
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
+
   // 加载搜索历史
   useEffect(() => {
     const history = localStorage.getItem('searchHistory');
@@ -106,12 +112,14 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     }
   }, []);
 
-  // 保存搜索历史
+  // 保存搜索历史 - 优化以移除对 searchHistory 的依赖
   const saveToHistory = useCallback((term: string) => {
-    const updated = [term, ...searchHistory.filter((h) => h !== term)].slice(0, 5);
-    setSearchHistory(updated);
-    localStorage.setItem('searchHistory', JSON.stringify(updated));
-  }, [searchHistory]);
+    setSearchHistory(prev => {
+      const updated = [term, ...prev.filter((h) => h !== term)].slice(0, 5);
+      localStorage.setItem('searchHistory', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   // 清空历史
   const clearHistory = useCallback(() => {
@@ -183,12 +191,12 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     return () => clearTimeout(timer);
   }, [query, performSearch]);
 
-  // 处理结果点击
+  // 处理结果点击 - 使用 queryRef 避免依赖变化
   const handleResultClick = useCallback((result: SearchResult) => {
-    saveToHistory(query);
+    saveToHistory(queryRef.current);
     router.push(`/posts/${result.slug}`);
     onClose();
-  }, [saveToHistory, query, router, onClose]);
+  }, [saveToHistory, router, onClose]);
 
   // 滚动到激活项
   useEffect(() => {
