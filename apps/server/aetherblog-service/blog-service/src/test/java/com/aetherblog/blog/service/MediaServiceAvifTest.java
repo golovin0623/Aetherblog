@@ -91,8 +91,6 @@ public class MediaServiceAvifTest {
                 spoofedContent
         );
 
-        // Currently this test fails (no exception thrown) because the code only checks 'ftyp'
-        // After fix, it should throw BusinessException
         BusinessException exception = assertThrows(BusinessException.class, () -> {
             mediaService.upload(file, 1L, null);
         });
@@ -115,8 +113,6 @@ public class MediaServiceAvifTest {
                 shortContent
         );
 
-        // Currently this might pass if the logic only checks bytes 4-7 and reads partial buffer
-        // After fix, it should throw BusinessException
         assertThrows(BusinessException.class, () -> {
             mediaService.upload(file, 1L, null);
         });
