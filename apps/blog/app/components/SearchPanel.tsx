@@ -28,7 +28,63 @@ interface SearchPanelProps {
 
 const TRENDING_SEARCHES = ['Spring Boot', 'React', 'Docker', 'Kubernetes', 'TypeScript'];
 
-export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
+const SearchResultItem = React.memo(({
+  result,
+  isActive,
+  onClick,
+  onMouseEnter,
+  index
+}: {
+  result: SearchResult;
+  isActive: boolean;
+  onClick: (result: SearchResult) => void;
+  onMouseEnter: (index: number) => void;
+  index: number;
+}) => {
+  return (
+    <div
+      id={`search-result-${result.id}`}
+      role="option"
+      aria-selected={isActive}
+      onClick={() => onClick(result)}
+      onMouseEnter={() => onMouseEnter(index)}
+      className={`flex items-start gap-4 px-4 py-4 cursor-pointer transition-colors ${
+        isActive ? 'bg-[var(--bg-card-hover)]' : 'hover:bg-[var(--bg-secondary)]'
+      }`}
+    >
+      <div className={`flex-shrink-0 p-2 rounded-lg ${isActive ? 'bg-primary/20' : 'bg-[var(--bg-secondary)]'}`}>
+        <FileText className={`h-5 w-5 ${isActive ? 'text-primary' : 'text-[var(--text-muted)]'}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className={`font-medium truncate mb-1 ${isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+          {result.title}
+        </h4>
+        {result.highlight && (
+          <p className="text-sm text-[var(--text-muted)] line-clamp-2 mb-2">{result.highlight}</p>
+        )}
+        <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
+          {result.category && (
+            <span className="flex items-center gap-1">
+              <Folder className="h-3 w-3" />
+              {result.category}
+            </span>
+          )}
+          <span>{result.publishedAt}</span>
+          {result.score && (
+            <span className="px-1.5 py-0.5 rounded text-primary border border-primary/30 text-xs">
+              匹配度 {Math.round(result.score * 100)}%
+            </span>
+          )}
+        </div>
+      </div>
+      <ArrowRight className={`flex-shrink-0 h-5 w-5 transition-transform ${isActive ? 'text-primary translate-x-1' : 'text-[var(--text-muted)]'}`} />
+    </div>
+  );
+});
+
+SearchResultItem.displayName = 'SearchResultItem';
+
+const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -314,44 +370,14 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
               className="divide-y divide-[var(--border-subtle)]"
             >
               {results.map((result, index) => (
-                <div
+                <SearchResultItem
                   key={result.id}
-                  id={`search-result-${result.id}`}
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  onClick={() => handleResultClick(result)}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  className={`flex items-start gap-4 px-4 py-4 cursor-pointer transition-colors ${
-                    index === activeIndex ? 'bg-[var(--bg-card-hover)]' : 'hover:bg-[var(--bg-secondary)]'
-                  }`}
-                >
-                  <div className={`flex-shrink-0 p-2 rounded-lg ${index === activeIndex ? 'bg-primary/20' : 'bg-[var(--bg-secondary)]'}`}>
-                    <FileText className={`h-5 w-5 ${index === activeIndex ? 'text-primary' : 'text-[var(--text-muted)]'}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className={`font-medium truncate mb-1 ${index === activeIndex ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                      {result.title}
-                    </h4>
-                    {result.highlight && (
-                      <p className="text-sm text-[var(--text-muted)] line-clamp-2 mb-2">{result.highlight}</p>
-                    )}
-                    <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
-                      {result.category && (
-                        <span className="flex items-center gap-1">
-                          <Folder className="h-3 w-3" />
-                          {result.category}
-                        </span>
-                      )}
-                      <span>{result.publishedAt}</span>
-                      {result.score && (
-                        <span className="px-1.5 py-0.5 rounded text-primary border border-primary/30 text-xs">
-                          匹配度 {Math.round(result.score * 100)}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <ArrowRight className={`flex-shrink-0 h-5 w-5 transition-transform ${index === activeIndex ? 'text-primary translate-x-1' : 'text-[var(--text-muted)]'}`} />
-                </div>
+                  result={result}
+                  isActive={index === activeIndex}
+                  onClick={handleResultClick}
+                  onMouseEnter={setActiveIndex}
+                  index={index}
+                />
               ))}
             </div>
           )}
@@ -414,4 +440,5 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => 
   );
 };
 
+export const SearchPanel = React.memo(SearchPanelBase);
 export default SearchPanel;
