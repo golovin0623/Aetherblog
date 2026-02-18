@@ -59,26 +59,22 @@ public class MediaServiceImpl implements MediaService {
 
     // Security Note: SVG is removed to prevent Stored XSS attacks
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
-            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/avif"
-    );
+            "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/avif");
 
     private static final Set<String> ALLOWED_VIDEO_TYPES = Set.of(
-            "video/mp4", "video/webm", "video/ogg"
-    );
+            "video/mp4", "video/webm", "video/ogg");
 
     private static final Set<String> ALLOWED_AUDIO_TYPES = Set.of(
-            "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/flac"
-    );
+            "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/flac");
 
     // Security Note: XML is removed to prevent XSS/XXE risks
     private static final Set<String> DOCUMENT_EXTENSIONS = Set.of(
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers"
-    );
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages",
+            "numbers");
 
     // Extensions that require magic byte validation
     private static final Set<String> CHECKED_IMAGE_EXTENSIONS = Set.of(
-            "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "ico", "tiff"
-    );
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "ico", "tiff");
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             // Images (SVG removed for security)
@@ -88,10 +84,10 @@ public class MediaServiceImpl implements MediaService {
             // Audio
             "mp3", "wav", "m4a", "aac", "flac",
             // Documents (XML removed for security)
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages", "numbers",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages",
+            "numbers",
             // Archives
-            "zip", "rar", "7z", "tar", "gz"
-    );
+            "zip", "rar", "7z", "tar", "gz");
 
     @Override
     @Transactional
@@ -116,7 +112,8 @@ public class MediaServiceImpl implements MediaService {
             throw new BusinessException(400, "不支持的文件类型: " + extension);
         }
 
-        // Security Check: Validate Magic Bytes for images to prevent file disguise (e.g. PHP as PNG)
+        // Security Check: Validate Magic Bytes for images to prevent file disguise
+        // (e.g. PHP as PNG)
         validateMagicBytes(file, extension);
 
         String filename = UUID.randomUUID() + "." + extension;
@@ -207,7 +204,8 @@ public class MediaServiceImpl implements MediaService {
     }
 
     @Override
-    public PageResult<MediaFile> listPage(String fileTypeStr, String keyword, Long folderId, int pageNum, int pageSize) {
+    public PageResult<MediaFile> listPage(String fileTypeStr, String keyword, Long folderId, int pageNum,
+            int pageSize) {
         log.info("查询媒体列表: fileType={}, keyword={}, folderId={}, pageNum={}, pageSize={}",
                 fileTypeStr, keyword, folderId, pageNum, pageSize);
 
@@ -231,7 +229,8 @@ public class MediaServiceImpl implements MediaService {
         if (hasFolderId) {
             if (hasFileType && hasKeyword) {
                 // 文件夹 + 类型 + 关键词
-                page = mediaFileRepository.findByFolderIdAndFileTypeAndKeyword(folderId, fileType, keyword, pageRequest);
+                page = mediaFileRepository.findByFolderIdAndFileTypeAndKeyword(folderId, fileType, keyword,
+                        pageRequest);
             } else if (hasFileType) {
                 // 文件夹 + 类型
                 page = mediaFileRepository.findByFolderIdAndFileType(folderId, fileType, pageRequest);
@@ -480,7 +479,8 @@ public class MediaServiceImpl implements MediaService {
     @Override
     @Transactional
     public void emptyTrash() {
-        List<MediaFile> deletedFiles = mediaFileRepository.findAllDeleted(PageRequest.of(0, Integer.MAX_VALUE)).getContent();
+        List<MediaFile> deletedFiles = mediaFileRepository.findAllDeleted(PageRequest.of(0, Integer.MAX_VALUE))
+                .getContent();
         for (MediaFile mediaFile : deletedFiles) {
             try {
                 permanentDelete(mediaFile.getId());
@@ -523,10 +523,14 @@ public class MediaServiceImpl implements MediaService {
     }
 
     private FileType determineFileType(String contentType, String originalFilename) {
-        if (contentType == null) return FileType.OTHER;
-        if (ALLOWED_IMAGE_TYPES.contains(contentType)) return FileType.IMAGE;
-        if (ALLOWED_VIDEO_TYPES.contains(contentType)) return FileType.VIDEO;
-        if (ALLOWED_AUDIO_TYPES.contains(contentType)) return FileType.AUDIO;
+        if (contentType == null)
+            return FileType.OTHER;
+        if (ALLOWED_IMAGE_TYPES.contains(contentType))
+            return FileType.IMAGE;
+        if (ALLOWED_VIDEO_TYPES.contains(contentType))
+            return FileType.VIDEO;
+        if (ALLOWED_AUDIO_TYPES.contains(contentType))
+            return FileType.AUDIO;
         if (contentType.startsWith("application/") || contentType.startsWith("text/")) {
             // 检查可能是 text/* 或 application/* 的特定文档类型的扩展名
             String extension = getFileExtension(originalFilename);
@@ -549,7 +553,8 @@ public class MediaServiceImpl implements MediaService {
     }
 
     private String getFileExtension(String filename) {
-        if (filename == null) return "bin";
+        if (filename == null)
+            return "bin";
         int dotIndex = filename.lastIndexOf('.');
         return dotIndex > 0 ? filename.substring(dotIndex + 1).toLowerCase() : "bin";
     }
@@ -564,17 +569,17 @@ public class MediaServiceImpl implements MediaService {
             int read = is.read(header);
 
             if (read < 2) {
-                 throw new BusinessException(400, "文件内容为空或过短");
+                throw new BusinessException(400, "文件内容为空或过短");
             }
 
-            // WebP requires at least 12 bytes to check RIFF....WEBP
-            if ("webp".equals(extension) && read < 12) {
-                 throw new BusinessException(400, "WebP文件损坏或无效");
+            // WebP and AVIF require at least 12 bytes for full validation
+            if (("webp".equals(extension) || "avif".equals(extension)) && read < 12) {
+                throw new BusinessException(400, "文件损坏或无效");
             }
 
             // AVIF requires at least 12 bytes to check brand
             if ("avif".equals(extension) && read < 12) {
-                 throw new BusinessException(400, "AVIF文件损坏或无效");
+                throw new BusinessException(400, "AVIF文件损坏或无效");
             }
 
             String hex = bytesToHex(header);
@@ -600,13 +605,13 @@ public class MediaServiceImpl implements MediaService {
                     isValid = hex.startsWith("424D");
                     break;
                 case "avif":
-                    // AVIF uses ftyp box, usually starts with ....ftypavif (bytes 4-11)
-                    // Check for "ftyp" at offset 4 (bytes 4-7): 66747970
-                    boolean hasFtyp = hex.substring(8, 16).equals("66747970");
-                    if (hasFtyp) {
-                        // Check for "avif" (61766966) or "avis" (61766973) at offset 8 (bytes 8-11) - major brand
-                        String majorBrand = hex.substring(16, 24);
-                        isValid = majorBrand.equals("61766966") || majorBrand.equals("61766973");
+                    // AVIF uses ftyp box. Check for "ftyp" at offset 4 AND "avif"/"avis" brand at
+                    // offset 8.
+                    // bytes 4-7: ftyp (66747970)
+                    // bytes 8-11: avif (61766966) or avis (61766973)
+                    if (hex.substring(8, 16).equals("66747970")) {
+                        String brand = hex.substring(16, 24);
+                        isValid = brand.equals("61766966") || brand.equals("61766973");
                     }
                     break;
                 case "ico":
@@ -621,8 +626,8 @@ public class MediaServiceImpl implements MediaService {
             }
 
             if (!isValid) {
-                 log.warn("文件魔数校验失败: extension={}, hex={}", extension, hex);
-                 throw new BusinessException(400, "文件内容与扩展名不匹配，请检查文件完整性");
+                log.warn("文件魔数校验失败: extension={}, hex={}", extension, hex);
+                throw new BusinessException(400, "文件内容与扩展名不匹配，请检查文件完整性");
             }
         } catch (IOException e) {
             log.error("无法读取文件头", e);
@@ -631,6 +636,7 @@ public class MediaServiceImpl implements MediaService {
     }
 
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+
     private static String bytesToHex(byte[] bytes) {
         char[] hexChars = new char[bytes.length * 2];
         for (int j = 0; j < bytes.length; j++) {
