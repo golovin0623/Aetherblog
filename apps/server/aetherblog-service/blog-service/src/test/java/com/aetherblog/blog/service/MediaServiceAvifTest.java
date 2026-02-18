@@ -50,7 +50,7 @@ public class MediaServiceAvifTest {
         // 0-3: size (00 00 00 1C)
         // 4-7: ftyp (66 74 79 70)
         // 8-11: avif (61 76 69 66)
-        byte[] avifContent = new byte[]{
+        byte[] avifContent = new byte[] {
                 0x00, 0x00, 0x00, 0x1C,
                 0x66, 0x74, 0x79, 0x70,
                 0x61, 0x76, 0x69, 0x66,
@@ -61,8 +61,7 @@ public class MediaServiceAvifTest {
                 "file",
                 "image.avif",
                 "image/avif",
-                avifContent
-        );
+                avifContent);
 
         when(mediaFileRepository.save(any(MediaFile.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -77,7 +76,7 @@ public class MediaServiceAvifTest {
         // 0-3: size
         // 4-7: ftyp
         // 8-11: isom (69 73 6F 6D) - typical for MP4
-        byte[] spoofedContent = new byte[]{
+        byte[] spoofedContent = new byte[] {
                 0x00, 0x00, 0x00, 0x20,
                 0x66, 0x74, 0x79, 0x70,
                 0x69, 0x73, 0x6F, 0x6D,
@@ -88,8 +87,7 @@ public class MediaServiceAvifTest {
                 "file",
                 "spoofed.avif",
                 "image/avif",
-                spoofedContent
-        );
+                spoofedContent);
 
         BusinessException exception = assertThrows(BusinessException.class, () -> {
             mediaService.upload(file, 1L, null);
@@ -100,7 +98,7 @@ public class MediaServiceAvifTest {
     @Test
     void upload_WithShortAvif_ShouldThrowException() {
         // Short file < 12 bytes
-        byte[] shortContent = new byte[]{
+        byte[] shortContent = new byte[] {
                 0x00, 0x00, 0x00, 0x1C,
                 0x66, 0x74, 0x79, 0x70,
                 0x61, 0x76 // truncated
@@ -110,8 +108,7 @@ public class MediaServiceAvifTest {
                 "file",
                 "short.avif",
                 "image/avif",
-                shortContent
-        );
+                shortContent);
 
         assertThrows(BusinessException.class, () -> {
             mediaService.upload(file, 1L, null);
