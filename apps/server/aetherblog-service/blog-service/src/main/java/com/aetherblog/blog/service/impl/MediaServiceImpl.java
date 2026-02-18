@@ -603,10 +603,11 @@ public class MediaServiceImpl implements MediaService {
                     // AVIF uses ftyp box, usually starts with ....ftypavif (bytes 4-11)
                     // Check for "ftyp" at offset 4 (bytes 4-7): 66747970
                     boolean hasFtyp = hex.substring(8, 16).equals("66747970");
-                    // Check for "avif" (61766966) or "avis" (61766973) at offset 8 (bytes 8-11) - major brand
-                    boolean hasAvifBrand = hex.substring(16, 24).equals("61766966");
-                    boolean hasAvisBrand = hex.substring(16, 24).equals("61766973");
-                    isValid = hasFtyp && (hasAvifBrand || hasAvisBrand);
+                    if (hasFtyp) {
+                        // Check for "avif" (61766966) or "avis" (61766973) at offset 8 (bytes 8-11) - major brand
+                        String majorBrand = hex.substring(16, 24);
+                        isValid = majorBrand.equals("61766966") || majorBrand.equals("61766973");
+                    }
                     break;
                 case "ico":
                     isValid = hex.startsWith("00000100");
