@@ -38,6 +38,8 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
 
   const formRef = useRef<HTMLDivElement>(null);
   const formTriggerRef = useRef<HTMLButtonElement>(null);
+  const nicknameInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 表单状态
@@ -72,8 +74,22 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     setError('');
     setSuccess('');
     
-    if (!nickname.trim() || !email.trim() || !content.trim()) {
-      setError('请完善必填信息 (*)');
+    // 字段校验与自动聚焦优化
+    if (!nickname.trim()) {
+      setError('请输入您的昵称');
+      nicknameInputRef.current?.focus();
+      return;
+    }
+
+    if (!email.trim()) {
+      setError('请输入您的邮箱（仅博主可见）');
+      emailInputRef.current?.focus();
+      return;
+    }
+
+    if (!content.trim()) {
+      setError('请输入评论内容');
+      textareaRef.current?.focus();
       return;
     }
 
@@ -212,6 +228,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         <div className="group/input relative">
                           <ShieldCheck aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
                           <input
+                            ref={nicknameInputRef}
                             aria-label="昵称"
                             className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                             placeholder="昵称 *"
@@ -223,6 +240,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         <div className="group/input relative">
                           <Mail aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
                           <input
+                            ref={emailInputRef}
                             aria-label="邮箱"
                             className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                             placeholder="邮箱 (保密) *"
