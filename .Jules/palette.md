@@ -5,3 +5,7 @@
 ## 2025-05-22 - Interaction Focus Management
 **Learning:** When dynamically showing a form (e.g. reply), scrolling into view is not enough; explicit focus is required, especially for keyboard users or when the form was already open but context changed.
 **Action:** Use `ref.current.focus({ preventScroll: true })` after expansion/reveal animations complete to ensure user is ready to type immediately.
+
+## 2026-02-18 - Form Validation Focus
+**Learning:** Generic error messages like "Please fill all fields" are frustrating. Focusing the first invalid field immediately upon submission failure provides direct, actionable guidance.
+**Action:** Use `useRef` to focus the specific invalid input field when manual validation fails, guiding the user to the exact point of error.
