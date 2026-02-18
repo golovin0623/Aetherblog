@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Comment, createComment, getComments, SiteSettings } from '../lib/services';
 import { Button, Avatar } from '@aetherblog/ui';
@@ -51,23 +51,23 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
+    const loadComments = async () => {
+      try {
+        const data = await getComments(postId);
+        setComments(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     // 检查 comment_enabled 是否为 true
     const isEnabled = settings.comment_enabled === true;
     if (isEnabled) {
       loadComments();
     }
   }, [postId, settings.comment_enabled]);
-
-  const loadComments = async () => {
-    try {
-      const data = await getComments(postId);
-      setComments(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,14 +121,14 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     }
   };
 
-  const handleReply = (comment: Comment) => {
+  const handleReply = useCallback((comment: Comment) => {
     setReplyTo(comment);
     setIsFormExpanded(true);
     setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       textareaRef.current?.focus({ preventScroll: true });
     }, 100);
-  };
+  }, []);
 
   // 关闭表单处理器
   const closeForm = () => {
@@ -370,7 +370,7 @@ type="url"
 }
 
 // 递归评论项组件
-function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onReply: (c: Comment) => void, depth?: number }) {
+const CommentItem = memo(({ comment, onReply, depth = 0 }: { comment: Comment, onReply: (c: Comment) => void, depth?: number }) => {
   const hasChildren = comment.children && comment.children.length > 0;
   // 深度 0 和 1 默认展开，其他折叠
   const [isExpanded, setIsExpanded] = useState(depth < 2);
@@ -482,4 +482,6 @@ function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onRepl
       </div>
     </motion.div>
   );
-}
+});
+
+CommentItem.displayName = 'CommentItem';
