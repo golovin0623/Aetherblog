@@ -572,6 +572,11 @@ public class MediaServiceImpl implements MediaService {
                  throw new BusinessException(400, "WebP文件损坏或无效");
             }
 
+            // AVIF requires at least 12 bytes to check brand
+            if ("avif".equals(extension) && read < 12) {
+                 throw new BusinessException(400, "AVIF文件损坏或无效");
+            }
+
             String hex = bytesToHex(header);
             boolean isValid = false;
 
@@ -596,10 +601,13 @@ public class MediaServiceImpl implements MediaService {
                     break;
                 case "avif":
                     // AVIF uses ftyp box, usually starts with ....ftypavif (bytes 4-11)
-                    // Since offset 4 is variable, we check 000000..6674797061766966 or similar
-                    // But typically: 00 00 00 1C 66 74 79 70 61 76 69 66 (ftypavif)
-                    // Check for "ftyp" at offset 4: 66747970
-                    isValid = hex.substring(8, 16).equals("66747970");
+                    // Check for "ftyp" at offset 4 (bytes 4-7): 66747970
+                    boolean hasFtyp = hex.substring(8, 16).equals("66747970");
+                    if (hasFtyp) {
+                        // Check for "avif" (61766966) or "avis" (61766973) at offset 8 (bytes 8-11) - major brand
+                        String majorBrand = hex.substring(16, 24);
+                        isValid = majorBrand.equals("61766966") || majorBrand.equals("61766973");
+                    }
                     break;
                 case "ico":
                     isValid = hex.startsWith("00000100");
