@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
 import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Sun, Moon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -26,7 +27,6 @@ export default function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
   const { isDark, toggleThemeWithAnimation } = useTheme();
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -144,28 +144,14 @@ export default function MobileMenu() {
     };
   }, [isOpen]);
 
-  // 乐观更新：点击时立即切换 UI 状态，然后触发路由导航
-  const handleNavClick = useCallback((target: NavPage) => {
+  // 乐观更新：点击时立即切换 UI 状态
+  const handleLinkClick = useCallback((target: NavPage) => {
     if (!target) return;
-
     // 立即更新 UI 状态（乐观更新）
     setActivePage(target);
-
-    // 路由映射
-    const routes: Record<NonNullable<NavPage>, string> = {
-      posts: '/posts',
-      timeline: '/timeline',
-      archives: '/archives',
-      friends: '/friends',
-      about: '/about',
-    };
-
     // 关闭菜单
     setIsOpen(false);
-
-    // 直接导航（不使用 startTransition，确保立即触发）
-    router.push(routes[target]);
-  }, [router]);
+  }, []);
 
   const navLinks = [
     { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
@@ -284,9 +270,11 @@ export default function MobileMenu() {
                 const Icon = link.icon;
 
                 return (
-                  <button
+                  <Link
                     key={link.href}
-                    onClick={() => handleNavClick(link.key)}
+                    href={link.href}
+                    onClick={() => handleLinkClick(link.key)}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${
                       isActive
                         ? 'bg-black/10 dark:bg-[var(--primary-light)]/10 text-black dark:text-[var(--color-primary)]'
@@ -295,7 +283,7 @@ export default function MobileMenu() {
                   >
                     <Icon size={16} />
                     {link.label}
-                  </button>
+                  </Link>
                 );
               })}
             </nav>
