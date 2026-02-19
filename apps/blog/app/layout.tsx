@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 import { themeInitScript } from '@aetherblog/hooks';
+
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
@@ -29,16 +32,10 @@ export default async function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
         {/* 主题初始化脚本 - 防止 FOUC */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="bg-background text-foreground antialiased" suppressHydrationWarning>
+      <body className={`${inter.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
         <Providers>
           <BlogHeader />
           <ClientLayout>
@@ -49,4 +46,3 @@ export default async function RootLayout({
     </html>
   );
 }
-
