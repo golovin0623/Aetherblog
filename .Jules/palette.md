@@ -9,3 +9,7 @@
 ## 2026-02-18 - Form Validation Focus
 **Learning:** Generic error messages like "Please fill all fields" are frustrating. Focusing the first invalid field immediately upon submission failure provides direct, actionable guidance.
 **Action:** Use `useRef` to focus the specific invalid input field when manual validation fails, guiding the user to the exact point of error.
+
+## 2026-06-08 - Keyboard Shortcuts
+**Learning:** Adding common global shortcuts (like `Cmd+K` for search) instantly elevates the perception of a "pro" application.
+**Action:** When implementing global search or command palettes, always include `Cmd+K` and `/` shortcuts, and ensure they are discoverable via tooltips or hints.
