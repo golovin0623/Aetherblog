@@ -119,6 +119,34 @@ export default function BlogHeader() {
     setIsSearchOpen(false);
   }, []);
 
+  // 全局快捷键监听
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + K 切换搜索面板
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
+
+      // / 键打开搜索 (如果不是在输入框中)
+      if (e.key === '/' && !isSearchOpen) {
+        const target = e.target as HTMLElement;
+        const isTyping =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+
+        if (!isTyping) {
+          e.preventDefault();
+          setIsSearchOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchOpen]);
+
   // 文章详情页显隐初始化：不再进入详情页后自动收折
   useEffect(() => {
     if (!isArticleDetail) {
@@ -372,6 +400,7 @@ export default function BlogHeader() {
               <button
                 type="button"
                 aria-label="搜索"
+                title="搜索 (⌘ K)"
                 onClick={openSearchPanel}
                 className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search"
               >
