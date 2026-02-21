@@ -42,22 +42,31 @@ const sizeMap = {
  * <ThemeToggle size="lg" />
  * ```
  */
-export function ThemeToggle({ 
-  size = 'md', 
+export function ThemeToggle({
+  size = 'md',
   showSystem = false,
-  className = '' 
+  className = ''
 }: ThemeToggleProps) {
   const { theme, isDark, setTheme, toggleThemeWithAnimation } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
   const [isOpen, setIsOpen] = React.useState(false);
   const { button: buttonSize, icon: iconSize } = sizeMap[size];
-  
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // 处理主题切换（带圆形动画）
   const handleToggle = (e: React.MouseEvent) => {
     const x = e.clientX;
     const y = e.clientY;
     toggleThemeWithAnimation(x, y);
   };
-  
+
+  if (!mounted) {
+    return <div className={`relative flex items-center justify-center rounded-full bg-transparent ${buttonSize} ${className}`} />;
+  }
+
   // 简单模式：点击切换
   if (!showSystem) {
     return (
@@ -115,20 +124,20 @@ export function ThemeToggle({
       </motion.button>
     );
   }
-  
+
   // 带系统选项的下拉菜单
   const options: { value: Theme; icon: React.ReactNode; label: string }[] = [
     { value: 'light', icon: <Sun className={iconSize} />, label: '亮色' },
     { value: 'dark', icon: <Moon className={iconSize} />, label: '暗色' },
     { value: 'system', icon: <Monitor className={iconSize} />, label: '系统' },
   ];
-  
-  const currentIcon = theme === 'system' 
+
+  const currentIcon = theme === 'system'
     ? <Monitor className={iconSize} />
-    : theme === 'dark' 
-      ? <Moon className={iconSize} /> 
+    : theme === 'dark'
+      ? <Moon className={iconSize} />
       : <Sun className={iconSize} />;
-  
+
   return (
     <div className={`relative ${className}`}>
       <button
@@ -151,16 +160,16 @@ export function ThemeToggle({
           {currentIcon}
         </motion.div>
       </button>
-      
+
       <AnimatePresence>
         {isOpen && (
           <>
             {/* 背景遮罩 */}
-            <div 
-              className="fixed inset-0 z-40" 
-              onClick={() => setIsOpen(false)} 
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setIsOpen(false)}
             />
-            
+
             {/* 下拉菜单 */}
             <motion.div
               initial={{ opacity: 0, y: -8, scale: 0.95 }}
@@ -185,8 +194,8 @@ export function ThemeToggle({
                   className={`
                     w-full flex items-center gap-2 px-3 py-2 rounded-lg
                     text-sm transition-colors
-                    ${theme === option.value 
-                      ? 'bg-[var(--color-primary)] bg-opacity-20 text-[var(--color-primary)]' 
+                    ${theme === option.value
+                      ? 'bg-[var(--color-primary)] bg-opacity-20 text-[var(--color-primary)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
                     }
                   `}

@@ -65,22 +65,19 @@ const PostItem = React.memo(({
       <Link
         href={`/posts/${post.slug}`}
         onClick={() => handlePostClick(post.id)}
-        className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all transform ${
-          isHighlighted
-            ? `${isHighlightFading ? 'duration-1000 bg-transparent ring-0 opacity-100 translate-x-0' : 'duration-300 bg-primary/15 ring-1 ring-primary/40 translate-x-1'}`
-            : `duration-200 hover:bg-[var(--bg-card-hover)] hover:translate-x-1 ${fadeOpacity}`
-        }`}
+        className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all transform ${isHighlighted
+          ? `${isHighlightFading ? 'duration-1000 bg-transparent ring-0 opacity-100 translate-x-0' : 'duration-300 bg-primary/15 ring-1 ring-primary/40 translate-x-1'}`
+          : `duration-200 hover:bg-[var(--bg-card-hover)] hover:translate-x-1 ${fadeOpacity}`
+          }`}
       >
-        <FileText className={`h-4 w-4 transition-colors ${
-          isHighlighted ? 'text-primary' : 'text-[var(--text-muted)] group-hover:text-primary'
-        }`} />
-        <span className={`flex-1 text-sm truncate transition-colors ${
-          isHighlighted ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'
-        }`}>
+        <FileText className={`h-4 w-4 transition-colors ${isHighlighted ? 'text-primary' : 'text-[var(--text-muted)] group-hover:text-primary'
+          }`} />
+        <span className={`flex-1 text-sm truncate transition-colors ${isHighlighted ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'
+          }`}>
           {post.title}
         </span>
         <span className="text-xs text-[var(--text-muted)]">
-          {new Date(post.publishedAt).getDate()}日
+          {post.publishedAt.substring(8, 10)}日
         </span>
       </Link>
     </motion.div>
@@ -286,7 +283,7 @@ const YearSection = React.memo(({
   // 2. isExpanded changed for this year
   // 3. Expansion state changed for months within this year
   // 4. Other relevant props changed (highlightedPostId, isHighlightFading)
-  
+
   // Check if primitive/stable props changed
   if (
     prevProps.yearData !== nextProps.yearData ||
@@ -333,12 +330,13 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
     return set;
   }, [archives]);
 
-  // 从 sessionStorage 恢复状态，或使用默认值
+  // 从 sessionStorage 恢复状态，或使用默认值 (初始渲染必须与 SSR 一致)
   const [expandedYears, setExpandedYears] = useState<Set<number>>(allYears);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(allMonths);
   const [expandedPostsMonths, setExpandedPostsMonths] = useState<Set<string>>(new Set());
   const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
   const [isHighlightFading, setIsHighlightFading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   // Refs for access in stable callbacks
   const expandedYearsRef = useRef(expandedYears);
@@ -353,8 +351,8 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
 
   // 组件挂载时从 sessionStorage 恢复状态 (仅限从文章详情返回时)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
+    setIsMounted(true);
+
     try {
       // 只有存在 "返回导航" 标记时才恢复状态
       const shouldRestore = sessionStorage.getItem('timeline_should_restore');
@@ -376,7 +374,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
       if (savedYears) setExpandedYears(new Set(JSON.parse(savedYears)));
       if (savedMonths) setExpandedMonths(new Set(JSON.parse(savedMonths)));
       if (savedPostsMonths) setExpandedPostsMonths(new Set(JSON.parse(savedPostsMonths)));
-      
+
       // 高亮上次点击的文章，带渐隐效果
       if (lastClickedPost) {
         setHighlightedPostId(lastClickedPost);
@@ -456,6 +454,10 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
       return next;
     });
   }, []);
+
+  if (!isMounted) {
+    // 渲染前在 SSR 时确保静态占位内容或者直接透出默认内容避免 mismatch
+  }
 
   return (
     <div className="space-y-4">
