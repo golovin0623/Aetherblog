@@ -29,3 +29,8 @@
 **Vulnerability:** The `AuthController` manually implemented insecure IP resolution logic (`getClientIp`) instead of using the secure central utility `IpUtils`, re-introducing an IP spoofing vulnerability fixed elsewhere.
 **Learning:** Security fixes in shared utilities (like `IpUtils`) are useless if consuming code re-implements the logic (incorrectly). "Not Invented Here" syndrome in security functions leads to regression.
 **Prevention:** Audit codebase for redundant implementations of security critical functions (like IP resolution, sanitization) and enforce usage of the central, vetted utility.
+
+## 2026-02-15 - Rate Limiting Race Condition
+**Vulnerability:** The Redis rate limiter implementation used separate `incr` and `expire` commands, creating a race condition where a key could be incremented but fail to set an expiration, leading to permanent lockout or resource exhaustion.
+**Learning:** Non-atomic operations in distributed systems (like Redis) can leave data in inconsistent states. "Check-then-Act" or "Act-then-Act" patterns are vulnerable.
+**Prevention:** Use atomic operations like Lua scripts (`eval`) in Redis to ensure that rate limit counters are always created with an expiration in a single transaction.
