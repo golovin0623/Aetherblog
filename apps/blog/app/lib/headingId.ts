@@ -29,6 +29,62 @@ export function createHeadingIdFactory() {
   };
 }
 
+/**
+ * Pre-compute heading IDs for an entire markdown document.
+ * Returns a Map from 1-based source line number → stable deduplicated id.
+ *
+ * Using line numbers as keys allows each heading <hN> component to look up
+ * its own ID via node.position.start.line — NO shared mutable counter needed,
+ * making IDs fully deterministic even under concurrent React renders.
+ */
+export function buildHeadingIdMap(content: string): Map<number, string> {
+  const getHeadingId = createHeadingIdFactory();
+  const map = new Map<number, string>();
+
+  const lines = content.split('\n');
+  let fenceChar: string | null = null;
+  let fenceLength = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const fenceMatch = trimmed.match(/^(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const matchedChar = fenceMatch[1][0];
+      const matchedLength = fenceMatch[1].length;
+      if (fenceChar === null) {
+        fenceChar = matchedChar;
+        fenceLength = matchedLength;
+      } else if (matchedChar === fenceChar && matchedLength >= fenceLength) {
+        fenceChar = null;
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fenceChar !== null) continue;
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (!headingMatch) continue;
+
+    // Strip inline markdown (same as cleanMarkdownHeading)
+    const rawText = headingMatch[2]
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/[~*_]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (rawText) {
+      // line numbers are 1-based in the AST
+      map.set(i + 1, getHeadingId(rawText));
+    }
+  }
+
+  return map;
+}
+
 function cleanMarkdownHeading(raw: string): string {
   return raw
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')

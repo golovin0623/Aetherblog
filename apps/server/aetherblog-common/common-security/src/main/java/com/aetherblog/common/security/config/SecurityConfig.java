@@ -39,7 +39,7 @@ public class SecurityConfig {
      * UserDetailsServiceImpl 在 blog-service 模块中
      */
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                          @Lazy UserDetailsService userDetailsService) {
+            @Lazy UserDetailsService userDetailsService) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
     }
@@ -56,7 +56,7 @@ public class SecurityConfig {
             "/api-docs/**",
             "/swagger-ui/**",
             "/actuator/health",
-            "/uploads/**",      // 上传文件静态访问
+            "/uploads/**", // 上传文件静态访问
             "/error"
     };
 
@@ -70,19 +70,22 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
+                .cors(org.springframework.security.config.Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(headers -> headers
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::deny)
-.contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"))
-                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
-                        .permissionsPolicy(permissions -> permissions.policy("camera=(), microphone=(), geolocation=()"))
-                )
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(
+                                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .permissionsPolicy(
+                                permissions -> permissions.policy("camera=(), microphone=(), geolocation=()")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(WHITE_LIST).permitAll()
-                        .requestMatchers(ADMIN_PATHS).hasRole(com.aetherblog.common.core.constant.SecurityConstants.ROLE_ADMIN)
-                        .anyRequest().authenticated()
-                )
+                        .requestMatchers(ADMIN_PATHS)
+                        .hasRole(com.aetherblog.common.core.constant.SecurityConstants.ROLE_ADMIN)
+                        .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
