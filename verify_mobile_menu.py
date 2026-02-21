@@ -37,7 +37,7 @@ def test_mobile_menu():
             return
 
         # Wait for the menu to open (transition)
-        page.wait_for_timeout(1000)
+        page.locator("#mobile-menu-drawer").wait_for(state="visible")
 
         # Check for "Archives" (归档) link
         try:
