@@ -1,6 +1,7 @@
 package com.aetherblog.common.security.config;
 
 import com.aetherblog.common.security.filter.JwtAuthenticationFilter;
+import com.aetherblog.common.security.interceptor.RateLimitInterceptor;
 import com.aetherblog.common.security.service.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,9 @@ public class SecurityHeadersTest {
 
     @MockitoBean
     private JwtService jwtService;
+
+    @MockitoBean
+    private RateLimitInterceptor rateLimitInterceptor;
 
     @BeforeEach
     public void setup() {
