@@ -36,29 +36,29 @@ const MARKDOWN_AUDIT_FILE = join(process.cwd(), 'docs', 'blog-markdown-regressio
 
 async function getPost(slug: string): Promise<Post | null> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/v1/public/posts/${slug}`, { 
-      cache: 'no-store' 
+    const res = await fetch(`${API_BASE_URL}/api/v1/public/posts/${slug}`, {
+      cache: 'no-store'
     });
-    
+
     if (!res.ok) {
       logger.error('Failed to fetch post:', res.status, res.statusText);
       return null;
     }
-    
+
     const json = await res.json();
     if (json.code === 200 && json.data) {
-        return {
-            id: json.data.id,
-            title: json.data.title,
-            slug: json.data.slug,
-            content: json.data.content,
-            summary: json.data.summary,
-            coverImage: json.data.coverImage,
-            categoryName: json.data.categoryName,
-            tags: json.data.tags ? json.data.tags.map((t: any) => t.name) : [],
-            viewCount: json.data.viewCount,
-            publishedAt: new Date(json.data.publishedAt).toLocaleDateString('zh-CN'),
-        };
+      return {
+        id: json.data.id,
+        title: json.data.title,
+        slug: json.data.slug,
+        content: json.data.content,
+        summary: json.data.summary,
+        coverImage: json.data.coverImage,
+        categoryName: json.data.categoryName,
+        tags: json.data.tags ? json.data.tags.map((t: any) => t.name) : [],
+        viewCount: json.data.viewCount,
+        publishedAt: new Date(json.data.publishedAt).toLocaleDateString('zh-CN'),
+      };
     }
     return null;
   } catch (error) {
@@ -148,8 +148,8 @@ export default async function PostDetailPage({ params }: PageProps) {
                     编辑入口未配置
                   </span>
                 )}
-                {/* 目录触发按钮 - 图标形式，在非宽屏下显示，位置紧邻编辑按钮 */}
-                <div className="xl:hidden">
+                {/* 目录触发按钮 - 图标形式，位置紧邻编辑按钮 */}
+                <div>
                   <TableOfContents content={post.content} variant="icon" />
                 </div>
               </div>
@@ -188,19 +188,6 @@ export default async function PostDetailPage({ params }: PageProps) {
             )}
           </FadeIn>
         </article>
-
-        {/* PC端侧边栏目录 - 仅在宽屏显示且不影响正文布局 */}
-        <aside className="hidden xl:block w-72 flex-shrink-0">
-          <div className="sticky top-28">
-            <FadeIn delay={0.2}>
-              <TableOfContents
-                content={post.content}
-                variant="sidebar"
-                className="max-h-[calc(100vh-140px)]"
-              />
-            </FadeIn>
-          </div>
-        </aside>
       </div>
     </div>
   );

@@ -83,8 +83,14 @@ export default function AIToolsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const systemCodes = useMemo(() => SYSTEM_TOOLS.map(t => t.code), []);
-  const [systemOrder, setSystemOrder] = useState<string[]>(() => syncOrder(loadOrder(SYSTEM_ORDER_KEY), systemCodes));
-  const [customOrder, setCustomOrder] = useState<string[]>(() => loadOrder(CUSTOM_ORDER_KEY));
+  const [systemOrder, setSystemOrder] = useState<string[]>(systemCodes);
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
+
+  // Hydrate order from localStorage after mount to prevent SSR mismatch
+  useEffect(() => {
+    setSystemOrder(syncOrder(loadOrder(SYSTEM_ORDER_KEY), systemCodes));
+    setCustomOrder(loadOrder(CUSTOM_ORDER_KEY));
+  }, [systemCodes]);
 
   // Custom tool management state
   const [showToolModal, setShowToolModal] = useState(false);
@@ -106,7 +112,7 @@ export default function AIToolsPage() {
         aiProviderService.listPromptConfigs(),
         aiProviderService.listTasks()
       ]);
-      
+
       if (promptsRes.code === 200) setPromptConfigs(promptsRes.data || []);
       if (tasksRes.code === 200) {
         // Filter out system tools from the tasks list to avoid duplicates if they are in DB
@@ -172,7 +178,7 @@ export default function AIToolsPage() {
 
   const handleDeleteTool = async (code: string) => {
     if (!confirm('确定要删除这个自定义工具吗？相关的路由配置也将被删除。')) return;
-    
+
     try {
       const res = await aiProviderService.deleteTask(code);
       if (res.code === 200) {
@@ -338,7 +344,7 @@ export default function AIToolsPage() {
               );
             })}
           </div>
-          
+
           {/* Scroll indicators / Fades */}
           <div className={cn(
             "absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[var(--bg-card)] to-transparent pointer-events-none transition-opacity duration-300",
@@ -420,46 +426,46 @@ export default function AIToolsPage() {
                 >
                   <div className="space-y-2 relative">
 
-                      <SortableContext
-                        items={systemToolItems.map(t => t.code)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {systemToolItems.map((tool) => (
-                          <SortableToolItem
-                            key={tool.code}
-                            tool={tool}
-                            isSelected={selectedToolId === tool.code}
-                            onSelect={() => {
-                              setSelectedToolId(tool.code);
-                              setIsMobileSidebarOpen(false);
-                            }}
-                          />
-                        ))}
-                      </SortableContext>
+                    <SortableContext
+                      items={systemToolItems.map(t => t.code)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {systemToolItems.map((tool) => (
+                        <SortableToolItem
+                          key={tool.code}
+                          tool={tool}
+                          isSelected={selectedToolId === tool.code}
+                          onSelect={() => {
+                            setSelectedToolId(tool.code);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                        />
+                      ))}
+                    </SortableContext>
 
-                      {customToolItems.length > 0 && <div className="h-4 border-b border-[var(--border-subtle)] mb-4" />}
+                    {customToolItems.length > 0 && <div className="h-4 border-b border-[var(--border-subtle)] mb-4" />}
 
-                      <SortableContext
-                        items={customToolItems.map(t => t.code)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {customToolItems.map((tool) => (
-                          <SortableToolItem
-                            key={tool.code}
-                            tool={tool}
-                            isSelected={selectedToolId === tool.code}
-                            onSelect={() => {
-                              setSelectedToolId(tool.code);
-                              setIsMobileSidebarOpen(false);
-                            }}
-                            onEdit={() => {
-                              setEditingTool((tool as any).raw);
-                              setShowToolModal(true);
-                              setIsMobileSidebarOpen(false);
-                            }}
-                          />
-                        ))}
-                      </SortableContext>
+                    <SortableContext
+                      items={customToolItems.map(t => t.code)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {customToolItems.map((tool) => (
+                        <SortableToolItem
+                          key={tool.code}
+                          tool={tool}
+                          isSelected={selectedToolId === tool.code}
+                          onSelect={() => {
+                            setSelectedToolId(tool.code);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                          onEdit={() => {
+                            setEditingTool((tool as any).raw);
+                            setShowToolModal(true);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                        />
+                      ))}
+                    </SortableContext>
 
                   </div>
                 </DndContext>
@@ -631,26 +637,26 @@ function SortableToolItem({
       <div
         className={cn(
           'p-2.5 rounded-xl transition-colors flex-shrink-0',
-          isSelected 
+          isSelected
             ? 'bg-primary/10 text-primary'
             : 'bg-[var(--bg-card)] text-[var(--text-muted)] group-hover:text-black dark:group-hover:text-white'
         )}
       >
         <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
       </div>
-      
+
       <div className={cn("flex-1 min-w-0", !tool.isSystem && "pr-8")}>
         <div className={cn('font-bold text-sm sm:text-base truncate mb-0.5', isSelected ? '' : 'text-[var(--text-primary)]')}>
           {tool.name}
         </div>
         <p className={cn(
-          'text-[11px] sm:text-xs leading-tight line-clamp-2 h-[32px] overflow-hidden whitespace-normal font-medium', 
+          'text-[11px] sm:text-xs leading-tight line-clamp-2 h-[32px] overflow-hidden whitespace-normal font-medium',
           isSelected ? 'opacity-80' : 'text-[var(--text-muted)]'
         )}>
           {tool.description}
         </p>
       </div>
-      
+
       {!tool.isSystem && (
         <button
           type="button"

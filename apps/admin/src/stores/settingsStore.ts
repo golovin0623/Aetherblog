@@ -5,7 +5,7 @@ interface SettingsStore {
   siteName: string;
   siteDescription: string;
   siteUrl: string;
-  
+
   setSiteName: (name: string) => void;
   setSiteDescription: (desc: string) => void;
   setSiteUrl: (url: string) => void;
@@ -17,7 +17,7 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       siteName: 'AetherBlog',
       siteDescription: '智能博客系统',
-      siteUrl: typeof window !== 'undefined' ? window.location.origin : '',
+      siteUrl: '',
 
       setSiteName: (siteName) => set({ siteName }),
       setSiteDescription: (siteDescription) => set({ siteDescription }),
