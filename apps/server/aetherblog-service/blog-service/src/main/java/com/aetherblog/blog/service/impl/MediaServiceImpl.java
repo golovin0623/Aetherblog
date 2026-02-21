@@ -76,6 +76,22 @@ public class MediaServiceImpl implements MediaService {
     private static final Set<String> CHECKED_IMAGE_EXTENSIONS = Set.of(
             "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "ico", "tiff");
 
+    /**
+     * Minimum byte length required for formats that embed a 4-byte brand identifier
+     * (WebP: bytes 8-11 = "WEBP"; AVIF: bytes 8-11 = brand).
+     * #188: Extracted from magic number 12 for clarity.
+     */
+    private static final int MIN_HEADER_SIZE_FOR_BRAND_CHECK = 12;
+
+    /** AVIF/ISOBMFF ftyp box signature at bytes 4-7 (hex). #192 */
+    private static final String AVIF_FTYP_HEX = "66747970";
+
+    /** Set of valid AVIF brand identifiers at bytes 8-11 (hex). #192 */
+    private static final Set<String> AVIF_VALID_BRANDS = Set.of(
+            "61766966", // 'avif'
+            "61766973" // 'avis'
+    );
+
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             // Images (SVG removed for security)
             "jpg", "jpeg", "png", "gif", "webp", "avif", "ico", "bmp", "tiff",
@@ -572,14 +588,10 @@ public class MediaServiceImpl implements MediaService {
                 throw new BusinessException(400, "文件内容为空或过短");
             }
 
-            // WebP and AVIF require at least 12 bytes for full validation
-            if (("webp".equals(extension) || "avif".equals(extension)) && read < 12) {
+            // WebP and AVIF require at least MIN_HEADER_SIZE_FOR_BRAND_CHECK bytes
+            // for full brand validation. #188 #191
+            if (("webp".equals(extension) || "avif".equals(extension)) && read < MIN_HEADER_SIZE_FOR_BRAND_CHECK) {
                 throw new BusinessException(400, "文件损坏或无效");
-            }
-
-            // AVIF requires at least 12 bytes to check brand
-            if ("avif".equals(extension) && read < 12) {
-                throw new BusinessException(400, "AVIF文件损坏或无效");
             }
 
             String hex = bytesToHex(header);
@@ -605,13 +617,12 @@ public class MediaServiceImpl implements MediaService {
                     isValid = hex.startsWith("424D");
                     break;
                 case "avif":
-                    // AVIF uses ftyp box. Check for "ftyp" at offset 4 AND "avif"/"avis" brand at
-                    // offset 8.
-                    // bytes 4-7: ftyp (66747970)
-                    // bytes 8-11: avif (61766966) or avis (61766973)
-                    if (hex.substring(8, 16).equals("66747970")) {
+                    // AVIF uses ftyp box: bytes 4-7 must be 'ftyp' (AVIF_FTYP_HEX),
+                    // and bytes 8-11 must be a recognised brand ('avif' or 'avis').
+                    // #192: Extracted brand constants for maintainability.
+                    if (hex.substring(8, 16).equals(AVIF_FTYP_HEX)) {
                         String brand = hex.substring(16, 24);
-                        isValid = brand.equals("61766966") || brand.equals("61766973");
+                        isValid = AVIF_VALID_BRANDS.contains(brand);
                     }
                     break;
                 case "ico":
