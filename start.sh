@@ -669,6 +669,13 @@ start_blog() {
             fi
         fi
         
+        # 加载根目录 .env (将 NEXT_PUBLIC_* 等变量注入到前端进程)
+        if [ -f "$PROJECT_ROOT/.env" ]; then
+            set -a
+            source "$PROJECT_ROOT/.env"
+            set +a
+        fi
+
         # 安装依赖并启动
         pnpm install --silent
         nohup pnpm dev > "$LOG_DIR/blog.log" 2>&1 &
@@ -712,6 +719,13 @@ start_admin() {
             fi
         fi
         
+        # 加载根目录 .env (将 VITE_* 等变量注入到前端进程)
+        if [ -f "$PROJECT_ROOT/.env" ]; then
+            set -a
+            source "$PROJECT_ROOT/.env"
+            set +a
+        fi
+
         # 安装依赖并启动
         pnpm install --silent
         nohup pnpm dev < /dev/null > "$LOG_DIR/admin.log" 2>&1 &
