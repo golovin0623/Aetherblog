@@ -80,10 +80,15 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
     };
   }, [headings]);
 
-  // 禁止背景滚动
+  // 禁止背景滚动 (仅限小屏幕)
   useEffect(() => {
     if (!isDrawerOpen) {
       return;
+    }
+
+    const mql = window.matchMedia('(min-width: 1280px)');
+    if (mql.matches) {
+      return; // PC 端不锁滚动
     }
 
     const previousOverflow = document.body.style.overflow;
@@ -135,24 +140,23 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-           <div className="p-1.5 rounded-lg bg-primary/10">
-             <List className="h-4 w-4 text-primary" />
-           </div>
-           <span className="font-bold text-[var(--text-primary)]">
-             {variant === 'sidebar' ? '文章目录' : '目录'}
-           </span>
+          <div className="p-1.5 rounded-lg bg-primary/10">
+            <List className="h-4 w-4 text-primary" />
+          </div>
+          <span className="font-bold text-[var(--text-primary)]">
+            {variant === 'sidebar' ? '文章目录' : '目录'}
+          </span>
         </div>
         {variant !== 'sidebar' && (
-           <button
-             onClick={() => setIsExpanded(!isExpanded)}
-             className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors"
-           >
-             <ChevronRight
-               className={`h-4 w-4 text-[var(--text-secondary)] transition-transform duration-300 ${
-                 isExpanded ? 'rotate-90' : ''
-               }`}
-             />
-           </button>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors"
+          >
+            <ChevronRight
+              className={`h-4 w-4 text-[var(--text-secondary)] transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''
+                }`}
+            />
+          </button>
         )}
       </div>
 
@@ -179,11 +183,10 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
                     <button
                       key={heading.id}
                       onClick={() => scrollToHeading(heading.id)}
-                      className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 ${
-                        isActive
-                          ? 'text-primary bg-primary/5 font-medium'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                      }`}
+                      className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 ${isActive
+                        ? 'text-primary bg-primary/5 font-medium'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                        }`}
                       style={{
                         paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
                       }}
@@ -243,9 +246,8 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         <button
           type="button"
           onClick={() => setIsDrawerOpen(true)}
-          className={`fixed right-6 bottom-8 z-[55] flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/80 px-5 py-3 text-sm font-medium text-[var(--text-primary)] backdrop-blur-xl shadow-2xl transition-all duration-500 ${
-            isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
-          } hover:opacity-100 hover:scale-105 hover:blur-0 hover:shadow-primary/20 hover:border-primary/30 ${triggerClassName}`}
+          className={`fixed right-6 bottom-8 z-[55] flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/80 px-5 py-3 text-sm font-medium text-[var(--text-primary)] backdrop-blur-xl shadow-2xl transition-all duration-500 ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
+            } hover:opacity-100 hover:scale-105 hover:blur-0 hover:shadow-primary/20 hover:border-primary/30 ${triggerClassName}`}
         >
           <List className="h-4 w-4 text-primary" />
           <span>目录</span>
@@ -255,42 +257,44 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       {/* Drawer */}
       {mounted && createPortal(
         <AnimatePresence>
-        {isDrawerOpen && (
-          <div className="fixed inset-0 z-[100]">
-            {/* 背景遮罩 */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsDrawerOpen(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
+          {isDrawerOpen && (
+            <div className="fixed inset-0 z-[100] xl:pointer-events-none">
+              {/* 背景遮罩 - PC端透明且透传点击 */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  if (window.innerWidth < 1280) setIsDrawerOpen(false);
+                }}
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm xl:bg-transparent xl:backdrop-blur-none"
+              />
 
-            {/* 面板内容 */}
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className={`absolute right-0 top-0 h-full w-2/3 md:w-[380px] bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] shadow-2xl p-6 overflow-hidden flex flex-col ${className}`}
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-[var(--text-primary)]">文章导航</h3>
-                <button
-                  onClick={() => setIsDrawerOpen(false)}
-                  className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+              {/* 面板内容 */}
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className={`absolute right-0 top-0 h-full w-2/3 md:w-[380px] xl:top-24 xl:h-[calc(100vh-6rem)] xl:right-4 xl:rounded-2xl bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] xl:border shadow-2xl xl:shadow-lg p-6 overflow-hidden flex flex-col pointer-events-auto ${className}`}
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-[var(--text-primary)]">文章导航</h3>
+                  <button
+                    onClick={() => setIsDrawerOpen(false)}
+                    className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
 
-              <div className="flex-1 overflow-hidden">
-                {renderTocList()}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>,
+                <div className="flex-1 overflow-hidden">
+                  {renderTocList()}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
         document.body
       )}
     </>

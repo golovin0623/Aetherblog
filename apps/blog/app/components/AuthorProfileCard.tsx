@@ -14,7 +14,7 @@ const extractSocialLinks = (settings: any) => {
   if (!settings) return [];
 
   const links = [];
-  
+
   // 处理社交链接 JSON
   if (settings.social_links) {
     try {
@@ -121,11 +121,10 @@ const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) 
             <button
               key={index}
               onClick={() => setCurrentPage(index)}
-              className={`transition-all duration-300 rounded-full ${
-                index === currentPage
+              className={`transition-all duration-300 rounded-full ${index === currentPage
                   ? 'bg-primary w-3 h-1'
                   : 'bg-[var(--text-muted)]/10 hover:bg-[var(--text-muted)]/30 w-1 h-1'
-              }`}
+                }`}
               aria-label={`Go to page ${index + 1}`}
             />
           ))}
@@ -153,9 +152,14 @@ interface AuthorProfileCardProps {
 }
 
 export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className, profile }) => {
+  const [mounted, setMounted] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const { isDark } = useTheme();
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 监听鼠标移动，更新光束位置
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
@@ -197,7 +201,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     <div
       className={`relative group rounded-3xl border border-[var(--border-default)] overflow-hidden transition-all duration-300 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 ${className}`}
       style={{
-        background: isDark
+        background: !mounted || isDark
           ? 'var(--bg-card)'
           : `
             radial-gradient(ellipse 1200px 400px at 12% 18%, rgba(241, 245, 249, 0.4) 0%, transparent 50%),

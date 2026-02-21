@@ -101,7 +101,7 @@ export default function BlogHeader() {
   }, [router]);
 
   const isTimeline = activeTab === 'timeline';
-  
+
   // 鼠标位置状态
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState(true);
@@ -155,7 +155,7 @@ export default function BlogHeader() {
     }
 
     setIsVisible(true);
-    lastScrollYRef.current = typeof window === 'undefined' ? 0 : window.scrollY;
+    lastScrollYRef.current = window.scrollY;
   }, [isArticleDetail, pathname]);
 
   // 滚动隐藏逻辑 - 上滑手势（页面向下滚动）触发收折，向上滚动恢复
@@ -165,7 +165,7 @@ export default function BlogHeader() {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       const lastScrollY = lastScrollYRef.current;
-      
+
       // 靠近顶部时始终显示
       if (currentScrollY < 100) {
         setIsVisible(true);
@@ -176,7 +176,7 @@ export default function BlogHeader() {
         // 内容上行时恢复
         setIsVisible(true);
       }
-      
+
       lastScrollYRef.current = currentScrollY;
     };
 
@@ -192,7 +192,7 @@ export default function BlogHeader() {
       x: e.clientX - header.left,
       y: e.clientY - header.top,
     });
-    
+
     // 确保在 header 上移动时也标记为 hovering
     if (isArticleDetail) {
       setIsHovering(true);
@@ -202,7 +202,7 @@ export default function BlogHeader() {
   // 全局鼠标监听 - 用于触发显示和重置状态
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
     if (!isArticleDetail) return;
-    
+
     // 鼠标在顶部 60px 区域内时显示
     if (e.clientY < 60) {
       if (!isHovering) setIsHovering(true);
@@ -224,7 +224,7 @@ export default function BlogHeader() {
     <>
       {/* 顶部感应区域 - 文章详情页时始终存在 */}
       {isArticleDetail && (
-        <div 
+        <div
           className="fixed top-0 left-0 right-0 h-4 z-[60]"
           onMouseEnter={() => {
             setIsHovering(true);
@@ -234,9 +234,8 @@ export default function BlogHeader() {
       )}
 
       <header
-        className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-300 ease-out will-change-transform group ${
-          isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
-        }`}
+        className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-300 ease-out will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
+          }`}
         style={{
           background: 'var(--bg-overlay)',
           backdropFilter: 'blur(20px)',
@@ -276,7 +275,7 @@ export default function BlogHeader() {
 
           {/* 移动端视图切换 - 居中 */}
 
-          
+
           {/* 桌面端导航 */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 ml-auto">
             {/* 移动端视图切换 - 右对齐且稳定 */}
@@ -330,11 +329,10 @@ export default function BlogHeader() {
                   type="button"
                   aria-pressed={!isTimeline}
                   onClick={() => handleNavClick('posts')}
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${
-                    !isTimeline
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${!isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
-                  }`}
+                    }`}
                 >
                   首页
                 </button>
@@ -342,11 +340,10 @@ export default function BlogHeader() {
                   type="button"
                   aria-pressed={isTimeline}
                   onClick={() => handleNavClick('timeline')}
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${
-                    isTimeline
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
-                  }`}
+                    }`}
                 >
                   时间线
                 </button>
@@ -355,11 +352,10 @@ export default function BlogHeader() {
               <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
               <button
                 onClick={() => handleNavClick('archives')}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${
-                  activePage === 'archives'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'archives'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
-                }`}
+                  }`}
               >
                 归档
                 {activePage === 'archives' && (
@@ -368,11 +364,10 @@ export default function BlogHeader() {
               </button>
               <button
                 onClick={() => handleNavClick('friends')}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${
-                  activePage === 'friends'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'friends'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
-                }`}
+                  }`}
               >
                 友链
                 {activePage === 'friends' && (
@@ -381,21 +376,20 @@ export default function BlogHeader() {
               </button>
               <button
                 onClick={() => handleNavClick('about')}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${
-                  activePage === 'about'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'about'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
-                }`}
+                  }`}
               >
                 关于
                 {activePage === 'about' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
               </button>
-              
+
               {/* 管理后台入口 */}
               <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
-              
+
               {/* 搜索按钮 */}
               <button
                 type="button"
@@ -409,11 +403,11 @@ export default function BlogHeader() {
 
               {/* 主题切换 */}
               <ThemeToggle size="sm" />
-              
+
               {isAdminLinkAvailable ? (
-                <a 
+                <a
                   href={adminHomeUrl!}
-                  target="_blank" 
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
                   title="管理后台"
