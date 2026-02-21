@@ -10,7 +10,8 @@ import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
-import { createHeadingIdFactory } from '../lib/headingId';
+import { buildHeadingIdMap } from '../lib/headingId';
+
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 const REHYPE_PLUGINS: any = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw];
@@ -76,7 +77,7 @@ const loadedLanguages = new Set<string>(CORE_LANGUAGES);
 
 async function getHighlighter(): Promise<Highlighter> {
   if (highlighterInstance) return highlighterInstance;
-  
+
   if (!highlighterPromise) {
     // 仅初始加载核心语言，减少 bundle 体积
     highlighterPromise = createHighlighter({
@@ -84,7 +85,7 @@ async function getHighlighter(): Promise<Highlighter> {
       langs: CORE_LANGUAGES,
     });
   }
-  
+
   highlighterInstance = await highlighterPromise;
   return highlighterInstance;
 }
@@ -96,15 +97,15 @@ async function getHighlighter(): Promise<Highlighter> {
 async function ensureLanguageLoaded(highlighter: Highlighter, lang: BundledLanguage): Promise<boolean> {
   // 已加载
   if (loadedLanguages.has(lang)) return true;
-  
+
   // 不在支持列表中
   if (!ALL_SUPPORTED_LANGUAGES.includes(lang)) return false;
-  
+
   try {
     // 使用动态 import 加载语言定义（真正的代码分割）
     const { bundledLanguages } = await import('shiki/bundle/web');
     const langModule = bundledLanguages[lang as keyof typeof bundledLanguages];
-    
+
     if (langModule) {
       await highlighter.loadLanguage(langModule);
       loadedLanguages.add(lang);
@@ -148,10 +149,15 @@ function extractTextContent(children: React.ReactNode): string {
   return '';
 }
 
-function createHeadingRenderer(tag: HeadingTag, getHeadingId: (text: string) => string): Components[HeadingTag] {
-  const HeadingRenderer: Components[HeadingTag] = ({ children, id, className, ...props }) => {
+function createHeadingRenderer(tag: HeadingTag, headingIdMap: Map<number, string>): Components[HeadingTag] {
+  const HeadingRenderer: Components[HeadingTag] = ({ children, id, className, node, ...props }) => {
     const headingText = extractTextContent(children).trim();
-    const headingId = typeof id === 'string' && id ? id : getHeadingId(headingText || tag);
+    // Look up the pre-computed ID by AST source line number.
+    // This is completely stateless: no shared counter, no closure mutation.
+    // node.position.start.line is 1-based and unique for each heading in the document.
+    const lineNumber = (node as any)?.position?.start?.line as number | undefined;
+    const precomputedId = lineNumber !== undefined ? headingIdMap.get(lineNumber) : undefined;
+    const headingId = (typeof id === 'string' && id) ? id : (precomputedId ?? 'section');
     const mergedClassName = ['group/heading scroll-mt-24', className].filter(Boolean).join(' ');
 
     return React.createElement(
@@ -284,11 +290,11 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
       try {
         setIsLoading(true);
         // 清理之前的 svg 以强制视觉重绘 (可选)
-        setSvg(''); 
-        
+        setSvg('');
+
         const mermaid = (await import('mermaid')).default;
         const mermaidTheme = theme === 'dark' ? 'dark' : 'default';
-        
+
         mermaid.initialize({
           startOnLoad: false,
           theme: mermaidTheme as any,
@@ -303,7 +309,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
           } : undefined,
           securityLevel: 'loose',
         });
-        
+
         const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
         const { svg: renderedSvg } = await mermaid.render(id, code.trim());
         setSvg(renderedSvg);
@@ -315,7 +321,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
         setIsLoading(false);
       }
     };
-    
+
     renderMermaid();
   }, [code, theme, fallbackText]); // 主题变更时重新渲染
 
@@ -465,24 +471,24 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
           {copyState === 'success' ? (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="20 6 9 17 4 12"/>
+                <polyline points="20 6 9 17 4 12" />
               </svg>
               已复制
             </>
           ) : copyState === 'error' ? (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M15 9l-6 6"/>
-                <path d="M9 9l6 6"/>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M15 9l-6 6" />
+                <path d="M9 9l6 6" />
               </svg>
               复制失败
             </>
           ) : (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
               复制
             </>
@@ -515,7 +521,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
           className="code-block-toggle"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="18 15 12 9 6 15"/>
+            <polyline points="18 15 12 9 6 15" />
           </svg>
           {isCollapsed ? `展开全部 (${lineCount} 行)` : '收起代码'}
         </button>
@@ -525,43 +531,47 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 };
 
 // 创建自定义组件映射
-function createComponents(highlighter: Highlighter | null, theme: string): Components {
-  const getHeadingId = createHeadingIdFactory();
+function createComponents(
+  highlighter: Highlighter | null,
+  theme: string,
+  headingIdMap: Map<number, string>,
+): Components {
+  // All six heading tags share the same lookup map — no mutable counter.
   const fallbackMathErrorText = '数学公式渲染失败';
   const fallbackMermaidErrorText = '图表渲染失败';
 
   return {
-    h1: createHeadingRenderer('h1', getHeadingId),
-    h2: createHeadingRenderer('h2', getHeadingId),
-    h3: createHeadingRenderer('h3', getHeadingId),
-    h4: createHeadingRenderer('h4', getHeadingId),
-    h5: createHeadingRenderer('h5', getHeadingId),
-    h6: createHeadingRenderer('h6', getHeadingId),
+    h1: createHeadingRenderer('h1', headingIdMap),
+    h2: createHeadingRenderer('h2', headingIdMap),
+    h3: createHeadingRenderer('h3', headingIdMap),
+    h4: createHeadingRenderer('h4', headingIdMap),
+    h5: createHeadingRenderer('h5', headingIdMap),
+    h6: createHeadingRenderer('h6', headingIdMap),
 
     // 处理 pre 标签 - 捕获所有代码块
     pre: ({ children, ...props }) => {
       const child = React.Children.toArray(children)[0];
-      
+
       if (React.isValidElement(child) && (child.type === 'code' || (child.props as { className?: string })?.className)) {
         const childProps = child.props as { className?: string; children?: React.ReactNode };
         const className = childProps.className || '';
         const match = /language-(\w+)/.exec(className);
         const language = match?.[1] || 'text';
-        
+
         const codeContent = extractTextContent(childProps.children).replace(/\n$/, '');
-        
+
         // Mermaid 图表
         if (language === 'mermaid') {
-        return <MermaidBlock code={codeContent} theme={theme} fallbackText={fallbackMermaidErrorText} />;
+          return <MermaidBlock code={codeContent} theme={theme} fallbackText={fallbackMermaidErrorText} />;
         }
-        
+
         return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
       }
-      
+
       // 默认 pre
       return <pre className="overflow-x-auto p-4 bg-slate-900/80 border border-white/5 rounded-lg my-4" {...props}>{children}</pre>;
     },
-    
+
     // 行内代码
     code: ({ className, children, ...props }) => {
       if (className) {
@@ -573,7 +583,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         </code>
       );
     },
-    
+
     // 图片
     img: ({ src, alt, ...props }) => {
       // 解析 alt 文本中的大小设置 ![alt|size](url)
@@ -616,7 +626,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         </figure>
       );
     },
-    
+
     // 表格
     table: ({ children }) => (
       <div className="markdown-table-wrapper overflow-x-auto my-4">
@@ -625,26 +635,26 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
         </table>
       </div>
     ),
-    
+
     th: ({ children }) => (
       <th className="bg-[var(--bg-secondary)] px-4 py-2 text-left font-semibold text-[var(--text-primary)] border border-[var(--border-subtle)]">
         {children}
       </th>
     ),
-    
+
     td: ({ children }) => (
       <td className="px-4 py-2 text-[var(--text-secondary)] border border-[var(--border-subtle)]">
         {children}
       </td>
     ),
-    
+
     // 引用
     blockquote: ({ children }) => (
       <blockquote className="border-l-[3px] border-[var(--markdown-border-quote)] pl-4 my-4 text-[var(--text-secondary)] bg-[var(--markdown-bg-quote)] py-2 pr-4 rounded-r">
         {children}
       </blockquote>
     ),
-    
+
     // 链接
     a: ({ href, children, ...props }) => (
       (() => {
@@ -705,7 +715,7 @@ function createComponents(highlighter: Highlighter | null, theme: string): Compo
 
       return <span className={className} {...props}>{children}</span>;
     },
-    
+
     // 水平线
     hr: () => <hr className="my-8 border-t border-white/10" />,
   };
@@ -721,7 +731,6 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
 
   // 检测数学公式，按需加载 KaTeX CSS
   useEffect(() => {
-    // 检测是否包含数学公式 ($...$ 或 $$...$$)
     if (content && /\$\$?[^$]+\$\$?/.test(content)) {
       loadKatexCss();
     }
@@ -729,8 +738,17 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
 
   const { resolvedTheme } = useTheme();
 
-  // 基于 highlighter 状态和主题创建组件
-  const components = useMemo(() => createComponents(highlighter, resolvedTheme || 'dark'), [highlighter, resolvedTheme]);
+  // Pre-compute heading ID map once per content change.
+  // Map key = 1-based source line number (from AST), value = stable deduplicated ID.
+  // This is completely stateless in the renderer — no shared counter, no closure mutation.
+  const headingIdMap = useMemo(() => buildHeadingIdMap(content || ''), [content]);
+
+  // Recreate components when highlighter or theme changes.
+  // Heading IDs are pure Map lookups — idempotent across any number of re-renders.
+  const components = useMemo(
+    () => createComponents(highlighter, resolvedTheme || 'dark', headingIdMap),
+    [highlighter, resolvedTheme, headingIdMap],
+  );
 
   if (!content) return null;
 

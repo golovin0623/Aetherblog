@@ -235,10 +235,14 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       {variant === 'icon' ? (
         <button
           type="button"
-          onClick={() => setIsDrawerOpen(true)}
-          className={`inline-flex items-center justify-center h-7 w-7 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40 transition-all ${triggerClassName}`}
-          title="文章目录"
-          aria-label="文章目录"
+          onClick={() => setIsDrawerOpen((prev) => !prev)}
+          aria-pressed={isDrawerOpen}
+          className={`inline-flex items-center justify-center h-7 w-7 rounded-full border transition-all ${isDrawerOpen
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40'
+            } ${triggerClassName}`}
+          title={isDrawerOpen ? '收起目录' : '展开目录'}
+          aria-label={isDrawerOpen ? '收起目录' : '展开目录'}
         >
           <List size={14} />
         </button>
