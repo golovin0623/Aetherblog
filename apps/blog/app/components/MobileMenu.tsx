@@ -173,6 +173,10 @@ export default function MobileMenu() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
+            // view-transition-name isolates this overlay as its own VT layer
+            // so it is NOT included in the root clip-path ripple animation.
+            // Without this, backdrop-blur flickers when theme is toggled while open.
+            style={{ viewTransitionName: 'mobile-menu-backdrop' } as React.CSSProperties}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
             onClick={() => setIsOpen(false)}
           />
@@ -188,6 +192,8 @@ export default function MobileMenu() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            // Give the drawer its own VT layer so its blur doesn't bleed into root
+            style={{ viewTransitionName: 'mobile-menu-drawer' } as React.CSSProperties}
             className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform"
           >
             {/* 关闭按钮 - 焦点陷阱入口 */}
@@ -296,12 +302,10 @@ export default function MobileMenu() {
                 onClick={(e) => {
                   const x = e.clientX;
                   const y = e.clientY;
-                  // 先关闭侧边栏（背景遮罩淡出动画约 200ms）
-                  // 等动画完毕后再触发 View Transition，避免模糊层被截入快照帧
-                  setIsOpen(false);
-                  setTimeout(() => {
-                    toggleThemeWithAnimation(x, y);
-                  }, 220);
+                  // Sidebar stays open during transition.
+                  // The sidebar backdrop/drawer have their own view-transition-name
+                  // so they are isolated from the root clip-path animation.
+                  toggleThemeWithAnimation(x, y);
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-colors duration-150 shadow-sm transform-gpu will-change-transform"
                 aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}

@@ -52,7 +52,7 @@ export function Sidebar() {
   const [searchValue, setSearchValue] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  
+
   const openProfile = () => setShowProfileModal(true);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -64,7 +64,7 @@ export function Sidebar() {
   };
 
   const handleNavigation = () => {
-     setMobileOpen(false); // 导航时关闭移动端抽屉
+    setMobileOpen(false); // 导航时关闭移动端抽屉
   };
 
   const contentProps = {
@@ -86,6 +86,8 @@ export function Sidebar() {
       {isMobileOpen && (
         <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
+          // Isolated VT layer: prevents backdrop-blur flickering during theme toggle
+          style={{ viewTransitionName: 'admin-sidebar-backdrop' } as React.CSSProperties}
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -94,7 +96,10 @@ export function Sidebar() {
       <div className={cn(
         "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform-gpu transition-transform duration-300 ease-in-out md:hidden flex flex-col will-change-transform",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
+      )}
+        // Isolated VT layer: drawer blur won't bleed into root animation
+        style={{ viewTransitionName: 'admin-sidebar-drawer' } as React.CSSProperties}
+      >
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
       </div>
 
@@ -109,7 +114,7 @@ export function Sidebar() {
           'hidden md:flex flex-col will-change-[width] transform-gpu'
         )}
       >
-        <SidebarContent {...contentProps} isMobile={false} closeMobile={() => {}} />
+        <SidebarContent {...contentProps} isMobile={false} closeMobile={() => { }} />
       </motion.aside>
 
       <ConfirmDialog
@@ -200,7 +205,7 @@ function SidebarContent({
             </span>
           </div>
         </div>
-        
+
         {/* 移动端：优雅关闭按钮 */}
         {isMobile && (
           <button
