@@ -605,6 +605,28 @@ start_ai_service() {
             .venv/bin/pip install -r requirements.txt
         fi
 
+        # 确保导出必要的环境变量
+        if [ -f "$PROJECT_ROOT/.env" ]; then
+            set -a
+            source "$PROJECT_ROOT/.env"
+            set +a
+        fi
+        
+        # 构建 POSTGRES_DSN (如果未提供)
+        if [ -z "${POSTGRES_DSN:-}" ]; then
+            DB_USER=${POSTGRES_USER:-aetherblog}
+            DB_PASS=${POSTGRES_PASSWORD:-aetherblog123}
+            DB_HOST=${POSTGRES_HOST:-localhost}
+            DB_PORT=${POSTGRES_PORT:-5432}
+            DB_NAME=${POSTGRES_DB:-aetherblog}
+            export POSTGRES_DSN="postgresql+asyncpg://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+        fi
+
+        # 确保提供 JWT_SECRET (与后端共用同一套变量)
+        if [ -z "${JWT_SECRET:-}" ]; then
+            export JWT_SECRET="default-secret-for-dev-only-change-in-prod"
+        fi
+
         nohup .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "$LOG_DIR/ai-service.log" 2>&1 &
         local ai_pid=$!
         echo $ai_pid > "$PID_DIR/ai-service.pid"
@@ -692,7 +714,7 @@ start_admin() {
         
         # 安装依赖并启动
         pnpm install --silent
-        nohup pnpm dev > "$LOG_DIR/admin.log" 2>&1 &
+        nohup pnpm dev < /dev/null > "$LOG_DIR/admin.log" 2>&1 &
         local admin_pid=$!
         echo $admin_pid > "$PID_DIR/admin.pid"
 
