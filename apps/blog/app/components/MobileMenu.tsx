@@ -149,6 +149,7 @@ export default function MobileMenu() {
     if (!target) return;
     // 立即更新 UI 状态（乐观更新）
     setActivePage(target);
+
     // 关闭菜单
     setIsOpen(false);
   }, []);
@@ -275,11 +276,10 @@ export default function MobileMenu() {
                     href={link.href}
                     onClick={() => handleLinkClick(link.key)}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${
-                      isActive
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${isActive
                         ? 'bg-black/10 dark:bg-[var(--primary-light)]/10 text-black dark:text-[var(--color-primary)]'
                         : 'text-black dark:text-[var(--text-muted)] hover:text-black dark:hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-[var(--bg-card-hover)]'
-                    }`}
+                      }`}
                   >
                     <Icon size={16} />
                     {link.label}
