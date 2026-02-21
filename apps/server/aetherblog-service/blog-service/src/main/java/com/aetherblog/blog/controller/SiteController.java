@@ -37,13 +37,13 @@ public class SiteController {
     public R<Map<String, Object>> getSiteInfo() {
         // 从数据库获取公开设置
         Map<String, Object> info = siteSettingService.getPublicSettings();
-        
+
         // 覆盖为管理员信息
         injectAdminInfo(info);
-        
+
         // 添加版本信息
         info.put("version", "0.1.0");
-        
+
         return R.ok(info);
     }
 
@@ -51,16 +51,16 @@ public class SiteController {
     @GetMapping("/stats")
     public R<Map<String, Object>> getSiteStats() {
         Map<String, Object> stats = new HashMap<>();
-        
+
         // 从数据库获取实际统计
         stats.put("posts", postRepository.count());
         stats.put("categories", categoryRepository.count());
         stats.put("tags", tagRepository.count());
         stats.put("comments", commentRepository.count());
-        
+
         // 总访问量（后续可从 visit_records 表统计）
         stats.put("views", 0L);
-        
+
         return R.ok(stats);
     }
 
@@ -74,17 +74,17 @@ public class SiteController {
 
     private void injectAdminInfo(Map<String, Object> map) {
         userRepository.findByRole(com.aetherblog.blog.entity.User.UserRole.ADMIN)
-            .stream().findFirst().ifPresent(admin -> {
-                if (admin.getNickname() != null) map.put("authorName", admin.getNickname());
-                if (admin.getAvatar() != null) {
-                    // 添加 /api 前缀以匹配 context-path 配置
-                    String avatarPath = admin.getAvatar();
-                    if (avatarPath.startsWith("/uploads")) {
-                        avatarPath = "/api" + avatarPath;
+                .stream().findFirst().ifPresent(admin -> {
+                    if (admin.getNickname() != null)
+                        map.put("authorName", admin.getNickname());
+                    if (admin.getAvatar() != null) {
+                        // 直接使用原始路径：
+                        // - 以 /uploads 开头的相对路径 → Next.js rewrites /uploads/* → 后端（不需要加 /api 前缀）
+                        // - http/https 开头的外部 URL → 直接使用
+                        map.put("authorAvatar", admin.getAvatar());
                     }
-                    map.put("authorAvatar", avatarPath);
-                }
-                if (admin.getBio() != null) map.put("authorBio", admin.getBio());
-            });
+                    if (admin.getBio() != null)
+                        map.put("authorBio", admin.getBio());
+                });
     }
 }
