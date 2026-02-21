@@ -400,7 +400,7 @@ export default function BlogHeader() {
               <button
                 type="button"
                 aria-label="搜索"
-                title="搜索 (⌘ K)"
+                title="Search (⌘ K)"
                 onClick={openSearchPanel}
                 className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search"
               >
