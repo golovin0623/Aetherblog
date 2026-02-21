@@ -9,6 +9,17 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Atomic rate limit script
+# KEYS[1]: rate limit key
+# ARGV[1]: window seconds
+LUA_SCRIPT = """
+local count = redis.call('incr', KEYS[1])
+if tonumber(count) == 1 then
+  redis.call('expire', KEYS[1], ARGV[1])
+end
+return count
+"""
+
 
 # ref: §4.4
 class RateLimiter:
@@ -17,10 +28,10 @@ class RateLimiter:
 
     async def _check(self, key: str, limit: int, window_seconds: int) -> bool:
         try:
-            current = await self.redis.incr(key)
-            if current == 1:
-                await self.redis.expire(key, window_seconds)
-            return current <= limit
+            # Use Lua script for atomic increment-and-expire
+            # keys=[key], args=[window_seconds]
+            current = await self.redis.eval(LUA_SCRIPT, 1, key, str(window_seconds))
+            return int(current) <= limit
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("rate_limit.redis_error", extra={"error": str(exc)})
             return True
