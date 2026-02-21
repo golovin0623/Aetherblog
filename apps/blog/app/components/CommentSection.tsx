@@ -202,6 +202,13 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
       return;
     }
 
+    // #189: noValidate disables browser type="email" check; validate manually
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('请输入有效的邮箱地址');
+      emailInputRef.current?.focus();
+      return;
+    }
+
     if (!content.trim()) {
       setError('请输入评论内容');
       textareaRef.current?.focus();
@@ -338,7 +345,9 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                     </button>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="relative z-10 space-y-5">
+                  {/* #190: noValidate lets handleSubmit own all validation logic,
+                      preventing browser-default messages from preempting custom errors */}
+                  <form noValidate onSubmit={handleSubmit} className="relative z-10 space-y-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="group/input relative">
                         <ShieldCheck aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
