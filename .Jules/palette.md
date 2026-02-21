@@ -13,3 +13,7 @@
 ## 2026-06-08 - Keyboard Shortcuts
 **Learning:** Adding common global shortcuts (like `Cmd+K` for search) instantly elevates the perception of a "pro" application.
 **Action:** When implementing global search or command palettes, always include `Cmd+K` and `/` shortcuts, and ensure they are discoverable via tooltips or hints.
+
+## 2026-02-19 - Semantic Navigation Links in Menus
+**Learning:** Mobile menus often misuse `<button>` for navigation links, which breaks accessibility features like "open in new tab" and hurts SEO.
+**Action:** Replace `<button onClick={navigate}>` with `next/link` components for semantic `<a>` tags while preserving UI state logic (like closing the menu) via `onClick`.
