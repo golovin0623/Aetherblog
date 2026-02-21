@@ -19,7 +19,7 @@ public record CreatePostRequest(
     @Size(max = 500, message = "摘要最多500字符")
     String summary,
 
-    @Pattern(regexp = "^(https?:\\/\\/|\\/)\\S+$", message = "封面图片必须是合法的URL (以http/https或/开头)")
+@Pattern(regexp = "^(https?:\\/\\/|\\/)[^\"']+$", message = "封面图片必须是合法的URL (以http/https或/开头, 且不能包含引号)")
     String coverImage,
 
     Long categoryId,
