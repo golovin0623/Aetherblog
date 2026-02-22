@@ -22,6 +22,7 @@ import type { AiPanelAction } from './AiSidePanel';
 interface SlashCommandMenuProps {
   editorViewRef: React.RefObject<EditorView | null>;
   onRunAiAction: (action: AiPanelAction) => void;
+  showAiCommands?: boolean;
 }
 
 type SlashCommand = {
@@ -42,11 +43,11 @@ function getAnchorCoords(view: EditorView, pos: number): MenuAnchor | null {
   const coords = view.coordsAtPos(pos);
   if (!coords) return null;
   const x = Math.min(window.innerWidth - 16, Math.max(16, coords.left));
-  const y = Math.min(window.innerHeight - 16, Math.max(16, coords.bottom + 6));
+  const y = Math.min(window.innerHeight - 16, Math.max(16, coords.bottom + 8));
   return { x, y };
 }
 
-export function SlashCommandMenu({ editorViewRef, onRunAiAction }: SlashCommandMenuProps) {
+export function SlashCommandMenu({ editorViewRef, onRunAiAction, showAiCommands = true }: SlashCommandMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -202,13 +203,26 @@ export function SlashCommandMenu({ editorViewRef, onRunAiAction }: SlashCommandM
   ], [onRunAiAction]);
 
   const filteredCommands = useMemo(() => {
-    if (!query.trim()) return commands;
-    const q = query.toLowerCase();
-    return commands.filter((cmd) =>
-      cmd.label.toLowerCase().includes(q) ||
-      cmd.keywords.some(keyword => keyword.toLowerCase().includes(q))
-    );
-  }, [commands, query]);
+    let baseCommands = commands;
+    if (!showAiCommands) {
+      baseCommands = commands.filter(c => !c.id.startsWith('ai-'));
+    }
+
+    let result = baseCommands;
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      result = baseCommands.filter((cmd) =>
+        cmd.label.toLowerCase().includes(q) ||
+        cmd.keywords.some(keyword => keyword.toLowerCase().includes(q))
+      );
+    }
+
+    return result.sort((a, b) => {
+      const aIsAi = a.id.startsWith('ai-') ? 1 : 0;
+      const bIsAi = b.id.startsWith('ai-') ? 1 : 0;
+      return aIsAi - bIsAi;
+    });
+  }, [commands, query, showAiCommands]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -347,41 +361,104 @@ export function SlashCommandMenu({ editorViewRef, onRunAiAction }: SlashCommandM
 
   if (!isOpen || !anchor) return null;
 
+  const basicCommands = filteredCommands.filter(c => !c.id.startsWith('ai-'));
+  const aiCommands = filteredCommands.filter(c => c.id.startsWith('ai-'));
+
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9998] w-[320px] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-xl shadow-2xl overflow-hidden"
-      style={{ left: anchor.x, top: anchor.y, transform: 'translateX(-10%)' }}
+      className={cn(
+        "fixed z-[9998] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-xl shadow-2xl overflow-hidden",
+        showAiCommands ? "w-[560px]" : "w-[320px]"
+      )}
+      style={{ left: anchor.x, top: anchor.y, transform: 'translateX(-14px)' }}
     >
       <div className="px-3 py-2 border-b border-[var(--border-subtle)] text-xs text-[var(--text-muted)]">
-        /{query || '输入命令或选择 AI 操作'}
+        /{query || (showAiCommands ? '输入命令或通过 AI 创作' : '输入命令操作')}
       </div>
-      <div className="max-h-64 overflow-y-auto py-1">
-        {filteredCommands.length === 0 ? (
-          <div className="px-3 py-3 text-xs text-[var(--text-muted)]">没有匹配的命令</div>
-        ) : (
-          filteredCommands.map((command, index) => (
-            <button
-              key={command.id}
-              onClick={() => executeCommand(command)}
-              className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
-                index === activeIndex
-                  ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+
+      {filteredCommands.length === 0 ? (
+        <div className="px-3 py-3 text-xs text-[var(--text-muted)]">没有匹配的命令</div>
+      ) : (
+        <div className={cn("flex", showAiCommands ? "h-80" : "max-h-64", "min-h-[160px]")}>
+          {/* 左侧：基础命令 */}
+          <div className={cn("flex-1 flex flex-col min-h-0", showAiCommands && "border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)]/30")}>
+            {showAiCommands && basicCommands.length > 0 && (
+              <div className="px-3 py-1.5 flex-shrink-0 text-[10px] font-semibold text-[var(--text-muted)] tracking-wider border-b border-[var(--border-subtle)]/50">
+                基础能力
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto py-1">
+              {basicCommands.map((command) => {
+                const globalIndex = filteredCommands.indexOf(command);
+                return (
+                  <button
+                    key={command.id}
+                    onClick={() => executeCommand(command)}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                      globalIndex === activeIndex
+                        ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    )}
+                  >
+                    <command.icon className="w-4 h-4" />
+                    <div className="flex-1">
+                      <div className="text-sm">{command.label}</div>
+                      {command.description && !showAiCommands && (
+                        <div className="text-[11px] text-[var(--text-muted)]">{command.description}</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              {basicCommands.length === 0 && (
+                <div className="px-3 py-2 text-xs text-[var(--text-muted)]">无匹配基础能力</div>
               )}
-            >
-              <command.icon className="w-4 h-4" />
-              <div className="flex-1">
-                <div className="text-sm">{command.label}</div>
-                {command.description && (
-                  <div className="text-[11px] text-[var(--text-muted)]">{command.description}</div>
+            </div>
+          </div>
+
+          {/* 右侧：AI 能力 */}
+          {showAiCommands && (
+            <div className="flex-1 flex flex-col min-h-0 bg-[var(--bg-card)]">
+              {aiCommands.length > 0 && (
+                <div className="px-3 py-1.5 flex-shrink-0 text-[10px] font-semibold text-primary tracking-wider flex items-center gap-1 border-b border-[var(--border-subtle)]/50">
+                  <Sparkles className="w-3 h-3" />
+                  AI 能力
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto py-1">
+                {aiCommands.map((command) => {
+                  const globalIndex = filteredCommands.indexOf(command);
+                  return (
+                    <button
+                      key={command.id}
+                      onClick={() => executeCommand(command)}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                        globalIndex === activeIndex
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      )}
+                    >
+                      <command.icon className="w-4 h-4" />
+                      <div className="flex-1">
+                        <div className="text-sm">{command.label}</div>
+                        {command.description && (
+                          <div className="text-[11px] opacity-70 mt-0.5">{command.description}</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                {aiCommands.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-[var(--text-muted)]">无匹配 AI 能力</div>
                 )}
               </div>
-            </button>
-          ))
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

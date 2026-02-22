@@ -167,13 +167,6 @@ function createHeadingRenderer(tag: HeadingTag, headingIdMap: Map<number, string
         id: headingId,
         className: mergedClassName,
       },
-      <a
-        href={`#${headingId}`}
-        className="heading-anchor"
-        aria-label={`复制标题锚点：${headingText || headingId}`}
-      >
-        #
-      </a>,
       children,
     );
   };

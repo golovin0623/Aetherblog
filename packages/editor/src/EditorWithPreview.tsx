@@ -4,6 +4,7 @@ import type { Extension } from '@codemirror/state';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview';
 import { Edit, Eye, Columns } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export type ViewMode = 'edit' | 'preview' | 'split';
 
@@ -74,7 +75,7 @@ export function EditorWithPreview({
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
   const syncSuspendUntilRef = useRef(0);
-  
+
   // 如果提供则使用外部视图模式，否则使用内部状态
   const viewMode = externalViewMode ?? internalViewMode;
   const setViewMode = onViewModeChange ?? setInternalViewMode;
@@ -335,27 +336,24 @@ export function EditorWithPreview({
         <div className="flex items-center gap-2 p-2 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
           <button
             onClick={() => setViewMode('edit')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'edit' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
+              }`}
           >
             <Edit className="w-4 h-4" />
             编辑
           </button>
           <button
             onClick={() => setViewMode('preview')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'preview' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
+              }`}
           >
             <Eye className="w-4 h-4" />
             预览
           </button>
           <button
             onClick={() => setViewMode('split')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              viewMode === 'split' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${viewMode === 'split' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
+              }`}
           >
             <Columns className="w-4 h-4" />
             分屏
@@ -364,12 +362,19 @@ export function EditorWithPreview({
       )}
 
       {/* 内容 */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {(viewMode === 'edit' || viewMode === 'split') && (
-          <div
-            ref={viewMode === 'split' ? editorScrollRef : null}
-            className={`flex-1 overflow-hidden min-h-0 ${viewMode === 'split' ? 'border-r border-[var(--border-subtle)]' : ''}`}
-          >
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
+        {/* 编辑器区域 */}
+        <motion.div
+          initial={false}
+          animate={{
+            width: viewMode === 'edit' ? '100%' : viewMode === 'split' ? '50%' : '0%',
+            opacity: viewMode === 'preview' ? 0 : 1,
+            borderRightWidth: viewMode === 'split' ? 1 : 0
+          }}
+          transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
+          className="h-full overflow-hidden flex flex-col min-w-0 border-[var(--border-subtle)]"
+        >
+          <div ref={viewMode === 'split' ? editorScrollRef : null} className="flex-1 overflow-hidden min-h-0 w-full min-w-[320px]">
             <MarkdownEditor
               value={value}
               onChange={onChange}
@@ -387,29 +392,20 @@ export function EditorWithPreview({
               additionalExtensions={additionalExtensions}
             />
           </div>
-        )}
-        
-        {viewMode === 'preview' && (
-          <div className="flex-1 overflow-y-auto bg-[var(--bg-primary)]">
-            <div
-              className="w-full pt-4 pb-12 px-6 min-h-full"
-              style={{ maxWidth: '800px', margin: '0 auto' }}
-            >
-              <MarkdownPreview
-                content={value}
-                style={{ fontSize: `${actualPreviewFontSize}px` }}
-                theme={theme}
-              />
-            </div>
-          </div>
-        )}
+        </motion.div>
 
-        {viewMode === 'split' && (
-          <div
-            ref={previewScrollRef}
-            className="flex-1 overflow-y-auto bg-[var(--bg-primary)]"
-          >
-            <div className="max-w-[90%] mx-auto w-full pt-4 pb-10 px-6 min-h-full">
+        {/* 预览区域 */}
+        <motion.div
+          initial={false}
+          animate={{
+            width: viewMode === 'preview' ? '100%' : viewMode === 'split' ? '50%' : '0%',
+            opacity: viewMode === 'edit' ? 0 : 1,
+          }}
+          transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
+          className="h-full overflow-hidden bg-[var(--bg-primary)] flex flex-col min-w-0"
+        >
+          <div ref={viewMode === 'split' ? previewScrollRef : null} className="flex-1 overflow-y-auto w-full min-w-[320px]">
+            <div className={`w-full pt-4 pb-12 px-6 min-h-full ${viewMode === 'preview' ? 'max-w-[800px] mx-auto' : 'max-w-[90%] mx-auto'}`}>
               <MarkdownPreview
                 content={value}
                 style={{ fontSize: `${actualPreviewFontSize}px` }}
@@ -417,7 +413,7 @@ export function EditorWithPreview({
               />
             </div>
           </div>
-        )}
+        </motion.div>
       </div>
     </div>
   );

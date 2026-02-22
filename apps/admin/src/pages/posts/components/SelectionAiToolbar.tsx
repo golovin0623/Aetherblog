@@ -355,7 +355,7 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
         <select
           value={targetLanguage}
           onChange={(e) => setTargetLanguage(e.target.value)}
-          className="h-7 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-xs text-[var(--text-secondary)] px-2 focus:outline-none"
+          className="h-7 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-xs text-[var(--text-secondary)] pl-2 pr-6 focus:outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%20stroke%3D%22%236b7280%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[right_4px_center] bg-no-repeat"
         >
           {languageOptions.map((lang) => (
             <option key={lang.value} value={lang.value}>{lang.label}</option>

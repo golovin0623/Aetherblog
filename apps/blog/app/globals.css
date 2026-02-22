@@ -383,30 +383,7 @@ body {
   line-height: var(--markdown-line-height);  /* 1.8 */
 }
 
-.markdown-body .heading-anchor {
-  opacity: 0;
-  margin-right: 0.4rem;
-  color: var(--text-muted);
-  text-decoration: none;
-  border-bottom: none;
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-productive), color var(--motion-duration-fast) var(--motion-ease-productive);
-}
 
-.markdown-body h1:hover .heading-anchor,
-.markdown-body h2:hover .heading-anchor,
-.markdown-body h3:hover .heading-anchor,
-.markdown-body h4:hover .heading-anchor,
-.markdown-body h5:hover .heading-anchor,
-.markdown-body h6:hover .heading-anchor,
-.markdown-body .heading-anchor:focus-visible {
-  opacity: 1;
-}
-
-.markdown-body .heading-anchor:hover,
-.markdown-body .heading-anchor:focus-visible {
-  color: var(--color-primary);
-  outline: none;
-}
 
 .markdown-body h1 {
   font-size: 2em;
