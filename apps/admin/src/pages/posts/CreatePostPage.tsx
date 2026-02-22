@@ -7,7 +7,7 @@ import {
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
   Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
-  Undo2, Redo2
+  Undo2, Redo2, Hash
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, useImageUpload, UploadProgress, type ViewMode, type TableInfo, type UploadResult } from '@aetherblog/editor';
@@ -25,9 +25,29 @@ import { SelectionAiToolbar } from './components/SelectionAiToolbar';
 import { AiSidePanel, type AiPanelAction, type AiSidePanelHandle } from './components/AiSidePanel';
 import { SlashCommandMenu } from './components/SlashCommandMenu';
 import { useSidebarStore } from '@/stores';
+import { useEditorStore } from '@/stores/editorStore';
 import { useTheme } from '@aetherblog/hooks';
 import { useMediaQuery } from '@/hooks';
 import { logger } from '@/lib/logger';
+
+const TAG_COLORS = [
+  { bg: 'bg-blue-400/10 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500/20', hoverBorder: 'hover:border-blue-500/40', bgHover: 'hover:bg-blue-400/20 dark:hover:bg-blue-500/30', activeBg: 'bg-blue-500 text-white border-blue-500 shadow-blue-500/30' },
+  { bg: 'bg-emerald-400/10 dark:bg-emerald-500/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/20', hoverBorder: 'hover:border-emerald-500/40', bgHover: 'hover:bg-emerald-400/20 dark:hover:bg-emerald-500/30', activeBg: 'bg-emerald-500 text-white border-emerald-500 shadow-emerald-500/30' },
+  { bg: 'bg-violet-400/10 dark:bg-violet-500/20', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-500/20', hoverBorder: 'hover:border-violet-500/40', bgHover: 'hover:bg-violet-400/20 dark:hover:bg-violet-500/30', activeBg: 'bg-violet-500 text-white border-violet-500 shadow-violet-500/30' },
+  { bg: 'bg-pink-400/10 dark:bg-pink-500/20', text: 'text-pink-600 dark:text-pink-400', border: 'border-pink-500/20', hoverBorder: 'hover:border-pink-500/40', bgHover: 'hover:bg-pink-400/20 dark:hover:bg-pink-500/30', activeBg: 'bg-pink-500 text-white border-pink-500 shadow-pink-500/30' },
+  { bg: 'bg-amber-400/10 dark:bg-amber-500/20', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500/20', hoverBorder: 'hover:border-amber-500/40', bgHover: 'hover:bg-amber-400/20 dark:hover:bg-amber-500/30', activeBg: 'bg-amber-500 text-white border-amber-500 shadow-amber-500/30' },
+  { bg: 'bg-indigo-400/10 dark:bg-indigo-500/20', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-500/20', hoverBorder: 'hover:border-indigo-500/40', bgHover: 'hover:bg-indigo-400/20 dark:hover:bg-indigo-500/30', activeBg: 'bg-indigo-500 text-white border-indigo-500 shadow-indigo-500/30' },
+  { bg: 'bg-rose-400/10 dark:bg-rose-500/20', text: 'text-rose-600 dark:text-rose-400', border: 'border-rose-500/20', hoverBorder: 'hover:border-rose-500/40', bgHover: 'hover:bg-rose-400/20 dark:hover:bg-rose-500/30', activeBg: 'bg-rose-500 text-white border-rose-500 shadow-rose-500/30' },
+  { bg: 'bg-cyan-400/10 dark:bg-cyan-500/20', text: 'text-cyan-600 dark:text-cyan-400', border: 'border-cyan-500/20', hoverBorder: 'hover:border-cyan-500/40', bgHover: 'hover:bg-cyan-400/20 dark:hover:bg-cyan-500/30', activeBg: 'bg-cyan-500 text-white border-cyan-500 shadow-cyan-500/30' }
+];
+
+const getTagColor = (name: string) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+};
 
 // 工具栏的即时提示按钮组件
 interface ToolbarButtonProps {
@@ -131,6 +151,10 @@ export function CreatePostPage() {
   const navigate = useNavigate();
   // 使用 resolvedTheme 确保总是向编辑器传递 'light' 或 'dark'，处理 'system' 偏好
   const { resolvedTheme } = useTheme();
+
+  const enableSelectionAi = useEditorStore((state) => state.enableSelectionAi);
+  const enableSlashAi = useEditorStore((state) => state.enableSlashAi);
+
   const isMobile = useMediaQuery('(max-width: 768px)');
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
@@ -1696,16 +1720,16 @@ export function CreatePostPage() {
       "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden",
       isMobile && "pb-16"
     )}>
-      {/* 顶部头部区域 - 带折叠动画 */}
+      {/* 顶部头部区域 - 带平滑悬浮折叠动画 */}
       <AnimatePresence initial={false}>
         {!isFullscreen && (
           <motion.div
             key="editor-header"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] relative z-[80]"
+            initial={{ height: 0, opacity: 0, y: -20 }}
+            animate={{ height: 'auto', opacity: 1, y: 0 }}
+            exit={{ height: 0, opacity: 0, y: -20 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] relative z-[80] overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 md:px-6 py-3 gap-2 md:gap-4">
               {/* 左侧块：返回 + 标题 */}
@@ -1752,7 +1776,6 @@ export function CreatePostPage() {
                           exit={{ opacity: 0, y: 6, scale: 0.96 }}
                           className="absolute top-full left-0 mt-3 w-64 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
                         >
-                          <div className="absolute -top-2 left-6 h-4 w-4 rotate-45 border border-[var(--border-subtle)] bg-[var(--bg-popover)]/95" />
                           <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70">
                             <input
                               type="text"
@@ -1787,26 +1810,32 @@ export function CreatePostPage() {
 
                   {/* 标签选择器 */}
                   <div ref={tagDropdownRef} className="relative flex items-center gap-1.5 z-[2100]">
-                    <div className="flex items-center gap-1.5">
-                      {selectedTags.slice(0, 3).map((tag) => (
-                        <span key={tag.id} className="group/tag flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium border border-primary/20 transition-colors hover:bg-primary/20">
-                          <span>{tag.name}</span>
-                          <X className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer" onClick={() => removeTag(tag.id)} />
-                        </span>
-                      ))}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {selectedTags.slice(0, 3).map((tag) => {
+                        const tc = getTagColor(tag.name);
+                        return (
+                          <span key={tag.id} className={cn("group/tag flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors", tc.bg, tc.text, tc.border)}>
+                            <span className="truncate max-w-[80px] sm:max-w-[120px]">{tag.name}</span>
+                            <X className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer flex-shrink-0" onClick={() => removeTag(tag.id)} />
+                          </span>
+                        );
+                      })}
                       {selectedTags.length > 3 && (
                         <div className="group/more relative flex items-center">
-                          <span className="px-1.5 py-1 text-xs font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-md border border-[var(--border-subtle)] cursor-default transition-colors group-hover/more:border-primary/40 group-hover/more:text-primary">
+                          <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-full border border-[var(--border-subtle)] cursor-default transition-colors group-hover/more:border-primary/40 group-hover/more:text-primary">
                             +{selectedTags.length - 3}
                           </span>
                           {/* 悬浮展示所有超长标签 */}
-                          <div className="absolute top-[calc(100%+8px)] left-1/2 -translate-x-1/2 p-2 bg-[var(--bg-popover)]/95 backdrop-blur-xl border border-[var(--border-subtle)] rounded-xl shadow-xl opacity-0 invisible group-hover/more:opacity-100 group-hover/more:visible transition-all z-[2200] flex flex-wrap gap-1.5 min-w-[200px] pointer-events-auto">
-                            {selectedTags.map(tag => (
-                              <span key={`all-${tag.id}`} className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium border border-primary/20">
-                                <span>{tag.name}</span>
-                                <X className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer" onClick={() => removeTag(tag.id)} />
-                              </span>
-                            ))}
+                          <div className="absolute top-[calc(100%+8px)] left-1/2 -translate-x-1/2 p-2.5 bg-[var(--bg-popover)]/95 backdrop-blur-xl border border-[var(--border-subtle)] rounded-2xl shadow-xl opacity-0 invisible group-hover/more:opacity-100 group-hover/more:visible transition-all z-[2200] flex flex-wrap gap-1.5 max-w-[300px] pointer-events-auto">
+                            {selectedTags.map(tag => {
+                              const tc = getTagColor(tag.name);
+                              return (
+                                <span key={`all-${tag.id}`} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border", tc.bg, tc.text, tc.border)}>
+                                  <span>{tag.name}</span>
+                                  <X className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer flex-shrink-0" onClick={() => removeTag(tag.id)} />
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1847,28 +1876,29 @@ export function CreatePostPage() {
                               添加到文章
                             </button>
                           </div>
-                          <div className="max-h-60 overflow-auto p-2 grid grid-cols-2 gap-1.5">
+                          <div className="max-h-60 overflow-auto p-3 flex flex-wrap gap-2">
                             {filteredTags.length === 0 ? (
-                              <div className="col-span-2 px-4 py-8 text-center text-xs text-[var(--text-muted)]">
+                              <div className="w-full py-8 text-center text-xs text-[var(--text-muted)]">
                                 找不到相关标签...
                               </div>
                             ) : (
                               filteredTags.slice(0, 40).map((tag) => {
                                 const isSelected = selectedTags.some(t => t.id === tag.id);
+                                const tc = getTagColor(tag.name);
                                 return (
                                   <button
                                     key={tag.id}
                                     type="button"
                                     onClick={() => isSelected ? removeTag(tag.id) : setSelectedTags([...selectedTags, tag])}
                                     className={cn(
-                                      "px-3 py-2 text-left text-sm rounded-lg transition-all flex items-center justify-between group border",
+                                      "px-3 py-1.5 text-sm rounded-full transition-all flex items-center gap-1.5 border select-none group focus:outline-none",
                                       isSelected
-                                        ? "bg-primary/10 text-primary border-primary/20 font-medium"
-                                        : "bg-transparent text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-subtle)]"
+                                        ? `${tc.activeBg} shadow-sm font-medium`
+                                        : `${tc.bg} ${tc.text} ${tc.border} hover:shadow-sm ${tc.hoverBorder} ${tc.bgHover}`
                                     )}
                                   >
-                                    <span className="truncate pr-2">#{tag.name}</span>
-                                    {isSelected && <CheckCircle className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+                                    <span>{tag.name}</span>
+                                    {isSelected && <X className="w-3.5 h-3.5 ml-0.5 flex-shrink-0 opacity-80 hover:opacity-100 transition-opacity" />}
                                   </button>
                                 );
                               })
@@ -2204,12 +2234,14 @@ export function CreatePostPage() {
 
             {!isMobile && (
               <>
-                <SelectionAiToolbar
-                  editorViewRef={editorViewRef}
-                  selectedModelId={aiModelId}
-                  selectedProviderCode={aiProviderCode}
-                />
-                <SlashCommandMenu editorViewRef={editorViewRef} onRunAiAction={openAiPanel} />
+                {enableSelectionAi && (
+                  <SelectionAiToolbar
+                    editorViewRef={editorViewRef}
+                    selectedModelId={aiModelId}
+                    selectedProviderCode={aiProviderCode}
+                  />
+                )}
+                <SlashCommandMenu editorViewRef={editorViewRef} onRunAiAction={openAiPanel} showAiCommands={enableSlashAi} />
               </>
             )}
 
@@ -2632,16 +2664,16 @@ export function CreatePostPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowSettings(false)}
-              className="absolute inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
+              className="absolute inset-0 top-14 z-[70] bg-black/20 backdrop-blur-[2px]"
             />
 
-            {/* 侧滑面板 */}
+            {/* 侧滑面板：设置 top-14 避开顶部标题栏 (h-14) */}
             <motion.div
               initial={{ x: '100%', opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: '100%', opacity: 0 }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="absolute right-0 top-0 bottom-0 w-[400px] z-50 bg-[var(--bg-primary)] border-l border-[var(--border-default)] shadow-2xl flex flex-col"
+              className="absolute right-0 top-14 bottom-0 w-[400px] z-[70] bg-[var(--bg-primary)] border-l border-[var(--border-default)] shadow-2xl flex flex-col"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">

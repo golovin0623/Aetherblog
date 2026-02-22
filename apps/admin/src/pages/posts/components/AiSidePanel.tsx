@@ -18,6 +18,7 @@ import { aiService } from '@/services/aiService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ModelSelector } from '@/components/ai/ModelSelector';
+import { useEditorStore } from '@/stores/editorStore';
 
 export type AiPanelAction = 'summary' | 'tags' | 'titles' | 'polish' | 'outline' | 'translate';
 
@@ -52,13 +53,13 @@ const toolConfig: Array<{
   icon: ComponentType<{ className?: string }>;
   desc: string;
 }> = [
-  { key: 'summary', label: '生成摘要', icon: FileText, desc: '提炼文章要点' },
-  { key: 'tags', label: '智能标签', icon: Hash, desc: '推荐相关标签' },
-  { key: 'titles', label: '标题建议', icon: Heading, desc: '生成多个标题' },
-  { key: 'polish', label: '全文润色', icon: Sparkles, desc: '优化表达与结构' },
-  { key: 'outline', label: '生成大纲', icon: ListTree, desc: '快速生成结构' },
-  { key: 'translate', label: '全文翻译', icon: Languages, desc: '翻译为指定语言' },
-];
+    { key: 'summary', label: '生成摘要', icon: FileText, desc: '提炼文章要点' },
+    { key: 'tags', label: '智能标签', icon: Hash, desc: '推荐相关标签' },
+    { key: 'titles', label: '标题建议', icon: Heading, desc: '生成多个标题' },
+    { key: 'polish', label: '全文润色', icon: Sparkles, desc: '优化表达与结构' },
+    { key: 'outline', label: '生成大纲', icon: ListTree, desc: '快速生成结构' },
+    { key: 'translate', label: '全文翻译', icon: Languages, desc: '翻译为指定语言' },
+  ];
 
 const languageOptions = [
   { value: 'en', label: '英语' },
@@ -88,6 +89,11 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
     const [activeAction, setActiveAction] = useState<AiPanelAction>('summary');
     const [targetLanguage, setTargetLanguage] = useState('en');
     const [copied, setCopied] = useState(false);
+
+    const enableSelectionAi = useEditorStore((state) => state.enableSelectionAi);
+    const setEnableSelectionAi = useEditorStore((state) => state.setEnableSelectionAi);
+    const enableSlashAi = useEditorStore((state) => state.enableSlashAi);
+    const setEnableSlashAi = useEditorStore((state) => state.setEnableSlashAi);
 
     const canRun = useMemo(() => content.trim().length > 0, [content]);
 
@@ -231,6 +237,25 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
             <span>正文 {content.trim().length} 字</span>
             <span>摘要 {summary.trim().length} 字</span>
           </div>
+
+          <div className="flex bg-[var(--bg-secondary)] rounded-lg p-1.5 gap-2">
+            <label className="flex-1 flex items-center justify-between px-2 py-1.5 cursor-pointer rounded-md hover:bg-[var(--bg-card-hover)] transition-colors group">
+              <span className="text-xs text-[var(--text-secondary)] font-medium group-hover:text-[var(--text-primary)]">划词 AI 菜单</span>
+              <div className="relative inline-flex items-center">
+                <input type="checkbox" className="sr-only peer" checked={enableSelectionAi} onChange={(e) => setEnableSelectionAi(e.target.checked)} />
+                <div className="w-7 h-4 bg-[var(--border-subtle)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+              </div>
+            </label>
+            <div className="w-px bg-[var(--border-subtle)] my-1" />
+            <label className="flex-1 flex items-center justify-between px-2 py-1.5 cursor-pointer rounded-md hover:bg-[var(--bg-card-hover)] transition-colors group">
+              <span className="text-xs text-[var(--text-secondary)] font-medium group-hover:text-[var(--text-primary)]">/ 唤出 AI 命令</span>
+              <div className="relative inline-flex items-center">
+                <input type="checkbox" className="sr-only peer" checked={enableSlashAi} onChange={(e) => setEnableSlashAi(e.target.checked)} />
+                <div className="w-7 h-4 bg-[var(--border-subtle)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+              </div>
+            </label>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             {toolConfig.map((tool) => (
               <button
