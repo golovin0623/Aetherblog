@@ -86,7 +86,6 @@ export function Sidebar() {
       {isMobileOpen && (
         <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
-          // Isolated VT layer: prevents backdrop-blur flickering during theme toggle
           style={{ viewTransitionName: 'admin-sidebar-backdrop' } as React.CSSProperties}
           onClick={() => setMobileOpen(false)}
         />
@@ -97,7 +96,6 @@ export function Sidebar() {
         "fixed top-0 left-0 h-[100dvh] z-50 w-[65vw] max-w-[220px] bg-[var(--bg-overlay)] backdrop-blur-md border-r border-border transform-gpu transition-transform duration-300 ease-in-out md:hidden flex flex-col will-change-transform",
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
       )}
-        // Isolated VT layer: drawer blur won't bleed into root animation
         style={{ viewTransitionName: 'admin-sidebar-drawer' } as React.CSSProperties}
       >
         <SidebarContent {...contentProps} effectiveCollapsed={false} isMobile={true} closeMobile={() => setMobileOpen(false)} />
