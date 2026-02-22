@@ -24,8 +24,6 @@ export default function PostsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<string | undefined>(undefined);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
-  const [showCreateMenu, setShowCreateMenu] = useState(false);
-  const createMenuRef = useRef<HTMLDivElement>(null);
 
   // 高级筛选状态
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
@@ -59,9 +57,6 @@ export default function PostsPage() {
       if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
         setActiveTagPopover(null);
       }
-      if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
-        setShowCreateMenu(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -79,10 +74,10 @@ export default function PostsPage() {
   const fetchPosts = async (pageNum = 1, currentStatus?: string, keyword?: string, currentFilters = filters) => {
     try {
       setLoading(true);
-      const res = await postService.getList({ 
-        pageNum, 
-        pageSize: 10, 
-        status: currentStatus, 
+      const res = await postService.getList({
+        pageNum,
+        pageSize: 10,
+        status: currentStatus,
         keyword,
         ...currentFilters,
         startDate: currentFilters.startDate ? `${currentFilters.startDate}T00:00:00` : undefined,
@@ -247,82 +242,45 @@ export default function PostsPage() {
 
       {/* 筛选和搜索 */}
       <div className="flex flex-wrap items-center gap-4 mb-4">
-        {/* Premium 新建按钮 with 下拉菜单 */}
-        <div className="relative" ref={createMenuRef}>
-          <div className="flex items-center gap-0.5">
-            {/* 主按钮 - 常规创建 */}
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => navigate('/posts/new')}
-              className="group relative flex items-center gap-2 px-4 py-2 rounded-l-xl text-sm font-semibold text-white bg-gradient-to-r from-primary via-primary to-primary overflow-hidden shadow-lg shadow-primary/25"
-            >
-              {/* 持续流动的光泽效果 */}
-              <div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                style={{
-                  animation: 'shimmer 3s ease-in-out infinite',
-                }}
-              />
-              <style>{`
-                @keyframes shimmer {
-                  0% { transform: translateX(-100%); }
-                  50% { transform: translateX(100%); }
-                  50.01% { transform: translateX(-100%); }
-                  100% { transform: translateX(-100%); }
-                }
-              `}</style>
-              <Plus className="w-4 h-4 relative z-10" />
-              <span className="relative z-10">新建文章</span>
-            </motion.button>
+        {/* 操作按钮组 */}
+        <div className="flex items-center gap-2">
+          {/* AI 协同写作按钮 */}
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => navigate('/posts/ai-writing/new')}
+            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 overflow-hidden transition-colors"
+          >
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span>AI 协同写作</span>
+            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/20 text-primary -ml-0.5">新</span>
+          </motion.button>
 
-            {/* 下拉触发按钮 */}
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => setShowCreateMenu(!showCreateMenu)}
-              className="group relative flex items-center justify-center w-9 h-full rounded-r-xl text-white bg-gradient-to-r from-primary to-primary overflow-hidden shadow-lg shadow-primary/25 border-l border-white/20"
-            >
-              <ChevronDown className={cn(
-                "w-4 h-4 relative z-10 transition-transform duration-200",
-                showCreateMenu && "rotate-180"
-              )} />
-            </motion.button>
-          </div>
-
-          {/* 下拉菜单 */}
-          <AnimatePresence>
-            {showCreateMenu && (
-              <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                transition={{ duration: 0.15 }}
-                className="absolute top-full mt-2 left-0 w-64 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-xl shadow-2xl overflow-hidden z-50"
-              >
-                <div className="p-2">
-                  <button
-                    onClick={() => {
-                      navigate('/posts/ai-writing/new');
-                      setShowCreateMenu(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all hover:bg-[var(--bg-card-hover)] group"
-                  >
-                    <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-purple-500/20 group-hover:from-primary/30 group-hover:to-purple-500/30 transition-all">
-                      <Sparkles className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-[var(--text-primary)]">AI 协同写作</span>
-                        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/10 text-primary">新</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">工作流驱动的智能创作体验</p>
-                    </div>
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* 新建文章主按钮 */}
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => navigate('/posts/new')}
+            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-primary via-primary to-primary overflow-hidden shadow-lg shadow-primary/25"
+          >
+            {/* 持续流动的光泽效果 */}
+            <div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+              style={{
+                animation: 'shimmer 3s ease-in-out infinite',
+              }}
+            />
+            <style>{`
+              @keyframes shimmer {
+                0% { transform: translateX(-100%); }
+                50% { transform: translateX(100%); }
+                50.01% { transform: translateX(-100%); }
+                100% { transform: translateX(-100%); }
+              }
+            `}</style>
+            <Plus className="w-4 h-4 relative z-10" />
+            <span className="relative z-10">新建文章</span>
+          </motion.button>
         </div>
 
         {/* 状态筛选 (滑动背景效果) */}
@@ -391,7 +349,7 @@ export default function PostsPage() {
             <span>高级筛选</span>
             <ChevronDown className={cn('w-4 h-4 transition-transform duration-300', showAdvancedFilter && 'rotate-180')} />
           </button>
-          
+
           {/* 重置按钮 (与主题色协调) */}
           {showAdvancedFilter && (
             <motion.button
@@ -414,7 +372,7 @@ export default function PostsPage() {
               {/* 内部背景 */}
               <div className="absolute inset-[1px] rounded-[10px] bg-gray-900" />
               {/* 光泽流动 */}
-              <div 
+              <div
                 className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100"
                 style={{
                   animation: 'shimmerReset 1.5s ease-in-out infinite',
@@ -544,7 +502,7 @@ export default function PostsPage() {
             </tr>
           </thead>
         </table>
-        
+
         {/* 表格内容区 - 带动画 */}
         <div className="flex-1 overflow-auto">
           <AnimatePresence mode="wait">
@@ -620,111 +578,111 @@ export default function PostsPage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                  {/* 桌面端视图 */}
-                  <div className="hidden md:block">
-                    <table className="w-full table-fixed">
-                      <tbody>
-                        {posts.map((post) => (
-                          <PostTableRow
-                            key={post.id}
-                            post={post}
-                            isActivePopover={activeTagPopover === post.id}
-                            actionLoading={actionLoading === post.id}
-                            onTogglePopover={handleTogglePopover}
-                            onEdit={handleEdit}
-                            onOpenProperties={handleOpenProperties}
-                            onCopy={handleCopyClick}
-                            onDelete={handleDeleteClick}
-                            popoverRef={tagPopoverRef}
-                          />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                {/* 桌面端视图 */}
+                <div className="hidden md:block">
+                  <table className="w-full table-fixed">
+                    <tbody>
+                      {posts.map((post) => (
+                        <PostTableRow
+                          key={post.id}
+                          post={post}
+                          isActivePopover={activeTagPopover === post.id}
+                          actionLoading={actionLoading === post.id}
+                          onTogglePopover={handleTogglePopover}
+                          onEdit={handleEdit}
+                          onOpenProperties={handleOpenProperties}
+                          onCopy={handleCopyClick}
+                          onDelete={handleDeleteClick}
+                          popoverRef={tagPopoverRef}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                  {/* 移动端视图 - 列表卡片 */}
-                  <div className="md:hidden divide-y divide-[var(--border-subtle)]">
-                    {posts.map((post) => (
-                      <div key={post.id} className="p-4 space-y-3 active:bg-[var(--bg-card-hover)] transition-colors">
-                        <div className="flex justify-between items-start gap-4">
+                {/* 移动端视图 - 列表卡片 */}
+                <div className="md:hidden divide-y divide-[var(--border-subtle)]">
+                  {posts.map((post) => (
+                    <div key={post.id} className="p-4 space-y-3 active:bg-[var(--bg-card-hover)] transition-colors">
+                      <div className="flex justify-between items-start gap-4">
+                        <button
+                          onClick={(e) => handleEdit(post, e)}
+                          className="text-left flex-1"
+                        >
+                          <h3 className="text-[var(--text-primary)] font-medium text-sm line-clamp-2 leading-relaxed">
+                            {post.title}
+                          </h3>
+                        </button>
+                        <StatusBadge status={post.status} />
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                        <span className="px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
+                          {post.categoryName || '-'}
+                        </span>
+                        <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
+                        <span>{formatDate(post.publishedAt || post.createdAt)}</span>
+                        <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
+                        <span>{post.viewCount} 浏览</span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex flex-wrap gap-1.5 flex-1 mr-4">
+                          {post.tagNames?.length > 0 ? (
+                            <>
+                              {post.tagNames.slice(0, 2).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="px-1.5 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded text-primary-light/90 whitespace-nowrap"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                              {post.tagNames.length > 2 && (
+                                <span className="px-1.5 py-0.5 text-[10px] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-[var(--text-muted)] font-mono">
+                                  +{post.tagNames.length - 2}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-[var(--text-muted)] italic">无标签</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={(e) => handleOpenProperties(post, e)}
+                            className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={(e) => handleEdit(post, e)}
-                            className="text-left flex-1"
+                            className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                           >
-                            <h3 className="text-[var(--text-primary)] font-medium text-sm line-clamp-2 leading-relaxed">
-                              {post.title}
-                            </h3>
+                            <Edit className="w-4 h-4" />
                           </button>
-                          <StatusBadge status={post.status} />
-                        </div>
-
-                        <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-                          <span className="px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
-                            {post.categoryName || '-'}
-                          </span>
-                          <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
-                          <span>{formatDate(post.publishedAt || post.createdAt)}</span>
-                          <span className="w-px h-2.5 bg-[var(--border-subtle)]" />
-                          <span>{post.viewCount} 浏览</span>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-1">
-                          <div className="flex flex-wrap gap-1.5 flex-1 mr-4">
-                            {post.tagNames?.length > 0 ? (
-                              <>
-                                {post.tagNames.slice(0, 2).map((tag) => (
-                                  <span 
-                                    key={tag} 
-                                    className="px-1.5 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded text-primary-light/90 whitespace-nowrap"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                                {post.tagNames.length > 2 && (
-                                  <span className="px-1.5 py-0.5 text-[10px] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-[var(--text-muted)] font-mono">
-                                    +{post.tagNames.length - 2}
-                                  </span>
-                                )}
-                              </>
+                          <button
+                            onClick={(e) => handleCopyClick(post, e)}
+                            disabled={actionLoading === post.id}
+                            className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)] disabled:opacity-50"
+                          >
+                            {actionLoading === post.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              <span className="text-[10px] text-[var(--text-muted)] italic">无标签</span>
+                              <Copy className="w-4 h-4" />
                             )}
-                          </div>
-                          <div className="flex items-center gap-0.5">
-                            <button
-                              onClick={(e) => handleOpenProperties(post, e)}
-                              className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
-                            >
-                              <Settings className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={(e) => handleEdit(post, e)}
-                              className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={(e) => handleCopyClick(post, e)}
-                              disabled={actionLoading === post.id}
-                              className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)] disabled:opacity-50"
-                            >
-                              {actionLoading === post.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Copy className="w-4 h-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteClick(post, e)}
-                              className="p-2 text-[var(--text-muted)] active:text-red-400"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteClick(post, e)}
+                            className="p-2 text-[var(--text-muted)] active:text-red-400"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -764,7 +722,7 @@ export default function PostsPage() {
 
           <div className="flex items-center gap-2">
             {!loading && pagination.pages > 1 ? (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="flex items-center gap-1.5"
