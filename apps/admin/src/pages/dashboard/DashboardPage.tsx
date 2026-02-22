@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign, RefreshCw } from 'lucide-react';
-import { 
-  StatsCard, 
-  VisitorChart, 
-  TopPosts, 
-  DeviceChart, 
+import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign, RefreshCw, Coins } from 'lucide-react';
+import {
+  StatsCard,
+  VisitorChart,
+  TopPosts,
+  DeviceChart,
   SystemStatus,
   RecentActivity,
   SystemTrends,
@@ -85,12 +85,12 @@ export default function DashboardPage() {
   const [aiIssueCategory, setAiIssueCategory] = useState<string | undefined>();
   const [aiLastSuccessAt, setAiLastSuccessAt] = useState<Date | null>(null);
   const [aiReloadTick, setAiReloadTick] = useState(0);
-  
+
   // 容器日志状态
-  const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
+  const [selectedContainer, setSelectedContainer] = useState<{ id: string, name: string }>({ id: '', name: '' });
 
   const handleContainerSelect = (id: string, name: string) => {
-    setSelectedContainer({id, name});
+    setSelectedContainer({ id, name });
   };
 
   // 模拟数据用于回退或初始开发
@@ -517,11 +517,10 @@ export default function DashboardPage() {
                   setAiDays(days);
                   setAiPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  aiDays === days
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${aiDays === days
                     ? 'bg-primary text-white shadow'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                }`}
+                  }`}
               >
                 {days}天
               </button>
@@ -551,7 +550,7 @@ export default function DashboardPage() {
             value={aiOverview.totalTokens}
             change={0}
             changeLabel="累计消耗"
-            icon={<Cpu className="w-5 h-5" />}
+            icon={<Coins className="w-5 h-5" />}
             color="cyan"
             loading={aiLoading}
           />
@@ -656,35 +655,35 @@ export default function DashboardPage() {
       {/* 系统监控区域 */}
       <div className="space-y-6 pt-4">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">系统监控</h2>
-        
+
         {/* 第 1 行：趋势 + 状态 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           <div className="lg:col-span-2">
-             <SystemTrends className="h-[500px]" />
-           </div>
-           <div className="lg:col-span-1">
-             <SystemStatus refreshInterval={5} className="h-[500px]" />
-           </div>
+          <div className="lg:col-span-2">
+            <SystemTrends className="h-[500px]" />
+          </div>
+          <div className="lg:col-span-1">
+            <SystemStatus refreshInterval={5} className="h-[500px]" />
+          </div>
         </div>
 
         {/* 第 2 行：日志 + 容器 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-           <div className="lg:col-span-2">
-             <RealtimeLogViewer 
-                containerId={selectedContainer.id}
-                containerName={selectedContainer.name}
-                className="h-[500px]"
-             />
-           </div>
-           
-           <div className="lg:col-span-1">
-             <ContainerStatus 
-                refreshInterval={30}
-                onSelectContainer={handleContainerSelect}
-                selectedId={selectedContainer.id}
-                className="h-[500px]" 
-             />
-           </div>
+          <div className="lg:col-span-2">
+            <RealtimeLogViewer
+              containerId={selectedContainer.id}
+              containerName={selectedContainer.name}
+              className="h-[500px]"
+            />
+          </div>
+
+          <div className="lg:col-span-1">
+            <ContainerStatus
+              refreshInterval={30}
+              onSelectContainer={handleContainerSelect}
+              selectedId={selectedContainer.id}
+              className="h-[500px]"
+            />
+          </div>
         </div>
       </div>
     </motion.div>
