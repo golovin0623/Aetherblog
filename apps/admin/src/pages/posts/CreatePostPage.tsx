@@ -10,6 +10,7 @@ import {
   Undo2, Redo2, Hash
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, useImageUpload, UploadProgress, type ViewMode, type TableInfo, type UploadResult } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
 import { Tooltip } from '@aetherblog/ui';
@@ -179,10 +180,19 @@ export function CreatePostPage() {
 
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('none');
   const [summary, setSummary] = useState('');
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
-  const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(true);
+  const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('aether_autosave_enabled');
+      return saved !== 'false';
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aether_autosave_enabled', String(isAutoSaveEnabled));
+  }, [isAutoSaveEnabled]);
   const [autoSaveFlash, setAutoSaveFlash] = useState(false); // 自动保存时的微妙闪烁
   const [publishTime, setPublishTime] = useState<string>('');
   // 快速创建分类模态框
@@ -658,13 +668,12 @@ export function CreatePostPage() {
             });
 
             if (useDraft) {
-              setSaveMessage({ type: 'success', text: '已自动恢复未发布的草稿内容' });
-              setTimeout(() => setSaveMessage(null), 3000);
+              toast.success('已自动恢复未发布的草稿内容', { id: 'draft-restore' });
             }
           }
         } catch (error) {
           logger.error('Failed to load post:', error);
-          setSaveMessage({ type: 'error', text: '加载文章失败' });
+          toast.error('加载文章失败');
         } finally {
           setLoadingPost(false);
         }
@@ -1311,16 +1320,16 @@ export function CreatePostPage() {
   // 验证检查
   const validatePost = (forPublish = false) => {
     if (!title.trim()) {
-      setSaveMessage({ type: 'error', text: '请输入文章标题' });
+      toast.error('请输入文章标题');
       return false;
     }
     if (!content.trim()) {
-      setSaveMessage({ type: 'error', text: '请输入文章内容' });
+      toast.error('请输入文章内容');
       return false;
     }
     // 发布需要分类
     if (forPublish && !selectedCategory) {
-      setSaveMessage({ type: 'error', text: '发布文章请先选择分类' });
+      toast.error('发布文章请先选择分类');
       if (isMobile) {
         openMobilePanel('meta');
       } else {
@@ -1345,11 +1354,11 @@ export function CreatePostPage() {
         setSelectedCategory(res.data);
         setNewCategoryName('');
         setShowCreateCategoryModal(false);
-        setSaveMessage({ type: 'success', text: `分类 “${res.data.name}” 创建成功` });
+        toast.success(`分类 “${res.data.name}” 创建成功`);
       }
     } catch (error) {
       logger.error('Create category error:', error);
-      setSaveMessage({ type: 'error', text: '创建分类失败' });
+      toast.error('创建分类失败');
     } finally {
       setCreatingCategory(false);
     }
@@ -1360,7 +1369,6 @@ export function CreatePostPage() {
     if (!validatePost()) return;
 
     setIsSaving(true);
-    setSaveMessage(null);
     updateSaveStatus({
       type: 'saving',
       source: 'manual',
@@ -1380,7 +1388,7 @@ export function CreatePostPage() {
           tagIds: selectedTags.map(t => t.id),
           status: 'PUBLISHED',
         });
-        setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
+        toast.success('草稿已保存（未发布）');
         updateSaveStatus({
           type: 'saved',
           source: 'manual',
@@ -1411,7 +1419,7 @@ export function CreatePostPage() {
           });
 
         if (res.code === 200 && res.data) {
-          setSaveMessage({ type: 'success', text: '保存成功！' });
+          toast.success('保存成功！');
           updateSaveStatus({
             type: 'saved',
             source: 'manual',
@@ -1426,7 +1434,7 @@ export function CreatePostPage() {
             setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
           }
         } else {
-          setSaveMessage({ type: 'error', text: res.message || '保存失败' });
+          toast.error(res.message || '保存失败');
           updateSaveStatus({
             type: 'error',
             source: 'manual',
@@ -1437,7 +1445,7 @@ export function CreatePostPage() {
       }
     } catch (error) {
       logger.error('Save error:', error);
-      setSaveMessage({ type: 'error', text: '保存失败，请重试' });
+      toast.error('保存失败，请重试');
       updateSaveStatus({
         type: 'error',
         source: 'manual',
@@ -1454,7 +1462,6 @@ export function CreatePostPage() {
     if (!validatePost(true)) return; // true = 用于发布，需要分类
 
     setIsPublishing(true);
-    setSaveMessage(null);
     updateSaveStatus({
       type: 'saving',
       source: 'publish',
@@ -1482,7 +1489,7 @@ export function CreatePostPage() {
         });
 
       if (res.code === 200 && res.data) {
-        setSaveMessage({ type: 'success', text: '文章发布成功！' });
+        toast.success('文章发布成功！');
         updateSaveStatus({
           type: 'saved',
           source: 'publish',
@@ -1494,7 +1501,7 @@ export function CreatePostPage() {
         });
         setTimeout(() => navigate('/posts'), 1500);
       } else {
-        setSaveMessage({ type: 'error', text: res.message || '发布失败' });
+        toast.error(res.message || '发布失败');
         updateSaveStatus({
           type: 'error',
           source: 'publish',
@@ -1504,7 +1511,7 @@ export function CreatePostPage() {
       }
     } catch (error) {
       logger.error('Publish error:', error);
-      setSaveMessage({ type: 'error', text: '发布失败，请重试' });
+      toast.error('发布失败，请重试');
       updateSaveStatus({
         type: 'error',
         source: 'publish',
@@ -1516,13 +1523,6 @@ export function CreatePostPage() {
     }
   };
 
-  // 3 秒后清除消息
-  useEffect(() => {
-    if (saveMessage) {
-      const timer = setTimeout(() => setSaveMessage(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveMessage]);
 
   const appendTagByName = useCallback(async (rawName: string) => {
     const nextName = rawName.trim();
@@ -1621,7 +1621,7 @@ export function CreatePostPage() {
         fingerprint: refreshedFingerprint,
         autoSaved: true,
       });
-      setSaveMessage({ type: 'success', text: '保存状态已刷新' });
+      toast.success('保存状态已刷新');
     } catch (error) {
       logger.error('Refresh save status failed:', error);
       updateSaveStatus({
@@ -1630,7 +1630,7 @@ export function CreatePostPage() {
         label: '刷新失败',
         detail: '请稍后重试',
       });
-      setSaveMessage({ type: 'error', text: '保存状态刷新失败' });
+      toast.error('保存状态刷新失败');
     }
   }, [isSaving, isPublishing, isEditMode, postId, updateSaveStatus, _postStatus]);
 
@@ -1941,23 +1941,7 @@ export function CreatePostPage() {
                 </button>
               </div>
 
-              {/* 保存消息提示 */}
-              <AnimatePresence>
-                {saveMessage && (
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className={cn(
-                      'absolute right-6 top-16 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50',
-                      saveMessage.type === 'success' ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'
-                    )}
-                  >
-                    {saveMessage.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                    {saveMessage.text}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+
             </div>
           </motion.div>
         )}
