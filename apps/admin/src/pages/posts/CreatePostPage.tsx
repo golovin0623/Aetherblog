@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { 
-  Save, Settings, Sparkles, ArrowLeft, Send, 
+import {
+  Save, Settings, Sparkles, ArrowLeft, Send,
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Link2, Image, Quote, Heading1, Heading2, Heading3,
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
@@ -135,7 +135,7 @@ export function CreatePostPage() {
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
   const postId = id ? parseInt(id, 10) : null;
-  
+
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -417,11 +417,11 @@ export function CreatePostPage() {
       const timerId = setTimeout(() => {
         setAutoCollapse(true);
       }, 100); // 小延迟以获得更平滑的过渡
-      
+
       // 在类似 ref 的闭包中存储 timerId 以便清理
       return () => clearTimeout(timerId);
     });
-    
+
     return () => {
       cancelAnimationFrame(rafId);
       setAutoCollapse(false);
@@ -497,7 +497,7 @@ export function CreatePostPage() {
   useEffect(() => {
     if (viewMode === 'edit') {
       setShowToc(true);
-      setIsFullscreen(false); 
+      setIsFullscreen(false);
     } else if (viewMode === 'preview') {
       setIsFullscreen(true);
       setShowToc(false);
@@ -519,7 +519,7 @@ export function CreatePostPage() {
       ]);
       if (catRes.data) setCategories(catRes.data);
       if (tagRes.data) setTags(tagRes.data);
-      
+
       // 从服务器时间设置发布时间，如果 API 失败则回退到本地时间
       if (timeRes?.data?.timestamp) {
         // 服务器返回 ISO 时间戳，转换为本地 datetime-local 格式
@@ -645,7 +645,7 @@ export function CreatePostPage() {
           setLoadingPost(false);
         }
       };
-      
+
       loadPost();
     }
   }, [isEditMode, postId, updateSaveStatus]);
@@ -670,7 +670,7 @@ export function CreatePostPage() {
   // 基于搜索过滤分类
   const filteredCategories = useMemo(() => {
     if (!categorySearch) return categories;
-    return categories.filter(c => 
+    return categories.filter(c =>
       c.name.toLowerCase().includes(categorySearch.toLowerCase())
     );
   }, [categories, categorySearch]);
@@ -678,7 +678,7 @@ export function CreatePostPage() {
   // 基于搜索过滤标签
   const filteredTags = useMemo(() => {
     if (!tagSearch) return tags.filter(t => !selectedTags.find(s => s.id === t.id));
-    return tags.filter(t => 
+    return tags.filter(t =>
       t.name.toLowerCase().includes(tagSearch.toLowerCase()) &&
       !selectedTags.find(s => s.id === t.id)
     );
@@ -702,25 +702,25 @@ export function CreatePostPage() {
     text: string;
     line: number;
   }
-  
+
   const tocItems = useMemo((): TocItem[] => {
     const lines = content.split('\n');
     const items: TocItem[] = [];
-    
+
     // 追踪代码块状态：存储开始围栏的字符和长度
     let fenceChar: string | null = null;
     let fenceLength = 0;
-    
+
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
-      
+
       // 检测代码块边界
       const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
-      
+
       if (fenceMatch) {
         const matchedChar = fenceMatch[1][0];
         const matchedLength = fenceMatch[1].length;
-        
+
         if (fenceChar === null) {
           // 开始新的代码块
           fenceChar = matchedChar;
@@ -733,7 +733,7 @@ export function CreatePostPage() {
         // 如果是不同字符或更少长度，视为代码块内的内容，忽略
         return;
       }
-      
+
       // 只在非代码块中识别标题
       if (fenceChar === null) {
         const match = line.match(/^(#{1,6})\s+(.+)$/);
@@ -746,7 +746,7 @@ export function CreatePostPage() {
         }
       }
     });
-    
+
     return items;
   }, [content]);
 
@@ -1026,13 +1026,13 @@ export function CreatePostPage() {
     // 查找编辑器内的所有滚动容器
     const editorContainer = editorContainerRef.current;
     if (!editorContainer) return;
-    
+
     // 滚动 CodeMirror 滚动条
     const cmScroller = editorContainer.querySelector('.cm-scroller');
     if (cmScroller) {
       cmScroller.scrollTo({ top: 0, behavior: 'smooth' });
     }
-    
+
     // 同时滚动预览面板 (寻找带有 bg-[#0a0a0c] 的容器)
     const previewPanels = editorContainer.querySelectorAll('.overflow-y-auto, [class*="overflow-y-auto"]');
     previewPanels.forEach(panel => {
@@ -1042,7 +1042,7 @@ export function CreatePostPage() {
 
   // 工具栏的编辑器命令
   const editorCommands = useEditorCommands(editorViewRef);
-  
+
   // 表格操作的表格命令
   const tableCommands = useTableCommands(editorViewRef);
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
@@ -1179,10 +1179,10 @@ export function CreatePostPage() {
       const info = tableCommands.getTableInfo();
       setTableInfo(info);
     };
-    
+
     // 检查内容更改
     const interval = setInterval(checkTable, 100);
-    
+
     // 滚动时也更新
     const editorContainer = editorContainerRef.current;
     if (editorContainer) {
@@ -1191,7 +1191,7 @@ export function CreatePostPage() {
         scroller.addEventListener('scroll', checkTable);
       }
     }
-    
+
     return () => {
       clearInterval(interval);
       if (editorContainer) {
@@ -1202,7 +1202,7 @@ export function CreatePostPage() {
       }
     };
   }, [isMobile, tableCommands]);
-  
+
   // 表格工具栏悬停处理程序
   const handleTableTriggerEnter = useCallback(() => {
     if (tableToolbarTimeoutRef.current) {
@@ -1211,14 +1211,14 @@ export function CreatePostPage() {
     }
     setShowTableToolbar(true);
   }, []);
-  
+
   const handleTableTriggerLeave = useCallback(() => {
     // 延迟隐藏以允许移动到工具栏
     tableToolbarTimeoutRef.current = setTimeout(() => {
       setShowTableToolbar(false);
     }, 200);
   }, []);
-  
+
   // 卸载时清理超时
   useEffect(() => {
     return () => {
@@ -1229,7 +1229,7 @@ export function CreatePostPage() {
   }, []);
 
   type InsertMode = 'wrap' | 'insert' | 'lineStart';
-  
+
   const insertMarkdown = useCallback((prefix: string, suffix: string = '', mode: InsertMode = 'wrap') => {
     if (mode === 'lineStart') {
       editorCommands.toggleLineStart(prefix);
@@ -1247,7 +1247,7 @@ export function CreatePostPage() {
       // 仅在按下 Ctrl/Cmd 时处理
       // 仅在按下 Ctrl/Cmd 时处理
       if (!(e.ctrlKey || e.metaKey)) return;
-      
+
       switch (e.key.toLowerCase()) {
         case 'b': // 粗体
           e.preventDefault();
@@ -1312,7 +1312,7 @@ export function CreatePostPage() {
   // 创建新分类
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) return;
-    
+
     setCreatingCategory(true);
     try {
       const res = await categoryService.create({ name: newCategoryName.trim() });
@@ -1334,7 +1334,7 @@ export function CreatePostPage() {
   // 保存为草稿
   const handleSave = async () => {
     if (!validatePost()) return;
-    
+
     setIsSaving(true);
     setSaveMessage(null);
     updateSaveStatus({
@@ -1343,49 +1343,49 @@ export function CreatePostPage() {
       label: '手动保存中',
       detail: '正在提交保存请求',
     });
-    
+
     try {
       // 如果正在编辑已发布的文章，"保存" 仅更新草稿缓存
       // 未发布 (草稿) 文章直接更新数据库
       if (isEditMode && postId && _postStatus === 'PUBLISHED') {
-         await postService.autoSave(postId, {
+        await postService.autoSave(postId, {
+          title: title.trim(),
+          content,
+          summary: summary.trim() || undefined,
+          categoryId: selectedCategory?.id,
+          tagIds: selectedTags.map(t => t.id),
+          status: 'PUBLISHED',
+        });
+        setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
+        updateSaveStatus({
+          type: 'saved',
+          source: 'manual',
+          label: '草稿已保存',
+          detail: '当前改动已写入草稿缓存',
+        }, {
+          markSuccess: true,
+          fingerprint: currentFingerprint,
+        });
+      } else {
+        // 正常保存到数据库
+        const res = isEditMode && postId
+          ? await postService.update(postId, {
             title: title.trim(),
             content,
             summary: summary.trim() || undefined,
             categoryId: selectedCategory?.id,
             tagIds: selectedTags.map(t => t.id),
-            status: 'PUBLISHED',
-         });
-         setSaveMessage({ type: 'success', text: '草稿已保存（未发布）' });
-         updateSaveStatus({
-           type: 'saved',
-           source: 'manual',
-           label: '草稿已保存',
-           detail: '当前改动已写入草稿缓存',
-         }, {
-           markSuccess: true,
-           fingerprint: currentFingerprint,
-         });
-      } else {
-        // 正常保存到数据库
-        const res = isEditMode && postId
-          ? await postService.update(postId, {
-              title: title.trim(),
-              content,
-              summary: summary.trim() || undefined,
-              categoryId: selectedCategory?.id,
-              tagIds: selectedTags.map(t => t.id),
-              status: 'DRAFT',
-            })
+            status: 'DRAFT',
+          })
           : await postService.create({
-              title: title.trim(),
-              content,
-              summary: summary.trim() || undefined,
-              categoryId: selectedCategory?.id,
-              tagIds: selectedTags.map(t => t.id),
-              status: 'DRAFT',
-            });
-        
+            title: title.trim(),
+            content,
+            summary: summary.trim() || undefined,
+            categoryId: selectedCategory?.id,
+            tagIds: selectedTags.map(t => t.id),
+            status: 'DRAFT',
+          });
+
         if (res.code === 200 && res.data) {
           setSaveMessage({ type: 'success', text: '保存成功！' });
           updateSaveStatus({
@@ -1428,7 +1428,7 @@ export function CreatePostPage() {
   // 发布文章
   const handlePublish = async () => {
     if (!validatePost(true)) return; // true = 用于发布，需要分类
-    
+
     setIsPublishing(true);
     setSaveMessage(null);
     updateSaveStatus({
@@ -1437,26 +1437,26 @@ export function CreatePostPage() {
       label: '发布中',
       detail: '正在提交发布请求',
     });
-    
+
     try {
       const res = isEditMode && postId
         ? await postService.update(postId, {
-            title: title.trim(),
-            content,
-            summary: summary.trim() || undefined,
-            categoryId: selectedCategory?.id,
-            tagIds: selectedTags.map(t => t.id),
-            status: 'PUBLISHED',
-          })
+          title: title.trim(),
+          content,
+          summary: summary.trim() || undefined,
+          categoryId: selectedCategory?.id,
+          tagIds: selectedTags.map(t => t.id),
+          status: 'PUBLISHED',
+        })
         : await postService.create({
-            title: title.trim(),
-            content,
-            summary: summary.trim() || undefined,
-            categoryId: selectedCategory?.id,
-            tagIds: selectedTags.map(t => t.id),
-            status: 'PUBLISHED',
-          });
-      
+          title: title.trim(),
+          content,
+          summary: summary.trim() || undefined,
+          categoryId: selectedCategory?.id,
+          tagIds: selectedTags.map(t => t.id),
+          status: 'PUBLISHED',
+        });
+
       if (res.code === 200 && res.data) {
         setSaveMessage({ type: 'success', text: '文章发布成功！' });
         updateSaveStatus({
@@ -1618,74 +1618,74 @@ export function CreatePostPage() {
       <div className="flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-50 overflow-hidden">
         {/* 头部骨架 */}
         <div className="h-14 flex-shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-6 gap-4">
-           {/* 左侧 */}
-           <div className="flex items-center gap-3 flex-1">
-             <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-shrink-0" /> {/* 返回 */}
-             <div className="h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-1 max-w-md" />   {/* 标题 */}
-             <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0 mx-1" />
-             <div className="flex gap-2">
-                <div className="w-24 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                <div className="w-16 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-             </div>
-           </div>
-           
-           {/* 右侧 */}
-           <div className="flex items-center gap-2">
-              <div className="w-20 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* AI */}
-              <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />  {/* 设置 */}
-              <div className="w-[90px] h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* 保存 */}
-              <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* 发布 */}
-           </div>
+          {/* 左侧 */}
+          <div className="flex items-center gap-3 flex-1">
+            <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-shrink-0" /> {/* 返回 */}
+            <div className="h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse flex-1 max-w-md" />   {/* 标题 */}
+            <div className="w-px h-6 bg-[var(--border-subtle)] flex-shrink-0 mx-1" />
+            <div className="flex gap-2">
+              <div className="w-24 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-16 h-7 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            </div>
+          </div>
+
+          {/* 右侧 */}
+          <div className="flex items-center gap-2">
+            <div className="w-20 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* AI */}
+            <div className="w-8 h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />  {/* 设置 */}
+            <div className="w-[90px] h-8 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* 保存 */}
+            <div className="w-[90px] h-8 rounded-lg bg-primary/20 animate-pulse" /> {/* 发布 */}
+          </div>
         </div>
 
         {/* 工具栏骨架 */}
         <div className="flex-shrink-0 h-10 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 flex items-center px-4 gap-4 overflow-hidden">
-             <div className="flex items-center gap-1 pr-3 border-r border-[var(--border-subtle)]">
-                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-             </div>
-             <div className="flex items-center gap-1 px-3">
-                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-             </div>
-             <div className="flex-1" />
+          <div className="flex items-center gap-1 pr-3 border-r border-[var(--border-subtle)]">
+            <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+          </div>
+          <div className="flex items-center gap-1 px-3">
+            <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            <div className="w-6 h-6 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+          </div>
+          <div className="flex-1" />
         </div>
 
         {/* 内容区域 */}
         <div className="flex-1 flex overflow-hidden">
-             {/* 编辑器 */}
-             <div className="flex-1 p-8 space-y-6 bg-[var(--bg-primary)]">
-                <div className="w-3/4 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* H1 标题样式 */}
-                <div className="space-y-4">
-                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                    <div className="w-11/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                    <div className="w-4/5 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                </div>
-                <div className="space-y-4 pt-4">
-                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                </div>
-             </div>
-             
-             {/* 预览 */}
-             <div className="flex-1 border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-8 space-y-6 hidden lg:block">
-                <div className="w-2/3 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
-                <div className="space-y-4">
-                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                    <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                    <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-                </div>
-                <div className="w-full h-48 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
-             </div>
+          {/* 编辑器 */}
+          <div className="flex-1 p-8 space-y-6 bg-[var(--bg-primary)]">
+            <div className="w-3/4 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" /> {/* H1 标题样式 */}
+            <div className="space-y-4">
+              <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-11/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-4/5 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            </div>
+            <div className="space-y-4 pt-4">
+              <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            </div>
+          </div>
+
+          {/* 预览 */}
+          <div className="flex-1 border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-8 space-y-6 hidden lg:block">
+            <div className="w-2/3 h-10 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
+            <div className="space-y-4">
+              <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-10/12 h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+              <div className="w-full h-4 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+            </div>
+            <div className="w-full h-48 rounded-lg bg-[var(--shimmer-bg)] animate-pulse" />
+          </div>
         </div>
-        
+
         {/* 页脚 (状态栏) */}
         <div className="h-8 flex-shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-between px-4">
-             <div className="w-24 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
-             <div className="w-16 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+          <div className="w-24 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
+          <div className="w-16 h-3 rounded bg-[var(--shimmer-bg)] animate-pulse" />
         </div>
       </div>
     );
@@ -1699,7 +1699,7 @@ export function CreatePostPage() {
       {/* 顶部头部区域 - 带折叠动画 */}
       <AnimatePresence initial={false}>
         {!isFullscreen && (
-          <motion.div 
+          <motion.div
             key="editor-header"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -1710,14 +1710,14 @@ export function CreatePostPage() {
             <div className="flex items-center justify-between px-4 md:px-6 py-3 gap-2 md:gap-4">
               {/* 左侧块：返回 + 标题 */}
               <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-                <button 
+                <button
                   onClick={() => navigate('/posts')}
                   className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors flex-shrink-0"
                   title="返回列表"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
-                
+
                 {/* 标题输入 */}
                 <div className="flex-1 min-w-0">
                   <input
@@ -1725,7 +1725,7 @@ export function CreatePostPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="请输入文章标题..."
-                    className="w-full bg-transparent text-lg md:text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none truncate"
+                    className="w-full bg-transparent focus:bg-[var(--bg-secondary)] hover:bg-[var(--bg-secondary)]/50 px-3 py-1.5 rounded-lg text-lg md:text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none truncate transition-colors border border-transparent focus:border-[var(--border-subtle)]"
                   />
                 </div>
 
@@ -1786,15 +1786,37 @@ export function CreatePostPage() {
                   </div>
 
                   {/* 标签选择器 */}
-                  <div ref={tagDropdownRef} className="relative flex items-center gap-1.5">
-                    {selectedTags.slice(0, 2).map((tag) => (
-                      <span key={tag.id} className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs border border-primary/20">
-                        <span>{tag.name}</span>
-                        <X className="w-3 h-3 cursor-pointer" onClick={() => removeTag(tag.id)} />
-                      </span>
-                    ))}
-                    <button onClick={() => setShowTagDropdown(!showTagDropdown)} className="p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary">
-                      <Plus className="w-4 h-4" />
+                  <div ref={tagDropdownRef} className="relative flex items-center gap-1.5 z-[2100]">
+                    <div className="flex items-center gap-1.5">
+                      {selectedTags.slice(0, 3).map((tag) => (
+                        <span key={tag.id} className="group/tag flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium border border-primary/20 transition-colors hover:bg-primary/20">
+                          <span>{tag.name}</span>
+                          <X className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer" onClick={() => removeTag(tag.id)} />
+                        </span>
+                      ))}
+                      {selectedTags.length > 3 && (
+                        <div className="group/more relative flex items-center">
+                          <span className="px-1.5 py-1 text-xs font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-md border border-[var(--border-subtle)] cursor-default transition-colors group-hover/more:border-primary/40 group-hover/more:text-primary">
+                            +{selectedTags.length - 3}
+                          </span>
+                          {/* 悬浮展示所有超长标签 */}
+                          <div className="absolute top-[calc(100%+8px)] left-1/2 -translate-x-1/2 p-2 bg-[var(--bg-popover)]/95 backdrop-blur-xl border border-[var(--border-subtle)] rounded-xl shadow-xl opacity-0 invisible group-hover/more:opacity-100 group-hover/more:visible transition-all z-[2200] flex flex-wrap gap-1.5 min-w-[200px] pointer-events-auto">
+                            {selectedTags.map(tag => (
+                              <span key={`all-${tag.id}`} className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium border border-primary/20">
+                                <span>{tag.name}</span>
+                                <X className="w-3 h-3 opacity-60 hover:opacity-100 cursor-pointer" onClick={() => removeTag(tag.id)} />
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowTagDropdown(!showTagDropdown)}
+                      className="flex items-center justify-center w-6 h-6 rounded-md border border-dashed border-[var(--border-subtle)] hover:border-primary hover:text-primary text-[var(--text-muted)] transition-colors"
+                      title="添加标签"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                     <AnimatePresence>
                       {showTagDropdown && (
@@ -1802,7 +1824,7 @@ export function CreatePostPage() {
                           initial={{ opacity: 0, y: 6, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                          className="absolute top-full right-0 mt-3 w-72 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
+                          className="absolute top-full right-0 mt-3 w-80 z-[2000] bg-[var(--bg-popover)]/95 border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
                         >
                           <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/70">
                             <div className="relative">
@@ -1820,27 +1842,36 @@ export function CreatePostPage() {
                             <button
                               type="button"
                               onClick={handleTagInputConfirm}
-                              className="mt-2 w-full px-3 py-1.5 text-xs rounded-md bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+                              className="mt-2 w-full px-3 py-1.5 text-xs rounded-md bg-primary/10 text-primary hover:bg-primary/15 transition-colors font-medium border border-transparent"
                             >
-                              添加输入标签
+                              添加到文章
                             </button>
                           </div>
-                          <div className="max-h-56 overflow-auto py-2">
+                          <div className="max-h-60 overflow-auto p-2 grid grid-cols-2 gap-1.5">
                             {filteredTags.length === 0 ? (
-                              <div className="px-4 py-6 text-center text-xs text-[var(--text-muted)]">
-                                没有可添加的标签
+                              <div className="col-span-2 px-4 py-8 text-center text-xs text-[var(--text-muted)]">
+                                找不到相关标签...
                               </div>
                             ) : (
-                              filteredTags.slice(0, 40).map((tag) => (
-                                <button
-                                  key={tag.id}
-                                  type="button"
-                                  onClick={() => setSelectedTags((prev) => prev.find((item) => item.id === tag.id) ? prev : [...prev, tag])}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-card-hover)] transition-colors text-[var(--text-secondary)]"
-                                >
-                                  #{tag.name}
-                                </button>
-                              ))
+                              filteredTags.slice(0, 40).map((tag) => {
+                                const isSelected = selectedTags.some(t => t.id === tag.id);
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    type="button"
+                                    onClick={() => isSelected ? removeTag(tag.id) : setSelectedTags([...selectedTags, tag])}
+                                    className={cn(
+                                      "px-3 py-2 text-left text-sm rounded-lg transition-all flex items-center justify-between group border",
+                                      isSelected
+                                        ? "bg-primary/10 text-primary border-primary/20 font-medium"
+                                        : "bg-transparent text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-subtle)]"
+                                    )}
+                                  >
+                                    <span className="truncate pr-2">#{tag.name}</span>
+                                    {isSelected && <CheckCircle className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+                                  </button>
+                                );
+                              })
                             )}
                           </div>
                         </motion.div>
@@ -1849,7 +1880,7 @@ export function CreatePostPage() {
                   </div>
                 </div>
               </div>
-              
+
               {/* 右侧按钮 (PC 端) */}
               <div className="hidden md:flex items-center gap-2 flex-shrink-0 relative z-30">
                 <button
@@ -1905,244 +1936,244 @@ export function CreatePostPage() {
       {/* Formatting Toolbar - outer container with overflow-visible for tooltips */}
       <div className="relative border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 backdrop-blur-sm">
         <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto">
-        {/* Undo/Redo */}
-        <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
-          <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
-            <Undo2 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => editorCommands.redo()} tooltip="重做 (⇧⌘Z)">
-            <Redo2 className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
-        {/* Headings */}
-        <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
-          <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
-            <Heading1 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('## ', '', 'lineStart')} tooltip="标题 2 (H2)">
-            <Heading2 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('### ', '', 'lineStart')} tooltip="标题 3 (H3)">
-            <Heading3 className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
-        
-        {/* Text Formatting */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-          <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
-            <Bold className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('*', '*')} tooltip="斜体 (⌘I)">
-            <Italic className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('<u>', '</u>')} tooltip="下划线 (⌘U)">
-            <Underline className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('~~', '~~')} tooltip="删除线">
-            <Strikethrough className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
+          {/* Undo/Redo */}
+          <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
+            <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
+              <Undo2 className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => editorCommands.redo()} tooltip="重做 (⇧⌘Z)">
+              <Redo2 className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
+          {/* Headings */}
+          <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
+            <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
+              <Heading1 className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('## ', '', 'lineStart')} tooltip="标题 2 (H2)">
+              <Heading2 className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('### ', '', 'lineStart')} tooltip="标题 3 (H3)">
+              <Heading3 className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
 
-        {/* Code */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-          <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
-            <Code className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('```\n', '\n```')} tooltip="代码块 (⇧⌘K)">
-            <FileCode2 className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
-        
-        {/* Lists */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-          <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
-            <List className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('1. ', '', 'lineStart')} tooltip="有序列表">
-            <ListOrdered className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('- [ ] ', '', 'lineStart')} tooltip="任务列表">
-            <CheckSquare className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
+          {/* Text Formatting */}
+          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+            <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
+              <Bold className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('*', '*')} tooltip="斜体 (⌘I)">
+              <Italic className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('<u>', '</u>')} tooltip="下划线 (⌘U)">
+              <Underline className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('~~', '~~')} tooltip="删除线">
+              <Strikethrough className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
 
-        {/* Insert */}
-        <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-          <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
-            <Link2 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('![', '](image-url)', 'wrap')} tooltip="图片">
-            <Image className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n', '', 'insert')} tooltip="表格">
-            <Table2 className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('\n---\n', '', 'insert')} tooltip="分割线">
-            <Minus className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
+          {/* Code */}
+          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+            <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
+              <Code className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('```\n', '\n```')} tooltip="代码块 (⇧⌘K)">
+              <FileCode2 className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
 
-        {/* Advanced: Quote, Math, Diagram */}
-        <div className="flex items-center gap-0.5 px-3">
-          <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
-            <Quote className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('$$\n', '\n$$', 'wrap')} tooltip="数学公式">
-            <Sigma className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={() => insertMarkdown('```mermaid\n', '\n```', 'wrap')} tooltip="流程图">
-            <GitBranch className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
-        
-        {/* Spacer */}
-        <div className="flex-1" />
-        
-        {/* Zoom Controls with Domain Toggle */}
-        <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
-          <ToolbarButton
-            onClick={() => {
-              if (zoomTarget === 'editor') {
-                setEditorFontSize(s => Math.max(12, s - 1));
-              } else if (zoomTarget === 'preview') {
-                setPreviewFontSize(s => Math.max(12, s - 1));
-              } else {
-                setEditorFontSize(s => Math.max(12, s - 1));
-                setPreviewFontSize(s => Math.max(12, s - 1));
-              }
-            }}
-            tooltip={`缩小${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
-          >
-            <ZoomOut className="w-4 h-4" />
-          </ToolbarButton>
-          
-          {/* Font Size Display with Domain Toggle */}
-          <button
-            onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
-            className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
-              "hover:bg-[var(--bg-card-hover)]",
-              zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
-              zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
-              zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
-            )}
-            title={`点击切换控制域 (当前: ${zoomTarget === 'both' ? '全部' : zoomTarget === 'editor' ? '编辑器' : '预览'})`}
-          >
-            {zoomTarget === 'both' ? (
-              <>
-                <span className="text-blue-400">{editorFontSize}</span>
-                <span className="text-gray-500 mx-0.5">||</span>
-                <span className="text-emerald-400">{previewFontSize}</span>
-              </>
-            ) : zoomTarget === 'editor' ? (
-              <>
-                <FileCode2 className="w-3 h-3" />
-                <span>{editorFontSize}px</span>
-              </>
-            ) : (
-              <>
-                <Eye className="w-3 h-3" />
-                <span>{previewFontSize}px</span>
-              </>
-            )}
-          </button>
-          
-          <ToolbarButton
-            onClick={() => {
-              if (zoomTarget === 'editor') {
-                setEditorFontSize(s => Math.min(24, s + 1));
-              } else if (zoomTarget === 'preview') {
-                setPreviewFontSize(s => Math.min(24, s + 1));
-              } else {
-                setEditorFontSize(s => Math.min(24, s + 1));
-                setPreviewFontSize(s => Math.min(24, s + 1));
-              }
-            }}
-            tooltip={`放大${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
-          >
-            <ZoomIn className="w-4 h-4" />
-          </ToolbarButton>
-        </div>
+          {/* Lists */}
+          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+            <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
+              <List className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('1. ', '', 'lineStart')} tooltip="有序列表">
+              <ListOrdered className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('- [ ] ', '', 'lineStart')} tooltip="任务列表">
+              <CheckSquare className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
 
-        {/* View Mode Toggle */}
-        <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-          <ToolbarButton 
-            onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')} 
-            tooltip="源码模式"
-            isActive={viewMode === 'edit'}
-          >
-            <FileCode2 className="w-4 h-4" />
-          </ToolbarButton>
-          
-          <ToolbarButton 
-            onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')} 
-            tooltip="阅读模式"
-            isActive={viewMode === 'preview'}
-          >
-            <Eye className="w-4 h-4" />
-          </ToolbarButton>
+          {/* Insert */}
+          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+            <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
+              <Link2 className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('![', '](image-url)', 'wrap')} tooltip="图片">
+              <Image className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n', '', 'insert')} tooltip="表格">
+              <Table2 className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('\n---\n', '', 'insert')} tooltip="分割线">
+              <Minus className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
 
-          <ToolbarButton 
-            onClick={() => setIsFullscreen(!isFullscreen)} 
-            tooltip={isFullscreen ? '退出全屏' : '进入全屏'}
-            isActive={isFullscreen}
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </ToolbarButton>
+          {/* Advanced: Quote, Math, Diagram */}
+          <div className="flex items-center gap-0.5 px-3">
+            <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
+              <Quote className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('$$\n', '\n$$', 'wrap')} tooltip="数学公式">
+              <Sigma className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => insertMarkdown('```mermaid\n', '\n```', 'wrap')} tooltip="流程图">
+              <GitBranch className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
 
-          <ToolbarButton 
-            onClick={() => {
-              if (isMobile) {
-                openMobilePanel('toc');
-                return;
-              }
-              setShowAI(false);
-              setShowToc(!showToc);
-            }} 
-            tooltip={isMobile ? '打开目录' : showToc ? '关闭目录' : '打开目录'}
-            isActive={isMobile ? mobilePanel === 'toc' : showToc}
-          >
-            <ListTree className="w-4 h-4" />
-          </ToolbarButton>
+          {/* Spacer */}
+          <div className="flex-1" />
 
-          <ToolbarButton 
-            onClick={() => setIsAutoSaveEnabled(!isAutoSaveEnabled)} 
-            tooltip={isAutoSaveEnabled ? '关闭自动保存' : '开启自动保存'}
-            isActive={isAutoSaveEnabled}
-            activeColor="emerald"
-          >
-            <div className="relative">
-              <HardDrive className={cn(
-                "w-4 h-4 transition-all duration-300",
-                autoSaveFlash && "scale-110"
-              )} />
-              {/* 自动保存成功时的微妙光晕 */}
-              {autoSaveFlash && (
-                <motion.div
-                  initial={{ opacity: 0.8, scale: 0.8 }}
-                  animate={{ opacity: 0, scale: 2 }}
-                  transition={{ duration: 1.2, ease: "easeOut" }}
-                  className="absolute inset-0 rounded-full bg-emerald-400/40"
-                />
+          {/* Zoom Controls with Domain Toggle */}
+          <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
+            <ToolbarButton
+              onClick={() => {
+                if (zoomTarget === 'editor') {
+                  setEditorFontSize(s => Math.max(12, s - 1));
+                } else if (zoomTarget === 'preview') {
+                  setPreviewFontSize(s => Math.max(12, s - 1));
+                } else {
+                  setEditorFontSize(s => Math.max(12, s - 1));
+                  setPreviewFontSize(s => Math.max(12, s - 1));
+                }
+              }}
+              tooltip={`缩小${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
+            >
+              <ZoomOut className="w-4 h-4" />
+            </ToolbarButton>
+
+            {/* Font Size Display with Domain Toggle */}
+            <button
+              onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
+              className={cn(
+                "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
+                "hover:bg-[var(--bg-card-hover)]",
+                zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
+                zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
+                zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
               )}
-              {/* 保存成功时的小勾号 */}
-              <AnimatePresence>
+              title={`点击切换控制域 (当前: ${zoomTarget === 'both' ? '全部' : zoomTarget === 'editor' ? '编辑器' : '预览'})`}
+            >
+              {zoomTarget === 'both' ? (
+                <>
+                  <span className="text-blue-400">{editorFontSize}</span>
+                  <span className="text-gray-500 mx-0.5">||</span>
+                  <span className="text-emerald-400">{previewFontSize}</span>
+                </>
+              ) : zoomTarget === 'editor' ? (
+                <>
+                  <FileCode2 className="w-3 h-3" />
+                  <span>{editorFontSize}px</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3 h-3" />
+                  <span>{previewFontSize}px</span>
+                </>
+              )}
+            </button>
+
+            <ToolbarButton
+              onClick={() => {
+                if (zoomTarget === 'editor') {
+                  setEditorFontSize(s => Math.min(24, s + 1));
+                } else if (zoomTarget === 'preview') {
+                  setPreviewFontSize(s => Math.min(24, s + 1));
+                } else {
+                  setEditorFontSize(s => Math.min(24, s + 1));
+                  setPreviewFontSize(s => Math.min(24, s + 1));
+                }
+              }}
+              tooltip={`放大${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
+            >
+              <ZoomIn className="w-4 h-4" />
+            </ToolbarButton>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
+            <ToolbarButton
+              onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
+              tooltip="源码模式"
+              isActive={viewMode === 'edit'}
+            >
+              <FileCode2 className="w-4 h-4" />
+            </ToolbarButton>
+
+            <ToolbarButton
+              onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
+              tooltip="阅读模式"
+              isActive={viewMode === 'preview'}
+            >
+              <Eye className="w-4 h-4" />
+            </ToolbarButton>
+
+            <ToolbarButton
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              tooltip={isFullscreen ? '退出全屏' : '进入全屏'}
+              isActive={isFullscreen}
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </ToolbarButton>
+
+            <ToolbarButton
+              onClick={() => {
+                if (isMobile) {
+                  openMobilePanel('toc');
+                  return;
+                }
+                setShowAI(false);
+                setShowToc(!showToc);
+              }}
+              tooltip={isMobile ? '打开目录' : showToc ? '关闭目录' : '打开目录'}
+              isActive={isMobile ? mobilePanel === 'toc' : showToc}
+            >
+              <ListTree className="w-4 h-4" />
+            </ToolbarButton>
+
+            <ToolbarButton
+              onClick={() => setIsAutoSaveEnabled(!isAutoSaveEnabled)}
+              tooltip={isAutoSaveEnabled ? '关闭自动保存' : '开启自动保存'}
+              isActive={isAutoSaveEnabled}
+              activeColor="emerald"
+            >
+              <div className="relative">
+                <HardDrive className={cn(
+                  "w-4 h-4 transition-all duration-300",
+                  autoSaveFlash && "scale-110"
+                )} />
+                {/* 自动保存成功时的微妙光晕 */}
                 {autoSaveFlash && (
                   <motion.div
-                    initial={{ opacity: 0, scale: 0.5, y: 2 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.5 }}
-                    transition={{ duration: 0.3 }}
-                    className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
-                  >
-                    <CheckCircle className="w-2 h-2 text-white" />
-                  </motion.div>
+                    initial={{ opacity: 0.8, scale: 0.8 }}
+                    animate={{ opacity: 0, scale: 2 }}
+                    transition={{ duration: 1.2, ease: "easeOut" }}
+                    className="absolute inset-0 rounded-full bg-emerald-400/40"
+                  />
                 )}
-              </AnimatePresence>
-            </div>
-          </ToolbarButton>
+                {/* 保存成功时的小勾号 */}
+                <AnimatePresence>
+                  {autoSaveFlash && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.5, y: 2 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.5 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
+                    >
+                      <CheckCircle className="w-2 h-2 text-white" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </ToolbarButton>
+          </div>
         </div>
-      </div>
       </div>
 
       {/* Main Content Area */}
@@ -2191,14 +2222,14 @@ export function CreatePostPage() {
                 onClearCompleted={clearCompleted}
               />
             )}
-            
+
             {/* IDEA-style Table Trigger Zones - Fixed positioning with viewport coordinates */}
             {!isMobile && tableInfo?.isInTable && tableInfo.tableBounds && tableInfo.rowPositions && editorContainerRef.current && (() => {
               const containerRect = editorContainerRef.current.getBoundingClientRect();
               const isInViewport = tableInfo.tableBounds.top >= containerRect.top - 100 &&
-                                   tableInfo.tableBounds.top <= containerRect.bottom + 100;
+                tableInfo.tableBounds.top <= containerRect.bottom + 100;
               if (!isInViewport) return null;
-              
+
               // 计算准确的行高
               const lineHeight = tableInfo.rowPositions.length > 1
                 ? tableInfo.rowPositions[1] - tableInfo.rowPositions[0]
@@ -2222,33 +2253,33 @@ export function CreatePostPage() {
                       onMouseEnter={handleTableTriggerEnter}
                       onMouseLeave={handleTableTriggerLeave}
                     >
-                       {/* Render Segments between dots */}
-                       {tableInfo.columnPositions.slice(0, -1).map((x: number, i: number) => {
-                         const nextX = tableInfo.columnPositions![i + 1];
-                         const width = nextX - x;
-                         return (
-                           <div
-                             key={`col-seg-${i}`}
-                             className="absolute top-1/2 -translate-y-1/2 h-[4px] bg-[#52525b] hover:bg-[#3b82f6] cursor-pointer transition-colors"
-                             style={{
-                               left: x - tableInfo.tableBounds!.left,
-                               width: width,
-                             }}
-                             onClick={() => setShowTableToolbar(true)}
-                           />
-                         );
-                       })}
-                       
-                       {/* Render Dots exactly at pipe | positions */}
-                       {tableInfo.columnPositions.map((x: number, i: number) => (
-                         <div
-                           key={`col-dot-${i}`}
-                           className="absolute top-1/2 -translate-y-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
-                           style={{
-                             left: x - tableInfo.tableBounds!.left - 3, // 居中 6px 圆点：偏移 -3px
-                           }}
-                         />
-                       ))}
+                      {/* Render Segments between dots */}
+                      {tableInfo.columnPositions.slice(0, -1).map((x: number, i: number) => {
+                        const nextX = tableInfo.columnPositions![i + 1];
+                        const width = nextX - x;
+                        return (
+                          <div
+                            key={`col-seg-${i}`}
+                            className="absolute top-1/2 -translate-y-1/2 h-[4px] bg-[#52525b] hover:bg-[#3b82f6] cursor-pointer transition-colors"
+                            style={{
+                              left: x - tableInfo.tableBounds!.left,
+                              width: width,
+                            }}
+                            onClick={() => setShowTableToolbar(true)}
+                          />
+                        );
+                      })}
+
+                      {/* Render Dots exactly at pipe | positions */}
+                      {tableInfo.columnPositions.map((x: number, i: number) => (
+                        <div
+                          key={`col-dot-${i}`}
+                          className="absolute top-1/2 -translate-y-1/2 w-[6px] h-[6px] bg-[#71717a] rounded-full z-10 pointer-events-none"
+                          style={{
+                            left: x - tableInfo.tableBounds!.left - 3, // 居中 6px 圆点：偏移 -3px
+                          }}
+                        />
+                      ))}
                     </div>
                   )}
 
@@ -2271,7 +2302,7 @@ export function CreatePostPage() {
                         const height = nextY - y;
                         // 准确从行顶部开始（间隙位置）
                         const startY = y - tableInfo.tableBounds!.top;
-                        
+
                         return (
                           <div
                             key={`row-seg-${i}`}
@@ -2300,7 +2331,7 @@ export function CreatePostPage() {
                 </>
               );
             })()}
-            
+
             {/* Floating Table Operations Toolbar */}
             <AnimatePresence>
               {!isMobile && showTableToolbar && tableInfo?.isInTable && tableInfo.tableBounds && editorContainerRef.current && (
@@ -2327,9 +2358,9 @@ export function CreatePostPage() {
                   >
                     <ArrowLeft className="w-4 h-4" />
                   </ToolbarButton>
-                  
+
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
-                  
+
                   {/* Row operations - purple/pink colors like IDEA */}
                   <ToolbarButton
                     onClick={() => { tableCommands.insertRowAbove(); editorCommands.focus(); }}
@@ -2347,9 +2378,9 @@ export function CreatePostPage() {
                   >
                     <ArrowDownToLine className="w-4 h-4" />
                   </ToolbarButton>
-                  
+
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
-                  
+
                   {/* Column operations - blue colors */}
                   <ToolbarButton
                     onClick={() => { tableCommands.insertColumnLeft(); editorCommands.focus(); }}
@@ -2367,9 +2398,9 @@ export function CreatePostPage() {
                   >
                     <ArrowRightToLine className="w-4 h-4" />
                   </ToolbarButton>
-                  
+
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
-                  
+
                   {/* Column alignment - white/gray, active is blue bg */}
                   <ToolbarButton
                     onClick={() => { tableCommands.setColumnAlignment('left'); editorCommands.focus(); }}
@@ -2395,9 +2426,9 @@ export function CreatePostPage() {
                   >
                     <AlignRight className="w-4 h-4" />
                   </ToolbarButton>
-                  
+
                   <div className="w-px h-5 bg-[#3d3d40] mx-0.5" />
-                  
+
                   {/* Delete operations - red colors */}
                   <ToolbarButton
                     onClick={() => { tableCommands.deleteRow(); editorCommands.focus(); }}
@@ -2468,11 +2499,11 @@ export function CreatePostPage() {
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              
+
               {/* TOC Content */}
               <div className="flex-1 overflow-y-auto py-4 scrollbar-hide">
                 {tocItems.length === 0 ? (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className="px-6 py-12 text-center"
@@ -2508,12 +2539,12 @@ export function CreatePostPage() {
                             ? 'h-3/5 opacity-100'
                             : 'h-0 opacity-0 group-hover:h-3/5 group-hover:opacity-100'
                         )} />
-                        
+
                         <span className={cn(
                           "truncate transition-all duration-500",
-                          item.level === 1 ? "font-bold text-[var(--text-primary)] tracking-tight" : 
-                          item.level === 2 ? "font-semibold text-[var(--text-secondary)]" : 
-                          "font-normal text-[var(--text-muted)]"
+                          item.level === 1 ? "font-bold text-[var(--text-primary)] tracking-tight" :
+                            item.level === 2 ? "font-semibold text-[var(--text-secondary)]" :
+                              "font-normal text-[var(--text-muted)]"
                         )}>
                           {item.text}
                         </span>
@@ -2556,33 +2587,33 @@ export function CreatePostPage() {
             )}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4">
           {viewMode !== 'preview' && (
             <label className="flex items-center gap-2 cursor-pointer group">
-              <input 
-                type="checkbox" 
-                checked={showLineNumbers} 
+              <input
+                type="checkbox"
+                checked={showLineNumbers}
                 onChange={(e) => setShowLineNumbers(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-[var(--border-subtle)] bg-[var(--bg-card)] text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
               />
               <span className="group-hover:text-gray-200 transition-colors">显示行号</span>
             </label>
           )}
-          
+
           {viewMode === 'split' && (
             <label className="flex items-center gap-2 cursor-pointer group">
-              <input 
-                type="checkbox" 
-                checked={isSyncScroll} 
+              <input
+                type="checkbox"
+                checked={isSyncScroll}
                 onChange={(e) => setIsSyncScroll(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
               />
               <span className="group-hover:text-gray-200 transition-colors">同步滚动</span>
             </label>
           )}
-          <button 
-            onClick={scrollToTop} 
+          <button
+            onClick={scrollToTop}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all ml-2"
           >
             <ArrowUp className="w-3.5 h-3.5" />
@@ -2603,7 +2634,7 @@ export function CreatePostPage() {
               onClick={() => setShowSettings(false)}
               className="absolute inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
             />
-            
+
             {/* 侧滑面板 */}
             <motion.div
               initial={{ x: '100%', opacity: 0 }}
@@ -2658,16 +2689,16 @@ export function CreatePostPage() {
 
                 {/* Summary */}
                 <div className="space-y-3">
-                   <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
-                    <button 
+                    <button
                       onClick={() => openAiPanel('summary')}
                       className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
                     >
                       <Sparkles className="w-3 h-3" />
                       AI 生成
                     </button>
-                   </div>
+                  </div>
                   <textarea
                     rows={4}
                     value={summary}
@@ -2676,28 +2707,28 @@ export function CreatePostPage() {
                     className="w-full px-4 py-3 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm leading-relaxed"
                   />
                 </div>
-                
+
                 {/* Advanced Settings Divider */}
                 <div className="pt-4 border-t border-[var(--border-subtle)]">
-                   <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">高级设置</h3>
-                   {/* SEO Settings could go here */}
-                   <div className="opacity-50 pointer-events-none filter blur-[1px]">
-                      <div className="space-y-3">
-                        <label className="block text-sm font-medium text-[var(--text-secondary)]">SEO 标题 (即将上线)</label>
-                        <input type="text" disabled className="w-full px-4 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-muted)]" placeholder="默认使用文章标题" />
-                      </div>
-                   </div>
+                  <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">高级设置</h3>
+                  {/* SEO Settings could go here */}
+                  <div className="opacity-50 pointer-events-none filter blur-[1px]">
+                    <div className="space-y-3">
+                      <label className="block text-sm font-medium text-[var(--text-secondary)]">SEO 标题 (即将上线)</label>
+                      <input type="text" disabled className="w-full px-4 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-muted)]" placeholder="默认使用文章标题" />
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Footer */}
               <div className="p-6 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
-                 <button
+                <button
                   onClick={() => setShowSettings(false)}
                   className="w-full py-3 text-sm font-semibold text-white bg-gradient-to-r from-primary to-primary/90 rounded-xl hover:from-primary/90 hover:to-primary/80 transition-all shadow-lg shadow-primary/25 active:scale-[0.98]"
-                 >
-                   完成设置
-                 </button>
+                >
+                  完成设置
+                </button>
               </div>
             </motion.div>
           </>
@@ -3026,58 +3057,58 @@ export function CreatePostPage() {
       )}
 
 
-        {/* Create Category Modal */}
-        <AnimatePresence>
-          {showCreateCategoryModal && (
+      {/* Create Category Modal */}
+      <AnimatePresence>
+        {showCreateCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowCreateCategoryModal(false)}
+          >
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-              onClick={() => setShowCreateCategoryModal(false)}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md p-6 bg-[var(--bg-popover)] border border-[var(--border-default)] rounded-xl shadow-2xl"
             >
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-md p-6 bg-[var(--bg-popover)] border border-[var(--border-default)] rounded-xl shadow-2xl"
-              >
-                <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">新建分类</h3>
-                <input
-                  type="text"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
-                  placeholder="输入分类名称..."
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50 mb-4"
-                  autoFocus
-                />
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => { setShowCreateCategoryModal(false); setNewCategoryName(''); }}
-                    className="px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={handleCreateCategory}
-                    disabled={creatingCategory || !newCategoryName.trim()}
-                    className={cn(
-                      'px-4 py-2 text-sm font-medium rounded-lg',
-                      'bg-primary text-white hover:bg-primary/90',
-                      'disabled:opacity-50 disabled:cursor-not-allowed',
-                      'transition-colors flex items-center gap-2'
-                    )}
-                  >
-                    {creatingCategory && <Loader2 className="w-4 h-4 animate-spin" />}
-                    创建分类
-                  </button>
-                </div>
-              </motion.div>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">新建分类</h3>
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreateCategory()}
+                placeholder="输入分类名称..."
+                className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-primary/50 mb-4"
+                autoFocus
+              />
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowCreateCategoryModal(false); setNewCategoryName(''); }}
+                  className="px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  disabled={creatingCategory || !newCategoryName.trim()}
+                  className={cn(
+                    'px-4 py-2 text-sm font-medium rounded-lg',
+                    'bg-primary text-white hover:bg-primary/90',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                    'transition-colors flex items-center gap-2'
+                  )}
+                >
+                  {creatingCategory && <Loader2 className="w-4 h-4 animate-spin" />}
+                  创建分类
+                </button>
+              </div>
             </motion.div>
-          )}
-        </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
