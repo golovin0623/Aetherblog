@@ -39,11 +39,13 @@ public class VisitorService {
 
     // 已知爬虫关键词
     private static final Set<String> BOT_KEYWORDS = Set.of(
-        "bot", "spider", "crawler", "googlebot", "bingbot", "baiduspider",
-        "yandex", "duckduckbot", "slurp", "ia_archiver", "facebookexternalhit",
-        "twitterbot", "linkedinbot", "embedly", "quora link preview",
-        "showyoubot", "outbrain", "pinterest", "applebot", "semrushbot"
-    );
+            "bot", "spider", "crawler", "googlebot", "bingbot", "baiduspider",
+            "yandex", "duckduckbot", "slurp", "ia_archiver", "facebookexternalhit",
+            "twitterbot", "linkedinbot", "embedly", "quora link preview",
+            "showyoubot", "outbrain", "pinterest", "applebot", "semrushbot");
+
+    // 最大批量写入大小 (Issue #210)
+    private static final int MAX_BATCH_SIZE = 1000;
 
     /**
      * 异步记录访问 (使用缓冲队列批量写入)
@@ -53,11 +55,9 @@ public class VisitorService {
         try {
             VisitRecord record = createVisitRecord(ip, userAgent, referer, pagePath);
             if (postId != null) {
-                try {
-                    record.setPost(postRepository.getReferenceById(postId));
-                } catch (Exception e) {
-                    // Ignore invalid post ID reference
-                }
+                // Issue #211: getReferenceById doesn't hit DB, EntityNotFoundException thrown
+                // at flush time
+                record.setPost(postRepository.getReferenceById(postId));
             }
             visitBuffer.add(record);
         } catch (Exception e) {
@@ -72,11 +72,9 @@ public class VisitorService {
     public VisitRecord recordVisit(String ip, String userAgent, String referer, String pagePath, Long postId) {
         VisitRecord record = createVisitRecord(ip, userAgent, referer, pagePath);
         if (postId != null) {
-             try {
-                record.setPost(postRepository.getReferenceById(postId));
-            } catch (Exception e) {
-                // Ignore invalid post ID reference
-            }
+            // Issue #211: getReferenceById doesn't hit DB, EntityNotFoundException thrown
+            // later
+            record.setPost(postRepository.getReferenceById(postId));
         }
         return visitRecordRepository.save(record);
     }
@@ -93,20 +91,38 @@ public class VisitorService {
 
         List<VisitRecord> batch = new ArrayList<>();
         VisitRecord record;
-        // 每次最多处理 1000 条，避免事务过大
-        while (batch.size() < 1000 && (record = visitBuffer.poll()) != null) {
+        // 每次最多处理 MAX_BATCH_SIZE 条，避免事务过大
+        while (batch.size() < MAX_BATCH_SIZE && (record = visitBuffer.poll()) != null) {
             batch.add(record);
         }
 
         if (!batch.isEmpty()) {
             try {
                 visitRecordRepository.saveAll(batch);
-                log.debug("Flushed {} visit records", batch.size());
+                log.debug("Flushed {} visit records in batch", batch.size());
             } catch (Exception e) {
-                log.error("Failed to flush visit records batch", e);
-                // 简单的错误处理：如果保存失败，记录日志。
-                // 在生产环境中，可能需要将失败的记录重新放回队列或写入死信队列，
-                // 但为了避免无限循环，这里选择丢弃并记录。
+                // Issue #208, #209: Batch save failed (e.g., one record's data is too long,
+                // or a postId reference was invalid triggering EntityNotFoundException).
+                // DO NOT discard the whole batch. Fallback to saving individually.
+                log.warn("Batch save failed for {} visit records. Falling back to individual saves. Reason: {}",
+                        batch.size(), e.getMessage());
+
+                int successCount = 0;
+                int failCount = 0;
+
+                for (VisitRecord individualRecord : batch) {
+                    try {
+                        visitRecordRepository.saveAndFlush(individualRecord);
+                        successCount++;
+                    } catch (Exception ex) {
+                        failCount++;
+                        // Log only the failed record specifically without failing the others
+                        log.error("Failed to save individual visit record for IP: {}, Path: {}. Reason: {}",
+                                individualRecord.getIp(), individualRecord.getPageUrl(), ex.getMessage());
+                    }
+                }
+
+                log.info("Individual save fallback completed. Success: {}, Failed: {}", successCount, failCount);
             }
         }
     }
@@ -162,8 +178,7 @@ public class VisitorService {
      */
     public long getTotalVisitors() {
         return visitRecordRepository.countDistinctVisitorByCreatedAtAfter(
-            LocalDateTime.of(2020, 1, 1, 0, 0)
-        );
+                LocalDateTime.of(2020, 1, 1, 0, 0));
     }
 
     /**
@@ -197,7 +212,8 @@ public class VisitorService {
      * IP 脱敏（192.168.1.100 -> 192.168.1.*）
      */
     private String maskIp(String ip) {
-        if (ip == null) return null;
+        if (ip == null)
+            return null;
         // IPv4
         if (ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
             return ip.replaceAll("\\.\\d+$", ".*");
@@ -213,14 +229,15 @@ public class VisitorService {
         String maskedIp = maskIp(ip);
         String date = LocalDate.now().toString();
         String raw = maskedIp + "|" + (userAgent != null ? userAgent : "") + "|" + date;
-        
+
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
             StringBuilder hexString = new StringBuilder();
             for (byte b : hash) {
                 String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
+                if (hex.length() == 1)
+                    hexString.append('0');
                 hexString.append(hex);
             }
             return hexString.toString();
@@ -244,7 +261,8 @@ public class VisitorService {
      * 解析设备类型
      */
     private DeviceType parseDeviceType(String userAgent) {
-        if (userAgent == null) return DeviceType.OTHER;
+        if (userAgent == null)
+            return DeviceType.OTHER;
         String ua = userAgent.toLowerCase();
         if (ua.contains("mobile") || ua.contains("android") || ua.contains("iphone")) {
             return DeviceType.MOBILE;
@@ -262,13 +280,19 @@ public class VisitorService {
      * 解析浏览器
      */
     private String parseBrowser(String userAgent) {
-        if (userAgent == null) return "Unknown";
+        if (userAgent == null)
+            return "Unknown";
         String ua = userAgent.toLowerCase();
-        if (ua.contains("edg")) return "Edge";
-        if (ua.contains("chrome")) return "Chrome";
-        if (ua.contains("firefox")) return "Firefox";
-        if (ua.contains("safari")) return "Safari";
-        if (ua.contains("opera") || ua.contains("opr")) return "Opera";
+        if (ua.contains("edg"))
+            return "Edge";
+        if (ua.contains("chrome"))
+            return "Chrome";
+        if (ua.contains("firefox"))
+            return "Firefox";
+        if (ua.contains("safari"))
+            return "Safari";
+        if (ua.contains("opera") || ua.contains("opr"))
+            return "Opera";
         return "Other";
     }
 
@@ -276,13 +300,19 @@ public class VisitorService {
      * 解析操作系统
      */
     private String parseOS(String userAgent) {
-        if (userAgent == null) return "Unknown";
+        if (userAgent == null)
+            return "Unknown";
         String ua = userAgent.toLowerCase();
-        if (ua.contains("windows")) return "Windows";
-        if (ua.contains("mac os") || ua.contains("macintosh")) return "macOS";
-        if (ua.contains("linux")) return "Linux";
-        if (ua.contains("android")) return "Android";
-        if (ua.contains("iphone") || ua.contains("ipad")) return "iOS";
+        if (ua.contains("windows"))
+            return "Windows";
+        if (ua.contains("mac os") || ua.contains("macintosh"))
+            return "macOS";
+        if (ua.contains("linux"))
+            return "Linux";
+        if (ua.contains("android"))
+            return "Android";
+        if (ua.contains("iphone") || ua.contains("ipad"))
+            return "iOS";
         return "Other";
     }
 
@@ -290,7 +320,8 @@ public class VisitorService {
      * 截断字符串
      */
     private String truncate(String str, int maxLen) {
-        if (str == null) return null;
+        if (str == null)
+            return null;
         return str.length() > maxLen ? str.substring(0, maxLen) : str;
     }
 }
