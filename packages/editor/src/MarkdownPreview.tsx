@@ -17,55 +17,55 @@ import 'katex/dist/katex.min.css';
 const nestedFencesExtension: TokenizerExtension & RendererExtension = {
   name: 'fences',
   level: 'block',
-  
+
   // 检测代码围栏的起始位置
   start(src: string) {
     const match = src.match(/^(`{3,}|~{3,})/m);
     return match ? match.index : -1;
   },
-  
+
   // 解析围栏代码块
   tokenizer(src: string): Tokens.Code | undefined {
     // 匹配开头的围栏：至少3个反引号或波浪线，可选的语言标识
     const openMatch = src.match(/^(`{3,}|~{3,})([^\n`]*)\n/);
     if (!openMatch) return undefined;
-    
+
     const fence = openMatch[1];
     const fenceChar = fence[0];
     const fenceLength = fence.length;
     const lang = openMatch[2].trim();
-    
+
     // 查找匹配的闭合围栏（相同字符，相同或更多长度）
     const closePattern = new RegExp(`^${fenceChar}{${fenceLength},}\\s*$`, 'm');
     const remaining = src.slice(openMatch[0].length);
-    
+
     let codeContent = '';
     let consumed = openMatch[0].length;
-    
+
     const lines = remaining.split('\n');
     let foundClose = false;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       // 检查是否是闭合围栏
       if (closePattern.test(line)) {
         foundClose = true;
         consumed += lines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0) + line.length + 1;
         break;
       }
-      
+
       // 添加到代码内容
       if (i > 0) codeContent += '\n';
       codeContent += line;
     }
-    
+
     // 如果没找到闭合，消费到文档末尾
     if (!foundClose) {
       codeContent = remaining;
       consumed = src.length;
     }
-    
+
     return {
       type: 'code',
       raw: src.slice(0, consumed),
@@ -73,7 +73,7 @@ const nestedFencesExtension: TokenizerExtension & RendererExtension = {
       lang: lang || undefined
     };
   },
-  
+
   // 渲染器（返回 false 使用默认渲染）
   renderer(): string | false {
     return false;
@@ -121,14 +121,14 @@ let highlighterInstance: Highlighter | null = null;
 
 async function getHighlighter(): Promise<Highlighter> {
   if (highlighterInstance) return highlighterInstance;
-  
+
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
       themes: ['github-dark', 'github-dark-dimmed', 'github-light'],
       langs: SUPPORTED_LANGUAGES,
     });
   }
-  
+
   highlighterInstance = await highlighterPromise;
   return highlighterInstance;
 }
@@ -348,15 +348,16 @@ function createLineTrackingRenderer(
     return matchedLine;
   };
 
-  // 覆盖标题渲染器以添加 data-source-line
-  renderer.heading = function(text: string, level: number) {
+  // 覆盖标题渲染器以添加 data-source-line (不在预览模式下显示锚点图标)
+  renderer.heading = function (text: string, level: number) {
     const lineNum = findLineNumber(text);
     const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
+    // 与前台对齐基础样式，但不保留 a.heading-anchor 用于复制链接，因为这是预览区
     return `<h${level}${lineAttr}>${text}</h${level}>\n`;
   };
 
   // 覆盖段落渲染器 - 同时处理数学公式
-  renderer.paragraph = function(text: string) {
+  renderer.paragraph = function (text: string) {
     const processedText = renderMath(text);
     const lineNum = findLineNumber(text.substring(0, 50));
     const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
@@ -364,7 +365,7 @@ function createLineTrackingRenderer(
   };
 
   // 覆盖代码块渲染器以支持语法高亮和 mermaid
-  renderer.code = function(code: string, language?: string) {
+  renderer.code = function (code: string, language?: string) {
     const lang = language?.toLowerCase().trim() || 'text';
 
     // 处理 Mermaid 图表
@@ -499,7 +500,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
   // HTML 设置后渲染 mermaid 图表
   useEffect(() => {
     if (!containerRef.current) return;
-    
+
     const mermaidContainers = containerRef.current.querySelectorAll('.mermaid-container');
     if (mermaidContainers.length === 0) return;
 
@@ -540,15 +541,15 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
       securityLevel: 'strict',
     });
     mermaidIdCounter = 0;
-    
+
     const renderMermaidDiagrams = async () => {
       for (const container of mermaidContainers) {
         const pre = container.querySelector('pre.mermaid');
         if (!pre) continue;
-        
+
         const code = pre.textContent || '';
         const id = container.getAttribute('data-mermaid-id') || generateMermaidId();
-        
+
         try {
           const { svg } = await mermaid.render(id, code);
           container.innerHTML = DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG);
@@ -577,15 +578,15 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
   );
 }
 
-// Markdown 预览的 CSS 样式
+// Markdown 预览的 CSS 样式 (对齐前台 globals.css .markdown-body)
 export const markdownPreviewStyles = `
   .markdown-preview h1 {
     font-size: 2em;
-    font-weight: 700;
-    margin-top: 1.5em;
+    font-weight: 800;
+    margin-top: 2em;
     margin-bottom: 0.5em;
     color: #f1f5f9;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 0.3em;
   }
   .markdown-preview > :first-child {
@@ -593,12 +594,12 @@ export const markdownPreviewStyles = `
   }
   .markdown-preview.light-mode h1 {
     color: #0f172a;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   }
   .markdown-preview h2 {
     font-size: 1.5em;
-    font-weight: 600;
-    margin-top: 1.25em;
+    font-weight: 700;
+    margin-top: 1.6em;
     margin-bottom: 0.5em;
     color: #f1f5f9;
   }
@@ -608,7 +609,7 @@ export const markdownPreviewStyles = `
   .markdown-preview h3 {
     font-size: 1.25em;
     font-weight: 600;
-    margin-top: 1em;
+    margin-top: 1.4em;
     margin-bottom: 0.5em;
     color: #f1f5f9;
   }
