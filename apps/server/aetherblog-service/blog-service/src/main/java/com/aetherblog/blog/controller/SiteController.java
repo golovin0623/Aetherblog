@@ -78,10 +78,14 @@ public class SiteController {
                     if (admin.getNickname() != null)
                         map.put("authorName", admin.getNickname());
                     if (admin.getAvatar() != null) {
-                        // 直接使用原始路径：
-                        // - 以 /uploads 开头的相对路径 → Next.js rewrites /uploads/* → 后端（不需要加 /api 前缀）
+                        String avatarPath = admin.getAvatar();
+                        // 本地存储路径需要加 /api 前缀（后端 context-path 为 /api）
+                        // - /uploads/xxx → /api/uploads/xxx（确保生产环境 nginx 能正确访问）
                         // - http/https 开头的外部 URL → 直接使用
-                        map.put("authorAvatar", admin.getAvatar());
+                        if (avatarPath.startsWith("/uploads/")) {
+                            avatarPath = "/api" + avatarPath;
+                        }
+                        map.put("authorAvatar", avatarPath);
                     }
                     if (admin.getBio() != null)
                         map.put("authorBio", admin.getBio());
