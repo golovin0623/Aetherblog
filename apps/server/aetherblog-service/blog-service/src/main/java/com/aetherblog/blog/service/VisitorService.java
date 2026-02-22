@@ -3,12 +3,14 @@ package com.aetherblog.blog.service;
 import com.aetherblog.blog.entity.VisitRecord;
 import com.aetherblog.blog.entity.VisitRecord.DeviceType;
 import com.aetherblog.blog.entity.VisitDailyStat;
+import com.aetherblog.blog.repository.PostRepository;
 import com.aetherblog.blog.repository.VisitRecordRepository;
 import com.aetherblog.blog.repository.VisitDailyStatRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * 访客统计服务
@@ -30,6 +33,9 @@ public class VisitorService {
 
     private final VisitRecordRepository visitRecordRepository;
     private final VisitDailyStatRepository visitDailyStatRepository;
+    private final PostRepository postRepository;
+
+    private final ConcurrentLinkedQueue<VisitRecord> visitBuffer = new ConcurrentLinkedQueue<>();
 
     // 已知爬虫关键词
     private static final Set<String> BOT_KEYWORDS = Set.of(
@@ -40,23 +46,72 @@ public class VisitorService {
     );
 
     /**
-     * 异步记录访问
+     * 异步记录访问 (使用缓冲队列批量写入)
      */
     @Async
-    @Transactional
     public void recordVisitAsync(String ip, String userAgent, String referer, String pagePath, Long postId) {
         try {
-            recordVisit(ip, userAgent, referer, pagePath, postId);
+            VisitRecord record = createVisitRecord(ip, userAgent, referer, pagePath);
+            if (postId != null) {
+                try {
+                    record.setPost(postRepository.getReferenceById(postId));
+                } catch (Exception e) {
+                    // Ignore invalid post ID reference
+                }
+            }
+            visitBuffer.add(record);
         } catch (Exception e) {
-            log.error("Failed to record visit asynchronously", e);
+            log.error("Failed to buffer visit record", e);
         }
     }
 
     /**
-     * 同步记录访问
+     * 同步记录访问 (直接写入数据库)
      */
     @Transactional
     public VisitRecord recordVisit(String ip, String userAgent, String referer, String pagePath, Long postId) {
+        VisitRecord record = createVisitRecord(ip, userAgent, referer, pagePath);
+        if (postId != null) {
+             try {
+                record.setPost(postRepository.getReferenceById(postId));
+            } catch (Exception e) {
+                // Ignore invalid post ID reference
+            }
+        }
+        return visitRecordRepository.save(record);
+    }
+
+    /**
+     * 定时批量写入访问记录 (每 5 秒或缓冲区满时执行)
+     */
+    @Scheduled(fixedDelay = 5000)
+    @Transactional
+    public void flushVisits() {
+        if (visitBuffer.isEmpty()) {
+            return;
+        }
+
+        List<VisitRecord> batch = new ArrayList<>();
+        VisitRecord record;
+        // 每次最多处理 1000 条，避免事务过大
+        while (batch.size() < 1000 && (record = visitBuffer.poll()) != null) {
+            batch.add(record);
+        }
+
+        if (!batch.isEmpty()) {
+            try {
+                visitRecordRepository.saveAll(batch);
+                log.debug("Flushed {} visit records", batch.size());
+            } catch (Exception e) {
+                log.error("Failed to flush visit records batch", e);
+                // 简单的错误处理：如果保存失败，记录日志。
+                // 在生产环境中，可能需要将失败的记录重新放回队列或写入死信队列，
+                // 但为了避免无限循环，这里选择丢弃并记录。
+            }
+        }
+    }
+
+    private VisitRecord createVisitRecord(String ip, String userAgent, String referer, String pagePath) {
         // 检测是否为爬虫
         boolean isBot = detectBot(userAgent);
 
@@ -81,11 +136,7 @@ public class VisitorService {
         record.setBrowser(browser);
         record.setOs(os);
 
-        // 暂不解析地理位置（需要 GeoIP 服务）
-        // record.setCountry(...);
-        // record.setCity(...);
-
-        return visitRecordRepository.save(record);
+        return record;
     }
 
     /**
