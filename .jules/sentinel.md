@@ -34,3 +34,8 @@
 **Vulnerability:** The Redis rate limiter implementation used separate `incr` and `expire` commands, creating a race condition where a key could be incremented but fail to set an expiration, leading to permanent lockout or resource exhaustion.
 **Learning:** Non-atomic operations in distributed systems (like Redis) can leave data in inconsistent states. "Check-then-Act" or "Act-then-Act" patterns are vulnerable.
 **Prevention:** Use atomic operations like Lua scripts (`eval`) in Redis to ensure that rate limit counters are always created with an expiration in a single transaction.
+
+## 2026-02-22 - Inconsistent Security Implementation in Public Comments
+**Vulnerability:** `PublicCommentController` manually implemented insecure IP resolution (`getClientIp`), ignoring the secure `IpUtils` and re-introducing IP spoofing vulnerability.
+**Learning:** Even with secure utilities available and previous fixes applied to `AuthController`, developers often copy-paste insecure patterns or miss updating all instances. Continuous auditing is required.
+**Prevention:** Enforce usage of `IpUtils` across the entire codebase via static analysis or rigorous code reviews.
