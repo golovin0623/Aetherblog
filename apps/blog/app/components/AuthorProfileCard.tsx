@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, User, Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -73,6 +74,7 @@ const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) 
             onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
             disabled={currentPage === 0}
             className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -95,6 +97,7 @@ const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) 
                   rel="noopener noreferrer"
                   className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm"
                   title={link.platform}
+                  aria-label={link.platform}
                 >
                   <link.icon className="w-4 h-4" />
                 </a>
@@ -108,6 +111,7 @@ const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) 
             onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
             disabled={currentPage === totalPages - 1}
             className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -260,20 +264,20 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
         <div className="w-full mb-3">
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
-            <div className="flex flex-col items-center group/stat cursor-pointer">
+            <Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer" aria-label={`View timeline with ${stats?.posts || 0} posts`}>
               <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.posts || 0}
               </span>
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 antialiased">文章</span>
-            </div>
-            <div className="flex flex-col items-center group/stat cursor-pointer border-x border-[var(--border-subtle)]">
-              <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
+            </Link>
+            <div className="flex flex-col items-center border-x border-[var(--border-subtle)]">
+              <span className="text-lg font-bold text-[var(--text-primary)] transition-colors duration-200 antialiased">
                 {stats?.categories || 0}
               </span>
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 antialiased">分类</span>
             </div>
-            <div className="flex flex-col items-center group/stat cursor-pointer">
-              <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
+            <div className="flex flex-col items-center">
+              <span className="text-lg font-bold text-[var(--text-primary)] transition-colors duration-200 antialiased">
                 {stats?.tags || 0}
               </span>
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 antialiased">标签</span>
