@@ -58,9 +58,12 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
               }}
               contentStyle={{
                 backgroundColor: 'var(--bg-card)',
-                border: '1px solid var(--border-subtle)',
+                borderColor: 'var(--border-subtle)',
+                color: 'var(--text-primary)',
                 borderRadius: '0.75rem',
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
               }}
+              itemStyle={{ color: 'var(--text-primary)' }}
             />
             <Legend
               verticalAlign="bottom"
