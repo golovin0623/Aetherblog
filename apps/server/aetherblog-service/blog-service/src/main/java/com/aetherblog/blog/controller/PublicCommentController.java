@@ -5,6 +5,7 @@ import com.aetherblog.blog.entity.Comment;
 import com.aetherblog.blog.service.CommentService;
 import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.domain.R;
+import com.aetherblog.common.core.utils.IpUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,7 +44,8 @@ public class PublicCommentController {
         comment.setContent(request.getContent());
 
         // 设置 IP 和 UserAgent
-        comment.setIp(getClientIp(servletRequest));
+        // Security Fix: Use IpUtils to prevent IP spoofing via X-Forwarded-For
+        comment.setIp(IpUtils.getIpAddr(servletRequest));
         comment.setUserAgent(servletRequest.getHeader("User-Agent"));
 
         // 如果存在 parentId 则处理
@@ -52,13 +54,5 @@ public class PublicCommentController {
         } else {
              return R.ok(commentService.create(postId, comment));
         }
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String xfHeader = request.getHeader("X-Forwarded-For");
-        if (xfHeader == null) {
-            return request.getRemoteAddr();
-        }
-        return xfHeader.split(",")[0];
     }
 }
