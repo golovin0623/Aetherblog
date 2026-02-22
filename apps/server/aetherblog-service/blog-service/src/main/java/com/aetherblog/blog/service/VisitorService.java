@@ -35,7 +35,7 @@ public class VisitorService {
     private final VisitDailyStatRepository visitDailyStatRepository;
     private final PostRepository postRepository;
 
-    private final ConcurrentLinkedQueue<VisitRecord> visitBuffer = new ConcurrentLinkedQueue<>();
+private final LinkedBlockingQueue<VisitRecord> visitBuffer = new LinkedBlockingQueue<>(10000);
 
     // 已知爬虫关键词
     private static final Set<String> BOT_KEYWORDS = Set.of(
