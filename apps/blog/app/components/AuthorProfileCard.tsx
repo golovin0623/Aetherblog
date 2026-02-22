@@ -264,7 +264,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
         <div className="w-full mb-3">
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
-            <Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer" aria-label={`View timeline with ${stats?.posts || 0} posts`}>
+<Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer" aria-label={`View timeline with ${stats?.posts || 0} posts`}>
               <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.posts || 0}
               </span>
