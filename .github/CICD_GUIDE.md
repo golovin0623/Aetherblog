@@ -12,7 +12,7 @@
 - 手动触发
 
 **功能:**
-- 并行构建 3 个服务的 Docker 镜像 (backend, blog, admin)
+- 并行构建 4 个服务的 Docker 镜像 (backend, ai-service, blog, admin)
 - 自动推送到 Docker Hub
 - 支持多平台构建 (amd64, arm64)
 - 使用 Docker 缓存加速构建
@@ -29,10 +29,48 @@
 - 创建 Pull Request 到 `main`
 
 **流程:**
-1. **前端测试** - pnpm lint + build
-2. **后端测试** - Maven test
-3. **Docker 构建** - 仅在 main 分支推送时执行
-4. **自动部署** - 通过 SSH 部署到服务器 (可选)
+1. **前端测试** - pnpm lint + type check + build
+2. **后端测试** - Maven build + test
+3. **AI 服务测试** - Python syntax check + ruff lint
+4. **Docker 配置验证** - docker-compose config 校验
+5. **变更检测** - 基于文件路径判断哪些模块需构建 (仅 main 分支 push)
+6. **条件性 Docker 构建** - 仅构建发生变更的模块
+7. **自动部署** - 通过 Webhook 部署到服务器
+
+### 3. 路径变更检测 (Path-based Conditional Build)
+
+`ci-cd.yml` 使用 [`dorny/paths-filter`](https://github.com/dorny/paths-filter) 在 Docker 构建前检测哪些模块的源文件发生了变更，**仅构建有变更的模块**，避免无意义的全量构建。
+
+#### 触发规则
+
+| 模块 | 触发路径 | 说明 |
+|------|----------|------|
+| **backend** | `apps/server/**` | Java 后端独立模块 |
+| **ai-service** | `apps/ai-service/**` | Python AI 服务独立模块 |
+| **blog** | `apps/blog/**`, `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml` | Next.js 博客前端，依赖共享包 |
+| **admin** | `apps/admin/**`, `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml` | Vite 管理后台，依赖共享包 |
+
+> **注意:** `blog` 和 `admin` 的 Dockerfile 都会 `COPY packages ./packages`，因此 `packages/` 目录的变更会同时触发这两个前端模块的重构建。
+
+#### 全局触发
+
+以下文件变更会触发 **所有模块** 重新构建：
+- `docker-compose*.yml` — Docker 编排配置
+- `.github/workflows/ci-cd.yml` — CI 流程本身
+
+#### 工作流 Job 依赖图
+
+```
+frontend-test ──┐
+backend-test  ──┤
+ai-test       ──┼─→ detect-changes ──┬─→ build-backend    ──┐
+config-validate─┘                    ├─→ build-ai-service ──┤
+                                     ├─→ build-blog       ──┼─→ deploy
+                                     └─→ build-admin      ──┘
+```
+
+- **未变更的模块**：对应 build job 显示 `Skipped`，不消耗 runner 时间
+- **deploy job**：至少一个模块构建成功时触发
 
 ## 🔧 配置步骤
 
@@ -103,11 +141,9 @@ git push origin v1.0.0
 构建后的镜像会推送到 Docker Hub,命名格式:
 
 ```
-{DOCKER_USERNAME}/aetherblog-backend:v1.0.0
 {DOCKER_USERNAME}/aetherblog-backend:latest
-{DOCKER_USERNAME}/aetherblog-blog:v1.0.0
+{DOCKER_USERNAME}/aetherblog-ai-service:latest
 {DOCKER_USERNAME}/aetherblog-blog:latest
-{DOCKER_USERNAME}/aetherblog-admin:v1.0.0
 {DOCKER_USERNAME}/aetherblog-admin:latest
 ```
 

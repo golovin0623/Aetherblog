@@ -129,23 +129,85 @@ jobs:
           docker compose -f docker-compose.prod.yml config --quiet
           echo "✅ Docker Compose files are valid"
 
-  docker-build-push:
+  # ===========================================================================
+  # 变更检测: 根据文件路径判断哪些模块需要重新构建
+  # ===========================================================================
+  detect-changes:
     needs: [frontend-test, backend-test, ai-test, config-validate]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        include:
-          - service: backend
-            dockerfile: ./apps/server/Dockerfile
-          - service: ai-service
-            dockerfile: ./apps/ai-service/Dockerfile
-          - service: blog
-            dockerfile: ./apps/blog/Dockerfile
-          - service: admin
-            dockerfile: ./apps/admin/Dockerfile
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      ai-service: ${{ steps.filter.outputs.ai-service }}
+      blog: ${{ steps.filter.outputs.blog }}
+      admin: ${{ steps.filter.outputs.admin }}
+      any_changed: ${{ steps.check.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Detect file changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'apps/server/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+            ai-service:
+              - 'apps/ai-service/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+            blog:
+              - 'apps/blog/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+            admin:
+              - 'apps/admin/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+
+      - name: Check if any module changed
+        id: check
+        run: |
+          if [[ "${{ steps.filter.outputs.backend }}" == "true" || \
+                "${{ steps.filter.outputs.ai-service }}" == "true" || \
+                "${{ steps.filter.outputs.blog }}" == "true" || \
+                "${{ steps.filter.outputs.admin }}" == "true" ]]; then
+            echo "any_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "any_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Print change detection results
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 变更检测结果:"
+          echo "  backend:    ${{ steps.filter.outputs.backend }}"
+          echo "  ai-service: ${{ steps.filter.outputs.ai-service }}"
+          echo "  blog:       ${{ steps.filter.outputs.blog }}"
+          echo "  admin:      ${{ steps.filter.outputs.admin }}"
+          echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # ===========================================================================
+  # 条件性构建: 仅构建发生变更的模块
+  # ===========================================================================
+  build-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -163,7 +225,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}
+          images: ${{ env.DOCKER_REGISTRY }}/aetherblog-backend
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -173,23 +235,159 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: ./apps/server/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-backend:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-backend:buildcache,mode=max
+          platforms: linux/amd64
+
+  build-ai-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ai-service == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/ai-service/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service:buildcache,mode=max
+          platforms: linux/amd64
+
+  build-blog:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.blog == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/aetherblog-blog
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/blog/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-blog:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-blog:buildcache,mode=max
+          platforms: linux/amd64
+
+  build-admin:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.admin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/aetherblog-admin
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/admin/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-admin:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-admin:buildcache,mode=max
           platforms: linux/amd64
 
   # ===========================================================================
   # 自动部署到服务器 (Webhook 触发)
   # ===========================================================================
   deploy:
-    needs: docker-build-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [detect-changes, build-backend, build-ai-service, build-blog, build-admin]
+    # 即使部分 build job 被跳过也能运行，但至少有一个模块被构建才触发部署
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.any_changed == 'true' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Print deployment info
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 触发部署 - 以下模块已更新:"
+          [[ "${{ needs.detect-changes.outputs.backend }}" == "true" ]] && echo "  ✅ backend"
+          [[ "${{ needs.detect-changes.outputs.ai-service }}" == "true" ]] && echo "  ✅ ai-service"
+          [[ "${{ needs.detect-changes.outputs.blog }}" == "true" ]] && echo "  ✅ blog"
+          [[ "${{ needs.detect-changes.outputs.admin }}" == "true" ]] && echo "  ✅ admin"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
       - name: Trigger deployment webhook
         run: |
           set -euo pipefail
