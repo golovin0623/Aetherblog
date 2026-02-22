@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
@@ -17,13 +17,21 @@ import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../
 // 导航页面类型
 type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
 
+const NAV_LINKS = [
+  { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
+  { href: '/timeline', label: '时间线', icon: Clock, key: 'timeline' as NavPage },
+  { href: '/archives', label: '归档', icon: Archive, key: 'archives' as NavPage },
+  { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
+  { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
+];
+
 /**
  * 移动端导航菜单组件
  * - 汉堡菜单按钮
  * - 使用 Portal 将菜单抽屉渲染到 body，避免被 header overflow 裁剪
  * - 乐观更新：点击立即切换高亮状态，不等待路由完成
  */
-export default function MobileMenu() {
+const MobileMenu = memo(function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
@@ -154,14 +162,6 @@ export default function MobileMenu() {
     setIsOpen(false);
   }, []);
 
-  const navLinks = [
-    { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
-    { href: '/timeline', label: '时间线', icon: Clock, key: 'timeline' as NavPage },
-    { href: '/archives', label: '归档', icon: Archive, key: 'archives' as NavPage },
-    { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
-    { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
-  ];
-
   // 菜单抽屉内容 - 使用 Portal 渲染到 body
   const menuDrawer = (
     <AnimatePresence>
@@ -272,7 +272,7 @@ export default function MobileMenu() {
 
             {/* 4. 导航链接 */}
             <nav className="flex-1 flex flex-col gap-1 p-4">
-              {navLinks.filter(link => !['/posts', '/timeline'].includes(link.href)).map((link) => {
+              {NAV_LINKS.filter(link => !['/posts', '/timeline'].includes(link.href)).map((link) => {
                 const isActive = activePage === link.key;
                 const Icon = link.icon;
 
@@ -363,4 +363,6 @@ export default function MobileMenu() {
       {mounted && createPortal(menuDrawer, document.body)}
     </div>
   );
-}
+});
+
+export default MobileMenu;
