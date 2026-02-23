@@ -126,8 +126,8 @@ const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) 
               key={index}
               onClick={() => setCurrentPage(index)}
               className={`transition-all duration-300 rounded-full ${index === currentPage
-                  ? 'bg-primary w-3 h-1'
-                  : 'bg-[var(--text-muted)]/10 hover:bg-[var(--text-muted)]/30 w-1 h-1'
+                ? 'bg-primary w-3 h-1'
+                : 'bg-[var(--text-muted)]/10 hover:bg-[var(--text-muted)]/30 w-1 h-1'
                 }`}
               aria-label={`Go to page ${index + 1}`}
             />
@@ -248,6 +248,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
               sizes="96px"
               className="object-cover group-hover/avatar:scale-105 transition-transform duration-500"
               priority
+              unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
           </div>
           <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/30">
@@ -264,7 +265,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
         <div className="w-full mb-3">
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
-<Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer" aria-label={`View timeline with ${stats?.posts || 0} posts`}>
+            <Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer" aria-label={`View timeline with ${stats?.posts || 0} posts`}>
               <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.posts || 0}
               </span>
