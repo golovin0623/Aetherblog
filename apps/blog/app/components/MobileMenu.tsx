@@ -217,6 +217,7 @@ const MobileMenu = memo(function MobileMenu() {
                       fill
                       sizes="56px"
                       className="object-cover"
+                      unoptimized={authorAvatar.startsWith('/api/uploads') || authorAvatar.startsWith('/uploads')}
                     />
                   </div>
                 </div>
