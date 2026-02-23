@@ -5,7 +5,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
 import type { Components } from 'react-markdown';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
@@ -14,7 +13,7 @@ import { buildHeadingIdMap } from '../lib/headingId';
 
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
-const REHYPE_PLUGINS: any = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }], rehypeRaw];
+const REHYPE_PLUGINS: any = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
@@ -300,7 +299,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
             secondaryColor: '#1e1b4b',
             tertiaryColor: '#1e293b',
           } : undefined,
-          securityLevel: 'loose',
+          securityLevel: 'strict',
         });
 
         const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
