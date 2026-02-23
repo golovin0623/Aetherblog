@@ -118,6 +118,8 @@ const MonthSection = React.memo(({
       {/* 月份节点 */}
       <button
         onClick={() => toggleMonth(yearMonth)}
+        aria-expanded={isExpanded}
+        aria-controls={`timeline-month-${yearMonth}`}
         className="group flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-md hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-hover)] transition-colors">
@@ -138,6 +140,7 @@ const MonthSection = React.memo(({
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
+            id={`timeline-month-${yearMonth}`}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -229,6 +232,8 @@ const YearSection = React.memo(({
       {/* 年份节点 */}
       <button
         onClick={() => toggleYear(yearData.year)}
+        aria-expanded={isExpanded}
+        aria-controls={`timeline-year-${yearData.year}`}
         className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10"
       >
         {/* 展开时带脉冲动画的节点 */}
@@ -251,7 +256,10 @@ const YearSection = React.memo(({
 
       {/* 月份列表 */}
       {isExpanded && (
-        <div className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-[var(--border-subtle)] space-y-2">
+        <div
+          id={`timeline-year-${yearData.year}`}
+          className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-[var(--border-subtle)] space-y-2"
+        >
           {yearData.months.map((monthData) => {
             const yearMonth = `${yearData.year}-${monthData.month}`;
             const isMonthExpanded = expandedMonths.has(yearMonth);
