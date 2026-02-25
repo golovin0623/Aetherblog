@@ -39,3 +39,8 @@
 **Vulnerability:** `PublicCommentController` manually implemented insecure IP resolution (`getClientIp`), ignoring the secure `IpUtils` and re-introducing IP spoofing vulnerability.
 **Learning:** Even with secure utilities available and previous fixes applied to `AuthController`, developers often copy-paste insecure patterns or miss updating all instances. Continuous auditing is required.
 **Prevention:** Enforce usage of `IpUtils` across the entire codebase via static analysis or rigorous code reviews.
+
+## 2026-02-25 - Unrestricted CSP on Uploaded Content
+**Vulnerability:** Static resources served from `/uploads/**` inherited the global Content Security Policy, which allowed `unsafe-inline` scripts. This could enable Stored XSS via malicious file uploads (e.g., PDF, HTML if allowed).
+**Learning:** Global security policies are often too permissive for user-generated content. A single CSP header cannot fit all use cases (app UI vs. untrusted uploads).
+**Prevention:** Implemented a dedicated, high-priority `SecurityFilterChain` for `/uploads/**` that enforces a strict `sandbox` CSP, neutralizing scripts in served content.

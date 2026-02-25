@@ -20,6 +20,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.core.annotation.Order;
+import org.springframework.core.Ordered;
 
 /**
  * Spring Security 配置
@@ -66,6 +68,24 @@ public class SecurityConfig {
     private static final String[] ADMIN_PATHS = {
             "/v1/admin/**"
     };
+
+    /**
+     * Uploads Security Filter Chain (High Priority)
+     * Applies strict sandbox CSP to uploaded files to prevent Stored XSS.
+     */
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public SecurityFilterChain uploadSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher("/uploads/**")
+                .cors(org.springframework.security.config.Customizer.withDefaults())
+                .csrf(AbstractHttpConfigurer::disable)
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives("sandbox"))
+                )
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .build();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
