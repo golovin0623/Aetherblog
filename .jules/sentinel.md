@@ -39,3 +39,8 @@
 **Vulnerability:** `PublicCommentController` manually implemented insecure IP resolution (`getClientIp`), ignoring the secure `IpUtils` and re-introducing IP spoofing vulnerability.
 **Learning:** Even with secure utilities available and previous fixes applied to `AuthController`, developers often copy-paste insecure patterns or miss updating all instances. Continuous auditing is required.
 **Prevention:** Enforce usage of `IpUtils` across the entire codebase via static analysis or rigorous code reviews.
+
+## 2026-02-26 - Missing CSP on Static Assets
+**Vulnerability:** User-uploaded files in `/uploads/**` were served directly by the default Spring handler without strict Content Security Policy headers, exposing the application to Stored XSS if attackers uploaded polyglot files (e.g., HTML/JS disguised as images).
+**Learning:** Default static resource handlers in frameworks (like Spring MVC) prioritize convenience over security. They do not automatically apply restrictive headers to user content, assuming it is safe static assets.
+**Prevention:** Implemented a dedicated high-priority `SecurityFilterChain` for `/uploads/**` that enforces `Content-Security-Policy: sandbox;` and `X-Content-Type-Options: nosniff`.

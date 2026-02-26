@@ -4,6 +4,7 @@ import com.aetherblog.common.security.filter.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -66,6 +67,26 @@ public class SecurityConfig {
     private static final String[] ADMIN_PATHS = {
             "/v1/admin/**"
     };
+
+    /**
+     * Security configuration for static uploads.
+     * Enforces strict CSP to prevent XSS in user-uploaded content.
+     */
+    @Bean
+    @Order(0)
+    public SecurityFilterChain uploadsSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher("/uploads/**")
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives("sandbox;"))
+                        .contentTypeOptions(org.springframework.security.config.Customizer.withDefaults())
+                        .frameOptions(HeadersConfigurer.FrameOptionsConfig::deny)
+                )
+                .build();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
