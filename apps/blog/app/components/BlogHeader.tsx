@@ -102,13 +102,23 @@ export default function BlogHeader() {
 
   const isTimeline = activeTab === 'timeline';
 
-  // 鼠标位置状态
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  // Optimization: Use useRef for direct DOM manipulation to avoid re-renders
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number>(0);
+  const lastScrollYRef = useRef(0);
+
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
-  const lastScrollYRef = useRef(0);
+
+  // Clean up animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
 
   // Stable handlers for search panel using useCallback
   const openSearchPanel = useCallback(() => {
@@ -186,11 +196,23 @@ export default function BlogHeader() {
 
   // 监听鼠标移动，更新光束位置和显隐状态
   const updateMousePosition = useCallback((e: React.MouseEvent) => {
-    // 获取 header 元素的位置
-    const header = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - header.left,
-      y: e.clientY - header.top,
+    if (!spotlightRef.current) return;
+
+    const { clientX, clientY } = e;
+    const target = e.currentTarget;
+
+    // Use requestAnimationFrame to throttle DOM updates
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+    }
+
+    frameRef.current = requestAnimationFrame(() => {
+      if (!spotlightRef.current) return;
+      const rect = target.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
     });
 
     // 确保在 header 上移动时也标记为 hovering
@@ -248,9 +270,10 @@ export default function BlogHeader() {
       >
         {/* 聚光灯效果层 - 使用 CSS 变量 */}
         <div
+          ref={spotlightRef}
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            // Background is managed directly via DOM manipulation for performance
             opacity: isHovering || !isArticleDetail ? 'var(--spotlight-opacity)' : 0,
           }}
         />
