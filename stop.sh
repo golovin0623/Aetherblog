@@ -68,6 +68,26 @@ docker_compose() {
     return 1
 }
 
+# 安全检查 Docker 是否运行 (防卡死，并屏蔽 Killed 提示)
+is_docker_running() {
+    (
+        docker info >/dev/null 2>&1 &
+        pid=$!
+        count=0
+        while kill -0 $pid 2>/dev/null; do
+            if [ $count -ge 6 ]; then # 3秒超时
+                kill -9 $pid 2>/dev/null || true
+                exit 1
+            fi
+            sleep 0.5
+            count=$((count + 1))
+        done
+        wait $pid 2>/dev/null
+        exit $?
+    ) 2>/dev/null
+    return $?
+}
+
 # 获取进程工作目录 (macOS/Linux)
 get_process_cwd() {
     local pid=$1
@@ -217,7 +237,7 @@ stop_gateway() {
     echo -e "${BLUE}[6/6] 停止网关...${NC}"
 
     # Docker 未运行时，跳过网关容器停止，避免影响 Docker 服务
-    if ! docker info &> /dev/null; then
+    if ! is_docker_running; then
         echo -e "${YELLOW}⚠️  Docker 未运行，跳过网关容器停止${NC}"
         return
     fi
@@ -238,7 +258,7 @@ stop_middleware() {
     cd "$PROJECT_ROOT"
     
     if [ -f "docker-compose.yml" ]; then
-        if ! docker info &> /dev/null; then
+        if ! is_docker_running; then
             echo -e "${YELLOW}⚠️  Docker 未运行，跳过中间件停止${NC}"
             return
         fi

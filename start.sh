@@ -402,37 +402,63 @@ wait_for_http() {
     return 1
 }
 
+# 安全检查 Docker 是否运行 (防卡死，并屏蔽 Killed 提示)
+is_docker_running() {
+    (
+        docker info >/dev/null 2>&1 &
+        pid=$!
+        count=0
+        while kill -0 $pid 2>/dev/null; do
+            if [ $count -ge 6 ]; then # 3秒超时
+                kill -9 $pid 2>/dev/null || true
+                exit 1
+            fi
+            sleep 0.5
+            count=$((count + 1))
+        done
+        wait $pid 2>/dev/null
+        exit $?
+    ) 2>/dev/null
+    return $?
+}
+
 # 确保 Docker 已运行 (需要 Docker 时使用)
 ensure_docker_running() {
-    if docker info &> /dev/null; then
+    if is_docker_running; then
         return
     fi
-
-    echo -e "${YELLOW}⏳ Docker 未运行，正在启动 Docker Desktop...${NC}"
-
-    # 尝试启动 Docker Desktop (macOS)
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        open -a Docker
+    
+    # 检测 Docker Desktop 进程是否存活，如果存活但 is_docker_running 失败，说明是守护进程卡死 (Docker Desktop 常见故障)
+    if [[ "$OSTYPE" == "darwin"* ]] && pgrep -x "Docker" >/dev/null; then
+        echo -e "${RED}⚠️  检测到 Docker Desktop 客户端已启动，但其底层引擎 (Daemon) 无响应 (卡死)!${NC}"
+        echo -e "${YELLOW}👉 请点击顶部菜单栏的 Docker 小鲸鱼图标，选择 'Restart' 重启 Docker!${NC}"
     else
-        echo -e "${RED}❌ 请手动启动 Docker${NC}"
-        exit 1
+        echo -e "${YELLOW}⏳ Docker 未运行，正在启动 Docker Desktop...${NC}"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            open -ga Docker # -g 防止抢占焦点
+        else
+            echo -e "${RED}❌ 请手动启动 Docker${NC}"
+            exit 1
+        fi
     fi
 
     # 等待 Docker 就绪 (最多 60 秒)
-    echo -e "${BLUE}   等待 Docker daemon 启动...${NC}"
+    echo -e "${BLUE}   等待 Docker daemon 启动/恢复...${NC}"
     local max_wait=60
     local waited=0
-    while ! docker info &> /dev/null; do
+    while ! is_docker_running; do
         if [ $waited -ge $max_wait ]; then
-            echo -e "${RED}❌ Docker 启动超时 (${max_wait}s)，请检查 Docker Desktop${NC}"
+            echo ""
+            echo -e "${RED}❌ Docker 启动响应超时 (${max_wait}s)！${NC}"
+            echo -e "${YELLOW}如果 Docker 一直在卡死状态，请手动强制退出 Docker（Activity Monitor 中退出 Docker 程序）后重启它。${NC}"
             exit 1
         fi
         sleep 2
         waited=$((waited + 2))
-        echo -ne "\r${BLUE}   等待 Docker daemon 启动... ${waited}s${NC}"
+        echo -ne "\r${BLUE}   等待 Docker daemon 启动/恢复... ${waited}s${NC}"
     done
     echo ""
-    echo -e "${GREEN}✅ Docker Desktop 已就绪${NC}"
+    echo -e "${GREEN}✅ Docker Desktop 引擎已恢复就绪${NC}"
 }
 
 # 启动中间件 (Docker)

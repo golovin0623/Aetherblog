@@ -62,8 +62,8 @@ const MobileMenu = memo(function MobileMenu() {
 
   const authorName = settings?.author_name || settings?.authorName || 'Golovin';
   const authorAvatar = sanitizeImageUrl(
-    settings?.author_avatar || settings?.authorAvatar || '',
-    'https://github.com/shadcn.png'
+    settings?.authorAvatar || settings?.author_avatar || '',
+    'https://cravatar.cn/avatar/00000000000000000000000000000000?d=mp&s=200'
   );
   const authorBio = settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);

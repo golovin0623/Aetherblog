@@ -249,11 +249,10 @@ export default function PostsPage() {
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={() => navigate('/posts/ai-writing/new')}
-            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 overflow-hidden transition-colors"
+            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[var(--text-secondary)] hover:text-primary bg-[var(--bg-secondary)] hover:bg-primary/5 border border-[var(--border-subtle)] hover:border-primary/20 transition-all duration-200"
           >
-            <Sparkles className="w-4 h-4 text-primary" />
+            <Sparkles className="w-4 h-4 text-primary opacity-80 group-hover:opacity-100 transition-opacity" />
             <span>AI 协同写作</span>
-            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/20 text-primary -ml-0.5">新</span>
           </motion.button>
 
           {/* 新建文章主按钮 */}

@@ -90,6 +90,13 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("postgres_dsn", mode="before")
+    @classmethod
+    def _fix_postgres_dsn(cls, value: str) -> str:
+        if isinstance(value, str) and value.startswith("postgresql+asyncpg://"):
+            return value.replace("postgresql+asyncpg://", "postgresql://", 1)
+        return value
+
 
 _settings: Settings | None = None
 

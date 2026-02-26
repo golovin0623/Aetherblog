@@ -9,42 +9,64 @@
    ======================================== */
 
 /* 亮色主题 (默认) */
-:root, :root.light {
+:root,
+:root.light {
   /* === 品牌色系统 === */
-  --color-primary: #6366f1;           /* Indigo 500 */
-  --color-primary-hover: #4f46e5;     /* Indigo 600 */
-  --color-primary-light: #a5b4fc;     /* Indigo 300 */
-  --color-primary-lighter: #e0e7ff;   /* Indigo 100 */
+  --color-primary: #6366f1;
+  /* Indigo 500 */
+  --color-primary-hover: #4f46e5;
+  /* Indigo 600 */
+  --color-primary-light: #a5b4fc;
+  /* Indigo 300 */
+  --color-primary-lighter: #e0e7ff;
+  /* Indigo 100 */
 
   /* === 辅助色系统 === */
-  --color-accent-blue: #3b82f6;       /* Blue 500 */
-  --color-accent-green: #10b981;      /* Green 500 */
-  --color-accent-orange: #f59e0b;     /* Amber 500 */
-  --color-accent-purple: #8b5cf6;     /* Purple 500 */
+  --color-accent-blue: #3b82f6;
+  /* Blue 500 */
+  --color-accent-green: #10b981;
+  /* Green 500 */
+  --color-accent-orange: #f59e0b;
+  /* Amber 500 */
+  --color-accent-purple: #8b5cf6;
+  /* Purple 500 */
 
   /* === 背景色系统（丰富的层次）=== */
-  --bg-primary: #f8fafc;              /* Slate 50 - 略微暗淡的背景，形成层次对比 */
-  --bg-secondary: #f1f5f9;            /* Slate 100 */
-  --bg-tertiary: #e2e8f0;             /* Slate 200 */
-  --bg-quaternary: #cbd5e1;           /* Slate 300 */
+  --bg-primary: #f8fafc;
+  /* Slate 50 - 略微暗淡的背景，形成层次对比 */
+  --bg-secondary: #f1f5f9;
+  /* Slate 100 */
+  --bg-tertiary: #e2e8f0;
+  /* Slate 200 */
+  --bg-quaternary: #cbd5e1;
+  /* Slate 300 */
 
-  --bg-card: #ffffff;                 /* 纯白卡片，与背景形成对比 */
-  --bg-card-hover: #fafbfc;           /* 微妙的灰 */
+  --bg-card: #ffffff;
+  /* 纯白卡片，与背景形成对比 */
+  --bg-card-hover: #fafbfc;
+  /* 微妙的灰 */
   --bg-overlay: rgba(255, 255, 255, 0.95);
   --bg-code: #f1f5f9;
   --bg-code-block: #1e293b;
 
   /* === 文字色系统（高对比度）=== */
-  --text-primary: #0f172a;            /* Slate 900 */
-  --text-secondary: #1e293b;          /* Slate 800 - 从 #334155 加深 */
-  --text-tertiary: #475569;           /* Slate 600 */
-  --text-muted: #64748b;              /* Slate 500 */
+  --text-primary: #0f172a;
+  /* Slate 900 */
+  --text-secondary: #1e293b;
+  /* Slate 800 - 从 #334155 加深 */
+  --text-tertiary: #475569;
+  /* Slate 600 */
+  --text-muted: #64748b;
+  /* Slate 500 */
   --text-inverse: #ffffff;
 
   /* === 边框色系统 === */
-  --border-default: #e2e8f0;          /* Slate 200 - 清晰可见 */
-  --border-hover: #6366f1;            /* 主题色 */
-  --border-subtle: #f1f5f9;           /* Slate 100 */
+  --border-default: #e2e8f0;
+  /* Slate 200 - 清晰可见 */
+  --border-hover: #6366f1;
+  /* 主题色 */
+  --border-subtle: #f1f5f9;
+  /* Slate 100 */
 
   /* === 阴影系统（企业级4层）=== */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -60,10 +82,11 @@
   /* === 渐变系统 === */
   --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  --gradient-subtle: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(248,250,252,1) 100%);
+  --gradient-subtle: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(248, 250, 252, 1) 100%);
 
   /* === 装饰元素 === */
-  --decoration-bar-height: 3px;       /* 顶部装饰条高度 */
+  --decoration-bar-height: 3px;
+  /* 顶部装饰条高度 */
   --decoration-gradient: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
 
   /* === 状态色 === */
@@ -73,14 +96,22 @@
   --color-info: #3b82f6;
 
   /* === Markdown 专用变量 === */
-  --markdown-bg-code: #f8fafc;        /* 代码块背景 */
-  --markdown-bg-code-inline: #e5e7eb; /* 行内代码背景 */
-  --markdown-text-code: #4f46e5;      /* 代码文字颜色 */
-  --markdown-border-code: #e2e8f0;    /* 代码块边框 */
-  --markdown-bg-quote: rgba(0, 0, 0, 0.03);  /* 引用块背景 */
-  --markdown-border-quote: #6366f1;   /* 引用块左边框 */
-  --markdown-line-height: 1.8;        /* 行高 */
-  --markdown-paragraph-spacing: 1em;  /* 段落间距 */
+  --markdown-bg-code: #f8fafc;
+  /* 代码块背景 */
+  --markdown-bg-code-inline: #e5e7eb;
+  /* 行内代码背景 */
+  --markdown-text-code: #4f46e5;
+  /* 代码文字颜色 */
+  --markdown-border-code: #e2e8f0;
+  /* 代码块边框 */
+  --markdown-bg-quote: rgba(0, 0, 0, 0.03);
+  /* 引用块背景 */
+  --markdown-border-quote: #6366f1;
+  /* 引用块左边框 */
+  --markdown-line-height: 1.8;
+  /* 行高 */
+  --markdown-paragraph-spacing: 1em;
+  /* 段落间距 */
 
   /* === 运动设计系统 === */
   --motion-ease-productive: cubic-bezier(0.2, 0, 0.38, 0.9);
@@ -94,21 +125,34 @@
   --motion-duration-slower: 700ms;
 
   /* === 间距系统（8pt grid）=== */
-  --space-1: 0.25rem;  /* 4px */
-  --space-2: 0.5rem;   /* 8px */
-  --space-3: 0.75rem;  /* 12px */
-  --space-4: 1rem;     /* 16px */
-  --space-6: 1.5rem;   /* 24px */
-  --space-8: 2rem;     /* 32px */
-  --space-12: 3rem;    /* 48px */
+  --space-1: 0.25rem;
+  /* 4px */
+  --space-2: 0.5rem;
+  /* 8px */
+  --space-3: 0.75rem;
+  /* 12px */
+  --space-4: 1rem;
+  /* 16px */
+  --space-6: 1.5rem;
+  /* 24px */
+  --space-8: 2rem;
+  /* 32px */
+  --space-12: 3rem;
+  /* 48px */
 
   /* === 排版系统 === */
-  --font-size-xs: 0.75rem;    /* 12px */
-  --font-size-sm: 0.875rem;   /* 14px */
-  --font-size-base: 1rem;     /* 16px */
-  --font-size-lg: 1.125rem;   /* 18px */
-  --font-size-xl: 1.25rem;    /* 20px */
-  --font-size-2xl: 1.5rem;    /* 24px */
+  --font-size-xs: 0.75rem;
+  /* 12px */
+  --font-size-sm: 0.875rem;
+  /* 14px */
+  --font-size-base: 1rem;
+  /* 16px */
+  --font-size-lg: 1.125rem;
+  /* 18px */
+  --font-size-xl: 1.25rem;
+  /* 20px */
+  --font-size-2xl: 1.5rem;
+  /* 24px */
 
   --leading-tight: 1.25;
   --leading-normal: 1.5;
@@ -144,16 +188,24 @@
 /* 暗色主题 */
 :root.dark {
   /* === 品牌色系统 === */
-  --color-primary: #6366f1;           /* Indigo 500 */
-  --color-primary-hover: #818cf8;     /* Indigo 400 */
-  --color-primary-light: #a5b4fc;     /* Indigo 300 */
-  --color-primary-lighter: #e0e7ff;   /* Indigo 100 */
+  --color-primary: #6366f1;
+  /* Indigo 500 */
+  --color-primary-hover: #818cf8;
+  /* Indigo 400 */
+  --color-primary-light: #a5b4fc;
+  /* Indigo 300 */
+  --color-primary-lighter: #e0e7ff;
+  /* Indigo 100 */
 
   /* === 辅助色系统 === */
-  --color-accent-blue: #3b82f6;       /* Blue 500 */
-  --color-accent-green: #10b981;      /* Green 500 */
-  --color-accent-orange: #f59e0b;     /* Amber 500 */
-  --color-accent-purple: #8b5cf6;     /* Purple 500 */
+  --color-accent-blue: #3b82f6;
+  /* Blue 500 */
+  --color-accent-green: #10b981;
+  /* Green 500 */
+  --color-accent-orange: #f59e0b;
+  /* Amber 500 */
+  --color-accent-purple: #8b5cf6;
+  /* Purple 500 */
 
   /* === 背景色系统 === */
   --bg-primary: #0a0a0f;
@@ -169,7 +221,8 @@
 
   /* === 文字色系统 === */
   --text-primary: #ffffff;
-  --text-secondary: #cbd5e1;          /* 从 #94a3b8 提亮 */
+  --text-secondary: #cbd5e1;
+  /* 从 #94a3b8 提亮 */
   --text-tertiary: #94a3b8;
   --text-muted: #64748b;
   --text-inverse: #0f172a;
@@ -193,7 +246,7 @@
   /* === 渐变系统 === */
   --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  --gradient-subtle: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(19,19,26,1) 100%);
+  --gradient-subtle: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(19, 19, 26, 1) 100%);
 
   /* === 装饰元素 === */
   --decoration-bar-height: 3px;
@@ -206,14 +259,22 @@
   --color-info: #3b82f6;
 
   /* === Markdown 专用变量 === */
-  --markdown-bg-code: #1a1b26;        /* 代码块背景 */
-  --markdown-bg-code-inline: rgba(255, 255, 255, 0.1);  /* 行内代码背景 */
-  --markdown-text-code: #a78bfa;      /* 代码文字颜色 - 更柔和 */
-  --markdown-border-code: rgba(255, 255, 255, 0.08);  /* 代码块边框 */
-  --markdown-bg-quote: rgba(255, 255, 255, 0.03);  /* 引用块背景 */
-  --markdown-border-quote: #6366f1;   /* 引用块左边框 */
-  --markdown-line-height: 1.8;        /* 行高 */
-  --markdown-paragraph-spacing: 1em;  /* 段落间距 */
+  --markdown-bg-code: #1a1b26;
+  /* 代码块背景 */
+  --markdown-bg-code-inline: rgba(255, 255, 255, 0.1);
+  /* 行内代码背景 */
+  --markdown-text-code: #a78bfa;
+  /* 代码文字颜色 - 更柔和 */
+  --markdown-border-code: rgba(255, 255, 255, 0.08);
+  /* 代码块边框 */
+  --markdown-bg-quote: rgba(255, 255, 255, 0.03);
+  /* 引用块背景 */
+  --markdown-border-quote: #6366f1;
+  /* 引用块左边框 */
+  --markdown-line-height: 1.8;
+  /* 行高 */
+  --markdown-paragraph-spacing: 1em;
+  /* 段落间距 */
 
   /* === 运动设计系统（与亮色主题相同）=== */
   --motion-ease-productive: cubic-bezier(0.2, 0, 0.38, 0.9);
@@ -321,7 +382,9 @@ body {
 
 /* 移动端禁止横向滚动 - 防止内容撑开页面 */
 @media (max-width: 767px) {
-  html, body {
+
+  html,
+  body {
     overflow-x: hidden;
     max-width: 100vw;
   }
@@ -357,6 +420,7 @@ body {
   0% {
     transform: translateX(-100%);
   }
+
   100% {
     transform: translateX(100%);
   }
@@ -367,12 +431,10 @@ body {
   inset: 0;
   transform: translateX(-100%);
   animation: shimmer 2s infinite;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--shimmer-color) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg,
+      transparent 0%,
+      var(--shimmer-color) 50%,
+      transparent 100%);
   pointer-events: none;
 }
 
@@ -380,25 +442,31 @@ body {
    Markdown Renderer Styles (Full)
    ======================================== */
 .markdown-body {
-  line-height: var(--markdown-line-height);  /* 1.8 */
+  line-height: var(--markdown-line-height);
+  /* 1.8 */
 }
 
 
 
 .markdown-body h1 {
   font-size: 2em;
-  font-weight: 800;      /* 从 700 提升 */
-  margin-top: 2em;       /* 从 1.5em 增加 */
+  font-weight: 800;
+  /* 从 700 提升 */
+  margin-top: 2em;
+  /* 从 1.5em 增加 */
   margin-bottom: 0.5em;
   color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);  /* 更淡的下划线 */
+  border-bottom: 1px solid var(--border-subtle);
+  /* 更淡的下划线 */
   padding-bottom: 0.3em;
 }
 
 .markdown-body h2 {
   font-size: 1.5em;
-  font-weight: 700;      /* 从 600 提升 */
-  margin-top: 1.6em;     /* 从 1.25em 增加 */
+  font-weight: 700;
+  /* 从 600 提升 */
+  margin-top: 1.6em;
+  /* 从 1.25em 增加 */
   margin-bottom: 0.5em;
   color: var(--text-primary);
 }
@@ -406,13 +474,15 @@ body {
 .markdown-body h3 {
   font-size: 1.25em;
   font-weight: 600;
-  margin-top: 1.4em;     /* 从 1em 增加 */
+  margin-top: 1.4em;
+  /* 从 1em 增加 */
   margin-bottom: 0.5em;
   color: var(--text-primary);
 }
 
 .markdown-body p {
-  margin: var(--markdown-paragraph-spacing) 0;  /* 1em */
+  margin: var(--markdown-paragraph-spacing) 0;
+  /* 1em */
   line-height: var(--markdown-line-height);
   color: var(--text-secondary);
 }
@@ -420,7 +490,8 @@ body {
 .markdown-body code {
   background: var(--markdown-bg-code-inline);
   color: var(--markdown-text-code);
-  padding: 0.25em 0.5em;  /* 从 0.2em 0.4em 增加 */
+  padding: 0.25em 0.5em;
+  /* 从 0.2em 0.4em 增加 */
   border-radius: 4px;
   font-size: 0.9em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -429,11 +500,14 @@ body {
 .markdown-body pre {
   background: var(--markdown-bg-code);
   border: 1px solid var(--markdown-border-code);
-  padding: 1.2em 1.5em;  /* 从 1em 增加 */
-  border-radius: 12px;   /* 从 8px 增加 */
+  padding: 1.2em 1.5em;
+  /* 从 1em 增加 */
+  border-radius: 12px;
+  /* 从 8px 增加 */
   overflow-x: auto;
   margin: 1em 0;
-  line-height: 1.5;  /* 代码块使用更紧凑的行高 */
+  line-height: 1.5;
+  /* 代码块使用更紧凑的行高 */
 }
 
 .markdown-body pre code {
@@ -441,7 +515,8 @@ body {
   padding: 0;
   font-size: 0.875em;
   color: var(--text-primary);
-  line-height: 1.5;  /* 确保代码行高紧凑 */
+  line-height: 1.5;
+  /* 确保代码行高紧凑 */
 }
 
 /* 代码块容器样式 - 修复圆角连接问题 */
@@ -449,7 +524,8 @@ body {
   position: relative;
   margin: 1em 0;
   border-radius: 12px;
-  overflow: hidden;  /* 确保子元素不超出圆角 */
+  overflow: hidden;
+  /* 确保子元素不超出圆角 */
   border: 1px solid var(--markdown-border-code);
   background: var(--markdown-bg-code);
 }
@@ -461,13 +537,49 @@ body {
   padding: 0.5em 1em;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--markdown-border-code);
-  border-radius: 0 !important;  /* 强制移除圆角 */
+  border-radius: 0 !important;
+  /* 强制移除圆角 */
 }
 
 .markdown-body .code-block-content {
   overflow-x: auto;
-  max-height: none;  /* 默认不限制高度 */
+  max-height: none;
+  /* 默认不限制高度 */
   transition: max-height 0.3s ease;
+
+  /* 优雅的细滚动条 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+:root.light .markdown-body .code-block-content {
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.markdown-body .code-block-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.markdown-body .code-block-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.markdown-body .code-block-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.markdown-body .code-block-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+:root.light .markdown-body .code-block-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+:root.light .markdown-body .code-block-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }
 
 /* 强制覆盖 Shiki 生成的样式 */
@@ -498,7 +610,8 @@ body {
 
 /* 折叠状态 */
 .markdown-body .code-block-wrapper.collapsed .code-block-content {
-  max-height: 400px;  /* 约15行代码的高度 */
+  max-height: 400px;
+  /* 约15行代码的高度 */
   overflow: hidden;
   position: relative;
 }
@@ -546,7 +659,8 @@ body {
   transform: rotate(180deg);
 }
 
-.markdown-body ul, .markdown-body ol {
+.markdown-body ul,
+.markdown-body ol {
   padding-left: 1.5em;
   margin: 0.75em 0;
   color: var(--text-secondary);
@@ -562,11 +676,11 @@ body {
   list-style-position: outside;
 }
 
-.markdown-body li > ol {
+.markdown-body li>ol {
   list-style-type: decimal;
 }
 
-.markdown-body li > ul {
+.markdown-body li>ul {
   list-style-type: circle;
 }
 
@@ -575,14 +689,19 @@ body {
 }
 
 .markdown-body blockquote {
-  border-left: 3px solid var(--markdown-border-quote);  /* 从 4px 减少 */
+  border-left: 3px solid var(--markdown-border-quote);
+  /* 从 4px 减少 */
   padding-left: 1em;
   margin: 1em 0;
-  color: var(--text-secondary);  /* 从 var(--text-muted) 提亮 */
+  color: var(--text-secondary);
+  /* 从 var(--text-muted) 提亮 */
   background: var(--markdown-bg-quote);
-  padding: 0.5em 1em;  /* 添加垂直内边距 */
-  border-radius: 0 4px 4px 0;  /* 添加圆角 */
-  font-style: normal;  /* 移除斜体 */
+  padding: 0.5em 1em;
+  /* 添加垂直内边距 */
+  border-radius: 0 4px 4px 0;
+  /* 添加圆角 */
+  font-style: normal;
+  /* 移除斜体 */
 }
 
 .markdown-body a {
@@ -616,9 +735,11 @@ body {
   border-radius: 12px;
 }
 
-.markdown-body th, .markdown-body td {
+.markdown-body th,
+.markdown-body td {
   border: 1px solid var(--border-subtle);
-  padding: 0.75em 1.25em;  /* 从 0.5em 1em 增加 */
+  padding: 0.75em 1.25em;
+  /* 从 0.5em 1em 增加 */
   text-align: left;
 }
 
@@ -717,25 +838,30 @@ body {
 /* 移动端优化 */
 @media (max-width: 768px) {
   .markdown-body {
-    font-size: 15px;  /* 从 16px 减小 */
+    font-size: 15px;
+    /* 从 16px 减小 */
     word-wrap: break-word;
     overflow-wrap: break-word;
   }
 
   .markdown-body h1 {
-    font-size: 1.75em;  /* 从 2em 减小 */
+    font-size: 1.75em;
+    /* 从 2em 减小 */
   }
 
   .markdown-body h2 {
-    font-size: 1.4em;  /* 从 1.5em 减小 */
+    font-size: 1.4em;
+    /* 从 1.5em 减小 */
   }
 
   .markdown-body h3 {
-    font-size: 1.2em;  /* 从 1.25em 减小 */
+    font-size: 1.2em;
+    /* 从 1.25em 减小 */
   }
 
   .markdown-body pre {
-    padding: 1em;  /* 从 1.2em 1.5em 减小 */
+    padding: 1em;
+    /* 从 1.2em 1.5em 减小 */
   }
 
   .markdown-body table {
@@ -767,15 +893,20 @@ body {
   line-height: 1.6;
   font-size: 13px;
 }
-.mini-preview h1, .mini-preview h2, .mini-preview h3 {
+
+.mini-preview h1,
+.mini-preview h2,
+.mini-preview h3 {
   font-size: 1.1em;
   font-weight: 600;
   color: var(--text-secondary);
   margin: 0.5em 0 0.3em;
 }
+
 .mini-preview p {
   margin: 0.4em 0;
 }
+
 .mini-preview code {
   background: var(--bg-code);
   color: var(--color-primary);
@@ -783,6 +914,7 @@ body {
   border-radius: 3px;
   font-size: 0.85em;
 }
+
 .mini-preview pre {
   background: var(--bg-code-block);
   padding: 0.6em;
@@ -791,19 +923,24 @@ body {
   margin: 0.5em 0;
   border: 1px solid var(--border-subtle);
 }
+
 .mini-preview pre code {
   background: transparent;
   padding: 0;
   color: var(--color-primary-hover);
   font-size: 0.8em;
 }
-.mini-preview ul, .mini-preview ol {
+
+.mini-preview ul,
+.mini-preview ol {
   padding-left: 1.2em;
   margin: 0.4em 0;
 }
+
 .mini-preview li {
   margin: 0.15em 0;
 }
+
 .mini-preview blockquote {
   border-left: 2px solid var(--color-primary);
   padding-left: 0.6em;
@@ -811,9 +948,11 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+
 .mini-preview a {
   color: var(--color-primary);
 }
+
 .mini-preview img {
   max-width: 100%;
   width: auto;
@@ -822,18 +961,21 @@ body {
   border-radius: 4px;
   margin: 0.4em 0;
 }
+
 /* 强制mini-preview容器宽度约束 */
 .mini-preview {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
 }
+
 .mini-preview video {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
   margin: 0.4em 0;
 }
+
 /* 列表样式 - 修复小圆点和内容同行显示 */
 .mini-preview ul {
   list-style-type: disc;
@@ -841,42 +983,51 @@ body {
   padding-left: 1.5em;
   margin: 0.4em 0;
 }
+
 .mini-preview ol {
   list-style-type: decimal;
   list-style-position: outside;
   padding-left: 1.5em;
   margin: 0.4em 0;
 }
+
 .mini-preview li {
   display: list-item;
   margin: 0.15em 0;
   padding-left: 0.2em;
 }
+
 /* 文字换行 */
 .mini-preview p,
 .mini-preview li {
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
+
 /* 暗色模式代码块文字颜色修复 */
 .mini-preview pre {
   overflow-x: auto;
   max-width: 100%;
 }
+
 .mini-preview pre code {
   color: var(--text-secondary);
 }
+
 /* 亮色模式代码块适配 */
 :root.light .mini-preview pre {
   background: var(--bg-secondary);
 }
+
 :root.light .mini-preview pre code {
   color: var(--text-secondary);
 }
+
 /* 暗色模式代码块适配 */
 :root.dark .mini-preview pre code {
   color: #e2e8f0;
 }
+
 /* 新增列表类名样式 */
 .mini-preview-list-ul {
   list-style-type: disc;
@@ -884,12 +1035,14 @@ body {
   padding-left: 1.5em;
   margin: 0.4em 0;
 }
+
 .mini-preview-list-ol {
   list-style-type: decimal;
   list-style-position: outside;
   padding-left: 1.5em;
   margin: 0.4em 0;
 }
+
 .mini-preview-list-li {
   display: list-item;
   margin: 0.15em 0;
@@ -897,11 +1050,13 @@ body {
   color: var(--text-muted);
   font-size: 0.75rem;
 }
+
 .mini-preview video {
   max-width: 100%;
   border-radius: 4px;
   margin: 0.4em 0;
 }
+
 /* 表格样式 */
 .mini-preview table {
   display: block;
@@ -912,35 +1067,43 @@ body {
   margin: 0.5em 0;
   font-size: 0.85em;
 }
-.mini-preview th, .mini-preview td {
+
+.mini-preview th,
+.mini-preview td {
   border: 1px solid var(--border-default);
   padding: 0.4em 0.6em;
   text-align: left;
 }
+
 .mini-preview th {
   background: var(--bg-card);
   font-weight: 600;
   color: var(--text-secondary);
 }
+
 .mini-preview td {
   color: var(--text-muted);
 }
+
 /* 分割线 */
 .mini-preview hr {
   border: none;
   border-top: 1px solid var(--border-default);
   margin: 0.6em 0;
 }
+
 /* 任务列表复选框 */
 .mini-preview input[type="checkbox"] {
   margin-right: 0.4em;
   accent-color: var(--color-primary);
 }
+
 /* 删除线 */
 .mini-preview del {
   color: var(--text-muted);
   text-decoration: line-through;
 }
+
 /* 水平滚动防止溢出 */
 .mini-preview pre {
   overflow-x: auto;
@@ -1022,6 +1185,7 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
 
 /* 减少动画模式时禁用 View Transition */
 @media (prefers-reduced-motion: reduce) {
+
   ::view-transition-group(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {

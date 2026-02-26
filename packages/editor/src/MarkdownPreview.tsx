@@ -702,6 +702,32 @@ export const markdownPreviewStyles = `
   }
   .markdown-preview .code-block-content {
     overflow-x: auto;
+    /* 优雅的细滚动条 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  .markdown-preview.light-mode .code-block-content {
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+  .markdown-preview .code-block-content::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .markdown-preview .code-block-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .markdown-preview .code-block-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+  .markdown-preview .code-block-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+  .markdown-preview.light-mode .code-block-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+  }
+  .markdown-preview.light-mode .code-block-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
   }
   .markdown-preview .code-block-content pre {
     margin: 0 !important;
@@ -720,6 +746,32 @@ export const markdownPreviewStyles = `
     background: transparent;
     border: none;
     border-radius: 0;
+    /* 优雅的细滚动条 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  .markdown-preview.light-mode .code-block-fallback {
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+  .markdown-preview .code-block-fallback::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .markdown-preview .code-block-fallback::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .markdown-preview .code-block-fallback::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+  .markdown-preview .code-block-fallback::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+  .markdown-preview.light-mode .code-block-fallback::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+  }
+  .markdown-preview.light-mode .code-block-fallback::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
   }
   /* Shiki 代码样式覆盖 */
   .markdown-preview .shiki {
