@@ -45,6 +45,7 @@ trigger: always_on
 | 4.4 | 归档与时间树 | §3.2, §8.1 | TimeTree, Archives | 6h |
 | 4.5 | 搜索功能 | §3.2, §8.1 | SearchPanel, Results | 6h |
 | 4.6 | 友链与关于页 | §3.2, §8.1 | FriendCard, About | 4h |
+| 4.7 | 文档维护与导入规范化 | §3.1, §8.1 | Blog alias imports, 审计文档同步 | 2h |
 
 ### 阶段5: 管理后台开发
 
@@ -89,3 +90,14 @@ trigger: always_on
 
 ### CHANGELOG
 - Added: `AI-ROUTING-001`, `AI-ADMIN-002`, `OPS-STARTUP-003`, `DOC-SYNC-004`
+
+---
+
+## 🧭 2026-02-27 路线图增补 (v1.0.2)
+
+### Phase 4 - 博客前台规范化
+- `DOC-MAINT-005` 文章详情页导入路径规范化（禁 `../../../`，统一 `@/app/*`）
+- `DOC-MAINT-005` 文档维护闭环：设计文档、结构文档、路线图与验收记录同步
+
+### CHANGELOG
+- Added: `DOC-MAINT-005`

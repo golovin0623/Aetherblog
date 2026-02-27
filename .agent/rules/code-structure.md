@@ -84,25 +84,18 @@ src/
 
 #### apps/blog/ (博客前台 - Next.js)
 ```
-src/
-├── app/                           # App Router
-│   ├── page.tsx                   # 首页
-│   ├── posts/                     # 文章模块
-│   │   ├── page.tsx               # 文章列表
-│   │   └── [slug]/page.tsx        # 文章详情
-│   ├── archives/page.tsx          # 归档页
-│   ├── categories/                # 分类页
-│   ├── tags/                      # 标签页
-│   ├── search/page.tsx            # 搜索页
-│   ├── friends/page.tsx           # 友链页
-│   ├── about/page.tsx             # 关于页
-│   ├── layout.tsx                 # 根布局
-│   └── globals.css                # 全局样式
-└── components/                    # 页面专用组件
-    ├── home/                      # 首页组件
-    ├── post/                      # 文章组件
-    ├── archives/                  # 归档组件
-    └── search/                    # 搜索组件
+app/
+├── page.tsx                       # 首页
+├── layout.tsx                     # 根布局
+├── globals.css                    # 全局样式
+├── posts/
+│   ├── page.tsx                   # 文章列表
+│   └── (article)/[slug]/page.tsx  # 文章详情
+├── friends/page.tsx               # 友链页
+├── timeline/page.tsx              # 时间轴页
+├── components/                    # 博客前台业务组件
+│   └── __tests__/                 # 组件测试
+└── lib/                           # 前台工具与 API 适配层
 ```
 
 ---
@@ -382,3 +375,19 @@ src/
 
 ### 10.3 CHANGELOG
 - Changed: 目录树无新增；完成导入路径规范化（别名统一）。
+
+---
+
+## 11. 2026-02-27 结构同步记录 (v1.2.2)
+
+### 11.1 Blog 结构与路径规范更新
+- `apps/blog` 实际采用根级 `app/` 目录而非 `src/app/`，文档已按真实结构修正。
+- `apps/blog/tsconfig.json` 别名更新为 `@/* -> ./*`，用于统一前台模块导入。
+
+### 11.2 本次结构结论
+- 未新增目录层级。
+- 已将 `apps/blog/app/posts/(article)/[slug]/page.tsx` 的深层相对路径导入替换为 `@/app/*`。
+
+### 11.3 CHANGELOG
+- Changed: Blog 结构树与 alias 规则同步到仓库现状。
+- Fixed: 消除文章详情页 `../../../` 深层相对导入偏差。
