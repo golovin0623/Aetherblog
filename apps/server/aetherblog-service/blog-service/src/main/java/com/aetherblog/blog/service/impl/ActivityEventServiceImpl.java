@@ -9,6 +9,7 @@ import com.aetherblog.blog.repository.ActivityEventRepository;
 import com.aetherblog.blog.repository.UserRepository;
 import com.aetherblog.blog.service.ActivityEventService;
 import com.aetherblog.common.core.domain.PageResult;
+import com.aetherblog.common.core.utils.IpUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -186,20 +187,11 @@ public class ActivityEventServiceImpl implements ActivityEventService {
         try {
             ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
             if (attrs != null) {
-                HttpServletRequest request = attrs.getRequest();
-                String xForwardedFor = request.getHeader("X-Forwarded-For");
-                if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-                    return xForwardedFor.split(",")[0].trim();
-                }
-                String xRealIp = request.getHeader("X-Real-IP");
-                if (xRealIp != null && !xRealIp.isEmpty()) {
-                    return xRealIp;
-                }
-                return request.getRemoteAddr();
+                return IpUtils.getIpAddr(attrs.getRequest());
             }
         } catch (Exception e) {
             log.debug("Failed to get client IP", e);
         }
-        return null;
+        return "unknown";
     }
 }
