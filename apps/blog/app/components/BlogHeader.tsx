@@ -165,27 +165,37 @@ export default function BlogHeader() {
   useEffect(() => {
     if (!isArticleDetail) return;
 
+    let rafId: number | null = null;
+
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const lastScrollY = lastScrollYRef.current;
+      if (rafId) return;
 
-      // 靠近顶部时始终显示
-      if (currentScrollY < 100) {
-        setIsVisible(true);
-      } else if (currentScrollY > lastScrollY + 18) {
-        // 手指上滑（内容下行）超过阈值后收折
-        setIsVisible(false);
-      } else if (currentScrollY < lastScrollY - 28) {
-        // 内容上行时恢复
-        setIsVisible(true);
-      }
+      rafId = requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        const lastScrollY = lastScrollYRef.current;
 
-      lastScrollYRef.current = currentScrollY;
+        // 靠近顶部时始终显示
+        if (currentScrollY < 100) {
+          setIsVisible(true);
+        } else if (currentScrollY > lastScrollY + 18) {
+          // 手指上滑（内容下行）超过阈值后收折
+          setIsVisible(false);
+        } else if (currentScrollY < lastScrollY - 28) {
+          // 内容上行时恢复
+          setIsVisible(true);
+        }
+
+        lastScrollYRef.current = currentScrollY;
+        rafId = null;
+      });
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [isArticleDetail]); // Removed dependency on scroll state
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isArticleDetail]);
 
   // Clean up animation frame on unmount
   useEffect(() => {
