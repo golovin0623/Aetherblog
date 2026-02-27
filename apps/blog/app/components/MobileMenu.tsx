@@ -62,7 +62,7 @@ const MobileMenu = memo(function MobileMenu() {
 
   const authorName = settings?.author_name || settings?.authorName || 'Golovin';
   const authorAvatar = sanitizeImageUrl(
-    settings?.author_avatar || settings?.authorAvatar || '',
+    settings?.authorAvatar || settings?.author_avatar || '',
     'https://github.com/shadcn.png'
   );
   const authorBio = settings?.author_bio || settings?.authorBio || '一只小凉凉';
