@@ -103,7 +103,10 @@ export default function BlogHeader() {
   const isTimeline = activeTab === 'timeline';
 
   // 鼠标位置状态
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  // Optimization: Use useRef for spotlight to avoid re-renders on mouse move
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number>(0);
+
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
@@ -162,35 +165,71 @@ export default function BlogHeader() {
   useEffect(() => {
     if (!isArticleDetail) return;
 
+    let rafId: number | null = null;
+
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const lastScrollY = lastScrollYRef.current;
+      if (rafId) return;
 
-      // 靠近顶部时始终显示
-      if (currentScrollY < 100) {
-        setIsVisible(true);
-      } else if (currentScrollY > lastScrollY + 18) {
-        // 手指上滑（内容下行）超过阈值后收折
-        setIsVisible(false);
-      } else if (currentScrollY < lastScrollY - 28) {
-        // 内容上行时恢复
-        setIsVisible(true);
-      }
+      rafId = requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        const lastScrollY = lastScrollYRef.current;
 
-      lastScrollYRef.current = currentScrollY;
+        // 靠近顶部时始终显示
+        if (currentScrollY < 100) {
+          setIsVisible(true);
+        } else if (currentScrollY > lastScrollY + 18) {
+          // 手指上滑（内容下行）超过阈值后收折
+          setIsVisible(false);
+        } else if (currentScrollY < lastScrollY - 28) {
+          // 内容上行时恢复
+          setIsVisible(true);
+        }
+
+        lastScrollYRef.current = currentScrollY;
+        rafId = null;
+      });
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [isArticleDetail]); // Removed dependency on scroll state
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isArticleDetail]);
+
+  // Clean up animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
 
   // 监听鼠标移动，更新光束位置和显隐状态
   const updateMousePosition = useCallback((e: React.MouseEvent) => {
+    if (!spotlightRef.current) return;
+
     // 获取 header 元素的位置
-    const header = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - header.left,
-      y: e.clientY - header.top,
+    const { clientX, clientY, currentTarget } = e;
+
+    // Cancel previous frame if any
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+    }
+
+    // Schedule update
+    frameRef.current = requestAnimationFrame(() => {
+      if (!spotlightRef.current) {
+        frameRef.current = 0;
+        return;
+      }
+      const rect = currentTarget.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+      frameRef.current = 0;
     });
 
     // 确保在 header 上移动时也标记为 hovering
@@ -248,9 +287,11 @@ export default function BlogHeader() {
       >
         {/* 聚光灯效果层 - 使用 CSS 变量 */}
         <div
+          ref={spotlightRef}
+          data-testid="blog-header-spotlight"
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
+            // background is managed by updateMousePosition via ref
             opacity: isHovering || !isArticleDetail ? 'var(--spotlight-opacity)' : 0,
           }}
         />

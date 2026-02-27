@@ -63,12 +63,27 @@ public class SecurityHeadersTest {
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"));
     }
 
+    @Test
+    public void testUploadHeaders_Sandbox() throws Exception {
+        mockMvc.perform(get("/uploads/test.png"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Security-Policy", "sandbox"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-Frame-Options", "DENY"))
+                .andExpect(header().string("Permissions-Policy", "camera=(), microphone=(), geolocation=()"));
+    }
+
     @SpringBootApplication
     @RestController
     static class TestApp {
         @GetMapping("/test-headers")
         public String test() {
             return "ok";
+        }
+
+        @GetMapping("/uploads/**")
+        public String uploads() {
+            return "file content";
         }
     }
 }
