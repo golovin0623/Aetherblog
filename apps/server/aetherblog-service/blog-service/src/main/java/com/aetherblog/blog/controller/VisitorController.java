@@ -2,6 +2,7 @@ package com.aetherblog.blog.controller;
 
 import com.aetherblog.blog.service.VisitorService;
 import com.aetherblog.common.core.domain.R;
+import com.aetherblog.common.core.utils.IpUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,7 +33,8 @@ public class VisitorController {
             HttpServletRequest request,
             @RequestBody VisitRequest body) {
         
-        String ip = visitorService.getRealIp(request);
+        // Security Fix: Use IpUtils to prevent IP spoofing via X-Forwarded-For
+        String ip = IpUtils.getIpAddr(request);
         String userAgent = request.getHeader("User-Agent");
         String referer = request.getHeader("Referer");
         
