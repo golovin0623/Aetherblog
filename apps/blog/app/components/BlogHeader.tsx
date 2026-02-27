@@ -210,12 +210,16 @@ export default function BlogHeader() {
 
     // Schedule update
     frameRef.current = requestAnimationFrame(() => {
-      if (!spotlightRef.current) return;
+      if (!spotlightRef.current) {
+        frameRef.current = 0;
+        return;
+      }
       const rect = currentTarget.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
 
       spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+      frameRef.current = 0;
     });
 
     // 确保在 header 上移动时也标记为 hovering
