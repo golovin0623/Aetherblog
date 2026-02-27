@@ -17,3 +17,7 @@
 ## 2026-02-19 - Semantic Navigation Links in Menus
 **Learning:** Mobile menus often misuse `<button>` for navigation links, which breaks accessibility features like "open in new tab" and hurts SEO.
 **Action:** Replace `<button onClick={navigate}>` with `next/link` components for semantic `<a>` tags while preserving UI state logic (like closing the menu) via `onClick`.
+
+## 2026-02-19 - 404 Page UX
+**Learning:** A standard 404 page is often a dead end. Providing a "Go Back" button (using `router.back()`) and a clear call to action (like "Home" or "Search") significantly improves recovery.
+**Action:** Always include a way to navigate back or search on error pages, and use subtle animations to make the error less jarring.
