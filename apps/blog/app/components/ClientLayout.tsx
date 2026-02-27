@@ -16,9 +16,11 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
       <TransitionProvider>
         <VisitTracker />
         <ScrollToTop />
-        <PageTransition>
-          {children}
-        </PageTransition>
+        <div id="main-content" className="focus:outline-2 focus:outline-primary/30 focus:outline-offset-[-2px] focus:rounded-sm" tabIndex={-1}>
+          <PageTransition>
+            {children}
+          </PageTransition>
+        </div>
       </TransitionProvider>
   );
 }
