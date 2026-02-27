@@ -78,9 +78,12 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   const remainingTagCount = tags.length - maxVisibleTags;
 
   return (
-    <Link href={`/posts/${slug}`} className="block h-full">
+    <Link
+      href={`/posts/${slug}`}
+      className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-2xl"
+    >
       <article
-        className="group relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-lg)]"
+        className="relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-lg)]"
         style={{ animationDelay: `${index * 100}ms` }}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setIsHovering(true)}
@@ -150,7 +153,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           {/* 标题 - 固定高度，悬停时渐变 */}
           <h2 className="mb-1.5 h-[56px]">
             <span
-              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent transition-all line-clamp-2 leading-snug"
+              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-purple-500 group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug"
               title={title}
             >
               {title}
@@ -205,7 +208,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
                </span>
                
                {viewCount !== undefined && (
-                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity">
                   <Eye className="h-3 w-3" />
                   {viewCount}
                 </span>
