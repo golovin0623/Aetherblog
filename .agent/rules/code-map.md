@@ -62,8 +62,10 @@ trigger: always_on
 │   └─ TimeTree组件, 归档页面
 ├─ 任务4.5: 搜索功能 → §3.1.6, §8.1
 │   └─ SearchPanel, 搜索结果页
-└─ 任务4.6: 友链与关于页 → §3.1.7, §3.1.8
-    └─ FriendCard, 关于页布局
+├─ 任务4.6: 友链与关于页 → §3.1.7, §3.1.8
+│   └─ FriendCard, 关于页布局
+└─ 任务4.7: 文档维护与导入规范化 → §3.1, §8.1
+    └─ Blog alias imports, 审计文档同步
 
 [检查点4] ════════════════════════════════════════════════════════════
 
@@ -166,6 +168,7 @@ trigger: always_on
 | AI-ADMIN-002 | 管理端 AI 图标规范 | `apps/admin/src/pages/ai-config/components/ProviderIcon.tsx`, `apps/admin/src/pages/ai-config/components/ProviderCard.tsx` | Done |
 | OPS-STARTUP-003 | 启动脚本稳定性 | `start.sh` | Done |
 | DOC-SYNC-004 | 规则与设计文档同步 | `.agent/rules/code-design.md`, `.agent/rules/code-structure.md`, `.agent/rules/code-tree.md`, `.agent/rules/code-map.md`, `.agent/rules/ui_rules.md`, `系统需求企划书及详细设计.md` | Done |
+| DOC-MAINT-005 | 博客导入路径与文档维护 | `apps/blog/app/posts/(article)/[slug]/page.tsx`, `apps/blog/tsconfig.json`, `.agent/rules/task.md`, `.agent/rules/walkthrough.md` | Done |
 
 ### CHANGELOG
-- Added: AI/运维/文档四项任务映射。
+- Added: AI/运维/文档任务映射（含 `DOC-MAINT-005`）。

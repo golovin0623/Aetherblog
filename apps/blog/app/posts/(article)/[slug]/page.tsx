@@ -1,15 +1,15 @@
 import { PencilLine } from 'lucide-react';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import MarkdownRenderer from '../../../components/MarkdownRenderer';
-import BackButton from '../../../components/BackButton';
-import FadeIn from '../../../components/FadeIn';
-import CommentSection from '../../../components/CommentSection';
-import TableOfContents from '../../../components/TableOfContents';
-import { SERVER_API_URL } from '../../../lib/api';
-import { buildAdminPostEditUrl, getAdminLinkConfig } from '../../../lib/adminUrl';
-import { logger } from '../../../lib/logger';
-import { getSiteSettings } from '../../../lib/services';
+import MarkdownRenderer from '@/app/components/MarkdownRenderer';
+import BackButton from '@/app/components/BackButton';
+import FadeIn from '@/app/components/FadeIn';
+import CommentSection from '@/app/components/CommentSection';
+import TableOfContents from '@/app/components/TableOfContents';
+import { SERVER_API_URL } from '@/app/lib/api';
+import { buildAdminPostEditUrl, getAdminLinkConfig } from '@/app/lib/adminUrl';
+import { logger } from '@/app/lib/logger';
+import { getSiteSettings } from '@/app/lib/services';
 
 // 服务端 API URL - 使用内部 Docker 网络 URL
 const API_BASE_URL = SERVER_API_URL;

@@ -16,7 +16,7 @@
     "plugins": [{ "name": "next" }],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
+      "@/*": ["./*"],
       "@aetherblog/ui": ["../../packages/ui/src/index.ts"]
     }
   },
