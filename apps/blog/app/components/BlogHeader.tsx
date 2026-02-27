@@ -288,6 +288,7 @@ export default function BlogHeader() {
         {/* 聚光灯效果层 - 使用 CSS 变量 */}
         <div
           ref={spotlightRef}
+          data-testid="blog-header-spotlight"
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
             // background is managed by updateMousePosition via ref
