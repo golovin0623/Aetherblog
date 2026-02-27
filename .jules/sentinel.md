@@ -44,3 +44,9 @@
 **Vulnerability:** `ActivityEventServiceImpl` manually implemented insecure IP resolution by taking the first IP from `X-Forwarded-For`, allowing attackers to spoof their IP address.
 **Learning:** Security-critical logic (like IP resolution) must never be re-implemented manually. Always use the central, vetted utility (`IpUtils`) to ensure consistent security policies.
 **Prevention:** Enforce usage of `IpUtils` via code review or static analysis. Audit all `getHeader("X-Forwarded-For")` calls.
+
+
+## 2026-02-25 - Unrestricted CSP on Uploaded Content
+**Vulnerability:** Static resources served from `/uploads/**` inherited the global Content Security Policy, which allowed `unsafe-inline` scripts. This could enable Stored XSS via malicious file uploads (e.g., PDF, HTML if allowed).
+**Learning:** Global security policies are often too permissive for user-generated content. A single CSP header cannot fit all use cases (app UI vs. untrusted uploads).
+**Prevention:** Implemented a dedicated, high-priority `SecurityFilterChain` for `/uploads/**` that enforces a strict `sandbox` CSP, neutralizing scripts in served content.
