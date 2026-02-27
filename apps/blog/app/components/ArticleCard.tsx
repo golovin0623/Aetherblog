@@ -149,7 +149,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           {/* 标题 - 固定高度，悬停时渐变 */}
           <h2 className="mb-1.5 h-[56px]">
             <span
-              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent group-focus:bg-gradient-to-r group-focus:from-primary group-focus:to-purple-500 group-focus:bg-clip-text group-focus:text-transparent transition-all line-clamp-2 leading-snug"
+              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-purple-500 group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug"
               title={title}
             >
               {title}
