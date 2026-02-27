@@ -39,3 +39,8 @@
 **Vulnerability:** `PublicCommentController` manually implemented insecure IP resolution (`getClientIp`), ignoring the secure `IpUtils` and re-introducing IP spoofing vulnerability.
 **Learning:** Even with secure utilities available and previous fixes applied to `AuthController`, developers often copy-paste insecure patterns or miss updating all instances. Continuous auditing is required.
 **Prevention:** Enforce usage of `IpUtils` across the entire codebase via static analysis or rigorous code reviews.
+
+## 2026-02-24 - IP Spoofing via X-Forwarded-For in Activity Logging
+**Vulnerability:** `ActivityEventServiceImpl` manually implemented insecure IP resolution by taking the first IP from `X-Forwarded-For`, allowing attackers to spoof their IP address.
+**Learning:** Security-critical logic (like IP resolution) must never be re-implemented manually. Always use the central, vetted utility (`IpUtils`) to ensure consistent security policies.
+**Prevention:** Enforce usage of `IpUtils` via code review or static analysis. Audit all `getHeader("X-Forwarded-For")` calls.
