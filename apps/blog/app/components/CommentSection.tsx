@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Comment, createComment, getComments, SiteSettings } from '../lib/services';
 import { Button, Avatar } from '@aetherblog/ui';
+import { useIntersectionObserver } from '@aetherblog/hooks';
 import {
   MessageSquare,
   Send,
@@ -152,7 +153,10 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [isSectionExpanded, setIsSectionExpanded] = useState(true);
 
-  const containerRef = useRef<HTMLElement>(null);
+  const [containerRef, isVisible] = useIntersectionObserver<HTMLElement>({
+    rootMargin: '200px',
+    freezeOnceVisible: true,
+  });
   const formRef = useRef<HTMLDivElement>(null);
   const formTriggerRef = useRef<HTMLButtonElement>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
@@ -186,28 +190,12 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   }, [postId]);
 
   useEffect(() => {
-    // 检查 comment_enabled 是否为 true
     const isEnabled = settings.comment_enabled === true;
-    if (!isEnabled || hasLoaded) return;
-
-    // 使用 IntersectionObserver 实现懒加载
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadComments();
-          setHasLoaded(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '200px' } // 提前 200px 加载
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
+    if (isEnabled && isVisible && !hasLoaded) {
+      loadComments();
+      setHasLoaded(true);
     }
-
-    return () => observer.disconnect();
-  }, [settings.comment_enabled, hasLoaded, loadComments]);
+  }, [isVisible, settings.comment_enabled, hasLoaded, loadComments]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
