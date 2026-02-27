@@ -146,11 +146,13 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // 交互状态
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [isSectionExpanded, setIsSectionExpanded] = useState(true);
 
+  const containerRef = useRef<HTMLElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const formTriggerRef = useRef<HTMLButtonElement>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
@@ -176,13 +178,36 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
     }
   }, [postId]);
 
+  // 当 postId 变化时，重置加载状态，以便重新懒加载
+  useEffect(() => {
+    setHasLoaded(false);
+    setLoading(true);
+    setComments([]);
+  }, [postId]);
+
   useEffect(() => {
     // 检查 comment_enabled 是否为 true
     const isEnabled = settings.comment_enabled === true;
-    if (isEnabled) {
-      loadComments();
+    if (!isEnabled || hasLoaded) return;
+
+    // 使用 IntersectionObserver 实现懒加载
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadComments();
+          setHasLoaded(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' } // 提前 200px 加载
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
     }
-  }, [settings.comment_enabled, loadComments]);
+
+    return () => observer.disconnect();
+  }, [settings.comment_enabled, hasLoaded, loadComments]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,7 +289,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   if (!isEnabled) return null;
 
   return (
-    <section className="mt-20 max-w-4xl mx-auto">
+    <section ref={containerRef} className="mt-20 max-w-4xl mx-auto">
       {/* 带折叠切换的头部 */}
       <button
         type="button"
