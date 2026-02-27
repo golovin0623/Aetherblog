@@ -82,6 +82,9 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .headers(headers -> headers
                         .contentSecurityPolicy(csp -> csp.policyDirectives("sandbox"))
+                        .frameOptions(HeadersConfigurer.FrameOptionsConfig::deny)
+                        .permissionsPolicy(
+                                permissions -> permissions.policy("camera=(), microphone=(), geolocation=()"))
                 )
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .build();
