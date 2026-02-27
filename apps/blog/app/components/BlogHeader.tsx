@@ -165,27 +165,37 @@ export default function BlogHeader() {
   useEffect(() => {
     if (!isArticleDetail) return;
 
+    let rafId: number | null = null;
+
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const lastScrollY = lastScrollYRef.current;
+      if (rafId) return;
 
-      // 靠近顶部时始终显示
-      if (currentScrollY < 100) {
-        setIsVisible(true);
-      } else if (currentScrollY > lastScrollY + 18) {
-        // 手指上滑（内容下行）超过阈值后收折
-        setIsVisible(false);
-      } else if (currentScrollY < lastScrollY - 28) {
-        // 内容上行时恢复
-        setIsVisible(true);
-      }
+      rafId = requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        const lastScrollY = lastScrollYRef.current;
 
-      lastScrollYRef.current = currentScrollY;
+        // 靠近顶部时始终显示
+        if (currentScrollY < 100) {
+          setIsVisible(true);
+        } else if (currentScrollY > lastScrollY + 18) {
+          // 手指上滑（内容下行）超过阈值后收折
+          setIsVisible(false);
+        } else if (currentScrollY < lastScrollY - 28) {
+          // 内容上行时恢复
+          setIsVisible(true);
+        }
+
+        lastScrollYRef.current = currentScrollY;
+        rafId = null;
+      });
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [isArticleDetail]); // Removed dependency on scroll state
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isArticleDetail]);
 
   // Clean up animation frame on unmount
   useEffect(() => {
@@ -210,12 +220,16 @@ export default function BlogHeader() {
 
     // Schedule update
     frameRef.current = requestAnimationFrame(() => {
-      if (!spotlightRef.current) return;
+      if (!spotlightRef.current) {
+        frameRef.current = 0;
+        return;
+      }
       const rect = currentTarget.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
 
       spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+      frameRef.current = 0;
     });
 
     // 确保在 header 上移动时也标记为 hovering
@@ -280,6 +294,7 @@ export default function BlogHeader() {
         {/* 聚光灯效果层 - 使用 CSS 变量 */}
         <div
           ref={spotlightRef}
+          data-testid="blog-header-spotlight"
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
             // background is managed by updateMousePosition via ref
