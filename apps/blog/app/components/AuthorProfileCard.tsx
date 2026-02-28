@@ -166,11 +166,25 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
   }, []);
 
   // 监听鼠标移动，更新光束位置
+  const frameRef = React.useRef<number>(0);
+  React.useEffect(() => {
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    };
+  }, []);
+
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+    const { clientX, clientY } = e;
+    const target = e.currentTarget;
+
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      setMousePosition({
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      });
+      frameRef.current = 0;
     });
   };
 
