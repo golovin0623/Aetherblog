@@ -25,3 +25,7 @@
 ## 2026-02-14 - [Layout Thrashing in IntersectionObserver]
 **Learning:** Using `getBoundingClientRect()` inside an `IntersectionObserver` callback (or scroll handler) forces a synchronous reflow for every visible element, causing significant layout thrashing. This negates the performance benefits of using `IntersectionObserver`.
 **Action:** Avoid querying DOM layout properties (like `top`, `height`) inside high-frequency callbacks. Instead, rely on `IntersectionObserverEntry` properties (which are read-only and don't trigger reflow) or pre-calculated/ordered data structures (like the `headings` array) to determine state.
+
+## 2024-03-01 - React Synthetic Events and requestAnimationFrame
+**Learning:** In high-frequency events (like `onMouseMove`), when using `requestAnimationFrame` to debounce, the `React.MouseEvent` object properties might become unavailable or change reference within the closure.
+**Action:** Always extract values like `clientX`, `clientY`, and `currentTarget` from the synthetic event synchronously, *before* entering the asynchronous `requestAnimationFrame` callback.
