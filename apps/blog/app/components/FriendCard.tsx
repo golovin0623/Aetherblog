@@ -77,7 +77,8 @@ export const FriendCard: React.FC<FriendCardProps> = ({
       href={safeUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="group relative block overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-lg transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl antialiased"
+      aria-label={`访问 ${name} 的网站`}
+      className="group relative block overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-lg transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 antialiased"
       style={{ 
         animationDelay: `${index * 100}ms`,
         background: `linear-gradient(145deg, ${themeColor}15, var(--bg-card))`,
