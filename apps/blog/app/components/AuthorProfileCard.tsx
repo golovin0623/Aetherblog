@@ -178,6 +178,13 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     const { clientX, clientY } = e;
     const target = e.currentTarget;
 
+    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
+    // to prevent synchronous layout thrashing during the animation frame.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
+    const rect = target.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
     if (frameRef.current) {
       cancelAnimationFrame(frameRef.current);
     }
@@ -187,9 +194,6 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         frameRef.current = 0;
         return;
       }
-      const rect = target.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
 
       spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
       frameRef.current = 0;
