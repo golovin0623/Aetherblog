@@ -191,24 +191,6 @@ public class VisitorService {
     // ========== 私有方法 ==========
 
     /**
-     * 获取真实 IP（处理反向代理）
-     */
-    public String getRealIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        // 处理多个代理的情况，取第一个
-        if (ip != null && ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
-    }
-
-    /**
      * IP 脱敏（192.168.1.100 -> 192.168.1.*）
      */
     private String maskIp(String ip) {

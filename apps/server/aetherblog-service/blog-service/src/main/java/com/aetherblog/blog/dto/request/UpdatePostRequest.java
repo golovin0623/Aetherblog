@@ -1,6 +1,7 @@
 package com.aetherblog.blog.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import java.util.List;
@@ -21,6 +22,7 @@ public class UpdatePostRequest {
     @Size(max = 500, message = "文章摘要不能超过500字符")
     private String summary;
 
+    @Pattern(regexp = "^(https?:\\/\\/|\\/)[^\"']+$", message = "封面图片必须是合法的URL (以http/https或/开头, 且不能包含引号)")
     private String coverImage;
 
     private Long categoryId;
