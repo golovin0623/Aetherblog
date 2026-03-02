@@ -46,6 +46,10 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (!spotlightRef.current) return;
 
+    // ⚡ Bolt: Extract event properties synchronously before the async requestAnimationFrame callback.
+    // This prevents issues with React's synthetic event pooling/nullification and ensures the closure
+    // captures the exact values at the time the event fired, avoiding potential runtime TypeErrors.
+    // Impact: Avoids unnecessary errors and overhead from accessing pooled event objects during high-frequency mouse movements.
     const { clientX, clientY } = e;
     const target = e.currentTarget;
 
