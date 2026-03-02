@@ -151,6 +151,8 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors"
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? '收起目录' : '展开目录'}
           >
             <ChevronRight
               className={`h-4 w-4 text-[var(--text-secondary)] transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''
@@ -287,6 +289,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
                   <button
                     onClick={() => setIsDrawerOpen(false)}
                     className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                    aria-label="关闭目录导航"
                   >
                     <X className="h-5 w-5" />
                   </button>
