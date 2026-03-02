@@ -158,19 +158,41 @@ interface AuthorProfileCardProps {
 export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className, profile }) => {
   const [mounted, setMounted] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const spotlightRef = React.useRef<HTMLDivElement>(null);
+  const frameRef = React.useRef<number>(0);
   const { isDark } = useTheme();
 
   React.useEffect(() => {
     setMounted(true);
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
   }, []);
 
-  // 监听鼠标移动，更新光束位置
+  // 监听鼠标移动，使用 useRef 和 requestAnimationFrame 优化重排性能
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setMousePosition({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+    if (!spotlightRef.current) return;
+
+    const { clientX, clientY } = e;
+    const target = e.currentTarget;
+
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+    }
+
+    frameRef.current = requestAnimationFrame(() => {
+      if (!spotlightRef.current) {
+        frameRef.current = 0;
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
+      frameRef.current = 0;
     });
   };
 
@@ -228,9 +250,9 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
       {/* 聚光灯效果层 */}
       <div
+        ref={spotlightRef}
         className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
         style={{
-          background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, var(--spotlight-color), transparent 40%)`,
           opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
         }}
       />
