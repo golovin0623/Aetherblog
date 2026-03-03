@@ -21,3 +21,6 @@
 ## 2026-02-19 - 404 Page UX
 **Learning:** A standard 404 page is often a dead end. Providing a "Go Back" button (using `router.back()`) and a clear call to action (like "Home" or "Search") significantly improves recovery.
 **Action:** Always include a way to navigate back or search on error pages, and use subtle animations to make the error less jarring.
+## 2024-03-02 - [TableOfContents Prop Structure]
+**Learning:** The `TableOfContents` component in this project expects a raw Markdown string passed to its `content` prop to extract headings internally, rather than accepting a pre-parsed array of headings via a `headings` prop.
+**Action:** Always verify component prop signatures before trying to mock data for visual verifications.
