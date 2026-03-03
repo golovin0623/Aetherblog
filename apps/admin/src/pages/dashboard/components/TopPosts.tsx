@@ -39,7 +39,10 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
     <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">热门文章</h3>
-        <button className="text-[var(--text-muted)] hover:text-primary transition-colors">
+        <button
+          className="text-[var(--text-muted)] hover:text-primary transition-colors"
+          aria-label="查看更多"
+        >
           <ArrowUpRight className="w-5 h-5" />
         </button>
       </div>
