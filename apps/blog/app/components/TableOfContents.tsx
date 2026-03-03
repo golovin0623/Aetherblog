@@ -153,6 +153,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
             className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? '收起目录' : '展开目录'}
+            aria-controls="toc-content-area" // 请将此 ID 与 motion.div 的 id 保持一致
           >
             <ChevronRight
               className={`h-4 w-4 text-[var(--text-secondary)] transition-transform duration-300 ${isExpanded ? 'rotate-90' : ''
