@@ -50,3 +50,7 @@
 **Vulnerability:** Static resources served from `/uploads/**` inherited the global Content Security Policy, which allowed `unsafe-inline` scripts. This could enable Stored XSS via malicious file uploads (e.g., PDF, HTML if allowed).
 **Learning:** Global security policies are often too permissive for user-generated content. A single CSP header cannot fit all use cases (app UI vs. untrusted uploads).
 **Prevention:** Implemented a dedicated, high-priority `SecurityFilterChain` for `/uploads/**` that enforces a strict `sandbox` CSP, neutralizing scripts in served content.
+## 2025-03-02 - [XSS via Raw HTML and Mermaid Config]
+**Vulnerability:** XSS risk in `MarkdownRenderer` due to `rehype-raw` parsing arbitrary HTML from user inputs and `mermaid.initialize` configured with `securityLevel: 'loose'`.
+**Learning:** ReactMarkdown plugins and external libraries like Mermaid can expose the application to XSS attacks if not securely configured, especially when processing potentially untrusted content. `rehype-raw` ignores HTML sanitization rules if included directly.
+**Prevention:** Avoid rendering raw HTML (`rehype-raw`) and instead enforce strict HTML sanitization strategies. Explicitly set strict security configurations (e.g., `securityLevel: 'strict'`) for visualization libraries like Mermaid.
