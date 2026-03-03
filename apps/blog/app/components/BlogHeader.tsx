@@ -213,6 +213,13 @@ export default function BlogHeader() {
     // 获取 header 元素的位置
     const { clientX, clientY, currentTarget } = e;
 
+    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
+    // to prevent synchronous layout thrashing during the animation frame.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
+    const rect = currentTarget.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
     // Cancel previous frame if any
     if (frameRef.current) {
       cancelAnimationFrame(frameRef.current);
@@ -224,9 +231,6 @@ export default function BlogHeader() {
         frameRef.current = 0;
         return;
       }
-      const rect = currentTarget.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
 
       spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
       frameRef.current = 0;

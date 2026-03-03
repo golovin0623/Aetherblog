@@ -34,3 +34,7 @@
 **Learning:** Similar to the spotlight effects in `ArticleCard` and `FeaturedPost`, the `AuthorProfileCard` component was using `useState` (`setMousePosition`) during `onMouseMove` to track the mouse for a spotlight gradient effect. This triggers a full component re-render on every pixel of mouse movement, causing main-thread blocking and jank.
 **Action:** Replace `useState` with `useRef` to directly manipulate the DOM (`spotlightRef.current.style.background`) for high-frequency interactions like spotlight effects. Always wrap these DOM updates in `requestAnimationFrame` to throttle them to the browser's paint cycle.
 
+
+## 2026-02-14 - [Layout Thrashing in requestAnimationFrame]
+**Learning:** Using `getBoundingClientRect()` inside a `requestAnimationFrame` callback forces a synchronous layout recalculation right when the browser is trying to render a frame. This defeats the purpose of throttling with rAF and causes layout thrashing, especially during high-frequency events like `mousemove`.
+**Action:** Extract all layout-reading DOM APIs (like `getBoundingClientRect()`, `offsetWidth`, `clientHeight`) outside of the `requestAnimationFrame` closure. Compute derived layout values synchronously in the event handler and pass them into the `requestAnimationFrame` callback.
