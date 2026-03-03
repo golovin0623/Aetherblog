@@ -15,7 +15,7 @@ import { buildHeadingIdMap } from '../lib/headingId';
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 // 🛡️ Sentinel Security Improvement: removed rehype-raw from REHYPE_PLUGINS
 // to prevent raw HTML execution (XSS) in Markdown content.
-const REHYPE_PLUGINS: any = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
+const REHYPE_PLUGINS: Pluggable[] = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
