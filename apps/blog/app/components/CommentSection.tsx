@@ -77,6 +77,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                 size="sm"
                 onClick={() => onReply(comment)}
                 className="h-7 px-2 text-[var(--text-muted)] hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                aria-label={`回复 ${comment.nickname} 的评论`}
               >
                 <Reply className="w-3.5 h-3.5 mr-1" />
                 <span className="text-xs">回复</span>
@@ -94,7 +95,9 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
               {/* 切换按钮 */}
               {!isExpanded && (
                 <button
+                  type="button"
                   onClick={() => setIsExpanded(true)}
+                  aria-expanded={isExpanded}
                   className="flex items-center gap-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors ml-2"
                 >
                   <div className="w-4 h-[1px] bg-indigo-500/30" />
@@ -124,7 +127,9 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                     {/* 长评论折叠按钮 */}
                     {comment.children!.length > 2 && (
                       <button
+                        type="button"
                         onClick={() => setIsExpanded(false)}
+                        aria-expanded={isExpanded}
                         className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] ml-4 pl-4 border-l border-[var(--border-subtle)] h-6"
                       >
                         <div className="w-2 h-[1px] bg-[var(--border-default)]" />
@@ -353,7 +358,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         </>
                       ) : '发表评论'}
                     </h4>
-                    <button onClick={closeForm} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm">
+                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm">
                       取消
                     </button>
                   </div>
