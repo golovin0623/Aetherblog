@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { Components } from 'react-markdown';
+import type { PluggableList } from 'unified';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
@@ -15,7 +16,7 @@ import { buildHeadingIdMap } from '../lib/headingId';
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 // 🛡️ Sentinel Security Improvement: removed rehype-raw from REHYPE_PLUGINS
 // to prevent raw HTML execution (XSS) in Markdown content.
-const REHYPE_PLUGINS: Pluggable[] = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
+const REHYPE_PLUGINS: PluggableList = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
