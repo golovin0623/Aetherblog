@@ -176,8 +176,9 @@ const MobileMenu = memo(function MobileMenu() {
             // view-transition-name isolates this overlay as its own VT layer
             // so it is NOT included in the root clip-path ripple animation.
             // Without this, backdrop-blur flickers when theme is toggled while open.
-            style={{ viewTransitionName: 'mobile-menu-backdrop' } as React.CSSProperties}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            // NOTE: viewTransitionName moved to CSS class so globals.css can override
+            // it to 'none' during theme transition (html[data-theme-transition]).
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] mobile-menu-backdrop"
             onClick={() => setIsOpen(false)}
           />
 
@@ -193,8 +194,9 @@ const MobileMenu = memo(function MobileMenu() {
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             // Give the drawer its own VT layer so its blur doesn't bleed into root
-            style={{ viewTransitionName: 'mobile-menu-drawer' } as React.CSSProperties}
-            className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform"
+            // NOTE: viewTransitionName moved to CSS class so globals.css can override
+            // it to 'none' during theme transition (html[data-theme-transition]).
+            className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform mobile-menu-drawer"
           >
             {/* 关闭按钮 - 焦点陷阱入口 */}
             <button

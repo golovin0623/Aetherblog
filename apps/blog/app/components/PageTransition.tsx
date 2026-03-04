@@ -110,7 +110,7 @@ export function PageTransition({ children }: PageTransitionProps) {
     
     if (transitionType === 'slide') {
       return { 
-        x: direction > 0 ? '15%' : '-15%', 
+        x: direction > 0 ? '8%' : '-8%', 
         opacity: 0.8 
       };
     } else if (transitionType === 'fade') {
@@ -132,12 +132,18 @@ export function PageTransition({ children }: PageTransitionProps) {
         opacity: 0,
       };
     }
-    // slide 类型默认不需要显式 exit，因为 popLayout 会处理移除
+    // slide 类型: wait 模式需要 exit 动画
+    if (transitionType === 'slide') {
+      return {
+        x: direction > 0 ? '-8%' : '8%',
+        opacity: 0.8,
+      };
+    }
     return undefined;
   };
 
   return (
-    <AnimatePresence mode="popLayout" initial={false}>
+    <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={pathname}
         initial={getInitialAnimation()}
@@ -149,7 +155,7 @@ export function PageTransition({ children }: PageTransitionProps) {
         exit={getExitAnimation()}
         transition={{
           type: 'tween',
-          duration: shouldAnimate ? (transitionType === 'fade' ? 0.35 : 0.25) : 0,
+          duration: shouldAnimate ? (transitionType === 'fade' ? 0.35 : 0.2) : 0,
           ease: transitionType === 'fade' ? [0.22, 1, 0.36, 1] : 'easeOut',
         }}
         className="w-full"

@@ -1020,6 +1020,21 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
   z-index: 0;
 }
 
+/* 侧边栏独立 view-transition 层（平时隔离 backdrop-blur 防止闪烁） */
+.mobile-menu-backdrop {
+  view-transition-name: mobile-menu-backdrop;
+}
+.mobile-menu-drawer {
+  view-transition-name: mobile-menu-drawer;
+}
+
+/* 主题切换动画期间：取消侧边栏独立层，让它融入 root snapshot，
+   圆形 clip-path 扩散/收缩就能覆盖包含侧边栏在内的整个屏幕 */
+html[data-theme-transition] ~ body .mobile-menu-backdrop,
+html[data-theme-transition] ~ body .mobile-menu-drawer {
+  view-transition-name: none !important;
+}
+
 /* 减少动画模式时禁用 View Transition */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
