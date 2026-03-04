@@ -358,7 +358,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         </>
                       ) : '发表评论'}
                     </h4>
-                    <button type="button" onClick={closeForm} aria-label="取消回复" className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm">
+                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm">
                       取消
                     </button>
                   </div>
