@@ -38,3 +38,7 @@
 ## 2026-02-14 - [Layout Thrashing in requestAnimationFrame]
 **Learning:** Using `getBoundingClientRect()` inside a `requestAnimationFrame` callback forces a synchronous layout recalculation right when the browser is trying to render a frame. This defeats the purpose of throttling with rAF and causes layout thrashing, especially during high-frequency events like `mousemove`.
 **Action:** Extract all layout-reading DOM APIs (like `getBoundingClientRect()`, `offsetWidth`, `clientHeight`) outside of the `requestAnimationFrame` closure. Compute derived layout values synchronously in the event handler and pass them into the `requestAnimationFrame` callback.
+
+## 2026-03-05 - [Caching Layout Reads for High-Frequency Events]
+**Learning:** Calling `getBoundingClientRect()` even outside of `requestAnimationFrame`, but still within a high-frequency event handler like `mousemove`, still causes significant performance overhead and potential layout thrashing because it forces the browser to calculate layout on every mouse movement.
+**Action:** For interactive effects (like spotlights) that depend on mouse position relative to a component, cache the component's document offset (`rect.left + window.scrollX`) using `useRef` during low-frequency events (like `mouseenter`). Then, in the high-frequency `mousemove` handler, simply use `e.pageX` / `e.pageY` minus the cached offset to calculate the relative position, entirely avoiding `getBoundingClientRect()` during the interaction.

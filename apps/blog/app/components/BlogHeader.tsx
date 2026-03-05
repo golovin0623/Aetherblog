@@ -106,6 +106,7 @@ export default function BlogHeader() {
   // Optimization: Use useRef for spotlight to avoid re-renders on mouse move
   const spotlightRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number>(0);
+  const rectRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
 
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -206,19 +207,27 @@ export default function BlogHeader() {
     };
   }, []);
 
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (isArticleDetail) setIsHovering(true);
+    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter
+    // to prevent synchronous layout thrashing during high-frequency mousemove events.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
+    const rect = e.currentTarget.getBoundingClientRect();
+    rectRef.current = {
+      left: rect.left,
+      top: rect.top,
+    };
+  }, [isArticleDetail]);
+
   // 监听鼠标移动，更新光束位置和显隐状态
   const updateMousePosition = useCallback((e: React.MouseEvent) => {
     if (!spotlightRef.current) return;
 
     // 获取 header 元素的位置
-    const { clientX, clientY, currentTarget } = e;
+    const { clientX, clientY } = e;
 
-    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
-    // to prevent synchronous layout thrashing during the animation frame.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = currentTarget.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const x = clientX - rectRef.current.left;
+    const y = clientY - rectRef.current.top;
 
     // Cancel previous frame if any
     if (frameRef.current) {
@@ -292,7 +301,7 @@ export default function BlogHeader() {
           boxShadow: '0 4px 24px -8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05)',
         }}
         onMouseMove={updateMousePosition}
-        onMouseEnter={() => isArticleDetail && setIsHovering(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => isArticleDetail && setIsHovering(false)}
       >
         {/* 聚光灯效果层 - 使用 CSS 变量 */}

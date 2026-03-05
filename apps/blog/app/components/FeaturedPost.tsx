@@ -24,6 +24,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   // Ref for spotlight effect to avoid re-renders
   const spotlightRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number>(0);
+  const rectRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
   const [isHovering, setIsHovering] = React.useState(false);
 
   // Clean up animation frame on unmount
@@ -32,6 +33,18 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
       }
+    };
+  }, []);
+
+  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
+    setIsHovering(true);
+    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter
+    // to prevent synchronous layout thrashing during high-frequency mousemove events.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
+    const rect = e.currentTarget.getBoundingClientRect();
+    rectRef.current = {
+      left: rect.left + window.scrollX,
+      top: rect.top + window.scrollY,
     };
   }, []);
 
@@ -50,15 +63,10 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
     // This prevents issues with React's synthetic event pooling/nullification and ensures the closure
     // captures the exact values at the time the event fired, avoiding potential runtime TypeErrors.
     // Impact: Avoids unnecessary errors and overhead from accessing pooled event objects during high-frequency mouse movements.
-    const { clientX, clientY } = e;
-    const target = e.currentTarget;
+    const { pageX, pageY } = e;
 
-    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
-    // to prevent synchronous layout thrashing during the animation frame.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = target.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const x = pageX - rectRef.current.left;
+    const y = pageY - rectRef.current.top;
 
     if (frameRef.current) {
       cancelAnimationFrame(frameRef.current);
@@ -98,7 +106,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
         className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.15)] cursor-pointer"
         onClick={handleCardClick}
         onMouseMove={handleMouseMove}
-        onMouseEnter={() => setIsHovering(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovering(false)}
     >
         {/* 顶部装饰条 - 品牌色渐变 */}

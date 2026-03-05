@@ -35,6 +35,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   // Use ref for direct DOM manipulation of background position (high freq)
   const spotlightRef = React.useRef<HTMLDivElement>(null);
   const frameRef = React.useRef<number>(0);
+  const rectRef = React.useRef<{ left: number; top: number }>({ left: 0, top: 0 });
   // Use state for opacity (low freq), ensures correct style on re-renders
   const [isHovering, setIsHovering] = React.useState(false);
 
@@ -47,6 +48,18 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
     };
   }, []);
 
+  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
+    setIsHovering(true);
+    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter
+    // to prevent synchronous layout thrashing during high-frequency mousemove events.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
+    const rect = e.currentTarget.getBoundingClientRect();
+    rectRef.current = {
+      left: rect.left + window.scrollX,
+      top: rect.top + window.scrollY,
+    };
+  }, []);
+
   const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (!spotlightRef.current) return;
 
@@ -54,15 +67,10 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
     // This prevents issues with React's synthetic event pooling/nullification and ensures the closure
     // captures the exact values at the time the event fired, avoiding potential runtime TypeErrors.
     // Impact: Avoids unnecessary errors and overhead from accessing pooled event objects during high-frequency mouse movements.
-    const { clientX, clientY } = e;
-    const target = e.currentTarget;
+    const { pageX, pageY } = e;
 
-    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
-    // to prevent synchronous layout thrashing during the animation frame.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = target.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const x = pageX - rectRef.current.left;
+    const y = pageY - rectRef.current.top;
 
     // Throttle using requestAnimationFrame to avoid layout thrashing
     if (frameRef.current) {
@@ -94,7 +102,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
         className="relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-lg)]"
         style={{ animationDelay: `${index * 100}ms` }}
         onMouseMove={handleMouseMove}
-        onMouseEnter={() => setIsHovering(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovering(false)}
       >
         {/* 顶部装饰条 - 品牌色渐变 */}
