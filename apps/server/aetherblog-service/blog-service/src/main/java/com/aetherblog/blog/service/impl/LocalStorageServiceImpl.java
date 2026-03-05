@@ -38,6 +38,19 @@ public class LocalStorageServiceImpl implements StorageService {
     @Value("${aetherblog.upload.url-prefix:/uploads}")
     private String defaultUrlPrefix;
 
+    /**
+     * 安全解析和验证路径，防止目录遍历攻击 (Path Traversal)
+     */
+    private Path resolveAndValidatePath(String basePath, String path) {
+        Path base = Paths.get(basePath).toAbsolutePath().normalize();
+        Path resolved = base.resolve(path).toAbsolutePath().normalize();
+        if (!resolved.startsWith(base)) {
+            log.warn("检测到非法的路径访问尝试 (Path Traversal): basePath={}, path={}", basePath, path);
+            throw new BusinessException(400, "非法的路径");
+        }
+        return resolved;
+    }
+
     @Override
     public UploadResult upload(MultipartFile file, StorageProvider provider, String path) {
         try {
@@ -45,14 +58,15 @@ public class LocalStorageServiceImpl implements StorageService {
             String basePath = config.has("basePath") ? config.get("basePath").asText() : defaultBasePath;
             String urlPrefix = config.has("urlPrefix") ? config.get("urlPrefix").asText() : defaultUrlPrefix;
 
+            // 保存文件
+            Path filePath = resolveAndValidatePath(basePath, path);
+
             // 创建目录
-            Path uploadPath = Paths.get(basePath).resolve(path).getParent();
+            Path uploadPath = filePath.getParent();
             if (uploadPath != null) {
                 Files.createDirectories(uploadPath);
             }
 
-            // 保存文件
-            Path filePath = Paths.get(basePath).resolve(path);
             Files.copy(file.getInputStream(), filePath);
 
             String url = urlPrefix + "/" + path;
@@ -72,7 +86,7 @@ public class LocalStorageServiceImpl implements StorageService {
             JsonNode config = objectMapper.readTree(provider.getConfigJson());
             String basePath = config.has("basePath") ? config.get("basePath").asText() : defaultBasePath;
 
-            Path filePath = Paths.get(basePath).resolve(path);
+            Path filePath = resolveAndValidatePath(basePath, path);
             if (!Files.exists(filePath)) {
                 throw new BusinessException(404, "文件不存在: " + path);
             }
@@ -91,7 +105,7 @@ public class LocalStorageServiceImpl implements StorageService {
             JsonNode config = objectMapper.readTree(provider.getConfigJson());
             String basePath = config.has("basePath") ? config.get("basePath").asText() : defaultBasePath;
 
-            Path filePath = Paths.get(basePath).resolve(path);
+            Path filePath = resolveAndValidatePath(basePath, path);
             Files.deleteIfExists(filePath);
             log.info("本地存储删除成功: path={}", path);
 
