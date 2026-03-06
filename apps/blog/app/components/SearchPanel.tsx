@@ -97,6 +97,17 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(true);
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) {
+        clearTimeout(clearTimerRef.current);
+      }
+    };
+  }, []);
 
   // Keep query in ref for stable callbacks
   const queryRef = useRef(query);
@@ -123,9 +134,17 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
 
   // 清空历史
   const clearHistory = useCallback(() => {
+    if (!confirmClearHistory) {
+      setConfirmClearHistory(true);
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = setTimeout(() => setConfirmClearHistory(false), 3000);
+      return;
+    }
     setSearchHistory([]);
     localStorage.removeItem('searchHistory');
-  }, []);
+    setConfirmClearHistory(false);
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+  }, [confirmClearHistory]);
 
   // 处理热门搜索点击 - 使用 data-* 属性避免为每个按钮创建新函数
   const handleTrendingClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
@@ -283,8 +302,11 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 aria-label="清空搜索关键词"
-                onClick={() => setQuery('')}
-                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                onClick={() => {
+                  setQuery('');
+                  inputRef.current?.focus();
+                }}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:rounded"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -326,9 +348,17 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                       <History className="h-4 w-4" />
                       <span>搜索历史</span>
                     </div>
-                    <button onClick={clearHistory} className="flex items-center gap-1 px-2 py-1 rounded text-xs text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                    <button
+                      onClick={clearHistory}
+                      aria-live="polite"
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 ${
+                        confirmClearHistory
+                          ? 'text-red-500 bg-red-500/10 font-medium'
+                          : 'text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10'
+                      }`}
+                    >
                       <Trash2 className="h-3 w-3" />
-                      清空
+                      {confirmClearHistory ? '确认清空?' : '清空'}
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">

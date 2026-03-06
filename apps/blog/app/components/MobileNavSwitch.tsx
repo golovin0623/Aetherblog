@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 
@@ -45,10 +46,16 @@ export default function MobileNavSwitch() {
       aria-label="视图模式"
       className="flex items-center bg-[var(--bg-secondary)] rounded-full p-1 border border-[var(--border-subtle)] flex-shrink-0"
     >
-      <button
-        type="button"
+      <Link
+        href="/posts"
         aria-pressed={!isTimeline}
-        onClick={() => handleNavClick('posts')}
+        aria-current={!isTimeline ? 'page' : undefined}
+        onClick={(e) => {
+          if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+            e.preventDefault();
+            handleNavClick('posts');
+          }
+        }}
         className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer motion-reduce:transition-none ${
           !isTimeline
             ? 'bg-primary text-white shadow-sm'
@@ -56,11 +63,17 @@ export default function MobileNavSwitch() {
         }`}
       >
         首页
-      </button>
-      <button
-        type="button"
+      </Link>
+      <Link
+        href="/timeline"
         aria-pressed={isTimeline}
-        onClick={() => handleNavClick('timeline')}
+        aria-current={isTimeline ? 'page' : undefined}
+        onClick={(e) => {
+          if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+            e.preventDefault();
+            handleNavClick('timeline');
+          }
+        }}
         className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer motion-reduce:transition-none ${
           isTimeline
             ? 'bg-primary text-white shadow-sm'
@@ -68,7 +81,7 @@ export default function MobileNavSwitch() {
         }`}
       >
         时间线
-      </button>
+      </Link>
     </div>
   );
 }
