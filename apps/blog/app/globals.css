@@ -1030,8 +1030,8 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
 
 /* 主题切换动画期间：取消侧边栏独立层，让它融入 root snapshot，
    圆形 clip-path 扩散/收缩就能覆盖包含侧边栏在内的整个屏幕 */
-html[data-theme-transition] ~ body .mobile-menu-backdrop,
-html[data-theme-transition] ~ body .mobile-menu-drawer {
+html[data-theme-transition] .mobile-menu-backdrop,
+html[data-theme-transition] .mobile-menu-drawer {
   view-transition-name: none !important;
 }
 

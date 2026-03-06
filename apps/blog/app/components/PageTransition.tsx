@@ -110,7 +110,7 @@ export function PageTransition({ children }: PageTransitionProps) {
     
     if (transitionType === 'slide') {
       return { 
-        x: direction > 0 ? '8%' : '-8%', 
+        x: direction > 0 ? '5%' : '-5%', 
         opacity: 0.8 
       };
     } else if (transitionType === 'fade') {
@@ -132,13 +132,7 @@ export function PageTransition({ children }: PageTransitionProps) {
         opacity: 0,
       };
     }
-    // slide 类型: wait 模式需要 exit 动画
-    if (transitionType === 'slide') {
-      return {
-        x: direction > 0 ? '-8%' : '8%',
-        opacity: 0.8,
-      };
-    }
+    // slide 类型: 跳过 exit 动画，瞬间消失，仅 enter 有动画（避免移动端掉帧）
     return undefined;
   };
 
@@ -155,7 +149,7 @@ export function PageTransition({ children }: PageTransitionProps) {
         exit={getExitAnimation()}
         transition={{
           type: 'tween',
-          duration: shouldAnimate ? (transitionType === 'fade' ? 0.35 : 0.2) : 0,
+          duration: shouldAnimate ? (transitionType === 'fade' ? 0.35 : 0.15) : 0,
           ease: transitionType === 'fade' ? [0.22, 1, 0.36, 1] : 'easeOut',
         }}
         className="w-full"
