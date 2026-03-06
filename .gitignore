@@ -76,3 +76,4 @@ plan/**
 .coverage
 issues/**
 *.tsbuildinfo
+*.class

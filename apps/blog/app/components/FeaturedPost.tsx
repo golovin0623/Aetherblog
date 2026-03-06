@@ -24,7 +24,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   // Ref for spotlight effect to avoid re-renders
   const spotlightRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number>(0);
-  const rectRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
+  const rectRef = useRef<{ left: number; top: number } | null>(null);
   const [isHovering, setIsHovering] = React.useState(false);
 
   // Clean up animation frame on unmount
@@ -38,14 +38,18 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
 
   const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
     setIsHovering(true);
-    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter
-    // to prevent synchronous layout thrashing during high-frequency mousemove events.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
+    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter.
+    // Impact: Eliminates synchronous layout reads on every mouse move, preventing layout thrashing.
     const rect = e.currentTarget.getBoundingClientRect();
     rectRef.current = {
       left: rect.left + window.scrollX,
       top: rect.top + window.scrollY,
     };
+  }, []);
+
+  const handleMouseLeave = React.useCallback(() => {
+    setIsHovering(false);
+    rectRef.current = null;
   }, []);
 
   // 如果摘要缺失，从内容生成摘要的逻辑
@@ -57,16 +61,11 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
 
   // Update spotlight position directly via DOM
   const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current) return;
+    if (!spotlightRef.current || !rectRef.current) return;
 
-    // ⚡ Bolt: Extract event properties synchronously before the async requestAnimationFrame callback.
-    // This prevents issues with React's synthetic event pooling/nullification and ensures the closure
-    // captures the exact values at the time the event fired, avoiding potential runtime TypeErrors.
-    // Impact: Avoids unnecessary errors and overhead from accessing pooled event objects during high-frequency mouse movements.
-    const { pageX, pageY } = e;
-
-    const x = pageX - rectRef.current.left;
-    const y = pageY - rectRef.current.top;
+    // Calculate position relative to the cached element rect
+    const x = e.pageX - rectRef.current.left;
+    const y = e.pageY - rectRef.current.top;
 
     if (frameRef.current) {
       cancelAnimationFrame(frameRef.current);
@@ -107,7 +106,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
         onClick={handleCardClick}
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}
-        onMouseLeave={() => setIsHovering(false)}
+        onMouseLeave={handleMouseLeave}
     >
         {/* 顶部装饰条 - 品牌色渐变 */}
         <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
