@@ -375,34 +375,54 @@ export default function BlogHeader() {
                   />
                 </div>
 
-                {/* Segment Buttons - 使用 button + handleNavClick 实现乐观更新 */}
-                <button
-                  type="button"
+                {/* Segment Buttons - 使用 Link + handleNavClick 实现乐观更新与语义化标签 */}
+                <Link
+                  href="/posts"
                   aria-pressed={!isTimeline}
-                  onClick={() => handleNavClick('posts')}
+                  aria-current={!isTimeline ? 'page' : undefined}
+                  onClick={(e) => {
+                    // 只在普通点击时阻止默认跳转，执行乐观更新
+                    if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                      e.preventDefault();
+                      handleNavClick('posts');
+                    }
+                  }}
                   className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${!isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
                 >
                   首页
-                </button>
-                <button
-                  type="button"
+                </Link>
+                <Link
+                  href="/timeline"
                   aria-pressed={isTimeline}
-                  onClick={() => handleNavClick('timeline')}
+                  aria-current={isTimeline ? 'page' : undefined}
+                  onClick={(e) => {
+                    if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                      e.preventDefault();
+                      handleNavClick('timeline');
+                    }
+                  }}
                   className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
                 >
                   时间线
-                </button>
+                </Link>
               </div>
 
               <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
-              <button
-                onClick={() => handleNavClick('archives')}
+              <Link
+                href="/archives"
+                aria-current={activePage === 'archives' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('archives');
+                  }
+                }}
                 className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'archives'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
@@ -412,9 +432,16 @@ export default function BlogHeader() {
                 {activePage === 'archives' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </button>
-              <button
-                onClick={() => handleNavClick('friends')}
+              </Link>
+              <Link
+                href="/friends"
+                aria-current={activePage === 'friends' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('friends');
+                  }
+                }}
                 className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'friends'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
@@ -424,9 +451,16 @@ export default function BlogHeader() {
                 {activePage === 'friends' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </button>
-              <button
-                onClick={() => handleNavClick('about')}
+              </Link>
+              <Link
+                href="/about"
+                aria-current={activePage === 'about' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('about');
+                  }
+                }}
                 className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'about'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
@@ -436,7 +470,7 @@ export default function BlogHeader() {
                 {activePage === 'about' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </button>
+              </Link>
 
               {/* 管理后台入口 */}
               <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
