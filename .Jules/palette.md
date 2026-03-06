@@ -24,3 +24,11 @@
 ## 2024-03-02 - [TableOfContents Prop Structure]
 **Learning:** The `TableOfContents` component in this project expects a raw Markdown string passed to its `content` prop to extract headings internally, rather than accepting a pre-parsed array of headings via a `headings` prop.
 **Action:** Always verify component prop signatures before trying to mock data for visual verifications.
+
+## 2026-06-08 - Input Clear Focus Management
+**Learning:** When a user clears a search input using an inline "clear" button, losing focus forces them to click back into the input or tab around to resume typing, disrupting their flow.
+**Action:** Always explicitly restore focus to the input (`inputRef.current?.focus()`) within the clear button's `onClick` handler.
+
+## 2026-06-08 - Destructive Action Confirmation
+**Learning:** Immediate execution of destructive actions (like clearing search history) without confirmation can lead to accidental data loss and user frustration.
+**Action:** Implement a two-step confirmation pattern (e.g., changing "Clear" to "Confirm Clear?" with a timeout) to provide an inline, less intrusive safeguard compared to a full modal dialog. Ensure `aria-live="polite"` is used to announce the state change to screen readers.
