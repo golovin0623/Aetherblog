@@ -24,6 +24,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   // Ref for spotlight effect to avoid re-renders
   const spotlightRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number>(0);
+  const rectRef = useRef<{ left: number; top: number } | null>(null);
   const [isHovering, setIsHovering] = React.useState(false);
 
   // Clean up animation frame on unmount
@@ -35,6 +36,22 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
     };
   }, []);
 
+  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
+    setIsHovering(true);
+    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter.
+    // Impact: Eliminates synchronous layout reads on every mouse move, preventing layout thrashing.
+    const rect = e.currentTarget.getBoundingClientRect();
+    rectRef.current = {
+      left: rect.left + window.scrollX,
+      top: rect.top + window.scrollY,
+    };
+  }, []);
+
+  const handleMouseLeave = React.useCallback(() => {
+    setIsHovering(false);
+    rectRef.current = null;
+  }, []);
+
   // 如果摘要缺失，从内容生成摘要的逻辑
   const displaySummary = post.summary 
     ? post.summary 
@@ -44,21 +61,11 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
 
   // Update spotlight position directly via DOM
   const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current) return;
+    if (!spotlightRef.current || !rectRef.current) return;
 
-    // ⚡ Bolt: Extract event properties synchronously before the async requestAnimationFrame callback.
-    // This prevents issues with React's synthetic event pooling/nullification and ensures the closure
-    // captures the exact values at the time the event fired, avoiding potential runtime TypeErrors.
-    // Impact: Avoids unnecessary errors and overhead from accessing pooled event objects during high-frequency mouse movements.
-    const { clientX, clientY } = e;
-    const target = e.currentTarget;
-
-    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
-    // to prevent synchronous layout thrashing during the animation frame.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = target.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    // Calculate position relative to the cached element rect
+    const x = e.pageX - rectRef.current.left;
+    const y = e.pageY - rectRef.current.top;
 
     if (frameRef.current) {
       cancelAnimationFrame(frameRef.current);
@@ -98,8 +105,8 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
         className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.15)] cursor-pointer"
         onClick={handleCardClick}
         onMouseMove={handleMouseMove}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
     >
         {/* 顶部装饰条 - 品牌色渐变 */}
         <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />

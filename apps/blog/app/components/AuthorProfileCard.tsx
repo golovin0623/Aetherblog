@@ -160,6 +160,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
   const [isHovering, setIsHovering] = useState(false);
   const spotlightRef = React.useRef<HTMLDivElement>(null);
   const frameRef = React.useRef<number>(0);
+  const rectRef = React.useRef<{ left: number; top: number } | null>(null);
   const { isDark } = useTheme();
 
   React.useEffect(() => {
@@ -171,19 +172,29 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
     };
   }, []);
 
+  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
+    setIsHovering(true);
+    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter.
+    // Impact: Eliminates synchronous layout reads on every mouse move, preventing layout thrashing.
+    const rect = e.currentTarget.getBoundingClientRect();
+    rectRef.current = {
+      left: rect.left + window.scrollX,
+      top: rect.top + window.scrollY,
+    };
+  }, []);
+
+  const handleMouseLeave = React.useCallback(() => {
+    setIsHovering(false);
+    rectRef.current = null;
+  }, []);
+
   // 监听鼠标移动，使用 useRef 和 requestAnimationFrame 优化重排性能
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current) return;
+    if (!spotlightRef.current || !rectRef.current) return;
 
-    const { clientX, clientY } = e;
-    const target = e.currentTarget;
-
-    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
-    // to prevent synchronous layout thrashing during the animation frame.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = target.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    // Calculate position relative to the cached element rect
+    const x = e.pageX - rectRef.current.left;
+    const y = e.pageY - rectRef.current.top;
 
     if (frameRef.current) {
       cancelAnimationFrame(frameRef.current);
@@ -246,8 +257,8 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
         backdropFilter: 'blur(20px)',
       }}
       onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* 顶部装饰条 */}
       <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />

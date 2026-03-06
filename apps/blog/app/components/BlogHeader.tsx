@@ -210,15 +210,15 @@ export default function BlogHeader() {
   const updateMousePosition = useCallback((e: React.MouseEvent) => {
     if (!spotlightRef.current) return;
 
-    // 获取 header 元素的位置
-    const { clientX, clientY, currentTarget } = e;
+    // ⚡ Bolt: Since BlogHeader is `fixed top-0 left-0`, its top-left corner is always at (0,0) relative to the viewport.
+    // We can completely eliminate the `getBoundingClientRect()` layout read here and just use `clientX` and `clientY`
+    // which represent the mouse position relative to the viewport.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements with zero layout reads.
+    const { clientX, clientY } = e;
 
-    // ⚡ Bolt: Extract layout read (getBoundingClientRect) outside of requestAnimationFrame
-    // to prevent synchronous layout thrashing during the animation frame.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = currentTarget.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    // Position relative to the fixed header is simply the viewport coordinates
+    const x = clientX;
+    const y = clientY;
 
     // Cancel previous frame if any
     if (frameRef.current) {
