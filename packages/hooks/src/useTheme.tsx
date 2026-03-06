@@ -65,6 +65,12 @@ function applyTheme(resolvedTheme: ResolvedTheme): void {
  * 动画逻辑：
  * - 暗→亮: 新视图(亮色)从点击位置扩散出来
  * - 亮→暗: 旧视图(亮色)向点击位置收缩消失，暴露下面的暗色
+ * 
+ * 多层动画与性能优化：
+ * - 侧边栏和遮罩也需要同步做动画，以保留其真正的 backdrop-filter。
+ * - 必须保证各层扩张速度(dr/dt)完全一致，以防止多圈重影割裂。
+ * - 为了防止局部小元素使用极大半径导致的 GPU 卡顿，
+ *   各层使用自身的相对最大半径，但按比例缩短动画时长（线性动画），实现完美物理同步匹配！
  */
 async function performCircularTransition(
   x: number,
@@ -83,16 +89,21 @@ async function performCircularTransition(
     return;
   }
 
-  // 计算最大半径（从点击位置到最远角落的距离）
-  const endRadius = Math.hypot(
-    Math.max(x, window.innerWidth - x),
-    Math.max(y, window.innerHeight - y)
-  );
+  const Math_hypot = Math.hypot;
+  const Math_max = Math.max;
 
-  // 设置动画方向，用于 CSS z-index 控制
+  // 1. 计算出全屏幕物理光圈的标准速度 (dr/dt)
+  const maxRadius = Math_hypot(
+    Math_max(x, window.innerWidth - x),
+    Math_max(y, window.innerHeight - y)
+  );
+  // 全屏标准时长 500ms，计算全局扩圈速度
+  const totalDuration = 500;
+  const velocity = maxRadius / totalDuration; // px per ms
+
+  // 设置动画方向（决定 z-index）
   document.documentElement.dataset.themeTransition = isDarkToLight ? 'to-light' : 'to-dark';
 
-  // 开始 View Transition
   const transition = document.startViewTransition(() => {
     callback();
   });
@@ -100,49 +111,63 @@ async function performCircularTransition(
   try {
     await transition.ready;
 
-    // 根据切换方向选择动画目标和方向
-    // 暗→亮: 动画新视图(亮色)从0扩散到全屏，新视图在上层
-    // 亮→暗: 动画旧视图(亮色)从全屏收缩到0，旧视图在上层
-    
-    if (isDarkToLight) {
-      // 暗→亮: 新的亮色视图从点击处扩散
-      document.documentElement.animate(
-        {
-          clipPath: [
-            `circle(0px at ${x}px ${y}px)`,
-            `circle(${endRadius}px at ${x}px ${y}px)`,
-          ],
-        },
-        {
-          duration: 500,
-          easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-          pseudoElement: '::view-transition-new(root)',
-        }
+    const animOpts = {
+      duration: 500,
+      easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    };
+
+    // 动画辅助函数：对指定 VT 层应用 clip-path 动画
+    const animateLayer = (
+      vtName: string,
+      localX: number,
+      localY: number,
+      radius: number
+    ) => {
+      const from = `circle(0px at ${localX}px ${localY}px)`;
+      const to = `circle(${radius}px at ${localX}px ${localY}px)`;
+      const pseudo = isDarkToLight
+        ? `::view-transition-new(${vtName})`
+        : `::view-transition-old(${vtName})`;
+
+      try {
+        document.documentElement.animate(
+          { clipPath: isDarkToLight ? [from, to] : [to, from] },
+          {
+            ...animOpts,
+            pseudoElement: pseudo,
+            ...(isDarkToLight ? {} : { fill: 'forwards' as const }),
+          }
+        );
+      } catch {
+        // VT 层不存在时忽略
+      }
+    };
+
+    // 1) root 层 — 覆盖全视口
+    animateLayer('root', x, y, maxRadius);
+
+    // 2) mobile-menu-drawer — 局部视口，计算自身的最大对角线
+    // 用户反馈：为了保证移动端极端机型的流畅度，放弃绝对同心圆
+    // 让侧边栏使用自己较小尺寸的 drawerRadius，大幅减轻 GPU 的遮罩裁剪内存开销
+    const drawerEl = document.querySelector('.mobile-menu-drawer');
+    if (drawerEl) {
+      const rect = drawerEl.getBoundingClientRect();
+      const drawerX = x - rect.left;
+      const drawerY = y - rect.top;
+      const drawerRadius = Math_hypot(
+        Math_max(drawerX, rect.width - drawerX),
+        Math_max(drawerY, rect.height - drawerY)
       );
-    } else {
-      // 亮→暗: 旧的亮色视图向点击处收缩消失
-      document.documentElement.animate(
-        {
-          clipPath: [
-            `circle(${endRadius}px at ${x}px ${y}px)`,
-            `circle(0px at ${x}px ${y}px)`,
-          ],
-        },
-        {
-          duration: 500,
-          easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-          pseudoElement: '::view-transition-old(root)',
-          fill: 'forwards', // 保持最终状态，防止闪烁
-        }
-      );
+      animateLayer('mobile-menu-drawer', drawerX, drawerY, drawerRadius);
     }
 
-    // 动画完成后清理
+    // 等待核心 500ms 动画跑完
+    await new Promise((resolve) => setTimeout(resolve, 500));
     await transition.finished;
+
   } catch {
-    // 动画失败时静默处理
+    // 失败静默
   } finally {
-    // 使用 requestAnimationFrame 延迟清理，避免闪烁
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         delete document.documentElement.dataset.themeTransition;

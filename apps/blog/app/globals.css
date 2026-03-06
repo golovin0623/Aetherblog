@@ -1021,18 +1021,34 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
 }
 
 /* 侧边栏独立 view-transition 层（平时隔离 backdrop-blur 防止闪烁） */
-.mobile-menu-backdrop {
-  view-transition-name: mobile-menu-backdrop;
-}
 .mobile-menu-drawer {
   view-transition-name: mobile-menu-drawer;
 }
 
-/* 主题切换动画期间：取消侧边栏独立层，让它融入 root snapshot，
-   圆形 clip-path 扩散/收缩就能覆盖包含侧边栏在内的整个屏幕 */
-html[data-theme-transition] .mobile-menu-backdrop,
-html[data-theme-transition] .mobile-menu-drawer {
-  view-transition-name: none !important;
+/* ========================================
+   多层 VT 的动画绑定与层级控制
+   ======================================== */
+
+/* 侧边栏层的主题切换辅助配置：禁用默认过渡，按层级顺序显示 */
+::view-transition-group(mobile-menu-drawer) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(mobile-menu-drawer) {
+  z-index: 1;
+}
+
+::view-transition-old(mobile-menu-drawer) {
+  z-index: 0;
+}
+
+html[data-theme-transition="to-dark"]::view-transition-old(mobile-menu-drawer) {
+  z-index: 1;
+}
+
+html[data-theme-transition="to-dark"]::view-transition-new(mobile-menu-drawer) {
+  z-index: 0;
 }
 
 /* 减少动画模式时禁用 View Transition */

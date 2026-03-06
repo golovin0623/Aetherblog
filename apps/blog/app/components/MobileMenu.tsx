@@ -305,9 +305,6 @@ const MobileMenu = memo(function MobileMenu() {
                 onClick={(e) => {
                   const x = e.clientX;
                   const y = e.clientY;
-                  // Sidebar stays open during transition.
-                  // The sidebar backdrop/drawer have their own view-transition-name
-                  // so they are isolated from the root clip-path animation.
                   toggleThemeWithAnimation(x, y);
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-colors duration-150 shadow-sm transform-gpu will-change-transform"
