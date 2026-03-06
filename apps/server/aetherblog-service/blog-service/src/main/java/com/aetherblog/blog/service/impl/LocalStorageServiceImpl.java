@@ -67,7 +67,7 @@ public class LocalStorageServiceImpl implements StorageService {
                 Files.createDirectories(uploadPath);
             }
 
-            Files.copy(file.getInputStream(), filePath);
+            Files.copy(file.getInputStream(), filePath, java.nio.file.LinkOption.NOFOLLOW_LINKS);
 
             String url = urlPrefix + "/" + path;
             log.info("本地存储上传成功: path={}, size={}", path, file.getSize());
