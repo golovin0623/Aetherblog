@@ -106,7 +106,6 @@ export default function BlogHeader() {
   // Optimization: Use useRef for spotlight to avoid re-renders on mouse move
   const spotlightRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number>(0);
-  const rectRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
 
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -207,27 +206,19 @@ export default function BlogHeader() {
     };
   }, []);
 
-  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLElement>) => {
-    if (isArticleDetail) setIsHovering(true);
-    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter
-    // to prevent synchronous layout thrashing during high-frequency mousemove events.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements.
-    const rect = e.currentTarget.getBoundingClientRect();
-    rectRef.current = {
-      left: rect.left,
-      top: rect.top,
-    };
-  }, [isArticleDetail]);
-
   // 监听鼠标移动，更新光束位置和显隐状态
   const updateMousePosition = useCallback((e: React.MouseEvent) => {
     if (!spotlightRef.current) return;
 
-    // 获取 header 元素的位置
+    // ⚡ Bolt: Since BlogHeader is `fixed top-0 left-0`, its top-left corner is always at (0,0) relative to the viewport.
+    // We can completely eliminate the `getBoundingClientRect()` layout read here and just use `clientX` and `clientY`
+    // which represent the mouse position relative to the viewport.
+    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements with zero layout reads.
     const { clientX, clientY } = e;
 
-    const x = clientX - rectRef.current.left;
-    const y = clientY - rectRef.current.top;
+    // Position relative to the fixed header is simply the viewport coordinates
+    const x = clientX;
+    const y = clientY;
 
     // Cancel previous frame if any
     if (frameRef.current) {
@@ -301,7 +292,7 @@ export default function BlogHeader() {
           boxShadow: '0 4px 24px -8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05)',
         }}
         onMouseMove={updateMousePosition}
-        onMouseEnter={handleMouseEnter}
+        onMouseEnter={() => isArticleDetail && setIsHovering(true)}
         onMouseLeave={() => isArticleDetail && setIsHovering(false)}
       >
         {/* 聚光灯效果层 - 使用 CSS 变量 */}
@@ -384,34 +375,54 @@ export default function BlogHeader() {
                   />
                 </div>
 
-                {/* Segment Buttons - 使用 button + handleNavClick 实现乐观更新 */}
-                <button
-                  type="button"
+                {/* Segment Buttons - 使用 Link + handleNavClick 实现乐观更新与语义化标签 */}
+                <Link
+                  href="/posts"
                   aria-pressed={!isTimeline}
-                  onClick={() => handleNavClick('posts')}
+                  aria-current={!isTimeline ? 'page' : undefined}
+                  onClick={(e) => {
+                    // 只在普通点击时阻止默认跳转，执行乐观更新
+                    if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                      e.preventDefault();
+                      handleNavClick('posts');
+                    }
+                  }}
                   className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${!isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
                 >
                   首页
-                </button>
-                <button
-                  type="button"
+                </Link>
+                <Link
+                  href="/timeline"
                   aria-pressed={isTimeline}
-                  onClick={() => handleNavClick('timeline')}
+                  aria-current={isTimeline ? 'page' : undefined}
+                  onClick={(e) => {
+                    if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                      e.preventDefault();
+                      handleNavClick('timeline');
+                    }
+                  }}
                   className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
                 >
                   时间线
-                </button>
+                </Link>
               </div>
 
               <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
-              <button
-                onClick={() => handleNavClick('archives')}
+              <Link
+                href="/archives"
+                aria-current={activePage === 'archives' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('archives');
+                  }
+                }}
                 className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'archives'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
@@ -421,9 +432,16 @@ export default function BlogHeader() {
                 {activePage === 'archives' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </button>
-              <button
-                onClick={() => handleNavClick('friends')}
+              </Link>
+              <Link
+                href="/friends"
+                aria-current={activePage === 'friends' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('friends');
+                  }
+                }}
                 className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'friends'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
@@ -433,9 +451,16 @@ export default function BlogHeader() {
                 {activePage === 'friends' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </button>
-              <button
-                onClick={() => handleNavClick('about')}
+              </Link>
+              <Link
+                href="/about"
+                aria-current={activePage === 'about' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('about');
+                  }
+                }}
                 className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'about'
                     ? 'text-primary'
                     : 'text-[var(--text-secondary)]'
@@ -445,7 +470,7 @@ export default function BlogHeader() {
                 {activePage === 'about' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
-              </button>
+              </Link>
 
               {/* 管理后台入口 */}
               <div className="h-4 w-px bg-[var(--border-default)] mx-1"></div>
