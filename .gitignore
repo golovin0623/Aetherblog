@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 .next/
+apps/blog/.next.stale.*/
 out/
 target/
 
@@ -25,6 +26,7 @@ target/
 # Logs
 *.log
 logs/
+.playwright-cli/
 
 # OS files
 .DS_Store
@@ -76,3 +78,4 @@ plan/**
 .coverage
 issues/**
 *.tsbuildinfo
+scripts/vanblog-test/output/

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -38,6 +39,9 @@ interface MarkdownRendererProps {
 }
 
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+const ALERT_DIRECTIVE_NAMES = ['info', 'note', 'warning', 'danger', 'tip'] as const;
+const GENERIC_IMAGE_ALT_PATTERN = /^(image|img|screenshot|snipaste|picture|photo)[-_ ]?\d*\\.(png|jpe?g|gif|webp|svg)$/i;
+const FILE_NAME_ALT_PATTERN = /^[^\\/\n]+\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 
 // ============================================================================
 // 语言配置 - 按需加载优化
@@ -70,6 +74,9 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'yml': 'yaml',
   'sh': 'bash',
   'zsh': 'bash',
+  'ps1': 'bash',
+  'pwsh': 'bash',
+  'powershell': 'bash',
   'docker': 'dockerfile',
 };
 
@@ -133,6 +140,64 @@ function normalizeLanguage(lang: string): BundledLanguage | 'text' {
     return normalized as BundledLanguage;
   }
   return 'text';
+}
+
+function normalizeImageCaption(alt?: string): string | undefined {
+  if (!alt) {
+    return undefined;
+  }
+
+  const trimmed = alt.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (GENERIC_IMAGE_ALT_PATTERN.test(trimmed) || FILE_NAME_ALT_PATTERN.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function preprocessMarkdown(content: string): string {
+  if (!content) {
+    return content;
+  }
+
+  const alertNamePattern = ALERT_DIRECTIVE_NAMES.join('|');
+
+  return content.replace(
+    new RegExp(`(^:::(?:${alertNamePattern})(?:\\{[^\\n]*\\})?[ \\t]*\\r?\\n)(:::[ \\t]*$)`, 'gm'),
+    '$1\u200B\n$2',
+  );
+}
+
+function paragraphContainsBlockImage(node: unknown): boolean {
+  if (!node || typeof node !== 'object' || !('children' in node)) {
+    return false;
+  }
+
+  const children = (node as { children?: unknown[] }).children;
+  if (!Array.isArray(children)) {
+    return false;
+  }
+
+  return children.some((child) => {
+    if (!child || typeof child !== 'object') {
+      return false;
+    }
+
+    const childNode = child as { type?: string; children?: unknown[] };
+    if (childNode.type === 'image') {
+      return true;
+    }
+
+    if ((childNode.type === 'link' || childNode.type === 'emphasis' || childNode.type === 'strong') && Array.isArray(childNode.children)) {
+      return paragraphContainsBlockImage(childNode);
+    }
+
+    return false;
+  });
 }
 
 // 递归提取 React 子节点的文本内容
@@ -390,18 +455,22 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 
     const highlight = async () => {
       try {
-        const lang = normalizeLanguage(language);
+        const normalizedLang = normalizeLanguage(language);
+        let shikiLang: BundledLanguage | 'text' = normalizedLang;
 
         // 动态加载语言（如果未加载）
-        if (lang !== 'text') {
-          await ensureLanguageLoaded(highlighter, lang);
+        if (shikiLang !== 'text') {
+          const loaded = await ensureLanguageLoaded(highlighter, shikiLang);
+          if (!loaded) {
+            shikiLang = 'text';
+          }
         }
 
         const shikiTheme = theme === 'dark' ? 'github-dark' : 'github-light';
 
         // 使用 Shiki 的 transformers API 优雅地自定义输出
         const html = highlighter.codeToHtml(code, {
-          lang: lang === 'text' ? 'text' : lang,
+          lang: shikiLang === 'text' ? 'text' : shikiLang,
           theme: shikiTheme,
           transformers: [
             {
@@ -537,6 +606,18 @@ function createComponents(
   // All six heading tags share the same lookup map — no mutable counter.
   const fallbackMathErrorText = '数学公式渲染失败';
   const fallbackMermaidErrorText = '图表渲染失败';
+  const isBlockImageChild = (child: React.ReactNode) => {
+    if (!React.isValidElement(child)) {
+      return false;
+    }
+
+    const childType = typeof child.type === 'string' ? child.type : null;
+    const childProps = child.props as { className?: string } | null;
+    const childClassName =
+      typeof childProps?.className === 'string' ? childProps.className : '';
+
+    return childType === 'figure' || childType === 'img' || childClassName.includes('markdown-image');
+  };
 
   return {
     h1: createHeadingRenderer('h1', headingIdMap),
@@ -553,6 +634,25 @@ function createComponents(
         <AlertBlock type={props['data-type'] || 'info'} title={props['data-title']}>
           {props.children}
         </AlertBlock>
+      );
+    },
+
+    p: ({ children, node, ...props }) => {
+      const nodes = React.Children.toArray(children);
+      const hasBlockImage = paragraphContainsBlockImage(node) || nodes.some(isBlockImageChild);
+
+      if (hasBlockImage) {
+        return (
+          <div className="my-4" {...props}>
+            {children}
+          </div>
+        );
+      }
+
+      return (
+        <p className="my-4 leading-8 text-[var(--text-primary)]" {...props}>
+          {children}
+        </p>
       );
     },
 
@@ -593,7 +693,11 @@ function createComponents(
     },
 
     // 图片
-    img: ({ src, alt, ...props }) => {
+    img: ({ src, alt, width: _width, height: _height, ...props }) => {
+      if (typeof src !== 'string' || !src) {
+        return null;
+      }
+
       // 解析 alt 文本中的大小设置 ![alt|size](url)
       // 支持多种 CSS 单位: px, %, vw, vh, em, rem
       let width: string | undefined = undefined;
@@ -615,22 +719,28 @@ function createComponents(
         }
       }
 
+      const caption = normalizeImageCaption(displayAlt);
+
       return (
         <figure
           className="markdown-image my-4"
           style={width ? { width, maxWidth: '100%' } : undefined}
         >
-          <img
+          <Image
             src={src}
-            alt={displayAlt}
+            alt={caption || displayAlt || ''}
             loading="lazy"
+            unoptimized
+            width={1200}
+            height={800}
             className="w-full max-w-full rounded-lg border border-[var(--border-subtle)] inline-block transition-all duration-300"
             style={{
-              boxShadow: 'var(--shadow-md)'
+              boxShadow: 'var(--shadow-md)',
+              height: 'auto',
             }}
             {...props}
           />
-          {displayAlt && <figcaption className="mt-2 text-center text-sm text-[var(--text-muted)]">{displayAlt}</figcaption>}
+          {caption && <figcaption className="mt-2 text-center text-sm text-[var(--text-muted)]">{caption}</figcaption>}
         </figure>
       );
     },
@@ -745,11 +855,12 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
   }, [content]);
 
   const { resolvedTheme } = useTheme();
+  const normalizedContent = useMemo(() => preprocessMarkdown(content || ''), [content]);
 
   // Pre-compute heading ID map once per content change.
   // Map key = 1-based source line number (from AST), value = stable deduplicated ID.
   // This is completely stateless in the renderer — no shared counter, no closure mutation.
-  const headingIdMap = useMemo(() => buildHeadingIdMap(content || ''), [content]);
+  const headingIdMap = useMemo(() => buildHeadingIdMap(normalizedContent), [normalizedContent]);
 
   // Recreate components when highlighter or theme changes.
   // Heading IDs are pure Map lookups — idempotent across any number of re-renders.
@@ -758,7 +869,7 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
     [highlighter, resolvedTheme, headingIdMap],
   );
 
-  if (!content) return null;
+  if (!normalizedContent) return null;
 
   return (
     <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
@@ -767,7 +878,7 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
         rehypePlugins={REHYPE_PLUGINS}
         components={components}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );

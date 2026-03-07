@@ -1,0 +1,31 @@
+version: "3"
+
+services:
+  vanblog:
+    image: mereith/van-blog:latest
+    container_name: vanblog-test
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+      VAN_BLOG_DATABASE_URL: "mongodb://mongo:27017/vanBlog"
+    volumes:
+      - vanblog-log:/var/log
+      - vanblog-static:/app/static
+    ports:
+      - "8360:80"
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:6
+    container_name: vanblog-mongo
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+    volumes:
+      - vanblog-data:/data/db
+
+volumes:
+  vanblog-log:
+  vanblog-static:
+  vanblog-data:

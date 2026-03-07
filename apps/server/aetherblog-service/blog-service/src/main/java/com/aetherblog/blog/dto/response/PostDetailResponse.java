@@ -24,6 +24,10 @@ public class PostDetailResponse {
     private Long viewCount;
     private Long commentCount;
     private Long likeCount;
+    private Boolean isHidden;
+    private Boolean passwordRequired;
+    private String legacyAuthorName;
+    private Long legacyVisitedCount;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

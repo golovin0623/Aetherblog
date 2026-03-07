@@ -21,4 +21,6 @@ public interface CategoryService {
     Category updateCategory(Long id, Category category);
 
     void deleteCategory(Long id);
+
+    Category getOrCreateCategory(String name);
 }
