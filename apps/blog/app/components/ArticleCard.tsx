@@ -180,9 +180,12 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
             <p className="text-[var(--text-secondary)] text-sm leading-relaxed line-clamp-3">
               {summary
                 ? summary
+                    .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
+                    .replace(/^:::\s*$/gm, '')
+                    .replace(/<!--\s*more\s*-->/g, '')
                     .replace(/[#*`>\\[\\]!|_~]/g, '')
                     .replace(/\\n+/g, ' ')
-                    .replace(/\\s+/g, ' ')
+                    .replace(/\s+/g, ' ')
                     .trim()
                     .slice(0, 120) + (summary.length > 120 ? '...' : '')
                 : title.length > 100

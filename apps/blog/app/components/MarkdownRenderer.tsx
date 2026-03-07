@@ -11,9 +11,11 @@ import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
 import { buildHeadingIdMap } from '../lib/headingId';
+import remarkDirective from 'remark-directive';
+import remarkAlertBlock from '../lib/remarkAlertBlock';
+import { AlertBlock } from './AlertBlock';
 
-
-const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath, remarkDirective, remarkAlertBlock];
 // 🛡️ Sentinel Security Improvement: removed rehype-raw from REHYPE_PLUGINS
 // to prevent raw HTML execution (XSS) in Markdown content.
 const REHYPE_PLUGINS: PluggableList = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
@@ -543,6 +545,16 @@ function createComponents(
     h4: createHeadingRenderer('h4', headingIdMap),
     h5: createHeadingRenderer('h5', headingIdMap),
     h6: createHeadingRenderer('h6', headingIdMap),
+    
+    // 自定义高亮块
+    // @ts-expect-error - Custom element not in standard HTML types
+    'alert-block': ({ node, ...props }: any) => {
+      return (
+        <AlertBlock type={props['data-type'] || 'info'} title={props['data-title']}>
+          {props.children}
+        </AlertBlock>
+      );
+    },
 
     // 处理 pre 标签 - 捕获所有代码块
     pre: ({ children, ...props }) => {

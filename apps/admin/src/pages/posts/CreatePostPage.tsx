@@ -7,7 +7,7 @@ import {
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
   Table2, Minus, CheckSquare, Sigma, GitBranch, Underline, FileCode2, ArrowUp,
   Maximize2, Minimize2, Eye, ListTree, ZoomIn, ZoomOut, Clock, HardDrive,
-  Undo2, Redo2, Hash
+  Undo2, Redo2, Hash, MessageSquareWarning
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { SelectionAiToolbar } from './components/SelectionAiToolbar';
 import { AiSidePanel, type AiPanelAction, type AiSidePanelHandle } from './components/AiSidePanel';
 import { SlashCommandMenu } from './components/SlashCommandMenu';
+import { AlertBlockDropdownButton } from './components/AlertBlockDropdownButton';
 import { useSidebarStore } from '@/stores';
 import { useEditorStore } from '@/stores/editorStore';
 import { useTheme } from '@aetherblog/hooks';
@@ -1737,14 +1738,14 @@ export function CreatePostPage() {
     )}>
       {/* 顶部头部区域 - 带平滑悬浮折叠动画 */}
       <AnimatePresence initial={false}>
-        {(!isFullscreen || isMobile) && (
+        {!isFullscreen && (
           <motion.div
             key="editor-header"
             initial={{ height: 0, opacity: 0, y: -20 }}
             animate={{ height: 'auto', opacity: 1, y: 0 }}
             exit={{ height: 0, opacity: 0, y: -20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] relative z-[80] overflow-hidden"
+            className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)] relative z-[80] overflow-visible"
           >
             <div className="flex items-center justify-between px-4 md:px-6 py-3 gap-2 md:gap-4">
               {/* 左侧块：返回 + 标题 */}
@@ -1977,130 +1978,115 @@ export function CreatePostPage() {
         )}
       </AnimatePresence>
 
-      {/* Formatting Toolbar - outer container with overflow-visible for tooltips */}
+      {/* Formatting Toolbar */}
       <div className="relative border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 backdrop-blur-sm">
-        <div className="flex items-center gap-1 px-4 py-1.5 overflow-x-auto">
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
-            <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
-              <Undo2 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => editorCommands.redo()} tooltip="重做 (⇧⌘Z)">
-              <Redo2 className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-          {/* Headings */}
-          <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
-            <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
-              <Heading1 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('## ', '', 'lineStart')} tooltip="标题 2 (H2)">
-              <Heading2 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('### ', '', 'lineStart')} tooltip="标题 3 (H3)">
-              <Heading3 className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* Text Formatting */}
-          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-            <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
-              <Bold className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('*', '*')} tooltip="斜体 (⌘I)">
-              <Italic className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('<u>', '</u>')} tooltip="下划线 (⌘U)">
-              <Underline className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('~~', '~~')} tooltip="删除线">
-              <Strikethrough className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* Code */}
-          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-            <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
-              <Code className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('```\n', '\n```')} tooltip="代码块 (⇧⌘K)">
-              <FileCode2 className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* Lists */}
-          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-            <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
-              <List className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('1. ', '', 'lineStart')} tooltip="有序列表">
-              <ListOrdered className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('- [ ] ', '', 'lineStart')} tooltip="任务列表">
-              <CheckSquare className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* Insert */}
-          <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
-            <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
-              <Link2 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('![', '](image-url)', 'wrap')} tooltip="图片">
-              <Image className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n', '', 'insert')} tooltip="表格">
-              <Table2 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('\n---\n', '', 'insert')} tooltip="分割线">
-              <Minus className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* Advanced: Quote, Math, Diagram */}
-          <div className="flex items-center gap-0.5 px-3">
-            <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
-              <Quote className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('$$\n', '\n$$', 'wrap')} tooltip="数学公式">
-              <Sigma className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => insertMarkdown('```mermaid\n', '\n```', 'wrap')} tooltip="流程图">
-              <GitBranch className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Zoom Controls with Domain Toggle */}
-          <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
-            <ToolbarButton
-              onClick={() => {
-                if (isMobile) {
-                  // 移动端 Bear 模式：统一调整
-                  setEditorFontSize(s => Math.max(12, s - 1));
-                  setPreviewFontSize(s => Math.max(12, s - 1));
-                } else if (zoomTarget === 'editor') {
-                  setEditorFontSize(s => Math.max(12, s - 1));
-                } else if (zoomTarget === 'preview') {
-                  setPreviewFontSize(s => Math.max(12, s - 1));
-                } else {
-                  setEditorFontSize(s => Math.max(12, s - 1));
-                  setPreviewFontSize(s => Math.max(12, s - 1));
-                }
-              }}
-              tooltip="缩小字号"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </ToolbarButton>
-
-            {/* Font Size Display — 移动端简化，桌面端带域切换 */}
-            {isMobile ? (
-              <span className="flex items-center px-1.5 py-0.5 rounded text-xs text-[var(--text-muted)] select-none min-w-[36px] justify-center">
-                {editorFontSize}px
-              </span>
-            ) : (
+        {/* 桌面端：单行 flex-wrap */}
+        {!isMobile && (
+          <div className="flex flex-wrap items-center gap-1 px-4 py-1.5">
+            {/* Undo/Redo */}
+            <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
+              <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
+                <Undo2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => editorCommands.redo()} tooltip="重做 (⇧⌘Z)">
+                <Redo2 className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Headings */}
+            <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
+              <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
+                <Heading1 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('## ', '', 'lineStart')} tooltip="标题 2 (H2)">
+                <Heading2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('### ', '', 'lineStart')} tooltip="标题 3 (H3)">
+                <Heading3 className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Text Formatting */}
+            <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+              <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
+                <Bold className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('*', '*')} tooltip="斜体 (⌘I)">
+                <Italic className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('<u>', '</u>')} tooltip="下划线 (⌘U)">
+                <Underline className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('~~', '~~')} tooltip="删除线">
+                <Strikethrough className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Code */}
+            <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+              <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
+                <Code className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('```\n', '\n```')} tooltip="代码块 (⇧⌘K)">
+                <FileCode2 className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Lists */}
+            <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+              <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
+                <List className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('1. ', '', 'lineStart')} tooltip="有序列表">
+                <ListOrdered className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('- [ ] ', '', 'lineStart')} tooltip="任务列表">
+                <CheckSquare className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Insert */}
+            <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
+              <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
+                <Link2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('![', '](image-url)', 'wrap')} tooltip="图片">
+                <Image className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n', '', 'insert')} tooltip="表格">
+                <Table2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('\n---\n', '', 'insert')} tooltip="分割线">
+                <Minus className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Advanced: Quote, Alert, Math, Diagram */}
+            <div className="flex items-center gap-0.5 px-3">
+              <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
+                <Quote className="w-4 h-4" />
+              </ToolbarButton>
+              <AlertBlockDropdownButton onInsertMarkdown={insertMarkdown} />
+              <ToolbarButton onClick={() => insertMarkdown('$$\n', '\n$$', 'wrap')} tooltip="数学公式">
+                <Sigma className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('```mermaid\n', '\n```', 'wrap')} tooltip="流程图">
+                <GitBranch className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* Spacer */}
+            <div className="flex-1" />
+            {/* Zoom Controls with Domain Toggle */}
+            <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
+              <ToolbarButton
+                onClick={() => {
+                  if (zoomTarget === 'editor') {
+                    setEditorFontSize(s => Math.max(12, s - 1));
+                  } else if (zoomTarget === 'preview') {
+                    setPreviewFontSize(s => Math.max(12, s - 1));
+                  } else {
+                    setEditorFontSize(s => Math.max(12, s - 1));
+                    setPreviewFontSize(s => Math.max(12, s - 1));
+                  }
+                }}
+                tooltip="缩小字号"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </ToolbarButton>
               <button
                 onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
                 className={cn(
@@ -2130,111 +2116,248 @@ export function CreatePostPage() {
                   </>
                 )}
               </button>
-            )}
-
-            <ToolbarButton
-              onClick={() => {
-                if (isMobile) {
-                  setEditorFontSize(s => Math.min(24, s + 1));
-                  setPreviewFontSize(s => Math.min(24, s + 1));
-                } else if (zoomTarget === 'editor') {
-                  setEditorFontSize(s => Math.min(24, s + 1));
-                } else if (zoomTarget === 'preview') {
-                  setPreviewFontSize(s => Math.min(24, s + 1));
-                } else {
-                  setEditorFontSize(s => Math.min(24, s + 1));
-                  setPreviewFontSize(s => Math.min(24, s + 1));
-                }
-              }}
-              tooltip="放大字号"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </ToolbarButton>
-          </div>
-
-          {/* View Mode Toggle — 移动端使用 Bear 模式，不需要切换 */}
-          <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-            {!isMobile && (
-              <>
-                <ToolbarButton
-                  onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
-                  tooltip="源码模式"
-                  isActive={viewMode === 'edit'}
-                >
-                  <FileCode2 className="w-4 h-4" />
-                </ToolbarButton>
-
-                <ToolbarButton
-                  onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
-                  tooltip="阅读模式"
-                  isActive={viewMode === 'preview'}
-                >
-                  <Eye className="w-4 h-4" />
-                </ToolbarButton>
-              </>
-            )}
-
-            <ToolbarButton
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              tooltip={isFullscreen ? '退出全屏' : '进入全屏'}
-              isActive={isFullscreen}
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </ToolbarButton>
-
-            <ToolbarButton
-              onClick={() => {
-                if (isMobile) {
-                  openMobilePanel('toc');
-                  return;
-                }
-                setShowAI(false);
-                setShowToc(!showToc);
-              }}
-              tooltip={isMobile ? '打开目录' : showToc ? '关闭目录' : '打开目录'}
-              isActive={isMobile ? mobilePanel === 'toc' : showToc}
-            >
-              <ListTree className="w-4 h-4" />
-            </ToolbarButton>
-
-            <ToolbarButton
-              onClick={() => setIsAutoSaveEnabled(!isAutoSaveEnabled)}
-              tooltip={isAutoSaveEnabled ? '关闭自动保存' : '开启自动保存'}
-              isActive={isAutoSaveEnabled}
-              activeColor="emerald"
-            >
-              <div className="relative">
-                <HardDrive className={cn(
-                  "w-4 h-4 transition-all duration-300",
-                  autoSaveFlash && "scale-110"
-                )} />
-                {/* 自动保存成功时的微妙光晕 */}
-                {autoSaveFlash && (
-                  <motion.div
-                    initial={{ opacity: 0.8, scale: 0.8 }}
-                    animate={{ opacity: 0, scale: 2 }}
-                    transition={{ duration: 1.2, ease: "easeOut" }}
-                    className="absolute inset-0 rounded-full bg-emerald-400/40"
-                  />
-                )}
-                {/* 保存成功时的小勾号 */}
-                <AnimatePresence>
+              <ToolbarButton
+                onClick={() => {
+                  if (zoomTarget === 'editor') {
+                    setEditorFontSize(s => Math.min(24, s + 1));
+                  } else if (zoomTarget === 'preview') {
+                    setPreviewFontSize(s => Math.min(24, s + 1));
+                  } else {
+                    setEditorFontSize(s => Math.min(24, s + 1));
+                    setPreviewFontSize(s => Math.min(24, s + 1));
+                  }
+                }}
+                tooltip="放大字号"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
+              <ToolbarButton
+                onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
+                tooltip="源码模式"
+                isActive={viewMode === 'edit'}
+              >
+                <FileCode2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
+                tooltip="阅读模式"
+                isActive={viewMode === 'preview'}
+              >
+                <Eye className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                tooltip={isFullscreen ? '退出全屏' : '进入全屏'}
+                isActive={isFullscreen}
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => {
+                  setShowAI(false);
+                  setShowToc(!showToc);
+                }}
+                tooltip={showToc ? '关闭目录' : '打开目录'}
+                isActive={showToc}
+              >
+                <ListTree className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => setIsAutoSaveEnabled(!isAutoSaveEnabled)}
+                tooltip={isAutoSaveEnabled ? '关闭自动保存' : '开启自动保存'}
+                isActive={isAutoSaveEnabled}
+                activeColor="emerald"
+              >
+                <div className="relative">
+                  <HardDrive className={cn(
+                    "w-4 h-4 transition-all duration-300",
+                    autoSaveFlash && "scale-110"
+                  )} />
                   {autoSaveFlash && (
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.5, y: 2 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.5 }}
-                      transition={{ duration: 0.3 }}
-                      className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
-                    >
-                      <CheckCircle className="w-2 h-2 text-white" />
-                    </motion.div>
+                      initial={{ opacity: 0.8, scale: 0.8 }}
+                      animate={{ opacity: 0, scale: 2 }}
+                      transition={{ duration: 1.2, ease: "easeOut" }}
+                      className="absolute inset-0 rounded-full bg-emerald-400/40"
+                    />
                   )}
-                </AnimatePresence>
-              </div>
-            </ToolbarButton>
+                  <AnimatePresence>
+                    {autoSaveFlash && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.5, y: 2 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ duration: 0.3 }}
+                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
+                      >
+                        <CheckCircle className="w-2 h-2 text-white" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </ToolbarButton>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* 移动端：固定两行，每行可横向滑动 */}
+        {isMobile && (
+          <div className="flex flex-col">
+            {/* 第一行：撤销/重做 + 标题 + 文字格式 + 代码 + 列表 + 插入 */}
+            <div className="flex items-center gap-0.5 px-3 py-1 overflow-x-auto scrollbar-hide">
+              <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销" tooltipPosition="bottom">
+                <Undo2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => editorCommands.redo()} tooltip="重做" tooltipPosition="bottom">
+                <Redo2 className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="H1" tooltipPosition="bottom">
+                <Heading1 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('## ', '', 'lineStart')} tooltip="H2" tooltipPosition="bottom">
+                <Heading2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('### ', '', 'lineStart')} tooltip="H3" tooltipPosition="bottom">
+                <Heading3 className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体" tooltipPosition="bottom">
+                <Bold className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('*', '*')} tooltip="斜体" tooltipPosition="bottom">
+                <Italic className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('<u>', '</u>')} tooltip="下划线" tooltipPosition="bottom">
+                <Underline className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('~~', '~~')} tooltip="删除线" tooltipPosition="bottom">
+                <Strikethrough className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码" tooltipPosition="bottom">
+                <Code className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('```\n', '\n```')} tooltip="代码块" tooltipPosition="bottom">
+                <FileCode2 className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表" tooltipPosition="bottom">
+                <List className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('- [ ] ', '', 'lineStart')} tooltip="任务列表" tooltipPosition="bottom">
+                <CheckSquare className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接" tooltipPosition="bottom">
+                <Link2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('![', '](image-url)', 'wrap')} tooltip="图片" tooltipPosition="bottom">
+                <Image className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 内容 | 内容 | 内容 |\n', '', 'insert')} tooltip="表格" tooltipPosition="bottom">
+                <Table2 className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('\n---\n', '', 'insert')} tooltip="分割线" tooltipPosition="bottom">
+                <Minus className="w-4 h-4" />
+              </ToolbarButton>
+            </div>
+            {/* 第二行：高级插入 + 字号 + 视图控制 */}
+            <div className="flex items-center gap-0.5 px-3 py-1 overflow-x-auto scrollbar-hide border-t border-[var(--border-subtle)]/50">
+              <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用" tooltipPosition="bottom">
+                <Quote className="w-4 h-4" />
+              </ToolbarButton>
+              <AlertBlockDropdownButton onInsertMarkdown={insertMarkdown} />
+              <ToolbarButton onClick={() => insertMarkdown('$$\n', '\n$$', 'wrap')} tooltip="数学公式" tooltipPosition="bottom">
+                <Sigma className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton onClick={() => insertMarkdown('```mermaid\n', '\n```', 'wrap')} tooltip="流程图" tooltipPosition="bottom">
+                <GitBranch className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              {/* 字号控制 */}
+              <ToolbarButton
+                onClick={() => {
+                  setEditorFontSize(s => Math.max(12, s - 1));
+                  setPreviewFontSize(s => Math.max(12, s - 1));
+                }}
+                tooltip="缩小字号"
+                tooltipPosition="bottom"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </ToolbarButton>
+              <span className="flex items-center px-1 py-0.5 rounded text-xs text-[var(--text-muted)] select-none min-w-[32px] justify-center flex-shrink-0">
+                {editorFontSize}px
+              </span>
+              <ToolbarButton
+                onClick={() => {
+                  setEditorFontSize(s => Math.min(24, s + 1));
+                  setPreviewFontSize(s => Math.min(24, s + 1));
+                }}
+                tooltip="放大字号"
+                tooltipPosition="bottom"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </ToolbarButton>
+              <div className="w-px h-5 bg-[var(--border-subtle)] mx-1 flex-shrink-0" />
+              {/* 视图控制 */}
+              <ToolbarButton
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                tooltip={isFullscreen ? '退出全屏' : '全屏'}
+                isActive={isFullscreen}
+                tooltipPosition="bottom"
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => openMobilePanel('toc')}
+                tooltip="目录"
+                isActive={mobilePanel === 'toc'}
+                tooltipPosition="bottom"
+              >
+                <ListTree className="w-4 h-4" />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => setIsAutoSaveEnabled(!isAutoSaveEnabled)}
+                tooltip={isAutoSaveEnabled ? '关闭自动保存' : '开启自动保存'}
+                isActive={isAutoSaveEnabled}
+                activeColor="emerald"
+                tooltipPosition="bottom"
+              >
+                <div className="relative">
+                  <HardDrive className={cn(
+                    "w-4 h-4 transition-all duration-300",
+                    autoSaveFlash && "scale-110"
+                  )} />
+                  {autoSaveFlash && (
+                    <motion.div
+                      initial={{ opacity: 0.8, scale: 0.8 }}
+                      animate={{ opacity: 0, scale: 2 }}
+                      transition={{ duration: 1.2, ease: "easeOut" }}
+                      className="absolute inset-0 rounded-full bg-emerald-400/40"
+                    />
+                  )}
+                  <AnimatePresence>
+                    {autoSaveFlash && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.5, y: 2 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ duration: 0.3 }}
+                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
+                      >
+                        <CheckCircle className="w-2 h-2 text-white" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </ToolbarButton>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
