@@ -161,6 +161,8 @@ export interface MarkdownPreviewProps {
   theme?: 'light' | 'dark';
 }
 
+const ALERT_DIRECTIVE_NAMES = ['info', 'note', 'warning', 'danger', 'tip'] as const;
+
 // 支持语法高亮的语言
 const SUPPORTED_LANGUAGES: BundledLanguage[] = [
   'javascript', 'typescript', 'jsx', 'tsx',
@@ -234,6 +236,19 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function preprocessMarkdown(content: string): string {
+  if (!content) {
+    return content;
+  }
+
+  const alertNamePattern = ALERT_DIRECTIVE_NAMES.join('|');
+
+  return content.replace(
+    new RegExp(`(^:::(?:${alertNamePattern})(?:\\{[^\\n]*\\})?[ \\t]*\\r?\\n)(:::[ \\t]*$)`, 'gm'),
+    '$1\u200B\n$2',
+  );
 }
 
 const MARKDOWN_SANITIZE_CONFIG = {
@@ -524,8 +539,9 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
   const html = useMemo(() => {
     if (!content) return '';
     try {
-      const renderer = createLineTrackingRenderer(content, highlighter, theme);
-      const parsedHtml = marked.parse(content, {
+      const normalizedContent = preprocessMarkdown(content);
+      const renderer = createLineTrackingRenderer(normalizedContent, highlighter, theme);
+      const parsedHtml = marked.parse(normalizedContent, {
         gfm: true,
         breaks: true,
         renderer
@@ -533,7 +549,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
 
       return DOMPurify.sanitize(parsedHtml, MARKDOWN_SANITIZE_CONFIG);
     } catch {
-      return DOMPurify.sanitize(`<p>${escapeHtml(content)}</p>`, MARKDOWN_SANITIZE_CONFIG);
+      return DOMPurify.sanitize(`<p>${escapeHtml(preprocessMarkdown(content))}</p>`, MARKDOWN_SANITIZE_CONFIG);
     }
   }, [content, highlighter, theme]);
 

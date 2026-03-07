@@ -14,8 +14,12 @@ export interface Post {
   likeCount?: number;
   isPinned?: boolean;
   pinPriority?: number;
+  isHidden?: boolean;
   allowComment?: boolean;
   password?: string;
+  passwordRequired?: boolean;
+  legacyAuthorName?: string | null;
+  legacyVisitedCount?: number;
   publishedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +40,7 @@ export interface PostListItem {
   commentCount: number;
   isPinned?: boolean;
   pinPriority?: number;
+  isHidden?: boolean;
   publishedAt?: string;
   createdAt?: string;
 }
@@ -61,8 +66,12 @@ export interface UpdatePostPropertiesRequest {
   pinPriority?: number;
   allowComment?: boolean;
   password?: string;
+  isHidden?: boolean;
   slug?: string;
   createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  viewCount?: number;
 }
 
 export interface Category {

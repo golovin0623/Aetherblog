@@ -103,7 +103,11 @@ class PostValidationTest {
             0,
             true,
             null,
+            false,
             "slug",
+            null,
+            null,
+            null,
             null
         );
 
@@ -124,7 +128,11 @@ class PostValidationTest {
             0,
             true,
             null,
+            false,
             "slug",
+            null,
+            null,
+            null,
             null
         );
 

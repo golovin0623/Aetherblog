@@ -115,6 +115,12 @@ public class Post {
     private Boolean isFeatured = false;
 
     /**
+     * 是否隐藏（后台可见，前台不可见）
+     */
+    @Column(name = "is_hidden", nullable = false)
+    private Boolean isHidden = false;
+
+    /**
      * 是否允许评论
      */
     @Column(name = "allow_comment", nullable = false)
@@ -125,6 +131,30 @@ public class Post {
      */
     @Column(length = 100)
     private String password;
+
+    /**
+     * 外部迁移来源幂等键
+     */
+    @Column(name = "source_key", unique = true, length = 128)
+    private String sourceKey;
+
+    /**
+     * 迁移保留的原始作者名
+     */
+    @Column(name = "legacy_author_name", length = 100)
+    private String legacyAuthorName;
+
+    /**
+     * 迁移保留的原始访问量（VanBlog visited）
+     */
+    @Column(name = "legacy_visited_count", nullable = false)
+    private Long legacyVisitedCount = 0L;
+
+    /**
+     * 迁移保留的版权信息
+     */
+    @Column(name = "legacy_copyright", length = 255)
+    private String legacyCopyright;
 
     // ========== V2 新增字段 ==========
 

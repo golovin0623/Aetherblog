@@ -78,4 +78,17 @@ public class CategoryServiceImpl implements CategoryService {
     public void deleteCategory(Long id) {
         categoryRepository.deleteById(id);
     }
+
+    @Override
+    @Transactional
+    public Category getOrCreateCategory(String name) {
+        return categoryRepository.findByName(name)
+                .orElseGet(() -> {
+                    Category category = new Category();
+                    category.setName(name);
+                    category.setSlug(SlugUtils.toSlug(name));
+                    category.setSortOrder(0);
+                    return categoryRepository.save(category);
+                });
+    }
 }

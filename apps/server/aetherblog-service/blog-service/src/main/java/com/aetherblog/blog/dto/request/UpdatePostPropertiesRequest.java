@@ -48,6 +48,11 @@ public record UpdatePostPropertiesRequest(
     String password,
 
     /**
+     * 是否隐藏（后台可见，前台不可见）
+     */
+    Boolean isHidden,
+
+    /**
      * 自定义路径名
      */
     String slug,
@@ -55,5 +60,20 @@ public record UpdatePostPropertiesRequest(
     /**
      * 创建时间 (可修改)
      */
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+
+    /**
+     * 更新时间（迁移场景）
+     */
+    LocalDateTime updatedAt,
+
+    /**
+     * 发布时间（迁移场景）
+     */
+    LocalDateTime publishedAt,
+
+    /**
+     * 浏览量（迁移场景）
+     */
+    Long viewCount
 ) {}

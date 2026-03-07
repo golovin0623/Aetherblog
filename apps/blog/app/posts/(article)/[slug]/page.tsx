@@ -2,6 +2,7 @@ import { PencilLine } from 'lucide-react';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
+import { ProtectedPostContent } from '@/app/components/ProtectedPostContent';
 import BackButton from '@/app/components/BackButton';
 import FadeIn from '@/app/components/FadeIn';
 import CommentSection from '@/app/components/CommentSection';
@@ -25,6 +26,7 @@ interface Post {
   tags: string[];
   viewCount: number;
   publishedAt: string;
+  passwordRequired?: boolean;
 }
 
 interface PageProps {
@@ -58,6 +60,7 @@ async function getPost(slug: string): Promise<Post | null> {
         tags: json.data.tags ? json.data.tags.map((t: any) => t.name) : [],
         viewCount: json.data.viewCount,
         publishedAt: new Date(json.data.publishedAt).toLocaleDateString('zh-CN'),
+        passwordRequired: json.data.passwordRequired,
       };
     }
     return null;
@@ -172,10 +175,14 @@ export default async function PostDetailPage({ params }: PageProps) {
           )}
 
           <FadeIn delay={0.25} duration={0.8}>
-            <MarkdownRenderer
-              content={post.content}
-              className="max-w-none"
-            />
+            {post.passwordRequired ? (
+              <ProtectedPostContent slug={post.slug} title={post.title} />
+            ) : (
+              <MarkdownRenderer
+                content={post.content}
+                className="max-w-none"
+              />
+            )}
           </FadeIn>
 
           <FadeIn delay={0.3}>

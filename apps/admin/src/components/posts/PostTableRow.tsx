@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Edit, Copy, Trash2, Settings, Loader2 } from 'lucide-react';
+import { Edit, Copy, Trash2, Settings, Loader2, EyeOff } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { PostListItem } from '@/services/postService';
@@ -40,6 +40,12 @@ const PostTableRow = memo(({
           <p className="text-[var(--text-primary)] font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
             {post.title}
           </p>
+          {post.isHidden && (
+            <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-amber-400">
+              <EyeOff className="w-3 h-3" />
+              已隐藏
+            </div>
+          )}
         </button>
       </td>
       <td className="px-4 py-3.5 w-20 whitespace-nowrap">

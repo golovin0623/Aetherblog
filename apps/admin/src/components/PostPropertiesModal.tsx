@@ -84,6 +84,7 @@ export function PostPropertiesModal({
         status: post.status,
         isPinned: post.isPinned ?? false,
         pinPriority: post.pinPriority ?? 0,
+        isHidden: post.isHidden ?? false,
         slug: post.slug,
         createdAt: post.createdAt,
         categoryId: effectiveCategoryId ?? undefined,
@@ -606,6 +607,28 @@ export function PostPropertiesModal({
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-white">隐藏文章</p>
+                <p className="text-xs text-gray-400">隐藏后后台可见，前台列表与归档不会展示。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, isHidden: !formData.isHidden })}
+                className={cn(
+                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                  formData.isHidden ? "bg-amber-500/80" : "bg-white/10"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform",
+                    formData.isHidden ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
             </div>
           </div>
 

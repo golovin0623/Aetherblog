@@ -1,8 +1,10 @@
 import type { NextConfig } from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../..'),
   images: {
     remotePatterns: [
       // 可信的头像/CDN 域名

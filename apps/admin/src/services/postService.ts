@@ -17,6 +17,10 @@ export interface Post {
   commentCount: number;
   isPinned?: boolean;
   pinPriority?: number;
+  isHidden?: boolean;
+  passwordRequired?: boolean;
+  legacyAuthorName?: string | null;
+  legacyVisitedCount?: number;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +40,7 @@ export interface PostListItem {
   commentCount: number;
   isPinned?: boolean;
   pinPriority?: number;
+  isHidden?: boolean;
   publishedAt: string | null;
   createdAt: string;
 }
@@ -69,8 +74,41 @@ export interface UpdatePostPropertiesRequest {
   pinPriority?: number;
   allowComment?: boolean;
   password?: string;
+  isHidden?: boolean;
   slug?: string;
   createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string | null;
+  viewCount?: number;
+}
+
+export interface ImportVanBlogSummary {
+  importableArticles: number;
+  importableDrafts: number;
+  createdCategories: number;
+  reusedCategories: number;
+  createdTags: number;
+  reusedTags: number;
+  createdPosts: number;
+  updatedPosts: number;
+  skippedRecords: number;
+  slugConflicts: number;
+  invalidRecords: number;
+}
+
+export interface ImportVanBlogItem {
+  sourceKey: string;
+  type: string;
+  postId?: number;
+  action: string;
+  warnings: string[];
+}
+
+export interface ImportVanBlogResult {
+  summary: ImportVanBlogSummary;
+  warnings: string[];
+  errors: string[];
+  items: ImportVanBlogItem[];
 }
 
 export const postService = {
@@ -85,6 +123,7 @@ export const postService = {
     maxViewCount?: number;
     startDate?: string;
     endDate?: string;
+    hidden?: boolean;
   }): Promise<R<PageResult<PostListItem>>> =>
     apiClient.get<R<PageResult<PostListItem>>>('/v1/admin/posts', { params }),
 
@@ -112,4 +151,12 @@ export const postService = {
   // Get server time for publish scheduling
   getServerTime: (): Promise<R<{ timestamp: string; timezone: string }>> =>
     apiClient.get<R<{ timestamp: string; timezone: string }>>('/v1/admin/system/time'),
+
+  importVanBlog: async (file: File, mode: 'dry-run' | 'execute'): Promise<R<ImportVanBlogResult>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post<R<ImportVanBlogResult>>(`/v1/admin/migrations/vanblog/import?mode=${mode}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
 };
