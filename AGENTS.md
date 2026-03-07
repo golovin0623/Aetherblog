@@ -49,3 +49,20 @@
 ## 安全与配置提示
 - 禁止提交密钥；本地配置写入 `.env`，示例参考 `env.example`。
 - 修改容器编排前建议先验证：`docker compose -f docker-compose.yml config --quiet`。
+
+## 📱 移动端调试与 UI 规范
+
+### 真机调试
+手机与 Mac 在同一 Wi-Fi 下，推荐使用网关模式（`./start.sh --gateway`）：
+- 统一入口：`http://<Mac IP>:7899`（`/` 博客、`/admin/` 管理后台、`/api` 后端）
+- 关键配置：`apps/blog/.env.local` 的 `NEXT_PUBLIC_ADMIN_URL=/admin/`（相对路径，避免 localhost 硬编码）
+- 备选直连：`http://<Mac IP>:3000`（博客）、`http://<Mac IP>:5173`（管理后台，需 `--host 0.0.0.0`）
+- 远程 DevTools：iOS Safari → 开发菜单 / Android Chrome → `chrome://inspect`
+
+### 移动端 UI 开发约定
+- 移动端断点：`useMediaQuery('(max-width: 768px)')` — 项目统一标准
+- 弹出面板样式：Bottom Sheet（`max-h-[66vh]`、`rounded-t-2xl`、遮罩点击关闭）
+- Safe Area：底部操作区使用 `pb-[max(1rem,env(safe-area-inset-bottom))]`
+- 按钮触控区域不小于 44×44px
+- 编辑器默认模式：移动端 `'edit'`，桌面端 `'split'`
+- 修改移动端样式时不得影响桌面端布局
