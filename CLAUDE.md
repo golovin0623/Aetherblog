@@ -391,3 +391,45 @@ UPDATE users SET password_hash = '$2a$10$8.UnVuG9HHgffUDAlk8q2OuVGkqBKkjJRqdE7z6
 | Command | Description |
 |---------|-------------|
 | `/doc` | 执行最严苛的质量控制与文档同步流程，确保代码、文档与设计一致性。 |
+
+## 📱 移动端真机调试
+
+手机和 Mac 在同一 Wi-Fi 下，通过局域网 IP 访问本地开发服务器。
+
+### 推荐方式：网关模式（统一入口）
+
+```bash
+./start.sh --gateway    # 启动所有服务 + Nginx 网关
+```
+
+手机浏览器访问 **`http://<Mac IP>:7899`**：
+- `/` → 博客前台
+- `/admin/` → 管理后台
+- `/api` → 后端 API
+
+> **关键配置：** `apps/blog/.env.local` 中 `NEXT_PUBLIC_ADMIN_URL=/admin/`（相对路径），确保管理后台链接在手机上也能正确跳转。
+
+### 备选方式：直连端口
+
+```bash
+cd apps/blog && npm run dev -- -p 3000           # 博客 http://<Mac IP>:3000
+cd apps/admin && npm run dev -- --host 0.0.0.0   # 管理后台 http://<Mac IP>:5173
+```
+
+> Vite 默认只监听 localhost，必须加 `--host 0.0.0.0` 才能从手机访问。
+
+### 远程调试
+
+- **iOS Safari:** Mac Safari → 开发 → 选择设备 → 选择页面
+- **Android Chrome:** Mac Chrome → `chrome://inspect` → 选择设备
+
+### 移动端编码约束
+
+| 规则 | 说明 |
+|:-----|:-----|
+| 移动端判断 | 统一使用 `useMediaQuery('(max-width: 768px)')` |
+| 底部面板 | 使用 Bottom Sheet 模式：`max-h-[66vh]`，内容溢出滚动，点击遮罩关闭 |
+| Safe Area | 底部区域使用 `pb-[max(1rem,env(safe-area-inset-bottom))]` |
+| 触控目标 | 按钮最小触控区域 44×44px |
+| 编辑器默认模式 | 移动端默认 `'edit'`（源码模式），桌面端默认 `'split'`（分屏模式） |
+| 响应式修改 | 仅调整移动端样式，不影响桌面端布局 |

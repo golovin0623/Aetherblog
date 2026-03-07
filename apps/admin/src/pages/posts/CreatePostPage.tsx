@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Save, Settings, Sparkles, ArrowLeft, Send,
+  Save, Settings, Sparkles, ArrowLeft, ArrowUpFromLine,
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Link2, Image, Quote, Heading1, Heading2, Heading3,
   X, ChevronDown, Plus, Search, Loader2, CheckCircle, AlertCircle,
@@ -84,7 +84,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
 
 type SaveStatusType = 'saving' | 'saved' | 'error' | 'disabled';
 type SaveStatusSource = 'auto' | 'manual' | 'publish' | 'system';
-type MobilePanel = 'none' | 'ai' | 'toc' | 'meta' | 'settings';
+type MobilePanel = 'none' | 'ai' | 'toc' | 'settings';
 
 interface SaveStatusState {
   type: SaveStatusType;
@@ -165,7 +165,9 @@ export function CreatePostPage() {
   const [content, setContent] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches ? 'preview' : 'split'
+  );
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [showToc, setShowToc] = useState(false);
@@ -179,6 +181,7 @@ export function CreatePostPage() {
   const [isPublishing, setIsPublishing] = useState(false);
 
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('none');
+  const [showMobileToolbox, setShowMobileToolbox] = useState(false);
   const [summary, setSummary] = useState('');
   const [_loadingPost, setLoadingPost] = useState(isEditMode);
   const [_postStatus, setPostStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
@@ -195,6 +198,18 @@ export function CreatePostPage() {
   }, [isAutoSaveEnabled]);
   const [autoSaveFlash, setAutoSaveFlash] = useState(false); // 自动保存时的微妙闪烁
   const [publishTime, setPublishTime] = useState<string>('');
+
+  // 移动端使用 Bear 风格 WYSIWYG 模式，固定为 edit 模式，无需模式切换
+  useEffect(() => {
+    if (isMobile && viewMode !== 'edit') {
+      setViewMode('edit');
+    }
+  }, [isMobile, viewMode]);
+
+  // 移动端内容变更处理
+  const handleContentChange = useCallback((val: string) => {
+    setContent(val);
+  }, []);
   // 快速创建分类模态框
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -1331,7 +1346,7 @@ export function CreatePostPage() {
     if (forPublish && !selectedCategory) {
       toast.error('发布文章请先选择分类');
       if (isMobile) {
-        openMobilePanel('meta');
+        openMobilePanel('settings');
       } else {
         // 打开设置面板并显示分类下拉菜单
         setShowSettings(true);
@@ -1718,11 +1733,11 @@ export function CreatePostPage() {
   return (
     <div className={cn(
       "flex flex-col absolute inset-0 h-full bg-[var(--bg-primary)] z-10 transition-all duration-300 overflow-hidden",
-      isMobile && "pb-16"
+      isMobile && "pb-0"
     )}>
       {/* 顶部头部区域 - 带平滑悬浮折叠动画 */}
       <AnimatePresence initial={false}>
-        {!isFullscreen && (
+        {(!isFullscreen || isMobile) && (
           <motion.div
             key="editor-header"
             initial={{ height: 0, opacity: 0, y: -20 }}
@@ -1752,6 +1767,21 @@ export function CreatePostPage() {
                     className="w-full bg-transparent focus:bg-[var(--bg-secondary)] hover:bg-[var(--bg-secondary)]/50 px-3 py-1.5 rounded-lg text-lg md:text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none truncate transition-colors border border-transparent focus:border-[var(--border-subtle)]"
                   />
                 </div>
+
+                {/* 移动端发布按钮 - Apple 风格 */}
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMobilePanel();
+                      void handlePublish();
+                    }}
+                    disabled={isPublishing}
+                    className="flex-shrink-0 w-9 h-9 rounded-full bg-[#007AFF] text-white disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center shadow-[0_2px_8px_rgba(0,122,255,0.3)]"
+                  >
+                    {isPublishing ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : <ArrowUpFromLine className="w-[18px] h-[18px]" />}
+                  </button>
+                )}
 
                 {/* 元数据：分类和标签 (仅 PC 端) */}
                 <div className="hidden md:flex items-center gap-3 flex-shrink-0">
@@ -1937,7 +1967,7 @@ export function CreatePostPage() {
                   disabled={isPublishing}
                   className="flex h-8 items-center gap-1.5 px-4 rounded-lg bg-primary text-white hover:bg-primary/90 text-sm font-medium shadow-lg shadow-primary/20"
                 >
-                  {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} 发布
+                  {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowUpFromLine className="w-3.5 h-3.5" />} 发布
                 </button>
               </div>
 
@@ -2047,7 +2077,11 @@ export function CreatePostPage() {
           <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
             <ToolbarButton
               onClick={() => {
-                if (zoomTarget === 'editor') {
+                if (isMobile) {
+                  // 移动端 Bear 模式：统一调整
+                  setEditorFontSize(s => Math.max(12, s - 1));
+                  setPreviewFontSize(s => Math.max(12, s - 1));
+                } else if (zoomTarget === 'editor') {
                   setEditorFontSize(s => Math.max(12, s - 1));
                 } else if (zoomTarget === 'preview') {
                   setPreviewFontSize(s => Math.max(12, s - 1));
@@ -2056,45 +2090,54 @@ export function CreatePostPage() {
                   setPreviewFontSize(s => Math.max(12, s - 1));
                 }
               }}
-              tooltip={`缩小${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
+              tooltip="缩小字号"
             >
               <ZoomOut className="w-4 h-4" />
             </ToolbarButton>
 
-            {/* Font Size Display with Domain Toggle */}
-            <button
-              onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
-              className={cn(
-                "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
-                "hover:bg-[var(--bg-card-hover)]",
-                zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
-                zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
-                zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
-              )}
-              title={`点击切换控制域 (当前: ${zoomTarget === 'both' ? '全部' : zoomTarget === 'editor' ? '编辑器' : '预览'})`}
-            >
-              {zoomTarget === 'both' ? (
-                <>
-                  <span className="text-blue-400">{editorFontSize}</span>
-                  <span className="text-gray-500 mx-0.5">||</span>
-                  <span className="text-emerald-400">{previewFontSize}</span>
-                </>
-              ) : zoomTarget === 'editor' ? (
-                <>
-                  <FileCode2 className="w-3 h-3" />
-                  <span>{editorFontSize}px</span>
-                </>
-              ) : (
-                <>
-                  <Eye className="w-3 h-3" />
-                  <span>{previewFontSize}px</span>
-                </>
-              )}
-            </button>
+            {/* Font Size Display — 移动端简化，桌面端带域切换 */}
+            {isMobile ? (
+              <span className="flex items-center px-1.5 py-0.5 rounded text-xs text-[var(--text-muted)] select-none min-w-[36px] justify-center">
+                {editorFontSize}px
+              </span>
+            ) : (
+              <button
+                onClick={() => setZoomTarget(t => t === 'both' ? 'editor' : t === 'editor' ? 'preview' : 'both')}
+                className={cn(
+                  "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
+                  "hover:bg-[var(--bg-card-hover)]",
+                  zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
+                  zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
+                  zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
+                )}
+                title={`点击切换控制域 (当前: ${zoomTarget === 'both' ? '全部' : zoomTarget === 'editor' ? '编辑器' : '预览'})`}
+              >
+                {zoomTarget === 'both' ? (
+                  <>
+                    <span className="text-blue-400">{editorFontSize}</span>
+                    <span className="text-gray-500 mx-0.5">||</span>
+                    <span className="text-emerald-400">{previewFontSize}</span>
+                  </>
+                ) : zoomTarget === 'editor' ? (
+                  <>
+                    <FileCode2 className="w-3 h-3" />
+                    <span>{editorFontSize}px</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3 h-3" />
+                    <span>{previewFontSize}px</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <ToolbarButton
               onClick={() => {
-                if (zoomTarget === 'editor') {
+                if (isMobile) {
+                  setEditorFontSize(s => Math.min(24, s + 1));
+                  setPreviewFontSize(s => Math.min(24, s + 1));
+                } else if (zoomTarget === 'editor') {
                   setEditorFontSize(s => Math.min(24, s + 1));
                 } else if (zoomTarget === 'preview') {
                   setPreviewFontSize(s => Math.min(24, s + 1));
@@ -2103,29 +2146,33 @@ export function CreatePostPage() {
                   setPreviewFontSize(s => Math.min(24, s + 1));
                 }
               }}
-              tooltip={`放大${zoomTarget === 'editor' ? '编辑器' : zoomTarget === 'preview' ? '预览' : ''}字号`}
+              tooltip="放大字号"
             >
               <ZoomIn className="w-4 h-4" />
             </ToolbarButton>
           </div>
 
-          {/* View Mode Toggle */}
+          {/* View Mode Toggle — 移动端使用 Bear 模式，不需要切换 */}
           <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
-            <ToolbarButton
-              onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
-              tooltip="源码模式"
-              isActive={viewMode === 'edit'}
-            >
-              <FileCode2 className="w-4 h-4" />
-            </ToolbarButton>
+            {!isMobile && (
+              <>
+                <ToolbarButton
+                  onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
+                  tooltip="源码模式"
+                  isActive={viewMode === 'edit'}
+                >
+                  <FileCode2 className="w-4 h-4" />
+                </ToolbarButton>
 
-            <ToolbarButton
-              onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
-              tooltip="阅读模式"
-              isActive={viewMode === 'preview'}
-            >
-              <Eye className="w-4 h-4" />
-            </ToolbarButton>
+                <ToolbarButton
+                  onClick={() => setViewMode(viewMode === 'preview' ? 'split' : 'preview')}
+                  tooltip="阅读模式"
+                  isActive={viewMode === 'preview'}
+                >
+                  <Eye className="w-4 h-4" />
+                </ToolbarButton>
+              </>
+            )}
 
             <ToolbarButton
               onClick={() => setIsFullscreen(!isFullscreen)}
@@ -2195,10 +2242,13 @@ export function CreatePostPage() {
         {/* Editor Container */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Editor */}
-          <div ref={editorContainerRef} className="flex-1 overflow-hidden min-h-0 relative">
+          <div
+            ref={editorContainerRef}
+            className="flex-1 overflow-hidden min-h-0 relative"
+          >
             <EditorWithPreview
               value={content}
-              onChange={setContent}
+              onChange={handleContentChange}
               className="h-full"
               viewMode={viewMode}
               onViewModeChange={setViewMode}
@@ -2214,6 +2264,7 @@ export function CreatePostPage() {
               onPaste={handlePaste}
               isDragging={isDragging}
               theme={resolvedTheme}
+              bearMode={isMobile}
             />
 
             {!isMobile && (
@@ -2798,22 +2849,31 @@ export function CreatePostPage() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 260 }}
-              className="fixed inset-0 z-[121] bg-[var(--bg-primary)] flex flex-col md:hidden"
+              className="fixed inset-x-0 bottom-0 z-[121] bg-[var(--bg-primary)] flex flex-col md:hidden rounded-t-2xl max-h-[66vh] shadow-[0_-4px_24px_rgba(0,0,0,0.15)]"
             >
-              <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3 bg-[var(--bg-secondary)]">
+              {/* 顶部拖拽指示条 */}
+              <div className="flex justify-center pt-2 pb-1">
+                <div className="w-8 h-1 rounded-full bg-[var(--text-muted)]/30" />
+              </div>
+              <div className={cn(
+                'flex items-center border-b border-[var(--border-subtle)] px-4 py-2 bg-[var(--bg-secondary)]',
+                mobilePanel === 'toc' ? 'justify-center' : 'justify-between'
+              )}>
                 <div className="text-sm font-semibold text-[var(--text-primary)]">
-                  {mobilePanel === 'toc' ? '目录' : mobilePanel === 'meta' ? '文章属性' : '文章设置'}
+                  {mobilePanel === 'toc' ? '目录' : '文章设置'}
                 </div>
-                <button
-                  type="button"
-                  onClick={closeMobilePanel}
-                  className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                {mobilePanel !== 'toc' && (
+                  <button
+                    type="button"
+                    onClick={closeMobilePanel}
+                    className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
                 {mobilePanel === 'toc' && (
                   <div className="space-y-2">
                     {tocItems.length === 0 ? (
@@ -2841,8 +2901,9 @@ export function CreatePostPage() {
                   </div>
                 )}
 
-                {mobilePanel === 'meta' && (
+                {mobilePanel === 'settings' && (
                   <div className="space-y-5">
+                    {/* 分类 */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <label className="text-sm font-medium text-[var(--text-secondary)]">分类</label>
@@ -2865,25 +2926,27 @@ export function CreatePostPage() {
                           className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] focus:outline-none"
                         />
                       </div>
-                      <div className="max-h-52 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
+                      <div className="max-h-40 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
                         {filteredCategories.map((cat) => (
                           <button
                             key={cat.id}
                             type="button"
                             onClick={() => setSelectedCategory(cat)}
                             className={cn(
-                              'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                              'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors flex items-center justify-between',
                               selectedCategory?.id === cat.id
-                                ? 'bg-primary/15 text-primary'
+                                ? 'bg-primary/15 text-primary font-medium border border-primary/30'
                                 : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                             )}
                           >
                             {cat.name}
+                            {selectedCategory?.id === cat.id && <CheckCircle className="w-4 h-4 text-primary flex-shrink-0" />}
                           </button>
                         ))}
                       </div>
                     </div>
 
+                    {/* 标签 */}
                     <div className="space-y-3">
                       <label className="text-sm font-medium text-[var(--text-secondary)]">标签</label>
                       <div className="flex flex-wrap gap-2">
@@ -2913,7 +2976,7 @@ export function CreatePostPage() {
                           添加
                         </button>
                       </div>
-                      <div className="max-h-44 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
+                      <div className="max-h-36 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
                         {filteredTags.slice(0, 60).map((tag) => (
                           <button
                             key={tag.id}
@@ -2926,11 +2989,10 @@ export function CreatePostPage() {
                         ))}
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {mobilePanel === 'settings' && (
-                  <div className="space-y-5">
+                    <div className="h-px bg-[var(--border-subtle)]" />
+
+                    {/* 发布时间 */}
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-[var(--text-secondary)]">发布时间</label>
                       <input
@@ -2954,7 +3016,7 @@ export function CreatePostPage() {
                         </button>
                       </div>
                       <textarea
-                        rows={6}
+                        rows={4}
                         value={summary}
                         onChange={(e) => setSummary(e.target.value)}
                         placeholder="输入文章摘要，或使用 AI 生成..."
@@ -2974,16 +3036,8 @@ export function CreatePostPage() {
                 )}
               </div>
 
-              <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                {mobilePanel === 'toc' ? (
-                  <button
-                    type="button"
-                    onClick={closeMobilePanel}
-                    className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] py-2.5 text-sm font-medium text-[var(--text-primary)]"
-                  >
-                    关闭目录
-                  </button>
-                ) : (
+              {mobilePanel !== 'toc' && (
+                <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
@@ -3002,74 +3056,100 @@ export function CreatePostPage() {
                       完成
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </motion.div>
           </>
         )}
       </AnimatePresence>
 
+      {/* 移动端浮动工具箱按钮 */}
       {isMobile && (
-        <div className="fixed inset-x-0 bottom-0 z-[110] border-t border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-xl px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden">
-          <div className="grid grid-cols-5 gap-1">
-            <button
-              type="button"
-              onClick={() => openMobilePanel('ai')}
-              className={cn(
-                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
-                mobilePanel === 'ai' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
-              )}
-            >
-              <Sparkles className="w-4 h-4" />
-              AI
-            </button>
-            <button
-              type="button"
-              onClick={() => openMobilePanel('toc')}
-              className={cn(
-                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
-                mobilePanel === 'toc' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
-              )}
-            >
-              <ListTree className="w-4 h-4" />
-              目录
-            </button>
-            <button
-              type="button"
-              onClick={() => openMobilePanel('meta')}
-              className={cn(
-                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
-                mobilePanel === 'meta' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
-              )}
-            >
-              <CheckSquare className="w-4 h-4" />
-              属性
-            </button>
-            <button
-              type="button"
-              onClick={() => openMobilePanel('settings')}
-              className={cn(
-                'flex flex-col items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] transition-colors',
-                mobilePanel === 'settings' ? 'bg-primary/12 text-primary' : 'text-[var(--text-secondary)]'
-              )}
-            >
-              <Settings className="w-4 h-4" />
-              设置
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                closeMobilePanel();
-                void handlePublish();
-              }}
-              disabled={isPublishing}
-              className="flex flex-col items-center justify-center gap-1 rounded-lg bg-primary py-1.5 text-[11px] text-white disabled:opacity-60"
-            >
-              {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              发布
-            </button>
-          </div>
-        </div>
+        <>
+          {/* 工具箱弹出菜单 */}
+          <AnimatePresence>
+            {showMobileToolbox && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowMobileToolbox(false)}
+                  className="fixed inset-0 z-[108] md:hidden"
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                  transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+                  className="fixed bottom-20 right-4 z-[109] bg-[var(--bg-popover)]/95 backdrop-blur-xl border border-[var(--border-subtle)] rounded-[14px] shadow-2xl p-1.5 md:hidden"
+                  style={{ paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))' }}
+                >
+                  <div className="flex flex-col gap-0.5 min-w-[160px]">
+                    <button
+                      type="button"
+                      onClick={() => { setShowMobileToolbox(false); openMobilePanel('ai'); }}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] transition-colors',
+                        mobilePanel === 'ai' ? 'bg-[#007AFF]/12 text-[#007AFF]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                      )}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      AI 助手
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowMobileToolbox(false); openMobilePanel('toc'); }}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] transition-colors',
+                        mobilePanel === 'toc' ? 'bg-[#007AFF]/12 text-[#007AFF]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                      )}
+                    >
+                      <ListTree className="w-4 h-4" />
+                      目录
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowMobileToolbox(false); openMobilePanel('settings'); }}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] transition-colors',
+                        mobilePanel === 'settings' ? 'bg-[#007AFF]/12 text-[#007AFF]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                      )}
+                    >
+                      <Settings className="w-4 h-4" />
+                      文章设置
+                    </button>
+                    <div className="h-px bg-[var(--border-subtle)] mx-1 my-0.5" />
+                    <button
+                      type="button"
+                      onClick={() => { setShowMobileToolbox(false); void handleSave(); }}
+                      disabled={isSaving}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[15px] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50"
+                    >
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      保存草稿
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
+          {/* 浮动工具箱按钮 (FAB) - Apple Blue + 毛玑璃 */}
+          <button
+            type="button"
+            onClick={() => setShowMobileToolbox(prev => !prev)}
+            className={cn(
+              'fixed bottom-6 right-4 z-[110] w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 md:hidden backdrop-blur-xl',
+              showMobileToolbox
+                ? 'bg-[#636366] text-white rotate-45 shadow-lg'
+                : 'bg-[#007AFF]/90 text-white shadow-[0_4px_16px_rgba(0,122,255,0.35)]'
+            )}
+            style={{ marginBottom: 'max(0px, env(safe-area-inset-bottom))' }}
+          >
+            <Plus className="w-5 h-5 stroke-[2.5]" />
+          </button>
+        </>
       )}
 
 

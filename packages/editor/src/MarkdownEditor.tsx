@@ -2,8 +2,11 @@ import { useCallback, useMemo } from 'react';
 import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
+import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
+import { createBearDecorations } from './bearDecorations';
 
 export interface MarkdownEditorProps {
   value: string;
@@ -35,6 +38,8 @@ export interface MarkdownEditorProps {
   theme?: 'light' | 'dark';
   /** 额外的 CodeMirror Extensions */
   additionalExtensions?: Extension[];
+  /** 启用 Bear 风格 WYSIWYG 模式（隐藏非活跃行的 Markdown 标记） */
+  bearMode?: boolean;
 }
 
 export function MarkdownEditor({
@@ -57,6 +62,7 @@ export function MarkdownEditor({
   isDragging = false,
   theme = 'dark',
   additionalExtensions = [],
+  bearMode = false,
 }: MarkdownEditorProps) {
   // CodeMirror 组件的内部引用
   const cmRef = useCallback((ref: ReactCodeMirrorRef | null) => {
@@ -72,10 +78,77 @@ export function MarkdownEditor({
   );
 
   const extensions = useMemo(
-    () => [
+    () => {
+      const monoFont = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+      
+      // Markdown 文档结构高亮（Bear / Typora 风格的极简优雅设计）
+      const markdownHighlightStyle = HighlightStyle.define([
+        // 标题 - 摒弃彩色，使用不同字号 + 极度加粗 + 主文本色，突出层级
+        { tag: tags.heading1, color: theme === 'light' ? '#0f172a' : '#f8fafc', fontWeight: '800', fontSize: '1.6em' },
+        { tag: tags.heading2, color: theme === 'light' ? '#0f172a' : '#f8fafc', fontWeight: '700', fontSize: '1.4em' },
+        { tag: tags.heading3, color: theme === 'light' ? '#1e293b' : '#f1f5f9', fontWeight: '600', fontSize: '1.2em' },
+        { tag: tags.heading4, color: theme === 'light' ? '#1e293b' : '#f1f5f9', fontWeight: '600', fontSize: '1.1em' },
+        { tag: tags.heading5, color: theme === 'light' ? '#334155' : '#e2e8f0', fontWeight: '600' },
+        { tag: tags.heading6, color: theme === 'light' ? '#475569' : '#cbd5e1', fontWeight: '600' },
+        
+        // 强调
+        { tag: tags.strong, fontWeight: '700', color: theme === 'light' ? '#0f172a' : '#f8fafc' },
+        { tag: tags.emphasis, fontStyle: 'italic', color: theme === 'light' ? '#334155' : '#cbd5e1' },
+        { tag: tags.strikethrough, textDecoration: 'line-through', color: theme === 'light' ? '#94a3b8' : '#64748b' },
+        
+        // 链接 - 柔和的 Apple Blue
+        { tag: tags.link, color: theme === 'light' ? '#007AFF' : '#0A84FF', textDecoration: 'none' },
+        { tag: tags.url, color: theme === 'light' ? '#94a3b8' : '#64748b', fontFamily: monoFont },
+        
+        // 行内代码 - 专属等宽字体，去掉背景色避免在代码块内每行换行产生破坏性盒子
+        { tag: tags.monospace, fontFamily: monoFont, color: theme === 'light' ? '#ea580c' : '#fb923c' },
+        
+        // 【核心优化】Markdown 标记符号（#, *, >, -, ` 等）极度弱化，让位于正文
+        { tag: tags.processingInstruction, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // ``` 代码块标记
+        { tag: tags.contentSeparator, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // #, *, -, > 等符号
+        { tag: tags.meta, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // [ ] 等
+        { tag: tags.angleBracket, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // < >
+        
+        // 引用 - 柔和色彩 + 斜体
+        { tag: tags.quote, color: theme === 'light' ? '#64748b' : '#94a3b8', fontStyle: 'italic' },
+        
+        // 列表标记 - 稍微弱化
+        { tag: tags.list, color: theme === 'light' ? '#94a3b8' : '#64748b' },
+        
+        // HTML 标签 - 略微等宽
+        { tag: tags.tagName, color: theme === 'light' ? '#db2777' : '#f07178', fontFamily: monoFont },
+        { tag: tags.attributeName, color: theme === 'light' ? '#d97706' : '#ffcb6b', fontFamily: monoFont },
+        { tag: tags.attributeValue, color: theme === 'light' ? '#16a34a' : '#c3e88d', fontFamily: monoFont },
+        
+        // 代码块内的语法高亮 - 去除冗余的 fontFamily，因为 .cm-content .ͼc 已全局设置
+        { tag: tags.keyword, color: theme === 'light' ? '#7c3aed' : '#c792ea' },
+        { tag: tags.string, color: theme === 'light' ? '#16a34a' : '#c3e88d' },
+        { tag: tags.number, color: theme === 'light' ? '#ea580c' : '#f78c6c' },
+        { tag: tags.comment, color: theme === 'light' ? '#94a3b8' : '#64748b', fontStyle: 'italic' },
+        { tag: tags.variableName, color: theme === 'light' ? '#0284c7' : '#82aaff' },
+        { tag: tags.definition(tags.variableName), color: theme === 'light' ? '#0284c7' : '#82aaff' },
+        { tag: tags.propertyName, color: theme === 'light' ? '#db2777' : '#f07178' },
+        { tag: tags.typeName, color: theme === 'light' ? '#d97706' : '#ffcb6b' },
+        { tag: tags.operator, color: theme === 'light' ? '#0ea5e9' : '#89ddff' },
+        { tag: tags.punctuation, color: theme === 'light' ? '#94a3b8' : '#64748b' },
+        { tag: tags.function(tags.variableName), color: theme === 'light' ? '#2563eb' : '#82aaff' },
+        { tag: tags.bool, color: theme === 'light' ? '#dc2626' : '#ff5370' },
+        { tag: tags.null, color: theme === 'light' ? '#dc2626' : '#ff5370' },
+        { tag: tags.className, color: theme === 'light' ? '#d97706' : '#ffcb6b' },
+        { tag: tags.labelName, color: theme === 'light' ? '#ea580c' : '#f78c6c' },
+        { tag: tags.self, color: theme === 'light' ? '#db2777' : '#f07178' },
+        { tag: tags.atom, color: theme === 'light' ? '#ea580c' : '#f78c6c' },
+        { tag: tags.invalid, color: theme === 'light' ? '#dc2626' : '#ff5370' },
+      ]);
+
+      return [
+      // Markdown 语法高亮（必须在最前面以获得最高优先级）
+      syntaxHighlighting(markdownHighlightStyle),
       // Markdown 代码块语法高亮
       markdown({ codeLanguages: languages }),
       EditorView.lineWrapping,
+      // Bear 风格 WYSIWYG 装饰器（隐藏标记、代码块背景等）
+      ...(bearMode ? createBearDecorations(theme) : []),
       // 选区在失焦（例如 AI 面板打开）时也保持可见，避免默认样式降级过深
       EditorView.theme({
         '&.cm-editor': {
@@ -95,9 +168,11 @@ export function MarkdownEditor({
       EditorView.theme({
         '&': {
           fontSize: `${fontSize}px`,
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+          // 极简应用的主文本字体应该是无衬线字体，而非等宽字体
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
           color: theme === 'light' ? '#334155' : '#e2e8f0',
           backgroundColor: theme === 'light' ? '#ffffff' : 'transparent',
+          lineHeight: '1.7', // 提升行高，更适合阅读
         },
         '&.cm-editor': {
           height: '100%',
@@ -115,8 +190,13 @@ export function MarkdownEditor({
         // 基线位于文本起始位置（第一个字符的左边缘）
         '.cm-line': {
           padding: '0 4px',
-          borderLeft: '1px solid rgba(139, 92, 246, 0.3)',
-          marginLeft: '-1px',
+          borderLeft: '2px solid transparent', // 用于保持对齐，替换原本的实线
+          marginLeft: '-2px',
+          marginBottom: '0.25em', // 段落间距感
+        },
+        // 代码块整体基础字体
+        '.cm-content .ͼc': { // 代码块内容默认使用等宽字体
+          fontFamily: monoFont,
         },
         '.cm-gutters': {
           backgroundColor: theme === 'light' ? '#f8fafc' : 'rgba(15, 15, 17, 0.8)',
@@ -158,40 +238,11 @@ export function MarkdownEditor({
         '.ͼc': { // 代码块内容
           color: theme === 'light' ? '#475569' : '#e2e8f0',
         },
-        // 代码块的语法高亮颜色（明亮模式使用不同颜色）
-        '.tok-keyword': { color: theme === 'light' ? '#7c3aed' : '#c792ea' }, // violet-600 对比紫色 (purple)
-        '.tok-string': { color: theme === 'light' ? '#16a34a' : '#c3e88d' }, // green-600 对比浅绿色 (light green)
-        '.tok-number': { color: theme === 'light' ? '#ea580c' : '#f78c6c' }, // orange-600 对比橙色 (orange)
-        '.tok-comment': { color: theme === 'light' ? '#64748b' : '#546e7a', fontStyle: 'italic' }, // slate-500 对比蓝灰色 (blue-grey)
-        '.tok-variableName': { color: theme === 'light' ? '#0284c7' : '#82aaff' }, // sky-600 对比蓝色 (blue)
-        '.tok-definition': { color: theme === 'light' ? '#0284c7' : '#82aaff' },
-        '.tok-propertyName': { color: theme === 'light' ? '#db2777' : '#f07178' }, // pink-600 对比红色 (red)
-        '.tok-typeName': { color: theme === 'light' ? '#d97706' : '#ffcb6b' }, // amber-600 对比黄色 (yellow)
-        '.tok-operator': { color: theme === 'light' ? '#0ea5e9' : '#89ddff' }, // sky-500 对比青色 (cyan)
-        '.tok-punctuation': { color: theme === 'light' ? '#64748b' : '#89ddff' },
-        '.tok-function': { color: theme === 'light' ? '#2563eb' : '#82aaff' }, // blue-600 对比蓝色 (blue)
-        '.tok-bool': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
-        '.tok-null': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
-        '.tok-className': { color: theme === 'light' ? '#d97706' : '#ffcb6b' },
-        '.tok-labelName': { color: theme === 'light' ? '#ea580c' : '#f78c6c' },
-        '.tok-attributeName': { color: theme === 'light' ? '#d97706' : '#ffcb6b' },
-        '.tok-attributeValue': { color: theme === 'light' ? '#16a34a' : '#c3e88d' },
-        '.tok-tagName': { color: theme === 'light' ? '#db2777' : '#f07178' },
-        '.tok-angleBracket': { color: theme === 'light' ? '#64748b' : '#89ddff' },
-        '.tok-self': { color: theme === 'light' ? '#db2777' : '#f07178' },
-        '.tok-atom': { color: theme === 'light' ? '#ea580c' : '#f78c6c' },
-        '.tok-meta': { color: theme === 'light' ? '#d97706' : '#ffcb6b' },
-        '.tok-invalid': { color: theme === 'light' ? '#dc2626' : '#ff5370' },
-        '.tok-link': { color: theme === 'light' ? '#0284c7' : '#82aaff', textDecoration: 'underline' },
-        '.tok-heading': { color: theme === 'light' ? '#7c3aed' : '#c792ea', fontWeight: 'bold' },
-        '.tok-emphasis': { fontStyle: 'italic' },
-        '.tok-strong': { fontWeight: 'bold' },
-        '.tok-strikethrough': { textDecoration: 'line-through' },
       }),
       // 添加外部传入的 Extensions
       ...additionalExtensions,
-    ],
-    [minHeight, showLineNumbers, contentCentered, fontSize, theme, additionalExtensions]
+    ];},
+    [minHeight, showLineNumbers, contentCentered, fontSize, theme, additionalExtensions, bearMode]
   );
 
   return (
