@@ -41,10 +41,11 @@ public class PostController {
             @RequestParam(required = false) Integer maxViewCount,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(required = false) Boolean hidden,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "10") int pageSize) {
         return R.ok(postService.getPostsForAdmin(
-                status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate, pageNum, pageSize));
+                status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate, hidden, pageNum, pageSize));
     }
 
     @Operation(summary = "获取文章详情")

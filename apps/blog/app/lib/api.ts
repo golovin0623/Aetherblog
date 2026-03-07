@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   // 公开文章
   posts: `${API_BASE_URL}/api/v1/public/posts`,
   postBySlug: (slug: string) => `${API_BASE_URL}/api/v1/public/posts/${slug}`,
+  verifyPostPassword: (slug: string) => `${API_BASE_URL}/api/v1/public/posts/${slug}/verify-password`,
   
   // 友情链接
   friendLinks: `${API_BASE_URL}/api/v1/public/friend-links`,

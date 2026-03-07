@@ -36,6 +36,7 @@ export default function PostsPage() {
     maxViewCount: undefined as number | undefined,
     startDate: '',
     endDate: '',
+    hidden: undefined as boolean | undefined,
   });
 
   // 操作确认状态
@@ -364,6 +365,7 @@ export default function PostsPage() {
                 maxViewCount: undefined,
                 startDate: '',
                 endDate: '',
+                hidden: undefined,
               })}
               className="group relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium overflow-hidden"
             >
@@ -420,6 +422,22 @@ export default function PostsPage() {
                     {categories.map(c => (
                       <option key={c.id} value={c.id} className="bg-[var(--bg-card)]">{c.name}</option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">隐藏状态</label>
+                  <select
+                    value={filters.hidden === undefined ? '' : String(filters.hidden)}
+                    onChange={(e) => setFilters(f => ({
+                      ...f,
+                      hidden: e.target.value === '' ? undefined : e.target.value === 'true'
+                    }))}
+                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
+                  >
+                    <option value="" className="bg-[var(--bg-card)]">全部可见性</option>
+                    <option value="false" className="bg-[var(--bg-card)]">仅公开</option>
+                    <option value="true" className="bg-[var(--bg-card)]">仅隐藏</option>
                   </select>
                 </div>
 

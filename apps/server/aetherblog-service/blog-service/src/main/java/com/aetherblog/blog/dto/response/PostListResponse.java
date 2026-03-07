@@ -21,5 +21,9 @@ public class PostListResponse {
     private List<String> tagNames;
     private Long viewCount;
     private Long commentCount;
+    private Boolean isPinned;
+    private Integer pinPriority;
+    private Boolean isHidden;
     private LocalDateTime publishedAt;
+    private LocalDateTime createdAt;
 }

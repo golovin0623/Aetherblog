@@ -1,6 +1,7 @@
 package com.aetherblog.blog.service.impl;
 
 import com.aetherblog.blog.dto.request.CreatePostRequest;
+import com.aetherblog.blog.dto.request.PostPasswordAccessRequest;
 import com.aetherblog.blog.dto.request.UpdatePostPropertiesRequest;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
@@ -31,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -59,7 +61,11 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public List<Post> getAllPublishedPosts() {
-        return postRepository.findAllByStatusOrderByPublishedAtDesc(PostStatus.PUBLISHED);
+        return postRepository.findAllByStatusOrderByPublishedAtDesc(PostStatus.PUBLISHED)
+                .stream()
+                .filter(post -> !Boolean.TRUE.equals(post.getDeleted()))
+                .filter(post -> !Boolean.TRUE.equals(post.getIsHidden()))
+                .toList();
     }
 
     @Override
@@ -78,10 +84,11 @@ public class PostServiceImpl implements PostService {
             Integer maxViewCount,
             LocalDateTime startDate,
             LocalDateTime endDate,
+            Boolean hidden,
             int pageNum, 
             int pageSize) {
         
-        Specification<Post> spec = buildAdminSpecification(status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate);
+        Specification<Post> spec = buildAdminSpecification(status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate, hidden);
         
         PageRequest pageRequest = PageRequest.of(pageNum - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Post> page = postRepository.findAll(spec, pageRequest);
@@ -97,12 +104,15 @@ public class PostServiceImpl implements PostService {
             Integer minViewCount,
             Integer maxViewCount,
             LocalDateTime startDate,
-            LocalDateTime endDate) {
+            LocalDateTime endDate,
+            Boolean hidden) {
         
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             // 1. 状态筛选
+            predicates.add(cb.equal(root.get("deleted"), false));
+
             if (status != null && !status.trim().isEmpty()) {
                 try {
                     predicates.add(cb.equal(root.get("status"), PostStatus.valueOf(status.toUpperCase())));
@@ -145,6 +155,10 @@ public class PostServiceImpl implements PostService {
             }
             if (endDate != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), endDate));
+            }
+
+            if (hidden != null) {
+                predicates.add(cb.equal(root.get("isHidden"), hidden));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -201,6 +215,23 @@ public class PostServiceImpl implements PostService {
             log.error("Error converting post to detail response: {}", e.getMessage(), e);
             throw new BusinessException(500, "文章数据解析异常");
         }
+    }
+
+    @Override
+    public PostDetailResponse getPublicPostBySlug(String slug, String password) {
+        Post post = postRepository.findPublicBySlug(slug)
+                .orElseThrow(() -> new BusinessException(404, "文章不存在"));
+        if (post.getPassword() != null && !post.getPassword().isBlank()) {
+            if (!Objects.equals(post.getPassword(), password)) {
+                PostDetailResponse response = toDetailResponse(post);
+                response.setContent(null);
+                response.setPasswordRequired(true);
+                return response;
+            }
+        }
+        PostDetailResponse response = toDetailResponse(post);
+        response.setPasswordRequired(false);
+        return response;
     }
 
     @Override
@@ -335,6 +366,10 @@ public class PostServiceImpl implements PostService {
             post.setPassword(request.password());
         }
 
+        if (request.isHidden() != null) {
+            post.setIsHidden(request.isHidden());
+        }
+
         // 更新自定义路径名
         if (request.slug() != null && !request.slug().isEmpty()) {
             // 检查slug是否已存在（排除当前文章）
@@ -347,6 +382,18 @@ public class PostServiceImpl implements PostService {
         // 更新创建时间
         if (request.createdAt() != null) {
             post.setCreatedAt(request.createdAt());
+        }
+
+        if (request.updatedAt() != null) {
+            post.setUpdatedAt(request.updatedAt());
+        }
+
+        if (request.publishedAt() != null) {
+            post.setPublishedAt(request.publishedAt());
+        }
+
+        if (request.viewCount() != null) {
+            post.setViewCount(request.viewCount());
         }
 
         return toDetailResponse(postRepository.save(post));
@@ -456,7 +503,11 @@ public class PostServiceImpl implements PostService {
         response.setTagNames(post.getTags().stream().map(Tag::getName).collect(Collectors.toList()));
         response.setViewCount(post.getViewCount());
         response.setCommentCount(post.getCommentCount());
+        response.setIsPinned(post.getIsPinned());
+        response.setPinPriority(post.getPinPriority());
+        response.setIsHidden(post.getIsHidden());
         response.setPublishedAt(post.getPublishedAt());
+        response.setCreatedAt(post.getCreatedAt());
         return response;
     }
 
@@ -472,6 +523,10 @@ public class PostServiceImpl implements PostService {
         response.setViewCount(post.getViewCount());
         response.setCommentCount(post.getCommentCount());
         response.setLikeCount(post.getLikeCount());
+        response.setIsHidden(post.getIsHidden());
+        response.setPasswordRequired(post.getPassword() != null && !post.getPassword().isBlank());
+        response.setLegacyAuthorName(post.getLegacyAuthorName());
+        response.setLegacyVisitedCount(post.getLegacyVisitedCount());
         response.setPublishedAt(post.getPublishedAt());
         response.setCreatedAt(post.getCreatedAt());
         response.setUpdatedAt(post.getUpdatedAt());

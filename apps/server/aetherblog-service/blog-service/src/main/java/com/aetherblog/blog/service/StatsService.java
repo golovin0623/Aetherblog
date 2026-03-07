@@ -551,6 +551,8 @@ public class StatsService {
         
         // 按年月分组统计
         Map<String, Long> monthlyCount = posts.stream()
+                .filter(p -> !Boolean.TRUE.equals(p.getDeleted()))
+                .filter(p -> !Boolean.TRUE.equals(p.getIsHidden()))
                 .filter(p -> p.getPublishedAt() != null)
                 .collect(Collectors.groupingBy(
                         p -> p.getPublishedAt().format(DateTimeFormatter.ofPattern("yyyy-MM")),
