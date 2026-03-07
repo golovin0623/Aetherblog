@@ -1,6 +1,6 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../utils';
-import { ChevronDown } from 'lucide-react';
 
 interface DropdownProps {
   trigger: React.ReactNode;
@@ -11,34 +11,71 @@ interface DropdownProps {
 
 export function Dropdown({ trigger, children, align = 'left', className }: DropdownProps) {
   const [isOpen, setIsOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
 
+  // 计算浮动菜单位置
+  React.useLayoutEffect(() => {
+    if (!isOpen || !triggerRef.current) return;
+
+    const rect = triggerRef.current.getBoundingClientRect();
+    const style: React.CSSProperties = {
+      position: 'fixed',
+      top: rect.bottom + 4,
+      zIndex: 9999,
+    };
+
+    if (align === 'right') {
+      style.right = window.innerWidth - rect.right;
+    } else {
+      style.left = rect.left;
+    }
+
+    setMenuStyle(style);
+  }, [isOpen, align]);
+
+  // 点击外部关闭
   React.useEffect(() => {
+    if (!isOpen) return;
+
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     };
+
+    // 滚动和 resize 时关闭
+    const handleDismiss = () => setIsOpen(false);
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    window.addEventListener('scroll', handleDismiss, true);
+    window.addEventListener('resize', handleDismiss);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleDismiss, true);
+      window.removeEventListener('resize', handleDismiss);
+    };
+  }, [isOpen]);
 
   return (
-    <div ref={dropdownRef} className={cn('relative inline-block', className)}>
+    <div ref={triggerRef} className={cn('relative inline-block', className)}>
       <div onClick={() => setIsOpen(!isOpen)} className="cursor-pointer">
         {trigger}
       </div>
-      {isOpen && (
+      {isOpen && createPortal(
         <div
-          className={cn(
-            'absolute z-50 mt-2 min-w-[200px] py-2',
-            'bg-gray-900 border border-white/10 rounded-lg shadow-xl',
-            'animate-in fade-in zoom-in-95 duration-200',
-            align === 'right' ? 'right-0' : 'left-0'
-          )}
+          ref={menuRef}
+          style={menuStyle}
+          className="animate-in fade-in zoom-in-95 duration-200"
         >
           {children}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

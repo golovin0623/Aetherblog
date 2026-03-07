@@ -4,14 +4,25 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkDirective from 'remark-directive';
+import remarkAlertBlock from '../lib/remarkAlertBlock';
 import rehypeKatex from 'rehype-katex';
 import type { Components } from 'react-markdown';
 
 // 引入 KaTeX CSS (与 MarkdownRenderer 共享)
 import 'katex/dist/katex.min.css';
 
-const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkDirective, remarkAlertBlock];
 const REHYPE_PLUGINS = [rehypeKatex];
+
+// 简化版 Alert 类型配置
+const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  info:    { label: '信息', color: 'text-blue-500',   bg: 'bg-blue-500/10',   border: 'border-blue-500/40' },
+  note:    { label: '注意', color: 'text-slate-500',  bg: 'bg-slate-500/10',  border: 'border-slate-500/40' },
+  warning: { label: '警告', color: 'text-amber-500',  bg: 'bg-amber-500/10',  border: 'border-amber-500/40' },
+  danger:  { label: '危险', color: 'text-red-500',    bg: 'bg-red-500/10',    border: 'border-red-500/40' },
+  tip:     { label: '提示', color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/40' },
+};
 
 interface MiniPreviewProps {
   content: string;
@@ -172,6 +183,21 @@ const components: Components = {
   
   // 水平线
   hr: () => <hr className="my-2 border-t border-white/10" />,
+
+  // 自定义高亮块 (Alert Block)
+  // @ts-expect-error - Custom element not in standard HTML types
+  'alert-block': ({ node, ...props }: any) => {
+    const type = props['data-type'] || 'info';
+    const title = props['data-title'];
+    const cfg = ALERT_CONFIG[type] || ALERT_CONFIG.info;
+    const displayTitle = title || cfg.label;
+    return (
+      <div className={`my-2 px-3 py-2 rounded-md border-l-[3px] ${cfg.bg} ${cfg.border}`}>
+        <div className={`text-xs font-bold mb-0.5 ${cfg.color}`}>{displayTitle}</div>
+        <div className="text-xs opacity-80">{props.children}</div>
+      </div>
+    );
+  },
 };
 
 const MiniMarkdownPreviewBase = ({ content, maxLength = 2000 }: MiniPreviewProps) => {

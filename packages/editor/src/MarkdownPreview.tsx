@@ -80,8 +80,78 @@ const nestedFencesExtension: TokenizerExtension & RendererExtension = {
   }
 };
 
+/**
+ * 自定义高亮块扩展 (Alert Blocks)
+ * 支持格式: :::info{title="xxx"}
+ */
+const alertBlockExtension: TokenizerExtension & RendererExtension = {
+  name: 'alertBlock',
+  level: 'block',
+  start(src: string) {
+    const match = src.match(/^:::\s*(info|note|warning|danger|tip)/m);
+    return match ? match.index : -1;
+  },
+  tokenizer(src: string): Tokens.Generic | undefined {
+    const rule = /^:::\s*(info|note|warning|danger|tip)[ \t]*(?:\{[ \t]*title="([^"]*)"[ \t]*\})?[ \t]*\n([\s\S]*?)\n:::(?:\n|$)/;
+    const match = rule.exec(src);
+    if (match) {
+      const token = {
+        type: 'alertBlock',
+        raw: match[0],
+        alertType: match[1],
+        title: match[2] || '',
+        text: match[3],
+        tokens: []
+      };
+      
+      this.lexer.blockTokens(token.text, token.tokens);
+      return token;
+    }
+  },
+  renderer(token: Tokens.Generic) {
+    const type = token.alertType;
+    let title = token.title;
+    
+    if (!title) {
+      const titles: Record<string, string> = {
+        info: '信息',
+        note: '注意',
+        warning: '警告',
+        danger: '危险',
+        tip: '提示'
+      };
+      title = titles[type] || 'Info';
+    }
+
+    const icons: Record<string, string> = {
+      info: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="alert-icon"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+      note: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="alert-icon"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>',
+      warning: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="alert-icon"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+      danger: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="alert-icon"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>',
+      tip: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="alert-icon"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"></path><path d="M9 18h6"></path><path d="M10 22h4"></path></svg>'
+    };
+    const iconStr = icons[type] || icons.info;
+
+    // Parse inner tokens using the parser's standard rendering
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contentHtml = this.parser.parse(token.tokens as any);
+
+    // Escape any quotes in title avoiding breaking HTML attributes
+    const escapeAttr = (str: string) => str.replace(/"/g, '&quot;');
+
+    return `
+      <div class="alert-block alert-block--${type}" data-title="${escapeAttr(title)}">
+        <div class="alert-block-header">
+          ${iconStr}
+          <span>${title}</span>
+        </div>
+        <div class="alert-block-content">\n${contentHtml}</div>
+      </div>\n`;
+  }
+};
+
 // 配置 marked 使用自定义扩展
-marked.use({ extensions: [nestedFencesExtension] });
+marked.use({ extensions: [nestedFencesExtension, alertBlockExtension] });
 
 
 export interface MarkdownPreviewProps {
@@ -167,9 +237,9 @@ function escapeHtml(value: string): string {
 }
 
 const MARKDOWN_SANITIZE_CONFIG = {
-  USE_PROFILES: { html: true },
+  USE_PROFILES: { html: true, svg: true },
   FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'style'],
-  ADD_ATTR: ['data-source-line', 'data-mermaid-id', 'data-copy-code', 'aria-label'],
+  ADD_ATTR: ['data-source-line', 'data-mermaid-id', 'data-copy-code', 'aria-label', 'data-title'],
 };
 
 const SVG_SANITIZE_CONFIG = {
@@ -589,12 +659,78 @@ export const markdownPreviewStyles = `
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 0.3em;
   }
+  
+  .markdown-preview {
+    /* 深色系暗区自适应 */
+    --alert-info-bg: rgba(59, 130, 246, 0.1);
+    --alert-info-border: #3b82f6;
+    --alert-info-icon: #60a5fa;
+    --alert-info-title: #93c5fd;
+    --alert-info-text: #cbd5e1;
+
+    --alert-note-bg: rgba(100, 116, 139, 0.1);
+    --alert-note-border: #94a3b8;
+    --alert-note-icon: #94a3b8;
+    --alert-note-title: #e2e8f0;
+    --alert-note-text: #cbd5e1;
+
+    --alert-warning-bg: rgba(245, 158, 11, 0.1);
+    --alert-warning-border: #f59e0b;
+    --alert-warning-icon: #fbbf24;
+    --alert-warning-title: #fcd34d;
+    --alert-warning-text: #cbd5e1;
+
+    --alert-danger-bg: rgba(239, 68, 68, 0.1);
+    --alert-danger-border: #ef4444;
+    --alert-danger-icon: #f87171;
+    --alert-danger-title: #fca5a5;
+    --alert-danger-text: #cbd5e1;
+
+    --alert-tip-bg: rgba(34, 197, 94, 0.1);
+    --alert-tip-border: #22c55e;
+    --alert-tip-icon: #4ade80;
+    --alert-tip-title: #86efac;
+    --alert-tip-text: #cbd5e1;
+  }
   .markdown-preview > :first-child {
     margin-top: 0 !important;
   }
   .markdown-preview.light-mode h1 {
     color: #0f172a;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .markdown-preview.light-mode {
+    /* 浅色系自适应 */
+    --alert-info-bg: #eff6ff;
+    --alert-info-border: #3b82f6;
+    --alert-info-icon: #2563eb;
+    --alert-info-title: #1e40af;
+    --alert-info-text: #334155;
+
+    --alert-note-bg: #f8fafc;
+    --alert-note-border: #94a3b8;
+    --alert-note-icon: #64748b;
+    --alert-note-title: #334155;
+    --alert-note-text: #334155;
+
+    --alert-warning-bg: #fffbeb;
+    --alert-warning-border: #f59e0b;
+    --alert-warning-icon: #d97706;
+    --alert-warning-title: #92400e;
+    --alert-warning-text: #334155;
+
+    --alert-danger-bg: #fef2f2;
+    --alert-danger-border: #ef4444;
+    --alert-danger-icon: #dc2626;
+    --alert-danger-title: #991b1b;
+    --alert-danger-text: #334155;
+
+    --alert-tip-bg: #f0fdf4;
+    --alert-tip-border: #22c55e;
+    --alert-tip-icon: #16a34a;
+    --alert-tip-title: #166534;
+    --alert-tip-text: #334155;
   }
   .markdown-preview h2 {
     font-size: 1.5em;
@@ -776,16 +912,78 @@ export const markdownPreviewStyles = `
     padding: 0.5em 1em;
     text-align: left;
   }
-  .markdown-preview.light-mode th, .markdown-preview.light-mode td {
-    border: 1px solid #e2e8f0;
-  }
-  .markdown-preview th {
-    background: rgba(255, 255, 255, 0.05);
-    font-weight: 600;
-  }
   .markdown-preview.light-mode th {
     background: #f8fafc;
   }
+
+  /* 自定义高亮块样式 */
+  .markdown-preview .alert-block {
+    margin: 1.5em 0;
+    padding: 1em 1em 1em 1.25em;
+    border-radius: 6px;
+    border-left: 4px solid var(--alert-border);
+    background-color: var(--alert-bg);
+    color: var(--alert-text);
+  }
+
+  .markdown-preview .alert-block-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-weight: 700;
+    margin-bottom: 0.5em;
+    color: var(--alert-title-color);
+  }
+
+  .markdown-preview .alert-block-header svg {
+    flex-shrink: 0;
+    color: var(--alert-icon-color);
+  }
+
+  .markdown-preview .alert-block-content {
+    font-size: 0.875em;
+    line-height: inherit;
+    opacity: 0.9;
+  }
+  .markdown-preview .alert-block-content > :first-child { margin-top: 0; }
+  .markdown-preview .alert-block-content > :last-child { margin-bottom: 0; }
+
+  .markdown-preview .alert-block--info {
+    --alert-bg: var(--alert-info-bg);
+    --alert-border: var(--alert-info-border);
+    --alert-icon-color: var(--alert-info-icon);
+    --alert-title-color: var(--alert-info-title);
+    --alert-text: var(--alert-info-text);
+  }
+  .markdown-preview .alert-block--note {
+    --alert-bg: var(--alert-note-bg);
+    --alert-border: var(--alert-note-border);
+    --alert-icon-color: var(--alert-note-icon);
+    --alert-title-color: var(--alert-note-title);
+    --alert-text: var(--alert-note-text);
+  }
+  .markdown-preview .alert-block--warning {
+    --alert-bg: var(--alert-warning-bg);
+    --alert-border: var(--alert-warning-border);
+    --alert-icon-color: var(--alert-warning-icon);
+    --alert-title-color: var(--alert-warning-title);
+    --alert-text: var(--alert-warning-text);
+  }
+  .markdown-preview .alert-block--danger {
+    --alert-bg: var(--alert-danger-bg);
+    --alert-border: var(--alert-danger-border);
+    --alert-icon-color: var(--alert-danger-icon);
+    --alert-title-color: var(--alert-danger-title);
+    --alert-text: var(--alert-danger-text);
+  }
+  .markdown-preview .alert-block--tip {
+    --alert-bg: var(--alert-tip-bg);
+    --alert-border: var(--alert-tip-border);
+    --alert-icon-color: var(--alert-tip-icon);
+    --alert-title-color: var(--alert-tip-title);
+    --alert-text: var(--alert-tip-text);
+  }
+
   .markdown-preview img {
     max-width: 100%;
     border-radius: 8px;
