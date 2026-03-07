@@ -6,6 +6,7 @@ import com.aetherblog.blog.service.CommentService;
 import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.domain.R;
 import com.aetherblog.common.core.utils.IpUtils;
+import com.aetherblog.common.security.annotation.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,6 +33,7 @@ public class PublicCommentController {
 
     @Operation(summary = "发表评论")
     @PostMapping("/post/{postId}")
+    @RateLimit(key = "public:comment", count = 3, time = 60, limitType = RateLimit.LimitType.IP)
     public R<Comment> create(
             @PathVariable Long postId,
             @Valid @RequestBody CreateCommentRequest request,

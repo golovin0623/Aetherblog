@@ -3,6 +3,7 @@ package com.aetherblog.blog.controller;
 import com.aetherblog.blog.service.VisitorService;
 import com.aetherblog.common.core.domain.R;
 import com.aetherblog.common.core.utils.IpUtils;
+import com.aetherblog.common.security.annotation.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +30,7 @@ public class VisitorController {
      */
     @Operation(summary = "记录页面访问")
     @PostMapping
+    @RateLimit(key = "public:visit", count = 60, time = 60, limitType = RateLimit.LimitType.IP)
     public R<Void> recordVisit(
             HttpServletRequest request,
             @RequestBody VisitRequest body) {
