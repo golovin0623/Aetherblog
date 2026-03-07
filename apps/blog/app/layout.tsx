@@ -21,6 +21,14 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: settings.siteKeywords?.split(/[,，]/).map(k => k.trim()) || ['blog', 'tech', 'ai'],
     authors: [{ name: settings.authorName || 'Admin' }],
     metadataBase: new URL(settings.siteUrl || 'http://localhost:3000'),
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'default',
+      title: settings.siteTitle || 'AetherBlog',
+    },
+    formatDetection: {
+      telephone: false,
+    },
   };
 }
 
