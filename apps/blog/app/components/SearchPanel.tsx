@@ -279,7 +279,14 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
       />
 
       {/* 搜索面板 */}
-      <div className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-full max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden animate-slideDown">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="search-dialog-title"
+        className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-full max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden animate-slideDown"
+      >
+        <h2 id="search-dialog-title" className="sr-only">搜索面板</h2>
+
         {/* 搜索输入框 */}
         <form onSubmit={(e) => e.preventDefault()} className="relative">
           <div className="flex items-center px-4 py-4 border-b border-[var(--border-subtle)]">
