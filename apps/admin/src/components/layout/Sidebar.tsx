@@ -20,6 +20,7 @@ import {
   Moon,
   Bot,
   PanelLeftClose,
+  DatabaseZap,
 } from 'lucide-react';
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
@@ -41,6 +42,7 @@ const navItems = [
   { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
   { path: '/ai-config', icon: Bot, label: 'AI 配置' },
   { path: '/monitor', icon: Activity, label: '系统监控' },
+  { path: '/settings/migration', icon: DatabaseZap, label: '数据迁移' },
   { path: '/settings', icon: Settings, label: '系统设置' },
 ];
 

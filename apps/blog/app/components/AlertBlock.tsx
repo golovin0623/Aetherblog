@@ -18,6 +18,8 @@ export const AlertBlock: React.FC<AlertBlockProps> = ({ type, title, children })
   const config = TYPE_CONFIG[type] || TYPE_CONFIG.info;
   const Icon = config.icon;
   const displayTitle = title || config.title;
+  const childText = typeof children === 'string' ? children : null;
+  const isPlaceholderOnly = childText !== null && childText.replace(/\u200B/g, '').trim() === '';
 
   return (
     <div 
@@ -39,9 +41,11 @@ export const AlertBlock: React.FC<AlertBlockProps> = ({ type, title, children })
         />
         <span>{displayTitle}</span>
       </div>
-      <div className="alert-content opacity-90 leading-relaxed text-sm [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
-        {children}
-      </div>
+      {!isPlaceholderOnly && (
+        <div className="alert-content opacity-90 leading-relaxed text-sm [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
+          {children}
+        </div>
+      )}
     </div>
   );
 };

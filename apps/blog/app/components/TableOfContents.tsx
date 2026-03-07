@@ -74,9 +74,12 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       }
     });
 
+    const observer = observerRef.current;
+    const visibleHeadings = visibleHeadingsRef.current;
+
     return () => {
-      observerRef.current?.disconnect();
-      visibleHeadingsRef.current.clear();
+      observer?.disconnect();
+      visibleHeadings.clear();
     };
   }, [headings]);
 

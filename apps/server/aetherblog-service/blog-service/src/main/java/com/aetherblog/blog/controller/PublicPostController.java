@@ -1,5 +1,6 @@
 package com.aetherblog.blog.controller;
 
+import com.aetherblog.blog.dto.request.PostPasswordAccessRequest;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.service.PostService;
@@ -32,8 +33,20 @@ public class PublicPostController {
     @Operation(summary = "获取文章详情")
     @GetMapping("/{slug}")
     public R<PostDetailResponse> getBySlug(@PathVariable String slug) {
-        PostDetailResponse post = postService.getPostBySlug(slug);
-        // 增加阅读量
+        PostDetailResponse post = postService.getPublicPostBySlug(slug, null);
+        if (!Boolean.TRUE.equals(post.getPasswordRequired())) {
+            postService.incrementViewCount(post.getId());
+        }
+        return R.ok(post);
+    }
+
+    @Operation(summary = "验证文章密码并返回正文")
+    @PostMapping("/{slug}/verify-password")
+    public R<PostDetailResponse> verifyPassword(@PathVariable String slug, @RequestBody PostPasswordAccessRequest request) {
+        PostDetailResponse post = postService.getPublicPostBySlug(slug, request.password());
+        if (Boolean.TRUE.equals(post.getPasswordRequired())) {
+            return R.fail(403, "密码错误");
+        }
         postService.incrementViewCount(post.getId());
         return R.ok(post);
     }

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { ArrowRight, Sparkles, LayoutGrid } from 'lucide-react';
 import { getRecentPosts, getSiteSettings } from './lib/services';
 import ArticleCard from './components/ArticleCard';
@@ -108,13 +109,13 @@ export default async function HomePage() {
                   <p className="text-sm text-[var(--text-muted)] mt-1">共 {posts.length} 篇文章</p>
                 </div>
               </div>
-              <a
+              <Link
                 href="/posts"
                 className="group flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)] hover:border-primary/50 text-[var(--text-secondary)] hover:text-primary transition-all hover:shadow-lg hover:shadow-primary/10"
               >
                 <span className="text-sm font-medium">查看全部</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -139,4 +140,3 @@ export default async function HomePage() {
     </div>
   );
 }
-

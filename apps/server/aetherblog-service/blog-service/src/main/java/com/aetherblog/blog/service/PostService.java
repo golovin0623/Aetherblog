@@ -43,6 +43,7 @@ public interface PostService {
             Integer maxViewCount,
             LocalDateTime startDate,
             LocalDateTime endDate,
+            Boolean hidden,
             int pageNum, 
             int pageSize);
 
@@ -53,6 +54,8 @@ public interface PostService {
     PostDetailResponse getPostById(Long id);
 
     PostDetailResponse getPostBySlug(String slug);
+
+    PostDetailResponse getPublicPostBySlug(String slug, String password);
 
     PostDetailResponse createPost(CreatePostRequest request);
 

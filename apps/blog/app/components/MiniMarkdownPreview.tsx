@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +15,8 @@ import 'katex/dist/katex.min.css';
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkDirective, remarkAlertBlock];
 const REHYPE_PLUGINS = [rehypeKatex];
+const GENERIC_IMAGE_ALT_PATTERN = /^(image|img|screenshot|snipaste|picture|photo)[-_ ]?\d*\\.(png|jpe?g|gif|webp|svg)$/i;
+const FILE_NAME_ALT_PATTERN = /^[^\\/\n]+\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 
 // 简化版 Alert 类型配置
 const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -27,6 +30,23 @@ const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; b
 interface MiniPreviewProps {
   content: string;
   maxLength?: number;
+}
+
+function normalizeImageCaption(alt?: string): string | undefined {
+  if (!alt) {
+    return undefined;
+  }
+
+  const trimmed = alt.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (GENERIC_IMAGE_ALT_PATTERN.test(trimmed) || FILE_NAME_ALT_PATTERN.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
 }
 
 // 递归提取 React 子节点的文本内容
@@ -109,24 +129,28 @@ const components: Components = {
   
   // 图片 - 实际渲染图片 (修复移动端等比例缩放)
   img: ({ src, alt }) => {
-    if (!src) {
+    if (typeof src !== 'string' || !src) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-gray-500">
           🖼️ <span className="text-primary/60">{alt || '图片'}</span>
         </span>
       );
     }
+    const caption = normalizeImageCaption(alt || undefined);
     return (
       <span className="block my-2 w-full">
-        <img 
+        <Image
           src={src} 
-          alt={alt || ''} 
+          alt={caption || alt || ''} 
+          unoptimized
+          width={1200}
+          height={800}
           className="rounded-lg border border-white/10 block"
           loading="lazy"
           style={{ maxWidth: '100%', width: 'auto', height: 'auto', maxHeight: '300px', objectFit: 'contain' }}
         />
-        {alt && (
-          <span className="block text-center text-xs text-gray-500 mt-1" style={{ wordBreak: 'break-word' }}>{alt}</span>
+        {caption && (
+          <span className="block text-center text-xs text-gray-500 mt-1" style={{ wordBreak: 'break-word' }}>{caption}</span>
         )}
       </span>
     );
