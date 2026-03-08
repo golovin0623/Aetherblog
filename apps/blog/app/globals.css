@@ -600,6 +600,13 @@ body {
   color: var(--text-primary);
 }
 
+.markdown-body .code-block-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
 .markdown-body .code-block-toggle svg {
   transition: transform 0.3s ease;
 }

@@ -432,6 +432,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const copyStateTimerRef = useRef<number | null>(null);
+  const contentId = React.useId();
 
   // 计算代码行数
   const lineCount = code.split('\n').length;
@@ -564,7 +565,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
       </div>
 
       {/* 代码内容 */}
-      <div className="code-block-content overflow-x-auto">
+      <div id={contentId} className="code-block-content overflow-x-auto">
         {highlightedHtml ? (
           <div
             className="shiki-wrapper"
@@ -584,8 +585,11 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
       {/* 折叠/展开按钮 */}
       {shouldShowToggle && (
         <button
+          type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="code-block-toggle"
+          aria-expanded={!isCollapsed}
+          aria-controls={contentId}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="18 15 12 9 6 15" />
