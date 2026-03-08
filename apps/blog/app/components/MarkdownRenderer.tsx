@@ -565,7 +565,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
       </div>
 
       {/* 代码内容 */}
-      <div id={contentId} className="code-block-content overflow-x-auto">
+      <div id={contentId} className="code-block-content overflow-x-auto" aria-hidden={isCollapsed}>
         {highlightedHtml ? (
           <div
             className="shiki-wrapper"
