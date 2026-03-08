@@ -591,7 +591,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
           aria-expanded={!isCollapsed}
           aria-controls={contentId}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <polyline points="18 15 12 9 6 15" />
           </svg>
           {isCollapsed ? `展开全部 (${lineCount} 行)` : '收起代码'}
