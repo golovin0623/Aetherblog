@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings, getSiteStats } from '../lib/services';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
+import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
 // 社交链接提取工具
 const extractSocialLinks = (settings: any) => {
@@ -157,59 +158,13 @@ interface AuthorProfileCardProps {
 
 export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className, profile }) => {
   const [mounted, setMounted] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
-  const spotlightRef = React.useRef<HTMLDivElement>(null);
-  const frameRef = React.useRef<number>(0);
-  const rectRef = React.useRef<{ left: number; top: number } | null>(null);
+  const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
+    = useSpotlightEffect({ radius: 600 });
   const { isDark } = useTheme();
 
   React.useEffect(() => {
     setMounted(true);
-    return () => {
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
   }, []);
-
-  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    setIsHovering(true);
-    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter.
-    // Impact: Eliminates synchronous layout reads on every mouse move, preventing layout thrashing.
-    const rect = e.currentTarget.getBoundingClientRect();
-    rectRef.current = {
-      left: rect.left + window.scrollX,
-      top: rect.top + window.scrollY,
-    };
-  }, []);
-
-  const handleMouseLeave = React.useCallback(() => {
-    setIsHovering(false);
-    rectRef.current = null;
-  }, []);
-
-  // 监听鼠标移动，使用 useRef 和 requestAnimationFrame 优化重排性能
-  const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current || !rectRef.current) return;
-
-    // Calculate position relative to the cached element rect
-    const x = e.pageX - rectRef.current.left;
-    const y = e.pageY - rectRef.current.top;
-
-    if (frameRef.current) {
-      cancelAnimationFrame(frameRef.current);
-    }
-
-    frameRef.current = requestAnimationFrame(() => {
-      if (!spotlightRef.current) {
-        frameRef.current = 0;
-        return;
-      }
-
-      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
-      frameRef.current = 0;
-    });
-  };
 
   const { data: settings } = useQuery({
     queryKey: ['siteSettings'],

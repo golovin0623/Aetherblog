@@ -2,8 +2,17 @@ package com.aetherblog.common.core.utils;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.util.Set;
+
 /**
  * IP工具类
+ *
+ * <p>安全说明：本工具类仅在请求直接来源于受信任的代理 IP 时，
+ * 才读取 {@code X-Real-IP} / {@code X-Forwarded-For} 等代理头。
+ * 如果请求直连到服务（非代理来源），则直接使用 {@code request.getRemoteAddr()}，
+ * 避免客户端通过伪造请求头绕过 IP 限流等安全机制。</p>
+ *
+ * @ref Issue #259
  */
 public class IpUtils {
 
@@ -11,20 +20,75 @@ public class IpUtils {
     private static final String LOCALHOST_IPV4 = "127.0.0.1";
     private static final String LOCALHOST_IPV6 = "0:0:0:0:0:0:0:1";
 
+    /**
+     * 受信任的代理 IP 列表（本机回环、Docker 默认网关、常见内网网段前缀）。
+     * <p>只有当 {@code request.getRemoteAddr()} 属于此集合时，才信任代理头。</p>
+     * <p>生产环境中 Nginx 通常与后端在同一机器或 Docker 网络内，
+     * 其 remoteAddr 为 {@code 127.0.0.1} 或 {@code 172.x.x.x}。</p>
+     */
+    private static final Set<String> TRUSTED_PROXIES = Set.of(
+            "127.0.0.1",
+            "0:0:0:0:0:0:0:1",  // IPv6 loopback
+            "::1"               // IPv6 loopback shorthand
+    );
+
+    /**
+     * Docker / 内网网段前缀，用于前缀匹配。
+     */
+    private static final String[] TRUSTED_PREFIXES = {
+            "10.",       // 10.0.0.0/8
+            "172.16.",   // 172.16.0.0/12 (172.16 - 172.31)
+            "172.17.",
+            "172.18.",
+            "172.19.",
+            "172.20.",
+            "172.21.",
+            "172.22.",
+            "172.23.",
+            "172.24.",
+            "172.25.",
+            "172.26.",
+            "172.27.",
+            "172.28.",
+            "172.29.",
+            "172.30.",
+            "172.31.",
+            "192.168.", // 192.168.0.0/16
+    };
+
     private IpUtils() {}
 
     /**
-     * 获取客户端IP地址
+     * 获取客户端IP地址。
+     *
+     * <p>安全策略：
+     * <ol>
+     *   <li>检查 {@code request.getRemoteAddr()} 是否为受信任的代理地址</li>
+     *   <li>若是：依次检查 {@code X-Real-IP}、{@code X-Forwarded-For} 等代理头</li>
+     *   <li>若否：直接返回 {@code getRemoteAddr()}，忽略所有可被伪造的代理头</li>
+     * </ol>
+     * </p>
      */
     public static String getIpAddr(HttpServletRequest request) {
         if (request == null) {
             return UNKNOWN;
         }
 
-        // Security Fix: Prioritize X-Real-IP (set by trusted Nginx) to prevent IP spoofing
-        // Users can manipulate X-Forwarded-For, but X-Real-IP is overwritten by Nginx
+        String remoteAddr = request.getRemoteAddr();
+
+        // 仅当直连来源是受信任的代理时，才读取代理头
+        if (!isTrustedProxy(remoteAddr)) {
+            // 直连客户端，不信任任何代理头
+            return normalizeIp(remoteAddr);
+        }
+
+        // 来自受信任代理 —— 读取代理写入的头
+        // 优先 X-Real-IP（Nginx proxy_set_header 覆写，不可被客户端伪造）
         String ip = request.getHeader("X-Real-IP");
 
+        if (isUnknown(ip)) {
+            ip = request.getHeader("X-Forwarded-For");
+        }
         if (isUnknown(ip)) {
             ip = request.getHeader("x-forwarded-for");
         }
@@ -32,27 +96,46 @@ public class IpUtils {
             ip = request.getHeader("Proxy-Client-IP");
         }
         if (isUnknown(ip)) {
-            ip = request.getHeader("X-Forwarded-For");
-        }
-        if (isUnknown(ip)) {
             ip = request.getHeader("WL-Proxy-Client-IP");
         }
         if (isUnknown(ip)) {
-            ip = request.getRemoteAddr();
+            ip = remoteAddr;
         }
 
-        // Security Fix: Take the LAST IP from comma-separated list to prevent spoofing.
-        // The first IP is client-controlled; the last is added by the closest trusted proxy.
+        // 取逗号分隔中的最后一个 IP（离服务最近的可信代理追加的）
         if (ip != null && ip.contains(",")) {
             String[] ips = ip.split(",");
             ip = ips[ips.length - 1].trim();
         }
 
-        // 转换本地IPv6为IPv4
-        if (LOCALHOST_IPV6.equals(ip)) {
-            ip = LOCALHOST_IPV4;
-        }
+        return normalizeIp(ip);
+    }
 
+    /**
+     * 判断直连地址是否来自受信任的代理。
+     */
+    private static boolean isTrustedProxy(String remoteAddr) {
+        if (remoteAddr == null) {
+            return false;
+        }
+        if (TRUSTED_PROXIES.contains(remoteAddr)) {
+            return true;
+        }
+        for (String prefix : TRUSTED_PREFIXES) {
+            if (remoteAddr.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 标准化 IP 地址（IPv6 loopback → IPv4）。
+     */
+    private static String normalizeIp(String ip) {
+        if (LOCALHOST_IPV6.equals(ip) || "::1".equals(ip)) {
+            return LOCALHOST_IPV4;
+        }
         return ip;
     }
 
