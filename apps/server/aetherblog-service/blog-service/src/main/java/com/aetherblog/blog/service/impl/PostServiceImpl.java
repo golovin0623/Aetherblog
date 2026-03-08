@@ -361,9 +361,9 @@ public class PostServiceImpl implements PostService {
             post.setAllowComment(request.allowComment());
         }
 
-        // 更新文章密码
+        // 更新文章密码 (空字符串表示清除密码)
         if (request.password() != null) {
-            post.setPassword(request.password());
+            post.setPassword(request.password().isBlank() ? null : request.password());
         }
 
         if (request.isHidden() != null) {
@@ -506,7 +506,8 @@ public class PostServiceImpl implements PostService {
         response.setIsPinned(post.getIsPinned());
         response.setPinPriority(post.getPinPriority());
         response.setIsHidden(post.getIsHidden());
-        response.setPublishedAt(post.getPublishedAt());
+    response.setPasswordRequired(post.getPassword() != null && !post.getPassword().isBlank());
+    response.setPublishedAt(post.getPublishedAt());
         response.setCreatedAt(post.getCreatedAt());
         return response;
     }
@@ -525,6 +526,7 @@ public class PostServiceImpl implements PostService {
         response.setLikeCount(post.getLikeCount());
         response.setIsHidden(post.getIsHidden());
         response.setPasswordRequired(post.getPassword() != null && !post.getPassword().isBlank());
+    response.setPassword(post.getPassword());  // 管理端可见
         response.setLegacyAuthorName(post.getLegacyAuthorName());
         response.setLegacyVisitedCount(post.getLegacyVisitedCount());
         response.setPublishedAt(post.getPublishedAt());

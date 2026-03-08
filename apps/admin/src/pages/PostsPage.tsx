@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings, Sparkles } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings, Sparkles, EyeOff, Lock } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -634,6 +634,23 @@ export default function PostsPage() {
                         <StatusBadge status={post.status} />
                       </div>
 
+                      {(post.isHidden || post.passwordRequired) && (
+                        <div className="flex items-center gap-2">
+                          {post.isHidden && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                              <EyeOff className="w-3 h-3" />
+                              已隐藏
+                            </span>
+                          )}
+                          {post.passwordRequired && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
+                              <Lock className="w-3 h-3" />
+                              已加密
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
                         <span className="px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
                           {post.categoryName || '-'}
@@ -707,7 +724,7 @@ export default function PostsPage() {
         </div>
 
         {/* 分页 - 移动到 Card 内部底部 */}
-        <div className="flex items-center justify-between py-3 px-4 border-t border-white/5 bg-white/[0.02] min-h-[64px] relative">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-2 py-3 px-4 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 min-h-[48px] md:min-h-[64px] relative">
           <AnimatePresence mode="wait">
             {loading ? (
               <motion.div
@@ -717,45 +734,45 @@ export default function PostsPage() {
                 exit={{ opacity: 0 }}
                 className="flex items-center gap-2"
               >
-                <div className="h-4 w-32 bg-white/5 rounded animate-pulse" />
-                <div className="h-4 w-20 bg-white/5 rounded animate-pulse" />
+                <div className="h-4 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
               </motion.div>
             ) : (
               <motion.div
                 key="stats-real"
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2 text-[11px] font-medium"
+                className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"
               >
-                <span className="text-gray-500">
-                  共 <span className="text-primary/70 font-semibold">{pagination.total}</span> 篇文章
+                <span>
+                  共 <span className="text-primary/70 font-semibold">{pagination.total}</span> 篇
                 </span>
-                <div className="w-px h-3 bg-white/10 mx-1" />
-                <span className="text-gray-500">
-                  第 <span className="text-white/70">{pagination.pageNum}</span> 页 / 共 <span className="text-white/70">{pagination.pages || 1}</span> 页
+                <span className="hidden md:inline">文章</span>
+                <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
+                <span>
+                  {pagination.pageNum} / {pagination.pages || 1} 页
                 </span>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             {!loading && pagination.pages > 1 ? (
               <motion.div
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1"
               >
                 <button
                   onClick={() => handlePageChange(pagination.pageNum - 1)}
                   disabled={pagination.pageNum <= 1}
                   className={cn(
-                    'px-2.5 py-1.5 rounded-xl text-[11px] font-medium transition-all duration-300 border',
+                    'px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-300 border',
                     pagination.pageNum <= 1
-                      ? 'text-gray-600 border-transparent cursor-not-allowed'
-                      : 'bg-white/5 text-gray-400 border-white/10 hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                      ? 'text-[var(--text-muted)]/50 border-transparent cursor-not-allowed'
+                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-primary/10 hover:text-primary hover:border-primary/30'
                   )}
                 >
-                  上一页
+                  ‹
                 </button>
                 <div className="flex items-center gap-1">
                   {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
@@ -766,10 +783,10 @@ export default function PostsPage() {
                       key={page}
                       onClick={() => handlePageChange(page)}
                       className={cn(
-                        'w-7 h-7 rounded-xl text-[11px] font-medium transition-all duration-300 border flex items-center justify-center',
+                        'w-7 h-7 rounded-lg text-[11px] font-medium transition-all duration-300 border flex items-center justify-center',
                         page === pagination.pageNum
-                          ? 'bg-primary text-white border-primary shadow-lg shadow-primary/25 scale-105'
-                          : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:border-white/20'
+                          ? 'bg-primary text-white border-primary shadow-lg shadow-primary/25'
+                          : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
                       )}
                     >
                       {page}
@@ -780,13 +797,13 @@ export default function PostsPage() {
                   onClick={() => handlePageChange(pagination.pageNum + 1)}
                   disabled={pagination.pageNum >= pagination.pages}
                   className={cn(
-                    'px-2.5 py-1.5 rounded-xl text-[11px] font-medium transition-all duration-300 border',
+                    'px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-300 border',
                     pagination.pageNum >= pagination.pages
-                      ? 'text-gray-600 border-transparent cursor-not-allowed'
-                      : 'bg-white/5 text-gray-400 border-white/10 hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                      ? 'text-[var(--text-muted)]/50 border-transparent cursor-not-allowed'
+                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-primary/10 hover:text-primary hover:border-primary/30'
                   )}
                 >
-                  下一页
+                  ›
                 </button>
               </motion.div>
             ) : !loading && (
