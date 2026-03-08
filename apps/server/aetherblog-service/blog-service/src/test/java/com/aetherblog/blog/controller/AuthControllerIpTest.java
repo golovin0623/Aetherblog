@@ -14,6 +14,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
 import com.aetherblog.blog.service.UserService;
 import com.aetherblog.common.security.service.JwtService;
 import com.aetherblog.blog.service.AuthSessionService;
@@ -21,6 +24,7 @@ import com.aetherblog.blog.service.LoginSecurityService;
 import com.aetherblog.api.dto.auth.LoginRequest;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class AuthControllerIpTest {
 
     @Mock
@@ -47,8 +51,10 @@ public class AuthControllerIpTest {
 
         // Simulating attacker sending X-Forwarded-For: 1.1.1.1
         // But Trusted Proxy (Nginx) sets X-Real-IP: 2.2.2.2
-        when(request.getHeader("X-Real-IP")).thenReturn(realIp);
-        // We use lenient here because if X-Real-IP is prioritized, this might not be called, which is GOOD.
+        // Simulate request coming from trusted proxy (Nginx on localhost)
+        lenient().when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+
+        lenient().when(request.getHeader("X-Real-IP")).thenReturn(realIp);
         lenient().when(request.getHeader("X-Forwarded-For")).thenReturn(spoofedIp);
 
         LoginRequest loginRequest = new LoginRequest("admin", "password");
@@ -74,18 +80,14 @@ public class AuthControllerIpTest {
         // Simulating attacker sending X-Forwarded-For: 1.1.1.1
         // Trusted Proxy appends real IP: 1.1.1.1, 2.2.2.2
         // And X-Real-IP is missing (maybe direct access or different proxy setup)
-        when(request.getHeader("X-Real-IP")).thenReturn(null);
-        // IpUtils checks "x-forwarded-for" (lowercase) then "X-Forwarded-For"
-        // We need to mock carefully depending on how IpUtils calls it.
-        // IpUtils: request.getHeader("X-Real-IP");
-        // then request.getHeader("x-forwarded-for");
-        // then request.getHeader("Proxy-Client-IP");
-        // then request.getHeader("X-Forwarded-For");
+        // Simulate request coming from trusted proxy (Nginx on localhost)
+        lenient().when(request.getRemoteAddr()).thenReturn("127.0.0.1");
 
-        // So we mock all potential calls to return null until X-Forwarded-For
-        when(request.getHeader("x-forwarded-for")).thenReturn(null);
-        when(request.getHeader("Proxy-Client-IP")).thenReturn(null);
-        when(request.getHeader("X-Forwarded-For")).thenReturn(spoofedIp + ", " + realIp);
+        lenient().when(request.getHeader("X-Real-IP")).thenReturn(null);
+        lenient().when(request.getHeader("x-forwarded-for")).thenReturn(null);
+        lenient().when(request.getHeader("Proxy-Client-IP")).thenReturn(null);
+        lenient().when(request.getHeader("WL-Proxy-Client-IP")).thenReturn(null);
+        lenient().when(request.getHeader("X-Forwarded-For")).thenReturn(spoofedIp + ", " + realIp);
 
         LoginRequest loginRequest = new LoginRequest("admin", "password");
 
