@@ -293,7 +293,7 @@ export function EditorSettingsPanel({
                         <button
                           type="button"
                           onClick={() => handleTagKeyDown({ key: 'Enter', preventDefault: () => {} } as React.KeyboardEvent<HTMLInputElement>)}
-                          className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-white/10 transition-colors flex items-center gap-2"
+                          className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-[var(--bg-card-hover)] transition-colors flex items-center gap-2"
                         >
                           <Plus className="w-4 h-4" />
                           创建 "{tagSearch}"

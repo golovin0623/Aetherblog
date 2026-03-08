@@ -36,12 +36,12 @@ interface PostPropertiesModalProps {
 }
 
 const TAG_COLORS = [
-  { border: 'border-violet-500/30', bg: 'bg-violet-500/10', text: 'text-violet-300', icon: 'text-violet-400', glow: 'shadow-violet-500/10' },
-  { border: 'border-blue-500/30', bg: 'bg-blue-500/10', text: 'text-blue-300', icon: 'text-blue-400', glow: 'shadow-blue-500/10' },
-  { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-300', icon: 'text-emerald-400', glow: 'shadow-emerald-500/10' },
-  { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-300', icon: 'text-rose-400', glow: 'shadow-rose-500/10' },
-  { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-300', icon: 'text-amber-400', glow: 'shadow-amber-500/10' },
-  { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-300', icon: 'text-cyan-400', glow: 'shadow-cyan-500/10' },
+  { border: 'border-violet-500/30', bg: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-300', icon: 'text-violet-500 dark:text-violet-400', glow: 'shadow-violet-500/10' },
+  { border: 'border-blue-500/30', bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-300', icon: 'text-blue-500 dark:text-blue-400', glow: 'shadow-blue-500/10' },
+  { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-300', icon: 'text-emerald-500 dark:text-emerald-400', glow: 'shadow-emerald-500/10' },
+  { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-600 dark:text-rose-300', icon: 'text-rose-500 dark:text-rose-400', glow: 'shadow-rose-500/10' },
+  { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-300', icon: 'text-amber-500 dark:text-amber-400', glow: 'shadow-amber-500/10' },
+  { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-600 dark:text-cyan-300', icon: 'text-cyan-500 dark:text-cyan-400', glow: 'shadow-cyan-500/10' },
 ];
 
 export function PostPropertiesModal({
@@ -58,6 +58,7 @@ export function PostPropertiesModal({
   const [showPassword, setShowPassword] = useState(false);
   const [tagSearch, setTagSearch] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [clearPassword, setClearPassword] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
 
   // 点击外部时关闭日期选择器
@@ -88,12 +89,13 @@ export function PostPropertiesModal({
         slug: post.slug,
         createdAt: post.createdAt,
         categoryId: effectiveCategoryId ?? undefined,
-        password: '',
+        password: post.password || '',
       });
       
       // Tags 已符合 Post 中的 {id, name} 格式
       setSelectedTags(post.tags?.map(t => t.id) || []);
       setTagSearch('');
+      setClearPassword(false);
     }
   }, [isOpen, post]);
 
@@ -101,13 +103,28 @@ export function PostPropertiesModal({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await onSave({
-        ...formData,
+      // 密码处理：空字符串 → 不发送（保持现有密码），有内容 → 设置新密码
+      const { password, coverImage, summary, ...rest } = formData;
+      const submitData: any = {
+        ...rest,
+        // 空字符串不发送，避免后端校验报错
+        coverImage: coverImage || undefined,
+        summary: summary || undefined,
         tagIds: selectedTags.length > 0 ? selectedTags : undefined,
-      });
+      };
+      // 只有用户明确输入了密码才发送
+      if (clearPassword) {
+        // 用户明确清除密码 → 发送空字符串，后端会设为 null
+        submitData.password = '';
+      } else if (password !== undefined && password !== '') {
+        submitData.password = password;
+      }
+      await onSave(submitData);
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update post properties:', error);
+      const msg = error?.response?.data?.message || error?.message || '保存失败，请重试';
+      alert(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -173,27 +190,27 @@ export function PostPropertiesModal({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="absolute bottom-full left-0 mb-2 w-[280px] bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl z-[60] overflow-hidden"
+        className="absolute bottom-full left-0 mb-2 w-[280px] bg-[var(--bg-popover)] backdrop-blur-xl border border-[var(--border-default)] rounded-2xl shadow-2xl z-[60] overflow-hidden"
       >
         {!showTimeSelect ? (
           <div className="p-4">
             {/* 日历头部 */}
             <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold text-white">
+              <span className="text-sm font-semibold text-[var(--text-primary)]">
                 {format(viewDate, 'yyyy年 MM月', { locale: zhCN })}
               </span>
               <div className="flex gap-1">
                 <button 
                   type="button" 
                   onClick={() => handleMonthNav('prev')}
-                  className="p-1 hover:bg-white/5 rounded-md text-gray-400 hover:text-white"
+                  className="p-1 hover:bg-[var(--bg-card)] rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <button 
                   type="button" 
                   onClick={() => handleMonthNav('next')}
-                  className="p-1 hover:bg-white/5 rounded-md text-gray-400 hover:text-white"
+                  className="p-1 hover:bg-[var(--bg-card)] rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
@@ -203,7 +220,7 @@ export function PostPropertiesModal({
             {/* 日历网格 */}
             <div className="grid grid-cols-7 gap-1 mb-2">
               {['一', '二', '三', '四', '五', '六', '日'].map(d => (
-                <div key={d} className="text-[10px] font-bold text-gray-500 text-center py-1">
+                <div key={d} className="text-[10px] font-bold text-[var(--text-muted)] text-center py-1">
                   {d}
                 </div>
               ))}
@@ -219,7 +236,7 @@ export function PostPropertiesModal({
                     onClick={() => handleDateSelect(date)}
                     className={cn(
                       "h-8 rounded-lg text-xs transition-all flex items-center justify-center relative",
-                      !isCurrentMonth ? "text-gray-600" : "text-gray-300 hover:bg-white/10",
+                      !isCurrentMonth ? "text-[var(--text-muted)] opacity-50" : "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]",
                       isCurrentToday && "text-primary font-bold after:content-[''] after:absolute after:bottom-1 after:w-1 after:h-1 after:bg-primary after:rounded-full",
                       isSelected && "bg-primary text-white hover:bg-primary shadow-lg shadow-primary/20"
                     )}
@@ -231,11 +248,11 @@ export function PostPropertiesModal({
             </div>
 
             {/* 底部操作栏 */}
-            <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-3">
+            <div className="flex items-center justify-between pt-3 border-t border-[var(--border-subtle)] mt-3">
               <button
                 type="button"
                 onClick={() => setShowTimeSelect(true)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
               >
                 <Clock className="w-3.5 h-3.5" />
                 {selectedDate ? format(selectedDate, 'HH:mm') : '选择时间'}
@@ -256,14 +273,14 @@ export function PostPropertiesModal({
         ) : (
           <div className="p-4">
             <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-semibold text-white flex items-center gap-2">
+              <span className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
                 <Clock className="w-4 h-4 text-primary" />
                 时间选择
               </span>
               <button 
                 type="button"
                 onClick={() => setShowTimeSelect(false)}
-                className="text-xs text-gray-400 hover:text-white"
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               >
                 返回日历
               </button>
@@ -272,7 +289,7 @@ export function PostPropertiesModal({
             <div className="flex items-center justify-center gap-4 py-4">
               {/* 小时 */}
               <div className="flex flex-col items-center gap-2">
-                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">时</span>
+                <span className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">时</span>
                 <div className="flex flex-col gap-1 h-32 overflow-y-auto no-scrollbar px-2 snap-y">
                   {Array.from({ length: 24 }).map((_, h) => (
                     <button
@@ -283,7 +300,7 @@ export function PostPropertiesModal({
                         "w-10 py-1.5 rounded-lg text-sm transition-all snap-center",
                         selectedDate && getHours(selectedDate) === h
                           ? "bg-primary text-white"
-                          : "text-gray-400 hover:bg-white/5"
+                          : "text-[var(--text-muted)] hover:bg-[var(--bg-card)]"
                       )}
                     >
                       {h.toString().padStart(2, '0')}
@@ -291,10 +308,10 @@ export function PostPropertiesModal({
                   ))}
                 </div>
               </div>
-              <span className="text-xl text-gray-600 font-light">:</span>
+              <span className="text-xl text-[var(--text-muted)] font-light">:</span>
               {/* 分钟 */}
               <div className="flex flex-col items-center gap-2">
-                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">分</span>
+                <span className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">分</span>
                 <div className="flex flex-col gap-1 h-32 overflow-y-auto no-scrollbar px-2 snap-y">
                   {Array.from({ length: 12 }).map((_, i) => {
                     const m = i * 5;
@@ -307,7 +324,7 @@ export function PostPropertiesModal({
                           "w-10 py-1.5 rounded-lg text-sm transition-all snap-center",
                           selectedDate && getMinutes(selectedDate) === m
                             ? "bg-primary text-white"
-                            : "text-gray-400 hover:bg-white/5"
+                            : "text-[var(--text-muted)] hover:bg-[var(--bg-card)]"
                         )}
                       >
                         {m.toString().padStart(2, '0')}
@@ -344,8 +361,8 @@ export function PostPropertiesModal({
     }
   };
 
-  const inputClass = "w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]";
-  const labelClass = "block text-sm font-medium text-gray-300 mb-2 flex items-center gap-1.5";
+  const inputClass = "w-full px-4 py-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-[var(--bg-card-hover)]";
+  const labelClass = "block text-sm font-medium text-[var(--text-secondary)] mb-2 flex items-center gap-1.5";
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" title="修改信息">
@@ -371,7 +388,7 @@ export function PostPropertiesModal({
           {/* 作者 - 只读 */}
           <div>
             <label className={labelClass}>作者</label>
-            <div className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 select-none cursor-not-allowed">
+            <div className="px-4 py-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-muted)] select-none cursor-not-allowed">
               Golovin
             </div>
           </div>
@@ -384,7 +401,7 @@ export function PostPropertiesModal({
             <div className="space-y-3">
               {/* 标签搜索 */}
               <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                 <input 
                   type="text" 
                   value={tagSearch}
@@ -418,7 +435,7 @@ export function PostPropertiesModal({
                         <button
                           type="button"
                           onClick={() => toggleTag(tag.id)}
-                          className="ml-1.5 p-0.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
+                          className="ml-1.5 p-0.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -430,13 +447,13 @@ export function PostPropertiesModal({
 
               {/* 未选标签池 */}
               {filteredTags.some(t => !selectedTags.includes(t.id)) && (
-                <div className="flex flex-wrap gap-2 pt-3 border-t border-white/5">
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--border-subtle)]">
                   {filteredTags.filter(t => !selectedTags.includes(t.id)).map((tag) => (
                     <button
                       key={tag.id}
                       type="button"
                       onClick={() => toggleTag(tag.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/5 text-[11px] text-gray-400 hover:text-primary hover:border-primary/40 hover:bg-primary/5 hover:shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)] transition-all duration-300"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] hover:text-primary hover:border-primary/40 hover:bg-primary/5 hover:shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)] transition-all duration-300"
                     >
                       <Plus className="w-3 h-3" />
                       {tag.name}
@@ -489,12 +506,12 @@ export function PostPropertiesModal({
                 )}
                 onClick={() => setShowDatePicker(!showDatePicker)}
               >
-                <span className={formData.createdAt ? "text-white" : "text-gray-500"}>
+                <span className={formData.createdAt ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
                   {formatDateDisplay(formData.createdAt)}
                 </span>
                 <Calendar className={cn(
                   "w-4 h-4 transition-colors",
-                  showDatePicker ? "text-primary" : "text-gray-500 group-hover:text-primary"
+                  showDatePicker ? "text-primary" : "text-[var(--text-muted)] group-hover:text-primary"
                 )} />
               </button>
               
@@ -522,14 +539,14 @@ export function PostPropertiesModal({
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, pinPriority: Math.max(0, (formData.pinPriority || 0) - 1) })}
-                    className="w-8 h-full flex items-center justify-center rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all"
+                    className="w-8 h-full flex items-center justify-center rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, pinPriority: (formData.pinPriority || 0) + 1 })}
-                    className="w-8 h-full flex items-center justify-center rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all border-l border-white/5"
+                    className="w-8 h-full flex items-center justify-center rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all border-l border-[var(--border-subtle)]"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -553,8 +570,8 @@ export function PostPropertiesModal({
           </div>
 
           {/* 扩展：高级可见性 */}
-          <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
-            <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+          <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-default)] space-y-4">
+            <h4 className="text-sm font-semibold text-[var(--text-secondary)] flex items-center gap-2">
               <Lock className="w-4 h-4 text-primary" />
               访问权限控制
             </h4>
@@ -562,8 +579,8 @@ export function PostPropertiesModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* 状态 */}
               <div>
-                <label className="text-xs text-gray-500 mb-2 block">文章状态</label>
-                <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
+                <label className="text-xs text-[var(--text-muted)] mb-2 block">文章状态</label>
+                <div className="flex bg-[var(--bg-card)] p-1 rounded-xl border border-[var(--border-default)]">
                   {[
                     { value: 'PUBLISHED', label: '已发布' },
                     { value: 'DRAFT', label: '草稿' },
@@ -577,7 +594,7 @@ export function PostPropertiesModal({
                         "flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all",
                         formData.status === s.value 
                           ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                          : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-card)]"
                       )}
                     >
                       {s.label}
@@ -588,43 +605,61 @@ export function PostPropertiesModal({
 
               {/* 密码保护 */}
               <div>
-                <label className="text-xs text-gray-500 mb-1.5 block">访问密码</label>
+                <label className="text-xs text-[var(--text-muted)] mb-1.5 block">访问密码</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={formData.password === undefined ? '' : formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="留空即公开访问"
+                    placeholder={post.passwordRequired ? '已设密码，输入新密码可替换' : '留空即公开访问'}
                     className={`${inputClass} pr-10 text-sm`}
                     autoComplete="new-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 p-1"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] p-1"
                   >
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
+                {post.passwordRequired && !clearPassword && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClearPassword(true);
+                      setFormData({ ...formData, password: '' });
+                    }}
+                    className="mt-1.5 text-[11px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    清除密码保护
+                  </button>
+                )}
+                {clearPassword && (
+                  <p className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1">
+                    ℹ 保存后将清除密码保护
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-white">隐藏文章</p>
-                <p className="text-xs text-gray-400">隐藏后后台可见，前台列表与归档不会展示。</p>
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-[var(--text-primary)]">隐藏文章</p>
+                <p className="text-xs text-[var(--text-muted)]">隐藏后后台可见，前台列表与归档不会展示。</p>
               </div>
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, isHidden: !formData.isHidden })}
                 className={cn(
-                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
-                  formData.isHidden ? "bg-amber-500/80" : "bg-white/10"
+                  "relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors",
+                  formData.isHidden ? "bg-amber-500/80" : "bg-gray-300 dark:bg-[var(--bg-tertiary)]"
                 )}
               >
                 <span
                   className={cn(
-                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform",
+                    "inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform",
                     formData.isHidden ? "translate-x-6" : "translate-x-1"
                   )}
                 />
@@ -635,12 +670,12 @@ export function PostPropertiesModal({
         </div>
 
         {/* 底部操作栏 */}
-        <div className="flex items-center justify-end pt-5 mt-2 border-t border-white/5 bg-transparent gap-3">
+        <div className="flex items-center justify-end pt-5 mt-2 border-t border-[var(--border-subtle)] bg-transparent gap-3">
           <button
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-5 py-2.5 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white transition-all text-sm font-medium border border-white/5"
+            className="px-5 py-2.5 rounded-xl bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all text-sm font-medium border border-[var(--border-subtle)]"
           >
             取消
           </button>
