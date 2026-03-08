@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Edit, Copy, Trash2, Settings, Loader2, EyeOff } from 'lucide-react';
+import { Edit, Copy, Trash2, Settings, Loader2, EyeOff, Lock } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { PostListItem } from '@/services/postService';
@@ -40,10 +40,20 @@ const PostTableRow = memo(({
           <p className="text-[var(--text-primary)] font-medium truncate group-hover:text-primary hover:text-primary transition-colors cursor-pointer" title={post.title}>
             {post.title}
           </p>
-          {post.isHidden && (
-            <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-amber-400">
-              <EyeOff className="w-3 h-3" />
-              已隐藏
+          {(post.isHidden || post.passwordRequired) && (
+            <div className="mt-1 flex items-center gap-2">
+              {post.isHidden && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                  <EyeOff className="w-3 h-3" />
+                  已隐藏
+                </span>
+              )}
+              {post.passwordRequired && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
+                  <Lock className="w-3 h-3" />
+                  已加密
+                </span>
+              )}
             </div>
           )}
         </button>
@@ -60,11 +70,13 @@ const PostTableRow = memo(({
         <div className="flex items-center gap-1.5 overflow-visible relative">
           {post.tagNames?.length > 0 ? (
             <>
-              <div className="flex flex-wrap gap-1.5 max-w-[120px]">
-                <span className="px-2 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded-md text-primary-light truncate max-w-[80px]">
-                  {post.tagNames[0]}
-                </span>
-                {post.tagNames.length > 1 && (
+              <div className="flex items-center gap-1.5 flex-nowrap">
+                {post.tagNames.slice(0, 2).map((tag) => (
+                  <span key={tag} className="px-2 py-0.5 text-[10px] leading-4 bg-primary/10 border border-primary/20 rounded-md text-primary-light whitespace-nowrap truncate max-w-[72px]">
+                    {tag}
+                  </span>
+                ))}
+                {post.tagNames.length > 2 && (
                   <div className="relative">
                     <button
                       onClick={(e) => {
@@ -72,13 +84,13 @@ const PostTableRow = memo(({
                         onTogglePopover(post.id);
                       }}
                       className={cn(
-                        "px-1.5 py-0.5 text-[10px] rounded-md font-mono transition-all",
+                        "px-2 py-0.5 text-[10px] leading-4 rounded-md font-mono transition-all whitespace-nowrap",
                         isActivePopover
-                          ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                          ? "bg-primary text-white border border-primary shadow-lg shadow-primary/20"
                           : "bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
                       )}
                     >
-                      +{post.tagNames.length - 1}
+                      +{post.tagNames.length - 2}
                     </button>
 
                     <AnimatePresence>
@@ -88,20 +100,21 @@ const PostTableRow = memo(({
                           initial={{ opacity: 0, scale: 0.95, y: 10 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                          className="absolute left-0 bottom-full mb-2 z-[60] min-w-[120px] p-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] backdrop-blur-xl shadow-2xl"
+                          className="absolute left-0 bottom-full mb-2 z-[60] min-w-[120px] p-2 rounded-xl border border-[var(--border-subtle)] backdrop-blur-2xl shadow-2xl shadow-black/20"
+                          style={{ backgroundColor: 'var(--bg-card)' }}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex flex-wrap gap-1.5 max-w-[200px]">
                             {post.tagNames.map((tag) => (
                               <span
                                 key={tag}
-                                className="px-2 py-0.5 text-[10px] bg-primary/10 border border-primary/20 rounded-md text-primary-light whitespace-nowrap"
+                                className="px-2 py-0.5 text-[10px] leading-4 bg-primary/10 border border-primary/20 rounded-md text-primary-light whitespace-nowrap"
                               >
                                 {tag}
                               </span>
                             ))}
                           </div>
-                          <div className="absolute left-4 -bottom-1 w-2 h-2 bg-gray-900 border-r border-b border-white/10 rotate-45" />
+                          <div className="absolute left-4 -bottom-1 w-2 h-2 rotate-45 border-r border-b border-[var(--border-subtle)]" style={{ backgroundColor: 'var(--bg-card)' }} />
                         </motion.div>
                       )}
                     </AnimatePresence>

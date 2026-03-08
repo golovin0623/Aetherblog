@@ -77,7 +77,7 @@ const PostItem = React.memo(({
           {post.title}
         </span>
         <span className="text-xs text-[var(--text-muted)]">
-          {post.publishedAt.substring(8, 10)}日
+          {new Date(post.publishedAt).getDate()}日
         </span>
       </Link>
     </motion.div>
