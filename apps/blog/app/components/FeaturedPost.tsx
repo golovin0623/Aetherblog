@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Calendar, Folder, ArrowRight } from 'lucide-react';
 import MiniMarkdownPreview from './MiniMarkdownPreview';
+import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
 interface FeaturedPostProps {
   post: {
@@ -21,36 +22,8 @@ interface FeaturedPostProps {
 
 const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
   const router = useRouter();
-  // Ref for spotlight effect to avoid re-renders
-  const spotlightRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef<number>(0);
-  const rectRef = useRef<{ left: number; top: number } | null>(null);
-  const [isHovering, setIsHovering] = React.useState(false);
-
-  // Clean up animation frame on unmount
-  React.useEffect(() => {
-    return () => {
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, []);
-
-  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    setIsHovering(true);
-    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter.
-    // Impact: Eliminates synchronous layout reads on every mouse move, preventing layout thrashing.
-    const rect = e.currentTarget.getBoundingClientRect();
-    rectRef.current = {
-      left: rect.left + window.scrollX,
-      top: rect.top + window.scrollY,
-    };
-  }, []);
-
-  const handleMouseLeave = React.useCallback(() => {
-    setIsHovering(false);
-    rectRef.current = null;
-  }, []);
+  const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
+    = useSpotlightEffect({ radius: 1000 });
 
   // 如果摘要缺失，从内容生成摘要的逻辑
   const displaySummary = post.summary 
@@ -58,28 +31,6 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
     : post.contentPreview 
         ? post.contentPreview.slice(0, 500) + '...' 
         : '暂无摘要';
-
-  // Update spotlight position directly via DOM
-  const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current || !rectRef.current) return;
-
-    // Calculate position relative to the cached element rect
-    const x = e.pageX - rectRef.current.left;
-    const y = e.pageY - rectRef.current.top;
-
-    if (frameRef.current) {
-      cancelAnimationFrame(frameRef.current);
-    }
-
-    frameRef.current = requestAnimationFrame(() => {
-      if (!spotlightRef.current) {
-        frameRef.current = 0;
-        return;
-      }
-      spotlightRef.current.style.background = `radial-gradient(1000px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
-      frameRef.current = 0;
-    });
-  }, []);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent navigation if clicking on interactive elements

@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Calendar, Eye, Folder } from 'lucide-react';
+import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
 interface ArticleCardProps {
   title: string;
@@ -32,60 +33,8 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   isPinned = false,
   index = 0,
 }) => {
-  // Use ref for direct DOM manipulation of background position (high freq)
-  const spotlightRef = React.useRef<HTMLDivElement>(null);
-  const frameRef = React.useRef<number>(0);
-  const rectRef = React.useRef<{ left: number; top: number } | null>(null);
-  // Use state for opacity (low freq), ensures correct style on re-renders
-  const [isHovering, setIsHovering] = React.useState(false);
-
-  // Clean up animation frame on unmount
-  React.useEffect(() => {
-    return () => {
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, []);
-
-  const handleMouseEnter = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    setIsHovering(true);
-    // ⚡ Bolt: Cache layout read (getBoundingClientRect) on mouse enter.
-    // Impact: Eliminates synchronous layout reads on every mouse move, preventing layout thrashing.
-    const rect = e.currentTarget.getBoundingClientRect();
-    rectRef.current = {
-      left: rect.left + window.scrollX,
-      top: rect.top + window.scrollY,
-    };
-  }, []);
-
-  const handleMouseLeave = React.useCallback(() => {
-    setIsHovering(false);
-    rectRef.current = null;
-  }, []);
-
-  const handleMouseMove = React.useCallback((e: React.MouseEvent<HTMLElement>) => {
-    if (!spotlightRef.current || !rectRef.current) return;
-
-    // Calculate position relative to the cached element rect
-    const x = e.pageX - rectRef.current.left;
-    const y = e.pageY - rectRef.current.top;
-
-    // Throttle using requestAnimationFrame to avoid layout thrashing
-    if (frameRef.current) {
-      cancelAnimationFrame(frameRef.current);
-    }
-
-    frameRef.current = requestAnimationFrame(() => {
-      if (!spotlightRef.current) {
-        frameRef.current = 0;
-        return;
-      }
-
-      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
-      frameRef.current = 0;
-    });
-  }, []);
+  const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
+    = useSpotlightEffect({ radius: 600 });
 
   // 计算显示的标签数量
   const maxVisibleTags = 4;

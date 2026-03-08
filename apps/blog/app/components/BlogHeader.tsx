@@ -9,6 +9,7 @@ import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
 import { SearchPanel } from './SearchPanel';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
+import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
 /**
  * 博客共享头部组件
@@ -102,14 +103,12 @@ export default function BlogHeader() {
 
   const isTimeline = activeTab === 'timeline';
 
-  // 鼠标位置状态
-  // Optimization: Use useRef for spotlight to avoid re-renders on mouse move
-  const spotlightRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef<number>(0);
+  // 聚光灯效果 - 使用 fixed 模式（header 固定在视口 (0,0)）
+  const { spotlightRef, isHovering, setIsHovering, handleMouseMove: updateMousePosition }
+    = useSpotlightEffect({ radius: 600, fixed: true });
 
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
   // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
   const lastScrollYRef = useRef(0);
 
@@ -197,50 +196,13 @@ export default function BlogHeader() {
     };
   }, [isArticleDetail]);
 
-  // Clean up animation frame on unmount
-  useEffect(() => {
-    return () => {
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, []);
-
-  // 监听鼠标移动，更新光束位置和显隐状态
-  const updateMousePosition = useCallback((e: React.MouseEvent) => {
-    if (!spotlightRef.current) return;
-
-    // ⚡ Bolt: Since BlogHeader is `fixed top-0 left-0`, its top-left corner is always at (0,0) relative to the viewport.
-    // We can completely eliminate the `getBoundingClientRect()` layout read here and just use `clientX` and `clientY`
-    // which represent the mouse position relative to the viewport.
-    // Impact: Avoids main-thread blocking and jank during high-frequency mouse movements with zero layout reads.
-    const { clientX, clientY } = e;
-
-    // Position relative to the fixed header is simply the viewport coordinates
-    const x = clientX;
-    const y = clientY;
-
-    // Cancel previous frame if any
-    if (frameRef.current) {
-      cancelAnimationFrame(frameRef.current);
-    }
-
-    // Schedule update
-    frameRef.current = requestAnimationFrame(() => {
-      if (!spotlightRef.current) {
-        frameRef.current = 0;
-        return;
-      }
-
-      spotlightRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, var(--spotlight-color), transparent 40%)`;
-      frameRef.current = 0;
-    });
-
-    // 确保在 header 上移动时也标记为 hovering
+  // 包装 updateMousePosition：額外处理文章详情页的 hovering 状态
+  const wrappedUpdateMousePosition = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    updateMousePosition(e);
     if (isArticleDetail) {
       setIsHovering(true);
     }
-  }, [isArticleDetail]);
+  }, [updateMousePosition, isArticleDetail, setIsHovering]);
 
   // 全局鼠标监听 - 用于触发显示和重置状态
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
@@ -291,7 +253,7 @@ export default function BlogHeader() {
           borderBottom: '1px solid var(--border-subtle)',
           boxShadow: '0 4px 24px -8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05)',
         }}
-        onMouseMove={updateMousePosition}
+        onMouseMove={wrappedUpdateMousePosition}
         onMouseEnter={() => isArticleDetail && setIsHovering(true)}
         onMouseLeave={() => isArticleDetail && setIsHovering(false)}
       >
