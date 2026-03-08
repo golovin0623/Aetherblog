@@ -152,9 +152,11 @@ export default async function PostDetailPage({ params }: PageProps) {
                   </span>
                 )}
                 {/* 目录触发按钮 - 图标形式，位置紧邻编辑按钮 */}
-                <div>
-                  <TableOfContents content={post.content} variant="icon" />
-                </div>
+                {!post.passwordRequired && post.content && (
+                  <div>
+                    <TableOfContents content={post.content} variant="icon" />
+                  </div>
+                )}
               </div>
             </div>
           </FadeIn>

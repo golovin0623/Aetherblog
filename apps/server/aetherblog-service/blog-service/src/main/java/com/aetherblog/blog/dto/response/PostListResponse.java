@@ -24,6 +24,7 @@ public class PostListResponse {
     private Boolean isPinned;
     private Integer pinPriority;
     private Boolean isHidden;
+    private Boolean passwordRequired;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
 }

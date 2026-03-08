@@ -41,6 +41,7 @@ export interface PostListItem {
   isPinned?: boolean;
   pinPriority?: number;
   isHidden?: boolean;
+  passwordRequired?: boolean;
   publishedAt?: string;
   createdAt?: string;
 }

@@ -19,6 +19,7 @@ export interface Post {
   pinPriority?: number;
   isHidden?: boolean;
   passwordRequired?: boolean;
+  password?: string;
   legacyAuthorName?: string | null;
   legacyVisitedCount?: number;
   publishedAt: string | null;
@@ -41,6 +42,7 @@ export interface PostListItem {
   isPinned?: boolean;
   pinPriority?: number;
   isHidden?: boolean;
+  passwordRequired?: boolean;
   publishedAt: string | null;
   createdAt: string;
 }
