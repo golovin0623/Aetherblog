@@ -34,6 +34,9 @@ public class VisitorControllerIpTest {
 
         // Simulating attacker sending X-Forwarded-For: 1.1.1.1
         // But Trusted Proxy (Nginx) sets X-Real-IP: 2.2.2.2
+        // Simulate request coming from trusted proxy (Nginx on localhost)
+        lenient().when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+
         lenient().when(request.getHeader("X-Real-IP")).thenReturn(realIp);
         // Current vulnerable implementation (getRealIp) prioritizes X-Forwarded-For
         lenient().when(request.getHeader("X-Forwarded-For")).thenReturn(spoofedIp);
