@@ -17,7 +17,7 @@ interface FriendCardProps {
   index?: number;
 }
 
-export const FriendCard: React.FC<FriendCardProps> = ({
+const FriendCardBase: React.FC<FriendCardProps> = ({
   name,
   url,
   avatar,
@@ -162,4 +162,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
   );
 };
 
+// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders when parent FriendsList updates.
+// Since FriendCard receives primitive/stable props, this avoids O(n) re-renders in the list.
+export const FriendCard = React.memo(FriendCardBase);
 export default FriendCard;
