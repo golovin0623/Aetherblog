@@ -204,24 +204,41 @@ export default function BlogHeader() {
     }
   }, [updateMousePosition, isArticleDetail, setIsHovering]);
 
+  // Use a ref to store the rAF ID to throttle the global mouse move listener
+  const globalMouseMoveRafRef = useRef<number | null>(null);
+
   // 全局鼠标监听 - 用于触发显示和重置状态
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
     if (!isArticleDetail) return;
 
-    // 鼠标在顶部 60px 区域内时显示
-    if (e.clientY < 60) {
-      if (!isHovering) setIsHovering(true);
-      if (!isVisible) setIsVisible(true);
-    } else if (e.clientY > 120) {
-      // 鼠标离开顶部区域一定距离后，标记为不再悬停
-      if (isHovering) setIsHovering(false);
+    // Extracted synchronously before rAF
+    const clientY = e.clientY;
+
+    if (globalMouseMoveRafRef.current === null) {
+      globalMouseMoveRafRef.current = requestAnimationFrame(() => {
+        // 鼠标在顶部 60px 区域内时显示
+        if (clientY < 60) {
+          setIsHovering(true);
+          setIsVisible(true);
+        } else if (clientY > 120) {
+          // 鼠标离开顶部区域一定距离后，标记为不再悬停
+          setIsHovering(false);
+        }
+        globalMouseMoveRafRef.current = null;
+      });
     }
-  }, [isArticleDetail, isHovering, isVisible]);
+  }, [isArticleDetail]);
 
   useEffect(() => {
     if (isArticleDetail) {
       window.addEventListener('mousemove', handleGlobalMouseMove);
-      return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
+      return () => {
+        window.removeEventListener('mousemove', handleGlobalMouseMove);
+        if (globalMouseMoveRafRef.current !== null) {
+          cancelAnimationFrame(globalMouseMoveRafRef.current);
+          globalMouseMoveRafRef.current = null;
+        }
+      };
     }
   }, [isArticleDetail, handleGlobalMouseMove]);
 
