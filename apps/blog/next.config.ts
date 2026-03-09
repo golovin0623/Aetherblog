@@ -39,6 +39,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  serverExternalPackages: ['katex'],
 };
 
 export default nextConfig;

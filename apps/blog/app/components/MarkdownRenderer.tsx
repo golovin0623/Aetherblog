@@ -6,6 +6,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Components } from 'react-markdown';
 import type { PluggableList } from 'unified';
 import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
@@ -16,10 +18,62 @@ import remarkDirective from 'remark-directive';
 import remarkAlertBlock from '../lib/remarkAlertBlock';
 import { AlertBlock } from './AlertBlock';
 
+// ============================================================================
+// rehype-sanitize 白名单 — 允许博客常用 HTML 属性，阻止 XSS
+// ============================================================================
+const sanitizeSchema: typeof defaultSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    // 额外允许的标签（defaultSchema 已涵盖 img/a/p/div/span/table 等）
+    'center', 'figure', 'figcaption', 'mark', 'u', 'abbr', 'details', 'summary',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    img: [
+      ...(defaultSchema.attributes?.img || []),
+      'style', 'width', 'height', 'align', 'loading',
+    ],
+    div: [
+      ...(defaultSchema.attributes?.div || []),
+      'style', 'align',
+    ],
+    p: [
+      ...(defaultSchema.attributes?.p || []),
+      'style', 'align',
+    ],
+    span: [
+      ...(defaultSchema.attributes?.span || []),
+      'style',
+    ],
+    a: [
+      ...(defaultSchema.attributes?.a || []),
+      'style',
+    ],
+    table: [
+      ...(defaultSchema.attributes?.table || []),
+      'style', 'width', 'align',
+    ],
+    td: [
+      ...(defaultSchema.attributes?.td || []),
+      'style', 'width', 'align', 'valign', 'colspan', 'rowspan',
+    ],
+    th: [
+      ...(defaultSchema.attributes?.th || []),
+      'style', 'width', 'align', 'valign', 'colspan', 'rowspan',
+    ],
+    // alert-block 自定义元素
+    'alert-block': ['data-type', 'data-title'],
+  },
+};
+
 const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath, remarkDirective, remarkAlertBlock];
-// 🛡️ Sentinel Security Improvement: removed rehype-raw from REHYPE_PLUGINS
-// to prevent raw HTML execution (XSS) in Markdown content.
-const REHYPE_PLUGINS: PluggableList = [[rehypeKatex, { throwOnError: false, strict: 'ignore' }]];
+const REHYPE_PLUGINS: PluggableList = [
+  rehypeRaw,
+  [rehypeSanitize, sanitizeSchema],
+  [rehypeKatex, { throwOnError: false, strict: 'ignore' }],
+];
+
 
 // KaTeX CSS - 懒加载（仅在有数学公式时加载）
 let katexCssLoaded = false;
