@@ -35,7 +35,7 @@ const MobileMenu = memo(function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
-  const { isDark, toggleThemeWithAnimation } = useTheme();
+  const { isDark, toggleThemeWithFade } = useTheme();
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -303,9 +303,7 @@ const MobileMenu = memo(function MobileMenu() {
               <button
                 type="button"
                 onClick={(e) => {
-                  const x = e.clientX;
-                  const y = e.clientY;
-                  toggleThemeWithAnimation(x, y);
+                  toggleThemeWithFade();
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-colors duration-150 shadow-sm transform-gpu will-change-transform"
                 aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
