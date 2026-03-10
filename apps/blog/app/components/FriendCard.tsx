@@ -17,7 +17,11 @@ interface FriendCardProps {
   index?: number;
 }
 
-export const FriendCard: React.FC<FriendCardProps> = ({
+// ⚡ Bolt: 使用 React.memo 包装组件，因为友链列表可能会很大，
+// 而这里传入的大部分 props 都是稳定的基本类型 (字符串/数字)，
+// 或者在父组件中由于是静态数据而保持引用稳定。
+// 这样可以避免在父组件渲染时导致整个友链列表产生 O(n) 级别的非必要重渲染。
+export const FriendCard = React.memo(({
   name,
   url,
   avatar,
@@ -27,7 +31,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
   email,
   rss,
   index = 0,
-}) => {
+}: FriendCardProps) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   // 智能检测图片宽高比
@@ -160,6 +164,8 @@ export const FriendCard: React.FC<FriendCardProps> = ({
       />
     </a>
   );
-};
+});
+
+FriendCard.displayName = 'FriendCard';
 
 export default FriendCard;
