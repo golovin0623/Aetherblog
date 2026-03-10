@@ -37,6 +37,7 @@ export interface Post {
   viewCount?: number;
   categoryName?: string;
   tagNames?: string[];
+  passwordRequired?: boolean;
 }
 
 export interface FriendLink {

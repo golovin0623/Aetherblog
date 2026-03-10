@@ -1,6 +1,7 @@
 package com.aetherblog.blog.controller;
 
 import com.aetherblog.blog.dto.request.PostPasswordAccessRequest;
+import com.aetherblog.blog.dto.response.AdjacentPostResponse;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.service.PostService;
@@ -67,5 +68,11 @@ public class PublicPostController {
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "10") int pageSize) {
         return R.ok(postService.getPostsByTag(tagId, pageNum, pageSize));
+    }
+
+    @Operation(summary = "获取相邻文章（上一篇/下一篇）")
+    @GetMapping("/{slug}/adjacent")
+    public R<AdjacentPostResponse> getAdjacentPosts(@PathVariable String slug) {
+        return R.ok(postService.getAdjacentPosts(slug));
     }
 }

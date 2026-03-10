@@ -25,42 +25,25 @@ const sanitizeSchema: typeof defaultSchema = {
   ...defaultSchema,
   tagNames: [
     ...(defaultSchema.tagNames || []),
-    // 额外允许的标签（defaultSchema 已涵盖 img/a/p/div/span/table 等）
+    // 扩展多媒体与语意化标签
     'center', 'figure', 'figcaption', 'mark', 'u', 'abbr', 'details', 'summary',
+    'video', 'audio', 'source', 'track', 'picture', 'kbd', 'sup', 'sub', 'del', 'iframe'
   ],
   attributes: {
     ...defaultSchema.attributes,
-    img: [
-      ...(defaultSchema.attributes?.img || []),
-      'style', 'width', 'height', 'align', 'loading',
+    // 全局放行核心排版属性
+    '*': [
+      ...(defaultSchema.attributes?.['*'] || []),
+      'className', 'style', 'id', 'align', 'valign', 'width', 'height'
     ],
-    div: [
-      ...(defaultSchema.attributes?.div || []),
-      'style', 'align',
-    ],
-    p: [
-      ...(defaultSchema.attributes?.p || []),
-      'style', 'align',
-    ],
-    span: [
-      ...(defaultSchema.attributes?.span || []),
-      'style',
-    ],
+    // 专用属性支持
+    video: ['src', 'controls', 'autoplay', 'loop', 'muted', 'poster', 'preload'],
+    audio: ['src', 'controls', 'autoplay', 'loop', 'muted', 'preload'],
+    source: ['src', 'type', 'srcSet', 'media'],
+    iframe: ['src', 'width', 'height', 'frameBorder', 'allowFullScreen', 'scrolling', 'title'],
     a: [
       ...(defaultSchema.attributes?.a || []),
-      'style',
-    ],
-    table: [
-      ...(defaultSchema.attributes?.table || []),
-      'style', 'width', 'align',
-    ],
-    td: [
-      ...(defaultSchema.attributes?.td || []),
-      'style', 'width', 'align', 'valign', 'colspan', 'rowspan',
-    ],
-    th: [
-      ...(defaultSchema.attributes?.th || []),
-      'style', 'width', 'align', 'valign', 'colspan', 'rowspan',
+      'target', 'rel', 'download'
     ],
     // alert-block 自定义元素
     'alert-block': ['data-type', 'data-title'],

@@ -7,6 +7,8 @@ import BackButton from '@/app/components/BackButton';
 import FadeIn from '@/app/components/FadeIn';
 import CommentSection from '@/app/components/CommentSection';
 import TableOfContents from '@/app/components/TableOfContents';
+import PostNavigation from '@/app/components/PostNavigation';
+import ArticleFloatingActions from '@/app/components/ArticleFloatingActions';
 import { SERVER_API_URL } from '@/app/lib/api';
 import { buildAdminPostEditUrl, getAdminLinkConfig } from '@/app/lib/adminUrl';
 import { logger } from '@/app/lib/logger';
@@ -35,6 +37,16 @@ interface PageProps {
 
 const MARKDOWN_AUDIT_SLUG = '__markdown_audit__';
 const MARKDOWN_AUDIT_FILE = join(process.cwd(), 'docs', 'blog-markdown-regression-sample.md');
+
+interface PostBrief {
+  slug: string;
+  title: string;
+}
+
+interface AdjacentPosts {
+  prevPost?: PostBrief | null;
+  nextPost?: PostBrief | null;
+}
 
 async function getPost(slug: string): Promise<Post | null> {
   try {
@@ -90,10 +102,27 @@ async function getMarkdownAuditPost(): Promise<Post | null> {
   }
 }
 
+async function getAdjacentPosts(slug: string): Promise<AdjacentPosts> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/public/posts/${slug}/adjacent`, {
+      next: { revalidate: 300 }
+    });
+
+    if (!res.ok) return {};
+
+    const json = await res.json();
+    return json.data || {};
+  } catch (error) {
+    logger.warn('Failed to fetch adjacent posts:', error);
+    return {};
+  }
+}
+
 export default async function PostDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const post = slug === MARKDOWN_AUDIT_SLUG ? await getMarkdownAuditPost() : await getPost(slug);
   const settings = await getSiteSettings();
+  const adjacentPosts = slug !== MARKDOWN_AUDIT_SLUG ? await getAdjacentPosts(slug) : {};
 
   if (!post) {
     return (
@@ -187,7 +216,17 @@ export default async function PostDetailPage({ params }: PageProps) {
             )}
           </FadeIn>
 
-          <FadeIn delay={0.3}>
+          {/* 上一篇 / 下一篇 导航 */}
+          {post.id > 0 && (
+            <FadeIn delay={0.3}>
+              <PostNavigation
+                prevPost={adjacentPosts.prevPost}
+                nextPost={adjacentPosts.nextPost}
+              />
+            </FadeIn>
+          )}
+
+          <FadeIn delay={0.35}>
             {post.id > 0 ? (
               <CommentSection postId={post.id} settings={settings} />
             ) : (
@@ -198,6 +237,11 @@ export default async function PostDetailPage({ params }: PageProps) {
           </FadeIn>
         </article>
       </div>
+
+      {/* 移动端悬浮操作：目录 + 回顶部 */}
+      {!post.passwordRequired && post.content && (
+        <ArticleFloatingActions content={post.content} />
+      )}
     </div>
   );
 }

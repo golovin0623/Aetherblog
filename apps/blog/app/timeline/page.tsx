@@ -16,6 +16,7 @@ interface Post {
     viewCount?: number;
     category?: { name: string; slug: string };
     tags?: { name: string; slug: string }[];
+    passwordRequired?: boolean;
 }
 
 // 客户端辅助函数：按日期分组文章
@@ -34,7 +35,8 @@ function groupPostsByDate(posts: Post[]): any[] {
       id: post.id.toString(),
       title: post.title,
       slug: post.slug,
-      publishedAt: post.publishedAt
+      publishedAt: post.publishedAt,
+      passwordRequired: post.passwordRequired
     });
   });
 
@@ -80,7 +82,8 @@ export default function TimelinePage() {
                 viewCount: item.viewCount,
                 publishedAt: new Date(item.publishedAt).toISOString(),
                 category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
-                tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : []
+                tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
+                passwordRequired: item.passwordRequired
              })) as Post[];
         },
         staleTime: 5 * 60 * 1000, // 缓存 5 分钟

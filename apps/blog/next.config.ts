@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.githubusercontent.com' },
       { protocol: 'https', hostname: '*.gravatar.com' },
       { protocol: 'https', hostname: 'cravatar.cn' },
+      { protocol: 'https', hostname: 'cdn.example.com' },
       { protocol: 'https', hostname: 'github.com' },
       // 本地开发
       { protocol: 'http', hostname: 'localhost' },
