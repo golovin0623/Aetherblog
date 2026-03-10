@@ -165,4 +165,5 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
 // ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders when parent FriendsList updates.
 // Since FriendCard receives primitive/stable props, this avoids O(n) re-renders in the list.
 export const FriendCard = React.memo(FriendCardBase);
+FriendCard.displayName = 'FriendCard';
 export default FriendCard;
