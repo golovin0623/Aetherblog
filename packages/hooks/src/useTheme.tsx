@@ -97,8 +97,8 @@ async function performCircularTransition(
     Math_max(x, window.innerWidth - x),
     Math_max(y, window.innerHeight - y)
   );
-  // 全屏标准时长 500ms，计算全局扩圈速度
-  const totalDuration = 500;
+  //全屏标准时长 350ms，计算全局扩圈速度
+  const totalDuration = 350;
   const velocity = maxRadius / totalDuration; // px per ms
 
   // 设置动画方向（决定 z-index）
@@ -112,7 +112,7 @@ async function performCircularTransition(
     await transition.ready;
 
     const animOpts = {
-      duration: 500,
+      duration: 350,
       easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
     };
 
@@ -146,8 +146,21 @@ async function performCircularTransition(
     // 1) root 层 — 覆盖全视口
     animateLayer('root', x, y, maxRadius);
 
-    // 等待核心 500ms 动画跑完
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // 2) mobile-menu-drawer — 局部视口，由于其隔离在新 VT 层，必须计算自身的最大对角线
+    const drawerEl = document.querySelector('.mobile-menu-drawer');
+    if (drawerEl) {
+      const rect = drawerEl.getBoundingClientRect();
+      const drawerX = x - rect.left;
+      const drawerY = y - rect.top;
+      const drawerRadius = Math_hypot(
+        Math_max(drawerX, rect.width - drawerX),
+        Math_max(drawerY, rect.height - drawerY)
+      );
+      animateLayer('mobile-menu-drawer', drawerX, drawerY, drawerRadius);
+    }
+
+    // 等待核心 350ms 动画跑完
+    await new Promise((resolve) => setTimeout(resolve, 350));
     await transition.finished;
 
   } catch {
@@ -189,8 +202,10 @@ export interface UseThemeReturn {
   setTheme: (theme: Theme) => void;
   /** 切换亮/暗主题（支持圆形动画，需先调用 setThemeTransitionOrigin） */
   toggleTheme: () => void;
-  /** 带动画的主题切换（传入点击位置） */
+  /** 带扩散光圈动画的主题切换（传入点击位置） */
   toggleThemeWithAnimation: (x: number, y: number) => void;
+  /** 只带原生的淡入淡出 (Crossfade) 瞬切，用于规避卡顿 */
+  toggleThemeWithFade: () => void;
 }
 
 // 创建 Context
@@ -326,6 +341,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setTheme(newTheme);
     });
   }, [resolvedTheme, setTheme]);
+
+  // 只带原生的淡入淡出 (Crossfade) 瞬切，无 clip-path 特效
+  const toggleThemeWithFade = useCallback(() => {
+    const newTheme: Theme = resolvedTheme === 'dark' ? 'light' : 'dark';
+    
+    // 如果支持 View Transitions API，则使用简单的默认过渡（交叉淡入淡出）
+    if (typeof document !== 'undefined' && document.startViewTransition) {
+      document.startViewTransition(() => {
+        setTheme(newTheme);
+      });
+    } else {
+      setTheme(newTheme);
+    }
+  }, [resolvedTheme, setTheme]);
   
   // 为避免UI闪烁或错误图标，未挂载时可以返回一个安全状态
   // 但为了 API 兼容性，我们返回计算值
@@ -337,7 +366,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme,
     toggleTheme,
     toggleThemeWithAnimation,
-  }), [theme, resolvedTheme, isDark, setTheme, toggleTheme, toggleThemeWithAnimation]);
+    toggleThemeWithFade,
+  }), [theme, resolvedTheme, isDark, setTheme, toggleTheme, toggleThemeWithAnimation, toggleThemeWithFade]);
 
   return (
     <ThemeContext.Provider value={value}>

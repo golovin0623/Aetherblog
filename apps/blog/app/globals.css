@@ -1127,21 +1127,27 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
   z-index: 0;
 }
 
-/* 
- * 性能优化 (Performance Optimization):
- * 在扩散动画期间 (500ms 内)，我们通过 CSS 强制移除移动端侧边栏和遮罩的 
- * backdrop-filter (毛玻璃) 属性，并用不透明底色兜底，避免 GPU 因处理全屏 
- * clip-path 加上模糊滤镜而导致的严重掉帧 (lagging)。
- */
-html[data-theme-transition] .mobile-menu-backdrop {
-  backdrop-filter: none !important;
-  background-color: rgba(0, 0, 0, 0.8) !important;
+/* 侧边栏独立 view-transition 层（平时隔离 backdrop-blur 防止闪烁，避免根层抓取时透明变色） */
+.mobile-menu-drawer {
+  view-transition-name: mobile-menu-drawer;
 }
 
-html[data-theme-transition] .mobile-menu-drawer {
-  backdrop-filter: none !important;
-  /* 确保在亮暗动画时不会变透明，使用一个不透明的变体 */
-  background-color: var(--bg-card) !important;
+/* ========================================
+   多层 VT 的动画绑定与层级控制
+   ======================================== */
+
+/* 侧边栏层的主题切换辅助配置：禁用默认过渡，按层级顺序显示 */
+::view-transition-group(mobile-menu-drawer) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(mobile-menu-drawer) {
+  z-index: 1;
+}
+
+::view-transition-old(mobile-menu-drawer) {
+  z-index: 0;
 }
 
 html[data-theme-transition="to-dark"]::view-transition-old(mobile-menu-drawer) {
@@ -1150,6 +1156,36 @@ html[data-theme-transition="to-dark"]::view-transition-old(mobile-menu-drawer) {
 
 html[data-theme-transition="to-dark"]::view-transition-new(mobile-menu-drawer) {
   z-index: 0;
+}
+
+
+/* 
+ * 性能优化 (Performance Optimization):
+ * 移动端 GPU 无法在进行全屏 clip-path 动画的同时计算高昂的 
+ * backdrop-filter (毛玻璃) 和复杂的 box-shadow。
+ * 避免使用通配符 '*' 选择器，因为它会导致深度的 DOM 样式重排，本身就会引发卡顿。
+ * 我们使用属性选择器精确制导移除滤镜和阴影，瞬间释放 GPU 算力！
+ */
+html[data-theme-transition] [class*="backdrop-blur"],
+html[data-theme-transition] [class*="shadow"],
+html[data-theme-transition] header,
+html[data-theme-transition] .mobile-menu-drawer,
+html[data-theme-transition] .mobile-menu-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+/* 针对已知使用毛玻璃作为背景的元素，在失去毛玻璃时给予不透明底色兜底，防止完全透明或使用错误的 var(--bg-overlay) 半透明变暗 */
+html[data-theme-transition] .mobile-menu-drawer,
+html[data-theme-transition] header,
+html[data-theme-transition] header[class*="fixed"] {
+  background: var(--bg-primary) !important;
+  background-color: var(--bg-primary) !important;
+}
+
+html[data-theme-transition] .mobile-menu-backdrop {
+  background-color: rgba(0, 0, 0, 0.8) !important;
 }
 
 /* 减少动画模式时禁用 View Transition */
