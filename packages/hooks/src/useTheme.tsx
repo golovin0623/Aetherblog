@@ -146,21 +146,6 @@ async function performCircularTransition(
     // 1) root 层 — 覆盖全视口
     animateLayer('root', x, y, maxRadius);
 
-    // 2) mobile-menu-drawer — 局部视口，计算自身的最大对角线
-    // 用户反馈：为了保证移动端极端机型的流畅度，放弃绝对同心圆
-    // 让侧边栏使用自己较小尺寸的 drawerRadius，大幅减轻 GPU 的遮罩裁剪内存开销
-    const drawerEl = document.querySelector('.mobile-menu-drawer');
-    if (drawerEl) {
-      const rect = drawerEl.getBoundingClientRect();
-      const drawerX = x - rect.left;
-      const drawerY = y - rect.top;
-      const drawerRadius = Math_hypot(
-        Math_max(drawerX, rect.width - drawerX),
-        Math_max(drawerY, rect.height - drawerY)
-      );
-      animateLayer('mobile-menu-drawer', drawerX, drawerY, drawerRadius);
-    }
-
     // 等待核心 500ms 动画跑完
     await new Promise((resolve) => setTimeout(resolve, 500));
     await transition.finished;

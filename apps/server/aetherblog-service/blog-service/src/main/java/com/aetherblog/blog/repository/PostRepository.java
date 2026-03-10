@@ -51,6 +51,18 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
     @Query("SELECT p FROM Post p WHERE p.status = 'PUBLISHED' AND p.deleted = false AND p.isHidden = false ORDER BY p.viewCount DESC")
     Page<Post> findHotPosts(Pageable pageable);
 
+    /**
+     * 查找比当前文章更新的已发布文章（下一篇）
+     */
+    @Query("SELECT p FROM Post p WHERE p.publishedAt > :publishedAt AND p.status = 'PUBLISHED' AND p.deleted = false AND p.isHidden = false ORDER BY p.publishedAt ASC")
+    Page<Post> findNextPublished(@Param("publishedAt") java.time.LocalDateTime publishedAt, Pageable pageable);
+
+    /**
+     * 查找比当前文章更旧的已发布文章（上一篇）
+     */
+    @Query("SELECT p FROM Post p WHERE p.publishedAt < :publishedAt AND p.status = 'PUBLISHED' AND p.deleted = false AND p.isHidden = false ORDER BY p.publishedAt DESC")
+    Page<Post> findPrevPublished(@Param("publishedAt") java.time.LocalDateTime publishedAt, Pageable pageable);
+
     @Query("SELECT p FROM Post p ORDER BY p.createdAt DESC")
     Page<Post> findAllOrderByCreatedAtDesc(Pageable pageable);
 

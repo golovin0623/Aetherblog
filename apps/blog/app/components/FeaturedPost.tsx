@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Calendar, Folder, ArrowRight } from 'lucide-react';
+import { Calendar, Folder, ArrowRight, Lock } from 'lucide-react';
 import MiniMarkdownPreview from './MiniMarkdownPreview';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
@@ -17,6 +17,7 @@ interface FeaturedPostProps {
     category?: { name: string; slug: string };
     tags?: { name: string; slug: string }[];
     contentPreview?: string; // 可选的原始内容用于预览
+    passwordRequired?: boolean; // 新增：是否需要密码
   };
 }
 
@@ -26,11 +27,13 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
     = useSpotlightEffect({ radius: 1000 });
 
   // 如果摘要缺失，从内容生成摘要的逻辑
-  const displaySummary = post.summary 
-    ? post.summary 
-    : post.contentPreview 
-        ? post.contentPreview.slice(0, 500) + '...' 
-        : '暂无摘要';
+  const displaySummary = post.passwordRequired
+    ? '这是一篇加密文章，请输入密码后查看。'
+    : post.summary 
+      ? post.summary 
+      : post.contentPreview 
+          ? post.contentPreview.slice(0, 500) + '...' 
+          : '暂无摘要';
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent navigation if clicking on interactive elements
@@ -96,6 +99,12 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                             <Calendar className="w-3 h-3" />
                             <span>{post.publishedAt}</span>
                         </div>
+                        {post.passwordRequired && (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500 ml-auto">
+                                <Lock className="w-3 h-3" />
+                                <span className="text-[10px] font-semibold tracking-wider">已加密</span>
+                            </div>
+                        )}
                     </div>
 
                     {/* 标题 */}
@@ -127,11 +136,20 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                       style={{
                         scrollbarWidth: 'none',
                         msOverflowStyle: 'none',
-                        maskImage: 'linear-gradient(to bottom, black 80%, transparent 100%)',
-                        WebkitMaskImage: 'linear-gradient(to bottom, black 80%, transparent 100%)'
+                        // 加密文章不需要底部渐变遮罩，因为它不会很长
+                        maskImage: post.passwordRequired ? 'none' : 'linear-gradient(to bottom, black 80%, transparent 100%)',
+                        WebkitMaskImage: post.passwordRequired ? 'none' : 'linear-gradient(to bottom, black 80%, transparent 100%)'
                       }}
                     >
-                        <MiniMarkdownPreview content={displaySummary} maxLength={800} />
+                        {post.passwordRequired ? (
+                            <div className="p-3 bg-amber-500/5 border-l-2 border-amber-500/50 rounded-r-md text-amber-600/80 dark:text-amber-400/80 text-xs flex items-start gap-2 h-full mt-2">
+                                <div className="mt-0.5">
+                                    此文章内容已使用密码加密。阅读全文和查看摘要需要提供访问凭证。
+                                </div>
+                            </div>
+                        ) : (
+                            <MiniMarkdownPreview content={displaySummary} maxLength={800} />
+                        )}
                     </div>
                 </div>
 
@@ -146,25 +164,54 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                 </Link>
             </div>
 
-             {/* 右侧预览区域 (2/3 宽度) - 渲染的 Markdown */}
+             {/* 右侧预览区域 (2/3 宽度) - 渲染的 Markdown 或 加密状态 */}
             <div className="hidden lg:block lg:col-span-2 bg-[var(--preview-bg)] overflow-hidden relative">
-                <div className="p-8 h-full overflow-hidden">
-                    {post.contentPreview ? (
-                         <div
-                           className="h-full text-sm antialiased"
-                           style={{
-                             maskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)',
-                             WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)'
-                           }}
-                         >
-                            <MiniMarkdownPreview content={post.contentPreview} maxLength={2000} />
-                         </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
-                            <span className="animate-pulse">Loading preview...</span>
+                {post.passwordRequired ? (
+                    // 加密状态的右侧大区域 UI
+                    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                        {/* 装饰性背景：斜纹或网点 */}
+                        <div 
+                            className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] z-0" 
+                            style={{ 
+                                backgroundImage: 'repeating-linear-gradient(45deg, var(--text-primary) 0, var(--text-primary) 1px, transparent 0, transparent 50%)',
+                                backgroundSize: '20px 20px'
+                            }} 
+                        />
+                        {/* 居中悬浮卡片 */}
+                        <div className="relative z-10 flex flex-col items-center justify-center p-10 bg-[var(--bg-card)]/40 backdrop-blur-xl rounded-3xl border border-[var(--border-subtle)]/60 shadow-[0_8px_32px_rgba(0,0,0,0.08)] max-w-sm text-center">
+                            <div className="w-16 h-16 mb-6 rounded-full bg-gradient-to-tr from-amber-500/20 to-orange-500/20 flex items-center justify-center border border-amber-500/30 shadow-[inset_0_0_20px_rgba(245,158,11,0.2)]">
+                                <Lock className="w-7 h-7 text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+                            </div>
+                            <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2 tracking-wide">访问受限</h3>
+                            <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">
+                                这是一篇加密文章<br/>预览和正文内容已被隐藏
+                            </p>
+                            <div className="px-5 py-2 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-default)] text-xs text-[var(--text-muted)] flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                安全锁定中
+                            </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    // 正常预览区域
+                    <div className="p-8 h-full overflow-hidden">
+                        {post.contentPreview ? (
+                            <div
+                                className="h-full text-sm antialiased"
+                                style={{
+                                    maskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)',
+                                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 85%, transparent 100%)'
+                                }}
+                            >
+                                <MiniMarkdownPreview content={post.contentPreview} maxLength={2000} />
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
+                                <span className="animate-pulse">Loading preview...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                  {/* 微妙的淡出覆盖层 - 较浅的渐变 */}
                  <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[var(--bg-card)] via-[var(--bg-card)]/50 to-transparent pointer-events-none" />

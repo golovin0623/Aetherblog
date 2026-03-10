@@ -2,6 +2,7 @@ package com.aetherblog.blog.service;
 
 import com.aetherblog.blog.dto.request.CreatePostRequest;
 import com.aetherblog.blog.dto.request.UpdatePostPropertiesRequest;
+import com.aetherblog.blog.dto.response.AdjacentPostResponse;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.entity.Post;
@@ -81,4 +82,11 @@ public interface PostService {
     void publishPost(Long id);
 
     void incrementViewCount(Long id);
+
+    /**
+     * 获取当前文章的上一篇和下一篇
+     * @param slug 当前文章 slug
+     * @return 相邻文章信息
+     */
+    AdjacentPostResponse getAdjacentPosts(String slug);
 }

@@ -21,6 +21,7 @@ interface Post {
   category?: { name: string; slug: string };
   tags?: { name: string; slug: string }[];
   contentPreview?: string;
+  passwordRequired?: boolean;
 }
 
 const PAGE_SIZE = 6;
@@ -53,6 +54,7 @@ export default function PostsPage() {
           : '暂无日期',
         category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
+        passwordRequired: item.passwordRequired,
       };
 
       // 获取内容预览
@@ -97,6 +99,7 @@ export default function PostsPage() {
           : '暂无日期',
         category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
         tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
+        passwordRequired: item.passwordRequired,
       }));
 
       // 如果是第 1 页，移除第一条（推荐文章）
@@ -208,6 +211,7 @@ export default function PostsPage() {
                       publishedAt={post.publishedAt}
                       viewCount={post.viewCount}
                       index={index}
+                      passwordRequired={post.passwordRequired}
                     />
                   ))}
                 </div>

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Calendar, Eye, Folder } from 'lucide-react';
+import { Calendar, Eye, Folder, Lock } from 'lucide-react';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
 interface ArticleCardProps {
@@ -18,6 +18,7 @@ interface ArticleCardProps {
   viewCount?: number;
   isPinned?: boolean;
   index?: number;
+  passwordRequired?: boolean;
 }
 
 const ArticleCardBase: React.FC<ArticleCardProps> = ({
@@ -32,6 +33,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   viewCount,
   isPinned = false,
   index = 0,
+  passwordRequired = false,
 }) => {
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
@@ -125,22 +127,31 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           </h2>
 
           {/* 摘要 - 固定3行高度 */}
-          <div className="h-[66px] mb-4 overflow-hidden">
-            <p className="text-[var(--text-secondary)] text-sm leading-relaxed line-clamp-3">
-              {summary
-                ? summary
-                    .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
-                    .replace(/^:::\s*$/gm, '')
-                    .replace(/<!--\s*more\s*-->/g, '')
-                    .replace(/[#*`>\\[\\]!|_~]/g, '')
-                    .replace(/\\n+/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                    .slice(0, 120) + (summary.length > 120 ? '...' : '')
-                : title.length > 100
-                  ? title.slice(0, 100) + '...'
-                  : `${title} - 探索更多精彩内容，点击阅读全文了解详情。`}
-            </p>
+          <div className="h-[66px] mb-4 overflow-hidden relative">
+            {passwordRequired ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-secondary)]/50 backdrop-blur-[2px] border border-amber-500/20 border-dashed rounded-lg">
+                <div className="flex items-center gap-2 text-amber-500/80">
+                  <Lock className="w-4 h-4" />
+                  <span className="text-xs font-medium tracking-wide">内容已加密</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[var(--text-secondary)] text-sm leading-relaxed line-clamp-3">
+                {summary
+                  ? summary
+                      .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
+                      .replace(/^:::\s*$/gm, '')
+                      .replace(/<!--\s*more\s*-->/g, '')
+                      .replace(/[#*`>\\[\\]!|_~]/g, '')
+                      .replace(/\\n+/g, ' ')
+                      .replace(/\s+/g, ' ')
+                      .trim()
+                      .slice(0, 120) + (summary.length > 120 ? '...' : '')
+                  : title.length > 100
+                    ? title.slice(0, 100) + '...'
+                    : `${title} - 探索更多精彩内容，点击阅读全文了解详情。`}
+              </p>
+            )}
           </div>
 
           {/* 底部区域 - 标签和元信息 */}

@@ -3,6 +3,7 @@ package com.aetherblog.blog.service.impl;
 import com.aetherblog.blog.dto.request.CreatePostRequest;
 import com.aetherblog.blog.dto.request.PostPasswordAccessRequest;
 import com.aetherblog.blog.dto.request.UpdatePostPropertiesRequest;
+import com.aetherblog.blog.dto.response.AdjacentPostResponse;
 import com.aetherblog.blog.dto.response.PostDetailResponse;
 import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.entity.Category;
@@ -450,6 +451,34 @@ public class PostServiceImpl implements PostService {
             post.setViewCount(post.getViewCount() + 1);
             postRepository.save(post);
         });
+    }
+
+    @Override
+    public AdjacentPostResponse getAdjacentPosts(String slug) {
+        Post currentPost = postRepository.findPublicBySlug(slug)
+                .orElseThrow(() -> new BusinessException(404, "文章不存在"));
+
+        AdjacentPostResponse response = new AdjacentPostResponse();
+
+        // 上一篇（较旧）
+        postRepository.findPrevPublished(currentPost.getPublishedAt(), PageRequest.of(0, 1))
+                .getContent().stream().findFirst().ifPresent(prev -> {
+                    AdjacentPostResponse.PostBrief brief = new AdjacentPostResponse.PostBrief();
+                    brief.setSlug(prev.getSlug());
+                    brief.setTitle(prev.getTitle());
+                    response.setPrevPost(brief);
+                });
+
+        // 下一篇（较新）
+        postRepository.findNextPublished(currentPost.getPublishedAt(), PageRequest.of(0, 1))
+                .getContent().stream().findFirst().ifPresent(next -> {
+                    AdjacentPostResponse.PostBrief brief = new AdjacentPostResponse.PostBrief();
+                    brief.setSlug(next.getSlug());
+                    brief.setTitle(next.getTitle());
+                    response.setNextPost(brief);
+                });
+
+        return response;
     }
 
     private String generateUniqueSlug(String title) {

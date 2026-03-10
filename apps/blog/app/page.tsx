@@ -132,6 +132,7 @@ export default async function HomePage() {
                 publishedAt={new Date(post.publishedAt).toLocaleDateString('zh-CN')}
                 viewCount={post.viewCount}
                 index={index}
+                passwordRequired={post.passwordRequired}
               />
             ))}
           </div>
