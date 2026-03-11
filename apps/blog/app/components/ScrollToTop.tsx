@@ -52,8 +52,9 @@ export const ScrollToTop = () => {
 
   return (
     <button
+      type="button"
       onClick={scrollToTop}
-      className={`fixed bottom-8 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:block ${
+      className={`fixed bottom-8 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:block focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
         isVisible ? 'md:opacity-100 md:translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
       }`}
       aria-label="返回顶部"
