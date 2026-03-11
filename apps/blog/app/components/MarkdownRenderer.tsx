@@ -698,10 +698,13 @@ function createComponents(
     },
 
     // 处理 pre 标签 - 捕获所有代码块
+    // 只要 <pre> 有 React 元素子节点（<code> 或自定义 code 组件），
+    // 就提取文本走 ShikiCodeBlock，避免四反引号无语言标识的代码块
+    // 被当作默认 <pre> 渲染导致移动端 markdown 内容泄漏。
     pre: ({ children, ...props }) => {
       const child = React.Children.toArray(children)[0];
 
-      if (React.isValidElement(child) && (child.type === 'code' || (child.props as { className?: string })?.className)) {
+      if (React.isValidElement(child)) {
         const childProps = child.props as { className?: string; children?: React.ReactNode };
         const className = childProps.className || '';
         const match = /language-(\w+)/.exec(className);
@@ -717,7 +720,7 @@ function createComponents(
         return <ShikiCodeBlock language={language} code={codeContent} highlighter={highlighter} theme={theme} />;
       }
 
-      // 默认 pre
+      // 默认 pre（仅当子节点不是 React 元素时）
       return <pre className="overflow-x-auto p-4 bg-slate-900/80 border border-white/5 rounded-lg my-4" {...props}>{children}</pre>;
     },
 
