@@ -158,12 +158,12 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.3 }}
-            className="fixed bottom-8 right-6 z-50 flex flex-col items-center gap-3"
+            className="fixed bottom-[88px] right-6 z-50 flex flex-col items-center gap-3"
           >
             {/* 目录按钮 */}
             <button
               onClick={() => setIsTocOpen(true)}
-              className="p-2.5 rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95"
+              className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95"
               aria-label="打开目录"
             >
               <List className="w-5 h-5 text-primary" />
@@ -172,7 +172,7 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
             {/* 回顶部按钮 */}
             <button
               onClick={scrollToTop}
-              className="p-2 rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95"
+              className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95"
               aria-label="返回顶部"
             >
               <div className="relative flex items-center justify-center w-8 h-8">
