@@ -152,8 +152,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         </div>
         {variant !== 'sidebar' && (
           <button
+            type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors"
+            className="p-1 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? '收起目录' : '展开目录'}
             aria-controls="toc-content-area" // 请将此 ID 与 motion.div 的 id 保持一致
@@ -169,6 +170,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
+            id="toc-content-area"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -188,8 +190,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
                   return (
                     <button
                       key={heading.id}
+                      type="button"
                       onClick={() => scrollToHeading(heading.id)}
-                      className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 ${isActive
+                      className={`group relative block w-full text-left py-2 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-lg ${isActive
                         ? 'text-primary bg-primary/5 font-medium'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                         }`}
@@ -215,8 +218,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
 
       <div className="mt-auto pt-4 border-t border-[var(--border-subtle)]/50">
         <button
+          type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20"
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl"
         >
           <ArrowUp className="h-4 w-4" />
           <span>返回顶部</span>
@@ -242,8 +246,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         <button
           type="button"
           onClick={() => setIsDrawerOpen((prev) => !prev)}
-          aria-pressed={isDrawerOpen}
-          className={`inline-flex items-center justify-center h-7 w-7 rounded-full border transition-all ${isDrawerOpen
+          aria-expanded={isDrawerOpen}
+          aria-controls="toc-drawer-content"
+          className={`inline-flex items-center justify-center h-7 w-7 rounded-full border transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${isDrawerOpen
               ? 'border-primary bg-primary/10 text-primary'
               : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40'
             } ${triggerClassName}`}
@@ -256,7 +261,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         <button
           type="button"
           onClick={() => setIsDrawerOpen(true)}
-          className={`fixed right-6 bottom-8 z-[55] flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/80 px-5 py-3 text-sm font-medium text-[var(--text-primary)] backdrop-blur-xl shadow-2xl transition-all duration-500 ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
+          aria-expanded={isDrawerOpen}
+          aria-controls="toc-drawer-content"
+          className={`fixed right-6 bottom-8 z-[55] flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/80 px-5 py-3 text-sm font-medium text-[var(--text-primary)] backdrop-blur-xl shadow-2xl transition-all duration-500 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
             } hover:opacity-100 hover:scale-105 hover:blur-0 hover:shadow-primary/20 hover:border-primary/30 ${triggerClassName}`}
         >
           <List className="h-4 w-4 text-primary" />
@@ -282,6 +289,10 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
 
               {/* 面板内容 */}
               <motion.div
+                id="toc-drawer-content"
+                role="dialog"
+                aria-modal="true"
+                aria-label="文章导航"
                 initial={{ x: '100%' }}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
@@ -291,8 +302,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">文章导航</h3>
                   <button
+                    type="button"
                     onClick={() => setIsDrawerOpen(false)}
-                    className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                    className="p-2 rounded-xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:rounded-xl"
                     aria-label="关闭目录导航"
                   >
                     <X className="h-5 w-5" />
