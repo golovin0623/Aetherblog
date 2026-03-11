@@ -21,6 +21,7 @@ export default function FloatingThemeToggle() {
 
   return (
     <button
+      type="button"
       onClick={(e) => {
         // 防止和底部导航或滚动冲突
         e.preventDefault();
@@ -28,7 +29,7 @@ export default function FloatingThemeToggle() {
         const y = e.clientY;
         toggleThemeWithAnimation(x, y);
       }}
-      className="md:hidden fixed right-4 bottom-6 z-40 p-2.5 rounded-full bg-black/10 dark:bg-white/10 text-[var(--text-primary)] opacity-30 hover:opacity-100 backdrop-blur-sm border border-[var(--border-subtle)]/30 transition-all duration-300 shadow-sm"
+      className="md:hidden fixed right-4 bottom-6 z-40 p-2.5 rounded-full bg-black/10 dark:bg-white/10 text-[var(--text-primary)] opacity-30 hover:opacity-100 backdrop-blur-sm border border-[var(--border-subtle)]/30 transition-all duration-300 shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
       aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
     >
       {isDark ? <Moon size={18} /> : <Sun size={18} />}
