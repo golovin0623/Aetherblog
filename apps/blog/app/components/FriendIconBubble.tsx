@@ -5,6 +5,13 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
+// 多层阴影：外部投影 + 内部高光 → 3D 气泡质感
+const BUBBLE_SHADOW = [
+  '0 2px 8px rgba(0,0,0,0.12)',
+  '0 6px 20px rgba(0,0,0,0.08)',
+  'inset 0 1px 1px rgba(255,255,255,0.15)',
+].join(', ');
+
 interface FriendIconBubbleProps {
   name: string;
   url: string;
@@ -66,13 +73,6 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
     };
   }, []);
 
-  // 多层阴影：外部投影 + 内部高光/阴影 → 3D 气泡质感
-  const bubbleShadow = [
-    '0 2px 8px rgba(0,0,0,0.12)',
-    '0 6px 20px rgba(0,0,0,0.08)',
-    'inset 0 1px 1px rgba(255,255,255,0.15)',
-  ].join(', ');
-
   return (
     <motion.div
       className="relative flex flex-col items-center"
@@ -116,7 +116,7 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
             style={{
               width: size,
               height: size,
-              boxShadow: bubbleShadow,
+              boxShadow: BUBBLE_SHADOW,
             }}
           >
             {/* 背景底色 */}
@@ -172,7 +172,7 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
         {/* 桌面端悬浮提示框 */}
         {!isMobile && (
           <AnimatePresence>
-            {showTooltip && description && (
+            {showTooltip && (
               <motion.div
                 initial={{ opacity: 0, y: 6, scale: 0.92 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -185,9 +185,11 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--text-primary)] truncate mb-0.5">
                     {name}
                   </p>
-                  <p className="text-[10px] text-[var(--text-muted)] line-clamp-2 leading-relaxed">
-                    {description}
-                  </p>
+                  {description && (
+                    <p className="text-[10px] text-[var(--text-muted)] line-clamp-2 leading-relaxed">
+                      {description}
+                    </p>
+                  )}
                 </div>
               </motion.div>
             )}
