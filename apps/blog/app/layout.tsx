@@ -12,6 +12,7 @@ const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-int
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
+  const avatarUrl = settings.authorAvatar || settings.author_avatar;
   
   return {
     title: {
@@ -22,6 +23,12 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: settings.siteKeywords?.split(/[,，]/).map(k => k.trim()) || ['blog', 'tech', 'ai'],
     authors: [{ name: settings.authorName || 'Admin' }],
     metadataBase: new URL(settings.siteUrl || 'http://localhost:3000'),
+    ...(avatarUrl ? {
+      icons: {
+        icon: avatarUrl,
+        apple: avatarUrl,
+      },
+    } : {}),
     appleWebApp: {
       capable: true,
       statusBarStyle: 'default',
