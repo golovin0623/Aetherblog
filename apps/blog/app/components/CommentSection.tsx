@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Comment, createComment, getComments, SiteSettings } from '../lib/services';
 import { Button, Avatar } from '@aetherblog/ui';
@@ -32,6 +32,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
   const hasChildren = comment.children && comment.children.length > 0;
   // 深度 0 和 1 默认展开，其他折叠
   const [isExpanded, setIsExpanded] = useState(depth < 2);
+  const childrenId = useId();
 
   return (
     <motion.div
@@ -98,7 +99,8 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                   type="button"
                   onClick={() => setIsExpanded(true)}
                   aria-expanded={isExpanded}
-                  className="flex items-center gap-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors ml-2"
+                  aria-controls={childrenId}
+                  className="flex items-center gap-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors ml-2 focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:outline-none rounded-sm"
                 >
                   <div className="w-4 h-[1px] bg-indigo-500/30" />
                   {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
@@ -110,6 +112,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
+                    id={childrenId}
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -130,7 +133,8 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                         type="button"
                         onClick={() => setIsExpanded(false)}
                         aria-expanded={isExpanded}
-                        className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] ml-4 pl-4 border-l border-[var(--border-subtle)] h-6"
+                        aria-controls={childrenId}
+                        className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] ml-4 pl-4 border-l border-[var(--border-subtle)] h-6 focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:outline-none rounded-sm"
                       >
                         <div className="w-2 h-[1px] bg-[var(--border-default)]" />
                         收起回复
