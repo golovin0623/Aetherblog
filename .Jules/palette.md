@@ -40,3 +40,7 @@
 ## 2026-06-08 - Added focus-visible rings and ARIA attributes to Table of Contents buttons
 **Learning:** Found that custom disclosure buttons (like the Table of Contents drawer trigger) often lack basic `type="button"` and `focus-visible` ring styles, making them invisible to keyboard navigation. Also, using `aria-pressed` instead of `aria-expanded` incorrectly communicates the state to screen readers.
 **Action:** Always ensure floating interactive elements and custom disclosure buttons have `type="button"`, `focus-visible:ring-2`, and `aria-expanded` pointing to correct `aria-controls` IDs.
+
+## 2026-06-08 - Added aria-controls and focus-visible to recursive comment toggle buttons
+**Learning:** Found that recursive comment components (like `CommentItem` in `apps/blog/app/components/CommentSection.tsx`) with nested toggle buttons for expanding/collapsing child lists often miss `aria-controls` links, despite having `aria-expanded`. Because the toggled content wraps the children, these links ensure that dynamic nested lists are screen-reader and keyboard accessible.
+**Action:** Always ensure that when using custom disclosure buttons to show/hide dynamic child trees or lists, `aria-controls` is linked to the container `id` dynamically generated via `React.useId()`, and proper `focus-visible` styles are maintained.
