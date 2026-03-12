@@ -7,6 +7,7 @@ import com.aetherblog.blog.dto.response.PostListResponse;
 import com.aetherblog.blog.service.PostService;
 import com.aetherblog.common.core.domain.PageResult;
 import com.aetherblog.common.core.domain.R;
+import com.aetherblog.common.security.annotation.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class PublicPostController {
     }
 
     @Operation(summary = "验证文章密码并返回正文")
+    @RateLimit(key = "public:post:password", count = 5, time = 60, limitType = RateLimit.LimitType.IP)
     @PostMapping("/{slug}/verify-password")
     public R<PostDetailResponse> verifyPassword(@PathVariable String slug, @RequestBody PostPasswordAccessRequest request) {
         PostDetailResponse post = postService.getPublicPostBySlug(slug, request.password());
