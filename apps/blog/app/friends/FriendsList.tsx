@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Globe, LayoutGrid, LayoutList } from 'lucide-react';
 import { useLocalStorage, useIsMobile } from '@aetherblog/hooks';
@@ -10,9 +10,12 @@ import { FriendLink } from '../lib/services';
 
 type ViewMode = 'list' | 'icon';
 
-// 图标网格列宽（比图标尺寸略大以提供间距）
-const ICON_GRID_COL_MOBILE = '64px';
-const ICON_GRID_COL_DESKTOP = '90px';
+// Apple Watch 风格蜂窝网格参数
+const ICON_MOBILE = 52;
+const ICON_DESKTOP = 64;
+const HONEYCOMB_GAP = 12;
+const COLS_MOBILE = 4;
+const COLS_DESKTOP = 6;
 
 interface FriendsListProps {
   initialFriends: FriendLink[];
@@ -29,6 +32,23 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
 
   const handleSetList = useCallback(() => setViewMode('list'), [setViewMode]);
   const handleSetIcon = useCallback(() => setViewMode('icon'), [setViewMode]);
+
+  const iconSize = isMobile ? ICON_MOBILE : ICON_DESKTOP;
+  const cols = isMobile ? COLS_MOBILE : COLS_DESKTOP;
+
+  // 构建蜂窝行：偶数行 N 个，奇数行 N-1 个，justify-center 自动产生错位效果
+  const iconRows = useMemo(() => {
+    const rows: FriendLink[][] = [];
+    let idx = 0;
+    let isFullRow = true;
+    while (idx < initialFriends.length) {
+      const count = isFullRow ? cols : Math.max(cols - 1, 1);
+      rows.push(initialFriends.slice(idx, idx + count));
+      idx += count;
+      isFullRow = !isFullRow;
+    }
+    return rows;
+  }, [initialFriends, cols]);
 
   return (
     <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
@@ -160,35 +180,42 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ duration: 0.3 }}
+                className="relative py-4 md:py-8"
               >
-                {/* Apple Watch 风格图标网格 */}
-                <div className="relative rounded-3xl border border-[var(--border-subtle)] bg-white/[0.03] backdrop-blur-xl p-6 md:p-10 overflow-hidden">
-                  {/* 网格背景微光 */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60%] h-[60%] bg-primary/[0.06] rounded-full blur-[80px]" />
-                  </div>
+                {/* 中心环境光 */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50%] h-[60%] bg-primary/[0.04] rounded-full blur-[100px] pointer-events-none" />
 
-                  <div
-                    className="relative grid justify-items-center gap-5 md:gap-8"
-                    style={{
-                      gridTemplateColumns: isMobile
-                        ? `repeat(auto-fill, minmax(${ICON_GRID_COL_MOBILE}, 1fr))`
-                        : `repeat(auto-fill, minmax(${ICON_GRID_COL_DESKTOP}, 1fr))`,
-                    }}
-                  >
-                    {initialFriends.map((friend, index) => (
-                      <FriendIconBubble
-                        key={friend.id}
-                        name={friend.name}
-                        url={friend.url}
-                        avatar={friend.logo || ''}
-                        description={friend.description}
-                        themeColor={friend.themeColor}
-                        index={index}
-                        isMobile={isMobile}
-                      />
-                    ))}
-                  </div>
+                {/* 蜂窝网格 */}
+                <div
+                  className="relative flex flex-col items-center"
+                  style={{ gap: `${isMobile ? 6 : 8}px` }}
+                >
+                  {iconRows.map((row, rowIdx) => {
+                    const baseIdx = iconRows
+                      .slice(0, rowIdx)
+                      .reduce((sum, r) => sum + r.length, 0);
+                    return (
+                      <div
+                        key={rowIdx}
+                        className="flex justify-center"
+                        style={{ gap: `${HONEYCOMB_GAP}px` }}
+                      >
+                        {row.map((friend, colIdx) => (
+                          <FriendIconBubble
+                            key={friend.id}
+                            name={friend.name}
+                            url={friend.url}
+                            avatar={friend.logo || ''}
+                            description={friend.description}
+                            themeColor={friend.themeColor}
+                            index={baseIdx + colIdx}
+                            isMobile={isMobile}
+                            size={iconSize}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
