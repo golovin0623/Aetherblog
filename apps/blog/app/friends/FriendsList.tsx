@@ -10,6 +10,10 @@ import { FriendLink } from '../lib/services';
 
 type ViewMode = 'list' | 'icon';
 
+// 图标网格列宽（比图标尺寸略大以提供间距）
+const ICON_GRID_COL_MOBILE = '64px';
+const ICON_GRID_COL_DESKTOP = '90px';
+
 interface FriendsListProps {
   initialFriends: FriendLink[];
 }
@@ -168,8 +172,8 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                     className="relative grid justify-items-center gap-5 md:gap-8"
                     style={{
                       gridTemplateColumns: isMobile
-                        ? 'repeat(auto-fill, minmax(64px, 1fr))'
-                        : 'repeat(auto-fill, minmax(90px, 1fr))',
+                        ? `repeat(auto-fill, minmax(${ICON_GRID_COL_MOBILE}, 1fr))`
+                        : `repeat(auto-fill, minmax(${ICON_GRID_COL_DESKTOP}, 1fr))`,
                     }}
                   >
                     {initialFriends.map((friend, index) => (

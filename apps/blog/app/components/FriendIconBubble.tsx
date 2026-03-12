@@ -28,7 +28,7 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
-  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const safeAvatar = sanitizeImageUrl(avatar, '');
   const safeUrl = sanitizeImageUrl(url, '#');
