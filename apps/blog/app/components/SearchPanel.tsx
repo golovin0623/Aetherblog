@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, X, Loader2, FileText, Folder, Tag, ArrowRight, History, TrendingUp, Sparkles, Clock, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { logger } from '../lib/logger';
 
 interface SearchResult {
@@ -261,30 +262,44 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     setActiveIndex(-1);
   }, [results]);
 
-  // 自动聚焦
+  // 自动聚焦 - 略微延迟以配合入场动画
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      inputRef.current.focus();
+      const timer = setTimeout(() => inputRef.current?.focus(), 100);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   return (
-    <>
-      {/* 遮罩层 */}
-      <div
-        onClick={onClose}
-        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md animate-fadeIn"
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* 遮罩层 - framer-motion 平滑渐入 */}
+          <motion.div
+            key="search-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            onClick={onClose}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md"
+          />
 
-      {/* 搜索面板 */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="search-dialog-title"
-        className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden animate-slideDown"
-      >
+          {/* 搜索面板 - 弹性缩放 + 滑入 */}
+          <motion.div
+            key="search-panel"
+            initial={{ opacity: 0, scale: 0.95, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -20 }}
+            transition={{
+              duration: 0.3,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="search-dialog-title"
+            className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden"
+          >
         <h2 id="search-dialog-title" className="sr-only">搜索面板</h2>
 
         {/* 搜索输入框 */}
@@ -480,8 +495,10 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
             </div>
           </div>
         </div>
-      </div>
-    </>
+      </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
 
