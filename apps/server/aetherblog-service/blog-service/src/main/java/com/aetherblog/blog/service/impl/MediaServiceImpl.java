@@ -57,7 +57,7 @@ public class MediaServiceImpl implements MediaService {
     @Value("${aetherblog.media.trash-cleanup-days:120}")
     private int trashCleanupDays;
 
-    // Security Note: SVG is removed to prevent Stored XSS attacks
+    // 安全提示：已移除 SVG 以防止存储型 XSS 攻击
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/avif");
 
@@ -67,42 +67,42 @@ public class MediaServiceImpl implements MediaService {
     private static final Set<String> ALLOWED_AUDIO_TYPES = Set.of(
             "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/aac", "audio/flac");
 
-    // Security Note: XML is removed to prevent XSS/XXE risks
+    // 安全提示：已移除 XML 以防止 XSS/XXE 风险
     private static final Set<String> DOCUMENT_EXTENSIONS = Set.of(
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages",
             "numbers");
 
-    // Extensions that require magic byte validation
+    // 需要进行魔数 (Magic Byte) 校验的扩展名
     private static final Set<String> CHECKED_IMAGE_EXTENSIONS = Set.of(
             "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "ico", "tiff");
 
     /**
-     * Minimum byte length required for formats that embed a 4-byte brand identifier
-     * (WebP: bytes 8-11 = "WEBP"; AVIF: bytes 8-11 = brand).
-     * #188: Extracted from magic number 12 for clarity.
+     * 包含 4 字节品牌标识符的格式所需的最小字节长度
+     * (WebP: 第 8-11 字节 = "WEBP"; AVIF: 第 8-11 字节 = 品牌)。
+     * #188: 从魔数 12 提取以提高清晰度。
      */
     private static final int MIN_HEADER_SIZE_FOR_BRAND_CHECK = 12;
 
-    /** AVIF/ISOBMFF ftyp box signature at bytes 4-7 (hex). #192 */
+    /** AVIF/ISOBMFF ftyp 框签名，位于第 4-7 字节 (十六进制)。 #192 */
     private static final String AVIF_FTYP_HEX = "66747970";
 
-    /** Set of valid AVIF brand identifiers at bytes 8-11 (hex). #192 */
+    /** 有效的 AVIF 品牌标识符集合，位于第 8-11 字节 (十六进制)。 #192 */
     private static final Set<String> AVIF_VALID_BRANDS = Set.of(
             "61766966", // 'avif'
             "61766973" // 'avis'
     );
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            // Images (SVG removed for security)
+            // 图片 (出于安全考虑移除 SVG)
             "jpg", "jpeg", "png", "gif", "webp", "avif", "ico", "bmp", "tiff",
-            // Video
+            // 视频
             "mp4", "webm", "ogg", "avi", "mov", "wmv",
-            // Audio
+            // 音频
             "mp3", "wav", "m4a", "aac", "flac",
-            // Documents (XML removed for security)
+            // 文档 (出于安全考虑移除 XML)
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "json", "log", "key", "pages",
             "numbers",
-            // Archives
+            // 压缩包
             "zip", "rar", "7z", "tar", "gz");
 
     @Override
@@ -122,14 +122,13 @@ public class MediaServiceImpl implements MediaService {
         String originalName = StringUtils.cleanPath(originalFilename != null ? originalFilename : "unknown");
         String extension = getFileExtension(originalName);
 
-        // Security Check: Validate file extension
+        // 安全检查：验证文件扩展名
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             log.warn("拒绝上传非法文件类型: filename={}, extension={}", originalName, extension);
             throw new BusinessException(400, "不支持的文件类型: " + extension);
         }
 
-        // Security Check: Validate Magic Bytes for images to prevent file disguise
-        // (e.g. PHP as PNG)
+        // 安全检查：验证图片魔数以防止文件伪装 (例如将 PHP 伪装为 PNG)
         validateMagicBytes(file, extension);
 
         String filename = UUID.randomUUID() + "." + extension;
@@ -588,8 +587,7 @@ public class MediaServiceImpl implements MediaService {
                 throw new BusinessException(400, "文件内容为空或过短");
             }
 
-            // WebP and AVIF require at least MIN_HEADER_SIZE_FOR_BRAND_CHECK bytes
-            // for full brand validation. #188 #191
+            // WebP 和 AVIF 需要至少 MIN_HEADER_SIZE_FOR_BRAND_CHECK 字节进行完整的品牌验证。 #188 #191
             if (("webp".equals(extension) || "avif".equals(extension)) && read < MIN_HEADER_SIZE_FOR_BRAND_CHECK) {
                 throw new BusinessException(400, "文件损坏或无效");
             }
@@ -617,9 +615,9 @@ public class MediaServiceImpl implements MediaService {
                     isValid = hex.startsWith("424D");
                     break;
                 case "avif":
-                    // AVIF uses ftyp box: bytes 4-7 must be 'ftyp' (AVIF_FTYP_HEX),
-                    // and bytes 8-11 must be a recognised brand ('avif' or 'avis').
-                    // #192: Extracted brand constants for maintainability.
+                    // AVIF 使用 ftyp 框：第 4-7 字节必须是 'ftyp' (AVIF_FTYP_HEX)，
+                    // 且第 8-11 字节必须是公认的品牌 ('avif' 或 'avis')。
+                    // #192: 提取品牌常量以提高可维护性。
                     if (hex.substring(8, 16).equals(AVIF_FTYP_HEX)) {
                         String brand = hex.substring(16, 24);
                         isValid = AVIF_VALID_BRANDS.contains(brand);
