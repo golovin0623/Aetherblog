@@ -1,15 +1,55 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { Users, Globe } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Users, Globe, LayoutGrid, LayoutList } from 'lucide-react';
+import { useLocalStorage, useIsMobile } from '@aetherblog/hooks';
 import FriendCard from '../components/FriendCard';
+import FriendIconBubble from '../components/FriendIconBubble';
 import { FriendLink } from '../lib/services';
+
+type ViewMode = 'list' | 'icon';
+
+// Apple Watch 风格蜂窝网格参数
+const ICON_MOBILE = 52;
+const ICON_DESKTOP = 64;
+const HONEYCOMB_GAP = 12;
+const COLS_MOBILE = 4;
+const COLS_DESKTOP = 6;
 
 interface FriendsListProps {
   initialFriends: FriendLink[];
 }
 
 export default function FriendsList({ initialFriends }: FriendsListProps) {
+  const [viewMode, setViewMode] = useLocalStorage<ViewMode>('friends-view-mode', 'list');
+  const isMobile = useIsMobile();
+
+  // 防止 SSR 水合不匹配：服务端始终渲染 list，客户端挂载后再切换到 localStorage 中保存的模式
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => { setHasMounted(true); }, []);
+  const activeMode: ViewMode = hasMounted ? viewMode : 'list';
+
+  const handleSetList = useCallback(() => setViewMode('list'), [setViewMode]);
+  const handleSetIcon = useCallback(() => setViewMode('icon'), [setViewMode]);
+
+  const iconSize = isMobile ? ICON_MOBILE : ICON_DESKTOP;
+  const cols = isMobile ? COLS_MOBILE : COLS_DESKTOP;
+
+  // 构建蜂窝行：偶数行 N 个，奇数行 N-1 个，justify-center 自动产生错位效果
+  const iconRows = useMemo(() => {
+    const rows: FriendLink[][] = [];
+    let idx = 0;
+    let isFullRow = true;
+    while (idx < initialFriends.length) {
+      const count = isFullRow ? cols : Math.max(cols - 1, 1);
+      rows.push(initialFriends.slice(idx, idx + count));
+      idx += count;
+      isFullRow = !isFullRow;
+    }
+    return rows;
+  }, [initialFriends, cols]);
+
   return (
     <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
       <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">
@@ -36,15 +76,61 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-10"
+          className="mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4"
         >
-          <h1 className="text-3xl font-bold text-[var(--text-primary)] flex items-center gap-3 mb-3">
-            <Users className="w-8 h-8 text-primary" />
-            友情链接
-          </h1>
-          <p className="text-[var(--text-muted)] text-lg">
-            这里是我的朋友们，欢迎交换友链！
-          </p>
+          <div>
+            <h1 className="text-3xl font-bold text-[var(--text-primary)] flex items-center gap-3 mb-3">
+              <Users className="w-8 h-8 text-primary" />
+              友情链接
+            </h1>
+            <p className="text-[var(--text-muted)] text-lg">
+              这里是我的朋友们，欢迎交换友链！
+            </p>
+          </div>
+
+          {/* 视图模式切换 */}
+          {initialFriends.length > 0 && (
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-[var(--border-subtle)] backdrop-blur-sm self-start sm:self-auto">
+              <button
+                onClick={handleSetList}
+                aria-label="列表视图"
+                aria-pressed={activeMode === 'list'}
+                className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors duration-200 ${
+                  activeMode === 'list'
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                {activeMode === 'list' && (
+                  <motion.div
+                    layoutId="viewToggle"
+                    className="absolute inset-0 bg-white/10 rounded-lg"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <LayoutList className="w-4 h-4 relative z-10" />
+              </button>
+              <button
+                onClick={handleSetIcon}
+                aria-label="图标视图"
+                aria-pressed={activeMode === 'icon'}
+                className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors duration-200 ${
+                  activeMode === 'icon'
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                {activeMode === 'icon' && (
+                  <motion.div
+                    layoutId="viewToggle"
+                    className="absolute inset-0 bg-white/10 rounded-lg"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <LayoutGrid className="w-4 h-4 relative z-10" />
+              </button>
+            </div>
+          )}
         </motion.div>
 
         {initialFriends.length === 0 ? (
@@ -59,25 +145,81 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
             <p>暂无友链，稍后再来看看吧</p>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {initialFriends.map((friend, index) => (
+          <AnimatePresence mode="wait">
+            {activeMode === 'list' ? (
               <motion.div
-                key={friend.id}
-                initial={{ opacity: 0, y: 20 }}
+                key="list"
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                <FriendCard
-                  name={friend.name}
-                  url={friend.url}
-                  avatar={friend.logo || ''}
-                  description={friend.description}
-                  themeColor={friend.themeColor}
-                  index={index}
-                />
+                {initialFriends.map((friend, index) => (
+                  <motion.div
+                    key={friend.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                  >
+                    <FriendCard
+                      name={friend.name}
+                      url={friend.url}
+                      avatar={friend.logo || ''}
+                      description={friend.description}
+                      themeColor={friend.themeColor}
+                      index={index}
+                    />
+                  </motion.div>
+                ))}
               </motion.div>
-            ))}
-          </div>
+            ) : (
+              <motion.div
+                key="icon"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.3 }}
+                className="relative py-4 md:py-8"
+              >
+                {/* 中心环境光 */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50%] h-[60%] bg-primary/[0.04] rounded-full blur-[100px] pointer-events-none" />
+
+                {/* 蜂窝网格 */}
+                <div
+                  className="relative flex flex-col items-center"
+                  style={{ gap: `${isMobile ? 6 : 8}px` }}
+                >
+                  {iconRows.map((row, rowIdx) => {
+                    const baseIdx = iconRows
+                      .slice(0, rowIdx)
+                      .reduce((sum, r) => sum + r.length, 0);
+                    return (
+                      <div
+                        key={rowIdx}
+                        className="flex justify-center"
+                        style={{ gap: `${HONEYCOMB_GAP}px` }}
+                      >
+                        {row.map((friend, colIdx) => (
+                          <FriendIconBubble
+                            key={friend.id}
+                            name={friend.name}
+                            url={friend.url}
+                            avatar={friend.logo || ''}
+                            description={friend.description}
+                            themeColor={friend.themeColor}
+                            index={baseIdx + colIdx}
+                            isMobile={isMobile}
+                            size={iconSize}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         )}
 
         {/* 友链申请行动号召 */}
