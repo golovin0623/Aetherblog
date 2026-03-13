@@ -18,8 +18,109 @@ env:
   DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
 
 jobs:
-  # 前端测试和构建
-  frontend-test:
+  # ===========================================================================
+  # 变更检测: 最先运行，决定后续哪些 job 需要执行
+  # ===========================================================================
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      ai-service: ${{ steps.filter.outputs.ai-service }}
+      blog: ${{ steps.filter.outputs.blog }}
+      admin: ${{ steps.filter.outputs.admin }}
+      frontend: ${{ steps.check.outputs.frontend }}
+      any_changed: ${{ steps.check.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect file changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'apps/server/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+            ai-service:
+              - 'apps/ai-service/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+            blog:
+              - 'apps/blog/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+            admin:
+              - 'apps/admin/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci-cd.yml'
+
+      - name: Compute aggregate flags
+        id: check
+        run: |
+          # 前端聚合标志: blog 或 admin 任一变更
+          if [[ "${{ steps.filter.outputs.blog }}" == "true" || \
+                "${{ steps.filter.outputs.admin }}" == "true" ]]; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+          # 任意模块变更标志
+          if [[ "${{ steps.filter.outputs.backend }}" == "true" || \
+                "${{ steps.filter.outputs.ai-service }}" == "true" || \
+                "${{ steps.filter.outputs.blog }}" == "true" || \
+                "${{ steps.filter.outputs.admin }}" == "true" ]]; then
+            echo "any_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "any_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Print change detection results
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 变更检测结果:"
+          echo "  backend:    ${{ steps.filter.outputs.backend }}"
+          echo "  ai-service: ${{ steps.filter.outputs.ai-service }}"
+          echo "  blog:       ${{ steps.filter.outputs.blog }}"
+          echo "  admin:      ${{ steps.filter.outputs.admin }}"
+          echo "  frontend:   ${{ steps.check.outputs.frontend }}"
+          echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # ===========================================================================
+  # Docker 配置验证 (与 detect-changes 并行)
+  # ===========================================================================
+  config-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose files
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.prod.yml config --quiet
+          echo "✅ Docker Compose files are valid"
+
+  # ===========================================================================
+  # 前端质量检查: lint + typecheck (仅当前端代码变更时)
+  # PR 阶段到此为止，不跑 build
+  # ===========================================================================
+  frontend-quality:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,14 +146,15 @@ jobs:
 
       - name: Type check
         run: |
-          pnpm --filter @aetherblog/admin exec tsc --noEmit
-          pnpm --filter @aetherblog/blog exec tsc --noEmit
+          pnpm --filter @aetherblog/admin typecheck
+          pnpm --filter @aetherblog/blog typecheck
 
-      - name: Build all packages
-        run: pnpm build
-
-  # 后端测试和构建
+  # ===========================================================================
+  # 后端测试 (仅当后端代码变更时)
+  # ===========================================================================
   backend-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -74,8 +176,12 @@ jobs:
         working-directory: apps/server
         run: mvn test
 
-  # AI 服务测试
+  # ===========================================================================
+  # AI 服务测试 (仅当 AI 服务代码变更时)
+  # ===========================================================================
   ai-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ai-service == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -115,97 +221,14 @@ jobs:
         run: |
           python -c "from app.main import app; print('✅ App imports successfully')"
 
-  # Docker 配置验证
-  config-validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Validate Docker Compose files
-        run: |
-          docker compose -f docker-compose.yml config --quiet
-          docker compose -f docker-compose.prod.yml config --quiet
-          echo "✅ Docker Compose files are valid"
-
   # ===========================================================================
-  # 变更检测: 根据文件路径判断哪些模块需要重新构建
-  # ===========================================================================
-  detect-changes:
-    needs: [frontend-test, backend-test, ai-test, config-validate]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      ai-service: ${{ steps.filter.outputs.ai-service }}
-      blog: ${{ steps.filter.outputs.blog }}
-      admin: ${{ steps.filter.outputs.admin }}
-      any_changed: ${{ steps.check.outputs.any_changed }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Detect file changes
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            backend:
-              - 'apps/server/**'
-              - 'docker-compose*.yml'
-              - '.github/workflows/ci-cd.yml'
-            ai-service:
-              - 'apps/ai-service/**'
-              - 'docker-compose*.yml'
-              - '.github/workflows/ci-cd.yml'
-            blog:
-              - 'apps/blog/**'
-              - 'packages/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'docker-compose*.yml'
-              - '.github/workflows/ci-cd.yml'
-            admin:
-              - 'apps/admin/**'
-              - 'packages/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'docker-compose*.yml'
-              - '.github/workflows/ci-cd.yml'
-
-      - name: Check if any module changed
-        id: check
-        run: |
-          if [[ "${{ steps.filter.outputs.backend }}" == "true" || \
-                "${{ steps.filter.outputs.ai-service }}" == "true" || \
-                "${{ steps.filter.outputs.blog }}" == "true" || \
-                "${{ steps.filter.outputs.admin }}" == "true" ]]; then
-            echo "any_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "any_changed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Print change detection results
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📦 变更检测结果:"
-          echo "  backend:    ${{ steps.filter.outputs.backend }}"
-          echo "  ai-service: ${{ steps.filter.outputs.ai-service }}"
-          echo "  blog:       ${{ steps.filter.outputs.blog }}"
-          echo "  admin:      ${{ steps.filter.outputs.admin }}"
-          echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-  # ===========================================================================
-  # 条件性构建: 仅构建发生变更的模块
+  # 条件性 Docker 构建: 仅 push to main 且模块有变更时触发
   # ===========================================================================
   build-backend:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true'
+    needs: [detect-changes, backend-test]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -244,8 +267,10 @@ jobs:
           platforms: linux/amd64
 
   build-ai-service:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.ai-service == 'true'
+    needs: [detect-changes, ai-test]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.ai-service == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -284,8 +309,10 @@ jobs:
           platforms: linux/amd64
 
   build-blog:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.blog == 'true'
+    needs: [detect-changes, frontend-quality]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.blog == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -324,8 +351,10 @@ jobs:
           platforms: linux/amd64
 
   build-admin:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.admin == 'true'
+    needs: [detect-changes, frontend-quality]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -367,7 +396,7 @@ jobs:
   # 自动部署到服务器 (Webhook 触发)
   # ===========================================================================
   deploy:
-    needs: [detect-changes, build-backend, build-ai-service, build-blog, build-admin]
+    needs: [detect-changes, config-validate, build-backend, build-ai-service, build-blog, build-admin]
     # 即使部分 build job 被跳过也能运行，但至少有一个模块被构建才触发部署
     if: |
       always() &&
