@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { List, ChevronRight, X, ArrowUp } from 'lucide-react';
 import { extractHeadingsFromMarkdown } from '../lib/headingId';
@@ -20,7 +20,7 @@ interface TableOfContentsProps {
   triggerClassName?: string;
 }
 
-export const TableOfContents: React.FC<TableOfContentsProps> = ({
+const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
   content,
   className = '',
   variant = 'floating',
@@ -125,7 +125,9 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
     };
   }, []);
 
-  const scrollToHeading = (id: string) => {
+  // ⚡ Bolt: Memoized with useCallback to prevent recreating this function on every render,
+  // which avoids O(n) re-renders in the renderTocList loop when activeId changes.
+  const scrollToHeading = useCallback((id: string) => {
     const element = document.getElementById(id);
     if (element) {
       const offset = 100; // 考虑固定头部的偏移
@@ -134,7 +136,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       setActiveId(id);
       setIsDrawerOpen(false);
     }
-  };
+  }, []);
 
   const minLevel = headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
 
@@ -324,4 +326,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   );
 };
 
+// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders of the TableOfContents component
+// when its parent (e.g. ArticlePage) re-renders, as computing headings from the large markdown string is expensive.
+export const TableOfContents = React.memo(TableOfContentsBase);
 export default TableOfContents;
