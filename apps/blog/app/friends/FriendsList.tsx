@@ -90,7 +90,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
 
           {/* 视图模式切换 */}
           {initialFriends.length > 0 && (
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-[var(--border-subtle)] backdrop-blur-sm self-start sm:self-auto">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-default)] backdrop-blur-sm self-start sm:self-auto">
               <button
                 onClick={handleSetList}
                 aria-label="列表视图"
@@ -104,7 +104,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 {activeMode === 'list' && (
                   <motion.div
                     layoutId="viewToggle"
-                    className="absolute inset-0 bg-white/10 rounded-lg"
+                    className="absolute inset-0 bg-primary/15 rounded-lg"
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}
@@ -123,7 +123,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 {activeMode === 'icon' && (
                   <motion.div
                     layoutId="viewToggle"
-                    className="absolute inset-0 bg-white/10 rounded-lg"
+                    className="absolute inset-0 bg-primary/15 rounded-lg"
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}
