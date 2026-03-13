@@ -17,6 +17,10 @@ const HONEYCOMB_GAP = 12;
 const COLS_MOBILE = 4;
 const COLS_DESKTOP = 6;
 
+// 胶囊切换器内边距 (对应 p-0.5 / p-1)
+const TOGGLE_PADDING_MOBILE = 2;
+const TOGGLE_PADDING_DESKTOP = 4;
+
 interface FriendsListProps {
   initialFriends: FriendLink[];
 }
@@ -96,8 +100,8 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 className="absolute top-0.5 sm:top-1 bottom-0.5 sm:bottom-1 rounded-full bg-primary/20"
                 initial={false}
                 animate={{
-                  left: activeMode === 'list' ? (isMobile ? 2 : 4) : '50%',
-                  width: isMobile ? 'calc(50% - 2px)' : 'calc(50% - 4px)',
+                  left: activeMode === 'list' ? (isMobile ? TOGGLE_PADDING_MOBILE : TOGGLE_PADDING_DESKTOP) : '50%',
+                  width: isMobile ? `calc(50% - ${TOGGLE_PADDING_MOBILE}px)` : `calc(50% - ${TOGGLE_PADDING_DESKTOP}px)`,
                 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
               />
