@@ -44,7 +44,17 @@ public class PublicPostController {
 
     @Operation(summary = "验证文章密码并返回正文")
     @PostMapping("/{slug}/verify-password")
-    @RateLimit(key = "public:post:password", count = 5, time = 60, limitType = RateLimit.LimitType.IP)
+public R<PostDetailResponse> verifyPassword(@PathVariable String slug, @RequestBody PostPasswordAccessRequest request) {
+    PostDetailResponse post = postService.getPublicPostBySlug(slug, request.password());
+    if (post == null) {
+        return R.fail(404, "文章不存在");
+    }
+    if (Boolean.TRUE.equals(post.getPasswordRequired())) {
+        return R.fail(403, "密码错误");
+    }
+    postService.incrementViewCount(post.getId());
+    return R.ok(post);
+}
     public R<PostDetailResponse> verifyPassword(@PathVariable String slug, @RequestBody PostPasswordAccessRequest request) {
         PostDetailResponse post = postService.getPublicPostBySlug(slug, request.password());
         if (Boolean.TRUE.equals(post.getPasswordRequired())) {
