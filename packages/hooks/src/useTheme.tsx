@@ -59,6 +59,56 @@ function applyTheme(resolvedTheme: ResolvedTheme): void {
 }
 
 /**
+ * 检测当前浏览器是否为 Safari/WebKit（非 Chrome/非 Android WebView）。
+ * Safari 的 clip-path 动画走主线程重绘而非 GPU 合成，在 iOS 上会导致明显卡顿。
+ */
+function isSafariBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+}
+
+/**
+ * Safari 专用：使用 opacity 交叉淡入淡出替代 clip-path 扩散动画。
+ * opacity 动画在所有浏览器上都走 GPU 合成，不会卡顿。
+ */
+async function performFadeTransition(
+  isDarkToLight: boolean,
+  callback: () => void
+): Promise<void> {
+  // 注入临时样式覆盖默认的 view-transition 动画
+  const style = document.createElement('style');
+  style.textContent = `
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      mix-blend-mode: normal;
+    }
+    ::view-transition-old(root) {
+      z-index: ${isDarkToLight ? 0 : 1};
+      animation: vt-fade-out 0.3s ease-out both;
+    }
+    ::view-transition-new(root) {
+      z-index: ${isDarkToLight ? 1 : 0};
+      animation: vt-fade-in 0.3s ease-out both;
+    }
+    @keyframes vt-fade-out { to { opacity: 0; } }
+    @keyframes vt-fade-in { from { opacity: 0; } }
+  `;
+  document.head.appendChild(style);
+
+  const transition = document.startViewTransition(() => {
+    callback();
+  });
+
+  try {
+    await transition.finished;
+  } catch {
+    // 失败静默
+  } finally {
+    style.remove();
+  }
+}
+
+/**
  * 执行圆形遮罩主题切换动画
  * 使用 View Transitions API，从点击位置开始扩散/收缩
  * 
@@ -71,6 +121,10 @@ function applyTheme(resolvedTheme: ResolvedTheme): void {
  * - 必须保证各层扩张速度(dr/dt)完全一致，以防止多圈重影割裂。
  * - 为了防止局部小元素使用极大半径导致的 GPU 卡顿，
  *   各层使用自身的相对最大半径，但按比例缩短动画时长（线性动画），实现完美物理同步匹配！
+ * 
+ * Safari/WebKit 降级：
+ * - clip-path 动画在 Safari 上走主线程重绘，不走 GPU 合成，导致 iOS 明显卡顿。
+ * - 自动检测 Safari 并降级为 opacity 交叉淡入淡出，确保流畅体验。
  */
 async function performCircularTransition(
   x: number,
@@ -86,6 +140,13 @@ async function performCircularTransition(
   ) {
     // 不支持则直接切换
     callback();
+    return;
+  }
+
+  // Safari/WebKit: clip-path animation is not compositor-driven and
+  // causes visible jank on iOS. Fall back to a smooth opacity crossfade.
+  if (isSafariBrowser()) {
+    await performFadeTransition(isDarkToLight, callback);
     return;
   }
 
