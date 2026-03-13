@@ -283,7 +283,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="search-dialog-title"
-        className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-full max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden animate-slideDown"
+        className="fixed left-1/2 top-[10%] z-50 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl bg-[var(--bg-card)] backdrop-blur-xl rounded-2xl border border-[var(--border-default)] shadow-2xl shadow-black/20 overflow-hidden animate-slideDown"
       >
         <h2 id="search-dialog-title" className="sr-only">搜索面板</h2>
 
