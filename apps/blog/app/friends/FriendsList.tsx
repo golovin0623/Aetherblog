@@ -237,7 +237,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           <p className="text-[var(--text-muted)] text-sm">
             想要交换友链？请在
             <a 
-              href="https://github.com" 
+              href="https://github.com/golovin0623/Aetherblog/issues" 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-primary hover:underline mx-1"
