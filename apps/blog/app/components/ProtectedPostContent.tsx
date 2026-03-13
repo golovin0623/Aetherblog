@@ -55,19 +55,25 @@ export function ProtectedPostContent({ slug, title }: ProtectedPostContentProps)
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="请输入访问密码"
-          className="w-full rounded-xl border border-[var(--border-default)] bg-background px-4 py-3 text-[var(--text-primary)] outline-none focus:border-primary/50"
-          autoComplete="current-password"
-        />
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        <div>
+          <label htmlFor="post-password" className="sr-only">访问密码</label>
+          <input
+            id="post-password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="请输入访问密码"
+            className={`w-full rounded-xl border bg-background px-4 py-3 text-[var(--text-primary)] outline-none transition-colors ${error ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' : 'border-[var(--border-default)] focus:border-primary/50 focus:ring-1 focus:ring-primary/50'}`}
+            autoComplete="current-password"
+            aria-invalid={!!error}
+            aria-describedby={error ? "password-error" : undefined}
+          />
+          {error && <p id="password-error" role="alert" className="mt-2 text-sm text-red-500 font-medium">{error}</p>}
+        </div>
         <button
           type="submit"
           disabled={submitting || !password.trim()}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary transition-shadow"
         >
           {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
           {submitting ? '验证中...' : '验证并查看'}
