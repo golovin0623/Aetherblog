@@ -182,7 +182,14 @@ function SidebarContent({
         "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
-        <div className="flex items-center gap-3">
+        <a
+          href="/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="访问主站"
+          aria-label="访问主站"
+          className="flex items-center gap-3 rounded-lg px-1 py-1 -mx-1 hover:bg-[var(--bg-card-hover)] transition-colors duration-200 group"
+        >
           {/* 光泽感 Logo */}
           <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
             {/* 基础渐变 */}
@@ -200,11 +207,11 @@ function SidebarContent({
             'overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}>
-            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap">
+            <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap group-hover:from-primary group-hover:to-purple-400 transition-all duration-200">
               AetherBlog
             </span>
           </div>
-        </div>
+        </a>
 
         {/* 移动端：优雅关闭按钮 */}
         {isMobile && (
