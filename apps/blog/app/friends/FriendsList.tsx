@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Globe, LayoutGrid, LayoutList } from 'lucide-react';
+import { Users, Globe, LayoutList, Hexagon } from 'lucide-react';
 import { useLocalStorage, useIsMobile } from '@aetherblog/hooks';
 import FriendCard from '../components/FriendCard';
 import FriendIconBubble from '../components/FriendIconBubble';
@@ -76,58 +76,56 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4"
+          className="mb-10 flex flex-row items-center justify-between gap-3"
         >
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--text-primary)] flex items-center gap-3 mb-3">
-              <Users className="w-8 h-8 text-primary" />
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-3xl font-bold text-[var(--text-primary)] flex items-center gap-2 sm:gap-3 mb-1 sm:mb-3">
+              <Users className="w-6 h-6 sm:w-8 sm:h-8 text-primary flex-shrink-0" />
               友情链接
             </h1>
-            <p className="text-[var(--text-muted)] text-lg">
+            <p className="text-[var(--text-muted)] text-sm sm:text-lg hidden sm:block">
               这里是我的朋友们，欢迎交换友链！
             </p>
           </div>
 
-          {/* 视图模式切换 */}
+          {/* 视图模式切换 - 胶囊式滑动切换器 */}
           {initialFriends.length > 0 && (
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-default)] backdrop-blur-sm self-start sm:self-auto">
+            <div className="flex items-center p-0.5 sm:p-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] backdrop-blur-sm flex-shrink-0 relative">
+              {/* 滑动胶囊指示器 */}
+              <motion.div
+                className="absolute top-0.5 sm:top-1 bottom-0.5 sm:bottom-1 rounded-full bg-primary/20"
+                initial={false}
+                animate={{
+                  left: activeMode === 'list' ? (isMobile ? 2 : 4) : '50%',
+                  width: isMobile ? 'calc(50% - 2px)' : 'calc(50% - 4px)',
+                }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              />
               <button
                 onClick={handleSetList}
                 aria-label="列表视图"
                 aria-pressed={activeMode === 'list'}
-                className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors duration-200 ${
+                className={`relative z-10 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors duration-300 ${
                   activeMode === 'list'
-                    ? 'text-[var(--text-primary)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    ? 'text-primary'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                {activeMode === 'list' && (
-                  <motion.div
-                    layoutId="viewToggle"
-                    className="absolute inset-0 bg-primary/15 rounded-lg"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <LayoutList className="w-4 h-4 relative z-10" />
+                <LayoutList className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">列表</span>
               </button>
               <button
                 onClick={handleSetIcon}
-                aria-label="图标视图"
+                aria-label="气泡视图"
                 aria-pressed={activeMode === 'icon'}
-                className={`relative flex items-center justify-center w-9 h-9 rounded-lg transition-colors duration-200 ${
+                className={`relative z-10 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors duration-300 ${
                   activeMode === 'icon'
-                    ? 'text-[var(--text-primary)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                    ? 'text-primary'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                {activeMode === 'icon' && (
-                  <motion.div
-                    layoutId="viewToggle"
-                    className="absolute inset-0 bg-primary/15 rounded-lg"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <LayoutGrid className="w-4 h-4 relative z-10" />
+                <Hexagon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">气泡</span>
               </button>
             </div>
           )}
@@ -158,9 +156,12 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 {initialFriends.map((friend, index) => (
                   <motion.div
                     key={friend.id}
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: isMobile ? 8 : 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                    transition={{
+                      duration: isMobile ? 0.25 : 0.4,
+                      delay: isMobile ? Math.min(index * 0.03, 0.3) : index * 0.1,
+                    }}
                   >
                     <FriendCard
                       name={friend.name}
