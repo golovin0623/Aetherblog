@@ -1333,3 +1333,17 @@ html[data-theme-transition] .mobile-menu-backdrop {
     left: 150%;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-primary-btn,
+  .hero-primary-btn::before,
+  .hero-primary-btn::after {
+    transition: none !important;
+  }
+  .hero-primary-btn:hover {
+    transform: none !important;
+  }
+  .hero-primary-btn:hover .hero-btn-shimmer {
+    animation: none !important;
+  }
+}

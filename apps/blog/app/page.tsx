@@ -56,7 +56,7 @@ export default async function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <a
               href={settings?.welcome_primary_btn_link || '/posts'}
-              className="hero-primary-btn group inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl text-white font-medium w-40"
+              className="hero-primary-btn group inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl text-white font-medium min-w-40"
             >
               <span className="hero-btn-shimmer" aria-hidden="true" />
               <span className="relative z-10">{settings?.welcome_primary_btn_text || '浏览文章'}</span>
