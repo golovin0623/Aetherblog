@@ -48,4 +48,17 @@ public class PublicEndpointsRateLimitTest {
         assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
         assertEquals(RateLimit.LimitType.IP, rateLimit.limitType(), "Rate limit type mismatch");
     }
+
+    @Test
+    public void publicPostVerifyPasswordMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method verifyPasswordMethod = PublicPostController.class.getMethod("verifyPassword", String.class, PostPasswordAccessRequest.class);
+
+        RateLimit rateLimit = verifyPasswordMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "PublicPostController.verifyPassword method must have @RateLimit annotation");
+
+        assertEquals("public:post:password", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(5, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.IP, rateLimit.limitType(), "Rate limit type mismatch");
+    }
 }
