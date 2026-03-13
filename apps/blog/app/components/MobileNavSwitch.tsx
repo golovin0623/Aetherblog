@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 
 /** 每个 segment 的固定宽度（px） */
-const SEGMENT_W = 64;
+const SEGMENT_WIDTH = 64;
 
 /**
  * 移动端专用导航切换器
@@ -51,11 +51,12 @@ export default function MobileNavSwitch() {
     >
       {/* 滑动胶囊指示器 - 使用 transform 实现 GPU 加速动画 */}
       <div
-        className="absolute top-[2px] bottom-[2px] rounded-[10px] will-change-transform motion-reduce:transition-none"
+        className="absolute top-[2px] bottom-[2px] rounded-[10px] motion-reduce:transition-none"
         style={{
-          width: SEGMENT_W,
+          width: SEGMENT_WIDTH,
+          /* 与桌面端分段控制器保持一致的缓动曲线 */
           transition: 'transform 380ms cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-          transform: isTimeline ? `translateX(${SEGMENT_W}px)` : 'translateX(0)',
+          transform: isTimeline ? `translateX(${SEGMENT_WIDTH}px)` : 'translateX(0)',
         }}
       >
         {/* 亮色模式胶囊 */}
@@ -92,7 +93,7 @@ export default function MobileNavSwitch() {
             ? 'text-black dark:text-white'
             : 'text-black/50 dark:text-white/50'
         }`}
-        style={{ width: SEGMENT_W }}
+        style={{ width: SEGMENT_WIDTH }}
       >
         首页
       </Link>
@@ -111,7 +112,7 @@ export default function MobileNavSwitch() {
             ? 'text-black dark:text-white'
             : 'text-black/50 dark:text-white/50'
         }`}
-        style={{ width: SEGMENT_W }}
+        style={{ width: SEGMENT_WIDTH }}
       >
         时间线
       </Link>
