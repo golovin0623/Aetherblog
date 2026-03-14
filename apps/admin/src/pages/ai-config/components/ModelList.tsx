@@ -150,7 +150,7 @@ export default function ModelList({
               onClick={handleClearRemote}
               disabled={clearProviderModels.isPending}
               title="清空远程"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-500/20 text-xs text-red-400 bg-[var(--bg-primary)] hover:bg-red-500/5 transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-status-danger-border text-xs text-status-danger bg-[var(--bg-primary)] hover:bg-status-danger/5 transition-all disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">清空远程</span>

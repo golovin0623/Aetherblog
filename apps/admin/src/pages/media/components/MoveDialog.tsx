@@ -193,8 +193,8 @@ export function MoveDialog({
             'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all',
             isDisabled || isCurrent
               ? 'opacity-40 cursor-not-allowed'
-              : 'hover:bg-gray-100 dark:hover:bg-white/10',
-            isSelected && 'bg-indigo-50 dark:bg-primary/20 border border-indigo-300 dark:border-primary/40'
+              : 'hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10',
+            isSelected && 'bg-primary-lighter dark:bg-primary/20 border border-primary/30 dark:border-primary/40'
           )}
           style={{ paddingLeft: `${depth * 20 + 12}px` }}
         >
@@ -209,7 +209,7 @@ export function MoveDialog({
               }}
               className="flex-shrink-0 cursor-pointer"
             >
-              <ChevronRight className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+              <ChevronRight className="w-4 h-4 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
             </motion.div>
           ) : (
             <div className="w-4" />
@@ -223,16 +223,16 @@ export function MoveDialog({
           )}
 
           {/* 名称 */}
-          <span className="flex-1 text-sm text-gray-900 dark:text-white truncate">
+          <span className="flex-1 text-sm text-[var(--text-primary)] dark:text-white truncate">
             {folder.name}
           </span>
 
           {/* 标记 */}
           {isCurrent && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">当前位置</span>
+            <span className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">当前位置</span>
           )}
           {isSelected && (
-            <Check className="w-4 h-4 text-indigo-600 dark:text-primary" />
+            <Check className="w-4 h-4 text-primary dark:text-primary" />
           )}
         </button>
 
@@ -269,36 +269,36 @@ export function MoveDialog({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
+          className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 dark:bg-primary/10 rounded-lg">
-                <Move className="w-5 h-5 text-indigo-600 dark:text-primary" />
+              <div className="p-2 bg-primary-lighter dark:bg-primary/10 rounded-lg">
+                <Move className="w-5 h-5 text-primary dark:text-primary" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                <h2 className="text-lg font-bold text-[var(--text-primary)] dark:text-white">
                   {isBatchMode ? '批量移动文件' : `移动${type === 'folder' ? '文件夹' : '文件'}`}
                 </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] truncate max-w-[200px]">
                   {isBatchMode ? `已选择 ${batchFileIds?.length} 个文件` : itemName}
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors"
+              className="p-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] dark:hover:text-white hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* 文件夹选择区 */}
-          <div className="flex-1 overflow-y-auto border border-gray-200 dark:border-white/10 rounded-xl p-2 mb-4 bg-gray-50 dark:bg-black/20">
+          <div className="flex-1 overflow-y-auto border border-[var(--border-default)] dark:border-white/10 rounded-xl p-2 mb-4 bg-[var(--bg-secondary)] dark:bg-black/20">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <span className="text-gray-500 dark:text-gray-400">加载中...</span>
+                <span className="text-[var(--text-muted)] dark:text-[var(--text-muted)]">加载中...</span>
               </div>
             ) : (
               <div className="space-y-1">
@@ -307,15 +307,15 @@ export function MoveDialog({
                   onClick={() => setSelectedFolderId(undefined)}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all',
-                    'hover:bg-gray-100 dark:hover:bg-white/10',
-                    selectedFolderId === undefined && 'bg-indigo-50 dark:bg-primary/20 border border-indigo-300 dark:border-primary/40'
+                    'hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10',
+                    selectedFolderId === undefined && 'bg-primary-lighter dark:bg-primary/20 border border-primary/30 dark:border-primary/40'
                   )}
                 >
                   <div className="w-4" />
-                  <Folder className="w-5 h-5 text-indigo-500" />
-                  <span className="flex-1 text-sm text-gray-900 dark:text-white">根目录</span>
+                  <Folder className="w-5 h-5 text-primary" />
+                  <span className="flex-1 text-sm text-[var(--text-primary)] dark:text-white">根目录</span>
                   {selectedFolderId === undefined && (
-                    <Check className="w-4 h-4 text-indigo-600 dark:text-primary" />
+                    <Check className="w-4 h-4 text-primary dark:text-primary" />
                   )}
                 </button>
 

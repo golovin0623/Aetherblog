@@ -246,7 +246,7 @@ export default function ProviderDialog({
             onClick={onClose}
             whileHover={{ scale: 1.1, rotate: 90 }}
             whileTap={{ scale: 0.9 }}
-            className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-status-danger-light text-[var(--text-muted)] hover:text-status-danger transition-colors"
           >
             <X className="w-5 h-5" />
           </motion.button>
@@ -325,11 +325,11 @@ export default function ProviderDialog({
                 disabled={mode === 'edit' || (mode === 'create' && usePreset)}
                 placeholder="openai"
                 className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-primary/40 disabled:opacity-50 transition-all ${
-                  errors.code ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                  errors.code ? 'border-status-danger/60' : 'border-[var(--border-default)]'
                 }`}
               />
               {errors.code ? (
-                <div className="text-xs text-red-500">{errors.code}</div>
+                <div className="text-xs text-status-danger">{errors.code}</div>
               ) : (
                 <div className="text-xs text-[var(--text-muted)]">
                   建议使用小写字母与数字，可包含 <span className="font-mono">-</span> / <span className="font-mono">_</span>
@@ -356,10 +356,10 @@ export default function ProviderDialog({
                   }}
                   placeholder="OpenAI"
                   className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
-                    errors.name ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                    errors.name ? 'border-status-danger/60' : 'border-[var(--border-default)]'
                   }`}
                 />
-                {errors.name ? <div className="text-xs text-red-500">{errors.name}</div> : null}
+                {errors.name ? <div className="text-xs text-status-danger">{errors.name}</div> : null}
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-[var(--text-muted)]">显示名称</label>
@@ -378,11 +378,11 @@ export default function ProviderDialog({
                   }}
                   placeholder="OpenAI"
                   className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
-                    errors.display_name ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                    errors.display_name ? 'border-status-danger/60' : 'border-[var(--border-default)]'
                   }`}
                 />
                 {errors.display_name ? (
-                  <div className="text-xs text-red-500">{errors.display_name}</div>
+                  <div className="text-xs text-status-danger">{errors.display_name}</div>
                 ) : (
                   <div className="text-xs text-[var(--text-muted)]">可留空，默认使用“名称”</div>
                 )}
@@ -427,11 +427,11 @@ export default function ProviderDialog({
                 }}
                 placeholder="https://api.openai.com/v1"
                 className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
-                  errors.base_url ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                  errors.base_url ? 'border-status-danger/60' : 'border-[var(--border-default)]'
                 }`}
               />
               {errors.base_url ? (
-                <div className="text-xs text-red-500">{errors.base_url}</div>
+                <div className="text-xs text-status-danger">{errors.base_url}</div>
               ) : (
                 <div className="text-xs text-[var(--text-muted)]">留空则使用默认地址</div>
               )}
@@ -459,10 +459,10 @@ export default function ProviderDialog({
                 }}
                 placeholder="https://docs.example.com"
                 className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]/50 focus:outline-none focus:border-black dark:focus:border-white transition-all ${
-                  errors.doc_url ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                  errors.doc_url ? 'border-status-danger/60' : 'border-[var(--border-default)]'
                 }`}
               />
-              {errors.doc_url ? <div className="text-xs text-red-500">{errors.doc_url}</div> : null}
+              {errors.doc_url ? <div className="text-xs text-status-danger">{errors.doc_url}</div> : null}
             </div>
 
             {/* 优先级 */}
@@ -481,11 +481,11 @@ export default function ProviderDialog({
                 min={0}
                 step={1}
                 className={`w-full rounded-xl border bg-[var(--bg-card)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-white transition-all ${
-                  errors.priority ? 'border-red-500/60' : 'border-[var(--border-default)]'
+                  errors.priority ? 'border-status-danger/60' : 'border-[var(--border-default)]'
                 }`}
               />
               {errors.priority ? (
-                <div className="text-xs text-red-500">{errors.priority}</div>
+                <div className="text-xs text-status-danger">{errors.priority}</div>
               ) : (
                 <div className="text-xs text-[var(--text-muted)]">数字越小越靠前（支持在侧边栏里拖拽排序）</div>
               )}

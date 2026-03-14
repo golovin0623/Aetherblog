@@ -82,7 +82,7 @@ export function ChangePasswordPage() {
       {/* 背景层 - 共享 */}
       <div className="absolute inset-0 z-0">
         <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-status-warning/10 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600/5 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-status-warning/5 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
         {/* 网格图案 */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
@@ -159,7 +159,7 @@ export function ChangePasswordPage() {
               animate={{ opacity: 1, scale: 1 }}
               className="text-center py-12"
             >
-              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-[var(--color-success)] to-emerald-600 flex items-center justify-center shadow-xl shadow-[var(--color-success)]/30">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-[var(--color-success)] to-status-success flex items-center justify-center shadow-xl shadow-[var(--color-success)]/30">
                 <ShieldCheck className="w-10 h-10 text-white" />
               </div>
               <h2 className="text-2xl font-semibold text-white mb-3">Password Updated!</h2>
@@ -344,7 +344,7 @@ export function ChangePasswordPage() {
           {/* 移动端状态 */}
           <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-40">
             <div className="w-1 h-1 bg-status-warning rounded-full" />
-            <span className="text-[10px] text-slate-500 font-medium tracking-widest uppercase">Secured Environment</span>
+            <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-widest uppercase">Secured Environment</span>
           </div>
         </div>
       </motion.div>

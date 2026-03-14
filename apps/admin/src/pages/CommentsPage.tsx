@@ -14,10 +14,10 @@ type UIStatus = 'all' | 'pending' | 'approved' | 'spam' | 'deleted';
 
 // 状态配置
 const statusConfig: Record<string, any> = {
-  pending: { label: '待审核', color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-500/10 dark:bg-orange-500/20', icon: Clock },
-  approved: { label: '已通过', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10 dark:bg-green-500/20', icon: Check },
-  spam: { label: '垃圾评论', color: 'text-red-500 dark:text-red-400', bg: 'bg-red-500/10 dark:bg-red-500/20', icon: Flag },
-  deleted: { label: '已删除', color: 'text-gray-500 dark:text-gray-400', bg: 'bg-gray-500/10 dark:bg-gray-500/20', icon: Trash2 },
+  pending: { label: '待审核', color: 'text-status-warning dark:text-status-warning', bg: 'bg-status-warning-light dark:bg-status-warning/20', icon: Clock },
+  approved: { label: '已通过', color: 'text-status-success', bg: 'bg-status-success-light dark:bg-status-success/20', icon: Check },
+  spam: { label: '垃圾评论', color: 'text-status-danger dark:text-status-danger', bg: 'bg-status-danger-light dark:bg-status-danger/20', icon: Flag },
+  deleted: { label: '已删除', color: 'text-[var(--text-muted)] dark:text-[var(--text-muted)]', bg: 'bg-[var(--bg-tertiary)] dark:bg-[var(--bg-secondary)]0/20', icon: Trash2 },
 };
 
 // 降级使用的模拟数据
@@ -371,14 +371,14 @@ export default function CommentsPage() {
                             <>
                               <button
                                 onClick={() => handleApprove(comment.id)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 text-xs font-medium transition-colors touch-manipulation"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-status-success-light text-status-success hover:bg-status-success/20 text-xs font-medium transition-colors touch-manipulation"
                               >
                                 <Check className="w-3.5 h-3.5" />
                                 通过
                               </button>
                               <button
                                 onClick={() => handleReject(comment.id)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors touch-manipulation"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-status-danger-light text-status-danger hover:bg-status-danger/20 text-xs font-medium transition-colors touch-manipulation"
                               >
                                 <X className="w-3.5 h-3.5" />
                                 拒绝
@@ -390,14 +390,14 @@ export default function CommentsPage() {
                             <>
                               <button
                                 onClick={() => handleRestore(comment.id)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-medium transition-colors touch-manipulation"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-status-info-light text-status-info hover:bg-status-info/20 text-xs font-medium transition-colors touch-manipulation"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
                                 还原
                               </button>
                               <button
                                 onClick={() => handleDelete(comment.id, true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-medium transition-colors touch-manipulation"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-status-danger-light text-status-danger hover:bg-status-danger/20 text-xs font-medium transition-colors touch-manipulation"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                                 彻底删除
@@ -418,7 +418,7 @@ export default function CommentsPage() {
                               {!isSpam && (
                                 <button
                                   onClick={() => handleMarkSpam(comment.id)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-orange-500/10 hover:text-orange-400 text-xs font-medium transition-colors touch-manipulation"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-status-warning-light hover:text-status-warning text-xs font-medium transition-colors touch-manipulation"
                                 >
                                   <Flag className="w-3.5 h-3.5" />
                                   垃圾
@@ -427,7 +427,7 @@ export default function CommentsPage() {
 
                               <button
                                 onClick={() => handleDelete(comment.id, isSpam)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 text-xs font-medium transition-colors touch-manipulation"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-status-danger-light hover:text-status-danger text-xs font-medium transition-colors touch-manipulation"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                                 {isSpam ? '彻底删除' : '删除'}
@@ -456,7 +456,7 @@ export default function CommentsPage() {
                                 <div className="flex justify-end gap-2 mt-2">
                                   <button
                                     onClick={() => setReplyingTo(null)}
-                                    className="px-4 py-2 rounded-lg text-gray-400 hover:text-white text-xs font-medium transition-colors"
+                                    className="px-4 py-2 rounded-lg text-[var(--text-muted)] hover:text-white text-xs font-medium transition-colors"
                                   >
                                     取消
                                   </button>

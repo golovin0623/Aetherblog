@@ -218,8 +218,8 @@ export function SystemTrends({ className }: { className?: string }) {
           <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">系统负载</h3>
           {loading && data.length > 0 && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
           {minutes > 1440 && (
-             <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-yellow-500/80 bg-yellow-500/10 px-2 py-0.5 rounded-full">
-               <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+             <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-status-warning/80 bg-status-warning-light px-2 py-0.5 rounded-full">
+               <span className="w-1.5 h-1.5 rounded-full bg-status-warning animate-pulse" />
                长周期数据需依赖持久化
              </div>
           )}
@@ -249,11 +249,11 @@ export function SystemTrends({ className }: { className?: string }) {
                  className={cn(
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.memory 
-                     ? "bg-blue-500/10 border-blue-500/30 text-blue-400" 
+                     ? "bg-status-info-light border-status-info-border text-status-info" 
                      : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.memory ? "bg-blue-400" : "bg-[var(--text-muted)]")} />
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.memory ? "bg-status-info" : "bg-[var(--text-muted)]")} />
                  内存
                </button>
                {/* 磁盘 */}
@@ -262,11 +262,11 @@ export function SystemTrends({ className }: { className?: string }) {
                  className={cn(
                    "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors border",
                    visibleMetrics.disk 
-                     ? "bg-green-500/10 border-green-500/30 text-green-400" 
+                     ? "bg-status-success-light border-status-success-border text-status-success" 
                      : "bg-[var(--bg-secondary)] border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                  )}
                >
-                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.disk ? "bg-green-400" : "bg-[var(--text-muted)]")} />
+                 <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.disk ? "bg-status-success" : "bg-[var(--text-muted)]")} />
                  磁盘
                </button>
           </div>
@@ -321,7 +321,7 @@ export function SystemTrends({ className }: { className?: string }) {
              <button
                onClick={handleCleanup}
                disabled={isCleaning}
-               className="h-full px-2 text-[var(--text-muted)] hover:text-red-400 transition-colors disabled:opacity-50 flex items-center justify-center"
+               className="h-full px-2 text-[var(--text-muted)] hover:text-status-danger transition-colors disabled:opacity-50 flex items-center justify-center"
                title="清理历史数据"
              >
                <Trash2 className="w-3 h-3" />

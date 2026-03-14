@@ -136,7 +136,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
               {/* Version Badge */}
               {isLatest && (
                 <div className="absolute top-2 right-2">
-                  <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-medium rounded-full">
+                  <span className="px-2 py-0.5 bg-status-success/20 text-status-success text-xs font-medium rounded-full">
                     当前版本
                   </span>
                 </div>
@@ -212,7 +212,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
                       disabled={deleteMutation.isPending}
                       variant="secondary"
                       size="sm"
-                      className="gap-2 text-red-400 hover:text-red-300"
+                      className="gap-2 text-status-danger hover:text-status-danger"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       删除
@@ -226,8 +226,8 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
       </div>
 
       {/* Info */}
-      <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-        <p className="text-xs text-blue-400">
+      <div className="p-4 bg-status-info-light border border-status-info-border rounded-lg">
+        <p className="text-xs text-status-info">
           💡 提示: 恢复版本时，当前版本会自动保存为新版本，不会丢失数据。
         </p>
       </div>

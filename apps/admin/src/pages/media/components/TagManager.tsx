@@ -239,7 +239,7 @@ export function TagManager({
                     onClick={(e) => handleDeleteTag(tag.id, e)}
                     className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    <X className="w-3.5 h-3.5 text-red-400 hover:text-red-300" />
+                    <X className="w-3.5 h-3.5 text-status-danger hover:text-status-danger" />
                   </button>
                 )}
               </motion.button>

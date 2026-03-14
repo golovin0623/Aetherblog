@@ -8,7 +8,7 @@ export function AIToolsPage() {
       name: '文本清洗',
       description: '清理文本格式，修正错别字',
       icon: FileText,
-      color: 'from-blue-500 to-cyan-500',
+      color: 'from-status-info to-cyan-500',
       href: '/ai-tools/text-cleaner',
     },
     {
@@ -16,7 +16,7 @@ export function AIToolsPage() {
       name: '内容重写',
       description: 'AI 智能改写，调整风格',
       icon: Wand2,
-      color: 'from-purple-500 to-pink-500',
+      color: 'from-accent to-pink-500',
       href: '/ai-tools/content-rewriter',
     },
     {
@@ -24,7 +24,7 @@ export function AIToolsPage() {
       name: '智能摘要',
       description: '自动生成文章摘要',
       icon: Zap,
-      color: 'from-orange-500 to-yellow-500',
+      color: 'from-status-warning to-status-warning',
       href: '/ai-tools/summary',
     },
     {
@@ -32,7 +32,7 @@ export function AIToolsPage() {
       name: '智能标签',
       description: 'AI 自动推荐标签',
       icon: Tags,
-      color: 'from-green-500 to-emerald-500',
+      color: 'from-status-success to-status-success',
       href: '/ai-tools/tagger',
     },
     {
@@ -40,7 +40,7 @@ export function AIToolsPage() {
       name: 'SEO优化',
       description: '优化标题和描述',
       icon: Search,
-      color: 'from-red-500 to-rose-500',
+      color: 'from-status-danger to-rose-500',
       href: '/ai-tools/seo',
     },
     {
@@ -48,7 +48,7 @@ export function AIToolsPage() {
       name: '智能问答',
       description: '基于内容的RAG问答',
       icon: Brain,
-      color: 'from-indigo-500 to-violet-500',
+      color: 'from-primary to-accent',
       href: '/ai-tools/qa',
     },
   ];
@@ -57,7 +57,7 @@ export function AIToolsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">AI 工具</h1>
-        <p className="text-gray-400 mt-1">使用 AI 提升内容创作效率</p>
+        <p className="text-[var(--text-muted)] mt-1">使用 AI 提升内容创作效率</p>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
@@ -75,21 +75,21 @@ export function AIToolsPage() {
             <h3 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
               {tool.name}
             </h3>
-            <p className="text-gray-400 mt-2">{tool.description}</p>
+            <p className="text-[var(--text-muted)] mt-2">{tool.description}</p>
             <Sparkles className="absolute top-4 right-4 w-5 h-5 text-primary/50 group-hover:text-primary transition-colors" />
           </Link>
         ))}
       </div>
 
       {/* Quick Actions */}
-      <div className="p-6 rounded-xl bg-gradient-to-r from-primary/20 to-purple-500/20 border border-primary/30">
+      <div className="p-6 rounded-xl bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30">
         <div className="flex items-center gap-4">
           <div className="p-3 rounded-xl bg-primary/30">
             <Bot className="w-8 h-8 text-primary" />
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-white">AI 写作助手</h3>
-            <p className="text-gray-400">在文章编辑器中使用 AI 助手进行续写、扩写和润色</p>
+            <p className="text-[var(--text-muted)]">在文章编辑器中使用 AI 助手进行续写、扩写和润色</p>
           </div>
           <Link
             to="/posts/create"

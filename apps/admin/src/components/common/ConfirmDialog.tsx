@@ -29,19 +29,19 @@ export function ConfirmDialog({
   const variantConfig = {
     danger: {
       icon: Trash2,
-      iconBg: 'bg-gradient-to-br from-red-500/20 to-red-600/10',
-      iconColor: 'text-red-400',
+      iconBg: 'bg-gradient-to-br from-status-danger/20 to-status-danger/10',
+      iconColor: 'text-status-danger',
       iconGlow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700',
-      buttonShadow: 'shadow-lg shadow-red-500/25',
+      buttonBg: 'bg-gradient-to-r from-status-danger to-status-danger hover:from-status-danger hover:to-status-danger',
+      buttonShadow: 'shadow-lg shadow-status-danger/25',
     },
     warning: {
       icon: AlertTriangle,
-      iconBg: 'bg-gradient-to-br from-amber-500/20 to-orange-600/10',
-      iconColor: 'text-amber-400',
+      iconBg: 'bg-gradient-to-br from-status-warning/20 to-status-warning/10',
+      iconColor: 'text-status-warning',
       iconGlow: 'shadow-[0_0_20px_rgba(245,158,11,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600',
-      buttonShadow: 'shadow-lg shadow-amber-500/25',
+      buttonBg: 'bg-gradient-to-r from-status-warning to-status-warning hover:from-status-warning hover:to-status-warning',
+      buttonShadow: 'shadow-lg shadow-status-warning/25',
     },
     info: {
       icon: Info,

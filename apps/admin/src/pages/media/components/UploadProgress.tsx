@@ -81,7 +81,7 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
         className={cn(
           "fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-2xl",
           "flex items-center justify-center cursor-pointer",
-          "bg-zinc-900/95 backdrop-blur-xl border border-white/10",
+          "bg-[var(--bg-popover)]/95 backdrop-blur-xl border border-white/10",
           "hover:scale-110 transition-transform"
         )}
       >
@@ -118,9 +118,9 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
           {activeCount > 0 ? (
             <Upload className="w-5 h-5 text-primary" />
           ) : errorCount > 0 ? (
-            <AlertCircle className="w-5 h-5 text-red-400" />
+            <AlertCircle className="w-5 h-5 text-status-danger" />
           ) : (
-            <CheckCircle2 className="w-5 h-5 text-green-400" />
+            <CheckCircle2 className="w-5 h-5 text-status-success" />
           )}
         </div>
         
@@ -144,7 +144,7 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
     >
       <div className={cn(
         "rounded-2xl overflow-hidden shadow-2xl",
-        "bg-zinc-900/95 backdrop-blur-xl border border-white/10"
+        "bg-[var(--bg-popover)]/95 backdrop-blur-xl border border-white/10"
       )}>
         {/* 头部概览 */}
         <div className="px-4 py-3 border-b border-white/5">
@@ -153,9 +153,9 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
               {activeCount > 0 ? (
                 <Loader2 className="w-5 h-5 text-primary animate-spin" />
               ) : errorCount > 0 ? (
-                <AlertCircle className="w-5 h-5 text-red-400" />
+                <AlertCircle className="w-5 h-5 text-status-danger" />
               ) : (
-                <CheckCircle2 className="w-5 h-5 text-green-400" />
+                <CheckCircle2 className="w-5 h-5 text-status-success" />
               )}
               <div>
                 <p className="text-sm font-medium text-white">
@@ -215,15 +215,15 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
                   <div className="flex-1 min-w-0">
                     <p className={cn(
                       "text-xs truncate",
-                      hasError ? "text-red-400" : isComplete ? "text-green-400" : isProcessing ? "text-yellow-400" : "text-white/70"
+                      hasError ? "text-status-danger" : isComplete ? "text-status-success" : isProcessing ? "text-status-warning" : "text-white/70"
                     )}>
                       {item.file.name}
                     </p>
                     {hasError && (
-                      <p className="text-[10px] text-red-400/70">{item.error}</p>
+                      <p className="text-[10px] text-status-danger/70">{item.error}</p>
                     )}
                     {isProcessing && (
-                      <p className="text-[10px] text-yellow-400/70">正在处理...</p>
+                      <p className="text-[10px] text-status-warning/70">正在处理...</p>
                     )}
                   </div>
                   
@@ -232,11 +232,11 @@ export function UploadProgress({ files, onCancel }: UploadProgressProps) {
                   )}
                   
                   {isProcessing && (
-                    <Loader2 className="w-3.5 h-3.5 text-yellow-400 shrink-0 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 text-status-warning shrink-0 animate-spin" />
                   )}
                   
                   {isComplete && (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-status-success shrink-0" />
                   )}
                   
                   {hasError && (

@@ -39,7 +39,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
         className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 aria-label="上一页"
       >
-        <ChevronLeft className="w-4 h-4 text-gray-400" />
+        <ChevronLeft className="w-4 h-4 text-[var(--text-muted)]" />
       </button>
 
       {getVisiblePages().map((p, index) =>
@@ -52,13 +52,13 @@ aria-label={`第 ${p} 页`}
             className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
               p === page
                 ? 'bg-primary text-white'
-                : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                : 'text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
             }`}
           >
             {p}
           </button>
         ) : (
-          <span key={index} className="text-gray-500" aria-hidden="true">
+          <span key={index} className="text-[var(--text-muted)]" aria-hidden="true">
             {p}
           </span>
         )
@@ -70,7 +70,7 @@ aria-label={`第 ${p} 页`}
         className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 aria-label="下一页"
       >
-        <ChevronRight className="w-4 h-4 text-gray-400" />
+        <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
       </button>
     </nav>
   );

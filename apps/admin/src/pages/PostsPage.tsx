@@ -370,9 +370,9 @@ export default function PostsPage() {
               className="group relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium overflow-hidden"
             >
               {/* 渐变边框背景 (使用主题色) */}
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary via-violet-500 to-primary opacity-50 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary via-accent to-primary opacity-50 group-hover:opacity-100 transition-opacity duration-300" />
               {/* 内部背景 */}
-              <div className="absolute inset-[1px] rounded-[10px] bg-gray-900" />
+              <div className="absolute inset-[1px] rounded-[10px] bg-[var(--bg-primary)]" />
               {/* 光泽流动 */}
               <div
                 className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100"
@@ -387,7 +387,7 @@ export default function PostsPage() {
                 }
               `}</style>
               <X className="w-3.5 h-3.5 relative z-10 text-primary/80 group-hover:text-primary transition-colors" />
-              <span className="relative z-10 text-gray-300 group-hover:text-white transition-colors">重置</span>
+              <span className="relative z-10 text-[var(--text-tertiary)] group-hover:text-white transition-colors">重置</span>
             </motion.button>
           )}
         </div>
@@ -571,7 +571,7 @@ export default function PostsPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="p-8 text-center text-red-400"
+                className="p-8 text-center text-status-danger"
               >
                 {error}
               </motion.div>
@@ -637,13 +637,13 @@ export default function PostsPage() {
                       {(post.isHidden || post.passwordRequired) && (
                         <div className="flex items-center gap-2">
                           {post.isHidden && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-status-warning">
                               <EyeOff className="w-3 h-3" />
                               已隐藏
                             </span>
                           )}
                           {post.passwordRequired && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-status-info">
                               <Lock className="w-3 h-3" />
                               已加密
                             </span>
@@ -709,7 +709,7 @@ export default function PostsPage() {
                           </button>
                           <button
                             onClick={(e) => handleDeleteClick(post, e)}
-                            className="p-2 text-[var(--text-muted)] active:text-red-400"
+                            className="p-2 text-[var(--text-muted)] active:text-status-danger"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

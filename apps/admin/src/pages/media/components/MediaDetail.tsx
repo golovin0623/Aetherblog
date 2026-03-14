@@ -128,7 +128,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative aspect-video rounded-2xl overflow-hidden bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 mb-4 group"
+        className="relative aspect-video rounded-2xl overflow-hidden bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 mb-4 group"
       >
         {media.fileType === 'IMAGE' ? (
           <img
@@ -168,7 +168,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
         {isImage && (
           <button
             onClick={() => setImageEditorOpen(true)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
           >
             <Edit3 className="w-3.5 h-3.5" />
             编辑
@@ -176,7 +176,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
         )}
         <button
           onClick={() => setShareDialogOpen(true)}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
         >
           <Share2 className="w-3.5 h-3.5" />
           分享
@@ -184,7 +184,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
         {onMove && (
           <button
             onClick={() => onMove(media.id, media.originalName)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all text-xs font-medium"
           >
             <Move className="w-3.5 h-3.5" />
             移动
@@ -193,7 +193,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
       </div>
 
       {/* Tab 导航 */}
-      <div className="flex items-center gap-1 p-1 bg-gray-100/50 dark:bg-white/5 rounded-xl mb-4">
+      <div className="flex items-center gap-1 p-1 bg-[var(--bg-secondary)]/50 dark:bg-white/5 rounded-xl mb-4">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -236,14 +236,14 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 
               {/* 元信息网格 */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
                   <div className="flex items-center gap-2 mb-1">
                     <HardDrive className="w-3 h-3 text-[var(--text-muted)]" />
                     <span className="text-[10px] text-[var(--text-secondary)] uppercase">大小</span>
                   </div>
                   <p className="text-sm text-[var(--text-primary)] font-medium">{formatFileSize(media.fileSize)}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
                   <div className="flex items-center gap-2 mb-1">
                     <Calendar className="w-3 h-3 text-[var(--text-muted)]" />
                     <span className="text-[10px] text-[var(--text-secondary)] uppercase">上传时间</span>
@@ -254,7 +254,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 
               {/* MIME 类型 */}
               {media.mimeType && (
-                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
                   <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">MIME 类型</p>
                   <p className="text-xs text-[var(--text-primary)] font-mono">{media.mimeType}</p>
                 </div>
@@ -262,7 +262,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 
               {/* 尺寸 */}
               {(media.width && media.height) && (
-                <div className="p-3 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
+                <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10">
                   <p className="text-[10px] text-[var(--text-muted)] uppercase mb-1">尺寸</p>
                   <p className="text-sm text-[var(--text-primary)] font-medium">{media.width} × {media.height} px</p>
                 </div>
@@ -276,11 +276,11 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
                     type="text"
                     value={fullUrl}
                     readOnly
-                    className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-gray-100/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] font-mono truncate focus:outline-none focus:border-primary/50"
+                    className="flex-1 px-3 py-2.5 text-xs rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-black/20 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] font-mono truncate focus:outline-none focus:border-primary/50"
                   />
                   <button
                     onClick={handleOpenInNewTab}
-                    className="p-2.5 rounded-xl bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all"
+                    className="p-2.5 rounded-xl bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 transition-all"
                     title="新窗口打开"
                   >
                     <ExternalLink className="w-4 h-4" />
@@ -330,8 +330,8 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
             className={cn(
               'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-all',
               copied 
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                : 'bg-gray-100/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:bg-gray-200/50 dark:hover:bg-white/10 hover:text-[var(--text-primary)]'
+                ? 'bg-status-success/20 text-status-success border border-status-success-border' 
+                : 'bg-[var(--bg-secondary)]/50 dark:bg-white/5 border border-black/5 dark:border-white/10 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]/50 dark:hover:bg-white/10 hover:text-[var(--text-primary)]'
             )}
             title="复制链接"
           >
@@ -350,7 +350,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 
           <button
             onClick={() => onDelete(media.id)}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-status-danger-light border border-status-danger-border text-status-danger hover:bg-status-danger/20 transition-all"
             title="删除文件"
           >
             <Trash2 className="w-4 h-4" />

@@ -49,29 +49,29 @@ export function AnnotationCard({
   const severityConfig = {
     info: {
       icon: Info,
-      bgColor: 'bg-blue-500/10',
-      borderColor: 'border-blue-500/30',
-      textColor: 'text-blue-500',
+      bgColor: 'bg-status-info-light',
+      borderColor: 'border-status-info-border',
+      textColor: 'text-status-info',
     },
     warning: {
       icon: AlertCircle,
-      bgColor: 'bg-yellow-500/10',
-      borderColor: 'border-yellow-500/30',
-      textColor: 'text-yellow-500',
+      bgColor: 'bg-status-warning-light',
+      borderColor: 'border-status-warning-border',
+      textColor: 'text-status-warning',
     },
     error: {
       icon: AlertCircle,
-      bgColor: 'bg-red-500/10',
-      borderColor: 'border-red-500/30',
-      textColor: 'text-red-500',
+      bgColor: 'bg-status-danger-light',
+      borderColor: 'border-status-danger-border',
+      textColor: 'text-status-danger',
     },
   };
 
   const typeConfig = {
-    suggestion: { label: 'AI 建议', icon: Sparkles, color: 'text-purple-500' },
-    grammar: { label: '语法', icon: AlertCircle, color: 'text-red-500' },
-    style: { label: '风格', icon: Lightbulb, color: 'text-blue-500' },
-    'fact-check': { label: '事实核查', icon: AlertCircle, color: 'text-orange-500' },
+    suggestion: { label: 'AI 建议', icon: Sparkles, color: 'text-accent' },
+    grammar: { label: '语法', icon: AlertCircle, color: 'text-status-danger' },
+    style: { label: '风格', icon: Lightbulb, color: 'text-status-info' },
+    'fact-check': { label: '事实核查', icon: AlertCircle, color: 'text-status-warning' },
   };
 
   const config = severityConfig[annotation.severity];
@@ -181,7 +181,7 @@ export function AnnotationCard({
                 <>
                   <button
                     onClick={onAccept}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-status-success text-white text-sm hover:bg-status-success"
                   >
                     <Check className="w-4 h-4" />
                     接受
@@ -196,7 +196,7 @@ export function AnnotationCard({
                   )}
                   <button
                     onClick={onReject}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] text-sm hover:bg-red-500/10 hover:text-red-500"
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-muted)] text-sm hover:bg-status-danger-light hover:text-status-danger"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -244,13 +244,13 @@ export function AnnotationList({
             <div className="flex items-center gap-1">
               <button
                 onClick={onAcceptAll}
-                className="px-2 py-1 text-xs rounded-md bg-emerald-500 text-white hover:bg-emerald-600"
+                className="px-2 py-1 text-xs rounded-md bg-status-success text-white hover:bg-status-success"
               >
                 全部接受
               </button>
               <button
                 onClick={onRejectAll}
-                className="px-2 py-1 text-xs rounded-md bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-500"
+                className="px-2 py-1 text-xs rounded-md bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:bg-status-danger-light hover:text-status-danger"
               >
                 全部拒绝
               </button>
@@ -302,9 +302,9 @@ function AnnotationListItem({
   onReject,
 }: AnnotationListItemProps) {
   const severityColors = {
-    info: 'bg-blue-500/10 border-blue-500/30 text-blue-500',
-    warning: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500',
-    error: 'bg-red-500/10 border-red-500/30 text-red-500',
+    info: 'bg-status-info-light border-status-info-border text-status-info',
+    warning: 'bg-status-warning-light border-status-warning-border text-status-warning',
+    error: 'bg-status-danger-light border-status-danger-border text-status-danger',
   };
 
   return (
@@ -333,7 +333,7 @@ function AnnotationListItem({
               e.stopPropagation();
               onAccept();
             }}
-            className="p-1 rounded hover:bg-emerald-500/10 text-emerald-500"
+            className="p-1 rounded hover:bg-status-success-light text-status-success"
             title="接受"
           >
             <Check className="w-3.5 h-3.5" />
@@ -343,7 +343,7 @@ function AnnotationListItem({
               e.stopPropagation();
               onReject();
             }}
-            className="p-1 rounded hover:bg-red-500/10 text-red-500"
+            className="p-1 rounded hover:bg-status-danger-light text-status-danger"
             title="拒绝"
           >
             <X className="w-3.5 h-3.5" />

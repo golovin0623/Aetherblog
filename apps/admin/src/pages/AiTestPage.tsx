@@ -174,35 +174,35 @@ export function AiTestPage() {
       icon: Wand2,
       label: '生成摘要',
       action: handleGenerateSummary,
-      color: 'from-purple-500 to-pink-500',
+      color: 'from-accent to-pink-500',
     },
     {
       key: 'tags',
       icon: Hash,
       label: '提取标签',
       action: handleExtractTags,
-      color: 'from-blue-500 to-cyan-500',
+      color: 'from-status-info to-cyan-500',
     },
     {
       key: 'titles',
       icon: Heading,
       label: '标题建议',
       action: handleSuggestTitles,
-      color: 'from-green-500 to-emerald-500',
+      color: 'from-status-success to-status-success',
     },
     {
       key: 'polish',
       icon: Sparkles,
       label: '内容润色',
       action: handlePolish,
-      color: 'from-orange-500 to-red-500',
+      color: 'from-status-warning to-status-danger',
     },
     {
       key: 'outline',
       icon: ListTree,
       label: '生成大纲',
       action: handleGenerateOutline,
-      color: 'from-indigo-500 to-purple-500',
+      color: 'from-primary to-accent',
     },
   ];
 
@@ -260,7 +260,7 @@ export function AiTestPage() {
               </h3>
               <button
                 onClick={clearResults}
-                className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"
+                className="text-xs text-status-danger hover:text-status-danger flex items-center gap-1"
               >
                 <Trash2 className="w-3 h-3" />
                 清除结果
@@ -320,7 +320,7 @@ export function AiTestPage() {
                 {results.tags.map((tag, index) => (
                   <span
                     key={index}
-                    className="px-3 py-1 bg-blue-500/20 text-blue-500 rounded-full text-sm"
+                    className="px-3 py-1 bg-status-info/20 text-status-info rounded-full text-sm"
                   >
                     {tag}
                   </span>
@@ -412,11 +412,11 @@ interface ResultCardProps {
 
 function ResultCard({ title, icon: Icon, color, onCopy, children }: ResultCardProps) {
   const colorClasses = {
-    purple: 'from-purple-500 to-pink-500',
-    blue: 'from-blue-500 to-cyan-500',
-    green: 'from-green-500 to-emerald-500',
-    orange: 'from-orange-500 to-red-500',
-    indigo: 'from-indigo-500 to-purple-500',
+    purple: 'from-accent to-pink-500',
+    blue: 'from-status-info to-cyan-500',
+    green: 'from-status-success to-status-success',
+    orange: 'from-status-warning to-status-danger',
+    indigo: 'from-primary to-accent',
   };
 
   return (

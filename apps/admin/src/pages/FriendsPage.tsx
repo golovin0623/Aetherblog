@@ -171,7 +171,7 @@ export default function FriendsPage() {
         <div className="lg:col-span-2 space-y-4">
           <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[500px]">
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-3">
+              <div className="flex flex-col items-center justify-center h-64 text-[var(--text-muted)] gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <p>加载中...</p>
               </div>
@@ -245,7 +245,7 @@ export default function FriendsPage() {
                       placeholder="例如: AetherBlog"
                     />
                     {form.formState.errors.name && (
-                      <p className="text-xs text-red-400">{form.formState.errors.name.message}</p>
+                      <p className="text-xs text-status-danger">{form.formState.errors.name.message}</p>
                     )}
                   </div>
 
@@ -258,7 +258,7 @@ export default function FriendsPage() {
                       placeholder="https://..."
                     />
                     {form.formState.errors.url && (
-                      <p className="text-xs text-red-400">{form.formState.errors.url.message}</p>
+                      <p className="text-xs text-status-danger">{form.formState.errors.url.message}</p>
                     )}
                   </div>
 
@@ -277,7 +277,7 @@ export default function FriendsPage() {
                         {form.watch('logo') ? (
                           <img src={form.watch('logo')} alt="preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
                         ) : (
-                          <Globe className="w-4 h-4 text-gray-600" />
+                          <Globe className="w-4 h-4 text-[var(--text-secondary)]" />
                         )}
                       </div>
                     </div>

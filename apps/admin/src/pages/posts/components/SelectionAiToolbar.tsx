@@ -421,7 +421,7 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
                         <span
                           key={`${segment.type}-${index}`}
                           className={cn(
-                            segment.type === 'insert' && 'bg-emerald-500/20 text-emerald-200',
+                            segment.type === 'insert' && 'bg-status-success/20 text-status-success',
                             segment.type === 'delete' && 'bg-rose-500/20 text-rose-200 line-through',
                             segment.type === 'equal' && 'text-[var(--text-secondary)]'
                           )}
@@ -451,7 +451,7 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
                     onClick={copyResult}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)]"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? <Check className="w-3.5 h-3.5 text-status-success" /> : <Copy className="w-3.5 h-3.5" />}
                     {copied ? '已复制' : '复制'}
                   </button>
                   <button

@@ -374,13 +374,13 @@ function SnapshotItem({
         'w-full group relative flex items-start gap-3 px-3 py-2.5 rounded-lg transition-all text-left',
         isCurrent && 'bg-primary/10 border border-primary/30',
         !isCurrent && 'hover:bg-[var(--bg-card-hover)] border border-transparent',
-        isSelected && 'bg-blue-500/10 border-blue-500/30'
+        isSelected && 'bg-status-info-light border-status-info-border'
       )}
     >
       {/* 图标 */}
       <div className={cn(
         'w-7 h-7 rounded-full flex items-center justify-center shrink-0',
-        snapshot.source === 'ai-suggestion' ? 'bg-purple-500/10' : 'bg-blue-500/10'
+        snapshot.source === 'ai-suggestion' ? 'bg-accent/10' : 'bg-status-info-light'
       )}>
         {sourceIcon}
       </div>
@@ -399,7 +399,7 @@ function SnapshotItem({
             )}
           </div>
           {snapshot.isBookmark && (
-            <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
+            <Star className="w-3.5 h-3.5 text-status-warning fill-status-warning shrink-0" />
           )}
         </div>
 
@@ -408,7 +408,7 @@ function SnapshotItem({
           {snapshot.changedChars !== 0 && (
             <>
               <span>·</span>
-              <span className={snapshot.changedChars > 0 ? 'text-emerald-500' : 'text-red-500'}>
+              <span className={snapshot.changedChars > 0 ? 'text-status-success' : 'text-status-danger'}>
                 {snapshot.changedChars > 0 ? '+' : ''}{snapshot.changedChars}
               </span>
             </>
@@ -429,7 +429,7 @@ function SnapshotItem({
           >
             <Bookmark className={cn(
               'w-3.5 h-3.5',
-              snapshot.isBookmark ? 'text-yellow-500 fill-yellow-500' : 'text-[var(--text-muted)]'
+              snapshot.isBookmark ? 'text-status-warning fill-status-warning' : 'text-[var(--text-muted)]'
             )} />
           </button>
           <button
@@ -437,7 +437,7 @@ function SnapshotItem({
               e.stopPropagation();
               onDelete();
             }}
-            className="p-1 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500"
+            className="p-1 rounded hover:bg-status-danger-light text-[var(--text-muted)] hover:text-status-danger"
             title="删除"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -455,11 +455,11 @@ function SnapshotItem({
 
 function getSourceIcon(source: ContentSnapshot['source']) {
   const iconMap = {
-    'user-edit': <User className="w-4 h-4 text-blue-500" />,
-    'ai-suggestion': <Sparkles className="w-4 h-4 text-purple-500" />,
+    'user-edit': <User className="w-4 h-4 text-status-info" />,
+    'ai-suggestion': <Sparkles className="w-4 h-4 text-accent" />,
     'auto-save': <Clock className="w-4 h-4 text-[var(--text-muted)]" />,
-    'manual-save': <Save className="w-4 h-4 text-green-500" />,
-    'workflow-stage': <GitBranch className="w-4 h-4 text-orange-500" />,
+    'manual-save': <Save className="w-4 h-4 text-status-success" />,
+    'workflow-stage': <GitBranch className="w-4 h-4 text-status-warning" />,
     'import': <Upload className="w-4 h-4 text-cyan-500" />,
   };
   return iconMap[source] || <Clock className="w-4 h-4 text-[var(--text-muted)]" />;

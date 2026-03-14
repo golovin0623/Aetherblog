@@ -80,7 +80,7 @@ export function MediaGrid({
                   'bg-[var(--bg-card)] border-2 transition-all duration-300',
                   isSelected
                     ? 'border-primary ring-4 ring-primary/20 scale-[0.98]'
-                    : 'border-gray-200/60 dark:border-white/5 shadow-sm hover:border-[var(--border-subtle)] hover:shadow-xl hover:-translate-y-1'
+                    : 'border-[var(--border-default)]/60 dark:border-white/5 shadow-sm hover:border-[var(--border-subtle)] hover:shadow-xl hover:-translate-y-1'
                 )}
                 onClick={() => onSelect(item.id)}
               >
@@ -152,7 +152,7 @@ export function MediaGrid({
                     <div
                       className={cn(
                         'flex items-center gap-0.5 p-1',
-                        'bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-full shadow-lg border border-black/5 dark:border-white/10',
+                        'bg-white/95 dark:bg-[var(--bg-popover)]/95 backdrop-blur-md rounded-full shadow-lg border border-black/5 dark:border-white/10',
                         'translate-y-4 opacity-0 scale-95 group-hover:translate-y-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 ease-out',
                         'pointer-events-auto'
                       )}
@@ -161,7 +161,7 @@ export function MediaGrid({
                       {onMove && (
                         <button
                           onClick={() => onMove(item.id, item.originalName)}
-                          className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                          className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors"
                           title="移动"
                         >
                           <FolderInput className="w-3.5 h-3.5" />
@@ -169,22 +169,22 @@ export function MediaGrid({
                       )}
                       <button
                         onClick={() => onCopyUrl(fullUrl)}
-                        className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                        className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors"
                         title="复制链接"
                       >
                         <Link2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => onDownload(fullUrl, item.originalName)}
-                        className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                        className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white transition-colors"
                         title="下载"
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
-                      <div className="w-px h-3 bg-gray-200 dark:bg-white/20 mx-1" />
+                      <div className="w-px h-3 bg-[var(--bg-tertiary)] dark:bg-white/20 mx-1" />
                       <button
                         onClick={() => onDelete(item.id)}
-                        className="p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500/80 hover:text-red-500 transition-colors"
+                        className="p-1.5 rounded-full hover:bg-status-danger-light dark:hover:bg-status-danger-light text-status-danger/80 hover:text-status-danger transition-colors"
                         title="删除"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

@@ -180,7 +180,7 @@ export function BatchOptimizationPanel({
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-500">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent">
                       {annotation.type}
                     </span>
                     <span className="text-xs text-[var(--text-muted)]">
@@ -192,7 +192,7 @@ export function BatchOptimizationPanel({
                   </p>
                   {annotation.suggestion && (
                     <div className="flex items-start gap-2 text-xs">
-                      <ChevronRight className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
+                      <ChevronRight className="w-3 h-3 text-status-success mt-0.5 shrink-0" />
                       <span className="text-[var(--text-muted)]">
                         {annotation.suggestion}
                       </span>
@@ -205,9 +205,9 @@ export function BatchOptimizationPanel({
 
           {/* 错误提示 */}
           {error && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-              <p className="text-sm text-red-500">{error}</p>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-status-danger-light border border-status-danger-border">
+              <AlertTriangle className="w-4 h-4 text-status-danger mt-0.5 shrink-0" />
+              <p className="text-sm text-status-danger">{error}</p>
             </div>
           )}
         </div>
@@ -229,7 +229,7 @@ export function BatchOptimizationPanel({
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
                   <motion.div
-                    className="h-full bg-gradient-to-r from-primary to-purple-500"
+                    className="h-full bg-gradient-to-r from-primary to-accent"
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.3 }}
