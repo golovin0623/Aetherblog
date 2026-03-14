@@ -13,40 +13,54 @@ const config: Config = {
         primary: {
           DEFAULT: 'var(--color-primary)',
           hover: 'var(--color-primary-hover)',
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          light: 'var(--color-primary-light)',
+          lighter: 'var(--color-primary-lighter)',
+        },
+        accent: {
+          DEFAULT: 'var(--color-accent)',
+        },
+        status: {
+          success: 'var(--color-success)',
+          'success-light': 'var(--color-success-light)',
+          'success-border': 'var(--color-success-border)',
+          warning: 'var(--color-warning)',
+          'warning-light': 'var(--color-warning-light)',
+          'warning-border': 'var(--color-warning-border)',
+          danger: 'var(--color-danger)',
+          'danger-light': 'var(--color-danger-light)',
+          'danger-border': 'var(--color-danger-border)',
+          info: 'var(--color-info)',
+          'info-light': 'var(--color-info-light)',
+          'info-border': 'var(--color-info-border)',
         },
         background: {
           DEFAULT: 'var(--bg-primary)',
           secondary: 'var(--bg-secondary)',
           tertiary: 'var(--bg-tertiary)',
+          quaternary: 'var(--bg-quaternary)',
           card: 'var(--bg-card)',
         },
         foreground: {
           DEFAULT: 'var(--text-primary)',
           secondary: 'var(--text-secondary)',
+          tertiary: 'var(--text-tertiary)',
           muted: 'var(--text-muted)',
         },
         border: {
           DEFAULT: 'var(--border-default)',
           hover: 'var(--border-hover)',
+          subtle: 'var(--border-subtle)',
         },
-        boxShadow: {
-          sm: 'var(--shadow-sm)',
-          DEFAULT: 'var(--shadow-sm)',
-          md: 'var(--shadow-md)',
-          lg: 'var(--shadow-lg)',
-          xl: 'var(--shadow-xl)',
-        },
+      },
+      boxShadow: {
+        xs: 'var(--shadow-xs)',
+        sm: 'var(--shadow-sm)',
+        DEFAULT: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        xl: 'var(--shadow-xl)',
+        primary: 'var(--shadow-primary)',
+        'primary-lg': 'var(--shadow-primary-lg)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
@@ -77,4 +91,3 @@ const config: Config = {
 };
 
 export default config;
-
