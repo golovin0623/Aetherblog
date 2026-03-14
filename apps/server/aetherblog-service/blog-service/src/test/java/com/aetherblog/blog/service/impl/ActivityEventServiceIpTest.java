@@ -64,7 +64,7 @@ class ActivityEventServiceIpTest {
 
         ActivityEvent savedEvent = eventCaptor.getValue();
         // 安全实现应获取最后一个 IP
-        assertEquals("5.6.7.8", savedEvent.getIp(), "应该使用 X-Forwarded-For 链中的最后一个 IP");
+        assertEquals("5.6.7.8", savedEvent.getIp(), "Should use the last IP in X-Forwarded-For chain");
     }
 
     @Test
