@@ -11,7 +11,7 @@ on:
     branches:
       - main
 
-# 并发控制: PR 时取消同一 PR 的旧运行；分支/tag 推送则排队等待不互相取消
+# 并发控制: PR 阶段取消旧运行节省资源；main/develop 分支排队等待，避免构建产物丢失
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -27,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      backend: ${{ steps.check.outputs.backend }}
-      ai-service: ${{ steps.check.outputs.ai-service }}
-      blog: ${{ steps.check.outputs.blog }}
-      admin: ${{ steps.check.outputs.admin }}
+      backend: ${{ steps.filter.outputs.backend }}
+      ai-service: ${{ steps.filter.outputs.ai-service }}
+      blog: ${{ steps.filter.outputs.blog }}
+      admin: ${{ steps.filter.outputs.admin }}
       frontend: ${{ steps.check.outputs.frontend }}
       any_changed: ${{ steps.check.outputs.any_changed }}
     steps:
@@ -72,20 +72,10 @@ jobs:
         run: |
           # Tag 推送时全量构建，所有标志置为 true
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            echo "backend=true" >> $GITHUB_OUTPUT
-            echo "ai-service=true" >> $GITHUB_OUTPUT
-            echo "blog=true" >> $GITHUB_OUTPUT
-            echo "admin=true" >> $GITHUB_OUTPUT
             echo "frontend=true" >> $GITHUB_OUTPUT
             echo "any_changed=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-
-          # 正常推送：使用 paths-filter 结果
-          echo "backend=${{ steps.filter.outputs.backend }}" >> $GITHUB_OUTPUT
-          echo "ai-service=${{ steps.filter.outputs.ai-service }}" >> $GITHUB_OUTPUT
-          echo "blog=${{ steps.filter.outputs.blog }}" >> $GITHUB_OUTPUT
-          echo "admin=${{ steps.filter.outputs.admin }}" >> $GITHUB_OUTPUT
 
           # 前端聚合标志: blog 或 admin 任一变更
           if [[ "${{ steps.filter.outputs.blog }}" == "true" || \
@@ -109,10 +99,10 @@ jobs:
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📦 变更检测结果:"
-          echo "  backend:    ${{ steps.check.outputs.backend }}"
-          echo "  ai-service: ${{ steps.check.outputs.ai-service }}"
-          echo "  blog:       ${{ steps.check.outputs.blog }}"
-          echo "  admin:      ${{ steps.check.outputs.admin }}"
+          echo "  backend:    ${{ steps.filter.outputs.backend }}"
+          echo "  ai-service: ${{ steps.filter.outputs.ai-service }}"
+          echo "  blog:       ${{ steps.filter.outputs.blog }}"
+          echo "  admin:      ${{ steps.filter.outputs.admin }}"
           echo "  frontend:   ${{ steps.check.outputs.frontend }}"
           echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
