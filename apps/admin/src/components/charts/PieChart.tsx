@@ -7,7 +7,7 @@ interface PieChartProps {
 }
 
 const DEFAULT_COLORS = [
-  '#8b5cf6',
+  '#18181b',
   '#ec4899',
   '#06b6d4',
   '#10b981',
