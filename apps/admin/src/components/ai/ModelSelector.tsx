@@ -216,12 +216,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   }, [providers, selectedModel]);
 
   // Resilient display: fall back to cached selection when query lookup fails
-  const displayModel = selectedModel || (
+  const displayModel = selectedModel ?? (
     value && selectedCacheRef.current?.model.model_id === value
       ? selectedCacheRef.current.model
       : null
   );
-  const displayProvider = selectedProvider || (
+  const displayProvider = selectedProvider ?? (
     displayModel && selectedCacheRef.current?.provider.code === displayModel.provider_code
       ? selectedCacheRef.current.provider
       : null
