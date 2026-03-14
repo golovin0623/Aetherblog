@@ -29,7 +29,7 @@ interface TimelineTreeProps {
 }
 
 const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
-const DEFAULT_VISIBLE_POSTS = 5;
+const DEFAULT_VISIBLE_POSTS = 10;
 
 // SessionStorage 键
 const STORAGE_KEYS = {
@@ -120,18 +120,18 @@ const MonthSection = React.memo(({
         onClick={() => toggleMonth(yearMonth)}
         aria-expanded={isExpanded}
         aria-controls={`timeline-month-${yearMonth}`}
-        className="group flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-md hover:bg-[var(--bg-card-hover)] transition-colors"
+        className="group flex items-center gap-2.5 w-full text-left py-1.5 px-2.5 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/20 transition-all duration-200"
       >
-        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-hover)] transition-colors">
+        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-[var(--text-muted)]" />
+            <ChevronDown className="h-3.5 w-3.5 text-primary/70" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />
+            <ChevronRight className="h-3.5 w-3.5 text-primary/70" />
           )}
         </div>
-        <Calendar className="h-4 w-4 text-[var(--text-muted)]" />
-        <span className="text-[var(--text-secondary)]">{MONTH_NAMES[monthData.month - 1]}</span>
-        <span className="ml-auto text-xs text-[var(--text-muted)]">
+        <Calendar className="h-3.5 w-3.5 text-primary/50" />
+        <span className="text-sm font-medium text-[var(--text-primary)]">{MONTH_NAMES[monthData.month - 1]}</span>
+        <span className="ml-auto px-1.5 py-0.5 rounded-full text-[11px] bg-[var(--bg-secondary)] text-[var(--text-muted)]">
           {monthData.posts.length} 篇
         </span>
       </button>
