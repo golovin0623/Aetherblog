@@ -9,10 +9,10 @@ on:
     branches:
       - main
 
-# 并发控制: 同一分支/PR 的新运行会取消旧的运行
+# 并发控制: PR 阶段取消旧运行节省资源；main/develop 分支排队等待，避免构建产物丢失
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
