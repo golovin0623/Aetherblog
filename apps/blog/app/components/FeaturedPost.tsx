@@ -90,7 +90,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                      {/* 元信息：分类、日期 */}
                     <div className="flex items-center gap-3 text-[10px] font-medium text-primary mb-3">
                         {post.category && (
-                            <Link href={`/categories/${post.category.slug}`} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-purple-500 text-white shadow-sm hover:shadow-md transition-all">
+                            <Link href={`/categories/${post.category.slug}`} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-accent text-white shadow-sm hover:shadow-md transition-all">
                                 <Folder className="w-3 h-3" />
                                 <span>{post.category.name}</span>
                             </Link>
@@ -108,7 +108,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                     </div>
 
                     {/* 标题 */}
-                    <h1 className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent transition-all cursor-pointer`}>
+                    <h1 className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent transition-all cursor-pointer`}>
                         <Link href={`/posts/${post.slug}`}>
                             {post.title}
                         </Link>
@@ -157,7 +157,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                 <Link
                     href={`/posts/${post.slug}`}
                     aria-label={`阅读全文: ${post.title}`}
-                    className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-500 shadow-[var(--shadow-primary)] hover:shadow-[var(--shadow-primary-lg)] text-xs shrink-0"
+                    className="inline-flex items-center gap-2 text-white font-medium hover:gap-3 transition-all group/btn w-fit px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-accent shadow-[var(--shadow-primary)] hover:shadow-[var(--shadow-primary-lg)] text-xs shrink-0"
                 >
                     <span>阅读全文</span>
                     <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-1 transition-transform" />

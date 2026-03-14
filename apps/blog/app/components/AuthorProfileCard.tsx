@@ -234,7 +234,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
         {/* 头像 */}
         <div className="relative w-24 h-24 mb-3 group/avatar cursor-pointer">
           <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-purple-500/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-accent/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
           <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg bg-slate-100">
             <Image
               src={avatar}
@@ -246,7 +246,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
               unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
           </div>
-          <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/30">
+          <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/30">
             <Sparkles className="w-3 h-3 text-white" />
           </div>
         </div>
