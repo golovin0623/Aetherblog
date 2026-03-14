@@ -232,17 +232,17 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
       <div className="relative p-6 flex flex-col items-center text-center">
         {/* 头像 */}
-        <div className="relative w-24 h-24 mb-3 group/avatar cursor-pointer">
-          <div className="absolute -inset-3 rounded-full blur-md opacity-0 bg-black/8 group-hover/avatar:opacity-60 transition-opacity duration-300" />
-          <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-accent/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
-          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-slate-100">
+        <div className="relative w-24 h-24 mb-3">
+          <div className="absolute -inset-3 rounded-full blur-md opacity-30 bg-black/8 dark:opacity-0" />
+          <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-accent/40 to-primary/40 rounded-full blur-2xl opacity-60" />
+          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white dark:ring-white/20 outline-none shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-slate-100">
             <Image
               src={avatar}
               alt={name}
               fill
               sizes="96px"
-              className="object-cover group-hover/avatar:scale-105 transition-transform duration-500"
+              className="object-cover"
               priority
               unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
