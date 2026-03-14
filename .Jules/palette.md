@@ -44,3 +44,7 @@
 ## 2026-06-08 - Added aria-controls and focus-visible to recursive comment toggle buttons
 **Learning:** Found that recursive comment components (like `CommentItem` in `apps/blog/app/components/CommentSection.tsx`) with nested toggle buttons for expanding/collapsing child lists often miss `aria-controls` links, despite having `aria-expanded`. Because the toggled content wraps the children, these links ensure that dynamic nested lists are screen-reader and keyboard accessible.
 **Action:** Always ensure that when using custom disclosure buttons to show/hide dynamic child trees or lists, `aria-controls` is linked to the container `id` dynamically generated via `React.useId()`, and proper `focus-visible` styles are maintained.
+
+## 2024-05-18 - Form Accessibility in Protected Post Content
+**Learning:** Forms requiring a single input field (like a password prompt for protected content) often miss proper labeling and error state association. Screen readers rely heavily on `aria-invalid`, `aria-describedby` linked to a `role="alert"` element, and explicitly associated `<label>` elements for semantic understanding of form validation states.
+**Action:** Always ensure that form inputs have a visually hidden `<label>` if a visible one breaks the design, bind error messages to inputs using `aria-describedby`, use `role="alert"` for error message containers, and provide clear visual cues (e.g., dynamic red borders and focus rings) when validation fails. Include `focus-visible` styles on submit buttons to ensure keyboard accessibility.
