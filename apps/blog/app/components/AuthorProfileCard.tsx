@@ -55,7 +55,7 @@ const getPlatformIcon = (platform: string) => {
 };
 
 // 社交链接轮播组件
-const SocialLinksCarouselBase: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) => {
+const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: string; icon: React.ElementType }[] }> = ({ socialLinks }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 4;
   const totalPages = Math.ceil(socialLinks.length / itemsPerPage);
