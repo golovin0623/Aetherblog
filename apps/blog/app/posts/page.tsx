@@ -125,7 +125,8 @@ export default function PostsPage() {
     if (!pageNumbersRef.current) return;
     const btn = pageNumbersRef.current.querySelector(`[data-page="${page}"]`) as HTMLElement | null;
     if (btn) {
-      btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: prefersReducedMotion ? 'auto' : 'smooth' });
     }
   }, []);
 
@@ -135,7 +136,8 @@ export default function PostsPage() {
     // Scroll to top of posts list section
     if (postsListRef.current) {
       const top = postsListRef.current.getBoundingClientRect().top + window.scrollY - 80;
-      window.scrollTo({ top, behavior: 'smooth' });
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
     }
   };
 
@@ -261,7 +263,6 @@ export default function PostsPage() {
                   <div
                     ref={pageNumbersRef}
                     className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-1"
-                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
                   >
                     {Array.from({ length: pages }, (_, i) => i + 1).map((page) => (
                       <button
