@@ -5,14 +5,16 @@ on:
     branches:
       - main
       - develop
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
 
-# 并发控制: 同一分支/PR 的新运行会取消旧的运行
+# 并发控制: PR 时取消同一 PR 的旧运行；分支/tag 推送则排队等待不互相取消
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
@@ -25,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      ai-service: ${{ steps.filter.outputs.ai-service }}
-      blog: ${{ steps.filter.outputs.blog }}
-      admin: ${{ steps.filter.outputs.admin }}
+      backend: ${{ steps.check.outputs.backend }}
+      ai-service: ${{ steps.check.outputs.ai-service }}
+      blog: ${{ steps.check.outputs.blog }}
+      admin: ${{ steps.check.outputs.admin }}
       frontend: ${{ steps.check.outputs.frontend }}
       any_changed: ${{ steps.check.outputs.any_changed }}
     steps:
@@ -68,6 +70,23 @@ jobs:
       - name: Compute aggregate flags
         id: check
         run: |
+          # Tag 推送时全量构建，所有标志置为 true
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+            echo "ai-service=true" >> $GITHUB_OUTPUT
+            echo "blog=true" >> $GITHUB_OUTPUT
+            echo "admin=true" >> $GITHUB_OUTPUT
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "any_changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 正常推送：使用 paths-filter 结果
+          echo "backend=${{ steps.filter.outputs.backend }}" >> $GITHUB_OUTPUT
+          echo "ai-service=${{ steps.filter.outputs.ai-service }}" >> $GITHUB_OUTPUT
+          echo "blog=${{ steps.filter.outputs.blog }}" >> $GITHUB_OUTPUT
+          echo "admin=${{ steps.filter.outputs.admin }}" >> $GITHUB_OUTPUT
+
           # 前端聚合标志: blog 或 admin 任一变更
           if [[ "${{ steps.filter.outputs.blog }}" == "true" || \
                 "${{ steps.filter.outputs.admin }}" == "true" ]]; then
@@ -90,10 +109,10 @@ jobs:
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📦 变更检测结果:"
-          echo "  backend:    ${{ steps.filter.outputs.backend }}"
-          echo "  ai-service: ${{ steps.filter.outputs.ai-service }}"
-          echo "  blog:       ${{ steps.filter.outputs.blog }}"
-          echo "  admin:      ${{ steps.filter.outputs.admin }}"
+          echo "  backend:    ${{ steps.check.outputs.backend }}"
+          echo "  ai-service: ${{ steps.check.outputs.ai-service }}"
+          echo "  blog:       ${{ steps.check.outputs.blog }}"
+          echo "  admin:      ${{ steps.check.outputs.admin }}"
           echo "  frontend:   ${{ steps.check.outputs.frontend }}"
           echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -120,7 +139,7 @@ jobs:
   # ===========================================================================
   frontend-quality:
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
+    if: needs.detect-changes.outputs.frontend == 'true' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -154,7 +173,7 @@ jobs:
   # ===========================================================================
   backend-test:
     needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true'
+    if: needs.detect-changes.outputs.backend == 'true' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -181,7 +200,7 @@ jobs:
   # ===========================================================================
   ai-test:
     needs: detect-changes
-    if: needs.detect-changes.outputs.ai-service == 'true'
+    if: needs.detect-changes.outputs.ai-service == 'true' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -227,8 +246,9 @@ jobs:
   build-backend:
     needs: [detect-changes, backend-test]
     if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.backend == 'true'
+      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.backend == 'true') ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -252,7 +272,9 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -269,8 +291,9 @@ jobs:
   build-ai-service:
     needs: [detect-changes, ai-test]
     if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.ai-service == 'true'
+      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.ai-service == 'true') ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -294,7 +317,9 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -311,8 +336,9 @@ jobs:
   build-blog:
     needs: [detect-changes, frontend-quality]
     if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.blog == 'true'
+      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.blog == 'true') ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -336,7 +362,9 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -353,8 +381,9 @@ jobs:
   build-admin:
     needs: [detect-changes, frontend-quality]
     if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.admin == 'true'
+      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.admin == 'true') ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -378,7 +407,9 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -400,8 +431,11 @@ jobs:
     # 即使部分 build job 被跳过也能运行，但至少有一个模块被构建才触发部署
     if: |
       always() &&
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.any_changed == 'true' &&
+      (
+        (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+        needs.detect-changes.outputs.any_changed == 'true') ||
+        startsWith(github.ref, 'refs/tags/v')
+      ) &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
