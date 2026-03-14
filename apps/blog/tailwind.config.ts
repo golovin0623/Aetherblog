@@ -14,9 +14,11 @@ const config: Config = {
         primary: {
           DEFAULT: 'var(--color-primary)',
           hover: 'var(--color-primary-hover)',
-          50: '#eef2ff',
-          500: '#6366f1',
-          600: '#4f46e5',
+          light: 'var(--color-primary-light)',
+          lighter: 'var(--color-primary-lighter)',
+        },
+        accent: {
+          DEFAULT: 'var(--color-accent)',
         },
         background: {
           DEFAULT: 'var(--bg-primary)',

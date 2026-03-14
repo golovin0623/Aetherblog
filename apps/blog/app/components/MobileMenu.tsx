@@ -209,7 +209,7 @@ const MobileMenu = memo(function MobileMenu() {
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
               <div className="mt-6 flex flex-col items-center text-center">
                 <div className="relative w-14 h-14 mb-2 group">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-primary to-purple-500 rounded-full blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-primary to-accent rounded-full blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
                   <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-[var(--border-default)] group-hover:border-primary transition-colors">
                     <Image
                       src={authorAvatar}

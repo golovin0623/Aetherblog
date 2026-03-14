@@ -102,7 +102,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           {/* 分类 & 日期 - 固定高度 */}
           <div className="flex items-center justify-between mb-3 text-xs h-[20px]">
              {category ? (
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-purple-500 text-white text-[10px] font-medium shadow-sm">
+                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-accent text-white text-[10px] font-medium shadow-sm">
                   <Folder className="h-3 w-3" />
                   {category.name}
                 </span>
@@ -119,7 +119,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           {/* 标题 - 固定高度，悬停时渐变 */}
           <h2 className="mb-1.5 h-[56px]">
             <span
-              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-purple-500 group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-purple-500 group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug"
+              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-accent group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug"
               title={title}
             >
               {title}

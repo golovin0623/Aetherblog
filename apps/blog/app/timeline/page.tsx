@@ -101,7 +101,7 @@ export default function TimelinePage() {
                 <div className="relative mb-8 pl-4">
                     <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">时间轴</h1>
                     <p className="text-[var(--text-muted)] text-sm">共 {posts.length} 篇文章，好事多磨</p>
-                    <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-purple-600 rounded-full" />
+                    <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-accent rounded-full" />
                 </div>
                 
                 <TimelineTree archives={archives} />
