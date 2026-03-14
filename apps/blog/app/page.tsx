@@ -25,7 +25,7 @@ export default async function HomePage() {
             }}
           />
           <div
-            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full"
+            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'var(--ambient-glow-opacity)'
@@ -80,11 +80,11 @@ export default async function HomePage() {
         <div className="relative flex justify-center">
           <div className="px-8 py-3 bg-[var(--bg-primary)] rounded-full border border-[var(--border-default)] backdrop-blur-xl shadow-lg">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-primary to-purple-500 animate-pulse"></div>
-              <span className="text-sm font-medium bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
+              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-primary to-accent animate-pulse"></div>
+              <span className="text-sm font-medium bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 精选内容
               </span>
-              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-primary to-purple-500 animate-pulse"></div>
+              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-primary to-accent animate-pulse"></div>
             </div>
           </div>
         </div>
@@ -96,11 +96,11 @@ export default async function HomePage() {
           {/* 带有装饰元素的区域标题 */}
           <div className="relative mb-12">
             {/* 背景光晕 */}
-            <div className="absolute -top-8 left-0 w-64 h-32 bg-gradient-to-r from-primary/10 to-purple-500/10 blur-3xl rounded-full"></div>
+            <div className="absolute -top-8 left-0 w-64 h-32 bg-gradient-to-r from-primary/10 to-accent/10 blur-3xl rounded-full"></div>
 
             <div className="relative flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-purple-500 shadow-lg shadow-primary/30">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/30">
                   <LayoutGrid className="w-6 h-6 text-white" />
                 </div>
                 <div>

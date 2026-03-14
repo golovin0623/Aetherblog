@@ -15,7 +15,7 @@ export default function TimelineLoading() {
           <div className="w-48 h-4 bg-white/10 rounded overflow-hidden relative">
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
           </div>
-          <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-purple-600 rounded-full" />
+          <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-accent rounded-full" />
         </div>
 
         {/* 时间轴骨架 */}

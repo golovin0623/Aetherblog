@@ -17,7 +17,7 @@ export default function NotFound() {
         className="flex flex-col items-center"
       >
         <div className="relative inline-block mb-6">
-          <h1 className="text-9xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary/20 to-purple-600/20 select-none tracking-tighter">
+          <h1 className="text-9xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary/20 to-accent/20 select-none tracking-tighter">
             404
           </h1>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -44,7 +44,7 @@ export default function NotFound() {
 
           <Link
             href="/"
-            className="px-6 py-3 rounded-xl bg-primary text-white hover:bg-primary-hover transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 flex items-center justify-center gap-2 font-medium hover:-translate-y-0.5"
+            className="px-6 py-3 rounded-xl bg-primary text-white hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30 flex items-center justify-center gap-2 font-medium hover:-translate-y-0.5"
           >
             <Home className="w-4 h-4" />
             回到首页

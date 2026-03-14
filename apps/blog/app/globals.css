@@ -10,17 +10,18 @@
 
 /* 亮色主题 (默认) */
 :root, :root.light {
-  /* === 品牌色系统 === */
-  --color-primary: #6366f1;           /* Indigo 500 */
-  --color-primary-hover: #4f46e5;     /* Indigo 600 */
-  --color-primary-light: #a5b4fc;     /* Indigo 300 */
-  --color-primary-lighter: #e0e7ff;   /* Indigo 100 */
+  /* === 品牌色系统（亮色：精致黑色系，匹配浏览文章按钮）=== */
+  --color-primary: #18181b;           /* Zinc 900 */
+  --color-primary-hover: #27272a;     /* Zinc 800 */
+  --color-primary-light: #52525b;     /* Zinc 600 */
+  --color-primary-lighter: #e4e4e7;   /* Zinc 200 */
+  --color-accent: #3f3f46;            /* Zinc 700 - 渐变终点色 */
 
   /* === 辅助色系统 === */
   --color-accent-blue: #3b82f6;       /* Blue 500 */
   --color-accent-green: #10b981;      /* Green 500 */
   --color-accent-orange: #f59e0b;     /* Amber 500 */
-  --color-accent-purple: #8b5cf6;     /* Purple 500 */
+  --color-accent-purple: #52525b;     /* Zinc 600 - 亮色主题中性化 */
 
   /* === 背景色系统（丰富的层次）=== */
   --bg-primary: #f8fafc;              /* Slate 50 - 略微暗淡的背景，形成层次对比 */
@@ -43,7 +44,7 @@
 
   /* === 边框色系统 === */
   --border-default: #e2e8f0;          /* Slate 200 - 清晰可见 */
-  --border-hover: #6366f1;            /* 主题色 */
+  --border-hover: #18181b;            /* 匹配主色 */
   --border-subtle: #f1f5f9;           /* Slate 100 */
 
   /* === 阴影系统（企业级4层）=== */
@@ -54,17 +55,17 @@
   --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
 
   /* 彩色阴影（用于强调）*/
-  --shadow-primary: 0 4px 14px rgba(99, 102, 241, 0.15);
-  --shadow-primary-lg: 0 10px 30px rgba(99, 102, 241, 0.2);
+  --shadow-primary: 0 4px 14px rgba(24, 24, 27, 0.15);
+  --shadow-primary-lg: 0 10px 30px rgba(24, 24, 27, 0.2);
 
   /* === 渐变系统 === */
-  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-primary: linear-gradient(135deg, #18181b 0%, #3f3f46 100%);
   --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   --gradient-subtle: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(248,250,252,1) 100%);
 
   /* === 装饰元素 === */
   --decoration-bar-height: 3px;       /* 顶部装饰条高度 */
-  --decoration-gradient: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
+  --decoration-gradient: linear-gradient(90deg, #18181b, #3f3f46, #52525b);
 
   /* === 状态色 === */
   --color-success: #10b981;
@@ -75,10 +76,10 @@
   /* === Markdown 专用变量 === */
   --markdown-bg-code: #f8fafc;        /* 代码块背景 */
   --markdown-bg-code-inline: #e5e7eb; /* 行内代码背景 */
-  --markdown-text-code: #4f46e5;      /* 代码文字颜色 */
+  --markdown-text-code: #18181b;      /* 代码文字颜色 */
   --markdown-border-code: #e2e8f0;    /* 代码块边框 */
   --markdown-bg-quote: rgba(0, 0, 0, 0.03);  /* 引用块背景 */
-  --markdown-border-quote: #6366f1;   /* 引用块左边框 */
+  --markdown-border-quote: #18181b;   /* 引用块左边框 */
   --markdown-line-height: 1.8;        /* 行高 */
   --markdown-paragraph-spacing: 1em;  /* 段落间距 */
 
@@ -115,7 +116,7 @@
   --leading-relaxed: 1.75;
 
   /* === 无障碍 === */
-  --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.3);
+  --focus-ring: 0 0 0 3px rgba(24, 24, 27, 0.3);
   --focus-ring-offset: 2px;
 
   /* === 动画颜色 === */
@@ -135,7 +136,7 @@
   --spotlight-opacity: 0;
 
   /* === 高亮线条 === */
-  --highlight-line: rgba(99, 102, 241, 0.15);
+  --highlight-line: rgba(24, 24, 27, 0.15);
 
   /* === 预览区背景 === */
   --preview-bg: rgba(248, 250, 252, 0.5);
@@ -174,17 +175,18 @@
 
 /* 暗色主题 */
 :root.dark {
-  /* === 品牌色系统 === */
-  --color-primary: #6366f1;           /* Indigo 500 */
-  --color-primary-hover: #818cf8;     /* Indigo 400 */
-  --color-primary-light: #a5b4fc;     /* Indigo 300 */
+  /* === 品牌色系统（暗色：精致紫罗兰，高级感）=== */
+  --color-primary: #818cf8;           /* Indigo 400 - 更明亮通透 */
+  --color-primary-hover: #a5b4fc;     /* Indigo 300 */
+  --color-primary-light: #c7d2fe;     /* Indigo 200 */
   --color-primary-lighter: #e0e7ff;   /* Indigo 100 */
+  --color-accent: #a78bfa;            /* Violet 400 - 渐变终点色 */
 
   /* === 辅助色系统 === */
   --color-accent-blue: #3b82f6;       /* Blue 500 */
   --color-accent-green: #10b981;      /* Green 500 */
   --color-accent-orange: #f59e0b;     /* Amber 500 */
-  --color-accent-purple: #8b5cf6;     /* Purple 500 */
+  --color-accent-purple: #a78bfa;     /* Violet 400 - 高级感 */
 
   /* === 背景色系统 === */
   --bg-primary: #0a0a0f;
@@ -218,17 +220,17 @@
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
 
   /* 彩色阴影（用于强调）*/
-  --shadow-primary: 0 4px 14px rgba(99, 102, 241, 0.3);
-  --shadow-primary-lg: 0 10px 30px rgba(99, 102, 241, 0.4);
+  --shadow-primary: 0 4px 14px rgba(129, 140, 248, 0.25);
+  --shadow-primary-lg: 0 10px 30px rgba(129, 140, 248, 0.35);
 
   /* === 渐变系统 === */
-  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-primary: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
   --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   --gradient-subtle: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(19,19,26,1) 100%);
 
   /* === 装饰元素 === */
   --decoration-bar-height: 3px;
-  --decoration-gradient: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
+  --decoration-gradient: linear-gradient(90deg, #818cf8, #a78bfa, #c084fc);
 
   /* === 状态色 === */
   --color-success: #10b981;
@@ -242,7 +244,7 @@
   --markdown-text-code: #a78bfa;      /* 代码文字颜色 - 更柔和 */
   --markdown-border-code: rgba(255, 255, 255, 0.08);  /* 代码块边框 */
   --markdown-bg-quote: rgba(255, 255, 255, 0.03);  /* 引用块背景 */
-  --markdown-border-quote: #6366f1;   /* 引用块左边框 */
+  --markdown-border-quote: #818cf8;   /* 引用块左边框 */
   --markdown-line-height: 1.8;        /* 行高 */
   --markdown-paragraph-spacing: 1em;  /* 段落间距 */
 
@@ -279,7 +281,7 @@
   --leading-relaxed: 1.75;
 
   /* === 无障碍 === */
-  --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.5);
+  --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.5);
   --focus-ring-offset: 2px;
 
   /* === 动画颜色 === */
@@ -295,11 +297,11 @@
   --ambient-glow-blur: 120px;
 
   /* === 聚光灯效果 === */
-  --spotlight-color: rgba(99, 102, 241, 0.1);
+  --spotlight-color: rgba(129, 140, 248, 0.1);
   --spotlight-opacity: 1;
 
   /* === 高亮线条 === */
-  --highlight-line: rgba(255, 255, 255, 0.1);
+  --highlight-line: rgba(129, 140, 248, 0.1);
 
   /* === 预览区背景 === */
   --preview-bg: rgba(0, 0, 0, 0.2);
@@ -1261,13 +1263,13 @@ html[data-theme-transition] .mobile-menu-backdrop {
 
 /* 暗色主题 */
 :root.dark .hero-primary-btn {
-  background: linear-gradient(135deg, #5b5ef0 0%, #6d28d9 60%, #7c3aed 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 50%, #8b5cf6 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.2),
-    0 4px 16px rgba(99, 102, 241, 0.25),
-    0 8px 32px rgba(109, 40, 217, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    0 4px 16px rgba(129, 140, 248, 0.25),
+    0 8px 32px rgba(124, 58, 237, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 /* 暗色主题顶部高光弧线 */
@@ -1281,13 +1283,13 @@ html[data-theme-transition] .mobile-menu-backdrop {
 }
 
 :root.dark .hero-primary-btn:hover {
-  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 55%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #818cf8 0%, #8b5cf6 50%, #a78bfa 100%);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
-    0 8px 24px rgba(99, 102, 241, 0.35),
-    0 16px 48px rgba(109, 40, 217, 0.2),
-    0 0 80px rgba(99, 102, 241, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 8px 24px rgba(129, 140, 248, 0.35),
+    0 16px 48px rgba(124, 58, 237, 0.2),
+    0 0 80px rgba(129, 140, 248, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 /* 移动光效（shimmer） */

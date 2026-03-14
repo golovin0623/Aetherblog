@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, User, Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { User, Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings, getSiteStats } from '../lib/services';
@@ -233,9 +233,10 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
       <div className="relative p-6 flex flex-col items-center text-center">
         {/* 头像 */}
         <div className="relative w-24 h-24 mb-3 group/avatar cursor-pointer">
+          <div className="absolute -inset-3 rounded-full blur-md opacity-0 bg-black/8 group-hover/avatar:opacity-60 transition-opacity duration-300" />
           <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 group-hover/avatar:opacity-80 transition-opacity duration-300" />
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-purple-500/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
-          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-lg bg-slate-100">
+          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-accent/40 to-primary/40 rounded-full blur-2xl opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-700" />
+          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white group-hover/avatar:ring-primary/40 transition-all duration-300 shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-slate-100">
             <Image
               src={avatar}
               alt={name}
@@ -245,9 +246,6 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
               priority
               unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
-          </div>
-          <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/30">
-            <Sparkles className="w-3 h-3 text-white" />
           </div>
         </div>
 
