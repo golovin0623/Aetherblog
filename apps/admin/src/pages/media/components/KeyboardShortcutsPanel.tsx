@@ -64,7 +64,7 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-              className="pointer-events-auto relative w-full max-w-2xl bg-white/90/90 backdrop-blur-xl border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="pointer-events-auto relative w-full max-w-2xl bg-white/90 dark:bg-[#111118d9] backdrop-blur-xl border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               {/* 头部 */}
               <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-default)] dark:border-white/10 bg-[var(--bg-secondary)]/50 dark:bg-white/5">
@@ -93,7 +93,7 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
               <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                 {SHORTCUTS.map((group) => (
                   <div key={group.category} className="space-y-4">
-                    <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                    <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
                       {group.category}
                     </h3>
                     <div className="space-y-3">
