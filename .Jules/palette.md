@@ -48,3 +48,7 @@
 ## 2024-05-18 - Form Accessibility in Protected Post Content
 **Learning:** Forms requiring a single input field (like a password prompt for protected content) often miss proper labeling and error state association. Screen readers rely heavily on `aria-invalid`, `aria-describedby` linked to a `role="alert"` element, and explicitly associated `<label>` elements for semantic understanding of form validation states.
 **Action:** Always ensure that form inputs have a visually hidden `<label>` if a visible one breaks the design, bind error messages to inputs using `aria-describedby`, use `role="alert"` for error message containers, and provide clear visual cues (e.g., dynamic red borders and focus rings) when validation fails. Include `focus-visible` styles on submit buttons to ensure keyboard accessibility.
+
+## 2026-06-08 - Button type and keyboard accessibility
+**Learning:** Icon-only buttons or custom interactive elements like `BackButton`, `MobileMenu` trigger, and chips inside `SearchPanel` often lack `type="button"`, causing unintended form submissions if placed within a form context. They also often lack `focus-visible` styles making them inaccessible to keyboard users navigating via Tab.
+**Action:** Always ensure custom interactive elements include `type="button"` and `focus-visible` utility classes (e.g., `focus-visible:ring-2 focus-visible:outline-none`) to ensure proper keyboard navigation accessibility and prevent form side-effects.
