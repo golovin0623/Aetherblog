@@ -92,6 +92,6 @@ class ActivityEventServiceIpTest {
 
         ActivityEvent savedEvent = eventCaptor.getValue();
         // 安全实现应优先使用 X-Real-IP
-        assertEquals("9.9.9.9", savedEvent.getIp(), "应该优先使用 X-Real-IP 而非 X-Forwarded-For");
+        assertEquals("9.9.9.9", savedEvent.getIp(), "Should prioritize X-Real-IP over X-Forwarded-For");
     }
 }
