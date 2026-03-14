@@ -588,10 +588,10 @@ export function RealtimeLogViewer({
   const statusClassMap: Record<LogLifecycleState, string> = {
     idle: 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)]',
     loading: 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)]',
-    healthy: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-    no_data: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-    error: 'bg-red-500/10 text-red-600 border-red-500/30',
-    paused: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
+    healthy: 'bg-status-success-light text-status-success border-status-success-border',
+    no_data: 'bg-status-warning-light text-status-warning border-status-warning-border',
+    error: 'bg-status-danger-light text-status-danger border-status-danger-border',
+    paused: 'bg-status-warning-light text-status-warning border-status-warning-border',
   };
 
   const statusLabel = statusLabelMap[viewState.lifecycle];
@@ -617,9 +617,9 @@ export function RealtimeLogViewer({
             <Terminal className="w-4 h-4 text-primary shrink-0" />
             <span className="font-mono font-medium truncate">{getTitle()}</span>
             <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-            {isPaused && <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
-            {isFullScreen && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
-            {!autoScroll && !isPaused && <span className="text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
+            {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
+            {isFullScreen && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
+            {!autoScroll && !isPaused && <span className="text-[10px] bg-status-info-light text-status-info px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
             {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
           </div>
           <div className="text-[10px] text-[var(--text-muted)]">
@@ -821,10 +821,10 @@ export function RealtimeLogViewer({
           className={cn(
             'mx-4 mt-2 rounded-md border px-3 py-2 text-[11px]',
             downloadFeedbackTone === 'error'
-              ? 'border-red-500/30 bg-red-500/10 text-red-600'
+              ? 'border-status-danger-border bg-status-danger-light text-status-danger'
               : downloadFeedbackTone === 'warn'
-                ? 'border-amber-500/30 bg-amber-500/10 text-amber-700'
-                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                ? 'border-status-warning-border bg-status-warning-light text-status-warning'
+                : 'border-status-success-border bg-status-success-light text-status-success'
           )}
           role={downloadFeedbackTone === 'error' ? 'alert' : 'status'}
           aria-live="polite"
@@ -837,8 +837,8 @@ export function RealtimeLogViewer({
         <div className={cn(
           'mx-4 mt-3 rounded-md px-3 py-2 text-xs border',
           viewState.lifecycle === 'error'
-            ? 'bg-red-500/10 text-red-600 border-red-500/30'
-            : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+            ? 'bg-status-danger-light text-status-danger border-status-danger-border'
+            : 'bg-status-warning-light text-status-warning border-status-warning-border'
         )}>
           {viewState.message || (viewState.lifecycle === 'error' ? '日志服务异常' : '当前暂无日志')}
           {viewState.errorCategory && <span className="ml-2 opacity-80">({viewState.errorCategory})</span>}
@@ -864,9 +864,9 @@ export function RealtimeLogViewer({
                 wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto',
                 compactMode ? 'px-1 py-0 leading-snug' : 'px-1 py-0.5',
                 'hover:bg-[var(--bg-card-hover)] rounded transition-colors border-l-2',
-                line.includes('ERROR') ? 'border-red-500/50 bg-red-500/5 dark:bg-red-500/10' :
-                line.includes('WARN') ? 'border-yellow-500/50 bg-yellow-500/5 dark:bg-yellow-500/10' :
-                line.includes('DEBUG') ? 'border-blue-500/50' :
+                line.includes('ERROR') ? 'border-status-danger/50 bg-status-danger/5 dark:bg-status-danger-light' :
+                line.includes('WARN') ? 'border-status-warning/50 bg-status-warning/5 dark:bg-status-warning-light' :
+                line.includes('DEBUG') ? 'border-status-info/50' :
                 'border-transparent hover:border-[var(--border-subtle)]'
               )}>
                 {showLineMeta && (

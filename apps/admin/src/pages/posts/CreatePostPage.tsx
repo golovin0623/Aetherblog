@@ -33,12 +33,12 @@ import { useMediaQuery } from '@/hooks';
 import { logger } from '@/lib/logger';
 
 const TAG_COLORS = [
-  { bg: 'bg-blue-400/10 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500/20', hoverBorder: 'hover:border-blue-500/40', bgHover: 'hover:bg-blue-400/20 dark:hover:bg-blue-500/30', activeBg: 'bg-blue-500 text-white border-blue-500 shadow-blue-500/30' },
-  { bg: 'bg-emerald-400/10 dark:bg-emerald-500/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/20', hoverBorder: 'hover:border-emerald-500/40', bgHover: 'hover:bg-emerald-400/20 dark:hover:bg-emerald-500/30', activeBg: 'bg-emerald-500 text-white border-emerald-500 shadow-emerald-500/30' },
-  { bg: 'bg-violet-400/10 dark:bg-violet-500/20', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-500/20', hoverBorder: 'hover:border-violet-500/40', bgHover: 'hover:bg-violet-400/20 dark:hover:bg-violet-500/30', activeBg: 'bg-violet-500 text-white border-violet-500 shadow-violet-500/30' },
+  { bg: 'bg-status-info/10 dark:bg-status-info/20', text: 'text-status-info', border: 'border-status-info-border', hoverBorder: 'hover:border-status-info/40', bgHover: 'hover:bg-status-info/20 dark:hover:bg-status-info/30', activeBg: 'bg-status-info text-white border-status-info shadow-status-info/30' },
+  { bg: 'bg-status-success/10 dark:bg-status-success/20', text: 'text-status-success', border: 'border-status-success-border', hoverBorder: 'hover:border-status-success/40', bgHover: 'hover:bg-status-success/20 dark:hover:bg-status-success/30', activeBg: 'bg-status-success text-white border-status-success shadow-status-success/30' },
+  { bg: 'bg-accent/10 dark:bg-accent/20', text: 'text-accent dark:text-accent', border: 'border-accent/20', hoverBorder: 'hover:border-accent/40', bgHover: 'hover:bg-accent/20 dark:hover:bg-accent/30', activeBg: 'bg-accent text-white border-accent shadow-accent/30' },
   { bg: 'bg-pink-400/10 dark:bg-pink-500/20', text: 'text-pink-600 dark:text-pink-400', border: 'border-pink-500/20', hoverBorder: 'hover:border-pink-500/40', bgHover: 'hover:bg-pink-400/20 dark:hover:bg-pink-500/30', activeBg: 'bg-pink-500 text-white border-pink-500 shadow-pink-500/30' },
-  { bg: 'bg-amber-400/10 dark:bg-amber-500/20', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500/20', hoverBorder: 'hover:border-amber-500/40', bgHover: 'hover:bg-amber-400/20 dark:hover:bg-amber-500/30', activeBg: 'bg-amber-500 text-white border-amber-500 shadow-amber-500/30' },
-  { bg: 'bg-indigo-400/10 dark:bg-indigo-500/20', text: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-500/20', hoverBorder: 'hover:border-indigo-500/40', bgHover: 'hover:bg-indigo-400/20 dark:hover:bg-indigo-500/30', activeBg: 'bg-indigo-500 text-white border-indigo-500 shadow-indigo-500/30' },
+  { bg: 'bg-status-warning/10 dark:bg-status-warning/20', text: 'text-status-warning dark:text-status-warning', border: 'border-status-warning-border', hoverBorder: 'hover:border-status-warning/40', bgHover: 'hover:bg-status-warning/20 dark:hover:bg-status-warning/30', activeBg: 'bg-status-warning text-white border-status-warning shadow-status-warning/30' },
+  { bg: 'bg-primary/10 dark:bg-primary/20', text: 'text-primary dark:text-primary', border: 'border-primary/20', hoverBorder: 'hover:border-primary/40', bgHover: 'hover:bg-primary/20 dark:hover:bg-primary/30', activeBg: 'bg-primary text-white border-primary shadow-primary/30' },
   { bg: 'bg-rose-400/10 dark:bg-rose-500/20', text: 'text-rose-600 dark:text-rose-400', border: 'border-rose-500/20', hoverBorder: 'hover:border-rose-500/40', bgHover: 'hover:bg-rose-400/20 dark:hover:bg-rose-500/30', activeBg: 'bg-rose-500 text-white border-rose-500 shadow-rose-500/30' },
   { bg: 'bg-cyan-400/10 dark:bg-cyan-500/20', text: 'text-cyan-600 dark:text-cyan-400', border: 'border-cyan-500/20', hoverBorder: 'hover:border-cyan-500/40', bgHover: 'hover:bg-cyan-400/20 dark:hover:bg-cyan-500/30', activeBg: 'bg-cyan-500 text-white border-cyan-500 shadow-cyan-500/30' }
 ];
@@ -70,8 +70,8 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
         onClick={onClick}
         className={cn(
           'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
-          isActive && activeColor === 'primary' && 'bg-indigo-500/90 text-white',
-          isActive && activeColor === 'emerald' && 'bg-emerald-600 text-white hover:bg-emerald-500',
+          isActive && activeColor === 'primary' && 'bg-primary/90 text-white',
+          isActive && activeColor === 'emerald' && 'bg-status-success text-white hover:bg-status-success',
           className
         )}
       >
@@ -326,8 +326,8 @@ export function CreatePostPage() {
       return {
         label: saveStatus.label || '保存失败',
         detail: saveStatus.detail || '请检查网络或稍后重试',
-        toneClass: 'text-red-600 dark:text-red-300',
-        dotClass: 'bg-red-500 dark:bg-red-400',
+        toneClass: 'text-status-danger dark:text-status-danger',
+        dotClass: 'bg-status-danger dark:bg-status-danger',
         icon: <AlertCircle className="w-3.5 h-3.5" />,
         showRetry: true,
       };
@@ -348,8 +348,8 @@ export function CreatePostPage() {
       return {
         label: '有改动待保存',
         detail: saveTimelineText,
-        toneClass: 'text-amber-600 dark:text-amber-300',
-        dotClass: 'bg-amber-500 dark:bg-amber-400',
+        toneClass: 'text-status-warning dark:text-status-warning',
+        dotClass: 'bg-status-warning dark:bg-status-warning',
         icon: <Clock className="w-3.5 h-3.5" />,
         showRetry: false,
       };
@@ -359,8 +359,8 @@ export function CreatePostPage() {
       return {
         label: '自动保存已关闭',
         detail: saveTimelineText,
-        toneClass: 'text-slate-600 dark:text-slate-300',
-        dotClass: 'bg-slate-500 dark:bg-slate-400',
+        toneClass: 'text-[var(--text-secondary)] dark:text-[var(--text-tertiary)]',
+        dotClass: 'bg-[var(--bg-quaternary)] dark:bg-[var(--bg-quaternary)]',
         icon: <HardDrive className="w-3.5 h-3.5" />,
         showRetry: false,
       };
@@ -369,8 +369,8 @@ export function CreatePostPage() {
     return {
       label: '内容已同步',
       detail: saveTimelineText,
-      toneClass: 'text-emerald-600 dark:text-emerald-300',
-      dotClass: 'bg-emerald-500 dark:bg-emerald-400',
+      toneClass: 'text-status-success dark:text-status-success',
+      dotClass: 'bg-status-success dark:bg-status-success',
       icon: <CheckCircle className="w-3.5 h-3.5" />,
       showRetry: false,
     };
@@ -1793,10 +1793,10 @@ export function CreatePostPage() {
                       onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
                     >
-                      <span className={selectedCategory ? 'text-primary font-medium' : 'text-gray-500'}>
+                      <span className={selectedCategory ? 'text-primary font-medium' : 'text-[var(--text-muted)]'}>
                         {selectedCategory?.name || '选择分类'}
                       </span>
-                      <ChevronDown className={cn("w-3 h-3 text-gray-500 transition-transform", showCategoryDropdown && "rotate-180")} />
+                      <ChevronDown className={cn("w-3 h-3 text-[var(--text-muted)] transition-transform", showCategoryDropdown && "rotate-180")} />
                     </button>
                     {/* 分类下拉列表 */}
                     <AnimatePresence>
@@ -2092,17 +2092,17 @@ export function CreatePostPage() {
                 className={cn(
                   "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none min-w-[60px] justify-center",
                   "hover:bg-[var(--bg-card-hover)]",
-                  zoomTarget === 'both' && "bg-gradient-to-r from-blue-500/10 to-emerald-500/10",
-                  zoomTarget === 'editor' && "text-blue-400 bg-blue-500/10",
-                  zoomTarget === 'preview' && "text-emerald-400 bg-emerald-500/10"
+                  zoomTarget === 'both' && "bg-gradient-to-r from-status-info/10 to-status-success/10",
+                  zoomTarget === 'editor' && "text-status-info bg-status-info-light",
+                  zoomTarget === 'preview' && "text-status-success bg-status-success-light"
                 )}
                 title={`点击切换控制域 (当前: ${zoomTarget === 'both' ? '全部' : zoomTarget === 'editor' ? '编辑器' : '预览'})`}
               >
                 {zoomTarget === 'both' ? (
                   <>
-                    <span className="text-blue-400">{editorFontSize}</span>
-                    <span className="text-gray-500 mx-0.5">||</span>
-                    <span className="text-emerald-400">{previewFontSize}</span>
+                    <span className="text-status-info">{editorFontSize}</span>
+                    <span className="text-[var(--text-muted)] mx-0.5">||</span>
+                    <span className="text-status-success">{previewFontSize}</span>
                   </>
                 ) : zoomTarget === 'editor' ? (
                   <>
@@ -2181,7 +2181,7 @@ export function CreatePostPage() {
                       initial={{ opacity: 0.8, scale: 0.8 }}
                       animate={{ opacity: 0, scale: 2 }}
                       transition={{ duration: 1.2, ease: "easeOut" }}
-                      className="absolute inset-0 rounded-full bg-emerald-400/40"
+                      className="absolute inset-0 rounded-full bg-status-success/40"
                     />
                   )}
                   <AnimatePresence>
@@ -2191,7 +2191,7 @@ export function CreatePostPage() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.5 }}
                         transition={{ duration: 0.3 }}
-                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
+                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-status-success rounded-full flex items-center justify-center"
                       >
                         <CheckCircle className="w-2 h-2 text-white" />
                       </motion.div>
@@ -2337,7 +2337,7 @@ export function CreatePostPage() {
                       initial={{ opacity: 0.8, scale: 0.8 }}
                       animate={{ opacity: 0, scale: 2 }}
                       transition={{ duration: 1.2, ease: "easeOut" }}
-                      className="absolute inset-0 rounded-full bg-emerald-400/40"
+                      className="absolute inset-0 rounded-full bg-status-success/40"
                     />
                   )}
                   <AnimatePresence>
@@ -2347,7 +2347,7 @@ export function CreatePostPage() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.5 }}
                         transition={{ duration: 0.3 }}
-                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full flex items-center justify-center"
+                        className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-status-success rounded-full flex items-center justify-center"
                       >
                         <CheckCircle className="w-2 h-2 text-white" />
                       </motion.div>
@@ -2544,7 +2544,7 @@ export function CreatePostPage() {
                     onClick={() => setShowTableToolbar(false)}
                     tooltip="关闭"
                     tooltipPosition="bottom"
-                    className="text-indigo-400 hover:text-indigo-300"
+                    className="text-primary hover:text-primary"
                   >
                     <ArrowLeft className="w-4 h-4" />
                   </ToolbarButton>
@@ -2564,7 +2564,7 @@ export function CreatePostPage() {
                     onClick={() => { tableCommands.insertRowBelow(); editorCommands.focus(); }}
                     tooltip="下方插入行"
                     tooltipPosition="bottom"
-                    className="text-emerald-400 hover:text-emerald-300"
+                    className="text-status-success hover:text-status-success"
                   >
                     <ArrowDownToLine className="w-4 h-4" />
                   </ToolbarButton>
@@ -2770,7 +2770,7 @@ export function CreatePostPage() {
               <button
                 type="button"
                 onClick={handleRetrySaveStatus}
-                className="ml-1 rounded border border-red-500/30 px-1.5 py-0.5 text-[11px] text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-300"
+                className="ml-1 rounded border border-status-danger-border px-1.5 py-0.5 text-[11px] text-status-danger transition-colors hover:bg-status-danger-light dark:text-status-danger"
               >
                 刷新
               </button>
@@ -2787,7 +2787,7 @@ export function CreatePostPage() {
                 onChange={(e) => setShowLineNumbers(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-[var(--border-subtle)] bg-[var(--bg-card)] text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
               />
-              <span className="group-hover:text-gray-200 transition-colors">显示行号</span>
+              <span className="group-hover:text-[var(--text-secondary)] transition-colors">显示行号</span>
             </label>
           )}
 
@@ -2799,7 +2799,7 @@ export function CreatePostPage() {
                 onChange={(e) => setIsSyncScroll(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-primary focus:ring-0 focus:ring-offset-0 transition-all cursor-pointer"
               />
-              <span className="group-hover:text-gray-200 transition-colors">同步滚动</span>
+              <span className="group-hover:text-[var(--text-secondary)] transition-colors">同步滚动</span>
             </label>
           )}
           <button

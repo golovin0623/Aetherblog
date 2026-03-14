@@ -488,8 +488,8 @@ export default function DashboardPage() {
               <span className={cn(
                 'px-2 py-0.5 rounded-md border',
                 aiStatus === 'healthy'
-                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                  : 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                  ? 'bg-status-success-light text-status-success border-status-success-border'
+                  : 'bg-status-warning-light text-status-warning border-status-warning-border'
               )}>
                 {aiStatus === 'healthy' ? '运行正常' : '降级中'}
               </span>
@@ -529,7 +529,7 @@ export default function DashboardPage() {
         </div>
 
         {aiStatus === 'degraded' && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          <div className="rounded-lg border border-status-warning-border bg-status-warning-light px-3 py-2 text-sm text-status-warning">
             AI 看板已进入降级模式：{aiIssueMessage || '请求失败'}。
             当前展示最近一次成功数据，可点击“重试”恢复。
           </div>

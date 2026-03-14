@@ -97,9 +97,9 @@ export default function MigrationPage() {
 
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6">
               <h2 className="mb-3 text-base font-medium text-[var(--text-primary)]">Errors</h2>
-              <div className="space-y-2 text-sm text-red-400">
+              <div className="space-y-2 text-sm text-status-danger">
                 {result.errors.length > 0 ? result.errors.map((error, index) => (
-                  <div key={`${error}-${index}`} className="rounded-lg bg-red-500/10 px-3 py-2">{error}</div>
+                  <div key={`${error}-${index}`} className="rounded-lg bg-status-danger-light px-3 py-2">{error}</div>
                 )) : <div className="text-[var(--text-muted)]">无</div>}
               </div>
             </div>

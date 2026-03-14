@@ -65,13 +65,13 @@ export function MediaList({
             <th className="w-auto px-4 py-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               文件名
             </th>
-            <th className="w-32 px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <th className="w-32 px-4 py-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               类型
             </th>
-            <th className="w-32 px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <th className="w-32 px-4 py-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               大小
             </th>
-            <th className="w-48 px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <th className="w-48 px-4 py-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               上传时间
             </th>
             <th className="w-44 px-4 py-3 text-right text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
@@ -165,7 +165,7 @@ export function MediaList({
                     )}
                     <button
                       onClick={() => onDelete(item.id)}
-                      className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-400 transition-colors"
+                      className="p-2 rounded-lg hover:bg-status-danger-light text-[var(--text-secondary)] hover:text-status-danger transition-colors"
                       title="删除"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -201,7 +201,7 @@ export function MediaList({
                   {item.fileType === 'IMAGE' ? (
                     <img src={fullUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <Icon className="w-6 h-6 text-gray-400" />
+                    <Icon className="w-6 h-6 text-[var(--text-muted)]" />
                   )}
                 </div>
 
@@ -222,8 +222,8 @@ export function MediaList({
                     />
                   </div>
                   
-                  <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500 font-medium">
-                    <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-gray-400 uppercase tracking-tight">
+                  <div className="flex items-center gap-2 mt-1.5 text-[10px] text-[var(--text-muted)] font-medium">
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[var(--text-muted)] uppercase tracking-tight">
                       {typeLabels[item.fileType] || item.fileType}
                     </span>
                     <span className="w-px h-2 bg-white/10" />
@@ -234,40 +234,40 @@ export function MediaList({
 
               {/* 操作区 */}
               <div className="flex items-center justify-between pt-1 border-t border-white/[0.02]">
-                <span className="text-[10px] text-gray-600 font-mono">
+                <span className="text-[10px] text-[var(--text-secondary)] font-mono">
                   {format(new Date(item.createdAt), 'yyyy-MM-dd HH:mm')}
                 </span>
                 
                 <div className="flex items-center gap-0.5">
                   <button
                     onClick={(e) => { e.stopPropagation(); onPreview(item.id); }}
-                    className="p-2 text-gray-400 active:text-white"
+                    className="p-2 text-[var(--text-muted)] active:text-white"
                   >
                     <Eye className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onCopyUrl(fullUrl); }}
-                    className="p-2 text-gray-400 active:text-white"
+                    className="p-2 text-[var(--text-muted)] active:text-white"
                   >
                     <Link2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDownload(fullUrl, item.originalName); }}
-                    className="p-2 text-gray-400 active:text-white"
+                    className="p-2 text-[var(--text-muted)] active:text-white"
                   >
                     <Download className="w-4 h-4" />
                   </button>
                   {onMove && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onMove(item.id, item.originalName); }}
-                      className="p-2 text-gray-400 active:text-white"
+                      className="p-2 text-[var(--text-muted)] active:text-white"
                     >
                       <FolderInput className="w-4 h-4" />
                     </button>
                   )}
                   <button
                     onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-                    className="p-2 text-gray-400 active:text-red-400"
+                    className="p-2 text-[var(--text-muted)] active:text-status-danger"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

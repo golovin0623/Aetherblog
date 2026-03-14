@@ -299,7 +299,7 @@ function ProviderItem({
       whileTap={{ scale: 0.97 }}
       className={`relative w-full min-w-0 min-h-[40px] flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all group ${
         selected
-          ? 'bg-white dark:bg-zinc-800 shadow-sm text-[var(--text-primary)] font-bold'
+          ? 'bg-white dark:bg-[var(--bg-secondary)] shadow-sm text-[var(--text-primary)] font-bold'
           : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
       }`}
     >
@@ -308,7 +308,7 @@ function ProviderItem({
       
       {/* 启用状态指示点 (仅已启用显示) */}
       {provider.is_enabled && (
-        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-status-success shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
       )}
     </motion.button>
   );

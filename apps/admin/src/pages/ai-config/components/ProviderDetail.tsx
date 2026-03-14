@@ -184,7 +184,7 @@ export default function ProviderDetail({
           {/* Logo */}
           <div
             className={`flex-none w-12 h-12 rounded-[14px] flex items-center justify-center shadow-md shrink-0 ${provider.is_enabled
-              ? 'bg-white dark:bg-zinc-800'
+              ? 'bg-white dark:bg-[var(--bg-secondary)]'
               : 'bg-black/5 dark:bg-white/5 opacity-60 grayscale'
               }`}
             style={provider.is_enabled ? {
@@ -236,7 +236,7 @@ export default function ProviderDetail({
                 <button
                   onClick={() => handleToggle(!provider.is_enabled)}
                   disabled={toggleMutation.isPending}
-                  className={`relative w-10 h-6 rounded-full p-0.5 transition-colors duration-200 ease-out focus:outline-none ${provider.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-zinc-800'
+                  className={`relative w-10 h-6 rounded-full p-0.5 transition-colors duration-200 ease-out focus:outline-none ${provider.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-[var(--bg-secondary)]'
                     }`}
                   title={provider.is_enabled ? "禁用服务商" : "启用服务商"}
                 >
@@ -402,7 +402,7 @@ export default function ProviderDetail({
                 <div className="flex justify-center pt-2">
                   <button
                     onClick={handleDelete}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-red-500/10 text-xs font-medium text-red-500 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-status-danger-light text-xs font-medium text-status-danger transition-colors"
                   >
                     <XCircle className="w-3.5 h-3.5" />
                     删除服务商配置
@@ -545,7 +545,7 @@ export default function ProviderDetail({
           <div className="flex justify-center pt-2">
             <button
               onClick={handleDelete}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-red-500/10 text-xs font-medium text-red-500 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-status-danger-light text-xs font-medium text-status-danger transition-colors"
             >
               <XCircle className="w-3.5 h-3.5" />
               删除服务商配置

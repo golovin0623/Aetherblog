@@ -75,8 +75,8 @@ export function PieChart({ data, size = 160, showLegend = true }: PieChartProps)
           {segments.map((seg, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: seg.color }} />
-              <span className="text-sm text-gray-300 flex-1">{seg.label}</span>
-              <span className="text-sm text-gray-400">{seg.percentage.toFixed(1)}%</span>
+              <span className="text-sm text-[var(--text-tertiary)] flex-1">{seg.label}</span>
+              <span className="text-sm text-[var(--text-muted)]">{seg.percentage.toFixed(1)}%</span>
             </div>
           ))}
         </div>

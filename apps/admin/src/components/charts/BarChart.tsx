@@ -23,8 +23,8 @@ export function BarChart({
         {data.map((item, i) => (
           <div key={i} className="space-y-1">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-300">{item.label}</span>
-              <span className="text-gray-400">{item.value}</span>
+              <span className="text-[var(--text-tertiary)]">{item.label}</span>
+              <span className="text-[var(--text-muted)]">{item.value}</span>
             </div>
             <div className="h-2 rounded-full bg-white/10 overflow-hidden">
               <div
@@ -56,7 +56,7 @@ export function BarChart({
               />
             </div>
             {showLabels && (
-              <span className="mt-2 text-xs text-gray-500 truncate max-w-full">{item.label}</span>
+              <span className="mt-2 text-xs text-[var(--text-muted)] truncate max-w-full">{item.label}</span>
             )}
           </div>
         ))}

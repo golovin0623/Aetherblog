@@ -67,7 +67,7 @@ export function AiUsageRecordsTable({
       key: 'taskType',
       title: '任务',
       render: (item: AiCallRecord) => (
-        <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs bg-indigo-500/10 text-indigo-400">
+        <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs bg-primary/10 text-primary">
           {formatTask(item.taskType)}
         </span>
       ),
@@ -98,7 +98,7 @@ export function AiUsageRecordsTable({
       key: 'cost',
       title: '费用',
       render: (item: AiCallRecord) => (
-        <span className="text-sm text-emerald-400">${item.cost.toFixed(6)}</span>
+        <span className="text-sm text-status-success">${item.cost.toFixed(6)}</span>
       ),
       width: '110px',
     },
@@ -117,13 +117,13 @@ export function AiUsageRecordsTable({
         <div className="flex items-center gap-1.5">
           {item.success ? (
             <>
-              <CheckCircle2 className="w-4 h-4 text-green-400" />
-              <span className="text-xs text-green-400">成功</span>
+              <CheckCircle2 className="w-4 h-4 text-status-success" />
+              <span className="text-xs text-status-success">成功</span>
             </>
           ) : (
             <>
-              <XCircle className="w-4 h-4 text-red-400" />
-              <span className="text-xs text-red-400">失败</span>
+              <XCircle className="w-4 h-4 text-status-danger" />
+              <span className="text-xs text-status-danger">失败</span>
             </>
           )}
           {item.cached && (

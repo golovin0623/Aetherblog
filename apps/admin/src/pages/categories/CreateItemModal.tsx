@@ -90,7 +90,7 @@ export function CreateItemModal({
                     'p-2 rounded-xl',
                     isCategory 
                       ? 'bg-primary/10 text-primary' 
-                      : 'bg-blue-500/10 text-blue-400'
+                      : 'bg-status-info-light text-status-info'
                   )}>
                     <Icon className="w-5 h-5" />
                   </div>
@@ -115,7 +115,7 @@ export function CreateItemModal({
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-[var(--text-secondary)]">
                     {isCategory ? '分类名称' : '标签名称'}
-                    <span className="text-red-400 ml-1">*</span>
+                    <span className="text-status-danger ml-1">*</span>
                   </label>
                   <input
                     ref={inputRef}

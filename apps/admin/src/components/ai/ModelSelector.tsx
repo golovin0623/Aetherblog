@@ -249,8 +249,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       className={cn(
         "relative flex flex-col overflow-hidden",
         isMobile ? "h-[70vh] rounded-t-[2.5rem]" : "rounded-2xl max-h-[520px]",
-        "bg-white dark:bg-zinc-900",
-        !isMobile && "border border-zinc-200 dark:border-zinc-700/60 shadow-xl shadow-zinc-200/50 dark:shadow-black/30"
+        "bg-white dark:bg-[var(--bg-popover)]",
+        !isMobile && "border border-[var(--border-default)] dark:border-[var(--border-default)]/60 shadow-xl shadow-[var(--shadow-sm)] dark:shadow-black/30"
       )}
     >
       {/* 顶部光泽效果 - 仅桌面端 */}
@@ -272,17 +272,17 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       {/* 移动端抽屉手柄 */}
       {isMobile && (
         <div className="flex-shrink-0 flex justify-center py-4">
-          <div className="w-12 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          <div className="w-12 h-1.5 rounded-full bg-[var(--bg-quaternary)] dark:bg-[var(--bg-secondary)]" />
         </div>
       )}
 
       {/* 搜索头部 */}
       <div className={cn(
-        "px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-10",
+        "px-4 py-3 border-b border-[var(--border-subtle)] dark:border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 dark:bg-[var(--bg-popover)]/80 backdrop-blur-sm sticky top-0 z-10",
         isMobile && "pt-0"
       )}>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
           <input
             type="text"
             value={search}
@@ -291,10 +291,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             autoFocus={!isMobile}
             className={cn(
               "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
-              "bg-white dark:bg-zinc-800",
-              "border border-zinc-200 dark:border-zinc-700",
-              "text-zinc-900 dark:text-zinc-100",
-              "placeholder:text-zinc-400 dark:placeholder:text-zinc-500",
+              "bg-white dark:bg-[var(--bg-secondary)]",
+              "border border-[var(--border-default)] dark:border-[var(--border-default)]",
+              "text-[var(--text-primary)] dark:text-[var(--text-primary)]",
+              "placeholder:text-[var(--text-muted)] dark:placeholder:text-[var(--text-muted)]",
               "focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             )}
           />
@@ -307,7 +307,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         isMobile ? "px-4" : "min-h-[200px] max-h-[380px]"
       )}>
         {filteredGroups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-500">
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)] dark:text-[var(--text-muted)]">
             <Box className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm">未找到匹配模型</p>
           </div>
@@ -315,7 +315,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           filteredGroups.map((group) => (
             <div key={group.provider.code} className="mb-2">
               {/* 提供商头部 */}
-              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 sticky top-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm z-0">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] dark:text-[var(--text-muted)] sticky top-0 bg-white/90 dark:bg-[var(--bg-popover)]/90 backdrop-blur-sm z-0">
                 <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
                 <span className="uppercase tracking-wider">
                   {group.provider.display_name || group.provider.name}
@@ -338,7 +338,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
                         isSelected
                           ? "bg-primary/10 dark:bg-primary/15"
-                          : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+                          : "hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-secondary)]/60"
                       )}
                     >
                       {/* 模型图标 */}
@@ -355,13 +355,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                           "font-medium text-sm truncate",
                           isSelected 
                             ? "text-primary" 
-                            : "text-zinc-700 dark:text-zinc-200"
+                            : "text-[var(--text-secondary)] dark:text-[var(--text-secondary)]"
                         )}>
                           {model.display_name || model.model_id}
                         </div>
                         {isMobile && contextWindow && (
-                          <div className="text-[10px] text-zinc-400 flex items-center gap-1">
-                            <Zap className="w-3 h-3 text-amber-500" />
+                          <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-status-warning" />
                             {formatContext(contextWindow)} 上下文
                           </div>
                         )}
@@ -372,20 +372,20 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                         {!isMobile && abilities.vision && (
                           <AbilityBadge 
                             icon={Eye} 
-                            color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" 
+                            color="bg-status-success-light text-status-success dark:bg-status-success/20 dark:text-status-success" 
                             title="视觉"
                           />
                         )}
                         {!isMobile && abilities.reasoning && (
                           <AbilityBadge 
                             icon={Brain} 
-                            color="bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" 
+                            color="bg-accent/10 text-accent dark:bg-accent/20 dark:text-accent" 
                             title="推理"
                           />
                         )}
                         
                         {!isMobile && contextWindow && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--text-muted)] dark:text-[var(--text-muted)]">
                             <Zap className="w-3 h-3" />
                             {formatContext(contextWindow)}
                           </span>
@@ -407,12 +407,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 底部 */}
       <div className={cn(
-        "p-2 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50",
+        "p-2 border-t border-[var(--border-subtle)] dark:border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 dark:bg-[var(--bg-popover)]/50",
         isMobile && "pb-8 px-4"
       )}>
         <a 
           href="/admin/ai-config" 
-          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-primary hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] dark:text-[var(--text-muted)] hover:text-primary hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-secondary)] transition-all"
         >
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4" />
@@ -523,7 +523,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900 overflow-hidden",
+                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)] dark:border-[var(--border-default)]/60 bg-white dark:bg-[var(--bg-popover)] overflow-hidden",
                       menuClassName
                     )}
                   >

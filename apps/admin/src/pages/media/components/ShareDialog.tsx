@@ -227,11 +227,11 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
           /* Share Link Result */
           <div className="space-y-4">
             {/* Success Message */}
-            <div className="flex items-center gap-3 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-              <Check className="w-5 h-5 text-green-400" />
+            <div className="flex items-center gap-3 p-4 bg-status-success-light border border-status-success-border rounded-lg">
+              <Check className="w-5 h-5 text-status-success" />
               <div>
-                <p className="text-sm font-medium text-green-400">分享链接已生成</p>
-                <p className="text-xs text-green-400/70">链接已复制到剪贴板</p>
+                <p className="text-sm font-medium text-status-success">分享链接已生成</p>
+                <p className="text-xs text-status-success/70">链接已复制到剪贴板</p>
               </div>
             </div>
 

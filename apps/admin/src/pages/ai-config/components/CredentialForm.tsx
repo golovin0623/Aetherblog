@@ -232,7 +232,7 @@ export default function CredentialForm({
           <button
             onClick={handleDelete}
             disabled={isPending}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-400 font-medium text-sm hover:bg-red-500/10 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-status-danger-border text-status-danger font-medium text-sm hover:bg-status-danger-light transition-colors disabled:opacity-50"
           >
             {deleteMutation.isPending ? (
               <Loader2 className="w-4 h-4 animate-spin" />

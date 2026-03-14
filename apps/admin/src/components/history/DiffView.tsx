@@ -62,10 +62,10 @@ export function DiffView({ snapshot1, snapshot2, onClose }: DiffViewProps) {
 
           {/* 版本信息 */}
           <div className="flex items-center gap-4">
-            <div className="flex-1 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <div className="flex-1 px-4 py-3 rounded-lg bg-status-danger-light border border-status-danger-border">
               <div className="flex items-center gap-2 mb-1">
-                <ArrowLeft className="w-4 h-4 text-red-500" />
-                <span className="text-sm font-medium text-red-500">原版本</span>
+                <ArrowLeft className="w-4 h-4 text-status-danger" />
+                <span className="text-sm font-medium text-status-danger">原版本</span>
               </div>
               <p className="text-sm text-[var(--text-primary)] truncate">{snapshot1.title}</p>
               <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -73,10 +73,10 @@ export function DiffView({ snapshot1, snapshot2, onClose }: DiffViewProps) {
               </p>
             </div>
 
-            <div className="flex-1 px-4 py-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <div className="flex-1 px-4 py-3 rounded-lg bg-status-success-light border border-status-success-border">
               <div className="flex items-center gap-2 mb-1">
-                <ArrowRight className="w-4 h-4 text-emerald-500" />
-                <span className="text-sm font-medium text-emerald-500">新版本</span>
+                <ArrowRight className="w-4 h-4 text-status-success" />
+                <span className="text-sm font-medium text-status-success">新版本</span>
               </div>
               <p className="text-sm text-[var(--text-primary)] truncate">{snapshot2.title}</p>
               <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -92,11 +92,11 @@ export function DiffView({ snapshot1, snapshot2, onClose }: DiffViewProps) {
               <span className="text-sm font-medium text-[var(--text-primary)]">{stats.total}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-emerald-500">+{stats.added}</span>
+              <span className="text-xs text-status-success">+{stats.added}</span>
               <span className="text-xs text-[var(--text-muted)]">新增</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-red-500">-{stats.removed}</span>
+              <span className="text-xs text-status-danger">-{stats.removed}</span>
               <span className="text-xs text-[var(--text-muted)]">删除</span>
             </div>
             <div className="flex items-center gap-2">
@@ -144,15 +144,15 @@ function DiffContent({ changes }: DiffContentProps) {
 
           if (change.added) {
             newNum = String(newLineNum++);
-            bgColor = 'bg-emerald-500/10';
-            borderColor = 'border-l-emerald-500';
-            textColor = 'text-emerald-600 dark:text-emerald-400';
+            bgColor = 'bg-status-success-light';
+            borderColor = 'border-l-status-success';
+            textColor = 'text-status-success';
             prefix = '+';
           } else if (change.removed) {
             oldNum = String(oldLineNum++);
-            bgColor = 'bg-red-500/10';
-            borderColor = 'border-l-red-500';
-            textColor = 'text-red-600 dark:text-red-400';
+            bgColor = 'bg-status-danger-light';
+            borderColor = 'border-l-status-danger';
+            textColor = 'text-status-danger';
             prefix = '-';
           } else {
             oldNum = String(oldLineNum++);

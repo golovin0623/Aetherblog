@@ -139,7 +139,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             </button>
             <button
               onClick={() => onDelete(currentItem.id)}
-              className="p-2.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+              className="p-2.5 text-status-danger hover:text-status-danger hover:bg-status-danger-light rounded-xl transition-all"
               title="删除"
             >
               <Trash2 className="w-4 h-4" />

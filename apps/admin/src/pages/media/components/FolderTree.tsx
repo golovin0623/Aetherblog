@@ -194,7 +194,7 @@ export const FolderTree = memo(({
         <p>加载文件夹失败</p>
         <button
           onClick={() => refetch()}
-          className="mt-2 text-indigo-400 hover:text-indigo-300"
+          className="mt-2 text-primary hover:text-primary"
         >
           重试
         </button>
@@ -280,7 +280,7 @@ export const FolderTree = memo(({
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-800 border border-primary/50 shadow-2xl">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-primary/50 shadow-2xl">
             <Folder className="w-5 h-5" style={{ color: activeFolder.color }} />
             <span className="text-sm font-medium text-white">{activeFolder.name}</span>
           </div>
@@ -717,7 +717,7 @@ function FolderContextMenuPortal({
               className={cn(
                 'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
                 item.danger
-                  ? 'text-red-400 hover:bg-red-500/10'
+                  ? 'text-status-danger hover:bg-status-danger-light'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
               )}
             >
@@ -778,7 +778,7 @@ function FolderContextMenu({ onEdit, onDelete, onCreateChild, onMove, onClose }:
           className={cn(
             'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
             item.danger
-              ? 'text-red-400 hover:bg-red-500/10'
+              ? 'text-status-danger hover:bg-status-danger-light'
               : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
           )}
         >

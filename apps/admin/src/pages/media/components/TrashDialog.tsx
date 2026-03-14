@@ -154,20 +154,20 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const handlePermanentDelete = (id: number) => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
-          <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
+            <AlertTriangle className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">彻底删除？</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">彻底删除？</h3>
+            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
               此操作无法撤销，文件将被永久删除。
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -176,7 +176,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                   permanentDeleteMutation.mutate(id);
                   toast.dismiss(t);
                 }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
               >
                 确认删除
               </button>
@@ -189,20 +189,20 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const handleEmptyTrash = () => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
-          <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
+            <AlertTriangle className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">清空回收站？</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">清空回收站？</h3>
+            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
               此操作将永久删除回收站中的所有 {totalItems} 个文件，无法撤销。
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -211,7 +211,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                   emptyTrashMutation.mutate();
                   toast.dismiss(t);
                 }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
               >
                 清空回收站
               </button>
@@ -226,20 +226,20 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
     const count = selectedIds.size;
     const ids = Array.from(selectedIds);
     toast.custom((t) => (
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
-          <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
+            <AlertTriangle className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">批量彻底删除？</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">批量彻底删除？</h3>
+            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
               确定要永久删除选中的 {count} 个文件吗？此操作无法撤销。
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -248,7 +248,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                   batchPermanentDeleteMutation.mutate(ids);
                   toast.dismiss(t);
                 }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
               >
                 确认删除
               </button>
@@ -280,17 +280,17 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-white/10 shadow-2xl overflow-hidden"
+            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-white dark:bg-[var(--bg-popover)] rounded-2xl border border-[var(--border-default)] dark:border-white/10 shadow-2xl overflow-hidden"
           >
             {/* 头部 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/10 shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] dark:border-white/10 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg">
-                  <Trash2 className="w-5 h-5 text-red-500" />
+                <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg">
+                  <Trash2 className="w-5 h-5 text-status-danger" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">回收站</h2>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)] dark:text-white">回收站</h2>
+                  <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">
                     {totalItems} 个文件 · 120天后自动清理
                   </p>
                 </div>
@@ -298,14 +298,14 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => refetch()}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors text-gray-500 dark:text-gray-400"
+                  className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors text-[var(--text-muted)] dark:text-[var(--text-muted)]"
                   title="刷新"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors text-gray-500 dark:text-gray-400"
+                  className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors text-[var(--text-muted)] dark:text-[var(--text-muted)]"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -314,16 +314,16 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
             {/* 工具栏 */}
             {trashItems.length > 0 && (
-              <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-white/10 shrink-0 bg-gray-50 dark:bg-white/5">
+              <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--border-default)] dark:border-white/10 shrink-0 bg-[var(--bg-secondary)] dark:bg-white/5">
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={selectedIds.size === trashItems.length && trashItems.length > 0}
                       onChange={handleSelectAll}
-                      className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
+                      className="w-4 h-4 rounded border-[var(--border-default)] dark:border-[var(--border-default)] text-primary focus:ring-primary"
                     />
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="text-sm text-[var(--text-secondary)] dark:text-[var(--text-tertiary)]">
                       {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
                     </span>
                   </label>
@@ -334,7 +334,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                       <button
                         onClick={() => batchRestoreMutation.mutate(Array.from(selectedIds))}
                         disabled={batchRestoreMutation.isPending}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-500/10 hover:bg-green-200 dark:hover:bg-green-500/20 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-status-success bg-status-success-light dark:bg-status-success-light hover:bg-status-success/20 dark:hover:bg-status-success/20 rounded-lg transition-colors"
                       >
                         {batchRestoreMutation.isPending ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -346,7 +346,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                       <button
                         onClick={handleBatchPermanentDelete}
                         disabled={batchPermanentDeleteMutation.isPending}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-500/10 hover:bg-red-200 dark:hover:bg-red-500/20 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-status-danger bg-status-danger-light dark:bg-status-danger-light hover:bg-status-danger/20 dark:hover:bg-status-danger/20 rounded-lg transition-colors"
                       >
                         {batchPermanentDeleteMutation.isPending ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -360,7 +360,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                   <button
                     onClick={handleEmptyTrash}
                     disabled={emptyTrashMutation.isPending || totalItems === 0}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                   >
                     {emptyTrashMutation.isPending ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -380,7 +380,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </div>
               ) : trashItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-gray-500 dark:text-gray-400">
+                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-[var(--text-muted)] dark:text-[var(--text-muted)]">
                   <Trash2 className="w-16 h-16 mb-4 opacity-30" />
                   <p className="text-base font-medium">回收站是空的</p>
                   <p className="text-sm mt-1 opacity-70">删除的文件将在这里显示</p>
@@ -397,7 +397,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           'flex items-center gap-4 p-3 rounded-xl border transition-all',
                           isSelected
                             ? 'bg-primary/5 border-primary/30'
-                            : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10'
+                            : 'bg-[var(--bg-secondary)] dark:bg-white/5 border-[var(--border-default)] dark:border-white/10 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10'
                         )}
                       >
                         {/* 选择框 */}
@@ -405,11 +405,11 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSelect(item.id)}
-                          className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary shrink-0"
+                          className="w-4 h-4 rounded border-[var(--border-default)] dark:border-[var(--border-default)] text-primary focus:ring-primary shrink-0"
                         />
 
                         {/* 缩略图/图标 */}
-                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-white/10 shrink-0 flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-[var(--bg-tertiary)] dark:bg-white/10 shrink-0 flex items-center justify-center">
                           {item.fileType === 'IMAGE' ? (
                             <img
                               src={getMediaUrl(item.fileUrl)}
@@ -417,16 +417,16 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <Icon className="w-6 h-6 text-gray-400 dark:text-gray-500" />
+                            <Icon className="w-6 h-6 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
                           )}
                         </div>
 
                         {/* 文件信息 */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          <p className="text-sm font-medium text-[var(--text-primary)] dark:text-white truncate">
                             {item.originalName}
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                          <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">
                             {formatFileSize(item.fileSize)} · 删除于 {formatRelativeTime(item.deletedAt || item.createdAt)}
                           </p>
                         </div>
@@ -436,7 +436,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           <button
                             onClick={() => restoreMutation.mutate(item.id)}
                             disabled={restoreMutation.isPending}
-                            className="p-2 hover:bg-green-100 dark:hover:bg-green-500/20 rounded-lg transition-colors text-green-600 dark:text-green-400"
+                            className="p-2 hover:bg-status-success-light dark:hover:bg-status-success/20 rounded-lg transition-colors text-status-success"
                             title="恢复"
                           >
                             {restoreMutation.isPending ? (
@@ -448,7 +448,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           <button
                             onClick={() => handlePermanentDelete(item.id)}
                             disabled={permanentDeleteMutation.isPending}
-                            className="p-2 hover:bg-red-100 dark:hover:bg-red-500/20 rounded-lg transition-colors text-red-500"
+                            className="p-2 hover:bg-status-danger-light dark:hover:bg-status-danger/20 rounded-lg transition-colors text-status-danger"
                             title="彻底删除"
                           >
                             {permanentDeleteMutation.isPending ? (
@@ -467,21 +467,21 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
             {/* 分页 */}
             {data && data.total > 20 && (
-              <div className="flex items-center justify-center gap-2 px-6 py-4 border-t border-gray-200 dark:border-white/10 shrink-0">
+              <div className="flex items-center justify-center gap-2 px-6 py-4 border-t border-[var(--border-default)] dark:border-white/10 shrink-0">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-sm text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                 >
                   上一页
                 </button>
-                <span className="text-sm text-gray-500 dark:text-gray-400">
+                <span className="text-sm text-[var(--text-muted)] dark:text-[var(--text-muted)]">
                   {page} / {Math.ceil(data.total / 20)}
                 </span>
                 <button
                   onClick={() => setPage((p) => p + 1)}
                   disabled={page >= Math.ceil(data.total / 20)}
-                  className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-sm text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                 >
                   下一页
                 </button>

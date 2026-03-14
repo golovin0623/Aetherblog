@@ -83,10 +83,10 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
               {friend.name}
             </h4>
             {friend.isOnline === false && (
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500/80 ring-2 ring-red-500/20" title="站点无法访问" />
+              <span className="w-1.5 h-1.5 rounded-full bg-status-danger/80 ring-2 ring-status-danger/20" title="站点无法访问" />
             )}
             {!friend.visible && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 dark:text-yellow-500 border border-yellow-500/20">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-warning-light text-status-warning dark:text-status-warning border border-status-warning-border">
                 已隐藏
               </span>
             )}
@@ -120,7 +120,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
             "p-2 rounded-lg transition-colors",
             friend.visible 
               ? "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]" 
-              : "text-yellow-600 dark:text-yellow-500 hover:bg-yellow-500/10"
+              : "text-status-warning dark:text-status-warning hover:bg-status-warning-light"
           )}
           title={friend.visible ? "隐藏" : "显示"}
         >
@@ -128,7 +128,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="p-2 rounded-lg text-blue-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+          className="p-2 rounded-lg text-status-info hover:text-status-info dark:hover:text-status-info hover:bg-status-info-light transition-colors"
           title="编辑"
         >
           <Edit2 className="w-4 h-4" />
@@ -136,7 +136,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
         <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="p-2 rounded-lg text-red-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          className="p-2 rounded-lg text-status-danger hover:text-status-danger dark:hover:text-status-danger hover:bg-status-danger-light transition-colors"
           title="删除"
         >
           <Trash2 className="w-4 h-4" />

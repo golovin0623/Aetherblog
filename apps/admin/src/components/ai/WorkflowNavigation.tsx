@@ -128,7 +128,7 @@ export function WorkflowNavigation({
         </div>
         <div className="h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
           <motion.div
-            className="h-full bg-gradient-to-r from-primary to-purple-500"
+            className="h-full bg-gradient-to-r from-primary to-accent"
             initial={{ width: 0 }}
             animate={{ width: `${progress.percentage}%` }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
