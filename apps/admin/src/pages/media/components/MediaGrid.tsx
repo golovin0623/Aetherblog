@@ -152,7 +152,7 @@ export function MediaGrid({
                     <div
                       className={cn(
                         'flex items-center gap-0.5 p-1',
-                        'bg-white/95 dark:bg-[var(--bg-popover)]/95 backdrop-blur-md rounded-full shadow-lg border border-black/5 dark:border-white/10',
+                        'bg-white/95/95 backdrop-blur-md rounded-full shadow-lg border border-black/5 dark:border-white/10',
                         'translate-y-4 opacity-0 scale-95 group-hover:translate-y-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 ease-out',
                         'pointer-events-auto'
                       )}

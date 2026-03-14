@@ -154,14 +154,14 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const handlePermanentDelete = (id: number) => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <AlertTriangle className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">彻底删除？</h3>
-            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               此操作无法撤销，文件将被永久删除。
             </p>
             <div className="flex items-center gap-2">
@@ -189,14 +189,14 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const handleEmptyTrash = () => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <AlertTriangle className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">清空回收站？</h3>
-            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               此操作将永久删除回收站中的所有 {totalItems} 个文件，无法撤销。
             </p>
             <div className="flex items-center gap-2">
@@ -226,14 +226,14 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
     const count = selectedIds.size;
     const ids = Array.from(selectedIds);
     toast.custom((t) => (
-      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <AlertTriangle className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">批量彻底删除？</h3>
-            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               确定要永久删除选中的 {count} 个文件吗？此操作无法撤销。
             </p>
             <div className="flex items-center gap-2">
@@ -280,7 +280,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-white dark:bg-[var(--bg-popover)] rounded-2xl border border-[var(--border-default)] dark:border-white/10 shadow-2xl overflow-hidden"
+            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-white rounded-2xl border border-[var(--border-default)] dark:border-white/10 shadow-2xl overflow-hidden"
           >
             {/* 头部 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] dark:border-white/10 shrink-0">
@@ -290,7 +290,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-[var(--text-primary)] dark:text-white">回收站</h2>
-                  <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+                  <p className="text-xs text-[var(--text-muted)]">
                     {totalItems} 个文件 · 120天后自动清理
                   </p>
                 </div>
@@ -298,14 +298,14 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => refetch()}
-                  className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors text-[var(--text-muted)] dark:text-[var(--text-muted)]"
+                  className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors text-[var(--text-muted)]"
                   title="刷新"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors text-[var(--text-muted)] dark:text-[var(--text-muted)]"
+                  className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors text-[var(--text-muted)]"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -321,7 +321,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                       type="checkbox"
                       checked={selectedIds.size === trashItems.length && trashItems.length > 0}
                       onChange={handleSelectAll}
-                      className="w-4 h-4 rounded border-[var(--border-default)] dark:border-[var(--border-default)] text-primary focus:ring-primary"
+                      className="w-4 h-4 rounded border-[var(--border-default)] text-primary focus:ring-primary"
                     />
                     <span className="text-sm text-[var(--text-secondary)] dark:text-[var(--text-tertiary)]">
                       {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
@@ -380,7 +380,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </div>
               ) : trashItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-[var(--text-muted)]">
                   <Trash2 className="w-16 h-16 mb-4 opacity-30" />
                   <p className="text-base font-medium">回收站是空的</p>
                   <p className="text-sm mt-1 opacity-70">删除的文件将在这里显示</p>
@@ -405,7 +405,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSelect(item.id)}
-                          className="w-4 h-4 rounded border-[var(--border-default)] dark:border-[var(--border-default)] text-primary focus:ring-primary shrink-0"
+                          className="w-4 h-4 rounded border-[var(--border-default)] text-primary focus:ring-primary shrink-0"
                         />
 
                         {/* 缩略图/图标 */}
@@ -417,7 +417,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <Icon className="w-6 h-6 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
+                            <Icon className="w-6 h-6 text-[var(--text-muted)]" />
                           )}
                         </div>
 
@@ -426,7 +426,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           <p className="text-sm font-medium text-[var(--text-primary)] dark:text-white truncate">
                             {item.originalName}
                           </p>
-                          <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+                          <p className="text-xs text-[var(--text-muted)]">
                             {formatFileSize(item.fileSize)} · 删除于 {formatRelativeTime(item.deletedAt || item.createdAt)}
                           </p>
                         </div>
@@ -475,7 +475,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                 >
                   上一页
                 </button>
-                <span className="text-sm text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+                <span className="text-sm text-[var(--text-muted)]">
                   {page} / {Math.ceil(data.total / 20)}
                 </span>
                 <button

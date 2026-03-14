@@ -249,8 +249,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       className={cn(
         "relative flex flex-col overflow-hidden",
         isMobile ? "h-[70vh] rounded-t-[2.5rem]" : "rounded-2xl max-h-[520px]",
-        "bg-white dark:bg-[var(--bg-popover)]",
-        !isMobile && "border border-[var(--border-default)] dark:border-[var(--border-default)]/60 shadow-xl shadow-[var(--shadow-sm)] dark:shadow-black/30"
+        "bg-white",
+        !isMobile && "border border-[var(--border-default)]/60 shadow-xl shadow-[var(--shadow-sm)] dark:shadow-black/30"
       )}
     >
       {/* 顶部光泽效果 - 仅桌面端 */}
@@ -278,11 +278,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 搜索头部 */}
       <div className={cn(
-        "px-4 py-3 border-b border-[var(--border-subtle)] dark:border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 dark:bg-[var(--bg-popover)]/80 backdrop-blur-sm sticky top-0 z-10",
+        "px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80/80 backdrop-blur-sm sticky top-0 z-10",
         isMobile && "pt-0"
       )}>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
           <input
             type="text"
             value={search}
@@ -292,9 +292,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             className={cn(
               "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
               "bg-white dark:bg-[var(--bg-secondary)]",
-              "border border-[var(--border-default)] dark:border-[var(--border-default)]",
-              "text-[var(--text-primary)] dark:text-[var(--text-primary)]",
-              "placeholder:text-[var(--text-muted)] dark:placeholder:text-[var(--text-muted)]",
+              "border border-[var(--border-default)]",
+              "text-[var(--text-primary)]",
+              "placeholder:text-[var(--text-muted)]",
               "focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
             )}
           />
@@ -307,7 +307,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         isMobile ? "px-4" : "min-h-[200px] max-h-[380px]"
       )}>
         {filteredGroups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
             <Box className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm">未找到匹配模型</p>
           </div>
@@ -315,7 +315,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           filteredGroups.map((group) => (
             <div key={group.provider.code} className="mb-2">
               {/* 提供商头部 */}
-              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] dark:text-[var(--text-muted)] sticky top-0 bg-white/90 dark:bg-[var(--bg-popover)]/90 backdrop-blur-sm z-0">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] sticky top-0 bg-white/90/90 backdrop-blur-sm z-0">
                 <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
                 <span className="uppercase tracking-wider">
                   {group.provider.display_name || group.provider.name}
@@ -355,7 +355,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                           "font-medium text-sm truncate",
                           isSelected 
                             ? "text-primary" 
-                            : "text-[var(--text-secondary)] dark:text-[var(--text-secondary)]"
+                            : "text-[var(--text-secondary)]"
                         )}>
                           {model.display_name || model.model_id}
                         </div>
@@ -372,20 +372,20 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                         {!isMobile && abilities.vision && (
                           <AbilityBadge 
                             icon={Eye} 
-                            color="bg-status-success-light text-status-success dark:bg-status-success/20 dark:text-status-success" 
+                            color="bg-status-success-light text-status-success dark:bg-status-success/20" 
                             title="视觉"
                           />
                         )}
                         {!isMobile && abilities.reasoning && (
                           <AbilityBadge 
                             icon={Brain} 
-                            color="bg-accent/10 text-accent dark:bg-accent/20 dark:text-accent" 
+                            color="bg-accent/10 text-accent dark:bg-accent/20" 
                             title="推理"
                           />
                         )}
                         
                         {!isMobile && contextWindow && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--text-muted)]">
                             <Zap className="w-3 h-3" />
                             {formatContext(contextWindow)}
                           </span>
@@ -407,12 +407,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 底部 */}
       <div className={cn(
-        "p-2 border-t border-[var(--border-subtle)] dark:border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 dark:bg-[var(--bg-popover)]/50",
+        "p-2 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50/50",
         isMobile && "pb-8 px-4"
       )}>
         <a 
           href="/admin/ai-config" 
-          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] dark:text-[var(--text-muted)] hover:text-primary hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-secondary)] transition-all"
+          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-secondary)] transition-all"
         >
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4" />
@@ -523,7 +523,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)] dark:border-[var(--border-default)]/60 bg-white dark:bg-[var(--bg-popover)] overflow-hidden",
+                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)]/60 bg-white overflow-hidden",
                       menuClassName
                     )}
                   >

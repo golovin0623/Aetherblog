@@ -35,9 +35,9 @@ import { logger } from '@/lib/logger';
 const TAG_COLORS = [
   { bg: 'bg-status-info/10 dark:bg-status-info/20', text: 'text-status-info', border: 'border-status-info-border', hoverBorder: 'hover:border-status-info/40', bgHover: 'hover:bg-status-info/20 dark:hover:bg-status-info/30', activeBg: 'bg-status-info text-white border-status-info shadow-status-info/30' },
   { bg: 'bg-status-success/10 dark:bg-status-success/20', text: 'text-status-success', border: 'border-status-success-border', hoverBorder: 'hover:border-status-success/40', bgHover: 'hover:bg-status-success/20 dark:hover:bg-status-success/30', activeBg: 'bg-status-success text-white border-status-success shadow-status-success/30' },
-  { bg: 'bg-accent/10 dark:bg-accent/20', text: 'text-accent dark:text-accent', border: 'border-accent/20', hoverBorder: 'hover:border-accent/40', bgHover: 'hover:bg-accent/20 dark:hover:bg-accent/30', activeBg: 'bg-accent text-white border-accent shadow-accent/30' },
+  { bg: 'bg-accent/10 dark:bg-accent/20', text: 'text-accent', border: 'border-accent/20', hoverBorder: 'hover:border-accent/40', bgHover: 'hover:bg-accent/20 dark:hover:bg-accent/30', activeBg: 'bg-accent text-white border-accent shadow-accent/30' },
   { bg: 'bg-pink-400/10 dark:bg-pink-500/20', text: 'text-pink-600 dark:text-pink-400', border: 'border-pink-500/20', hoverBorder: 'hover:border-pink-500/40', bgHover: 'hover:bg-pink-400/20 dark:hover:bg-pink-500/30', activeBg: 'bg-pink-500 text-white border-pink-500 shadow-pink-500/30' },
-  { bg: 'bg-status-warning/10 dark:bg-status-warning/20', text: 'text-status-warning dark:text-status-warning', border: 'border-status-warning-border', hoverBorder: 'hover:border-status-warning/40', bgHover: 'hover:bg-status-warning/20 dark:hover:bg-status-warning/30', activeBg: 'bg-status-warning text-white border-status-warning shadow-status-warning/30' },
+  { bg: 'bg-status-warning/10 dark:bg-status-warning/20', text: 'text-status-warning', border: 'border-status-warning-border', hoverBorder: 'hover:border-status-warning/40', bgHover: 'hover:bg-status-warning/20 dark:hover:bg-status-warning/30', activeBg: 'bg-status-warning text-white border-status-warning shadow-status-warning/30' },
   { bg: 'bg-primary/10 dark:bg-primary/20', text: 'text-primary dark:text-primary', border: 'border-primary/20', hoverBorder: 'hover:border-primary/40', bgHover: 'hover:bg-primary/20 dark:hover:bg-primary/30', activeBg: 'bg-primary text-white border-primary shadow-primary/30' },
   { bg: 'bg-rose-400/10 dark:bg-rose-500/20', text: 'text-rose-600 dark:text-rose-400', border: 'border-rose-500/20', hoverBorder: 'hover:border-rose-500/40', bgHover: 'hover:bg-rose-400/20 dark:hover:bg-rose-500/30', activeBg: 'bg-rose-500 text-white border-rose-500 shadow-rose-500/30' },
   { bg: 'bg-cyan-400/10 dark:bg-cyan-500/20', text: 'text-cyan-600 dark:text-cyan-400', border: 'border-cyan-500/20', hoverBorder: 'hover:border-cyan-500/40', bgHover: 'hover:bg-cyan-400/20 dark:hover:bg-cyan-500/30', activeBg: 'bg-cyan-500 text-white border-cyan-500 shadow-cyan-500/30' }
@@ -326,7 +326,7 @@ export function CreatePostPage() {
       return {
         label: saveStatus.label || '保存失败',
         detail: saveStatus.detail || '请检查网络或稍后重试',
-        toneClass: 'text-status-danger dark:text-status-danger',
+        toneClass: 'text-status-danger',
         dotClass: 'bg-status-danger dark:bg-status-danger',
         icon: <AlertCircle className="w-3.5 h-3.5" />,
         showRetry: true,
@@ -348,7 +348,7 @@ export function CreatePostPage() {
       return {
         label: '有改动待保存',
         detail: saveTimelineText,
-        toneClass: 'text-status-warning dark:text-status-warning',
+        toneClass: 'text-status-warning',
         dotClass: 'bg-status-warning dark:bg-status-warning',
         icon: <Clock className="w-3.5 h-3.5" />,
         showRetry: false,
@@ -369,7 +369,7 @@ export function CreatePostPage() {
     return {
       label: '内容已同步',
       detail: saveTimelineText,
-      toneClass: 'text-status-success dark:text-status-success',
+      toneClass: 'text-status-success',
       dotClass: 'bg-status-success dark:bg-status-success',
       icon: <CheckCircle className="w-3.5 h-3.5" />,
       showRetry: false,
@@ -2770,7 +2770,7 @@ export function CreatePostPage() {
               <button
                 type="button"
                 onClick={handleRetrySaveStatus}
-                className="ml-1 rounded border border-status-danger-border px-1.5 py-0.5 text-[11px] text-status-danger transition-colors hover:bg-status-danger-light dark:text-status-danger"
+                className="ml-1 rounded border border-status-danger-border px-1.5 py-0.5 text-[11px] text-status-danger transition-colors hover:bg-status-danger-light"
               >
                 刷新
               </button>

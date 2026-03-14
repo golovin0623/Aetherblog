@@ -191,7 +191,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
       {/* AI 工具栏 */}
       <div className="flex items-center gap-1 p-2 bg-gradient-to-r from-accent/10 to-status-info/10 border border-accent/20 rounded-lg">
         <Wand2 className="w-4 h-4 text-accent" />
-        <span className="text-xs font-medium text-accent dark:text-accent mr-2">
+        <span className="text-xs font-medium text-accent mr-2">
           AI 助手
         </span>
         <div className="flex items-center gap-1">
@@ -200,7 +200,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
               key={tool.key}
               onClick={tool.action}
               disabled={loading !== null}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-white/50 dark:bg-[var(--bg-secondary)]/50 hover:bg-white dark:hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-default)]/50 dark:border-[var(--border-default)]/50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-white/50 dark:bg-[var(--bg-secondary)]/50 hover:bg-white dark:hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-default)]/50/50"
               title={tool.label}
             >
               {loading === tool.key ? (
@@ -216,9 +216,9 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
 
       {/* 标题建议弹窗 */}
       {showTitles && titles.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] dark:border-[var(--border-default)] rounded-lg shadow-lg z-10">
+        <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg shadow-lg z-10">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-medium text-[var(--text-primary)] dark:text-[var(--text-primary)]">
+            <h4 className="text-sm font-medium text-[var(--text-primary)]">
               标题建议
             </h4>
             <button
