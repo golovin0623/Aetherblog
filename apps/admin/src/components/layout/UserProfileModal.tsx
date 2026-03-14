@@ -236,7 +236,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               // 基于 isDesktop hook 的条件布局
               isDesktop 
                 ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // 桌面端
-                : "w-[calc(100vw-32px)] max-w-[420px] h-[650px] max-h-[85dvh]" // 移动端：固定高度 (受屏幕限制) 以保持一致性
+                : "w-[calc(100vw-32px)] max-w-[294px] h-[455px] max-h-[60dvh]" // 移动端：缩小30%以适配小屏
             )}
             style={{
               // 定位逻辑
@@ -250,8 +250,12 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               transformOrigin: isDesktop ? 'bottom left' : 'center'
             }}
           >
-            {/* 渐变顶部边框强调 */}
+            {/* 渐变顶部边框强调 + 侧边延伸光带 */}
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary via-secondary to-primary/50" />
+            {/* 左侧渐变光带 - 从顶部延伸至1/4高度渐隐 */}
+            <div className="absolute top-0 left-0 w-[2px] h-1/4 bg-gradient-to-b from-primary to-transparent" />
+            {/* 右侧渐变光带 - 从顶部延伸至1/4高度渐隐 */}
+            <div className="absolute top-0 right-0 w-[2px] h-1/4 bg-gradient-to-b from-primary/50 to-transparent" />
             
             {/* 头部 */}
             <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-[var(--border-subtle)]">
