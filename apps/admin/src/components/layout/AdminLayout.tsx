@@ -21,8 +21,8 @@ export function AdminLayout() {
       {/* 侧边栏 */}
       <Sidebar />
 
-      {/* 主内容区 */}
-      <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
+      {/* 主内容区 - z-0 创建层叠上下文，确保页面内二级侧栏不会覆盖主侧栏 */}
+      <div className="flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden">
         <MobileHeader />
 
 
