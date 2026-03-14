@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Menu, X, Settings2, Home, Clock, Archive, Link as LinkIcon, Info } from 'lucide-react';
+import { Menu, Settings2, Home, Clock, Archive, Link as LinkIcon, Info } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings } from '../lib/services';
 import { extractSocialLinks } from '../lib/socialLinks';
@@ -24,6 +24,18 @@ const NAV_LINKS = [
   { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
 ];
 
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"]):not([disabled])',
+  '[contenteditable="true"]',
+  'audio[controls]',
+  'video[controls]',
+].join(', ');
+
 /**
  * 移动端导航菜单组件
  * - 汉堡菜单按钮
@@ -36,7 +48,6 @@ const MobileMenu = memo(function MobileMenu() {
   const pathname = usePathname();
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // 当前激活的导航页面（用于乐观更新）
   const [activePage, setActivePage] = useState<NavPage>(() => {
@@ -99,9 +110,10 @@ const MobileMenu = memo(function MobileMenu() {
   useEffect(() => {
     if (!isOpen) return;
 
-    // 打开时聚焦到关闭按钮
+    // 打开时聚焦到抽屉内第一个可聚焦元素
     requestAnimationFrame(() => {
-      closeButtonRef.current?.focus();
+      const firstFocusable = drawerRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      firstFocusable?.focus();
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -113,9 +125,7 @@ const MobileMenu = memo(function MobileMenu() {
 
       // 焦点陷阱: Tab 键循环在对话框内
       if (e.key === 'Tab' && drawerRef.current) {
-        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
+        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
         if (focusable.length === 0) return;
 
         const first = focusable[0];
@@ -186,7 +196,7 @@ const MobileMenu = memo(function MobileMenu() {
             id="mobile-menu-drawer"
             role="dialog"
             aria-modal="true"
-            aria-label="Mobile Navigation"
+            aria-label="移动端导航菜单，按 Esc 键关闭"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -196,18 +206,9 @@ const MobileMenu = memo(function MobileMenu() {
             // it to 'none' during theme transition (html[data-theme-transition]).
             className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform mobile-menu-drawer"
           >
-            {/* 关闭按钮 - 焦点陷阱入口 */}
-            <button
-              ref={closeButtonRef}
-              onClick={() => { setIsOpen(false); triggerButtonRef.current?.focus(); }}
-              className="absolute top-3 right-3 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors z-10"
-              aria-label="关闭菜单"
-            >
-              <X size={18} />
-            </button>
             {/* 1. 顶部区域：个人资料 (去除了强分割线) */}
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
-              <div className="mt-6 flex flex-col items-center text-center">
+              <div className="flex flex-col items-center text-center">
                 <div className="relative w-14 h-14 mb-2 group">
                   <div className="absolute inset-0 bg-gradient-to-tr from-primary to-purple-500 rounded-full blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
                   <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-[var(--border-default)] group-hover:border-primary transition-colors">
