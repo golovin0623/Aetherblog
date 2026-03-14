@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { List, ArrowUp, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,7 +26,7 @@ interface ArticleFloatingActionsProps {
   content: string;
 }
 
-export default function ArticleFloatingActions({ content }: ArticleFloatingActionsProps) {
+const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
@@ -392,4 +392,7 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
       )}
     </>
   );
-}
+};
+
+// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders when parent component updates.
+export default memo(ArticleFloatingActionsBase);
