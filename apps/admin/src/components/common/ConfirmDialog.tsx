@@ -45,18 +45,18 @@ export function ConfirmDialog({
     },
     info: {
       icon: Info,
-      iconBg: 'bg-gradient-to-br from-primary/20 to-violet-600/10',
+      iconBg: 'bg-gradient-to-br from-primary/20 to-accent/10',
       iconColor: 'text-primary',
       iconGlow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-primary to-violet-600 hover:from-primary/90 hover:to-violet-700',
+      buttonBg: 'bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90',
       buttonShadow: 'shadow-lg shadow-primary/25',
     },
     copy: {
       icon: Copy,
-      iconBg: 'bg-gradient-to-br from-primary/20 to-violet-600/10',
+      iconBg: 'bg-gradient-to-br from-primary/20 to-accent/10',
       iconColor: 'text-primary',
       iconGlow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]',
-      buttonBg: 'bg-gradient-to-r from-primary to-violet-600 hover:from-primary/90 hover:to-violet-700',
+      buttonBg: 'bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90',
       buttonShadow: 'shadow-lg shadow-primary/25',
     },
   };

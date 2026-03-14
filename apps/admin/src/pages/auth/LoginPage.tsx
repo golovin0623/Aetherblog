@@ -67,11 +67,11 @@ export function LoginPage() {
   };
 
   return (
-    <div className="w-full min-h-screen flex bg-black text-white selection:bg-primary/30 overflow-hidden font-sans relative">
+    <div className="w-full min-h-screen flex bg-[var(--bg-primary)] text-[var(--text-primary)] selection:bg-primary/30 overflow-hidden font-sans relative">
       {/* 背景层 - 所有视图共享 */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/15 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-purple-600/10 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
+        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-primary/15 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/10 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
         {/* 网格图案 */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
@@ -87,7 +87,7 @@ export function LoginPage() {
         {/* 品牌内容 */}
         <div className="relative z-10">
            <div className="inline-flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+             <div className="w-10 h-10 rounded-xl bg-[image:var(--gradient-primary)] flex items-center justify-center shadow-lg shadow-primary">
                <Sparkles className="w-6 h-6 text-white" />
              </div>
              <span className="text-xl font-bold tracking-tight">AetherBlog</span>
@@ -98,14 +98,14 @@ export function LoginPage() {
           <h2 className="text-5xl font-bold leading-tight mb-6 bg-clip-text text-transparent bg-gradient-to-br from-white via-white/90 to-white/50">
             Cognitive Elegance for Your Content.
           </h2>
-          <p className="text-lg text-slate-400 font-medium leading-relaxed">
+          <p className="text-lg text-[var(--text-muted)] font-medium leading-relaxed">
             Experience the next generation of blog management. 
             AI-driven insights, seamless editing, and a design language that inspires.
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2 text-sm text-slate-500 font-medium">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+        <div className="relative z-10 flex items-center gap-2 text-sm text-[var(--text-muted)] font-medium">
+          <div className="w-2 h-2 rounded-full bg-status-success animate-pulse"></div>
           <span>System Operational v1.0.0</span>
         </div>
       </motion.div>
@@ -120,16 +120,16 @@ export function LoginPage() {
         <div className="w-full max-w-[420px] space-y-8">
           {/* 移动端品牌 */}
           <div className="lg:hidden flex flex-col items-center mb-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30 mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-[image:var(--gradient-primary)] flex items-center justify-center shadow-2xl shadow-primary-lg mb-4">
               <Sparkles className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">AetherBlog</h1>
-            <p className="text-slate-400 text-xs mt-1 font-medium tracking-widest uppercase">Cognitive Elegance</p>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">AetherBlog</h1>
+            <p className="text-[var(--text-muted)] text-xs mt-1 font-medium tracking-widest uppercase">Cognitive Elegance</p>
           </div>
 
           <div className="text-center lg:text-left">
-            <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">Welcome back</h1>
-            <p className="text-slate-400 text-sm">Enter your credentials to access the admin panel.</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)] mb-2">Welcome back</h1>
+            <p className="text-[var(--text-muted)] text-sm">Enter your credentials to access the admin panel.</p>
           </div>
 
           <AnimatePresence mode="wait">
@@ -140,8 +140,8 @@ export function LoginPage() {
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 className="overflow-hidden"
               >
-                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-sm flex items-center gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                <div className="p-4 rounded-xl bg-status-danger-light border border-status-danger-border text-status-danger text-sm flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-status-danger shrink-0" />
                   {error}
                 </div>
               </motion.div>
@@ -153,15 +153,15 @@ export function LoginPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="username" className="text-sm font-medium text-slate-300 ml-1">Username</label>
+                <label htmlFor="username" className="text-sm font-medium text-[var(--text-secondary)] ml-1">Username</label>
                 <div className="relative group">
-                  <UserIcon className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
+                  <UserIcon className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
                   <input
                     id="username"
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
+                    className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                     placeholder="Enter your username"
                     required
                   />
@@ -170,24 +170,24 @@ export function LoginPage() {
 
               <div className="space-y-2">
                  <div className="flex items-center justify-between ml-1">
-                   <label htmlFor="password" className="text-sm font-medium text-slate-300">Password</label>
+                   <label htmlFor="password" className="text-sm font-medium text-[var(--text-secondary)]">Password</label>
                    <a href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">Forgot password?</a>
                  </div>
                 <div className="relative group">
-                  <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
+                  <Lock className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
                   <input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
+                    className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                     placeholder="Enter your password"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded"
+                    className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded"
                     aria-label="Toggle password visibility" aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -221,18 +221,18 @@ export function LoginPage() {
           <div className="pt-4">
             <div className="relative">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-transparent px-2 text-slate-500">Secure Access</span></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-transparent px-2 text-[var(--text-muted)]">Secure Access</span></div>
             </div>
           </div>
 
-          <p className="text-center text-[10px] text-slate-500 tracking-wider">
-            By continuing, you agree to our <a href="#" className="underline text-slate-400 hover:text-white">Terms</a> and <a href="#" className="underline text-slate-400 hover:text-white">Privacy</a>.
+          <p className="text-center text-[10px] text-[var(--text-muted)] tracking-wider">
+            By continuing, you agree to our <a href="#" className="underline text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">Terms</a> and <a href="#" className="underline text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">Privacy</a>.
           </p>
 
           {/* 移动端系统状态 */}
           <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-50">
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-[10px] text-slate-500 font-medium tracking-tight">System Operational v1.0.0</span>
+            <div className="w-1.5 h-1.5 bg-status-success rounded-full animate-pulse" />
+            <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-tight">System Operational v1.0.0</span>
           </div>
         </div>
       </motion.div>

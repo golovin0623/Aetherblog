@@ -6,9 +6,9 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const styles = {
-    PUBLISHED: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
-    DRAFT: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
-    ARCHIVED: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20',
+    PUBLISHED: 'bg-status-success-light text-status-success border-status-success-border',
+    DRAFT: 'bg-status-warning-light text-status-warning border-status-warning-border',
+    ARCHIVED: 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border-default)]',
   };
   const labels: Record<string, string> = { PUBLISHED: '已发布', DRAFT: '草稿', ARCHIVED: '已归档' };
 
