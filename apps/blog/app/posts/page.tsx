@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { LayoutGrid, List, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import ArticleCard from '../components/ArticleCard';
@@ -28,6 +28,8 @@ const PAGE_SIZE = 6;
 
 export default function PostsPage() {
   const [currentPage, setCurrentPage] = useState(1);
+  const postsListRef = useRef<HTMLDivElement>(null);
+  const pageNumbersRef = useRef<HTMLDivElement>(null);
 
   // 1. 获取推荐文章 (始终获取，体积小且已缓存)
   const { 
@@ -119,11 +121,28 @@ export default function PostsPage() {
     staleTime: 5 * 60 * 1000, // 缓存 5 分钟
   });
 
+  const scrollActivePageIntoView = useCallback((page: number) => {
+    if (!pageNumbersRef.current) return;
+    const btn = pageNumbersRef.current.querySelector(`[data-page="${page}"]`) as HTMLElement | null;
+    if (btn) {
+      btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    }
+  }, []);
+
   const handlePageChange = (page: number) => {
     if (!postsData || page < 1 || page > postsData.pages) return;
     setCurrentPage(page);
-    window.scrollTo({ top: 500, behavior: 'smooth' });
+    // Scroll to top of posts list section
+    if (postsListRef.current) {
+      const top = postsListRef.current.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
   };
+
+  // Auto-scroll the active page number into view when currentPage changes
+  useEffect(() => {
+    scrollActivePageIntoView(currentPage);
+  }, [currentPage, scrollActivePageIntoView]);
 
   // 初始加载状态（仅用于首次加载）
   if (isFeaturedLoading || (isPostsLoading && !postsData)) {
@@ -181,7 +200,7 @@ export default function PostsPage() {
             </div>
 
             {/* 底部区域：其余文章网格 */}
-            <div>
+            <div ref={postsListRef}>
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
                   <LayoutGrid className="w-6 h-6 text-primary" />
@@ -229,43 +248,47 @@ export default function PostsPage() {
                   <button
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage <= 1 || isPlaceholderData}
-                    className={`flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
+                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
                       currentPage <= 1
                         ? 'text-gray-600 cursor-not-allowed'
                         : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                     }`}
+                    aria-label="上一页"
                   >
                     <ChevronLeft className="w-4 h-4" />
-                    上一页
                   </button>
 
-                  {Array.from({ length: Math.min(5, pages) }, (_, i) => {
-                    const start = Math.max(1, Math.min(currentPage - 2, pages - 4));
-                    return start + i;
-                  }).filter(p => p <= pages).map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => handlePageChange(page)}
-                      className={`w-10 h-10 rounded-lg transition-colors ${
-                        page === currentPage
-                          ? 'bg-primary text-white'
-                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                  <div
+                    ref={pageNumbersRef}
+                    className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-1"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+                  >
+                    {Array.from({ length: pages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        data-page={page}
+                        onClick={() => handlePageChange(page)}
+                        className={`flex-shrink-0 w-10 h-10 rounded-lg transition-colors ${
+                          page === currentPage
+                            ? 'bg-primary text-white'
+                            : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
 
                   <button
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage >= pages || isPlaceholderData}
-                    className={`flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
+                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
                       currentPage >= pages
                         ? 'text-gray-600 cursor-not-allowed'
                         : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                     }`}
+                    aria-label="下一页"
                   >
-                    下一页
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
