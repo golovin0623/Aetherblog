@@ -16,6 +16,8 @@ export interface SiteSettings {
   icp?: string;
   startYear?: string;
   comment_enabled?: boolean;
+  // 站点Logo
+  site_logo?: string;
   // 欢迎屏幕
   welcome_title?: string;
   welcome_subtitle?: string;

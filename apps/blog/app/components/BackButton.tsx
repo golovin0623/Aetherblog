@@ -33,7 +33,7 @@ export default function BackButton({
     <button
       type="button"
       onClick={handleBack}
-      className={cn('inline-flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md', className)}
+      className={`inline-flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md ${className}`}
       aria-label="返回上一页"
     >
       <ArrowLeft className="w-4 h-4" />
