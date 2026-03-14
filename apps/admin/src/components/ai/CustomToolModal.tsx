@@ -156,7 +156,7 @@ export const CustomToolModal: React.FC<CustomToolModalProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => tool.code && onDelete(tool.code)}
-                className="text-red-500 hover:text-red-600 hover:bg-red-500/10 gap-2 px-3 w-full sm:w-auto"
+                className="text-status-danger hover:text-status-danger hover:bg-status-danger-light gap-2 px-3 w-full sm:w-auto"
               >
                 <Trash2 className="w-4 h-4" />
                 删除

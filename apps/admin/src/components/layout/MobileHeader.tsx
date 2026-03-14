@@ -18,7 +18,7 @@ export function MobileHeader() {
         {/* 光泽 Logo */}
         <div className="relative w-7 h-7 rounded-lg overflow-hidden flex-shrink-0 shadow-md shadow-primary/20">
           {/* 基础渐变 */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
+          <div className="absolute inset-0 bg-[image:var(--gradient-primary)]" />
           {/* 玻璃光泽叠加 */}
           <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
           {/* 内部发光 */}

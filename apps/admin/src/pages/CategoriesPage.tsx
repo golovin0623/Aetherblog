@@ -189,7 +189,7 @@ export default function CategoriesPage() {
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : error ? (
-          <div className="p-6 text-center text-red-400">{error}</div>
+          <div className="p-6 text-center text-status-danger">{error}</div>
         ) : activeTab === 'categories' ? (
           categories.length === 0 ? (
             <div className="text-center py-12 text-[var(--text-muted)]">暂无分类，点击"新建分类"创建</div>
@@ -214,7 +214,7 @@ export default function CategoriesPage() {
                       </button>
                       <button 
                         onClick={() => setDeleteTarget({ id: cat.id, name: cat.name, type: 'category' })}
-                        className="p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                        className="p-1.5 sm:p-2 rounded-lg hover:bg-status-danger-light text-[var(--text-muted)] hover:text-status-danger transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -232,10 +232,10 @@ export default function CategoriesPage() {
               {tags.map((tag, index) => {
                 // Color variants based on index for visual variety
                 const colorVariants = [
-                  'from-primary/20 to-purple-500/10 border-primary/30 text-primary',
-                  'from-blue-500/20 to-cyan-500/10 border-blue-500/30 text-blue-400',
-                  'from-green-500/20 to-emerald-500/10 border-green-500/30 text-green-400',
-                  'from-orange-500/20 to-amber-500/10 border-orange-500/30 text-orange-400',
+                  'from-primary/20 to-accent/10 border-primary/30 text-primary',
+                  'from-status-info/20 to-cyan-500/10 border-status-info-border text-status-info',
+                  'from-status-success/20 to-status-success/10 border-status-success-border text-status-success',
+                  'from-status-warning/20 to-status-warning/10 border-status-warning-border text-status-warning',
                   'from-pink-500/20 to-rose-500/10 border-pink-500/30 text-pink-400',
                 ];
                 const colorClass = colorVariants[index % colorVariants.length];
@@ -264,7 +264,7 @@ export default function CategoriesPage() {
                       </span>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: tag.id, name: tag.name, type: 'tag' }); }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/20 text-[var(--text-muted)] hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-status-danger/20 text-[var(--text-muted)] hover:text-status-danger transition-all"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

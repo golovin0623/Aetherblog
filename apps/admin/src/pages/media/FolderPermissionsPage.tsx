@@ -99,17 +99,17 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
   const getPermissionLevelColor = (level: PermissionLevel) => {
     switch (level) {
       case 'VIEW':
-        return 'text-blue-400 bg-blue-500/20';
+        return 'text-status-info bg-status-info/20';
       case 'UPLOAD':
-        return 'text-green-400 bg-green-500/20';
+        return 'text-status-success bg-status-success/20';
       case 'EDIT':
-        return 'text-yellow-400 bg-yellow-500/20';
+        return 'text-status-warning bg-status-warning/20';
       case 'DELETE':
-        return 'text-orange-400 bg-orange-500/20';
+        return 'text-status-warning bg-status-warning/20';
       case 'ADMIN':
-        return 'text-purple-400 bg-purple-500/20';
+        return 'text-accent bg-accent/20';
       default:
-        return 'text-gray-400 bg-gray-500/20';
+        return 'text-[var(--text-muted)] bg-[var(--bg-tertiary)]';
     }
   };
 
@@ -285,7 +285,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
                   disabled={revokeMutation.isPending}
                   variant="secondary"
                   size="sm"
-                  className="gap-2 text-red-400 hover:text-red-300"
+                  className="gap-2 text-status-danger hover:text-status-danger"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   撤销
@@ -297,8 +297,8 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
       </div>
 
       {/* Info */}
-      <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-        <p className="text-xs text-blue-400">
+      <div className="p-4 bg-status-info-light border border-status-info-border rounded-lg">
+        <p className="text-xs text-status-info">
           💡 提示: 权限按层级递增 (VIEW &lt; UPLOAD &lt; EDIT &lt; DELETE &lt; ADMIN),
           高级别权限包含低级别的所有权限。
         </p>

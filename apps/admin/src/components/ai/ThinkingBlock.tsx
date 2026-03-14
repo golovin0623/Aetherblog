@@ -26,7 +26,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
     <div className={cn(
       "rounded-xl overflow-hidden border transition-all duration-300",
       isActive
-        ? "border-zinc-500/30 bg-zinc-500/5 dark:border-zinc-400/20 dark:bg-zinc-400/5"
+        ? "border-[var(--border-default)] bg-[var(--bg-card)]"
         : "border-[var(--border-subtle)] bg-[var(--bg-secondary)]",
       className
     )}>

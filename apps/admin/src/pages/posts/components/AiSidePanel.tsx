@@ -243,7 +243,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
               <span className="text-xs text-[var(--text-secondary)] font-medium group-hover:text-[var(--text-primary)]">划词 AI 菜单</span>
               <div className="relative inline-flex items-center">
                 <input type="checkbox" className="sr-only peer" checked={enableSelectionAi} onChange={(e) => setEnableSelectionAi(e.target.checked)} />
-                <div className="w-7 h-4 bg-[var(--border-subtle)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+                <div className="w-7 h-4 bg-[var(--border-subtle)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--border-default)] after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
               </div>
             </label>
             <div className="w-px bg-[var(--border-subtle)] my-1" />
@@ -251,7 +251,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
               <span className="text-xs text-[var(--text-secondary)] font-medium group-hover:text-[var(--text-primary)]">/ 唤出 AI 命令</span>
               <div className="relative inline-flex items-center">
                 <input type="checkbox" className="sr-only peer" checked={enableSlashAi} onChange={(e) => setEnableSlashAi(e.target.checked)} />
-                <div className="w-7 h-4 bg-[var(--border-subtle)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+                <div className="w-7 h-4 bg-[var(--border-subtle)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--border-default)] after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
               </div>
             </label>
           </div>
@@ -315,7 +315,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
                   onClick={copyResult}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)]"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? <Check className="w-3.5 h-3.5 text-status-success" /> : <Copy className="w-3.5 h-3.5" />}
                   {copied ? '已复制' : '复制'}
                 </button>
                 {result.action === 'summary' && (

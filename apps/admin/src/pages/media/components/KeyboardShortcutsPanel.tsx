@@ -64,10 +64,10 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-              className="pointer-events-auto relative w-full max-w-2xl bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="pointer-events-auto relative w-full max-w-2xl bg-white/90/90 backdrop-blur-xl border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               {/* 头部 */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-white/5">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-default)] dark:border-white/10 bg-[var(--bg-secondary)]/50 dark:bg-white/5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-primary/10 rounded-lg">
                     <Keyboard className="w-5 h-5 text-primary" />
@@ -106,7 +106,7 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
                             {shortcut.key.map((k, i) => (
                               <kbd
                                 key={i}
-                                className="min-w-[24px] h-6 px-1.5 flex items-center justify-center bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded text-xs font-mono text-gray-700 dark:text-gray-300 shadow-sm"
+                                className="min-w-[24px] h-6 px-1.5 flex items-center justify-center bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded text-xs font-mono text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] shadow-sm"
                               >
                                 {k === '⌘' ? <Command className="w-3 h-3" /> : k}
                               </kbd>
@@ -120,9 +120,9 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
               </div>
 
               {/* 底部提示 */}
-              <div className="px-6 py-4 bg-gray-50/50 dark:bg-white/5 border-t border-gray-200 dark:border-white/10">
+              <div className="px-6 py-4 bg-[var(--bg-secondary)]/50 dark:bg-white/5 border-t border-[var(--border-default)] dark:border-white/10">
                 <p className="text-xs text-[var(--text-muted)] text-center">
-                  Windows 系统下 <kbd className="font-mono bg-gray-200 dark:bg-zinc-700 px-1 rounded mx-0.5 text-gray-700 dark:text-gray-300">⌘</kbd> 对应 <kbd className="font-mono bg-gray-200 dark:bg-zinc-700 px-1 rounded mx-0.5 text-gray-700 dark:text-gray-300">Ctrl</kbd> 键
+                  Windows 系统下 <kbd className="font-mono bg-[var(--bg-tertiary)] dark:bg-[var(--bg-tertiary)] px-1 rounded mx-0.5 text-[var(--text-secondary)] dark:text-[var(--text-tertiary)]">⌘</kbd> 对应 <kbd className="font-mono bg-[var(--bg-tertiary)] dark:bg-[var(--bg-tertiary)] px-1 rounded mx-0.5 text-[var(--text-secondary)] dark:text-[var(--text-tertiary)]">Ctrl</kbd> 键
                 </p>
               </div>
             </motion.div>

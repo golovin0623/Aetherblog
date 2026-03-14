@@ -73,7 +73,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
         ))}
 
         {posts.length === 0 && (
-          <div className="text-center py-10 text-gray-500 text-sm">
+          <div className="text-center py-10 text-[var(--text-muted)] text-sm">
             暂无热门文章数据
           </div>
         )}

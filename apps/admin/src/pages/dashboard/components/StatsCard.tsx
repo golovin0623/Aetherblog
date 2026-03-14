@@ -40,27 +40,27 @@ export function StatsCard({
   loading = false,
 }: StatsCardProps) {
   const colorStyles = {
-    primary: 'from-primary/20 to-purple-500/10 border-primary/20',
-    green: 'from-green-500/20 to-emerald-500/10 border-green-500/20',
-    blue: 'from-blue-500/20 to-cyan-500/10 border-blue-500/20',
-    orange: 'from-orange-500/20 to-yellow-500/10 border-orange-500/20',
+    primary: 'from-primary/20 to-accent/10 border-primary/20',
+    green: 'from-status-success/20 to-status-success/10 border-status-success/20',
+    blue: 'from-status-info/20 to-status-info/10 border-status-info/20',
+    orange: 'from-status-warning/20 to-status-warning/10 border-status-warning/20',
     pink: 'from-pink-500/20 to-rose-500/10 border-pink-500/20',
-    purple: 'from-purple-500/20 to-indigo-500/10 border-purple-500/20',
-    cyan: 'from-cyan-500/20 to-blue-500/10 border-cyan-500/20',
-    indigo: 'from-indigo-500/20 to-purple-500/10 border-indigo-500/20',
-    emerald: 'from-emerald-500/20 to-green-500/10 border-emerald-500/20',
+    purple: 'from-accent/20 to-primary/10 border-accent/20',
+    cyan: 'from-cyan-500/20 to-status-info/10 border-cyan-500/20',
+    indigo: 'from-primary/20 to-accent/10 border-primary/20',
+    emerald: 'from-status-success/20 to-status-success/10 border-status-success/20',
   };
 
   const iconColorStyles = {
     primary: 'bg-primary/20 text-primary',
-    green: 'bg-green-500/20 text-green-600 dark:text-green-400',
-    blue: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
-    orange: 'bg-orange-500/20 text-orange-600 dark:text-orange-400',
-    pink: 'bg-pink-500/20 text-pink-600 dark:text-pink-400',
-    purple: 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
-    cyan: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400',
-    indigo: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
-    emerald: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400',
+    green: 'bg-status-success-light text-status-success',
+    blue: 'bg-status-info-light text-status-info',
+    orange: 'bg-status-warning-light text-status-warning',
+    pink: 'bg-pink-500/20 text-pink-500',
+    purple: 'bg-accent/20 text-accent',
+    cyan: 'bg-cyan-500/20 text-cyan-500',
+    indigo: 'bg-primary/20 text-primary',
+    emerald: 'bg-status-success-light text-status-success',
   };
 
   if (loading) {
@@ -102,8 +102,8 @@ export function StatsCard({
               {change !== undefined && (
                 <div className={cn(
                   "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium",
-                  change > 0 ? "bg-green-500/10 text-green-600 dark:text-green-400" :
-                  change < 0 ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                  change > 0 ? "bg-status-success-light text-status-success" :
+                  change < 0 ? "bg-status-danger-light text-status-danger" :
                   "bg-[var(--bg-secondary)] text-[var(--text-muted)]"
                 )}>
                   {change > 0 ? <TrendingUp className="w-3 h-3" /> :

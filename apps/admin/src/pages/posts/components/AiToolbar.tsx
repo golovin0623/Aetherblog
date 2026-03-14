@@ -189,9 +189,9 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
   return (
     <div className="relative">
       {/* AI 工具栏 */}
-      <div className="flex items-center gap-1 p-2 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-lg">
-        <Wand2 className="w-4 h-4 text-purple-500" />
-        <span className="text-xs font-medium text-purple-600 dark:text-purple-400 mr-2">
+      <div className="flex items-center gap-1 p-2 bg-gradient-to-r from-accent/10 to-status-info/10 border border-accent/20 rounded-lg">
+        <Wand2 className="w-4 h-4 text-accent" />
+        <span className="text-xs font-medium text-accent mr-2">
           AI 助手
         </span>
         <div className="flex items-center gap-1">
@@ -200,7 +200,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
               key={tool.key}
               onClick={tool.action}
               disabled={loading !== null}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-white/50 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200/50 dark:border-gray-700/50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-white/50 dark:bg-[var(--bg-secondary)]/50 hover:bg-white dark:hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-default)]/50/50"
               title={tool.label}
             >
               {loading === tool.key ? (
@@ -216,14 +216,14 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
 
       {/* 标题建议弹窗 */}
       {showTitles && titles.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
+        <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg shadow-lg z-10">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <h4 className="text-sm font-medium text-[var(--text-primary)]">
               标题建议
             </h4>
             <button
               onClick={() => setShowTitles(false)}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              className="p-1 hover:bg-[var(--bg-secondary)] dark:hover:bg-[var(--bg-tertiary)] rounded"
             >
               <X className="w-4 h-4" />
             </button>
@@ -237,7 +237,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
                   navigator.clipboard.writeText(title);
                   toast.success('标题已复制到剪贴板');
                 }}
-                className="w-full text-left p-2 text-sm rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300 transition-colors"
+                className="w-full text-left p-2 text-sm rounded hover:bg-[var(--bg-secondary)] dark:hover:bg-[var(--bg-tertiary)]/50 text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] transition-colors"
               >
                 {index + 1}. {title}
               </button>

@@ -41,15 +41,15 @@ export function QAPage() {
     <div className="h-[calc(100vh-8rem)] flex flex-col">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">智能问答</h1>
-        <p className="text-gray-400 mt-1">基于您的博客内容进行 RAG 智能问答</p>
+        <p className="text-[var(--text-muted)] mt-1">基于您的博客内容进行 RAG 智能问答</p>
       </div>
 
       {/* Chat Area */}
       <div className="flex-1 bg-white/5 border border-white/10 rounded-xl overflow-hidden flex flex-col">
         <div className="flex-1 p-6 overflow-auto space-y-4">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-gray-500">
-              <Bot className="w-16 h-16 mb-4 text-gray-600" />
+            <div className="h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
+              <Bot className="w-16 h-16 mb-4 text-[var(--text-secondary)]" />
               <p className="text-lg">开始提问</p>
               <p className="text-sm mt-1">AI 将基于您的博客内容回答问题</p>
             </div>
@@ -74,7 +74,7 @@ export function QAPage() {
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 </div>
                 {msg.role === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[var(--bg-quaternary)] flex items-center justify-center flex-shrink-0">
                     <User className="w-4 h-4 text-white" />
                   </div>
                 )}
@@ -86,7 +86,7 @@ export function QAPage() {
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                 <RefreshCw className="w-4 h-4 text-primary animate-spin" />
               </div>
-              <div className="px-4 py-3 rounded-2xl bg-white/10 text-gray-400">
+              <div className="px-4 py-3 rounded-2xl bg-white/10 text-[var(--text-muted)]">
                 思考中...
               </div>
             </div>
@@ -102,7 +102,7 @@ export function QAPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="输入您的问题..."
-              className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
             <button
               onClick={handleSend}

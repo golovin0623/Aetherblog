@@ -102,7 +102,7 @@ export function AiChatPanel({
             {messages.length > 0 && (
               <button
                 onClick={onClearHistory}
-                className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-red-500"
+                className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-status-danger"
                 title="清空历史"
               >
                 <Trash2 className="w-4 h-4" />
@@ -232,10 +232,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
       <div
         className={cn(
           'w-7 h-7 rounded-full flex items-center justify-center shrink-0',
-          isUser ? 'bg-blue-500/10' : 'bg-primary/10'
+          isUser ? 'bg-status-info-light' : 'bg-primary/10'
         )}
       >
-        <Icon className={cn('w-4 h-4', isUser ? 'text-blue-500' : 'text-primary')} />
+        <Icon className={cn('w-4 h-4', isUser ? 'text-status-info' : 'text-primary')} />
       </div>
 
       {/* 内容 */}
@@ -244,7 +244,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
           className={cn(
             'p-3 rounded-lg border transition-all',
             isUser
-              ? 'bg-blue-500/10 border-blue-500/30'
+              ? 'bg-status-info-light border-status-info-border'
               : 'bg-[var(--bg-secondary)] border-[var(--border-subtle)]'
           )}
         >
@@ -271,7 +271,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
             title="复制"
           >
             {copied ? (
-              <Check className="w-3 h-3 text-emerald-500" />
+              <Check className="w-3 h-3 text-status-success" />
             ) : (
               <Copy className="w-3 h-3" />
             )}

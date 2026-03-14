@@ -289,7 +289,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               {isStreaming ? (
                 <button
                   onClick={abort}
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--bg-secondary)] text-red-500 shadow-md hover:bg-red-500/10 hover:shadow-lg transition-all flex items-center justify-center animate-pulse"
+                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[var(--bg-secondary)] text-status-danger shadow-md hover:bg-status-danger-light hover:shadow-lg transition-all flex items-center justify-center animate-pulse"
                   title="停止生成"
                   aria-label="停止生成"
                 >
@@ -333,7 +333,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-700 -z-10 pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl group-hover:bg-emerald-500/10 transition-colors duration-700 -z-10 pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-status-success/5 rounded-full blur-3xl group-hover:bg-status-success-light transition-colors duration-700 -z-10 pointer-events-none" />
 
         <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm">
           <div className="flex items-center gap-2">
@@ -343,7 +343,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             <div>
               <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">生成结果</h2>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="w-1 h-1 rounded-full bg-status-success animate-pulse" />
                 <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium tracking-tighter">AI Generator v2</span>
               </div>
             </div>
@@ -352,8 +352,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           <div className="flex items-center gap-2 md:gap-3">
              <div className={cn(
                "px-2 py-1 rounded-md text-[10px] font-mono border transition-all",
-               isDone ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
-               isStreaming ? "bg-blue-500/10 text-blue-500 border-blue-500/20 animate-pulse" :
+               isDone ? "bg-status-success-light text-status-success border-status-success-border" :
+               isStreaming ? "bg-status-info-light text-status-info border-status-info-border animate-pulse" :
                "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
              )}>
                {isDone ? '已完成' : isStreaming ? '生成中' : '预览'}
@@ -376,11 +376,11 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="flex-1 overflow-y-auto p-4 md:p-6 no-scrollbar z-0">
           {streamError ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-              <div className="p-4 rounded-full bg-red-500/10 border border-red-500/20 animate-in zoom-in-50 duration-300">
-                <Sparkles className="w-8 h-8 text-red-500" />
+              <div className="p-4 rounded-full bg-status-danger-light border border-status-danger-border animate-in zoom-in-50 duration-300">
+                <Sparkles className="w-8 h-8 text-status-danger" />
               </div>
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <p className="text-red-500 font-medium">生成失败</p>
+                <p className="text-status-danger font-medium">生成失败</p>
                 <p className="text-xs text-[var(--text-muted)] mt-1 max-w-[200px] break-words">{streamError}</p>
               </div>
             </div>
@@ -415,7 +415,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                   />
                 ) : (
                   <div className="relative rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 p-4">
-                  <div className="absolute left-0 top-4 bottom-4 w-1 bg-gradient-to-b from-transparent via-emerald-500 to-transparent rounded-full" />
+                  <div className="absolute left-0 top-4 bottom-4 w-1 bg-gradient-to-b from-transparent via-status-success to-transparent rounded-full" />
                     <div className={cn(
                       "pl-4 text-[var(--text-primary)] leading-relaxed font-mono whitespace-pre-wrap text-[13px]"
                     )}>
@@ -424,7 +424,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                       ))}
                       {/* 打字机光标 */}
                       {isStreaming && !isThinking && streamContent && (
-                        <span className="inline-block w-0.5 h-4 bg-emerald-500 ml-0.5 animate-pulse" />
+                        <span className="inline-block w-0.5 h-4 bg-status-success ml-0.5 animate-pulse" />
                       )}
                     </div>
                   </div>
@@ -438,7 +438,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           <div className="p-3 mx-4 mb-4 border border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-secondary)] z-10 rounded-2xl backdrop-blur-sm shadow-sm animate-in slide-in-from-bottom-2 duration-500">
              <div className="flex gap-4 text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
                <span className="flex items-center gap-1.5">
-                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> 
+                 <span className="w-1.5 h-1.5 rounded-full bg-status-success shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> 
                  {streamContent.length} 字符
                </span>
                <span className="hidden sm:inline opacity-60">类型: {selectedTool.label}工具</span>

@@ -24,45 +24,45 @@ import { activityService, ActivityEvent } from '@/services/activityService';
 const categoryConfig = {
   post: {
     icon: FileText,
-    bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/20',
-    textColor: 'text-blue-400',
+    bgColor: 'bg-status-info-light',
+    borderColor: 'border-status-info-border',
+    textColor: 'text-status-info',
   },
   comment: {
     icon: MessageSquare,
-    bgColor: 'bg-green-500/10',
-    borderColor: 'border-green-500/20',
-    textColor: 'text-green-400',
+    bgColor: 'bg-status-success-light',
+    borderColor: 'border-status-success-border',
+    textColor: 'text-status-success',
   },
   user: {
     icon: User,
-    bgColor: 'bg-purple-500/10',
-    borderColor: 'border-purple-500/20',
-    textColor: 'text-purple-400',
+    bgColor: 'bg-accent/10',
+    borderColor: 'border-accent/20',
+    textColor: 'text-accent',
   },
   system: {
     icon: Settings,
-    bgColor: 'bg-gray-500/10',
-    borderColor: 'border-gray-500/20',
-    textColor: 'text-gray-400',
+    bgColor: 'bg-[var(--bg-tertiary)]',
+    borderColor: 'border-[var(--border-default)]',
+    textColor: 'text-[var(--text-muted)]',
   },
   friend: {
     icon: Link,
     bgColor: 'bg-pink-500/10',
     borderColor: 'border-pink-500/20',
-    textColor: 'text-pink-400',
+    textColor: 'text-pink-500',
   },
   media: {
     icon: Image,
     bgColor: 'bg-cyan-500/10',
     borderColor: 'border-cyan-500/20',
-    textColor: 'text-cyan-400',
+    textColor: 'text-cyan-500',
   },
   ai: {
     icon: Sparkles,
-    bgColor: 'bg-indigo-500/10',
-    borderColor: 'border-indigo-500/20',
-    textColor: 'text-indigo-400',
+    bgColor: 'bg-primary/10',
+    borderColor: 'border-primary/20',
+    textColor: 'text-primary',
   },
 };
 
@@ -70,10 +70,10 @@ const categoryConfig = {
  * 状态颜色配置
  */
 const statusColors = {
-  INFO: 'text-gray-400',
-  SUCCESS: 'text-green-400',
-  WARNING: 'text-orange-400',
-  ERROR: 'text-red-400',
+  INFO: 'text-[var(--text-muted)]',
+  SUCCESS: 'text-status-success',
+  WARNING: 'text-status-warning',
+  ERROR: 'text-status-danger',
 };
 
 interface RecentActivityProps {
@@ -115,10 +115,10 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
   const getColors = (category: ActivityEvent['eventCategory'], status: string) => {
     // 警告和错误状态使用特殊颜色
     if (status === 'WARNING') {
-      return { bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/20' };
+      return { bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border' };
     }
     if (status === 'ERROR') {
-      return { bgColor: 'bg-red-500/10', borderColor: 'border-red-500/20' };
+      return { bgColor: 'bg-status-danger-light', borderColor: 'border-status-danger-border' };
     }
     
     return categoryConfig[category] || categoryConfig.system;

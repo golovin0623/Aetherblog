@@ -228,20 +228,20 @@ export default function MediaPage() {
   // 删除确认处理 - 支持传入回调
   const handleDeleteConfirm = (id: number, onSuccess?: () => void) => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
-          <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg shrink-0">
-            <Trash2 className="w-5 h-5 text-red-500" />
+          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
+            <Trash2 className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">移入回收站？</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">移入回收站？</h3>
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               文件将移入回收站，可在回收站中恢复或彻底删除。
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -251,7 +251,7 @@ export default function MediaPage() {
                   toast.dismiss(t);
                   onSuccess?.();
                 }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
               >
                 确认删除
               </button>
@@ -391,20 +391,20 @@ export default function MediaPage() {
 
   const handleDeleteFolder = (folderId: number) => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
-          <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg shrink-0">
-            <Trash2 className="w-5 h-5 text-red-500" />
+          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
+            <Trash2 className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">删除文件夹？</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">删除文件夹？</h3>
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               此操作将删除文件夹及其所有子文件夹和文件，无法撤销。
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -422,7 +422,7 @@ export default function MediaPage() {
                   }
                   toast.dismiss(t);
                 }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
               >
                 确认删除
               </button>
@@ -481,7 +481,7 @@ export default function MediaPage() {
           >
             <Trash2 className="w-5 h-5" />
             {trashCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-status-danger rounded-full">
                 {trashCount > 99 ? '99+' : trashCount}
               </span>
             )}
@@ -609,7 +609,7 @@ export default function MediaPage() {
               "w-1.5 h-10 rounded-full transition-all flex flex-col items-center justify-center gap-1",
               isResizing
                 ? "bg-primary shadow-[0_0_15px_rgba(99,102,241,0.5)] h-14"
-                : "bg-gray-300 dark:bg-zinc-700 group-hover:bg-primary group-hover:h-14"
+                : "bg-[var(--bg-quaternary)] dark:bg-[var(--bg-tertiary)] group-hover:bg-primary group-hover:h-14"
             )}>
               {/* 抓取点装饰 */}
               <div className="w-0.5 h-0.5 rounded-full bg-white/50" />
@@ -768,7 +768,7 @@ export default function MediaPage() {
                   }
                 }}
                 // 底部菜单 (Bottom Sheet)
-                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-white/85 dark:bg-zinc-900/85 backdrop-blur-xl rounded-t-3xl border-t border-white/20 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col"
+                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-white/85/85 backdrop-blur-xl rounded-t-3xl border-t border-white/20 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col"
               >
                 {/* 拖拽手柄 */}
                 <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={() => setSelectedMedia(null)}>
@@ -867,20 +867,20 @@ export default function MediaPage() {
                     const count = selectedIds.size;
                     const ids = Array.from(selectedIds);
                     toast.custom((t) => (
-                      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+                      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
                         <div className="flex items-start gap-4">
-                          <div className="p-2 bg-red-100 dark:bg-red-500/10 rounded-lg shrink-0">
-                            <Trash2 className="w-5 h-5 text-red-500" />
+                          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
+                            <Trash2 className="w-5 h-5 text-status-danger" />
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">批量移入回收站?</h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">批量移入回收站?</h3>
+                            <p className="text-xs text-[var(--text-muted)] mb-4">
                               选中的 {count} 个文件将移入回收站，可在回收站中恢复或彻底删除。
                             </p>
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => toast.dismiss(t)}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                               >
                                 取消
                               </button>
@@ -889,7 +889,7 @@ export default function MediaPage() {
                                   batchDeleteMutation.mutate(ids);
                                   toast.dismiss(t);
                                 }}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
                               >
                                 确认删除
                               </button>
@@ -899,7 +899,7 @@ export default function MediaPage() {
                       </div>
                     ), { duration: 5000 });
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 transition-all group"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-status-danger-light hover:bg-status-danger/20 border border-status-danger-border text-status-danger transition-all group"
                 >
                   <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-semibold">批量删除</span>
@@ -976,7 +976,7 @@ export default function MediaPage() {
           <div className="px-4 h-14 flex items-center justify-between border-b border-border shrink-0">
             <div className="flex items-center gap-3">
               <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary via-accent to-primary" />
                 <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
                 <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
                 <FolderOpen className="absolute inset-0 m-auto w-4 h-4 text-white drop-shadow-md" />

@@ -91,7 +91,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         className={cn(
           "relative z-10 w-full max-w-6xl h-full max-h-[85vh]",
           "flex flex-col rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.5)]",
-          "bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl"
+          "bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-2xl"
         )}
         onClick={(e) => e.stopPropagation()}
       >
@@ -139,7 +139,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             </button>
             <button
               onClick={() => onDelete(currentItem.id)}
-              className="p-2.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+              className="p-2.5 text-status-danger hover:text-status-danger hover:bg-status-danger-light rounded-xl transition-all"
               title="删除"
             >
               <Trash2 className="w-4 h-4" />

@@ -96,7 +96,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
       )}
       {/* 状态点 */}
       <div
-        className={`w-2 h-2 rounded-full flex-shrink-0 ${model.is_enabled ? 'bg-emerald-400' : 'bg-[var(--border-default)]'
+        className={`w-2 h-2 rounded-full flex-shrink-0 ${model.is_enabled ? 'bg-status-success' : 'bg-[var(--border-default)]'
           }`}
       />
 
@@ -131,7 +131,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0, opacity: 0 }}
-                  className="flex items-center gap-1 text-emerald-500 text-[10px]"
+                  className="flex items-center gap-1 text-status-success text-[10px]"
                 >
                   <Check className="w-3.5 h-3.5" />
                   已复制 ID
@@ -153,7 +153,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[11px] text-[var(--text-muted)]">
           {contextWindow && <span className="bg-[var(--bg-card)] px-1 rounded">CW {formatContextWindow(contextWindow)}</span>}
           {maxOutputTokens && <span className="bg-[var(--bg-card)] px-1 rounded">Out {formatContextWindow(maxOutputTokens)}</span>}
-          {legacy && <span className="text-amber-500 font-medium">Legacy</span>}
+          {legacy && <span className="text-status-warning font-medium">Legacy</span>}
           {releaseAt && <span>{releaseAt}</span>}
           {priceTags.map((tag) => (
             <span key={tag} className="opacity-80 ">{tag}</span>
@@ -167,9 +167,9 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         )}
 
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          {abilities.functionCall && <CapabilityBadge icon={Wand2} title="工具" color="text-blue-500 bg-blue-500/10" />}
-          {abilities.vision && <CapabilityBadge icon={Eye} title="视觉" color="text-emerald-500 bg-emerald-500/10" />}
-          {abilities.reasoning && <CapabilityBadge icon={Brain} title="推理" color="text-purple-500 bg-purple-500/10" />}
+          {abilities.functionCall && <CapabilityBadge icon={Wand2} title="工具" color="text-status-info bg-status-info-light" />}
+          {abilities.vision && <CapabilityBadge icon={Eye} title="视觉" color="text-status-success bg-status-success-light" />}
+          {abilities.reasoning && <CapabilityBadge icon={Brain} title="推理" color="text-accent bg-accent/10" />}
           {abilities.imageOutput && <CapabilityBadge icon={Image} title="绘画" color="text-pink-500 bg-pink-500/10" />}
           {abilities.search && <CapabilityBadge icon={Globe} title="搜索" color="text-cyan-500 bg-cyan-500/10" />}
           {abilities.video && <CapabilityBadge icon={Video} title="视频" />}
@@ -199,7 +199,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         <button
           onClick={handleToggle}
           disabled={toggleMutation.isPending || readOnly}
-          className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-out flex-shrink-0 focus:outline-none flex items-center ${model.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-zinc-800'
+          className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-out flex-shrink-0 focus:outline-none flex items-center ${model.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-[var(--bg-secondary)]'
             } ${toggleMutation.isPending || readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <motion.div

@@ -34,24 +34,24 @@ export function SeoOptimizerPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">SEO 优化</h1>
-        <p className="text-gray-400 mt-1">AI 生成 SEO 友好的标题、描述和关键词</p>
+        <p className="text-[var(--text-muted)] mt-1">AI 生成 SEO 友好的标题、描述和关键词</p>
       </div>
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-3">
-          <label className="text-sm font-medium text-gray-300">文章内容</label>
+          <label className="text-sm font-medium text-[var(--text-tertiary)]">文章内容</label>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="粘贴文章内容，获取SEO优化建议..."
-            className="w-full h-96 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+            className="w-full h-96 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
           />
         </div>
 
         <div className="space-y-4">
           {isLoading ? (
             <div className="h-96 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <div className="flex items-center gap-2 text-gray-400">
+              <div className="flex items-center gap-2 text-[var(--text-muted)]">
                 <RefreshCw className="w-5 h-5 animate-spin" />
                 AI 正在分析...
               </div>
@@ -60,12 +60,12 @@ export function SeoOptimizerPage() {
             <>
               <div className="p-4 rounded-xl bg-white/5 border border-white/10">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-400">优化标题</span>
+                  <span className="text-sm text-[var(--text-muted)]">优化标题</span>
                   <button
                     onClick={() => copyToClipboard(result.title, 'title')}
                     className="p-1.5 rounded hover:bg-white/10"
                   >
-                    {copied === 'title' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-gray-400" />}
+                    {copied === 'title' ? <Check className="w-4 h-4 text-status-success" /> : <Copy className="w-4 h-4 text-[var(--text-muted)]" />}
                   </button>
                 </div>
                 <p className="text-white">{result.title}</p>
@@ -73,19 +73,19 @@ export function SeoOptimizerPage() {
 
               <div className="p-4 rounded-xl bg-white/5 border border-white/10">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-400">Meta 描述</span>
+                  <span className="text-sm text-[var(--text-muted)]">Meta 描述</span>
                   <button
                     onClick={() => copyToClipboard(result.metaDescription, 'meta')}
                     className="p-1.5 rounded hover:bg-white/10"
                   >
-                    {copied === 'meta' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-gray-400" />}
+                    {copied === 'meta' ? <Check className="w-4 h-4 text-status-success" /> : <Copy className="w-4 h-4 text-[var(--text-muted)]" />}
                   </button>
                 </div>
                 <p className="text-white">{result.metaDescription}</p>
               </div>
 
               <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <span className="text-sm text-gray-400 block mb-2">推荐关键词</span>
+                <span className="text-sm text-[var(--text-muted)] block mb-2">推荐关键词</span>
                 <div className="flex flex-wrap gap-2">
                   {result.keywords.map((kw) => (
                     <span key={kw} className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm">
@@ -97,7 +97,7 @@ export function SeoOptimizerPage() {
             </>
           ) : (
             <div className="h-96 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <span className="text-gray-500">优化建议将显示在这里</span>
+              <span className="text-[var(--text-muted)]">优化建议将显示在这里</span>
             </div>
           )}
         </div>

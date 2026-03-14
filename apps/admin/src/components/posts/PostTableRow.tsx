@@ -43,13 +43,13 @@ const PostTableRow = memo(({
           {(post.isHidden || post.passwordRequired) && (
             <div className="mt-1 flex items-center gap-2">
               {post.isHidden && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                <span className="inline-flex items-center gap-1 text-[10px] text-status-warning">
                   <EyeOff className="w-3 h-3" />
                   已隐藏
                 </span>
               )}
               {post.passwordRequired && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
+                <span className="inline-flex items-center gap-1 text-[10px] text-status-info">
                   <Lock className="w-3 h-3" />
                   已加密
                 </span>
@@ -164,7 +164,7 @@ const PostTableRow = memo(({
           <button
             onClick={(e) => onDelete(post, e)}
             disabled={actionLoading}
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-red-400 transition-all duration-200 disabled:opacity-50"
+            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-status-danger transition-all duration-200 disabled:opacity-50"
             title="删除"
           >
             <Trash2 className="w-4 h-4" />

@@ -754,7 +754,7 @@ export default function ModelConfigDialog({
           </div>
 
           {jsonError && (
-            <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
+            <div className="text-sm text-status-danger bg-status-danger-light border border-status-danger-border px-3 py-2 rounded-lg">
               {jsonError}
             </div>
           )}
@@ -766,7 +766,7 @@ export default function ModelConfigDialog({
             <button
               onClick={handleDelete}
               disabled={isPending}
-              className="px-4 py-2 rounded-xl border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              className="px-4 py-2 rounded-xl border border-status-danger-border text-status-danger text-sm font-medium hover:bg-status-danger-light transition-colors disabled:opacity-50"
             >
               删除模型
             </button>

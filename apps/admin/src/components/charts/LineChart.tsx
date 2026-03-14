@@ -86,7 +86,7 @@ export function LineChart({
 
       {/* Labels */}
       {showLabels && (
-        <div className="flex justify-between mt-2 text-xs text-gray-500">
+        <div className="flex justify-between mt-2 text-xs text-[var(--text-muted)]">
           {data.map((d, i) => (
             <span key={i}>{d.label}</span>
           ))}
