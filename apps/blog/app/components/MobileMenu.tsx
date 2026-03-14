@@ -334,9 +334,10 @@ const MobileMenu = memo(function MobileMenu() {
       {/* 汉堡按钮 */}
       <button
         ref={triggerButtonRef}
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-        aria-label="Toggle Menu"
+        className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg"
+        aria-label={isOpen ? "关闭导航菜单" : "打开导航菜单"}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
         aria-controls="mobile-menu-drawer"

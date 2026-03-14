@@ -387,8 +387,9 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                     {searchHistory.map((item) => (
                       <button
                         key={item}
+                        type="button"
                         onClick={() => setQuery(item)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-transparent"
                       >
                         <Clock className="h-3 w-3 text-[var(--text-muted)]" />
                         {item}
@@ -408,9 +409,10 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                   {TRENDING_SEARCHES.map((item, index) => (
                     <button
                       key={item}
+                      type="button"
                       onClick={handleTrendingClick}
                       data-term={item}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-transparent"
                     >
                       <span className="text-xs font-bold text-primary/60">{index + 1}</span>
                       {item}
@@ -458,9 +460,10 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                   {TRENDING_SEARCHES.map((item) => (
                     <button
                       key={item}
+                      type="button"
                       onClick={handleTrendingClick}
                       data-term={item}
-                      className="px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all"
+                      className="px-3 py-1.5 rounded-full text-sm bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-transparent"
                     >
                       {item}
                     </button>
