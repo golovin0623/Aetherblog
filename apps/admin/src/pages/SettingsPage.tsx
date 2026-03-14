@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
+import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 
 // Setting Metadata Definition
 // Helps mapping raw keys to UI labels and input types
-type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links';
+type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links' | 'image-upload';
 
 interface SettingField {
   key: string;
@@ -25,6 +26,7 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     icon: Globe,
     fields: [
       { key: 'site_name', label: '站点名称', type: 'text', placeholder: 'AetherBlog' },
+      { key: 'site_logo', label: '站点Logo', type: 'image-upload', description: '上传站点Logo图片，将替换导航栏中的默认字母图标。建议使用正方形透明背景的PNG图片' },
       { key: 'site_description', label: '站点描述', type: 'textarea', description: '用于 SEO 和首页展示' },
       { key: 'site_url', label: '站点地址', type: 'url', placeholder: 'https://example.com' },
       { key: 'site_keywords', label: '关键词', type: 'text', description: '逗号分隔，如: tech, blog, react' },
@@ -99,6 +101,129 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     ]
   }
 };
+
+/** 图片上传字段组件 */
+function ImageUploadField({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const resolvedUrl = value ? getMediaUrl(value) : '';
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 校验文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件');
+      return;
+    }
+    // 校验文件大小 (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('图片大小不能超过 5MB');
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const result = await mediaService.upload(file, (percent) => {
+        setUploadProgress(percent);
+      });
+      const url = result.fileUrl;
+      onChange(url);
+      toast.success('Logo 上传成功');
+    } catch {
+      toast.error('Logo 上传失败');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      // 重置 input 以允许重复选择同一文件
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemove = () => {
+    onChange('');
+  };
+
+  return (
+    <div className="space-y-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
+      {resolvedUrl ? (
+        <div className="flex items-center gap-4">
+          {/* 预览 */}
+          <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--bg-input)] flex-shrink-0">
+            <img
+              src={resolvedUrl}
+              alt="站点Logo"
+              className="w-full h-full object-contain"
+            />
+          </div>
+          {/* 操作 */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors text-sm"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              更换
+            </button>
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-sm"
+            >
+              <X className="w-3.5 h-3.5" />
+              移除
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="w-full flex items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-muted)] hover:border-primary/40 hover:text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all cursor-pointer"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">上传中 {uploadProgress}%</span>
+            </>
+          ) : (
+            <>
+              <ImageIcon className="w-5 h-5" />
+              <span className="text-sm">点击上传Logo图片</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {/* 上传进度条 */}
+      {uploading && (
+        <div className="w-full h-1 rounded-full bg-[var(--bg-input)] overflow-hidden">
+          <motion.div
+            className="h-full bg-primary rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${uploadProgress}%` }}
+            transition={{ duration: 0.2 }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
@@ -334,6 +459,11 @@ export default function SettingsPage() {
                         }
                       })()}
                       onChange={(links) => handleInputChange(field.key, links)}
+                    />
+                  ) : field.type === 'image-upload' ? (
+                    <ImageUploadField
+                      value={formData[field.key] || ''}
+                      onChange={(url) => handleInputChange(field.key, url)}
                     />
                   ) : null}
 
