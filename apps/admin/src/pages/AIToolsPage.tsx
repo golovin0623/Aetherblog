@@ -313,7 +313,7 @@ export default function AIToolsPage() {
         {/* Menu button - fixed left */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-zinc-100 dark:active:bg-zinc-800"
+          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -362,7 +362,7 @@ export default function AIToolsPage() {
             setEditingTool(null);
             setShowToolModal(true);
           }}
-          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-zinc-100 dark:active:bg-zinc-800"
+          className="flex-shrink-0 w-14 h-full flex items-center justify-center border-l border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -387,7 +387,7 @@ export default function AIToolsPage() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 1 }}
-              className="md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[85vw] max-w-[280px] flex flex-col bg-white dark:bg-zinc-950 border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
+              className="md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[85vw] max-w-[280px] flex flex-col bg-white dark:bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
             >
 
               {/* Header */}
@@ -627,7 +627,7 @@ function SortableToolItem({
         'relative w-full min-w-0 flex items-center gap-4 px-4 py-4 rounded-2xl text-left transition-all duration-300 cursor-grab active:cursor-grabbing select-none group',
         'border mb-2 overflow-hidden',
         isSelected
-          ? 'bg-white dark:bg-zinc-800 shadow-md ring-1 ring-primary/20 text-[var(--text-primary)] font-bold z-10'
+          ? 'bg-white dark:bg-[var(--bg-secondary)] shadow-md ring-1 ring-primary/20 text-[var(--text-primary)] font-bold z-10'
           : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
         isDragging && 'opacity-80 ring-2 ring-primary/20 scale-[1.02] z-50 shadow-2xl'
       )}

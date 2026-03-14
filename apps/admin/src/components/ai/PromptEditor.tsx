@@ -48,7 +48,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Header Area */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/30 backdrop-blur-md z-20 flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="p-1.5 sm:p-2 rounded-xl bg-black text-white dark:bg-zinc-800 dark:text-white border border-zinc-200 dark:border-zinc-700 flex-shrink-0">
+          <div className="p-1.5 sm:p-2 rounded-xl bg-black text-white dark:bg-[var(--bg-secondary)] dark:text-white border border-[var(--border-default)] flex-shrink-0">
             <Terminal className="w-4 h-4" />
           </div>
           <div className="min-w-0">
@@ -79,7 +79,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             <div className="flex items-center gap-1 sm:gap-1.5 animate-in fade-in slide-in-from-right-4 duration-300">
               <button
                 onClick={handleReset}
-                className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-[9px] sm:text-[10px] font-black bg-red-500/10 text-red-500 hover:bg-red-500/20 uppercase tracking-widest transition-all"
+                className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-[9px] sm:text-[10px] font-black bg-status-danger-light text-status-danger hover:bg-status-danger/20 uppercase tracking-widest transition-all"
               >
                 Discard
               </button>
@@ -108,7 +108,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       <div className="flex-1 relative min-h-0 flex flex-col group/editor overflow-hidden">
         {showDefault ? (
           <div className="flex-1 overflow-y-auto p-3 sm:p-8 bg-[var(--bg-card)]/20 animate-in fade-in zoom-in-95 duration-300 no-scrollbar">
-            <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 mb-3 sm:mb-6">
+            <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-5 rounded-2xl bg-[var(--bg-tertiary)] dark:bg-[var(--bg-secondary)]/50 border border-[var(--border-default)] mb-3 sm:mb-6">
               <Info className="w-4 h-4 text-black dark:text-white mt-0.5 shrink-0" />
               <div className="space-y-1">
                 <p className="text-[11px] sm:text-xs font-bold text-black dark:text-white uppercase tracking-tighter">System Strategy Preview</p>

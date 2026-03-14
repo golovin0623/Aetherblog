@@ -25,20 +25,20 @@ import { activityService, ActivityEvent, ActivityQueryParams } from '@/services/
  * 事件类别配置
  */
 const categoryConfig = {
-  post: { icon: FileText, label: '文章', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/20', textColor: 'text-blue-400' },
-  comment: { icon: MessageSquare, label: '评论', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/20', textColor: 'text-green-400' },
-  user: { icon: User, label: '用户', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500/20', textColor: 'text-purple-400' },
-  system: { icon: Settings, label: '系统', bgColor: 'bg-gray-500/10', borderColor: 'border-gray-500/20', textColor: 'text-gray-400' },
+  post: { icon: FileText, label: '文章', bgColor: 'bg-status-info-light', borderColor: 'border-status-info-border', textColor: 'text-status-info' },
+  comment: { icon: MessageSquare, label: '评论', bgColor: 'bg-status-success-light', borderColor: 'border-status-success-border', textColor: 'text-status-success' },
+  user: { icon: User, label: '用户', bgColor: 'bg-accent/10', borderColor: 'border-accent/20', textColor: 'text-accent' },
+  system: { icon: Settings, label: '系统', bgColor: 'bg-[var(--bg-tertiary)]', borderColor: 'border-[var(--border-default)]', textColor: 'text-[var(--text-muted)]' },
   friend: { icon: Link, label: '友链', bgColor: 'bg-pink-500/10', borderColor: 'border-pink-500/20', textColor: 'text-pink-400' },
   media: { icon: Image, label: '媒体', bgColor: 'bg-cyan-500/10', borderColor: 'border-cyan-500/20', textColor: 'text-cyan-400' },
-  ai: { icon: Sparkles, label: 'AI', bgColor: 'bg-indigo-500/10', borderColor: 'border-indigo-500/20', textColor: 'text-indigo-400' },
+  ai: { icon: Sparkles, label: 'AI', bgColor: 'bg-primary/10', borderColor: 'border-primary/20', textColor: 'text-primary' },
 };
 
 const statusConfig = {
-  INFO: { label: '信息', color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
-  SUCCESS: { label: '成功', color: 'text-green-400', bgColor: 'bg-green-500/10' },
-  WARNING: { label: '警告', color: 'text-orange-400', bgColor: 'bg-orange-500/10' },
-  ERROR: { label: '错误', color: 'text-red-400', bgColor: 'bg-red-500/10' },
+  INFO: { label: '信息', color: 'text-[var(--text-muted)]', bgColor: 'bg-[var(--bg-tertiary)]' },
+  SUCCESS: { label: '成功', color: 'text-status-success', bgColor: 'bg-status-success-light' },
+  WARNING: { label: '警告', color: 'text-status-warning', bgColor: 'bg-status-warning-light' },
+  ERROR: { label: '错误', color: 'text-status-danger', bgColor: 'bg-status-danger-light' },
 };
 
 const categories = ['all', 'post', 'comment', 'user', 'system', 'friend', 'media', 'ai'] as const;
@@ -73,7 +73,7 @@ export default function ActivitiesPage() {
 
   const getIcon = (category: ActivityEvent['eventCategory'], status: string) => {
     if (status === 'WARNING' || status === 'ERROR') {
-      return <AlertTriangle className={cn('w-5 h-5', status === 'WARNING' ? 'text-orange-400' : 'text-red-400')} />;
+      return <AlertTriangle className={cn('w-5 h-5', status === 'WARNING' ? 'text-status-warning' : 'text-status-danger')} />;
     }
     const config = categoryConfig[category] || categoryConfig.system;
     const Icon = config.icon;
@@ -81,8 +81,8 @@ export default function ActivitiesPage() {
   };
 
   const getColors = (category: ActivityEvent['eventCategory'], status: string) => {
-    if (status === 'WARNING') return { bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/20' };
-    if (status === 'ERROR') return { bgColor: 'bg-red-500/10', borderColor: 'border-red-500/20' };
+    if (status === 'WARNING') return { bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border' };
+    if (status === 'ERROR') return { bgColor: 'bg-status-danger-light', borderColor: 'border-status-danger-border' };
     return categoryConfig[category] || categoryConfig.system;
   };
 

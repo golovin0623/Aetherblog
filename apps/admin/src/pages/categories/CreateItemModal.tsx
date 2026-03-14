@@ -82,7 +82,7 @@ export function CreateItemModal({
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
             className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-md"
           >
-            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl">
+            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-2xl">
               {/* 头部 */}
               <div className="relative flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)]">
                 <div className="flex items-center gap-3">
@@ -90,7 +90,7 @@ export function CreateItemModal({
                     'p-2 rounded-xl',
                     isCategory 
                       ? 'bg-primary/10 text-primary' 
-                      : 'bg-blue-500/10 text-blue-400'
+                      : 'bg-status-info-light text-status-info'
                   )}>
                     <Icon className="w-5 h-5" />
                   </div>
@@ -115,7 +115,7 @@ export function CreateItemModal({
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-[var(--text-secondary)]">
                     {isCategory ? '分类名称' : '标签名称'}
-                    <span className="text-red-400 ml-1">*</span>
+                    <span className="text-status-danger ml-1">*</span>
                   </label>
                   <input
                     ref={inputRef}

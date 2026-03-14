@@ -22,19 +22,19 @@ export function GeoMap({ data }: GeoMapProps) {
           <div key={item.country} className="space-y-1">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-6 text-center text-sm text-gray-500">{index + 1}</span>
+                <span className="w-6 text-center text-sm text-[var(--text-muted)]">{index + 1}</span>
                 <span className="text-white">{item.country}</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-gray-400">{item.count.toLocaleString()}</span>
-                <span className="text-gray-500 text-sm w-12 text-right">
+                <span className="text-[var(--text-muted)]">{item.count.toLocaleString()}</span>
+                <span className="text-[var(--text-muted)] text-sm w-12 text-right">
                   {item.percentage.toFixed(1)}%
                 </span>
               </div>
             </div>
             <div className="ml-8 h-2 rounded-full bg-white/10 overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-purple-400 transition-all duration-500"
+                className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-500"
                 style={{ width: `${(item.count / maxCount) * 100}%` }}
               />
             </div>
@@ -43,7 +43,7 @@ export function GeoMap({ data }: GeoMapProps) {
       </div>
 
       {/* Legend */}
-      <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-sm text-gray-400">
+      <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-sm text-[var(--text-muted)]">
         <span>总访问量: {sortedData.reduce((sum, d) => sum + d.count, 0).toLocaleString()}</span>
         <span>共 {sortedData.length} 个地区</span>
       </div>

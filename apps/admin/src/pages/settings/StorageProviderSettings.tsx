@@ -131,7 +131,7 @@ export default function StorageProviderSettings() {
                     )}
 
                     {!provider.isEnabled && (
-                      <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs font-medium rounded-full">
+                      <span className="px-2 py-0.5 bg-status-danger/20 text-status-danger text-xs font-medium rounded-full">
                         已禁用
                       </span>
                     )}
@@ -169,7 +169,7 @@ export default function StorageProviderSettings() {
                     <button
                       onClick={() => setDefaultMutation.mutate(provider.id)}
                       disabled={setDefaultMutation.isPending}
-                      className="p-2 text-[var(--text-secondary)] hover:text-green-400 hover:bg-green-400/10 rounded-lg transition-colors"
+                      className="p-2 text-[var(--text-secondary)] hover:text-status-success hover:bg-status-success-light rounded-lg transition-colors"
                       title="设为默认"
                     >
                       <Check className="w-4 h-4" />
@@ -179,7 +179,7 @@ export default function StorageProviderSettings() {
                   <button
                     onClick={() => handleDelete(provider.id)}
                     disabled={provider.isDefault || deleteMutation.isPending}
-                    className="p-2 text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-2 text-[var(--text-secondary)] hover:text-status-danger hover:bg-status-danger-light rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="删除"
                   >
                     <Trash2 className="w-4 h-4" />

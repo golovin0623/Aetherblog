@@ -36,11 +36,11 @@ interface PostPropertiesModalProps {
 }
 
 const TAG_COLORS = [
-  { border: 'border-violet-500/30', bg: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-300', icon: 'text-violet-500 dark:text-violet-400', glow: 'shadow-violet-500/10' },
-  { border: 'border-blue-500/30', bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-300', icon: 'text-blue-500 dark:text-blue-400', glow: 'shadow-blue-500/10' },
-  { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-300', icon: 'text-emerald-500 dark:text-emerald-400', glow: 'shadow-emerald-500/10' },
+  { border: 'border-accent/30', bg: 'bg-accent/10', text: 'text-accent', icon: 'text-accent', glow: 'shadow-accent/10' },
+  { border: 'border-status-info-border', bg: 'bg-status-info-light', text: 'text-status-info', icon: 'text-status-info', glow: 'shadow-status-info/10' },
+  { border: 'border-status-success-border', bg: 'bg-status-success-light', text: 'text-status-success', icon: 'text-status-success', glow: 'shadow-status-success/10' },
   { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-600 dark:text-rose-300', icon: 'text-rose-500 dark:text-rose-400', glow: 'shadow-rose-500/10' },
-  { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-300', icon: 'text-amber-500 dark:text-amber-400', glow: 'shadow-amber-500/10' },
+  { border: 'border-status-warning-border', bg: 'bg-status-warning-light', text: 'text-status-warning', icon: 'text-status-warning', glow: 'shadow-status-warning/10' },
   { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-600 dark:text-cyan-300', icon: 'text-cyan-500 dark:text-cyan-400', glow: 'shadow-cyan-500/10' },
 ];
 
@@ -373,7 +373,7 @@ export function PostPropertiesModal({
           {/* 标题 */}
           <div>
             <label className={labelClass}>
-              <span className="text-red-400">*</span> 文章标题
+              <span className="text-status-danger">*</span> 文章标题
             </label>
             <input
               type="text"
@@ -467,7 +467,7 @@ export function PostPropertiesModal({
           {/* 分类 */}
           <div>
             <label className={labelClass}>
-              <span className="text-red-400">*</span> 分类
+              <span className="text-status-danger">*</span> 分类
             </label>
             <div className="relative">
               <select
@@ -484,7 +484,7 @@ export function PostPropertiesModal({
                 ))}
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
               </div>
             </div>
           </div>
@@ -630,14 +630,14 @@ export function PostPropertiesModal({
                       setClearPassword(true);
                       setFormData({ ...formData, password: '' });
                     }}
-                    className="mt-1.5 text-[11px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                    className="mt-1.5 text-[11px] text-status-danger hover:text-status-danger transition-colors flex items-center gap-1"
                   >
                     <Trash2 className="w-3 h-3" />
                     清除密码保护
                   </button>
                 )}
                 {clearPassword && (
-                  <p className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1">
+                  <p className="mt-1.5 text-[11px] text-status-warning flex items-center gap-1">
                     ℹ 保存后将清除密码保护
                   </p>
                 )}
@@ -654,7 +654,7 @@ export function PostPropertiesModal({
                 onClick={() => setFormData({ ...formData, isHidden: !formData.isHidden })}
                 className={cn(
                   "relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors",
-                  formData.isHidden ? "bg-amber-500/80" : "bg-gray-300 dark:bg-[var(--bg-tertiary)]"
+                  formData.isHidden ? "bg-status-warning/80" : "bg-[var(--bg-quaternary)] dark:bg-[var(--bg-tertiary)]"
                 )}
               >
                 <span

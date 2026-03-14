@@ -31,10 +31,10 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
   };
 
   const actions = [
-    { id: 'continue', label: '续写', icon: Wand2, color: 'text-purple-400' },
-    { id: 'polish', label: '润色', icon: Sparkles, color: 'text-blue-400' },
-    { id: 'summary', label: '摘要', icon: Lightbulb, color: 'text-yellow-400' },
-    { id: 'tags', label: '标签', icon: Tags, color: 'text-green-400' },
+    { id: 'continue', label: '续写', icon: Wand2, color: 'text-accent' },
+    { id: 'polish', label: '润色', icon: Sparkles, color: 'text-status-info' },
+    { id: 'summary', label: '摘要', icon: Lightbulb, color: 'text-status-warning' },
+    { id: 'tags', label: '标签', icon: Tags, color: 'text-status-success' },
   ];
 
   return (
@@ -49,9 +49,9 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
           <span className="font-medium text-white">AI 助手</span>
         </div>
         {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
         )}
       </button>
 
@@ -67,14 +67,14 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50"
               >
                 <action.icon className={`w-4 h-4 ${action.color}`} />
-                <span className="text-sm text-gray-300">{action.label}</span>
+                <span className="text-sm text-[var(--text-tertiary)]">{action.label}</span>
               </button>
             ))}
           </div>
 
           {/* 加载中 */}
           {isLoading && (
-            <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <div className="flex items-center gap-2 text-[var(--text-muted)] text-sm">
               <RefreshCw className="w-4 h-4 animate-spin" />
               AI 正在处理...
             </div>
@@ -88,11 +88,11 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
                   key={i}
                   className="p-3 rounded-lg bg-white/5 border border-white/10"
                 >
-                  <p className="text-sm text-gray-300">{suggestion}</p>
+                  <p className="text-sm text-[var(--text-tertiary)]">{suggestion}</p>
                   <div className="flex justify-end gap-2 mt-2">
                     <button
                       onClick={() => setSuggestions([])}
-                      className="px-3 py-1 text-xs text-gray-400 hover:text-white"
+                      className="px-3 py-1 text-xs text-[var(--text-muted)] hover:text-white"
                     >
                       取消
                     </button>
@@ -112,7 +112,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
           )}
 
           {!content && (
-            <p className="text-xs text-gray-500">请先输入内容后使用 AI 助手</p>
+            <p className="text-xs text-[var(--text-muted)]">请先输入内容后使用 AI 助手</p>
           )}
         </div>
       )}

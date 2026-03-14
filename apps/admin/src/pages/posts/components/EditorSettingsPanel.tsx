@@ -181,10 +181,10 @@ export function EditorSettingsPanel({
           <div className="max-h-40 overflow-y-auto space-y-1">
             {loadingCategories ? (
               <div className="py-4 text-center">
-                <Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-500" />
+                <Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--text-muted)]" />
               </div>
             ) : filteredCategories.length === 0 ? (
-              <div className="py-3 text-center text-sm text-gray-500">暂无分类</div>
+              <div className="py-3 text-center text-sm text-[var(--text-muted)]">暂无分类</div>
             ) : (
               filteredCategories.map(cat => (
                 <button
@@ -323,7 +323,7 @@ export function EditorSettingsPanel({
       <SettingsSection title="摘要" icon={FileText}>
         <div className="pt-3 space-y-2">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-[var(--text-muted)]">
               {summary.length} / 200 字符
             </span>
             <button

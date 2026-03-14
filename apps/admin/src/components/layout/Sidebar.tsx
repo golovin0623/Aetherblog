@@ -198,7 +198,7 @@ function SidebarContent({
           {/* 光泽感 Logo */}
           <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
             {/* 基础渐变 */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary via-purple-500 to-indigo-600" />
+            <div className="absolute inset-0 bg-[image:var(--gradient-primary)]" />
             {/* 玻璃光泽叠加 */}
             <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
             {/* 内部发光 */}
@@ -214,7 +214,7 @@ function SidebarContent({
           )}>
             <span className={cn(
               'font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] whitespace-nowrap transition-all duration-200',
-              !isMobile && 'group-hover:from-primary group-hover:to-purple-400'
+              !isMobile && 'group-hover:from-primary group-hover:to-accent'
             )}>
               AetherBlog
             </span>
@@ -263,7 +263,7 @@ function SidebarContent({
               className={cn(
                 'w-full px-3 py-1.5 rounded-lg text-sm',
                 'bg-[var(--bg-card)] border border-border',
-                'text-[var(--text-primary)] placeholder-gray-500',
+                'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
                 'focus:outline-none focus:border-primary/50',
                 'transition-colors duration-200'
               )}
@@ -383,7 +383,7 @@ function SidebarContent({
                 <User className="w-4 h-4 text-primary" />
               )}
             </div>
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[var(--bg-primary)]" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-status-success rounded-full border border-[var(--bg-primary)]" />
           </div>
 
           {!effectiveCollapsed && (
@@ -426,7 +426,7 @@ function SidebarContent({
                 }}
                 className={cn(
                   'p-1.5 rounded-md transform-gpu will-change-transform',
-                  'text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--bg-card-hover)]',
+                  'text-[var(--text-muted)] hover:text-status-danger hover:bg-[var(--bg-card-hover)]',
                   'transition-colors duration-150'
                 )}
                 title="退出登录"

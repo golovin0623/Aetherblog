@@ -146,8 +146,8 @@ export default function ConnectionTest({
         <div
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
             result.success
-              ? 'bg-emerald-500/10 text-emerald-500'
-              : 'bg-red-500/10 text-red-500'
+              ? 'bg-status-success-light text-status-success'
+              : 'bg-status-danger-light text-status-danger'
           }`}
         >
           {result.success ? (

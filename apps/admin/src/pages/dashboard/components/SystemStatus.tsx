@@ -46,15 +46,15 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
 
   const colorMap: Record<string, string> = {
     primary: 'bg-primary',
-    green: 'bg-green-500',
-    blue: 'bg-blue-500',
-    orange: 'bg-orange-500',
-    red: 'bg-red-500',
+    green: 'bg-status-success',
+    blue: 'bg-status-info',
+    orange: 'bg-status-warning',
+    red: 'bg-status-danger',
   };
 
   const getBarColor = () => {
-    if (safeValue > 90) return 'bg-red-500';
-    if (safeValue > 75) return 'bg-orange-500';
+    if (safeValue > 90) return 'bg-status-danger';
+    if (safeValue > 75) return 'bg-status-warning';
     return colorMap[color] || 'bg-primary';
   };
 
@@ -233,18 +233,18 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
           <div className={cn(
             "flex items-center gap-2 px-2 py-1 rounded border",
             error 
-              ? "bg-red-500/10 border-red-500/20" 
-              : "bg-green-500/10 border-green-500/20"
+              ? "bg-status-danger-light border-status-danger-border" 
+              : "bg-status-success-light border-status-success-border"
           )}>
             {error ? (
               <>
-                <XCircle className="w-3.5 h-3.5 text-red-400" />
-                <span className="text-xs font-medium text-red-400">{error}</span>
+                <XCircle className="w-3.5 h-3.5 text-status-danger" />
+                <span className="text-xs font-medium text-status-danger">{error}</span>
               </>
             ) : (
               <>
-                <Activity className="w-3.5 h-3.5 text-green-400" />
-                <span className="text-xs font-medium text-green-400">运行正常</span>
+                <Activity className="w-3.5 h-3.5 text-status-success" />
+                <span className="text-xs font-medium text-status-success">运行正常</span>
               </>
             )}
           </div>
@@ -348,26 +348,26 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
               >
                 <div className="flex items-center gap-1.5">
                   {service.status === 'up' ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-status-success" />
                   ) : service.status === 'warning' ? (
-                    <AlertCircle className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" />
+                    <AlertCircle className="w-3.5 h-3.5 text-status-warning" />
                   ) : (
-                    <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                    <XCircle className="w-3.5 h-3.5 text-status-danger" />
                   )}
                   <span className="text-[var(--text-secondary)] truncate max-w-[80px] sm:max-w-none">{service.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {/* ES 黄色状态说明 */}
                   {service.name === 'Elasticsearch' && service.status === 'warning' && (
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 whitespace-nowrap scale-90">
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-status-warning-light text-status-warning border border-status-warning-border whitespace-nowrap scale-90">
                       单节点
                     </span>
                   )}
                   {service.status === 'up' && (
                     <span className={cn(
                       "text-[10px] font-mono",
-                      service.latency < 100 ? "text-green-400" : 
-                      service.latency < 500 ? "text-yellow-400" : "text-red-400"
+                      service.latency < 100 ? "text-status-success" : 
+                      service.latency < 500 ? "text-status-warning" : "text-status-danger"
                     )}>
                       {service.latency}ms
                     </span>

@@ -479,9 +479,9 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
                           </div>
                         </div>
 
-                        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex gap-2">
-                          <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                          <p className="text-xs text-amber-600 dark:text-amber-200/80 leading-relaxed">
+                        <div className="p-2.5 rounded-lg bg-status-warning-light border border-status-warning-border flex gap-2">
+                          <AlertCircle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+                          <p className="text-xs text-status-warning leading-relaxed">
                             修改密码后，当前会话保持有效。建议定期更换密码。
                           </p>
                         </div>
