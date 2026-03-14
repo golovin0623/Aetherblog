@@ -188,54 +188,57 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
   if (isMobile) {
     return (
       <>
-        {/* FAB 按钮组 */}
-        <AnimatePresence>
-          {isVisible && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              transition={{ duration: 0.3 }}
-              className="fixed bottom-[88px] right-6 z-50 flex flex-col items-center gap-3"
-            >
-              {/* 目录按钮 */}
-              <button
-                onClick={() => setIsTocOpen(true)}
-                className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95"
-                aria-label="打开目录"
+        {/* FAB 按钮组 - Portal 到 body 以避免 PageTransition transform 影响 fixed 定位 */}
+        {mounted && createPortal(
+          <AnimatePresence>
+            {isVisible && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.3 }}
+                className="fixed bottom-[88px] right-6 z-50 flex flex-col items-center gap-3"
               >
-                <List className="w-5 h-5 text-primary" />
-              </button>
+                {/* 目录按钮 */}
+                <button
+                  onClick={() => setIsTocOpen(true)}
+                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95"
+                  aria-label="打开目录"
+                >
+                  <List className="w-5 h-5 text-primary" />
+                </button>
 
-              {/* 回顶部按钮 */}
-              <button
-                onClick={scrollToTop}
-                className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95"
-                aria-label="返回顶部"
-              >
-                <div className="relative flex items-center justify-center w-8 h-8">
-                  <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
-                    <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border-subtle)" strokeWidth="2" />
-                    <circle
-                      ref={circleRef}
-                      cx="22"
-                      cy="22"
-                      r="18"
-                      fill="none"
-                      stroke="var(--color-primary)"
-                      strokeWidth="2"
-                      strokeDasharray={STROKE_CIRCUMFERENCE}
-                      strokeDashoffset={STROKE_CIRCUMFERENCE}
-                      strokeLinecap="round"
-                      className="transition-all duration-75 ease-out"
-                    />
-                  </svg>
-                  <ArrowUp className="w-4 h-4 text-[var(--text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300" />
-                </div>
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {/* 回顶部按钮 */}
+                <button
+                  onClick={scrollToTop}
+                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95"
+                  aria-label="返回顶部"
+                >
+                  <div className="relative flex items-center justify-center w-8 h-8">
+                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+                      <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border-subtle)" strokeWidth="2" />
+                      <circle
+                        ref={circleRef}
+                        cx="22"
+                        cy="22"
+                        r="18"
+                        fill="none"
+                        stroke="var(--color-primary)"
+                        strokeWidth="2"
+                        strokeDasharray={STROKE_CIRCUMFERENCE}
+                        strokeDashoffset={STROKE_CIRCUMFERENCE}
+                        strokeLinecap="round"
+                        className="transition-all duration-75 ease-out"
+                      />
+                    </svg>
+                    <ArrowUp className="w-4 h-4 text-[var(--text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300" />
+                  </div>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
 
         {/* 移动端 TOC Bottom Sheet */}
         {mounted && createPortal(
@@ -301,24 +304,27 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
   // ─── PC端渲染 ───
   return (
     <>
-      {/* PC端 TOC 悬浮按钮 - 位于 ScrollToTop 按钮上方 */}
-      <AnimatePresence>
-        {isVisible && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            onClick={() => setIsTocOpen((prev) => !prev)}
-            className="fixed bottom-24 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-            aria-label="打开目录"
-          >
-            <div className="relative flex items-center justify-center w-10 h-10">
-              <List className="w-5 h-5 text-[var(--text-primary)] group-hover:text-primary transition-colors duration-300" />
-            </div>
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* PC端 TOC 悬浮按钮 - Portal 到 body 以避免 PageTransition transform 影响 fixed 定位 */}
+      {mounted && createPortal(
+        <AnimatePresence>
+          {isVisible && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => setIsTocOpen((prev) => !prev)}
+              className="fixed bottom-24 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+              aria-label="打开目录"
+            >
+              <div className="relative flex items-center justify-center w-10 h-10">
+                <List className="w-5 h-5 text-[var(--text-primary)] group-hover:text-primary transition-colors duration-300" />
+              </div>
+            </motion.button>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* PC端 TOC 浮动面板 */}
       {mounted && createPortal(
