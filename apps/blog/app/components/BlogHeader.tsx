@@ -5,11 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings2, Search } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
+import { useQuery } from '@tanstack/react-query';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
 import { SearchPanel } from './SearchPanel';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
+import { getSiteSettings } from '../lib/services';
+import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 /**
  * 博客共享头部组件
@@ -28,6 +31,14 @@ export default function BlogHeader() {
   const adminLinkConfig = getAdminLinkConfig();
   const adminHomeUrl = buildAdminUrl('/');
   const isAdminLinkAvailable = Boolean(adminHomeUrl);
+
+  // 获取站点设置中的 Logo
+  const { data: settings } = useQuery({
+    queryKey: ['siteSettings'],
+    queryFn: getSiteSettings,
+    staleTime: 10 * 60 * 1000,
+  });
+  const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
 
   // 导航页面类型
   type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
@@ -295,9 +306,15 @@ export default function BlogHeader() {
 
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between relative z-10">
           <Link href="/" className="flex items-center gap-2 group/logo">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
-              A
-            </div>
+            {siteLogo ? (
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow">
+                <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
+                A
+              </div>
+            )}
             <span className="text-xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">
               AetherBlog
             </span>

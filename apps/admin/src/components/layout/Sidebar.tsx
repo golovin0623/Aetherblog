@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
+import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
@@ -174,6 +175,7 @@ function SidebarContent({
   isProfileOpen,
 }: SidebarContentProps) {
   const { isDark, toggleThemeWithAnimation } = useTheme();
+  const siteLogo = useSiteLogo();
 
   return (
     <>
@@ -195,19 +197,25 @@ function SidebarContent({
               : 'hover:bg-[var(--bg-card-hover)]'
           )}
         >
-          {/* 光泽感 Logo */}
-          <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
-            {/* 基础渐变 */}
-            <div className="absolute inset-0 bg-[image:var(--gradient-primary)]" />
-            {/* 玻璃光泽叠加 */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
-            {/* 内部发光 */}
-            <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
-            {/* 字母 */}
-            <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg drop-shadow-md">
-              A
-            </span>
-          </div>
+          {/* Logo */}
+          {siteLogo ? (
+            <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
+              <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />
+            </div>
+          ) : (
+            <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
+              {/* 基础渐变 */}
+              <div className="absolute inset-0 bg-[image:var(--gradient-primary)]" />
+              {/* 玻璃光泽叠加 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
+              {/* 内部发光 */}
+              <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
+              {/* 字母 */}
+              <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg drop-shadow-md">
+                A
+              </span>
+            </div>
+          )}
           <div className={cn(
             'overflow-hidden transition-all duration-300',
             effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
