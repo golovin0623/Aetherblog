@@ -40,26 +40,26 @@ export function StatsCard({
   loading = false,
 }: StatsCardProps) {
   const colorStyles = {
-    primary: 'from-indigo-500/20 to-purple-500/10 border-indigo-500/20',
+    primary: 'from-zinc-800/20 to-zinc-600/10 border-zinc-800/20 dark:from-indigo-500/20 dark:to-purple-500/10 dark:border-indigo-500/20',
     green: 'from-green-500/20 to-emerald-500/10 border-green-500/20',
     blue: 'from-blue-500/20 to-cyan-500/10 border-blue-500/20',
     orange: 'from-orange-500/20 to-yellow-500/10 border-orange-500/20',
     pink: 'from-pink-500/20 to-rose-500/10 border-pink-500/20',
-    purple: 'from-purple-500/20 to-indigo-500/10 border-purple-500/20',
+    purple: 'from-zinc-700/20 to-zinc-500/10 border-zinc-700/20 dark:from-purple-500/20 dark:to-indigo-500/10 dark:border-purple-500/20',
     cyan: 'from-cyan-500/20 to-blue-500/10 border-cyan-500/20',
-    indigo: 'from-indigo-500/20 to-purple-500/10 border-indigo-500/20',
+    indigo: 'from-zinc-800/20 to-zinc-600/10 border-zinc-800/20 dark:from-indigo-500/20 dark:to-purple-500/10 dark:border-indigo-500/20',
     emerald: 'from-emerald-500/20 to-green-500/10 border-emerald-500/20',
   };
 
   const iconColorStyles = {
-    primary: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
+    primary: 'bg-zinc-800/20 text-zinc-700 dark:bg-indigo-500/20 dark:text-indigo-400',
     green: 'bg-green-500/20 text-green-600 dark:text-green-400',
     blue: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
     orange: 'bg-orange-500/20 text-orange-600 dark:text-orange-400',
     pink: 'bg-pink-500/20 text-pink-600 dark:text-pink-400',
-    purple: 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
+    purple: 'bg-zinc-700/20 text-zinc-600 dark:bg-purple-500/20 dark:text-purple-400',
     cyan: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400',
-    indigo: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
+    indigo: 'bg-zinc-800/20 text-zinc-700 dark:bg-indigo-500/20 dark:text-indigo-400',
     emerald: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400',
   };
 

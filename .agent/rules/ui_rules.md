@@ -14,16 +14,21 @@
 - **AI 品牌图标**: 必须使用 `@lobehub/icons` (官方 SVG)。禁止使用 Emoji 代表 AI 供应商。
 - **工具**: 必须使用 `cn()` (clsx + tailwind-merge) 进行类名合并。
 
-## 3. 配色方案 (暗色主题)
+## 3. 配色方案
+
+> [!IMPORTANT]
+> **完整配色标准已独立为 [`theme-colors.md`](.agent/rules/theme-colors.md)**，包含精确色值、Tailwind Token、组件模式和禁止清单。
+> 以下仅保留结构性概要，具体色值以 `theme-colors.md` 为准。
+
+- **双人格主题**：亮色 = 黑灰极简 (Zinc 系)，暗色 = 精致紫罗兰 (Indigo-Violet 系)。
+- **主色/强调色**：统一使用 `primary` / `accent` 两个语义 token，由 CSS 变量驱动主题切换。
 - **背景色**:
-  - 主画布: `#09090b` (Zinc-950) 或 `#0a0a0c`。
+  - 暗色主画布: `#0a0a0f`。
   - 第一层级 (卡片): `bg-white/5` 或 `bg-black/40`。
   - 第二层级 (输入框/悬停): `bg-white/10`。
 - **边框**: 
   - 关键在于微妙: `border-white/5` 或 `border-white/10`。
-- **强调色 (以太渐变)**:
-  - 主色: `from-indigo-500 to-purple-600`。
-  - 辅色: `text-indigo-400` 或 `bg-indigo-500/10`。
+- **渐变**：`from-primary to-accent`（禁止 `to-purple-*` / `to-indigo-*` 硬编码）。
 - **文字**:
   - 标题: `text-white` 或 `text-slate-100`。
   - 正文: `text-slate-400` (柔和灰)。
@@ -46,8 +51,9 @@
 在内容背后使用绝对定位的高斯模糊光斑。
 \`\`\`tsx
 <div className="absolute inset-0 overflow-hidden pointer-events-none">
-  <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" />
-  <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[100px]" />
+  {/* 使用 primary/accent token，自动响应主题 */}
+  <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-primary/10 rounded-full blur-[120px] animate-pulse" />
+  <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-accent/10 rounded-full blur-[100px]" />
   <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
 </div>
 \`\`\`
@@ -68,12 +74,14 @@
 ## 6. 开发守则 (Do's & Don'ts)
 - ✅ **DO**: 使用 `backdrop-blur` 增加深度感。
 - ✅ **DO**: 使用 `group` 和 `group-hover` 处理父子交互状态 (如卡片悬停时图标亮起)。
+- ✅ **DO**: 所有渐变使用 `from-primary to-accent`（见 `theme-colors.md` §2）。
 - ❌ **DON'T**: 使用纯黑背景 (`#000000`) 作为卡片背景。
 - ❌ **DON'T**: 使用浏览器默认滚动条 (需自定义细滚动条)。
-- ❌ **DON'T**: 使用生硬的黑色阴影 (`shadow-black`)。应使用带色阴影 (`shadow-indigo-500/20`)。
+- ❌ **DON'T**: 使用生硬的黑色阴影 (`shadow-black`)。应使用 `shadow-primary/20` 或 `shadow-[var(--shadow-primary)]`。
+- ❌ **DON'T**: 硬编码 `indigo-*` / `purple-*` 作为品牌色（见 `theme-colors.md` §8 禁止清单）。
 
 ## 7. AI 生成 Prompt 模板
-> "基于 AetherBlog 设计系统生成一个 React 组件 [组件名]。使用 Tailwind CSS 暗色主题 (#09090b)。实现毛玻璃拟态效果 (\`bg-white/5 backdrop-blur-xl border-white/10\`)。使用 Framer Motion 实现丝滑的入场动画 (spring physics)。主色调使用 Indigo-Purple 渐变。确保使用 Lucide 图标。整体设计需呈现高端、空灵且认知优雅的质感。"
+> "基于 AetherBlog 设计系统生成一个 React 组件 [组件名]。使用 Tailwind CSS 暗色主题 (#0a0a0f)。实现毛玻璃拟态效果 (\`bg-white/5 backdrop-blur-xl border-white/10\`)。使用 Framer Motion 实现丝滑的入场动画 (spring physics)。主色调使用 `primary` / `accent` token（亮色=黑灰，暗色=紫罗兰渐变），详见 `theme-colors.md`。确保使用 Lucide 图标。整体设计需呈现高端、空灵且认知优雅的质感。"
 
 ---
 
