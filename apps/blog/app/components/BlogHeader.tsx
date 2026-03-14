@@ -12,6 +12,7 @@ import { SearchPanel } from './SearchPanel';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 import { getSiteSettings } from '../lib/services';
+import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 
 /**
  * 博客共享头部组件
@@ -37,7 +38,7 @@ export default function BlogHeader() {
     queryFn: getSiteSettings,
     staleTime: 10 * 60 * 1000,
   });
-  const siteLogo = settings?.site_logo || '';
+  const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
 
   // 导航页面类型
   type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
