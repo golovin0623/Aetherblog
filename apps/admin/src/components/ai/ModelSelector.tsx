@@ -105,6 +105,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
   const [isMobile, setIsMobile] = useState(false);
+  // Cache the last selected model/provider so the trigger always shows
+  // the selection even if query data is momentarily unavailable
+  const selectedCacheRef = useRef<{ model: AiModel; provider: AiProvider } | null>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -116,13 +119,15 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   // 获取提供商
   const { data: providersResponse } = useQuery({
     queryKey: ['ai-providers'],
-    queryFn: () => aiProviderService.listProviders(true) // only enabled
+    queryFn: () => aiProviderService.listProviders(true), // only enabled
+    staleTime: 30_000,
   });
 
   // 获取模型
   const { data: modelsResponse } = useQuery({
     queryKey: ['ai-models'],
-    queryFn: () => aiProviderService.listModels(undefined, undefined)
+    queryFn: () => aiProviderService.listModels(undefined, undefined),
+    staleTime: 30_000,
   });
 
   const providers = providersResponse?.data || [];
@@ -210,6 +215,18 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return providers.find((p) => p.code === selectedModel.provider_code) || null;
   }, [providers, selectedModel]);
 
+  // Resilient display: fall back to cached selection when query lookup fails
+  const displayModel = selectedModel ?? (
+    value && selectedCacheRef.current?.model.model_id === value
+      ? selectedCacheRef.current.model
+      : null
+  );
+  const displayProvider = selectedProvider ?? (
+    displayModel && selectedCacheRef.current?.provider.code === displayModel.provider_code
+      ? selectedCacheRef.current.provider
+      : null
+  );
+
   // 点击外部关闭
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -232,6 +249,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   }, [isOpen]);
 
   const handleSelect = (model: AiModel, provider: AiProvider) => {
+    selectedCacheRef.current = { model, provider };
     onChange(model.model_id, provider.code);
     setIsOpen(false);
     setSearch('');
@@ -443,19 +461,19 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           "border-[var(--border-default)]",
           "hover:border-primary/40 hover:shadow-md hover:shadow-primary/5",
           isOpen && "ring-2 ring-primary/20 border-primary/50",
-          !selectedModel && !isOpen && "animate-breathing-light border-primary/30",
+          !displayModel && !isOpen && "animate-breathing-light border-primary/30",
           triggerClassName
         )}
       >
-        {selectedModel ? (
+        {displayModel ? (
           <>
             <ProviderIcon
-              code={selectedModel.provider_code}
-              icon={selectedProvider?.icon || null}
+              code={displayModel.provider_code}
+              icon={displayProvider?.icon || null}
               size={variant === 'compact' ? 14 : 16}
             />
             <span className="text-[10px] sm:text-xs font-bold text-[var(--text-primary)] truncate max-w-[100px] sm:max-w-[120px] uppercase tracking-tighter">
-              {selectedModel.display_name || selectedModel.model_id}
+              {displayModel.display_name || displayModel.model_id}
             </span>
             <ChevronsUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-50 ml-auto flex-shrink-0" />
           </>
