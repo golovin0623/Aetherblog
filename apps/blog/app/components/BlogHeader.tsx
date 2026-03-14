@@ -295,7 +295,7 @@ export default function BlogHeader() {
 
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between relative z-10">
           <Link href="/" className="flex items-center gap-2 group/logo">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
               A
             </div>
             <span className="text-xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">

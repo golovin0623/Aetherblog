@@ -148,7 +148,7 @@ export default function PostsPage() {
             }}
           />
           <div
-            className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-purple-500/10 rounded-full"
+            className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-accent/10 rounded-full"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'calc(var(--ambient-glow-opacity) * 0.67)'
