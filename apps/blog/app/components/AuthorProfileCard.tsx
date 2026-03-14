@@ -55,7 +55,7 @@ const getPlatformIcon = (platform: string) => {
 };
 
 // 社交链接轮播组件
-const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) => {
+const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: string; icon: React.ElementType }[] }> = ({ socialLinks }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 4;
   const totalPages = Math.ceil(socialLinks.length / itemsPerPage);
@@ -139,6 +139,9 @@ const SocialLinksCarousel: React.FC<{ socialLinks: any[] }> = ({ socialLinks }) 
   );
 };
 
+// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders of the carousel when parent component updates.
+// The socialLinks array is memoized in the parent using useMemo.
+const SocialLinksCarousel = React.memo(SocialLinksCarouselBase);
 
 export interface AuthorProfile {
   name: string;
@@ -156,7 +159,7 @@ interface AuthorProfileCardProps {
   profile?: AuthorProfile;
 }
 
-export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className, profile }) => {
+const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, profile }) => {
   const [mounted, setMounted] = useState(false);
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
@@ -285,4 +288,7 @@ export const AuthorProfileCard: React.FC<AuthorProfileCardProps> = ({ className,
 
 };
 
+// ⚡ Bolt: Added React.memo() to prevent expensive O(n) re-renders when parent layout components update.
+// This prevents re-evaluating the complex radial-gradient background and re-running social links extraction logic.
+export const AuthorProfileCard = React.memo(AuthorProfileCardBase);
 export default AuthorProfileCard;
