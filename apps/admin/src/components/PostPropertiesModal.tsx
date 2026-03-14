@@ -36,11 +36,11 @@ interface PostPropertiesModalProps {
 }
 
 const TAG_COLORS = [
-  { border: 'border-accent/30', bg: 'bg-accent/10', text: 'text-accent dark:text-accent', icon: 'text-accent dark:text-accent', glow: 'shadow-accent/10' },
-  { border: 'border-status-info-border', bg: 'bg-status-info-light', text: 'text-status-info dark:text-status-info', icon: 'text-status-info dark:text-status-info', glow: 'shadow-status-info/10' },
-  { border: 'border-status-success-border', bg: 'bg-status-success-light', text: 'text-status-success dark:text-status-success', icon: 'text-status-success dark:text-status-success', glow: 'shadow-status-success/10' },
+  { border: 'border-accent/30', bg: 'bg-accent/10', text: 'text-accent', icon: 'text-accent', glow: 'shadow-accent/10' },
+  { border: 'border-status-info-border', bg: 'bg-status-info-light', text: 'text-status-info', icon: 'text-status-info', glow: 'shadow-status-info/10' },
+  { border: 'border-status-success-border', bg: 'bg-status-success-light', text: 'text-status-success', icon: 'text-status-success', glow: 'shadow-status-success/10' },
   { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-600 dark:text-rose-300', icon: 'text-rose-500 dark:text-rose-400', glow: 'shadow-rose-500/10' },
-  { border: 'border-status-warning-border', bg: 'bg-status-warning-light', text: 'text-status-warning dark:text-status-warning', icon: 'text-status-warning dark:text-status-warning', glow: 'shadow-status-warning/10' },
+  { border: 'border-status-warning-border', bg: 'bg-status-warning-light', text: 'text-status-warning', icon: 'text-status-warning', glow: 'shadow-status-warning/10' },
   { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-600 dark:text-cyan-300', icon: 'text-cyan-500 dark:text-cyan-400', glow: 'shadow-cyan-500/10' },
 ];
 

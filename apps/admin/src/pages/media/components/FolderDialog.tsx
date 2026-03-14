@@ -126,7 +126,7 @@ export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogPr
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="relative w-full max-w-md bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-md bg-white border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               {/* 内容 */}
               <div className="relative z-10">
@@ -144,7 +144,7 @@ export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogPr
                     onClick={onClose}
                     className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg transition-colors"
                   >
-                    <X className="w-5 h-5 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
+                    <X className="w-5 h-5 text-[var(--text-muted)]" />
                   </button>
                 </div>
 
@@ -162,7 +162,7 @@ export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogPr
                       placeholder="输入文件夹名称"
                       required
                       maxLength={100}
-                      className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] dark:border-[var(--border-default)] rounded-lg text-[var(--text-primary)] dark:text-white placeholder:text-[var(--text-muted)] dark:placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                      className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] dark:text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                     />
                   </div>
 
@@ -177,7 +177,7 @@ export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogPr
                       placeholder="输入文件夹描述"
                       rows={3}
                       maxLength={500}
-                      className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] dark:border-[var(--border-default)] rounded-lg text-[var(--text-primary)] dark:text-white placeholder:text-[var(--text-muted)] dark:placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all resize-none"
+                      className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg text-[var(--text-primary)] dark:text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all resize-none"
                     />
                   </div>
 
@@ -214,7 +214,7 @@ export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogPr
                     <button
                       type="button"
                       onClick={onClose}
-                      className="flex-1 px-4 py-2.5 bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] dark:border-[var(--border-default)] rounded-lg text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] font-medium transition-colors"
+                      className="flex-1 px-4 py-2.5 bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] rounded-lg text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] font-medium transition-colors"
                     >
                       取消
                     </button>

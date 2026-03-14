@@ -481,7 +481,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
 
                         <div className="p-2.5 rounded-lg bg-status-warning-light border border-status-warning-border flex gap-2">
                           <AlertCircle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
-                          <p className="text-xs text-status-warning dark:text-status-warning leading-relaxed">
+                          <p className="text-xs text-status-warning leading-relaxed">
                             修改密码后，当前会话保持有效。建议定期更换密码。
                           </p>
                         </div>

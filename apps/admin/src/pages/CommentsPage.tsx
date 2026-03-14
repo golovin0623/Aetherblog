@@ -14,10 +14,10 @@ type UIStatus = 'all' | 'pending' | 'approved' | 'spam' | 'deleted';
 
 // 状态配置
 const statusConfig: Record<string, any> = {
-  pending: { label: '待审核', color: 'text-status-warning dark:text-status-warning', bg: 'bg-status-warning-light dark:bg-status-warning/20', icon: Clock },
+  pending: { label: '待审核', color: 'text-status-warning', bg: 'bg-status-warning-light dark:bg-status-warning/20', icon: Clock },
   approved: { label: '已通过', color: 'text-status-success', bg: 'bg-status-success-light dark:bg-status-success/20', icon: Check },
-  spam: { label: '垃圾评论', color: 'text-status-danger dark:text-status-danger', bg: 'bg-status-danger-light dark:bg-status-danger/20', icon: Flag },
-  deleted: { label: '已删除', color: 'text-[var(--text-muted)] dark:text-[var(--text-muted)]', bg: 'bg-[var(--bg-tertiary)] dark:bg-[var(--bg-secondary)]0/20', icon: Trash2 },
+  spam: { label: '垃圾评论', color: 'text-status-danger', bg: 'bg-status-danger-light dark:bg-status-danger/20', icon: Flag },
+  deleted: { label: '已删除', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--bg-tertiary)]', icon: Trash2 },
 };
 
 // 降级使用的模拟数据

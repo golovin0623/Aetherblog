@@ -109,7 +109,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
       case 'ADMIN':
         return 'text-accent bg-accent/20';
       default:
-        return 'text-[var(--text-muted)] bg-[var(--bg-secondary)]0/20';
+        return 'text-[var(--text-muted)] bg-[var(--bg-tertiary)]';
     }
   };
 

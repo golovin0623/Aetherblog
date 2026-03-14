@@ -82,7 +82,7 @@ export function CreateItemModal({
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
             className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-md"
           >
-            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] dark:bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl">
+            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-2xl">
               {/* 头部 */}
               <div className="relative flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)]">
                 <div className="flex items-center gap-3">

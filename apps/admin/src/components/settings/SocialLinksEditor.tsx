@@ -272,24 +272,24 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  className="relative w-full max-w-4xl bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+                  className="relative w-full max-w-4xl bg-white border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
                 >
                   {/* 模态框头部 */}
                   <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] dark:border-white/10">
                     <div className="flex items-center gap-2">
-                      <Search className="w-4 h-4 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
+                      <Search className="w-4 h-4 text-[var(--text-muted)]" />
                       <input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         placeholder="搜索社交平台..."
-                        className="bg-transparent text-[var(--text-primary)] dark:text-white placeholder:text-[var(--text-muted)] dark:placeholder:text-[var(--text-muted)] focus:outline-none text-sm w-48 sm:w-64"
+                        className="bg-transparent text-[var(--text-primary)] dark:text-white placeholder:text-[var(--text-muted)] focus:outline-none text-sm w-48 sm:w-64"
                         autoFocus
                       />
                     </div>
                     <button 
                       onClick={() => setShowPlatformPicker(false)}
-                      className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg text-[var(--text-muted)] dark:text-[var(--text-muted)] transition-colors"
+                      className="p-2 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10 rounded-lg text-[var(--text-muted)] transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -304,9 +304,9 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                         className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-[var(--bg-secondary)] dark:hover:bg-white/5 transition-all group border border-dashed border-[var(--border-default)] dark:border-white/10 hover:border-primary/50"
                       >
                          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--bg-secondary)] dark:bg-white/5 group-hover:bg-primary/10 transition-colors">
-                           <Plus className="w-5 h-5 text-[var(--text-muted)] dark:text-[var(--text-muted)] group-hover:text-primary" />
+                           <Plus className="w-5 h-5 text-[var(--text-muted)] group-hover:text-primary" />
                          </div>
-                         <span className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] font-medium">自定义链接</span>
+                         <span className="text-xs text-[var(--text-muted)] font-medium">自定义链接</span>
                       </button>
 
                       {filteredPlatforms.map((platform) => {
@@ -333,7 +333,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                                 loading="lazy"
                               />
                             </div>
-                            <span className="text-xs text-[var(--text-secondary)] dark:text-[var(--text-secondary)] font-medium truncate w-full text-center">
+                            <span className="text-xs text-[var(--text-secondary)] font-medium truncate w-full text-center">
                               {platform.name}
                             </span>
                           </button>
@@ -351,7 +351,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                   
                   {/* 底部提示 */}
                   <div className="p-3 bg-[var(--bg-secondary)] dark:bg-white/5 border-t border-[var(--border-subtle)] dark:border-white/10 text-center">
-                    <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">
+                    <p className="text-xs text-[var(--text-muted)]">
                       图标来源 Simple Icons • 支持自定义链接
                     </p>
                   </div>

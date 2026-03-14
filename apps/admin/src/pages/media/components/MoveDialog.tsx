@@ -209,7 +209,7 @@ export function MoveDialog({
               }}
               className="flex-shrink-0 cursor-pointer"
             >
-              <ChevronRight className="w-4 h-4 text-[var(--text-muted)] dark:text-[var(--text-muted)]" />
+              <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
             </motion.div>
           ) : (
             <div className="w-4" />
@@ -229,7 +229,7 @@ export function MoveDialog({
 
           {/* 标记 */}
           {isCurrent && (
-            <span className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)]">当前位置</span>
+            <span className="text-xs text-[var(--text-muted)]">当前位置</span>
           )}
           {isSelected && (
             <Check className="w-4 h-4 text-primary dark:text-primary" />
@@ -269,7 +269,7 @@ export function MoveDialog({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
+          className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
@@ -281,7 +281,7 @@ export function MoveDialog({
                 <h2 className="text-lg font-bold text-[var(--text-primary)] dark:text-white">
                   {isBatchMode ? '批量移动文件' : `移动${type === 'folder' ? '文件夹' : '文件'}`}
                 </h2>
-                <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] truncate max-w-[200px]">
+                <p className="text-xs text-[var(--text-muted)] truncate max-w-[200px]">
                   {isBatchMode ? `已选择 ${batchFileIds?.length} 个文件` : itemName}
                 </p>
               </div>
@@ -298,7 +298,7 @@ export function MoveDialog({
           <div className="flex-1 overflow-y-auto border border-[var(--border-default)] dark:border-white/10 rounded-xl p-2 mb-4 bg-[var(--bg-secondary)] dark:bg-black/20">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <span className="text-[var(--text-muted)] dark:text-[var(--text-muted)]">加载中...</span>
+                <span className="text-[var(--text-muted)]">加载中...</span>
               </div>
             ) : (
               <div className="space-y-1">

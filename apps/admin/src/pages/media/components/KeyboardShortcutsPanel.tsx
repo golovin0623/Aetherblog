@@ -64,7 +64,7 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-              className="pointer-events-auto relative w-full max-w-2xl bg-white/90 dark:bg-[var(--bg-popover)]/90 backdrop-blur-xl border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="pointer-events-auto relative w-full max-w-2xl bg-white/90/90 backdrop-blur-xl border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               {/* 头部 */}
               <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-default)] dark:border-white/10 bg-[var(--bg-secondary)]/50 dark:bg-white/5">
@@ -106,7 +106,7 @@ export function KeyboardShortcutsPanel({ open, onOpenChange }: KeyboardShortcuts
                             {shortcut.key.map((k, i) => (
                               <kbd
                                 key={i}
-                                className="min-w-[24px] h-6 px-1.5 flex items-center justify-center bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] dark:border-[var(--border-default)] rounded text-xs font-mono text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] shadow-sm"
+                                className="min-w-[24px] h-6 px-1.5 flex items-center justify-center bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded text-xs font-mono text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] shadow-sm"
                               >
                                 {k === '⌘' ? <Command className="w-3 h-3" /> : k}
                               </kbd>

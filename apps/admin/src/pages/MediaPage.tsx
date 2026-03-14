@@ -228,14 +228,14 @@ export default function MediaPage() {
   // 删除确认处理 - 支持传入回调
   const handleDeleteConfirm = (id: number, onSuccess?: () => void) => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <Trash2 className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">移入回收站？</h3>
-            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               文件将移入回收站，可在回收站中恢复或彻底删除。
             </p>
             <div className="flex items-center gap-2">
@@ -391,14 +391,14 @@ export default function MediaPage() {
 
   const handleDeleteFolder = (folderId: number) => {
     toast.custom((t) => (
-      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <Trash2 className="w-5 h-5 text-status-danger" />
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">删除文件夹？</h3>
-            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
+            <p className="text-xs text-[var(--text-muted)] mb-4">
               此操作将删除文件夹及其所有子文件夹和文件，无法撤销。
             </p>
             <div className="flex items-center gap-2">
@@ -768,7 +768,7 @@ export default function MediaPage() {
                   }
                 }}
                 // 底部菜单 (Bottom Sheet)
-                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-white/85 dark:bg-[var(--bg-popover)]/85 backdrop-blur-xl rounded-t-3xl border-t border-white/20 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col"
+                className="lg:hidden fixed bottom-0 left-0 right-0 z-50 h-[85vh] bg-white/85/85 backdrop-blur-xl rounded-t-3xl border-t border-white/20 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col"
               >
                 {/* 拖拽手柄 */}
                 <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={() => setSelectedMedia(null)}>
@@ -867,14 +867,14 @@ export default function MediaPage() {
                     const count = selectedIds.size;
                     const ids = Array.from(selectedIds);
                     toast.custom((t) => (
-                      <div className="bg-white dark:bg-[var(--bg-popover)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+                      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
                         <div className="flex items-start gap-4">
                           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
                             <Trash2 className="w-5 h-5 text-status-danger" />
                           </div>
                           <div className="flex-1">
                             <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">批量移入回收站?</h3>
-                            <p className="text-xs text-[var(--text-muted)] dark:text-[var(--text-muted)] mb-4">
+                            <p className="text-xs text-[var(--text-muted)] mb-4">
                               选中的 {count} 个文件将移入回收站，可在回收站中恢复或彻底删除。
                             </p>
                             <div className="flex items-center gap-2">

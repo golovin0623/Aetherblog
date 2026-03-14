@@ -86,7 +86,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
               <span className="w-1.5 h-1.5 rounded-full bg-status-danger/80 ring-2 ring-status-danger/20" title="站点无法访问" />
             )}
             {!friend.visible && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-warning-light text-status-warning dark:text-status-warning border border-status-warning-border">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-status-warning-light text-status-warning border border-status-warning-border">
                 已隐藏
               </span>
             )}
@@ -120,7 +120,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
             "p-2 rounded-lg transition-colors",
             friend.visible 
               ? "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]" 
-              : "text-status-warning dark:text-status-warning hover:bg-status-warning-light"
+              : "text-status-warning hover:bg-status-warning-light"
           )}
           title={friend.visible ? "隐藏" : "显示"}
         >
