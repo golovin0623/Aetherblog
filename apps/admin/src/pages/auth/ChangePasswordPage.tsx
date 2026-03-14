@@ -78,10 +78,10 @@ export function ChangePasswordPage() {
   };
 
   return (
-    <div className="w-full min-h-screen flex bg-black text-white selection:bg-amber-500/30 overflow-hidden font-sans relative">
+    <div className="w-full min-h-screen flex bg-[var(--bg-primary)] text-[var(--text-primary)] selection:bg-status-warning/30 overflow-hidden font-sans relative">
       {/* 背景层 - 共享 */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-amber-600/10 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-status-warning/10 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
         <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600/5 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
         {/* 网格图案 */}
@@ -98,7 +98,7 @@ export function ChangePasswordPage() {
         {/* 品牌内容 */}
         <div className="relative z-10">
            <div className="inline-flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+             <div className="w-10 h-10 rounded-xl bg-[image:var(--gradient-primary)] flex items-center justify-center shadow-lg shadow-primary">
                <Sparkles className="w-6 h-6 text-white" />
              </div>
              <span className="text-xl font-bold tracking-tight text-white">AetherBlog</span>
@@ -106,20 +106,20 @@ export function ChangePasswordPage() {
         </div>
 
         <div className="relative z-10 max-w-lg">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center shadow-2xl shadow-orange-500/30 mb-8">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-[var(--color-warning)] to-[var(--color-danger)] flex items-center justify-center shadow-2xl shadow-[var(--shadow-primary)] mb-8">
             <KeyRound className="w-10 h-10 text-white" />
           </div>
           <h2 className="text-5xl font-bold leading-tight mb-6 bg-clip-text text-transparent bg-gradient-to-br from-white via-white/90 to-white/50">
             Account Security First.
           </h2>
-          <p className="text-lg text-slate-400 font-medium leading-relaxed">
+          <p className="text-lg text-[var(--text-muted)] font-medium leading-relaxed">
             Your security is our top priority. 
             A strong password helps protect your account from unauthorized access.
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2 text-sm text-slate-500 font-medium">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+        <div className="relative z-10 flex items-center gap-2 text-sm text-[var(--text-muted)] font-medium">
+          <div className="w-2 h-2 rounded-full bg-status-warning animate-pulse"></div>
           <span>Security Update Required</span>
         </div>
       </motion.div>
@@ -134,18 +134,18 @@ export function ChangePasswordPage() {
         <div className="w-full max-w-[420px] space-y-8">
           {/* 移动端品牌展示 */}
           <div className="lg:hidden flex flex-col items-center mb-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center shadow-2xl shadow-amber-500/20 mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[var(--color-warning)] to-[var(--color-danger)] flex items-center justify-center shadow-2xl shadow-[var(--shadow-primary)] mb-4">
               <KeyRound className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Security Center</h1>
-            <p className="text-amber-500/70 text-[10px] mt-1 font-bold tracking-[0.2em] uppercase">Identity Protection</p>
+            <p className="text-status-warning/70 text-[10px] mt-1 font-bold tracking-[0.2em] uppercase">Identity Protection</p>
           </div>
 
           <div className="text-center lg:text-left">
             <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">
               {isFirstLogin ? 'Set New Password' : 'Change Password'}
             </h1>
-            <p className="text-slate-400 text-sm">
+            <p className="text-[var(--text-muted)] text-sm">
               {isFirstLogin 
                 ? 'For security, please set a new password before continuing.' 
                 : 'Enter your current password and choose a new one.'}
@@ -159,13 +159,13 @@ export function ChangePasswordPage() {
               animate={{ opacity: 1, scale: 1 }}
               className="text-center py-12"
             >
-              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-green-500 to-emerald-600 flex items-center justify-center shadow-xl shadow-green-500/30">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-[var(--color-success)] to-emerald-600 flex items-center justify-center shadow-xl shadow-[var(--color-success)]/30">
                 <ShieldCheck className="w-10 h-10 text-white" />
               </div>
               <h2 className="text-2xl font-semibold text-white mb-3">Password Updated!</h2>
-              <p className="text-slate-400 text-sm">Redirecting to login page...</p>
+              <p className="text-[var(--text-muted)] text-sm">Redirecting to login page...</p>
               <div className="mt-6 flex justify-center">
-                <div className="w-8 h-8 border-2 border-green-500/30 border-t-green-500 rounded-full animate-spin" />
+                <div className="w-8 h-8 border-2 border-status-success/30 border-t-status-success rounded-full animate-spin" />
               </div>
             </motion.div>
           ) : (
@@ -175,12 +175,12 @@ export function ChangePasswordPage() {
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-sm flex items-start gap-3"
+                  className="p-4 rounded-xl bg-status-warning-light border border-status-warning-border text-[var(--text-secondary)] text-sm flex items-start gap-3"
                 >
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-status-warning" />
                   <div>
-                    <p className="font-semibold text-amber-300">Security Notice</p>
-                    <p className="text-amber-200/70 mt-1 leading-relaxed">
+                    <p className="font-semibold text-status-warning">Security Notice</p>
+                    <p className="text-[var(--text-secondary)] mt-1 leading-relaxed">
                       First login detected. Please update your credentials.
                     </p>
                   </div>
@@ -192,9 +192,9 @@ export function ChangePasswordPage() {
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-3"
+                  className="p-4 rounded-xl bg-status-danger-light border border-status-danger-border text-status-danger text-sm flex items-center gap-3"
                 >
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-status-danger shrink-0" />
                   {error}
                 </motion.div>
               )}
@@ -202,21 +202,21 @@ export function ChangePasswordPage() {
               {/* 表单字段 */}
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300 ml-1">Current Password</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] ml-1">Current Password</label>
                   <div className="relative group">
-                    <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-amber-400 transition-colors" />
+                    <Lock className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-status-warning transition-colors" />
                     <input
                       type={showCurrentPassword ? "text" : "password"}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
+                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-status-warning/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                       placeholder="Current password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                      className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                      className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
                       tabIndex={-1}
                     >
                       {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -225,14 +225,14 @@ export function ChangePasswordPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300 ml-1">New Password</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] ml-1">New Password</label>
                   <div className="relative group">
-                    <ShieldCheck className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-amber-400 transition-colors" />
+                    <ShieldCheck className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-status-warning transition-colors" />
                     <input
                       type={showNewPassword ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
+                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-status-warning/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                       placeholder="At least 8 characters"
                       required
                       minLength={8}
@@ -240,7 +240,7 @@ export function ChangePasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                      className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
                       tabIndex={-1}
                     >
                       {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -249,14 +249,14 @@ export function ChangePasswordPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300 ml-1">Confirm New Password</label>
+                  <label className="text-sm font-medium text-[var(--text-secondary)] ml-1">Confirm New Password</label>
                   <div className="relative group">
-                    <ShieldCheck className="absolute left-4 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-amber-400 transition-colors" />
+                    <ShieldCheck className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-status-warning transition-colors" />
                     <input
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-[16px] placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
+                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-status-warning/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
                       placeholder="Confirm new password"
                       required
                       minLength={8}
@@ -264,7 +264,7 @@ export function ChangePasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-4 top-3.5 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                      className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
                       tabIndex={-1}
                     >
                       {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -275,25 +275,25 @@ export function ChangePasswordPage() {
 
               {/* 密码要求 */}
               <div className="p-4 rounded-xl bg-white/5 border border-white/5">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Password Health</p>
+                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-3">Password Health</p>
                 <ul className="space-y-2">
                   <li className={cn(
                     "text-xs flex items-center gap-2 transition-colors",
-                    newPassword.length >= 8 ? "text-green-400" : "text-slate-500"
+                    newPassword.length >= 8 ? "text-status-success" : "text-[var(--text-muted)]"
                   )}>
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]",
-                      newPassword.length >= 8 ? "bg-green-400 shadow-green-400/50" : "bg-slate-700"
+                      newPassword.length >= 8 ? "bg-status-success shadow-[var(--color-success)]/50" : "bg-[var(--bg-quaternary)]"
                     )} />
                     Minimum length of 8 characters
                   </li>
                   <li className={cn(
                     "text-xs flex items-center gap-2 transition-colors",
-                    newPassword === confirmPassword && newPassword.length > 0 ? "text-green-400" : "text-slate-500"
+                    newPassword === confirmPassword && newPassword.length > 0 ? "text-status-success" : "text-[var(--text-muted)]"
                   )}>
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]",
-                      newPassword === confirmPassword && newPassword.length > 0 ? "bg-green-400 shadow-green-400/50" : "bg-slate-700"
+                      newPassword === confirmPassword && newPassword.length > 0 ? "bg-status-success shadow-[var(--color-success)]/50" : "bg-[var(--bg-quaternary)]"
                     )} />
                     Password confirmation matches
                   </li>
@@ -305,7 +305,7 @@ export function ChangePasswordPage() {
                 type="submit"
                 disabled={isLoading}
                 className={cn(
-                  "w-full py-4 rounded-xl bg-white text-black font-bold text-sm tracking-widest shadow-2xl shadow-white/5 flex items-center justify-center gap-2 transition-all hover:bg-slate-200 active:scale-[0.98]",
+                  "w-full py-4 rounded-xl bg-primary text-white font-bold text-sm tracking-widest shadow-2xl shadow-primary/30 flex items-center justify-center gap-2 transition-all hover:bg-primary-hover active:scale-[0.98]",
                   isLoading && "opacity-70 cursor-not-allowed"
                 )}
               >
@@ -328,7 +328,7 @@ export function ChangePasswordPage() {
                   <button 
                     type="button"
                     onClick={() => navigate(-1)}
-                    className="text-xs text-slate-500 hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto"
+                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 mx-auto"
                   >
                     <span>← Return to Security</span>
                   </button>
@@ -337,13 +337,13 @@ export function ChangePasswordPage() {
             </form>
           )}
 
-          <p className="text-center text-[10px] text-slate-600 tracking-wider">
+          <p className="text-center text-[10px] text-[var(--text-muted)] tracking-wider">
             Your credentials are protected in transit by HTTPS.
           </p>
 
           {/* 移动端状态 */}
           <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-40">
-            <div className="w-1 h-1 bg-amber-500 rounded-full" />
+            <div className="w-1 h-1 bg-status-warning rounded-full" />
             <span className="text-[10px] text-slate-500 font-medium tracking-widest uppercase">Secured Environment</span>
           </div>
         </div>

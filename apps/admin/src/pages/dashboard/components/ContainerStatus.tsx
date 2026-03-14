@@ -54,17 +54,17 @@ interface ContainerOverview {
 function ProgressBar({ value, color = 'primary' }: { value: number; color?: string }) {
   const colorMap: Record<string, string> = {
     primary: 'bg-primary',
-    green: 'bg-green-500',
-    blue: 'bg-blue-500',
-    orange: 'bg-orange-500',
-    red: 'bg-red-500',
-    purple: 'bg-purple-500',
+    green: 'bg-status-success',
+    blue: 'bg-status-info',
+    orange: 'bg-status-warning',
+    red: 'bg-status-danger',
+    purple: 'bg-accent',
     cyan: 'bg-cyan-500',
   };
 
   const getBarColor = () => {
-    if (value > 90) return 'bg-red-500';
-    if (value > 75) return 'bg-orange-500';
+    if (value > 90) return 'bg-status-danger';
+    if (value > 75) return 'bg-status-warning';
     return colorMap[color] || 'bg-primary';
   };
 
@@ -91,12 +91,12 @@ function ContainerIcon({ type }: { type: string }) {
   };
 
   const colorMap: Record<string, string> = {
-    java: 'bg-orange-500/20 text-orange-400',
-    nodejs: 'bg-green-500/20 text-green-400',
-    nginx: 'bg-blue-500/20 text-blue-400',
-    database: 'bg-purple-500/20 text-purple-400',
-    cache: 'bg-red-500/20 text-red-400',
-    search: 'bg-cyan-500/20 text-cyan-400',
+    java: 'bg-status-warning/20 text-status-warning',
+    nodejs: 'bg-status-success/20 text-status-success',
+    nginx: 'bg-status-info/20 text-status-info',
+    database: 'bg-accent/20 text-accent',
+    cache: 'bg-status-danger/20 text-status-danger',
+    search: 'bg-cyan-500/20 text-cyan-500',
   };
 
   return (
@@ -306,9 +306,9 @@ export function ContainerStatus({
             <RefreshCw className={cn("w-4 h-4", (isRefreshing || (loading && !data)) && "animate-spin")} />
           </button>
           
-          <div className="flex items-center gap-1 px-2 py-1 rounded border bg-green-500/10 border-green-500/20">
-            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
-            <span className="text-[10px] font-medium text-green-600 dark:text-green-400">正常</span>
+          <div className="flex items-center gap-1 px-2 py-1 rounded border bg-status-success-light border-status-success-border">
+            <CheckCircle2 className="w-3.5 h-3.5 text-status-success" />
+            <span className="text-[10px] font-medium text-status-success">正常</span>
           </div>
         </div>
       </div>
