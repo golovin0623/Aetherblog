@@ -35,6 +35,6 @@ public class RateLimitVerificationTest {
         assertEquals("auth:change_password", rateLimit.key(), "Rate limit key mismatch");
         assertEquals(5, rateLimit.count(), "Rate limit count mismatch");
         assertEquals(300, rateLimit.time(), "Rate limit time mismatch");
-        assertEquals(RateLimit.LimitType.IP, rateLimit.limitType(), "Rate limit type mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
     }
 }
