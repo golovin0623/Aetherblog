@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { List, ArrowUp, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,7 +26,7 @@ interface ArticleFloatingActionsProps {
   content: string;
 }
 
-export default function ArticleFloatingActions({ content }: ArticleFloatingActionsProps) {
+const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isTocOpen, setIsTocOpen] = useState(false);
@@ -144,46 +144,6 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
     }
   }, []);
 
-  // TOC 列表渲染（移动端和PC端共用）
-  const renderTocList = () => (
-    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-      {headings.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]/50 px-3 py-6 text-center text-sm text-[var(--text-muted)]">
-          暂无目录项
-        </div>
-      ) : (
-        <div className="relative pl-1 space-y-0.5">
-          <div className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[var(--border-subtle)]/50 rounded-full" />
-          {headings.map((heading) => {
-            const isActive = activeId === heading.id;
-            return (
-              <button
-                key={heading.id}
-                onClick={() => scrollToHeading(heading.id)}
-                className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 ${
-                  isActive
-                    ? 'text-primary bg-primary/5 font-medium'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                }`}
-                style={{
-                  paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
-                }}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId={isMobile ? 'mobile-toc-indicator' : 'desktop-toc-indicator'}
-                    className="absolute left-0 top-2 bottom-2 w-[2px] bg-primary rounded-full"
-                  />
-                )}
-                <span className="line-clamp-2">{heading.text}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-
   // ─── 移动端渲染 ───
   if (isMobile) {
     return (
@@ -276,7 +236,13 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
                   </div>
 
                   {/* 目录列表 */}
-                  {renderTocList()}
+                  <TocList
+                    headings={headings}
+                    activeId={activeId}
+                    minLevel={minLevel}
+                    isMobile={isMobile}
+                    scrollToHeading={scrollToHeading}
+                  />
 
                   {/* 返回顶部 */}
                   <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]/50">
@@ -368,7 +334,13 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
 
                 {/* 目录列表 */}
                 <div className="px-3 pb-3">
-                  {renderTocList()}
+                  <TocList
+                    headings={headings}
+                    activeId={activeId}
+                    minLevel={minLevel}
+                    isMobile={isMobile}
+                    scrollToHeading={scrollToHeading}
+                  />
                 </div>
 
                 {/* 返回顶部 */}
@@ -392,4 +364,61 @@ export default function ArticleFloatingActions({ content }: ArticleFloatingActio
       )}
     </>
   );
-}
+};
+
+// ⚡ Bolt: 提取 renderTocList 为独立的、被 React.memo 包裹的 TocList 组件，防止不必要的重新渲染
+const TocList = memo(function TocList({
+  headings,
+  activeId,
+  minLevel,
+  isMobile,
+  scrollToHeading
+}: {
+  headings: TocItem[];
+  activeId: string;
+  minLevel: number;
+  isMobile: boolean;
+  scrollToHeading: (id: string) => void
+}) {
+  return (
+  <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+    {headings.length === 0 ? (
+      <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]/50 px-3 py-6 text-center text-sm text-[var(--text-muted)]">
+        暂无目录项
+      </div>
+    ) : (
+      <div className="relative pl-1 space-y-0.5">
+        <div className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[var(--border-subtle)]/50 rounded-full" />
+        {headings.map((heading) => {
+          const isActive = activeId === heading.id;
+          return (
+            <button
+              key={heading.id}
+              onClick={() => scrollToHeading(heading.id)}
+              className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 ${
+                isActive
+                  ? 'text-primary bg-primary/5 font-medium'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+              }`}
+              style={{
+                paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
+              }}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId={isMobile ? 'mobile-toc-indicator' : 'desktop-toc-indicator'}
+                  className="absolute left-0 top-2 bottom-2 w-[2px] bg-primary rounded-full"
+                />
+              )}
+              <span className="line-clamp-2">{heading.text}</span>
+            </button>
+          );
+        })}
+      </div>
+    )}
+  </div>
+  );
+});
+
+// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders when parent component updates.
+export default memo(ArticleFloatingActionsBase);
