@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, Settings, Sparkles, EyeOff, Lock } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -51,6 +51,16 @@ export default function PostsPage() {
   const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
+  const pageNumbersRef = useRef<HTMLDivElement>(null);
+
+  const scrollActivePageIntoView = useCallback((page: number) => {
+    if (!pageNumbersRef.current) return;
+    const btn = pageNumbersRef.current.querySelector(`[data-page="${page}"]`) as HTMLElement | null;
+    if (btn) {
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+    }
+  }, []);
 
   // 点击外部时关闭标签弹出框
   useEffect(() => {
@@ -131,6 +141,8 @@ export default function PostsPage() {
 
   const handlePageChange = (page: number) => {
     fetchPosts(page, activeStatus, debouncedSearch || undefined, filters);
+    // Auto-scroll the active page number into view after state updates
+    requestAnimationFrame(() => scrollActivePageIntoView(page));
   };
 
   // 处理删除操作
@@ -760,33 +772,35 @@ export default function PostsPage() {
               <motion.div
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-1"
+                className="flex items-center gap-1.5"
               >
                 <button
                   onClick={() => handlePageChange(pagination.pageNum - 1)}
                   disabled={pagination.pageNum <= 1}
                   className={cn(
-                    'px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-300 border',
+                    'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300',
                     pagination.pageNum <= 1
-                      ? 'text-[var(--text-muted)]/50 border-transparent cursor-not-allowed'
-                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                      ? 'text-[var(--text-muted)]/50 cursor-not-allowed'
+                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
                   )}
+                  aria-label="上一页"
                 >
-                  ‹
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
-                    const start = Math.max(1, Math.min(pagination.pageNum - 2, pagination.pages - 4));
-                    return start + i;
-                  }).filter(p => p <= pagination.pages).map((page) => (
+                <div
+                  ref={pageNumbersRef}
+                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-0.5 max-w-[220px]"
+                >
+                  {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((page) => (
                     <button
                       key={page}
+                      data-page={page}
                       onClick={() => handlePageChange(page)}
                       className={cn(
-                        'w-7 h-7 rounded-lg text-[11px] font-medium transition-all duration-300 border flex items-center justify-center',
+                        'flex-shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all duration-300 flex items-center justify-center',
                         page === pagination.pageNum
-                          ? 'bg-primary text-white border-primary shadow-lg shadow-primary/25'
-                          : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
+                          ? 'bg-primary text-white shadow-lg shadow-primary/25'
+                          : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
                       )}
                     >
                       {page}
@@ -797,13 +811,14 @@ export default function PostsPage() {
                   onClick={() => handlePageChange(pagination.pageNum + 1)}
                   disabled={pagination.pageNum >= pagination.pages}
                   className={cn(
-                    'px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-300 border',
+                    'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300',
                     pagination.pageNum >= pagination.pages
-                      ? 'text-[var(--text-muted)]/50 border-transparent cursor-not-allowed'
-                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                      ? 'text-[var(--text-muted)]/50 cursor-not-allowed'
+                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
                   )}
+                  aria-label="下一页"
                 >
-                  ›
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </motion.div>
             ) : !loading && (
