@@ -1,12 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
+
+const MigrationPage = lazy(() => import('./MigrationPage'));
 
 // Setting Metadata Definition
 // Helps mapping raw keys to UI labels and input types
@@ -99,6 +101,11 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
       { key: 'ai_enabled', label: '启用AI功能', type: 'boolean' },
       { key: 'ai_provider', label: 'AI服务商', type: 'text' },
     ]
+  },
+  migration: {
+    label: '数据迁移',
+    icon: DatabaseZap,
+    fields: []
   }
 };
 
@@ -242,16 +249,18 @@ export default function SettingsPage() {
   // 同步服务器数据到本地表单数据
   useEffect(() => {
     if (settings) {
-      setFormData(prev => ({
-        ...settings,
-        ...prev // 保留本地更改（如果存在）（简单方法）
-      }));
-       // 如果是全新加载，重置更改
-       if (!hasChanges) {
-          setFormData(settings);
-       }
+      if (hasChanges) {
+        // 保留本地更改，同时合入新的服务器数据
+        setFormData(prev => ({
+          ...settings,
+          ...prev
+        }));
+      } else {
+        // 全新加载或保存后刷新，使用服务器数据
+        setFormData(settings);
+      }
     }
-  }, [settings]); // 仅在设置获取更新时同步，小心循环
+  }, [settings]);
 
   // 变更：批量更新
   const saveMutation = useMutation({
@@ -374,105 +383,122 @@ export default function SettingsPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-6"
+            className={cn(
+              "rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]",
+              activeTab !== 'migration' && "p-6 space-y-6"
+            )}
           >
-            <div>
-              <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2 mb-1">
-                <activeGroup.icon className="w-5 h-5 text-[var(--text-muted)]" />
-                {activeGroup.label}
-              </h2>
-              <p className="text-sm text-[var(--text-muted)]">
-                管理您的{activeGroup.label}。所有更改需点击右上角保存按钮生效。
-              </p>
-            </div>
-
-            <div className="space-y-5">
-              {activeGroup.fields.map((field) => (
-                <div key={field.key} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-[var(--text-secondary)]">
-                      {field.label}
-                    </label>
-                  </div>
-                  
-                  {/* 动态字段渲染 */}
-                  {field.type === 'text' || field.type === 'url' || field.type === 'number' ? (
-                    <input
-                      type={field.type}
-                      value={formData[field.key] || ''}
-                      onChange={(e) => handleInputChange(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
-                    />
-                  ) : field.type === 'textarea' ? (
-                    <textarea
-                      rows={4}
-                      value={formData[field.key] || ''}
-                      onChange={(e) => handleInputChange(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none font-mono"
-                    />
-                  ) : field.type === 'boolean' ? (
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleInputChange(field.key, !formData[field.key])}
-                        className={cn(
-                          "w-11 h-6 rounded-full transition-colors relative",
-                          formData[field.key] === 'true' || formData[field.key] === true ? "bg-primary" : "bg-[var(--bg-input)]"
-                        )}
-                      >
-                        <motion.div
-                          animate={{ x: formData[field.key] === 'true' || formData[field.key] === true ? 20 : 2 }}
-                          className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
-                        />
-                      </button>
-                      <span className="text-sm text-[var(--text-muted)]">
-                        {formData[field.key] === 'true' || formData[field.key] === true ? '已开启' : '已关闭'}
-                      </span>
-                    </div>
-                  ) : field.type === 'color' ? (
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={formData[field.key] || '#000000'}
-                        onChange={(e) => handleInputChange(field.key, e.target.value)}
-                        className="bg-transparent border-0 w-10 h-10 p-0 cursor-pointer overflow-hidden rounded-lg"
-                      />
-                      <input
-                        type="text"
-                        value={formData[field.key] || ''}
-                        onChange={(e) => handleInputChange(field.key, e.target.value)}
-                        className="w-32 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none font-mono"
-                      />
-                    </div>
-                  ) : field.type === 'social-links' ? (
-                    <SocialLinksEditor
-                      value={(() => {
-                        // 解析 social_links，可能是 JSON 字符串或已解析的数组
-                        const raw = formData[field.key];
-                        if (!raw) return [];
-                        if (Array.isArray(raw)) return raw;
-                        try {
-                          return JSON.parse(raw);
-                        } catch {
-                          return [];
-                        }
-                      })()}
-                      onChange={(links) => handleInputChange(field.key, links)}
-                    />
-                  ) : field.type === 'image-upload' ? (
-                    <ImageUploadField
-                      value={formData[field.key] || ''}
-                      onChange={(url) => handleInputChange(field.key, url)}
-                    />
-                  ) : null}
-
-                  {field.description && (
-                    <p className="text-xs text-[var(--text-muted)]">{field.description}</p>
-                  )}
+            {activeTab === 'migration' ? (
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
                 </div>
-              ))}
-            </div>
+              }>
+                <div className="p-6">
+                  <MigrationPage />
+                </div>
+              </Suspense>
+            ) : (
+              <>
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2 mb-1">
+                    <activeGroup.icon className="w-5 h-5 text-[var(--text-muted)]" />
+                    {activeGroup.label}
+                  </h2>
+                  <p className="text-sm text-[var(--text-muted)]">
+                    管理您的{activeGroup.label}。所有更改需点击右上角保存按钮生效。
+                  </p>
+                </div>
+
+                <div className="space-y-5">
+                  {activeGroup.fields.map((field) => (
+                    <div key={field.key} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-[var(--text-secondary)]">
+                          {field.label}
+                        </label>
+                      </div>
+                      
+                      {/* 动态字段渲染 */}
+                      {field.type === 'text' || field.type === 'url' || field.type === 'number' ? (
+                        <input
+                          type={field.type}
+                          value={formData[field.key] || ''}
+                          onChange={(e) => handleInputChange(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
+                        />
+                      ) : field.type === 'textarea' ? (
+                        <textarea
+                          rows={4}
+                          value={formData[field.key] || ''}
+                          onChange={(e) => handleInputChange(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none font-mono"
+                        />
+                      ) : field.type === 'boolean' ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleInputChange(field.key, !formData[field.key])}
+                            className={cn(
+                              "w-11 h-6 rounded-full transition-colors relative",
+                              formData[field.key] === 'true' || formData[field.key] === true ? "bg-primary" : "bg-[var(--bg-input)]"
+                            )}
+                          >
+                            <motion.div
+                              animate={{ x: formData[field.key] === 'true' || formData[field.key] === true ? 20 : 2 }}
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
+                            />
+                          </button>
+                          <span className="text-sm text-[var(--text-muted)]">
+                            {formData[field.key] === 'true' || formData[field.key] === true ? '已开启' : '已关闭'}
+                          </span>
+                        </div>
+                      ) : field.type === 'color' ? (
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="color"
+                            value={formData[field.key] || '#000000'}
+                            onChange={(e) => handleInputChange(field.key, e.target.value)}
+                            className="bg-transparent border-0 w-10 h-10 p-0 cursor-pointer overflow-hidden rounded-lg"
+                          />
+                          <input
+                            type="text"
+                            value={formData[field.key] || ''}
+                            onChange={(e) => handleInputChange(field.key, e.target.value)}
+                            className="w-32 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none font-mono"
+                          />
+                        </div>
+                      ) : field.type === 'social-links' ? (
+                        <SocialLinksEditor
+                          value={(() => {
+                            // 解析 social_links，可能是 JSON 字符串或已解析的数组
+                            const raw = formData[field.key];
+                            if (!raw) return [];
+                            if (Array.isArray(raw)) return raw;
+                            try {
+                              return JSON.parse(raw);
+                            } catch {
+                              return [];
+                            }
+                          })()}
+                          onChange={(links) => handleInputChange(field.key, links)}
+                        />
+                      ) : field.type === 'image-upload' ? (
+                        <ImageUploadField
+                          value={formData[field.key] || ''}
+                          onChange={(url) => handleInputChange(field.key, url)}
+                        />
+                      ) : null}
+
+                      {field.description && (
+                        <p className="text-xs text-[var(--text-muted)]">{field.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </motion.div>
         </div>
       </div>

@@ -23,7 +23,6 @@ const FolderPermissionsPage = lazy(() => import('./pages/media/FolderPermissions
 const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
 const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
-const MigrationPage = lazy(() => import('./pages/MigrationPage'));
 
 // Named exports need special handling
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -90,7 +89,6 @@ function App() {
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
-              <Route path="settings/migration" element={<MigrationPage />} />
             </Route>
           </Routes>
         </Suspense>
