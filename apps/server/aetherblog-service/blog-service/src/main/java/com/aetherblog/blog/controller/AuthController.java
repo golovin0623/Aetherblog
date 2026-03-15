@@ -207,6 +207,7 @@ public class AuthController {
      * 修改密码
      */
     @PostMapping("/change-password")
+    @RateLimit(key = "auth:change_password", count = 5, time = 300, limitType = RateLimit.LimitType.USER)
     public R<Void> changePassword(
             @AuthenticationPrincipal LoginUser loginUser,
             @Valid @RequestBody com.aetherblog.api.dto.auth.ChangePasswordRequest request,

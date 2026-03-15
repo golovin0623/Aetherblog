@@ -54,3 +54,7 @@
 **Vulnerability:** XSS risk in `MarkdownRenderer` due to `rehype-raw` parsing arbitrary HTML from user inputs and `mermaid.initialize` configured with `securityLevel: 'loose'`.
 **Learning:** ReactMarkdown plugins and external libraries like Mermaid can expose the application to XSS attacks if not securely configured, especially when processing potentially untrusted content. `rehype-raw` ignores HTML sanitization rules if included directly.
 **Prevention:** Avoid rendering raw HTML (`rehype-raw`) and instead enforce strict HTML sanitization strategies. Explicitly set strict security configurations (e.g., `securityLevel: 'strict'`) for visualization libraries like Mermaid.
+## 2025-03-14 - Missing Rate Limiting on Password Change
+**Vulnerability:** The `/v1/auth/change-password` endpoint lacked rate limiting, making it susceptible to automated spam and brute-force attacks from authenticated users attempting to change their password excessively.
+**Learning:** Even endpoints restricted to authenticated users (like password changes) can be abused and require rate limiting to prevent application logic abuse or denial-of-service conditions.
+**Prevention:** Added `@RateLimit(key = "auth:change_password", count = 5, time = 300, limitType = RateLimit.LimitType.IP)` to the `changePassword` method in `AuthController` and added a regression test to `RateLimitVerificationTest`.
