@@ -52,3 +52,7 @@
 ## 2026-06-08 - Button type and keyboard accessibility
 **Learning:** Icon-only buttons or custom interactive elements like `BackButton`, `MobileMenu` trigger, and chips inside `SearchPanel` often lack `type="button"`, causing unintended form submissions if placed within a form context. They also often lack `focus-visible` styles making them inaccessible to keyboard users navigating via Tab.
 **Action:** Always ensure custom interactive elements include `type="button"` and `focus-visible` utility classes (e.g., `focus-visible:ring-2 focus-visible:outline-none`) to ensure proper keyboard navigation accessibility and prevent form side-effects.
+
+## 2026-06-08 - ThemeToggle Focus Visibility
+**Learning:** Shared UI hooks/components like `ThemeToggle` in `packages/hooks/src/ThemeToggle.tsx` that use `framer-motion` for complex animations often neglect `focus-visible` styles, making it impossible for keyboard users to track focus on these primary interactions.
+**Action:** Always ensure that interactive elements wrapped in animation libraries (like `motion.button`) explicitly include `focus-visible:outline-none focus-visible:ring-2` to guarantee keyboard accessibility without compromising visual design.
