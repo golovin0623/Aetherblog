@@ -165,7 +165,7 @@ export default function PostsPage() {
   return (
     <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
       {/* 主要内容 */}
-      <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
+      <main className="max-w-7xl mx-auto px-4 pt-24 pb-24 md:pb-12">
         {/* 背景环境光 */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
           <div
