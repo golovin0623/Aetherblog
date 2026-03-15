@@ -5,12 +5,15 @@ import com.aetherblog.common.core.utils.IpUtils;
 import com.aetherblog.common.core.utils.JsonUtils;
 import com.aetherblog.common.core.utils.ServletUtils;
 import com.aetherblog.common.security.annotation.RateLimit;
+import com.aetherblog.common.security.domain.LoginUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -87,8 +90,29 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         
         if (rateLimit.limitType() == RateLimit.LimitType.IP) {
             key.append(":").append(IpUtils.getIpAddr(request));
+        } else if (rateLimit.limitType() == RateLimit.LimitType.USER) {
+            Long userId = getCurrentUserId();
+            if (userId != null) {
+                key.append(":user:").append(userId);
+            } else {
+                // Fallback to IP if user is not authenticated (distinct prefix to avoid key collision with IP type)
+                key.append(":ip_fallback:").append(IpUtils.getIpAddr(request));
+            }
         }
         
         return key.toString();
+    }
+
+    private Long getCurrentUserId() {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.isAuthenticated()
+                    && authentication.getPrincipal() instanceof LoginUser loginUser) {
+                return loginUser.getUserId();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to get current user ID for rate limiting, will fallback to IP-based limiting", e);
+        }
+        return null;
     }
 }
