@@ -20,4 +20,21 @@ public class RateLimitVerificationTest {
         assertEquals(600, rateLimit.time(), "Rate limit time mismatch");
         assertEquals(RateLimit.LimitType.IP, rateLimit.limitType(), "Rate limit type mismatch");
     }
+
+    @Test
+    public void changePasswordMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method changePasswordMethod = AuthController.class.getMethod("changePassword",
+                com.aetherblog.common.security.domain.LoginUser.class,
+                com.aetherblog.api.dto.auth.ChangePasswordRequest.class,
+                jakarta.servlet.http.HttpServletRequest.class,
+                jakarta.servlet.http.HttpServletResponse.class);
+
+        RateLimit rateLimit = changePasswordMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "Change password method must have @RateLimit annotation");
+
+        assertEquals("auth:change_password", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(5, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(300, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
+    }
 }
