@@ -236,7 +236,7 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
               // 基于 isDesktop hook 的条件布局
               isDesktop 
                 ? "w-[380px] h-[650px] max-h-[calc(100vh-80px)]" // 桌面端
-                : "w-[calc(100vw-32px)] max-w-[338px] h-[540px] max-h-[72dvh]" // 移动端：放大15%并增高以完整展示按钮
+                : "w-[calc(100vw-32px)] max-w-[338px] h-[600px] max-h-[85dvh]" // 移动端：增高面板以完整展示保存修改按钮
             )}
             style={{
               // 定位逻辑
