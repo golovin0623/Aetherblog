@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Globe, Loader2, Save, X, RotateCcw } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -364,7 +365,7 @@ export default function FriendsPage() {
                 exit={{ opacity: 0, x: 20 }}
                 className="lg:col-span-1"
               >
-                <div className="sticky top-6 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] backdrop-blur-md">
+                <div className="sticky top-6 p-6 rounded-xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)] backdrop-blur-md shadow-lg">
                   {formContent}
                 </div>
               </motion.div>
@@ -373,8 +374,8 @@ export default function FriendsPage() {
         )}
       </div>
 
-      {/* 表单区域 - 移动端 Bottom Sheet */}
-      {isMobile && (
+      {/* 表单区域 - 移动端 Bottom Sheet (Portal 到 body 以覆盖顶部标题栏) */}
+      {isMobile && createPortal(
         <AnimatePresence>
           {isFormOpen && (
             <>
@@ -383,7 +384,7 @@ export default function FriendsPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+                className="fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm"
                 onClick={handleCloseForm}
               />
 
@@ -401,7 +402,7 @@ export default function FriendsPage() {
                     handleCloseForm();
                   }
                 }}
-                className="fixed bottom-0 left-0 right-0 z-50 max-h-[66vh] bg-[var(--bg-card)] backdrop-blur-xl rounded-t-2xl border-t border-[var(--border-subtle)] shadow-2xl overflow-hidden flex flex-col"
+                className="fixed bottom-0 left-0 right-0 z-[70] max-h-[66vh] bg-[var(--bg-overlay)] backdrop-blur-xl rounded-t-2xl border-t border-[var(--border-subtle)] shadow-2xl overflow-hidden flex flex-col"
               >
                 {/* 拖拽手柄 */}
                 <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={handleCloseForm}>
@@ -414,7 +415,8 @@ export default function FriendsPage() {
               </motion.div>
             </>
           )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
       )}
     </div>
   );
