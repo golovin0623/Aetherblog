@@ -789,8 +789,7 @@ export default function PostsPage() {
                 </button>
                 <div
                   ref={pageNumbersRef}
-                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-0.5"
-                  style={{ maxWidth: '220px', WebkitOverflowScrolling: 'touch' }}
+                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-0.5 max-w-[220px]"
                 >
                   {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((page) => (
                     <button
