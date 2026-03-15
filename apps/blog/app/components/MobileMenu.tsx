@@ -209,10 +209,10 @@ const MobileMenu = memo(function MobileMenu() {
             {/* 1. 顶部区域：个人资料 (去除了强分割线) */}
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
               <div className="flex flex-col items-center text-center">
-                <div className="relative w-14 h-14 mb-2 group">
-                  <div className="absolute -inset-1 rounded-full blur-md opacity-0 bg-black/10 group-hover:opacity-40 transition-opacity" />
-                  <div className="absolute inset-0 bg-gradient-to-tr from-primary to-accent rounded-full blur-md opacity-0 dark:opacity-50 group-hover:opacity-80 dark:group-hover:opacity-80 transition-opacity" />
-                  <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-[var(--border-default)] shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none group-hover:border-primary transition-colors">
+                <div className="relative w-14 h-14 mb-2">
+                  <div className="absolute -inset-1 rounded-full blur-md opacity-30 bg-black/10 dark:opacity-0" />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-primary to-accent rounded-full blur-md opacity-40 dark:opacity-50" />
+                  <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-white/60 dark:border-white/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none">
                     <Image
                       src={authorAvatar}
                       alt={authorName}

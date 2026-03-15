@@ -60,52 +60,11 @@ function applyTheme(resolvedTheme: ResolvedTheme): void {
 
 /**
  * 检测当前浏览器是否为 Safari/WebKit（非 Chrome/非 Android WebView）。
- * Safari 的 clip-path 动画走主线程重绘而非 GPU 合成，在 iOS 上会导致明显卡顿。
+ * 用于性能调优：Safari 的 clip-path 动画走主线程重绘，需要额外优化。
  */
 function isSafariBrowser(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-}
-
-/**
- * Safari 专用：使用 opacity 交叉淡入淡出替代 clip-path 扩散动画。
- * opacity 动画在所有浏览器上都走 GPU 合成，不会卡顿。
- */
-async function performFadeTransition(
-  isDarkToLight: boolean,
-  callback: () => void
-): Promise<void> {
-  // 注入临时样式覆盖默认的 view-transition 动画
-  const style = document.createElement('style');
-  style.textContent = `
-    ::view-transition-old(root),
-    ::view-transition-new(root) {
-      mix-blend-mode: normal;
-    }
-    ::view-transition-old(root) {
-      z-index: ${isDarkToLight ? 0 : 1};
-      animation: vt-fade-out 0.3s ease-out both;
-    }
-    ::view-transition-new(root) {
-      z-index: ${isDarkToLight ? 1 : 0};
-      animation: vt-fade-in 0.3s ease-out both;
-    }
-    @keyframes vt-fade-out { to { opacity: 0; } }
-    @keyframes vt-fade-in { from { opacity: 0; } }
-  `;
-  document.head.appendChild(style);
-
-  const transition = document.startViewTransition(() => {
-    callback();
-  });
-
-  try {
-    await transition.finished;
-  } catch {
-    // 失败静默
-  } finally {
-    style.remove();
-  }
 }
 
 /**
@@ -119,12 +78,12 @@ async function performFadeTransition(
  * 多层动画与性能优化：
  * - 侧边栏和遮罩也需要同步做动画，以保留其真正的 backdrop-filter。
  * - 必须保证各层扩张速度(dr/dt)完全一致，以防止多圈重影割裂。
- * - 为了防止局部小元素使用极大半径导致的 GPU 卡顿，
- *   各层使用自身的相对最大半径，但按比例缩短动画时长（线性动画），实现完美物理同步匹配！
  * 
- * Safari/WebKit 降级：
- * - clip-path 动画在 Safari 上走主线程重绘，不走 GPU 合成，导致 iOS 明显卡顿。
- * - 自动检测 Safari 并降级为 opacity 交叉淡入淡出，确保流畅体验。
+ * Safari/WebKit 性能优化策略（不降级，满帧光圈）：
+ * - 注入 will-change: clip-path 强制 GPU 图层提升
+ * - 动画时长缩短至 300ms + ease-out（前快后慢，视觉更快完成）
+ * - 动画期间冻结所有其他 CSS 动画，释放 GPU 算力
+ * - contain: layout 减少布局重排
  */
 async function performCircularTransition(
   x: number,
@@ -143,12 +102,7 @@ async function performCircularTransition(
     return;
   }
 
-  // Safari/WebKit: clip-path animation is not compositor-driven and
-  // causes visible jank on iOS. Fall back to a smooth opacity crossfade.
-  if (isSafariBrowser()) {
-    await performFadeTransition(isDarkToLight, callback);
-    return;
-  }
+  const isSafari = isSafariBrowser();
 
   const Math_hypot = Math.hypot;
   const Math_max = Math.max;
@@ -158,12 +112,35 @@ async function performCircularTransition(
     Math_max(x, window.innerWidth - x),
     Math_max(y, window.innerHeight - y)
   );
-  //全屏标准时长 350ms，计算全局扩圈速度
-  const totalDuration = 350;
-  const velocity = maxRadius / totalDuration; // px per ms
+
+  // Safari 使用更短时长 + ease-out 减少主线程重绘帧数
+  const totalDuration = isSafari ? 300 : 350;
+  const easing = isSafari ? 'ease-out' : 'cubic-bezier(0.4, 0, 0.2, 1)';
+
+  // 注入性能优化样式（动画期间生效，结束后移除）
+  const perfStyle = document.createElement('style');
+  perfStyle.textContent = `
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      will-change: clip-path;
+      contain: layout;
+    }
+    html[data-theme-transition] *,
+    html[data-theme-transition] *::before,
+    html[data-theme-transition] *::after {
+      animation-play-state: paused !important;
+    }
+  `;
+  document.head.appendChild(perfStyle);
 
   // 设置动画方向（决定 z-index）
   document.documentElement.dataset.themeTransition = isDarkToLight ? 'to-light' : 'to-dark';
+
+  // 安全网：无论动画成功与否，最迟 totalDuration + 200ms 后强制清理
+  const cleanupTimer = setTimeout(() => {
+    perfStyle.remove();
+    delete document.documentElement.dataset.themeTransition;
+  }, totalDuration + 200);
 
   const transition = document.startViewTransition(() => {
     callback();
@@ -173,8 +150,8 @@ async function performCircularTransition(
     await transition.ready;
 
     const animOpts = {
-      duration: 350,
-      easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+      duration: totalDuration,
+      easing,
     };
 
     // 动画辅助函数：对指定 VT 层应用 clip-path 动画
@@ -220,18 +197,16 @@ async function performCircularTransition(
       animateLayer('mobile-menu-drawer', drawerX, drawerY, drawerRadius);
     }
 
-    // 等待核心 350ms 动画跑完
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    // 等待动画跑完
+    await new Promise((resolve) => setTimeout(resolve, totalDuration));
     await transition.finished;
 
   } catch {
     // 失败静默
   } finally {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        delete document.documentElement.dataset.themeTransition;
-      });
-    });
+    clearTimeout(cleanupTimer);
+    perfStyle.remove();
+    delete document.documentElement.dataset.themeTransition;
   }
 }
 
