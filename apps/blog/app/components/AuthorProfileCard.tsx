@@ -232,18 +232,26 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
       <div className="relative p-6 flex flex-col items-center text-center">
         {/* 头像 */}
-        <div className="relative w-24 h-24 mb-3">
-          <div className="absolute -inset-3 rounded-full blur-md opacity-30 bg-black/8 dark:opacity-0" />
-          <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60" />
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/40 via-accent/40 to-primary/40 rounded-full blur-2xl opacity-60" />
-          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white dark:ring-white/20 outline-none shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-slate-100">
+        <div
+          className="relative w-24 h-24 mb-3 outline-none select-none"
+          style={{ WebkitTapHighlightColor: 'transparent' }}
+        >
+          <div className="absolute -inset-3 rounded-full blur-md opacity-30 bg-black/8 dark:opacity-0 pointer-events-none" />
+          <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 pointer-events-none" />
+          {/* 光晕渐变层：使用 CSS 变量直接设置 background，避免 Tailwind v3 对 CSS 变量颜色不支持 /opacity 修饰符的问题 */}
+          <div
+            className="absolute inset-0 rounded-full blur-2xl opacity-25 pointer-events-none"
+            style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))' }}
+          />
+          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white dark:ring-white/20 outline-none focus:outline-none shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-slate-100">
             <Image
               src={avatar}
               alt={name}
               fill
               sizes="96px"
-              className="object-cover"
+              className="object-cover outline-none select-none"
               priority
+              draggable={false}
               unoptimized={avatar.startsWith('/api/uploads') || avatar.startsWith('/uploads')}
             />
           </div>
