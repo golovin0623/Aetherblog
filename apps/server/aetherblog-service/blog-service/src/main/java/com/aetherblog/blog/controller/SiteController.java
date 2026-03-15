@@ -41,6 +41,12 @@ public class SiteController {
         // 覆盖为管理员信息
         injectAdminInfo(info);
 
+        // 修正本地存储路径的 site_logo（加 /api 前缀）
+        Object siteLogo = info.get("site_logo");
+        if (siteLogo instanceof String siteLogoStr && siteLogoStr.startsWith("/uploads/")) {
+            info.put("site_logo", "/api" + siteLogoStr);
+        }
+
         // 添加版本信息
         info.put("version", "0.1.0");
 
