@@ -654,7 +654,7 @@ export function PostPropertiesModal({
                 onClick={() => setFormData({ ...formData, isHidden: !formData.isHidden })}
                 className={cn(
                   "relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors",
-                  formData.isHidden ? "bg-status-warning/80" : "bg-[var(--bg-quaternary)] dark:bg-[var(--bg-tertiary)]"
+                  formData.isHidden ? "bg-status-warning" : "bg-[var(--bg-quaternary)] dark:bg-[var(--bg-tertiary)]"
                 )}
               >
                 <span
