@@ -57,4 +57,4 @@
 ## 2025-03-14 - Missing Rate Limiting on Password Change
 **Vulnerability:** The `/v1/auth/change-password` endpoint lacked rate limiting, making it susceptible to automated spam and brute-force attacks from authenticated users attempting to change their password excessively.
 **Learning:** Even endpoints restricted to authenticated users (like password changes) can be abused and require rate limiting to prevent application logic abuse or denial-of-service conditions.
-**Prevention:** Added `@RateLimit(key = "auth:change_password", count = 5, time = 300, limitType = RateLimit.LimitType.IP)` to the `changePassword` method in `AuthController` and added a regression test to `RateLimitVerificationTest`.
+**Prevention:** Added `@RateLimit(key = "auth:change_password", count = 5, time = 300, limitType = RateLimit.LimitType.USER)` to the `changePassword` method in `AuthController`, extended `RateLimitInterceptor.buildKey()` to support `LimitType.USER` by extracting user ID from `SecurityContextHolder`, and added a regression test to `RateLimitVerificationTest`.
