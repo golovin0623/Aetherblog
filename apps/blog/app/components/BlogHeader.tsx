@@ -108,8 +108,8 @@ export default function BlogHeader() {
       about: '/about',
     };
 
-    // 直接导航（不使用 startTransition，确保立即触发）
-    router.push(routes[target]);
+    // 导航时禁用 Next.js 自动滚动恢复，保留当前视野位置
+    router.push(routes[target], { scroll: false });
   }, [router]);
 
   const isTimeline = activeTab === 'timeline';

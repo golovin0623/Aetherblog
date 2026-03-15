@@ -37,8 +37,8 @@ export default function MobileNavSwitch() {
     setActiveTab(target);
     sessionStorage.setItem('blogNavSource', target);
 
-    // 直接导航（不使用 startTransition，确保立即触发）
-    router.push(target === 'timeline' ? '/timeline' : '/posts');
+    // 导航时禁用 Next.js 自动滚动恢复，保留当前视野位置
+    router.push(target === 'timeline' ? '/timeline' : '/posts', { scroll: false });
   }, [router]);
 
   const isTimeline = activeTab === 'timeline';

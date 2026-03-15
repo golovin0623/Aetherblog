@@ -130,8 +130,12 @@ export default function PostsPage() {
     }
   }, []);
 
+  // 标记是否由用户翻页操作触发（区分组件挂载/导航回来）
+  const isUserPaging = useRef(false);
+
   const handlePageChange = (page: number) => {
     if (!postsData || page < 1 || page > postsData.pages) return;
+    isUserPaging.current = true;
     setCurrentPage(page);
     // Scroll to top of posts list section
     if (postsListRef.current) {
@@ -141,9 +145,12 @@ export default function PostsPage() {
     }
   };
 
-  // Auto-scroll the active page number into view when currentPage changes
+  // Auto-scroll the active page number into view — 仅用户翻页时触发，导航回来时跳过
   useEffect(() => {
-    scrollActivePageIntoView(currentPage);
+    if (isUserPaging.current) {
+      scrollActivePageIntoView(currentPage);
+      isUserPaging.current = false;
+    }
   }, [currentPage, scrollActivePageIntoView]);
 
   // 初始加载状态（仅用于首次加载）
