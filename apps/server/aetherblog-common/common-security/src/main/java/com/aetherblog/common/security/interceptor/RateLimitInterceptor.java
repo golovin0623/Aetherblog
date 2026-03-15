@@ -95,8 +95,8 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             if (userId != null) {
                 key.append(":user:").append(userId);
             } else {
-                // Fallback to IP if user is not authenticated
-                key.append(":").append(IpUtils.getIpAddr(request));
+                // Fallback to IP if user is not authenticated (distinct prefix to avoid key collision with IP type)
+                key.append(":ip_fallback:").append(IpUtils.getIpAddr(request));
             }
         }
         
@@ -111,7 +111,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
                 return loginUser.getUserId();
             }
         } catch (Exception e) {
-            log.debug("Failed to get current user ID for rate limiting", e);
+            log.debug("Failed to get current user ID for rate limiting, will fallback to IP-based limiting", e);
         }
         return null;
     }
