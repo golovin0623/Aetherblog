@@ -105,7 +105,7 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
   migration: {
     label: '数据迁移',
     icon: DatabaseZap,
-    fields: []
+    fields: [] // 特殊 tab：不使用标准字段渲染，而是直接加载 MigrationPage 组件
   }
 };
 
@@ -247,6 +247,10 @@ export default function SettingsPage() {
   });
 
   // 同步服务器数据到本地表单数据
+  // 注意：依赖仅包含 settings，不包含 hasChanges。
+  // 当 settings 变化时（首次加载或保存后 refetch），效果运行并读取当前 hasChanges 值。
+  // 若将 hasChanges 加入依赖，保存后 hasChanges→false 会立即触发 setFormData(旧settings)，
+  // 导致刚上传的 site_logo 等新值被旧数据覆盖（refetch 尚未完成），引发 UI 闪烁。
   useEffect(() => {
     if (settings) {
       if (hasChanges) {
