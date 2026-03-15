@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { cn } from '@/lib/utils';
 import { friendService, FriendLink } from '@/services/friendService';
 import { toast } from 'sonner';
+import { useMediaQuery } from '@/hooks';
 import { 
   DndContext, 
   closestCenter, 
@@ -39,6 +40,7 @@ type FriendFormData = z.infer<typeof friendSchema>;
 export default function FriendsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const queryClient = useQueryClient();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -149,6 +151,145 @@ export default function FriendsPage() {
     }
   };
 
+  const formContent = (
+    <>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+          {editingId ? '编辑友链' : '添加友链'}
+        </h3>
+        <button 
+          onClick={handleCloseForm}
+          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <form onSubmit={form.handleSubmit((data) => saveMutation.mutate(data))} className="space-y-4">
+        {/* 名称 */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">网站名称 *</label>
+          <input
+            {...form.register('name')}
+            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
+            placeholder="例如: AetherBlog"
+          />
+          {form.formState.errors.name && (
+            <p className="text-xs text-status-danger">{form.formState.errors.name.message}</p>
+          )}
+        </div>
+
+        {/* 网址 */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">网站地址 *</label>
+          <input
+            {...form.register('url')}
+            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
+            placeholder="https://..."
+          />
+          {form.formState.errors.url && (
+            <p className="text-xs text-status-danger">{form.formState.errors.url.message}</p>
+          )}
+        </div>
+
+        {/* Logo */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">Logo 链接</label>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <input
+                {...form.register('logo')}
+                className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
+                placeholder="https://..."
+              />
+            </div>
+            <div className="w-9 h-9 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-center overflow-hidden shrink-0">
+              {form.watch('logo') ? (
+                <img src={form.watch('logo')} alt="preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+              ) : (
+                <Globe className="w-4 h-4 text-[var(--text-secondary)]" />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 描述 */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">描述</label>
+          <textarea
+            {...form.register('description')}
+            rows={3}
+            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none"
+            placeholder="简短介绍..."
+          />
+        </div>
+
+        {/* 高级 - 邮箱/RSS/颜色 */}
+        <div className="pt-2 border-t border-[var(--border-subtle)] space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            {/* 主题色 */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[var(--text-secondary)]">主题色</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  {...form.register('themeColor')}
+                  className="bg-transparent border-0 w-8 h-8 p-0 cursor-pointer"
+                />
+                <input
+                  {...form.register('themeColor')}
+                  className="flex-1 px-2 py-1.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-xs font-mono"
+                />
+              </div>
+            </div>
+            
+            {/* 邮箱 */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[var(--text-secondary)]">联系邮箱</label>
+              <input
+                {...form.register('email')}
+                className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none placeholder:text-[var(--text-muted)]"
+                placeholder="admin@..."
+              />
+            </div>
+          </div>
+
+          {/* RSS */}
+          <div className="space-y-1.5">
+             <label className="text-xs font-medium text-[var(--text-secondary)]">RSS 地址</label>
+             <input
+                {...form.register('rssUrl')}
+                className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none placeholder:text-[var(--text-muted)]"
+                placeholder="https://.../feed"
+              />
+          </div>
+        </div>
+
+        <div className="pt-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCloseForm}
+            className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            disabled={saveMutation.isPending}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            {editingId ? '保存修改' : '确认添加'}
+          </button>
+        </div>
+      </form>
+    </>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -166,9 +307,9 @@ export default function FriendsPage() {
         </motion.button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={cn("grid gap-6", isMobile ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-3")}>
         {/* 列表区域 */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className={cn(isMobile ? "" : "lg:col-span-2", "space-y-4")}>
           <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[500px]">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-64 text-[var(--text-muted)] gap-3">
@@ -213,155 +354,68 @@ export default function FriendsPage() {
           </div>
         </div>
 
-        {/* 表单区域 - 粘性侧边栏 */}
+        {/* 表单区域 - 桌面端粘性侧边栏 */}
+        {!isMobile && (
+          <AnimatePresence>
+            {isFormOpen && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="lg:col-span-1"
+              >
+                <div className="sticky top-6 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] backdrop-blur-md">
+                  {formContent}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
+      </div>
+
+      {/* 表单区域 - 移动端 Bottom Sheet */}
+      {isMobile && (
         <AnimatePresence>
           {isFormOpen && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="lg:col-span-1"
-            >
-              <div className="sticky top-6 p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] backdrop-blur-md">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">
-                    {editingId ? '编辑友链' : '添加友链'}
-                  </h3>
-                  <button 
-                    onClick={handleCloseForm}
-                    className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+            <>
+              {/* 遮罩 */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+                onClick={handleCloseForm}
+              />
+
+              {/* Bottom Sheet */}
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                drag="y"
+                dragConstraints={{ top: 0 }}
+                dragElastic={0.2}
+                onDragEnd={(_, info) => {
+                  if (info.offset.y > 100) {
+                    handleCloseForm();
+                  }
+                }}
+                className="fixed bottom-0 left-0 right-0 z-50 max-h-[66vh] bg-[var(--bg-card)] backdrop-blur-xl rounded-t-2xl border-t border-[var(--border-subtle)] shadow-2xl overflow-hidden flex flex-col"
+              >
+                {/* 拖拽手柄 */}
+                <div className="flex justify-center pt-3 pb-1 shrink-0" onClick={handleCloseForm}>
+                  <div className="w-12 h-1.5 bg-[var(--bg-secondary)] rounded-full" />
                 </div>
 
-                <form onSubmit={form.handleSubmit((data) => saveMutation.mutate(data))} className="space-y-4">
-                  {/* 名称 */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[var(--text-secondary)]">网站名称 *</label>
-                    <input
-                      {...form.register('name')}
-                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
-                      placeholder="例如: AetherBlog"
-                    />
-                    {form.formState.errors.name && (
-                      <p className="text-xs text-status-danger">{form.formState.errors.name.message}</p>
-                    )}
-                  </div>
-
-                  {/* 网址 */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[var(--text-secondary)]">网站地址 *</label>
-                    <input
-                      {...form.register('url')}
-                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
-                      placeholder="https://..."
-                    />
-                    {form.formState.errors.url && (
-                      <p className="text-xs text-status-danger">{form.formState.errors.url.message}</p>
-                    )}
-                  </div>
-
-                  {/* Logo */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[var(--text-secondary)]">Logo 链接</label>
-                    <div className="flex gap-3">
-                      <div className="flex-1">
-                        <input
-                          {...form.register('logo')}
-                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
-                          placeholder="https://..."
-                        />
-                      </div>
-                      <div className="w-9 h-9 rounded bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-center overflow-hidden shrink-0">
-                        {form.watch('logo') ? (
-                          <img src={form.watch('logo')} alt="preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
-                        ) : (
-                          <Globe className="w-4 h-4 text-[var(--text-secondary)]" />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 描述 */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[var(--text-secondary)]">描述</label>
-                    <textarea
-                      {...form.register('description')}
-                      rows={3}
-                      className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none"
-                      placeholder="简短介绍..."
-                    />
-                  </div>
-
-                  {/* 高级 - 邮箱/RSS/颜色 */}
-                  <div className="pt-2 border-t border-[var(--border-subtle)] space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* 主题色 */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-[var(--text-secondary)]">主题色</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="color"
-                            {...form.register('themeColor')}
-                            className="bg-transparent border-0 w-8 h-8 p-0 cursor-pointer"
-                          />
-                          <input
-                            {...form.register('themeColor')}
-                            className="flex-1 px-2 py-1.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-xs font-mono"
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* 邮箱 */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-[var(--text-secondary)]">联系邮箱</label>
-                        <input
-                          {...form.register('email')}
-                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none placeholder:text-[var(--text-muted)]"
-                          placeholder="admin@..."
-                        />
-                      </div>
-                    </div>
-
-                    {/* RSS */}
-                    <div className="space-y-1.5">
-                       <label className="text-xs font-medium text-[var(--text-secondary)]">RSS 地址</label>
-                       <input
-                          {...form.register('rssUrl')}
-                          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none placeholder:text-[var(--text-muted)]"
-                          placeholder="https://.../feed"
-                        />
-                    </div>
-                  </div>
-
-                  <div className="pt-4 flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleCloseForm}
-                      className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors text-sm"
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saveMutation.isPending}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {saveMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Save className="w-4 h-4" />
-                      )}
-                      {editingId ? '保存修改' : '确认添加'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </motion.div>
+                <div className="flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                  {formContent}
+                </div>
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
-      </div>
+      )}
     </div>
   );
 }
