@@ -60,14 +60,14 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
         {/* 背景环境光 */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
           <div
-            className="absolute top-[-100px] right-1/4 w-[600px] h-[500px] bg-primary/10 rounded-full"
+            className="absolute top-[-100px] right-1/4 w-[600px] h-[500px] bg-primary/10 rounded-full theme-transition-glow"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'var(--ambient-glow-opacity)'
             }}
           />
           <div
-            className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-blue-500/10 rounded-full"
+            className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-blue-500/10 rounded-full theme-transition-glow"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'var(--ambient-glow-opacity)'

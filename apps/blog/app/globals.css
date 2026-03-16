@@ -1190,6 +1190,22 @@ html[data-theme-transition] .mobile-menu-backdrop {
   background-color: rgba(0, 0, 0, 0.8) !important;
 }
 
+/*
+ * 环境光 glow 过渡期间定点关闭
+ * 带有 theme-transition-glow class 的大面积模糊环境光元素（filter: blur(120px)）
+ * 在 clip-path 动画期间会与页面快照叠加，产生大量 GPU Composite/Raster 工作。
+ * 切换过渡期间将其临时隐藏（opacity: 0），过渡结束后自动恢复，不影响正常浏览体验。
+ * 不使用 filter: none，避免影响布局层级；仅通过 opacity 精准控制可见性。
+ *
+ * transition: none 是故意的：html[data-theme-transition] 仅在 clip-path 动画的
+ * 约 350ms 内存在。此期间我们希望 glow 瞬间消失而非过渡淡出（淡出本身也会触发
+ * 额外的 GPU 合成层计算）。正常浏览时此规则完全不生效。
+ */
+html[data-theme-transition] .theme-transition-glow {
+  opacity: 0 !important;
+  transition: none !important;
+}
+
 /* 减少动画模式时禁用 View Transition */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
