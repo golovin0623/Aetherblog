@@ -216,6 +216,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
 
                 {/* Bottom Sheet 面板 */}
                 <motion.div
+                  id="mobile-toc-drawer"
                   initial={{ y: '100%' }}
                   animate={{ y: 0 }}
                   exit={{ y: '100%' }}
@@ -324,8 +325,9 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                     <span className="font-bold text-sm text-[var(--text-primary)]">文章目录</span>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setIsTocOpen(false)}
-                    className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                    className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg"
                     aria-label="关闭目录"
                   >
                     <X className="h-4 w-4" />

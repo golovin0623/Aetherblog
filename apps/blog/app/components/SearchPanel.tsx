@@ -371,6 +371,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                       <span>搜索历史</span>
                     </div>
                     <button
+                      type="button"
                       onClick={clearHistory}
                       aria-live="polite"
                       className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 ${

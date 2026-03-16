@@ -56,3 +56,7 @@
 ## 2026-06-08 - ThemeToggle Focus Visibility
 **Learning:** Shared UI hooks/components like `ThemeToggle` in `packages/hooks/src/ThemeToggle.tsx` that use `framer-motion` for complex animations often neglect `focus-visible` styles, making it impossible for keyboard users to track focus on these primary interactions.
 **Action:** Always ensure that interactive elements wrapped in animation libraries (like `motion.button`) explicitly include `focus-visible:outline-none focus-visible:ring-2` to guarantee keyboard accessibility without compromising visual design.
+
+## 2026-06-08 - Added button type and ARIA attributes to floating interactive elements
+**Learning:** Custom floating interactive components like `ArticleFloatingActions` often omit `type="button"` and `focus-visible` styles, rendering them inaccessible to keyboard users and prone to triggering unintended form submissions. Furthermore, elements that control UI disclosure (like toggling a Table of Contents) must explicitly define `aria-expanded` and link to the relevant container using `aria-controls`.
+**Action:** Always verify that interactive custom components (such as floating action buttons and toolbars) include `type="button"`, use `aria-expanded`/`aria-controls` for disclosure widgets, and define explicit `focus-visible` styles to ensure full keyboard and screen reader accessibility.
