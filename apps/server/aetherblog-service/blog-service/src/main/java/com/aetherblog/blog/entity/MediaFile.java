@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 @Table(name = "media_files", indexes = {
     @Index(name = "idx_media_files_type", columnList = "file_type"),
     @Index(name = "idx_media_files_uploader", columnList = "uploader_id"),
-    @Index(name = "idx_media_files_created", columnList = "createdAt"),
+    @Index(name = "idx_media_files_created", columnList = "created_at"),
     @Index(name = "idx_media_files_folder", columnList = "folder_id")
 })
 public class MediaFile {
