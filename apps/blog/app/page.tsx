@@ -18,14 +18,14 @@ export default async function HomePage() {
         {/* 背景效果 */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div
-            className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full"
+            className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full theme-transition-glow"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'var(--ambient-glow-opacity)'
             }}
           />
           <div
-            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full"
+            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full theme-transition-glow"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'var(--ambient-glow-opacity)'

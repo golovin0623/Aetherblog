@@ -169,14 +169,14 @@ export default function PostsPage() {
         {/* 背景环境光 */}
         <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
           <div
-            className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full"
+            className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full theme-transition-glow"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'var(--ambient-glow-opacity)'
             }}
           />
           <div
-            className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-accent/10 rounded-full"
+            className="absolute top-[-100px] right-0 w-[600px] h-[400px] bg-accent/10 rounded-full theme-transition-glow"
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'calc(var(--ambient-glow-opacity) * 0.67)'
