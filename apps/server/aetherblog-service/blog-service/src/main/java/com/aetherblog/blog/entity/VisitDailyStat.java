@@ -18,7 +18,7 @@ import java.util.Map;
  */
 @Entity
 @Table(name = "visit_daily_stats", indexes = {
-    @Index(name = "idx_visit_daily_stats_date", columnList = "statDate")
+    @Index(name = "idx_visit_daily_stats_date", columnList = "stat_date")
 })
 @Data
 @NoArgsConstructor
