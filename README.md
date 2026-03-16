@@ -1,513 +1,191 @@
-# AetherBlog
+<div align="center">
 
-> 🌟 AetherBlog - 智能博客系统，融合 AI 与现代 Web 技术
+# ✨ AetherBlog
+
+**智能博客系统 — 融合 AI 写作辅助与现代 Web 技术**
+
+[![CI/CD Pipeline](https://github.com/golovin0623/AetherBlog/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/golovin0623/AetherBlog/actions/workflows/ci-cd.yml)
+![JDK](https://img.shields.io/badge/JDK-25-orange)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-green)
+![Next.js](https://img.shields.io/badge/Next.js-15-black)
+![React](https://img.shields.io/badge/React-19-61dafb)
+![License](https://img.shields.io/badge/License-MIT-blue)
+
+*「Cognitive Elegance」— 以高端 SaaS 品质打造的博客体验*
+
+</div>
+
+---
+
+## 🌟 项目简介
+
+AetherBlog 是一个**全栈智能博客系统**，将 AI 能力深度融入内容创作流程。前台追求极致的阅读体验，后台提供高效的内容管理与 AI 写作工具，同时通过独立 AI 服务实现多模型路由与流式输出。
+
+### 设计理念
+
+- 🎨 **Cognitive Elegance** — 灵感源自 Linear、Raycast、Vercel 的设计语言
+- 🌙 **暗色优先** — 丰富的光晕渐变 + 毛玻璃质感，营造沉浸阅读氛围
+- 🤖 **AI 原生** — 写作辅助不是附加功能，而是内置于编辑器的核心体验
+- ⚡ **现代技术栈** — 前后端均采用最新框架版本，追求极致性能
+
+---
+
+## ✨ 核心功能
+
+### 📝 博客前台
+
+- **丰富的 Markdown 渲染** — Shiki 语法高亮 + KaTeX 数学公式 + Mermaid 图表
+- **全文语义搜索** — 基于 pgvector 的向量检索，超越关键词匹配
+- **评论系统** — 支持嵌套回复的访客评论
+- **时间线视图** — 文章时间轴浏览
+- **友链页面** — 蜂巢布局的友链展示
+- **主题切换** — 明暗模式无缝切换，View Transitions API 动画
+- **响应式设计** — 桌面端与移动端自适应布局
+- **SSR 渲染** — Next.js App Router，SEO 友好
+
+### ⚙️ 管理后台
+
+- **仪表盘** — 访问统计、AI 用量分析、系统状态一览
+- **文章管理** — 创建、编辑、发布、归档完整生命周期
+- **AI 编辑器** — 集成 AI 侧栏、Slash 命令、选中文本 AI 工具栏
+- **分类与标签** — 灵活的内容组织体系
+- **媒体库** — 文件夹管理 + 拖拽上传 + 图片处理
+- **评论管理** — 审核、回复、批量操作
+- **系统监控** — 容器状态、实时日志、性能趋势
+- **数据迁移** — 支持从 VanBlog 一键导入
+
+### 🤖 AI 写作辅助
+
+| 能力 | 说明 |
+|------|------|
+| **内容摘要** | 自动提取文章核心要点 |
+| **标题建议** | 智能推荐多个标题选项 |
+| **标签提取** | 关键词与标签自动生成 |
+| **内容润色** | AI 优化文本表达 |
+| **大纲生成** | 一键生成文章结构 |
+| **多语言翻译** | 文章内容翻译 |
+
+所有 AI 能力支持 **SSE 流式输出**（打字机效果），通过独立 AI 服务实现 **多模型路由**（OpenAI / DeepSeek / 通义千问等）。
+
+---
 
 ## 🛠 技术栈
 
-| 模块 | 技术 |
-|------|------|
-| 博客前台 | Next.js 15 + React 19 |
-| 管理后台 | Vite + React 19 |
-| 后端服务 | Spring Boot 4.0 + JDK 25 |
-| AI 能力 | 独立 AI 服务 (FastAPI + LiteLLM) |
-| 数据库 | PostgreSQL 17 + pgvector |
-| 序列化 | Jackson 3.x |
-| 缓存 | Redis 7 |
-| 搜索 | Elasticsearch 8 |
+| 层级 | 技术 | 版本 |
+|------|------|------|
+| 博客前台 | Next.js + React | 15 / 19 |
+| 管理后台 | Vite + React | 6 / 19 |
+| 后端服务 | Spring Boot + JDK | 4.0 / 25 |
+| AI 服务 | FastAPI + LiteLLM | — |
+| 数据库 | PostgreSQL + pgvector | 17 |
+| 缓存 | Redis | 7 |
+| 搜索 | Elasticsearch | 8 |
+| 序列化 | Jackson | 3.x |
+| 容器化 | Docker Compose | — |
+| CI/CD | GitHub Actions | — |
+| Monorepo | pnpm workspace | — |
+
+---
 
 ## 📁 项目结构
 
 ```
 AetherBlog/
 ├── apps/
-│   ├── blog/                    # 博客前台 (Next.js)
-│   ├── admin/                   # 管理后台 (Vite + React)
-│   ├── ai-service/              # 🤖 AI 服务 (独立，FastAPI + LiteLLM)
-│   └── server/                  # 后端服务 (Spring Boot)
-│       ├── aetherblog-app/      # 🚀 应用启动模块（可执行 JAR 入口）
-│       ├── aetherblog-api/      # 📦 API 接口定义、DTO、VO
-│       ├── aetherblog-common/   # 🔧 公共模块
-│       │   ├── common-core/     #    ├─ 核心工具类
-│       │   ├── common-security/ #    ├─ 安全认证
-│       │   ├── common-redis/    #    ├─ Redis 缓存
-│       │   └── common-log/      #    └─ 日志管理
-│       ├── aetherblog-service/  # 💼 业务服务模块
-│       │   └── blog-service/    #    └─ 博客核心服务
-│       └── aetherblog-ai/       # 🤖 AI 模块（已弃用，Spring AI）
-│           ├── ai-core/         #    ├─ AI 核心
-│           ├── ai-rag/          #    ├─ RAG 检索增强
-│           ├── ai-agent/        #    └─ AI Agent
-│           └── ai-prompt/       #    └─ Prompt 管理
+│   ├── blog/              # 📝 博客前台 (Next.js 15)
+│   ├── admin/             # ⚙️ 管理后台 (Vite + React 19)
+│   ├── ai-service/        # 🤖 AI 服务 (FastAPI + LiteLLM)
+│   └── server/            # 🔧 后端 API (Spring Boot 4.0)
 ├── packages/
-│   ├── ui/                      # 共享 UI 组件
-│   ├── utils/                   # 工具函数
-│   └── types/                   # TypeScript 类型
-├── start.sh                     # 一键启动脚本
-├── stop.sh                      # 一键停止脚本
-└── docker-compose.yml           # 中间件服务
+│   ├── ui/                # 🎨 共享 UI 组件
+│   ├── hooks/             # 🪝 共享 React Hooks
+│   ├── types/             # 📋 TypeScript 类型
+│   ├── utils/             # 🔧 工具函数
+│   └── editor/            # ✏️ Markdown 编辑器
+├── docs/                  # 📚 项目文档
+├── nginx/                 # 🌐 Nginx 配置
+├── .github/workflows/     # 🔄 CI/CD 工作流
+├── start.sh               # 一键启动
+└── stop.sh                # 一键停止
 ```
+
+> 详细的模块依赖与分层说明请参考 [系统架构文档](./docs/architecture.md)。
+
+---
 
 ## 🚀 快速开始
 
 ### 环境要求
 
-- Node.js >= 20
-- pnpm >= 9
-- JDK 25 (Early Access)
+- Node.js ≥ 20 · pnpm ≥ 9
+- JDK 25 · Maven 3.9+
 - Docker & Docker Compose
-- Maven 3.9+
 
-### 一键启动（推荐）
-
-```bash
-# 开发模式 - 直接访问各端口
-./start.sh
-
-# 开发模式 + 启动中间件 (PostgreSQL/Redis/Elasticsearch)
-./start.sh --with-middleware
-
-# 如果 Elasticsearch 在本机反复重启，可先跳过 (当前版本对 ES 不是强依赖)
-./start.sh --with-middleware --skip-elasticsearch
-
-# 生产模式 - 启动网关作为统一入口 (:7899)
-./start.sh --prod
-
-# 停止应用服务 (保留中间件)
-./stop.sh
-
-# 停止所有服务（包括中间件）
-./stop.sh --all
-```
-
-**开发模式** 启动后：
-- 📝 博客前台: http://localhost:3000
-- ⚙️ 管理后台: http://localhost:5173
-- 🔧 后端 API: http://localhost:8080/api
-
-**生产模式** 启动后（含网关）：
-- 🌐 统一入口: http://localhost:7899
-  - `/` → 博客前台
-  - `/admin` → 管理后台
-  - `/api` → 后端 API
-
-### 分步启动
+### 一键启动
 
 ```bash
-# 1. 安装前端依赖
+# 克隆项目
+git clone https://github.com/golovin0623/AetherBlog.git
+cd AetherBlog
+
+# 安装前端依赖
 pnpm install
 
-# 2. 启动数据库服务
-docker compose up -d
-# 如果 Elasticsearch 启动异常，可先跳过:
-#   docker compose up -d postgres redis
-# 或尝试切换 ES 镜像版本:
-#   ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:8.14.3 docker compose up -d elasticsearch
-# 如果日志出现 SIGILL / registerNatives 崩溃（Apple Silicon 常见），请先更新到最新代码后重建 ES 容器:
-#   docker compose rm -sf elasticsearch
-#   docker compose up -d elasticsearch
-
-# 3. 启动后端服务
-cd apps/server && ./mvnw spring-boot:run -pl aetherblog-app
-
-# 4. 启动管理后台
-pnpm dev:admin
-
-# 5. 启动博客前台
-pnpm dev:blog
+# 启动开发环境（含中间件）
+./start.sh --with-middleware
 ```
 
-## ⚠️ 常见问题
+启动后访问：
 
-### 停止脚本使用说明
+| 服务 | 地址 |
+|------|------|
+| 📝 博客前台 | http://localhost:3000 |
+| ⚙️ 管理后台 | http://localhost:5173 |
+| 🔧 后端 API | http://localhost:8080/api |
 
-```bash
-# 1️⃣ 停止应用服务（保留中间件运行）
-./stop.sh
+> 默认管理员：`admin` / `admin123`（首次登录后请修改密码）
 
-# 2️⃣ 停止所有服务（包括 Docker 中间件）
-./stop.sh --all
-
-# 3️⃣ 完全清理（强制移除所有容器并释放端口）
-docker compose down --remove-orphans
-./stop.sh
-```
-
-> **推荐**: 开发时使用 `./stop.sh` 保留中间件，可加快下次启动速度。
-
-### Docker 容器异常导致端口残留
-
-**症状**: 运行 `./start.sh` 时报错 `port is already allocated`，但 `./stop.sh` 无效。
-
-**原因**: 容器可能因系统休眠/意外关机/Docker重启而异常退出（`Exited (128)`），端口映射未被操作系统正常回收。
-
-**快速解决**:
-```bash
-# 方法1: 强制清理异常容器
-docker compose down --remove-orphans
-./start.sh
-
-# 方法2: 查找并杀死占用端口的进程
-lsof -i :6379   # 查看 Redis 端口
-lsof -i :5432   # 查看 PostgreSQL 端口
-# 如果输出显示 com.docke 占用，执行方法1
-```
-
-> **提示**: `start.sh` 已优化为自动检测并清理异常退出的容器，正常情况下不会再遇到此问题。
-
-### 端口冲突（非 Docker 原因）
-
-如果端口被其他应用程序占用：
-
-```bash
-# 查看端口占用
-lsof -i :8080   # 后端 API
-lsof -i :3000   # 博客前台
-lsof -i :5173   # 管理后台
-
-# 终止占用进程
-kill -9 <PID>
-```
-
-### Maven 构建问题
-
-如果遇到依赖问题，尝试清理并重新构建：
-
-```bash
-cd apps/server
-./mvnw clean install -DskipTests
-```
-
-## 🔧 后端模块说明
-
-| 模块 | 说明 | 打包类型 |
-|------|------|----------|
-| `aetherblog-app` | 应用启动入口，包含 main 方法 | JAR (可执行) |
-| `aetherblog-api` | API 接口定义、DTO、VO | JAR (库) |
-| `aetherblog-common` | 公共模块聚合 | POM |
-| `common-core` | 核心工具类、通用响应 | JAR (库) |
-| `common-security` | JWT 认证、安全配置 | JAR (库) |
-| `common-redis` | Redis 缓存配置 | JAR (库) |
-| `common-log` | 日志配置 | JAR (库) |
-| `aetherblog-service` | 业务服务聚合 | POM |
-| `blog-service` | 博客核心业务实现 | JAR (库) |
-| `aetherblog-ai` | AI 模块聚合 | POM |
-
-> ⚠️ **注意**: 只有 `aetherblog-app` 模块使用 `spring-boot-maven-plugin` 打包成可执行 JAR，其他业务模块（如 `blog-service`）作为库被引用，**不应该**配置 `spring-boot-maven-plugin`。
-
-## 🐳 Docker 生产部署
-
-### 镜像构建
-
-项目提供了优化的多平台构建脚本 `docker-build.sh`，支持并行构建充分利用多核 CPU。
-
-#### 特性
-
-- ⚡ **并行构建** - 同时构建 backend/blog/admin 三个镜像
-- 📡 **实时进度** - 每个镜像完成后立即通知，可提前在服务器拉取
-- 🔐 **密码加密** - 登录密码 AES 加密传输
-- 🌐 **多平台** - 支持 amd64 和 arm64 架构
-
-#### 构建命令
-
-```bash
-# 并行构建并推送到 Docker Hub (推荐)
-./docker-build.sh --push --version v1.1.1
-
-# 串行构建 (网络不稳定时)
-./docker-build.sh --push --sequential --version v1.1.1
-
-# 只构建单个镜像
-./docker-build.sh --only backend --push
-./docker-build.sh --only blog --push
-./docker-build.sh --only admin --push
-
-# 本地构建测试 (不推送)
-./docker-build.sh --version v1.1.1
-
-# 指定 CPU 并行度
-./docker-build.sh --cores 4 --push
-
-# 查看帮助
-./docker-build.sh --help
-```
-
-#### 构建输出示例
-
-```
-正在并行构建 3 个镜像...
-
-🎉 admin 构建完成并已推送! (1/3)
-   可以先在服务器拉取: docker pull golovin0623/aetherblog-admin:v1.1.1
-
-🎉 backend 构建完成并已推送! (2/3)
-   可以先在服务器拉取: docker pull golovin0623/aetherblog-backend:v1.1.1
-
-🎉 blog 构建完成并已推送! (3/3)
-   可以先在服务器拉取: docker pull golovin0623/aetherblog-blog:v1.1.1
-```
-
-#### 构建参数
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--push` | 推送镜像到 Docker Hub | 否 |
-| `--version` | 版本标签 | `v1.0.0` |
-| `--all` | 构建全平台镜像 (amd64 + arm64) | 否 (仅 amd64) |
-| `--parallel` | 并行构建所有镜像 | 是 |
-| `--sequential` | 串行构建 | 否 |
-| `--only NAME` | 只构建指定镜像 (backend/blog/admin) | 全部 |
-| `--cores N` | 指定构建并行度 | CPU 核心数 |
-
-#### 生成的镜像
-
-| 镜像名称 | 说明 | 大小 |
-|----------|------|------|
-| `golovin0623/aetherblog-backend` | Spring Boot 后端 | ~300MB |
-| `golovin0623/aetherblog-blog` | Next.js 博客前台 | ~200MB |
-| `golovin0623/aetherblog-admin` | Vite + Nginx 管理后台 | ~50MB |
-
-#### 支持平台
-
-- **默认**: `linux/amd64` - 常规 x86 服务器 (CentOS, Ubuntu 等)
-- **--all**: `linux/amd64` + `linux/arm64` - 同时支持 ARM 服务器、Mac M1/M2/M3
+更多启动选项和分步说明请参考 [开发指南](./docs/development.md)。
 
 ---
 
-### 端口映射
+## 🐳 部署
 
-| 服务 | 端口 | 环境变量 | 说明 |
-|------|------|----------|------|
-| **统一网关** | **7899** | `GATEWAY_PORT` | ⭐ 推荐使用，自动路由所有请求 |
-| 博客前台 | 7893 | `BLOG_PORT` | 可选，直接访问 |
-| 管理后台 | 7894 | `ADMIN_PORT` | 可选，直接访问 |
-| PostgreSQL | 7895 | `POSTGRES_PORT` | pgvector 数据库 |
-| 后端 API | 内部 | - | 仅容器间通信 |
-
-### 部署架构
-
-```
-                        ┌─────────────────────────────────────┐
-                        │         统一网关 (:7899)             │
-                        │         Nginx Gateway               │
-                        └────────────┬────────────────────────┘
-                                     │
-           ┌─────────────────────────┼─────────────────────────┐
-           │                         │                         │
-           ▼                         ▼                         ▼
-   ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
-   │   /           │        │   /admin      │        │   /api        │
-   │   blog:3000   │        │   admin:80    │        │   backend:8080│
-   │   (Next.js)   │        │   (Nginx)     │        │   (Spring)    │
-   └───────────────┘        └───────────────┘        └───────┬───────┘
-                                                              │
-                                                    ┌─────────┴─────────┐
-                                                    ▼                   ▼
-                                              postgres:5432       redis:6999
-                                              (容器内)            (宿主机)
-```
-
----
-
-## 🌐 域名配置
-
-### 方式一：Nginx Proxy Manager (推荐)
-
-如果您使用 [Nginx Proxy Manager](https://nginxproxymanager.com/)，配置非常简单：
-
-#### 1. 添加 Proxy Host
-
-| 字段 | 值 |
-|------|-----|
-| **Domain Names** | `yourdomain.com` |
-| **Scheme** | `http` |
-| **Forward Hostname/IP** | `127.0.0.1` 或服务器内网IP |
-| **Forward Port** | `7899` |
-
-#### 2. 勾选选项
-
-- ✅ **Websockets Support** ← AI 实时对话必需
-- ✅ **Block Common Exploits**
-
-#### 3. Advanced 配置
-
-在 "Custom Nginx Configuration" 中添加（支持大文件上传和 AI 长连接）：
-
-```nginx
-# 大文件上传支持 (图片/视频)
-client_max_body_size 500M;
-
-# AI 长连接超时 (多轮对话/工具调用)
-proxy_read_timeout 600s;
-proxy_send_timeout 600s;
-
-# SSE 流式响应 (AI 实时输出)
-proxy_buffering off;
-```
-
-#### 4. 访问
-
-配置完成后：
-- 博客首页: `https://yourdomain.com/`
-- 管理后台: `https://yourdomain.com/admin`
-- 后端 API: `https://yourdomain.com/api`
-
----
-
-### 方式二：手动配置 Nginx
-
-如果您使用标准 Nginx，添加以下配置：
-
-```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;  # 替换为您的域名
-    
-    location / {
-        proxy_pass http://127.0.0.1:7899;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket 支持 (AI 实时对话)
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        
-        # 大文件上传 (图片/视频)
-        client_max_body_size 500M;
-        
-        # AI 长连接超时
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
-        
-        # SSE 流式响应
-        proxy_buffering off;
-    }
-}
-```
-
-然后重载配置：
 ```bash
-sudo nginx -t && sudo nginx -s reload
-```
+# 配置环境变量
+cp env.example .env
+# 编辑 .env 填入实际配置
 
----
-
-### 服务器部署
-
-#### 1. 配置环境变量
-在服务器项目根目录下创建 `.env` 文件：
-```bash
-cat > .env <<EOF
-# 端口配置
-GATEWAY_PORT=7899
-BLOG_PORT=7893
-ADMIN_PORT=7894
-POSTGRES_PORT=7895
-
-# 数据库
-POSTGRES_PASSWORD=aetherblog123
-
-# Redis (使用现有服务)
-REDIS_HOST=host.docker.internal
-REDIS_PORT=6999
-
-# AI 功能
-OPENAI_API_KEY=你的API_KEY
-
-# Flyway 数据库迁移 (生产环境推荐开启)
-FLYWAY_VALIDATE=true
-FLYWAY_CLEAN_DISABLED=true
-EOF
-```
-
-#### 2. 启动服务
-```bash
-# 拉取最新镜像
+# 拉取镜像并启动
 export DOCKER_REGISTRY=golovin0623
-export VERSION=v1.1.2
+export VERSION=latest
 docker-compose -f docker-compose.prod.yml pull
-
-# 启动 (后台运行)
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
-#### 3. 配置域名
-参考上方 [域名配置](#-域名配置) 章节，将域名代理到网关端口 (7899)。
+生产模式通过 **Nginx 网关 (:7899)** 统一路由：
 
-#### 4. 访问与登录
-- **博客前台**: `https://yourdomain.com/`
-- **管理后台**: `https://yourdomain.com/admin`
-- **后端 API**: `https://yourdomain.com/api`
-
----
-
-### 🔑 默认管理员凭据
-
-| 用户名 | 默认密码 | 说明 |
-|:---|:---|:---|
-| `admin` | `admin123` | **首次登录成功后必须修改密码** |
-
----
-
-### 🛠 登录故障排查
-
-如果在服务器部署后无法使用 `admin123` 登录：
-
-1.  **检查后端日志**：
-    ```bash
-    docker-compose -f docker-compose.prod.yml logs -f backend
-    ```
-    确认没有 Redis 或数据库连接错误。
-2.  **手动重置密码**：
-    如果你确信密码正确但无法登录，可以使用 Navicat 运行以下 SQL 将密码强制重置为 `123456`：
-    ```sql
-    UPDATE users SET password_hash = '$2a$10$8.UnVuG9HHgffUDAlk8q2OuVGkqBKkjJRqdE7z6OcExSqz8tRdByW' WHERE username = 'admin';
-    ```
-    重置后请尝试使用 `admin` / `123456` 登录。
-
----
-
-#### 4. 查看日志
-```bash
-docker-compose -f docker-compose.prod.yml logs -f
-```
-
-### 常用运维命令
-```bash
-# 查看所有容器状态
-docker-compose -f docker-compose.prod.yml ps
-
-# 查看后端日志
-docker-compose -f docker-compose.prod.yml logs -f backend
-
-# 停止并移除容器
-docker-compose -f docker-compose.prod.yml down
-```
-
----
-
-### 相关文件
-
-| 文件 | 说明 |
+| 路由 | 服务 |
 |------|------|
-| `docker-build.sh` | 多平台构建脚本 (支持并行) |
-| `docker-compose.prod.yml` | 生产环境编排配置 |
-| `apps/server/Dockerfile` | 后端镜像 (Spring Boot + JRE 21) |
-| `apps/blog/Dockerfile` | 博客前端镜像 (Next.js standalone) |
-| `apps/admin/Dockerfile` | 管理后台镜像 (Vite + Nginx) |
-| `apps/admin/nginx.conf` | Nginx 配置 (含 API 代理) |
-| `.env.example` | 环境变量模板 |
-| `.dockerignore` | Docker 构建排除 |
+| `/` | 博客前台 |
+| `/admin` | 管理后台 |
+| `/api` | 后端 API |
 
-### 使用现有 Redis
+> 详细的 Docker 构建、域名配置、运维命令请参考 [部署指南](./docs/deployment.md)。
 
-如果服务器已有 Redis 服务，配置 `.env`：
+---
 
-```bash
-REDIS_HOST=host.docker.internal
-REDIS_PORT=6999  # 你的 Redis 端口
-```
+## 📚 文档导航
+
+| 文档 | 说明 |
+|------|------|
+| 📖 [开发指南](./docs/development.md) | 环境搭建、构建命令、模块说明、调试技巧 |
+| 🏗 [系统架构](./docs/architecture.md) | 架构概览、模块依赖、技术选型、数据流 |
+| 🐳 [部署指南](./docs/deployment.md) | Docker 构建、生产部署、域名配置、运维 |
+| 🔄 [CI/CD 指南](./.github/CICD_GUIDE.md) | GitHub Actions 配置、自动构建部署 |
+| 📂 [文档中心](./docs/INDEX.md) | 全部文档索引（含设计文档、QA 报告等） |
+
+---
 
 ## 📄 许可证
 
