@@ -1373,7 +1373,7 @@ html[data-theme-transition] .theme-transition-glow {
 .hero-scroll-indicator {
   position: absolute;
   left: 50%;
-  bottom: max(1.75rem, env(safe-area-inset-bottom));
+  bottom: calc(1.75rem + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
