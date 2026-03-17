@@ -162,16 +162,16 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                 {/* 目录按钮 */}
                 <button
                   onClick={() => setIsTocOpen(true)}
-                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95"
+                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-primary)]/70 dark:bg-white/[0.06] border border-[var(--border-default)]/60 dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl transition-all duration-300 hover:scale-110 hover:bg-[var(--bg-card)] hover:border-[var(--border-hover)]/30 active:scale-95"
                   aria-label="打开目录"
                 >
-                  <List className="w-5 h-5 text-primary" />
+                  <List className="w-5 h-5 text-[var(--text-secondary)]" />
                 </button>
 
                 {/* 回顶部按钮 */}
                 <button
                   onClick={scrollToTop}
-                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95"
+                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-primary)]/70 dark:bg-white/[0.06] border border-[var(--border-default)]/60 dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl transition-all duration-300 group hover:scale-110 hover:bg-[var(--bg-card)] hover:border-[var(--border-hover)]/30 active:scale-95"
                   aria-label="返回顶部"
                 >
                   <div className="relative flex items-center justify-center w-8 h-8">
