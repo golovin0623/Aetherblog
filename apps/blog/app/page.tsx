@@ -75,7 +75,6 @@ export default async function HomePage() {
           <a
             href="#latest-posts"
             className="hero-scroll-indicator md:hidden"
-            aria-label="向下滑动查看最新发布的文章"
           >
             <span className="hero-scroll-indicator__halo" aria-hidden="true" />
             <span className="hero-scroll-indicator__icon-wrap" aria-hidden="true">
