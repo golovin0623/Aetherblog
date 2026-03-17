@@ -255,33 +255,41 @@ const YearSection = React.memo(({
       </button>
 
       {/* 月份列表 */}
-      {isExpanded && (
-        <div
-          id={`timeline-year-${yearData.year}`}
-          className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-[var(--border-subtle)] space-y-2"
-        >
-          {yearData.months.map((monthData) => {
-            const yearMonth = `${yearData.year}-${monthData.month}`;
-            const isMonthExpanded = expandedMonths.has(yearMonth);
-            const showAllPosts = expandedPostsMonths.has(yearMonth);
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            id={`timeline-year-${yearData.year}`}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 ml-2 pl-2 md:ml-4 md:pl-4 border-l-2 border-[var(--border-subtle)] space-y-2">
+              {yearData.months.map((monthData) => {
+                const yearMonth = `${yearData.year}-${monthData.month}`;
+                const isMonthExpanded = expandedMonths.has(yearMonth);
+                const showAllPosts = expandedPostsMonths.has(yearMonth);
 
-            return (
-              <MonthSection
-                key={yearMonth}
-                year={yearData.year}
-                monthData={monthData}
-                isExpanded={isMonthExpanded}
-                toggleMonth={toggleMonth}
-                showAllPosts={showAllPosts}
-                toggleShowAllPosts={toggleShowAllPosts}
-                highlightedPostId={highlightedPostId}
-                isHighlightFading={isHighlightFading}
-                handlePostClick={handlePostClick}
-              />
-            );
-          })}
-        </div>
-      )}
+                return (
+                  <MonthSection
+                    key={yearMonth}
+                    year={yearData.year}
+                    monthData={monthData}
+                    isExpanded={isMonthExpanded}
+                    toggleMonth={toggleMonth}
+                    showAllPosts={showAllPosts}
+                    toggleShowAllPosts={toggleShowAllPosts}
+                    highlightedPostId={highlightedPostId}
+                    isHighlightFading={isHighlightFading}
+                    handlePostClick={handlePostClick}
+                  />
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }, (prevProps, nextProps) => {
