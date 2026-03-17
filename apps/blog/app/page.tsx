@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Sparkles, LayoutGrid } from 'lucide-react';
+import { ArrowRight, Sparkles, LayoutGrid, ChevronsDown } from 'lucide-react';
 import { getRecentPosts, getSiteSettings } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 
@@ -70,6 +70,23 @@ export default async function HomePage() {
             </a>
           </div>
         </div>
+
+        {posts.length > 0 && (
+          <a
+            href="#latest-posts"
+            className="hero-scroll-indicator md:hidden"
+            aria-label="向下滑动查看最新发布的文章"
+          >
+            <span className="hero-scroll-indicator__halo" aria-hidden="true" />
+            <span className="hero-scroll-indicator__icon-wrap" aria-hidden="true">
+              <ChevronsDown className="hero-scroll-indicator__icon" />
+            </span>
+            <span className="hero-scroll-indicator__text">
+              <span className="hero-scroll-indicator__eyebrow">继续探索</span>
+              <span className="hero-scroll-indicator__title">下滑查看最新发布</span>
+            </span>
+          </a>
+        )}
       </section>
 
       {/* 带有渐变线条的分割线 */}
@@ -92,7 +109,7 @@ export default async function HomePage() {
 
       {/* 最新文章区域 */}
       {posts.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 pb-28 md:pb-20">
+        <section id="latest-posts" className="max-w-7xl mx-auto px-4 pb-28 md:pb-20">
           {/* 带有装饰元素的区域标题 */}
           <div className="relative mb-12">
             {/* 背景光晕 */}
