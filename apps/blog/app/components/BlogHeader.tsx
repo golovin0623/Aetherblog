@@ -279,7 +279,7 @@ export default function BlogHeader() {
           background: 'var(--bg-overlay)',
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid var(--border-subtle)',
-          boxShadow: '0 4px 24px -8px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+          boxShadow: 'var(--header-shadow)',
         }}
         onMouseMove={wrappedUpdateMousePosition}
         onMouseEnter={() => isArticleDetail && setIsHovering(true)}
