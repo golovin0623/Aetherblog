@@ -395,6 +395,10 @@ body {
     overflow-x: hidden;
     max-width: 100vw;
   }
+
+  html {
+    scrollbar-gutter: auto;
+  }
 }
 
 /* 滚动条 */
