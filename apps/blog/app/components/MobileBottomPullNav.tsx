@@ -48,6 +48,15 @@ const SELECT_THRESHOLD = 36;
 /** Minimum progress (0-1) required to execute an action on release */
 const RELEASE_THRESHOLD = 0.35;
 
+/* ─── Layout constants for the sliding indicator ─── */
+
+/** Horizontal padding inside the capsule (px) */
+const CAPSULE_PADDING = 12;
+/** Width of each action button slot including gap (px) */
+const ACTION_SLOT_WIDTH = 66;
+/** Width of the sliding indicator pill (px) */
+const INDICATOR_WIDTH = 62;
+
 /* ─── Component ─── */
 
 export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottomPullNavProps) {
@@ -145,7 +154,7 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
       if (!t.pulling) {
         t.pulling = true;
         // 尝试触发轻微触觉反馈
-        try { navigator.vibrate?.(8); } catch { /* 静默 */ }
+        try { navigator.vibrate?.(8); } catch { /* ignore */ }
       }
 
       e.preventDefault(); // 阻止原生橡皮筋效果
@@ -246,7 +255,7 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
           {/* 环境渐变光晕 */}
           <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/[0.07] via-transparent to-purple-500/[0.07]" />
-            {/* 选中态追踪光晕 */}
+            {/* 选中态追踪光晕 — w-1/3 对应 3 个等分区域 */}
             <div
               className="absolute top-0 bottom-0 w-1/3 transition-all duration-200 ease-out"
               style={{
@@ -261,10 +270,11 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
 
           {/* 滑动选中指示器 — 跟随选中项平滑移动 */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 h-[52px] rounded-full transition-all duration-200 ease-out pointer-events-none"
+            className="absolute top-1/2 -translate-y-1/2 rounded-full transition-all duration-200 ease-out pointer-events-none"
             style={{
-              width: '62px',
-              left: `${12 + selected * 66}px`,
+              width: `${INDICATOR_WIDTH}px`,
+              height: '52px',
+              left: `${CAPSULE_PADDING + selected * ACTION_SLOT_WIDTH}px`,
               background: isReady
                 ? 'linear-gradient(135deg, rgba(129,140,248,0.15), rgba(167,139,250,0.10))'
                 : 'rgba(255,255,255,0.04)',
