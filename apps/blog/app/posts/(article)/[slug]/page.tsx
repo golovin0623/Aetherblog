@@ -9,6 +9,7 @@ import CommentSection from '@/app/components/CommentSection';
 import TableOfContents from '@/app/components/TableOfContents';
 import PostNavigation from '@/app/components/PostNavigation';
 import ArticleFloatingActions from '@/app/components/ArticleFloatingActions';
+import MobileBottomPullNav from '@/app/components/MobileBottomPullNav';
 import { SERVER_API_URL } from '@/app/lib/api';
 import { buildAdminPostEditUrl, getAdminLinkConfig } from '@/app/lib/adminUrl';
 import { logger } from '@/app/lib/logger';
@@ -241,6 +242,14 @@ export default async function PostDetailPage({ params }: PageProps) {
       {/* 移动端悬浮操作：目录 + 回顶部 */}
       {!post.passwordRequired && post.content && (
         <ArticleFloatingActions content={post.content} />
+      )}
+
+      {/* 移动端底部上滑快捷导航（Chrome 风格手势） */}
+      {post.id > 0 && (
+        <MobileBottomPullNav
+          prevPost={adjacentPosts.prevPost}
+          nextPost={adjacentPosts.nextPost}
+        />
       )}
     </div>
   );
