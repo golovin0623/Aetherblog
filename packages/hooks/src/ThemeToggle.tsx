@@ -143,6 +143,8 @@ export function ThemeToggle({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
         className={`
           relative flex items-center justify-center rounded-full
           bg-transparent hover:bg-[var(--bg-card)]
@@ -173,6 +175,8 @@ export function ThemeToggle({
 
             {/* 下拉菜单 */}
             <motion.div
+              role="menu"
+              aria-label="Theme options"
               initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.95 }}
@@ -189,6 +193,7 @@ export function ThemeToggle({
                 <button
                   key={option.value}
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setTheme(option.value);
                     setIsOpen(false);
