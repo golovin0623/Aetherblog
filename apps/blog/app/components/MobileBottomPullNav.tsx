@@ -1,13 +1,13 @@
 /**
  * @file MobileBottomPullNav.tsx
- * @description 移动端底部上滑快捷导航 — 灵感源自 Chrome 移动端下拉刷新手势
+ * @description 移动端底部上滑快捷导航 — 灵感源自 Google Chrome 移动端下拉刷新手势
  *
- * 交互逻辑：
- * 1. 用户在文章底部（评论区下方）继续上滑时，从屏幕底部升起一个胶囊导航
- * 2. 手指左右滑动可在三个操作间切换：上一篇 / 返回 / 下一篇
- * 3. 松手时执行选中的操作
- *
- * 视觉设计：采用项目 "Cognitive Elegance" 风格 — 毛玻璃胶囊 + 流光选中环 + 环境渐变
+ * 交互逻辑（Chrome 风格）：
+ * 1. 用户在文章底部继续上滑 → 中心圆圈（返回箭头）从底部升起，尺寸渐增，箭头旋转
+ * 2. 上滑过半 → 两侧按钮（上一篇/下一篇）从中心展开渐入
+ * 3. 达到就绪态 → 圆圈出现选中态背景 + 脉冲动画，显示提示文字
+ * 4. 按住横滑 → 选中背景磁性吸附到目标按钮，圆圈弹性变形（椭圆拉伸）
+ * 5. 松手 → 执行选中操作（返回/上一篇/下一篇）
  */
 
 'use client';
@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, ArrowLeft, ChevronsUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 
 /* ─── Types ─── */
 
@@ -29,49 +29,82 @@ interface MobileBottomPullNavProps {
   nextPost?: PostBrief | null;
 }
 
+type SnapTarget = 'prev' | 'center' | 'next';
+
 interface GestureState {
+  /** Whether gesture is active */
   active: boolean;
-  /** 0 → 1, how far the capsule is revealed */
-  progress: number;
-  /** 0 = prev, 1 = back (center), 2 = next */
-  selected: number;
+  /** 0→1 vertical pull progress */
+  pullProgress: number;
+  /** Horizontal offset in px from gesture start (left negative, right positive) */
+  lateralOffset: number;
+  /** Which button is currently snapped to */
+  snappedTo: SnapTarget;
+  /** Whether pull progress reached the ready threshold */
+  isReady: boolean;
 }
 
 /* ─── Constants ─── */
 
-/** Pixel threshold before the pull gesture activates */
+/** Dead zone before pull activates */
 const DEAD_ZONE = 18;
-/** Pull distance (px) that corresponds to progress = 1 */
-const FULL_PULL = 110;
-/** Horizontal movement (px) required to switch selection */
-const SELECT_THRESHOLD = 36;
-/** Minimum progress (0-1) required to execute an action on release */
-const RELEASE_THRESHOLD = 0.35;
+/** Pull distance for full progress */
+const FULL_PULL = 120;
+/** Min progress for action execution */
+const RELEASE_THRESHOLD = 0.4;
+/** Progress threshold for side buttons to start appearing */
+const SIDE_APPEAR_THRESHOLD = 0.45;
+/** Horizontal offset to snap to a side button */
+const SNAP_THRESHOLD = 60;
+/** Hysteresis: must cross this absolute distance BACK to center to unsnap */
+const UNSNAP_THRESHOLD = 25;
 
-/* ─── Layout constants for the sliding indicator ─── */
+/** Center circle sizes */
+const CIRCLE_MIN = 0;
+const CIRCLE_MAX = 56;
+/** Side icon size */
+const SIDE_ICON_SIZE = 48;
+/** Spacing between center circle and side buttons */
+const SIDE_SPACING = 96;
 
-/** Horizontal padding inside the capsule (px) */
-const CAPSULE_PADDING = 12;
-/** Width of each action button slot including gap (px) */
-const ACTION_SLOT_WIDTH = 66;
-/** Width of the sliding indicator pill (px) */
-const INDICATOR_WIDTH = 62;
+/* ─── Helpers ─── */
+
+/** Clamp to [min, max] */
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+/** Ease out cubic */
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+/** Lerp */
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** Try haptic feedback */
+const vibrate = (pattern: number | number[]) => {
+  try { navigator.vibrate?.(pattern); } catch { /* noop */ }
+};
 
 /* ─── Component ─── */
 
 export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottomPullNavProps) {
   const [gesture, setGesture] = useState<GestureState>({
     active: false,
-    progress: 0,
-    selected: 1,
+    pullProgress: 0,
+    lateralOffset: 0,
+    snappedTo: 'center',
+    isReady: false,
   });
   const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   const router = useRouter();
 
-  // ── Refs for gesture tracking (avoid stale closures) ──
-  const touchRef = useRef({ startY: 0, startX: 0, pulling: false, atBottom: false });
+  // ── Refs ──
+  const touchRef = useRef({
+    startY: 0,
+    startX: 0,
+    pulling: false,
+    atBottom: false,
+    wasReady: false,
+    prevSnap: 'center' as SnapTarget,
+  });
   const prevPostRef = useRef(prevPost);
   const nextPostRef = useRef(nextPost);
   const rafRef = useRef<number | null>(null);
@@ -95,23 +128,21 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
     const st = window.scrollY;
     const sh = document.documentElement.scrollHeight;
     const ch = window.innerHeight;
-    // 页面必须有足够滚动区域，并且当前已滚至底部
     return sh - ch > 50 && st + ch >= sh - 8;
   }, []);
 
-  /** 执行导航操作 */
-  const navigate = useCallback((index: number) => {
-    if (index === 0 && prevPostRef.current) {
+  const navigate = useCallback((target: SnapTarget) => {
+    if (target === 'prev' && prevPostRef.current) {
       router.push(`/posts/${prevPostRef.current.slug}`);
-    } else if (index === 1) {
+    } else if (target === 'center') {
       window.history.length > 1 ? router.back() : router.push('/posts');
-    } else if (index === 2 && nextPostRef.current) {
+    } else if (target === 'next' && nextPostRef.current) {
       router.push(`/posts/${nextPostRef.current.slug}`);
     }
   }, [router]);
 
-  /** RAF-节流的手势状态更新 */
-  const scheduleGestureUpdate = useCallback((state: GestureState) => {
+  /** RAF-throttled gesture state update */
+  const scheduleUpdate = useCallback((state: GestureState) => {
     pendingRef.current = state;
     if (rafRef.current == null) {
       rafRef.current = requestAnimationFrame(() => {
@@ -133,6 +164,8 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
       t.startY = touch.clientY;
       t.startX = touch.clientX;
       t.pulling = false;
+      t.wasReady = false;
+      t.prevSnap = 'center';
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -140,33 +173,84 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
       if (!t.atBottom) return;
 
       const touch = e.touches[0];
-      const deltaY = t.startY - touch.clientY; // 正值 = 上滑
+      const deltaY = t.startY - touch.clientY; // positive = swipe up
 
       if (deltaY < DEAD_ZONE) {
         if (t.pulling) {
           t.pulling = false;
-          scheduleGestureUpdate({ active: false, progress: 0, selected: 1 });
+          scheduleUpdate({
+            active: false,
+            pullProgress: 0,
+            lateralOffset: 0,
+            snappedTo: 'center',
+            isReady: false,
+          });
         }
         return;
       }
 
-      // 进入上滑手势
+      // Enter pull gesture
       if (!t.pulling) {
         t.pulling = true;
-        // 尝试触发轻微触觉反馈
-        try { navigator.vibrate?.(8); } catch { /* ignore */ }
+        vibrate(8);
       }
 
-      e.preventDefault(); // 阻止原生橡皮筋效果
+      e.preventDefault();
 
-      const progress = Math.min(1, (deltaY - DEAD_ZONE) / FULL_PULL);
-      const deltaX = touch.clientX - t.startX;
+      const pullProgress = clamp((deltaY - DEAD_ZONE) / FULL_PULL, 0, 1);
+      const lateralOffset = touch.clientX - t.startX;
+      const isReady = pullProgress >= RELEASE_THRESHOLD;
 
-      let selected = 1; // 默认：返回
-      if (deltaX < -SELECT_THRESHOLD && prevPostRef.current) selected = 0;
-      if (deltaX > SELECT_THRESHOLD && nextPostRef.current) selected = 2;
+      // Haptic for entering ready state
+      if (isReady && !t.wasReady) {
+        vibrate(12);
+        t.wasReady = true;
+      } else if (!isReady && t.wasReady) {
+        t.wasReady = false;
+      }
 
-      scheduleGestureUpdate({ active: true, progress, selected });
+      // Snap logic with strong hysteresis
+      let snappedTo: SnapTarget = t.prevSnap;
+
+      if (isReady && pullProgress > SIDE_APPEAR_THRESHOLD) {
+        const hasPrev = !!prevPostRef.current;
+        const hasNext = !!nextPostRef.current;
+
+        if (snappedTo === 'center') {
+          // Break out of center requires crossing the snap threshold
+          if (lateralOffset < -SNAP_THRESHOLD && hasPrev) {
+            snappedTo = 'prev';
+            vibrate(10);
+          } else if (lateralOffset > SNAP_THRESHOLD && hasNext) {
+            snappedTo = 'next';
+            vibrate(10);
+          }
+        } else if (snappedTo === 'prev') {
+          // To unsnap from prev, must move right past -UNSNAP_THRESHOLD
+          if (lateralOffset > -UNSNAP_THRESHOLD) {
+            snappedTo = 'center';
+            vibrate(5);
+          }
+        } else if (snappedTo === 'next') {
+          // To unsnap from next, must move left past UNSNAP_THRESHOLD
+          if (lateralOffset < UNSNAP_THRESHOLD) {
+            snappedTo = 'center';
+            vibrate(5);
+          }
+        }
+      } else {
+        snappedTo = 'center';
+      }
+
+      t.prevSnap = snappedTo;
+
+      scheduleUpdate({
+        active: true,
+        pullProgress,
+        lateralOffset,
+        snappedTo,
+        isReady,
+      });
     };
 
     const onTouchEnd = () => {
@@ -176,14 +260,19 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
       t.pulling = false;
       t.atBottom = false;
 
-      // 读取最新手势状态并决定是否执行
       setGesture((prev) => {
-        if (prev.progress >= RELEASE_THRESHOLD) {
-          const idx = prev.selected;
-          // 延迟一帧让视觉反馈显示
-          requestAnimationFrame(() => navigate(idx));
+        if (prev.isReady) {
+          const target = prev.snappedTo;
+          vibrate([5, 50, 15]);
+          requestAnimationFrame(() => navigate(target));
         }
-        return { active: false, progress: 0, selected: 1 };
+        return {
+          active: false,
+          pullProgress: 0,
+          lateralOffset: 0,
+          snappedTo: 'center',
+          isReady: false,
+        };
       });
     };
 
@@ -199,24 +288,87 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
       document.removeEventListener('touchcancel', onTouchEnd);
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [isMobile, isAtBottom, navigate, scheduleGestureUpdate]);
+  }, [isMobile, isAtBottom, navigate, scheduleUpdate]);
 
   // ── Render ──
   if (!isMobile || !mounted) return null;
 
-  const { active, progress, selected } = gesture;
-  const isReady = progress >= RELEASE_THRESHOLD;
+  const { active, pullProgress, lateralOffset, snappedTo, isReady } = gesture;
+  const easedProgress = easeOut(pullProgress);
 
-  const actions = [
-    { key: 'prev', label: '上一篇', Icon: ChevronLeft, enabled: !!prevPost },
-    { key: 'back', label: '返回', Icon: ArrowLeft, enabled: true },
-    { key: 'next', label: '下一篇', Icon: ChevronRight, enabled: !!nextPost },
-  ] as const;
+  // ── Computed visual values ──
 
-  // 胶囊从底部升起：progress 0 → 完全隐藏, 1 → 完全可见
-  const capsuleTranslateY = active ? (1 - progress) * 100 : 100;
-  const capsuleOpacity = active ? Math.min(1, progress * 2) : 0;
-  const capsuleScale = active ? 0.9 + progress * 0.1 : 0.9;
+  // Center circle size: 0 → CIRCLE_MAX
+  const circleSize = lerp(CIRCLE_MIN, CIRCLE_MAX, easedProgress);
+  // Arrow rotation: 90deg (Up) → 0deg (Left)
+  const arrowRotation = lerp(90, 0, clamp(pullProgress * 2, 0, 1));
+  // Overall translateY: rises from bottom
+  const translateY = active ? lerp(80, 0, easedProgress) : 80;
+  const opacity = active ? clamp(pullProgress * 2.5, 0, 1) : 0;
+
+  // Side buttons visibility: appear after threshold
+  const sideProgress = clamp((pullProgress - SIDE_APPEAR_THRESHOLD) / (1 - SIDE_APPEAR_THRESHOLD), 0, 1);
+  const sideEased = easeOut(sideProgress);
+  const sideOpacity = sideEased;
+  // Side buttons spread out from center
+  const sideSpread = lerp(0, SIDE_SPACING, sideEased);
+  const sideScale = lerp(0.3, 1, sideEased);
+
+  // ── Magnetic snap deformation (Single Unified Blob) ──
+  
+  let blobX = 0;
+  let blobScaleX = 1;
+  let blobScaleY = 1;
+
+  // 1. Identify where the blob "wants" to be base on current snap state
+  const blobBaseX = snappedTo === 'prev' ? -sideSpread : snappedTo === 'next' ? sideSpread : 0;
+
+  if (isReady && active) {
+    let dragDist = 0;
+    
+    // 2. Calculate distance between the finger and the blob's ideal base position
+    // BUT only stretch if the finger is pulling *against* the snapped position!
+    if (snappedTo === 'center') {
+      dragDist = lateralOffset;
+    } else if (snappedTo === 'prev') {
+      // Only stretch if pulling back towards center (right) from the -50 mark
+      if (lateralOffset > -50) dragDist = lateralOffset + 50;
+    } else if (snappedTo === 'next') {
+      // Only stretch if pulling back towards center (left) from the 50 mark
+      if (lateralOffset < 50) dragDist = lateralOffset - 50;
+    }
+
+    // 3. Apply stickiness: blob moves slightly with finger but strongly resists
+    blobX = blobBaseX + clamp(dragDist * 0.25, -20, 20);
+
+    // 4. Apply elastic deformation: stretches more as finger pulls further from snapped center
+    const stretchFactor = Math.abs(dragDist) / 100;
+    blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // Max 40% wider
+    blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // Max 15% shorter
+  } else {
+    // If not ready or finger released, strictly obey the base position and spherical shape
+    blobX = blobBaseX;
+  }
+
+  // ── Active icon highlighting ──
+  const isCenterActive = snappedTo === 'center';
+  const isPrevActive = snappedTo === 'prev';
+  const isNextActive = snappedTo === 'next';
+
+  // Opacities: Inactive icons disappear completely to remove visual clutter
+  const prevIconOpacity = isPrevActive ? 1 : (isCenterActive ? sideOpacity * 0.5 : 0);
+  const nextIconOpacity = isNextActive ? 1 : (isCenterActive ? sideOpacity * 0.5 : 0);
+  const centerIconOpacity = isCenterActive ? 1 : 0;
+
+  const hasPrev = !!prevPost;
+  const hasNext = !!nextPost;
+
+  // Determine label text
+  const labelText = snappedTo === 'prev' && hasPrev
+    ? '上一篇'
+    : snappedTo === 'next' && hasNext
+      ? '下一篇'
+      : '返回';
 
   return createPortal(
     <div
@@ -224,123 +376,167 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
       aria-hidden="true"
       style={{
         visibility: active ? 'visible' : 'hidden',
-        opacity: capsuleOpacity,
+        opacity,
       }}
     >
-      {/* 半透明遮罩 */}
+      {/* Subtle backdrop */}
       <div
-        className="absolute inset-0 bg-black/10 dark:bg-black/25"
-        style={{ opacity: Math.min(1, progress * 1.2) }}
+        className="absolute inset-0 bg-black/5 dark:bg-black/20"
+        style={{
+          opacity: clamp(pullProgress * 1.5, 0, 1),
+          // Blur backdrop slightly on intense swipe
+          backdropFilter: `blur(${clamp(pullProgress * 2, 0, 4)}px)`,
+          transition: active ? 'none' : 'opacity 0.3s ease-out, backdrop-filter 0.3s',
+        }}
       />
 
-      {/* ── 胶囊容器 ── */}
+      {/* ── Navigation Container ── */}
       <div
         className="absolute left-1/2 flex flex-col items-center"
         style={{
-          bottom: '28px',
-          transform: `translate(-50%, ${capsuleTranslateY}%) scale(${capsuleScale})`,
-          transition: active ? 'none' : 'all 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
+          bottom: '56px',
+          transform: `translate(-50%, ${translateY}px)`,
+          transition: active ? 'none' : 'all 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
-        {/* 上滑提示箭头 */}
-        <div
-          className="mb-2 transition-opacity duration-200"
-          style={{ opacity: isReady ? 0 : Math.min(1, progress * 3) }}
-        >
-          <ChevronsUp className="w-4 h-4 text-[var(--text-muted)] animate-bounce" />
-        </div>
+        {/* ── Icons & Background Layer ── */}
+        <div className="relative flex items-center justify-center" style={{ height: `${CIRCLE_MAX}px`, width: '100%' }}>
 
-        {/* 毛玻璃胶囊 */}
-        <div className="relative flex items-center gap-2 rounded-full bg-[var(--bg-secondary)]/90 dark:bg-[#1a1a26]/90 backdrop-blur-2xl border border-[var(--border-subtle)] dark:border-white/[0.08] shadow-[0_8px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)] px-3 py-2.5">
-          {/* 环境渐变光晕 */}
-          <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/[0.07] via-transparent to-purple-500/[0.07]" />
-            {/* 选中态追踪光晕 — w-1/3 对应 3 个等分区域 */}
+          {/* ── ONE Unified Selection Blob (Magnetic Background) ── */}
+          <div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: `${circleSize}px`, // Follows pull growth 0 -> CIRCLE_MAX
+              height: `${circleSize}px`,
+              transform: `translateX(${blobX}px) scaleX(${blobScaleX}) scaleY(${blobScaleY})`,
+              background: 'var(--bg-secondary, rgba(235, 235, 240, 0.9))',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 0 1px 1px rgba(255,255,255,0.6)',
+              opacity: clamp(pullProgress * 5, 0, 1), // Rises sharply from 0 to 1
+              // Spring physics transition for blob movement and rescale
+              transition: active
+                ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.5, 1), width 0.2s, height 0.2s'
+                : 'all 0.4s ease-out',
+              animation: isCenterActive && isReady ? 'blobPulse 2s ease-in-out infinite' : 'none',
+              zIndex: 1, // Behind the icons
+            }}
+          />
+
+          {/* ── Prev Icon ── */}
+          {hasPrev && (
             <div
-              className="absolute top-0 bottom-0 w-1/3 transition-all duration-200 ease-out"
+              className="absolute flex items-center justify-center z-10"
               style={{
-                left: `${(selected / 3) * 100}%`,
-                background: isReady
-                  ? 'radial-gradient(ellipse at center, var(--color-primary, #818cf8) 0%, transparent 70%)'
-                  : 'none',
-                opacity: 0.1,
+                width: `${SIDE_ICON_SIZE}px`,
+                height: `${SIDE_ICON_SIZE}px`,
+                transform: `translateX(${-sideSpread}px) scale(${isPrevActive ? 1.2 : sideScale})`,
+                opacity: prevIconOpacity,
+                transition: active
+                  ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s'
+                  : 'all 0.3s ease-out',
+              }}
+            >
+              <ChevronLeft
+                style={{
+                  width: '24px', height: '24px',
+                  color: isPrevActive ? 'var(--text-primary, #000)' : 'var(--text-muted, #777)',
+                  strokeWidth: isPrevActive ? 2.5 : 2,
+                  transition: 'all 0.25s',
+                }}
+              />
+            </div>
+          )}
+
+          {/* ── Center Icon (Back) ── */}
+          <div
+            className="absolute flex items-center justify-center z-10"
+            style={{
+              width: `${CIRCLE_MAX}px`,
+              height: `${CIRCLE_MAX}px`,
+              transition: active ? 'none' : 'all 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+            }}
+          >
+            <ArrowLeft
+              style={{
+                width: `${clamp(circleSize * 0.42, 0, 24)}px`,
+                height: `${clamp(circleSize * 0.42, 0, 24)}px`,
+                transform: `rotate(${-arrowRotation}deg)`,
+                color: isCenterActive && isReady
+                  ? 'var(--text-primary, #000)'
+                  : isCenterActive
+                    ? 'var(--text-secondary, #444)'
+                    : 'var(--text-muted, #888)',
+                opacity: centerIconOpacity,
+                strokeWidth: isCenterActive && isReady ? 2.5 : 2,
+                transition: 'color 0.2s, opacity 0.2s',
+                // Subtle drop shadow when standing strictly alone (unready)
+                filter: (!isReady && isCenterActive && circleSize > 15) 
+                  ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' 
+                  : 'none'
               }}
             />
           </div>
 
-          {/* 滑动选中指示器 — 跟随选中项平滑移动 */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 rounded-full transition-all duration-200 ease-out pointer-events-none"
-            style={{
-              width: `${INDICATOR_WIDTH}px`,
-              height: '52px',
-              left: `${CAPSULE_PADDING + selected * ACTION_SLOT_WIDTH}px`,
-              background: isReady
-                ? 'linear-gradient(135deg, rgba(129,140,248,0.15), rgba(167,139,250,0.10))'
-                : 'rgba(255,255,255,0.04)',
-              boxShadow: isReady
-                ? '0 0 20px rgba(129,140,248,0.12), inset 0 0 0 1px rgba(129,140,248,0.2)'
-                : 'none',
-            }}
-          />
-
-          {/* ── 三个操作按钮 ── */}
-          {actions.map((action, i) => {
-            const isSel = selected === i;
-            const { Icon } = action;
-
-            return (
-              <div
-                key={action.key}
-                className="relative z-10 flex flex-col items-center"
+          {/* ── Next Icon ── */}
+          {hasNext && (
+            <div
+              className="absolute flex items-center justify-center z-10"
+              style={{
+                width: `${SIDE_ICON_SIZE}px`,
+                height: `${SIDE_ICON_SIZE}px`,
+                transform: `translateX(${sideSpread}px) scale(${isNextActive ? 1.2 : sideScale})`,
+                opacity: nextIconOpacity,
+                transition: active
+                  ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s'
+                  : 'all 0.3s ease-out',
+              }}
+            >
+              <ChevronRight
                 style={{
-                  width: '58px',
-                  opacity: action.enabled ? 1 : 0.25,
-                  transform: isSel && isReady ? 'scale(1.12)' : 'scale(1)',
-                  transition: 'transform 0.2s ease-out, opacity 0.2s',
+                  width: '24px', height: '24px',
+                  color: isNextActive ? 'var(--text-primary, #000)' : 'var(--text-muted, #777)',
+                  strokeWidth: isNextActive ? 2.5 : 2,
+                  transition: 'all 0.25s',
                 }}
-              >
-                <div
-                  className={`w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 ${
-                    isSel && action.enabled && isReady
-                      ? 'ring-[1.5px] ring-[var(--color-primary)]'
-                      : ''
-                  }`}
-                >
-                  <Icon
-                    className={`w-[18px] h-[18px] transition-colors duration-150 ${
-                      isSel && action.enabled
-                        ? 'text-[var(--color-primary)]'
-                        : 'text-[var(--text-muted)]'
-                    }`}
-                    strokeWidth={isSel ? 2.5 : 2}
-                  />
-                </div>
-                <span
-                  className={`text-[10px] leading-tight font-medium whitespace-nowrap transition-colors duration-150 mt-0.5 ${
-                    isSel && action.enabled
-                      ? 'text-[var(--color-primary)]'
-                      : 'text-[var(--text-muted)]'
-                  }`}
-                >
-                  {action.label}
-                </span>
-              </div>
-            );
-          })}
+              />
+            </div>
+          )}
         </div>
 
-        {/* 就绪态指示文字 */}
+        {/* ── Label Text ── */}
         <div
-          className="mt-2 text-[10px] font-medium text-[var(--text-muted)] transition-all duration-200"
+          className="mt-1 text-[11px] font-medium whitespace-nowrap"
           style={{
-            opacity: isReady ? 0.7 : 0,
-            transform: isReady ? 'translateY(0)' : 'translateY(4px)',
+            color: 'var(--text-secondary, #666)',
+            opacity: isReady ? 1 : 0,
+            transform: isReady ? 'translateY(0)' : 'translateY(6px)',
+            transition: 'opacity 0.2s, transform 0.2s',
           }}
         >
-          松手{actions[selected].enabled ? actions[selected].label : ''}
+          {labelText}
+        </div>
+
+        {/* ── Release Hint ── */}
+        <div
+          className="mt-1.5 text-[10px] font-medium"
+          style={{
+            color: 'var(--text-muted, #999)',
+            opacity: isReady ? 0.6 : 0,
+            transform: isReady ? 'translateY(0)' : 'translateY(4px)',
+            transition: 'opacity 0.25s, transform 0.25s',
+          }}
+        >
+          松手{labelText}
         </div>
       </div>
+
+      {/* ── Keyframe animation for blob pulse ── */}
+      <style jsx>{`
+        @keyframes blobPulse {
+          0%, 100% { box-shadow: 0 2px 20px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04); }
+          50% { box-shadow: 0 4px 30px rgba(0,0,0,0.12), 0 0 0 1.5px rgba(0,0,0,0.06); }
+        }
+      `}</style>
     </div>,
     document.body
   );
