@@ -161,8 +161,11 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
               >
                 {/* 目录按钮 */}
                 <button
+                  type="button"
+                  aria-expanded={isTocOpen}
+                  aria-controls="mobile-toc-drawer"
                   onClick={() => setIsTocOpen(true)}
-                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95"
+                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
                   aria-label="打开目录"
                 >
                   <List className="w-5 h-5 text-primary" />
@@ -170,8 +173,9 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
 
                 {/* 回顶部按钮 */}
                 <button
+                  type="button"
                   onClick={scrollToTop}
-                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95"
+                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-lg backdrop-blur-xl transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
                   aria-label="返回顶部"
                 >
                   <div className="relative flex items-center justify-center w-8 h-8">
@@ -248,11 +252,12 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   {/* 返回顶部 */}
                   <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]/50">
                     <button
+                      type="button"
                       onClick={() => {
                         setIsTocOpen(false);
                         scrollToTop();
                       }}
-                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-xl"
                     >
                       <ArrowUp className="h-4 w-4" />
                       <span>返回顶部</span>
@@ -276,12 +281,15 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
         <AnimatePresence>
           {isVisible && (
             <motion.button
+              type="button"
+              aria-expanded={isTocOpen}
+              aria-controls="desktop-toc-drawer"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setIsTocOpen((prev) => !prev)}
-              className="fixed bottom-24 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+              className="fixed bottom-24 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
               aria-label="打开目录"
             >
               <div className="relative flex items-center justify-center w-10 h-10">
@@ -310,6 +318,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
 
               {/* TOC 浮动卡片 */}
               <motion.div
+                id="desktop-toc-drawer"
                 initial={{ opacity: 0, y: 12, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 12, scale: 0.96 }}
@@ -348,11 +357,12 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                 {/* 返回顶部 */}
                 <div className="px-5 pb-4 pt-2 border-t border-[var(--border-subtle)]/50">
                   <button
+                    type="button"
                     onClick={() => {
                       setIsTocOpen(false);
                       scrollToTop();
                     }}
-                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20"
+                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-primary/5 transition-all duration-300 border border-transparent hover:border-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-xl"
                   >
                     <ArrowUp className="h-4 w-4" />
                     <span>返回顶部</span>
@@ -396,8 +406,9 @@ const TocList = memo(function TocList({
           return (
             <button
               key={heading.id}
+              type="button"
               onClick={() => scrollToHeading(heading.id)}
-              className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 ${
+              className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
                 isActive
                   ? 'text-primary bg-primary/5 font-medium'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
