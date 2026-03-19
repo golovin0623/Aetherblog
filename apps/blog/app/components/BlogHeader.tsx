@@ -502,7 +502,7 @@ export default function BlogHeader() {
                   disabled
                   aria-label="管理后台未配置"
                   title={`管理后台未配置：${adminLinkConfig.reason}`}
-                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-[var(--text-muted)] opacity-50 cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-[var(--text-muted)] opacity-50 cursor-not-allowed"
                 >
                   <Settings2 className="w-4 h-4" />
                 </button>
