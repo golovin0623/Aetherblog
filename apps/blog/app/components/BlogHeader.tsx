@@ -331,7 +331,7 @@ export default function BlogHeader() {
                 type="button"
                 aria-label="搜索"
                 onClick={openSearchPanel}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Search className="w-4 h-4" />
               </button>
@@ -477,7 +477,7 @@ export default function BlogHeader() {
                 aria-label="搜索"
                 title="Search (⌘ K)"
                 onClick={openSearchPanel}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/search focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Search className="w-4 h-4 group-hover/search:scale-110 transition-transform" />
               </button>
@@ -490,7 +490,7 @@ export default function BlogHeader() {
                   href={adminHomeUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin"
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="管理后台"
                   aria-label="管理后台"
                 >

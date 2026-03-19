@@ -305,7 +305,7 @@ const MobileMenu = memo(function MobileMenu() {
                   href={adminHomeUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-black dark:text-[var(--text-secondary)] hover:text-black dark:hover:text-[var(--text-primary)] bg-black/5 dark:bg-white/5 border border-transparent dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <Settings2 size={16} />
                   管理后台
