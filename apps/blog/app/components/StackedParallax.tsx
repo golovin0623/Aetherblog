@@ -17,9 +17,9 @@ export default function StackedParallax({
 }) {
   const { scrollY } = useScroll();
   
-  // 视差位移：当整体页面从 0 滚动到 500px 时，内部内容相对于整个叠层容器向上额外移动 80px。
-  // 这会恰好消耗掉顶部 100px padding 中的 80px，只留下完美的 20px 间距。
-  const y = useTransform(scrollY, [0, 500], [0, -80]);
+  // 视差位移：当整体页面从 0 滚动到 600px 时，内部内容相对于整个叠层容器向上额外移动 80px。
+  // 与 Hero 视差使用相同的滚动窗口(600px)，两层动画节奏统一、节奏对齐。
+  const y = useTransform(scrollY, [0, 600], [0, -80]);
 
   return (
     <motion.div className={className} style={{ y }}>
