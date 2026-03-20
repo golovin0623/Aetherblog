@@ -48,6 +48,9 @@ export default async function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* 主题初始化脚本 - 防止 FOUC */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

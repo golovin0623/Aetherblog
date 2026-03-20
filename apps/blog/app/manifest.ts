@@ -11,6 +11,8 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     description: settings.siteDescription || 'AetherBlog - 智能博客系统',
     start_url: '/',
     display: 'standalone',
+    orientation: 'portrait',
+    scope: '/',
     background_color: '#09090b',
     theme_color: '#09090b',
     icons: avatarUrl

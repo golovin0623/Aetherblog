@@ -915,8 +915,17 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
 
   if (!normalizedContent) return null;
 
+  // Markdown FOUC 防护: Shiki 就绪前隐藏内容，就绪后淡入
+  const isReady = highlighter !== null;
+
   return (
-    <div className={`markdown-body prose dark:prose-invert max-w-none ${className}`}>
+    <div
+      className={`markdown-body prose dark:prose-invert max-w-none ${className}`}
+      style={{
+        opacity: isReady ? 1 : 0,
+        transition: 'opacity 0.3s ease-in',
+      }}
+    >
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}

@@ -273,9 +273,10 @@ export default function BlogHeader() {
       )}
 
       <header
-        className={`fixed top-0 left-0 w-screen z-50 py-4 transition-all duration-300 ease-out will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
+        className={`fixed left-0 w-screen z-50 py-4 transition-all duration-300 ease-out will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
           }`}
         style={{
+          top: 'env(safe-area-inset-top, 0px)',
           background: 'var(--bg-overlay)',
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid var(--border-subtle)',
