@@ -20,14 +20,14 @@ export default function HeroParallaxContent({
   // 追踪整体窗口滚动
   const { scrollY } = useScroll();
   
-  // 视差位移：页面向下滚动时，内容额外向上加速偏移，仿佛被下方书页推远
-  const y = useTransform(scrollY, [0, 500], [0, -250]);
+  // 视差位移：页面向下滚动时，内容缓慢向上偏移，仿佛被下方书页轻柔推远
+  const y = useTransform(scrollY, [0, 600], [0, -150]);
   
-  // 透明度衰减：页面滚过 300px，Hero 内容迅速虚化，避免与上滑文章重叠
-  const opacity = useTransform(scrollY, [0, 300], [1, 0]);
+  // 透明度衰减：在较长的滚动窗口内平滑消隐，与位移节奏统一
+  const opacity = useTransform(scrollY, [0, 500], [1, 0]);
   
-  // 缩放：增加被推远的纵深感
-  const scale = useTransform(scrollY, [0, 300], [1, 0.9]);
+  // 缩放：微妙的纵深感，与 y 位移使用相同的滚动窗口
+  const scale = useTransform(scrollY, [0, 600], [1, 0.95]);
 
   return (
     <motion.div
