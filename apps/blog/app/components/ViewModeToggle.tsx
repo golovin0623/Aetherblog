@@ -30,6 +30,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       {/* 链接 - 固定宽度防止布局偏移 */}
       <Link
         href="/posts"
+        aria-current={!isTimeline ? 'page' : undefined}
         className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
           !isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
@@ -38,6 +39,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       </Link>
       <Link
         href="/timeline"
+        aria-current={isTimeline ? 'page' : undefined}
         className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
           isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
