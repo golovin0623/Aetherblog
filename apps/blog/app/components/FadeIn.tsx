@@ -10,8 +10,9 @@ interface FadeInProps {
 }
 
 /**
- * 淡入动画包装组件 - 纯 CSS 版本
- * 无需等待 JS 库加载，动画立即生效，零卡顿
+ * 淡入动画包装组件
+ * 使用 globals.css 中定义的全局 @keyframes fadeInUp
+ * 避免每个组件实例注入 <style> 标签（iOS WKWebView 中多个 <style> 注入会引发重排）
  */
 export default function FadeIn({ 
   children, 
@@ -27,20 +28,6 @@ export default function FadeIn({
       }}
     >
       {children}
-      
-      {/* 内联 CSS keyframes - 确保样式立即可用 */}
-      <style jsx>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(16px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   );
 }

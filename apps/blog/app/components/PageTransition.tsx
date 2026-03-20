@@ -105,17 +105,19 @@ export function PageTransition({ children }: PageTransitionProps) {
   const { direction, shouldAnimate, transitionType } = useTransition();
   // 移动端检测：移动端 GPU 合成 transform 位移动画开销大
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  // iOS PWA standalone 检测：WKWebView 合成层 bug 需降级动画
+  const isStandalone = typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches ||
+     (window.navigator as any).standalone === true);
 
   // 根据过渡类型选择进入动画配置
   const getInitialAnimation = () => {
     if (!shouldAnimate) return false;
     
     if (transitionType === 'slide') {
-      // 移动端: 纯 opacity 太平淡，x 位移掉帧。
-      // 折中方案：使用非常轻微的 scale (0.98 -> 1) + opacity，
-      // 这能提供空间感和加载感，且中心缩放合成成本远低于大面积横向位移
-      if (isMobile) {
-        return { opacity: 0, scale: 0.98 };
+      // iOS PWA / 移动端: 纯 opacity 过渡，避免 transform 引发合成层闪烁
+      if (isMobile || isStandalone) {
+        return { opacity: 0 };
       }
       return { 
         x: direction > 0 ? '5%' : '-5%', 
