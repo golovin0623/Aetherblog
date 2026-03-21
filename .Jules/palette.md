@@ -66,3 +66,7 @@
 **Learning:** Custom dropdown components, such as the `ThemeToggle`'s system selection dropdown, often function correctly visually but fail to convey semantic meaning to screen readers without specific ARIA patterns. A trigger button requires `aria-haspopup="menu"` and `aria-expanded` attributes, while the popup container must have `role="menu"` (and an `aria-label`) and its children `role="menuitem"`. This explicit mapping is necessary for screen readers to switch into menu-navigation mode and announce the interaction properly.
 **Action:** Whenever building or modifying a custom dropdown selector or context menu, always apply the complete W3C ARIA Menu pattern: the trigger needs `aria-haspopup="menu"` and `aria-expanded={isOpen}`, the container needs `role="menu"`, and the clickable items need `role="menuitem"`.
 
+
+## 2026-06-08 - Tooltip Keyboard Accessibility
+**Learning:** Beautiful hover-triggered tooltips (using `onMouseEnter`/`onMouseLeave`) completely ignore keyboard users navigating with Tab, hiding potentially important information (like descriptions or full names) from sighted users who don't use a mouse.
+**Action:** Always pair `onMouseEnter` with `onFocus`, and `onMouseLeave` with `onBlur` on the focusable target element (like `<a>` or `<button>`) to ensure tooltips are accessible via all input modalities.
