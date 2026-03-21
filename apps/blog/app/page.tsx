@@ -58,20 +58,20 @@ export default async function HomePage() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <a
+              <Link
                 href={settings?.welcome_primary_btn_link || '/posts'}
                 className="hero-primary-btn group inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl text-white font-medium min-w-40"
               >
                 <span className="hero-btn-shimmer" aria-hidden="true" />
                 <span className="relative z-10">{settings?.welcome_primary_btn_text || '浏览文章'}</span>
                 <ArrowRight className="relative z-10 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-              </a>
-              <a
+              </Link>
+              <Link
                 href={settings?.welcome_secondary_btn_link || '/about'}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card-hover)] transition-all hover:scale-105 backdrop-blur-sm w-36"
               >
                 {settings?.welcome_secondary_btn_text || '关于我'}
-              </a>
+              </Link>
             </div>
           </div>
 
