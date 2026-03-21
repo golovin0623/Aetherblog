@@ -64,7 +64,7 @@ function groupPostsByDate(posts: Post[]): any[] {
 
 export default function TimelinePage() {
     // 获取时间轴的所有文章（或较大的分页大小）
-    const { data: posts = [], isLoading } = useQuery({
+    const { data, isPending } = useQuery({
         queryKey: ['timelinePosts'],
         queryFn: async () => {
              // 在实际应用中，我们可能需要一个专门的时间轴端点或获取全部
@@ -89,9 +89,12 @@ export default function TimelinePage() {
         staleTime: 5 * 60 * 1000, // 缓存 5 分钟
     });
 
+    const posts = data ?? [];
     const archives = useMemo(() => groupPostsByDate(posts), [posts]);
 
-    if (isLoading) {
+    // 首次加载显示骨架屏（无缓存数据时）
+    // 后续切换由于已有缓存数据（staleTime: 5min），isPending=false，直接显示内容
+    if (isPending) {
         return <TimelineLoading />;
     }
 
