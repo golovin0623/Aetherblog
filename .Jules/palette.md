@@ -66,3 +66,7 @@
 **Learning:** Custom dropdown components, such as the `ThemeToggle`'s system selection dropdown, often function correctly visually but fail to convey semantic meaning to screen readers without specific ARIA patterns. A trigger button requires `aria-haspopup="menu"` and `aria-expanded` attributes, while the popup container must have `role="menu"` (and an `aria-label`) and its children `role="menuitem"`. This explicit mapping is necessary for screen readers to switch into menu-navigation mode and announce the interaction properly.
 **Action:** Whenever building or modifying a custom dropdown selector or context menu, always apply the complete W3C ARIA Menu pattern: the trigger needs `aria-haspopup="menu"` and `aria-expanded={isOpen}`, the container needs `role="menu"`, and the clickable items need `role="menuitem"`.
 
+
+## 2025-02-12 - Segmented Control Accessibility
+**Learning:** When implementing segmented controls using Next.js `<Link>` elements, use the `aria-current="page"` attribute to indicate the active segment instead of `aria-pressed`, as `aria-pressed` is semantically reserved for toggle `<button>` elements. Adding `role="group"` to the container also helps screen readers.
+**Action:** Apply this pattern to all similar Next.js `<Link>`-based segmented controls to ensure proper semantic accessibility.
