@@ -66,6 +66,13 @@ public class VersionServiceImpl implements VersionService {
             String originalName = StringUtils.cleanPath(newFile.getOriginalFilename() != null ?
                     newFile.getOriginalFilename() : "unknown");
             String extension = getFileExtension(originalName);
+
+            // Security Fix: Prevent uploading arbitrary files as new versions
+            String originalExtension = getFileExtension(file.getOriginalName());
+            if (!extension.equalsIgnoreCase(originalExtension)) {
+                throw new BusinessException(400, "新版本文件类型(" + extension + ")必须与原文件(" + originalExtension + ")一致");
+            }
+
             String filename = UUID.randomUUID() + "_v" + nextVersion + "." + extension;
             String relativePath = "versions/" + datePath + "/" + filename;
 
