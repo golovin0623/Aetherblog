@@ -58,3 +58,10 @@
 **Vulnerability:** The `/v1/auth/change-password` endpoint lacked rate limiting, making it susceptible to automated spam and brute-force attacks from authenticated users attempting to change their password excessively.
 **Learning:** Even endpoints restricted to authenticated users (like password changes) can be abused and require rate limiting to prevent application logic abuse or denial-of-service conditions.
 **Prevention:** Added `@RateLimit(key = "auth:change_password", count = 5, time = 300, limitType = RateLimit.LimitType.USER)` to the `changePassword` method in `AuthController`, extended `RateLimitInterceptor.buildKey()` to support `LimitType.USER` by extracting user ID from `SecurityContextHolder`, and added a regression test to `RateLimitVerificationTest`.
+## 2025-05-24 - Arbitrary File Upload (Type Spoofing) in Version Service
+
+**Vulnerability:** Arbitrary File Upload (Type Spoofing). When uploading a new version of an existing file via `VersionServiceImpl.createVersion()`, the system correctly retrieved the next version number but did not check if the new file's extension matched the original file's extension. This allowed a malicious user to replace a safe file (e.g., `image.png`) with an executable file or script (e.g., `malicious.jsp` or `script.php`) while retaining the association with the original `MediaFile` record.
+
+**Learning:** When allowing users to update or upload new versions of existing media, it is crucial to explicitly enforce type consistency between the original file and the new version to prevent attackers from bypassing initial upload restrictions by updating an allowed file type with a restricted one.
+
+**Prevention:** Always validate that the file extension (and ideally MIME type) of a newly uploaded version strictly matches the original file's extension before processing the upload.
