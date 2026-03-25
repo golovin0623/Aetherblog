@@ -401,35 +401,59 @@ const TocList = memo(function TocList({
     ) : (
       <div className="relative pl-1 space-y-0.5">
         <div className="absolute left-0 top-0 bottom-0 w-[1.5px] bg-[var(--border-subtle)]/50 rounded-full" />
-        {headings.map((heading) => {
-          const isActive = activeId === heading.id;
-          return (
-            <button
-              key={heading.id}
-              type="button"
-              onClick={() => scrollToHeading(heading.id)}
-              className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
-                isActive
-                  ? 'text-primary bg-primary/5 font-medium'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-              }`}
-              style={{
-                paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
-              }}
-            >
-              {isActive && (
-                <motion.div
-                  layoutId={isMobile ? 'mobile-toc-indicator' : 'desktop-toc-indicator'}
-                  className="absolute left-0 top-2 bottom-2 w-[2px] bg-primary rounded-full"
-                />
-              )}
-              <span className="line-clamp-2">{heading.text}</span>
-            </button>
-          );
-        })}
+        {headings.map((heading) => (
+          <TocItemComponent
+            key={heading.id}
+            heading={heading}
+            isActive={activeId === heading.id}
+            minLevel={minLevel}
+            isMobile={isMobile}
+            scrollToHeading={scrollToHeading}
+          />
+        ))}
       </div>
     )}
   </div>
+  );
+});
+
+// Extracted single TOC item into a memoized component.
+// When `activeId` changes during scrolling, only the previously active item
+// and the newly active item re-render, reducing O(n) renders to O(1).
+const TocItemComponent = memo(function TocItemComponent({
+  heading,
+  isActive,
+  minLevel,
+  isMobile,
+  scrollToHeading
+}: {
+  heading: TocItem;
+  isActive: boolean;
+  minLevel: number;
+  isMobile: boolean;
+  scrollToHeading: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => scrollToHeading(heading.id)}
+      className={`group relative block w-full text-left py-2.5 px-4 rounded-lg text-sm transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
+        isActive
+          ? 'text-primary bg-primary/5 font-medium'
+          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+      }`}
+      style={{
+        paddingLeft: `${(heading.level - minLevel) * 12 + 16}px`,
+      }}
+    >
+      {isActive && (
+        <motion.div
+          layoutId={isMobile ? 'mobile-toc-indicator' : 'desktop-toc-indicator'}
+          className="absolute left-0 top-2 bottom-2 w-[2px] bg-primary rounded-full"
+        />
+      )}
+      <span className="line-clamp-2">{heading.text}</span>
+    </button>
   );
 });
 

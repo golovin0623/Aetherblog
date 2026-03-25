@@ -384,7 +384,7 @@ export default function BlogHeader() {
                       handleNavClick('posts');
                     }
                   }}
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${!isTimeline
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-full ${!isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
@@ -401,7 +401,7 @@ export default function BlogHeader() {
                       handleNavClick('timeline');
                     }
                   }}
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${isTimeline
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-full ${isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
