@@ -74,3 +74,7 @@
 **Learning:** Hover-triggered tooltips (using `onMouseEnter`/`onMouseLeave`) completely ignore keyboard users navigating with Tab, hiding potentially important information from users who don't use a mouse.
 **Action:** Always pair `onMouseEnter` with `onFocus`, and `onMouseLeave` with `onBlur` on focusable target elements to ensure tooltips are accessible via all input modalities.
 
+
+## 2025-03-25 - Segmented Controls using Buttons Accessibility
+**Learning:** Segmented controls implemented using `<button>` elements (such as the view mode toggle in `FriendsList.tsx`) often lack structural ARIA properties, proper focus visibility styles, and explicit `type="button"` declarations. This leaves screen reader users without context and keyboard users unable to see where focus is applied.
+**Action:** Always ensure that when implementing segmented controls using buttons, the container has `role="group"` and an `aria-label`, and the buttons include `type="button"`, `aria-pressed` for the active state, and comprehensive `focus-visible` utility classes (including `ring-offset` matching the background) for full keyboard and screen reader accessibility.

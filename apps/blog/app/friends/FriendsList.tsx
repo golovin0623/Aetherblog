@@ -94,7 +94,7 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
 
           {/* 视图模式切换 - 胶囊式滑动切换器 */}
           {initialFriends.length > 0 && (
-            <div className="flex items-center p-0.5 sm:p-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] backdrop-blur-sm flex-shrink-0 relative">
+            <div role="group" aria-label="视图模式切换" className="flex items-center p-0.5 sm:p-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] backdrop-blur-sm flex-shrink-0 relative">
               {/* 滑动胶囊指示器 */}
               <motion.div
                 className="absolute top-0.5 sm:top-1 bottom-0.5 sm:bottom-1 rounded-full bg-primary/20"
@@ -106,10 +106,11 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
               />
               <button
+                type="button"
                 onClick={handleSetList}
                 aria-label="列表视图"
                 aria-pressed={activeMode === 'list'}
-                className={`relative z-10 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors duration-300 ${
+                className={`relative z-10 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)] ${
                   activeMode === 'list'
                     ? 'text-primary'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -119,10 +120,11 @@ export default function FriendsList({ initialFriends }: FriendsListProps) {
                 <span className="hidden sm:inline">列表</span>
               </button>
               <button
+                type="button"
                 onClick={handleSetIcon}
                 aria-label="气泡视图"
                 aria-pressed={activeMode === 'icon'}
-                className={`relative z-10 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors duration-300 ${
+                className={`relative z-10 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)] ${
                   activeMode === 'icon'
                     ? 'text-primary'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
