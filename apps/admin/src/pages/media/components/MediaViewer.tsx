@@ -34,6 +34,63 @@ interface MediaViewerProps {
   onDownload: (url: string, filename: string) => void;
 }
 
+/** Render a single media slide (shared between mobile carousel and desktop view) */
+const MediaSlide: React.FC<{
+  item: MediaItem;
+  rotation: number;
+  isZoomed: boolean;
+  onZoomToggle: () => void;
+}> = ({ item, rotation, isZoomed, onZoomToggle }) => {
+  const url = getMediaUrl(item.fileUrl);
+  if (item.fileType === 'IMAGE') {
+    return (
+      <div
+        className="relative w-full h-full flex items-center justify-center will-change-transform"
+        style={{
+          transform: `rotate(${rotation}deg) scale(${isZoomed ? 1.5 : 1})`,
+          transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
+        }}
+      >
+        <img
+          src={url}
+          alt={item.originalName}
+          className={cn(
+            "max-w-full max-h-full object-contain rounded-lg shadow-2xl transform-gpu select-none",
+            isZoomed ? "cursor-zoom-out" : "cursor-zoom-in"
+          )}
+          onClick={onZoomToggle}
+          draggable={false}
+        />
+      </div>
+    );
+  }
+  if (item.fileType === 'VIDEO') {
+    return (
+      <video
+        src={url}
+        controls
+        autoPlay
+        className="max-w-full max-h-full rounded-xl shadow-2xl border border-white/10"
+      />
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <div className="w-32 h-32 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center shadow-inner">
+        {item.fileType === 'DOCUMENT' ? (
+          <FileText className="w-16 h-16 text-primary/80" />
+        ) : (
+          <RotateCw className="w-16 h-16 text-primary/80 animate-spin" />
+        )}
+      </div>
+      <div className="text-center">
+        <p className="text-white text-xl font-medium mb-1">{item.originalName}</p>
+        <p className="text-white/40 text-sm">此文件类型暂不支持直接预览</p>
+      </div>
+    </div>
+  );
+};
+
 export const MediaViewer: React.FC<MediaViewerProps> = ({
   items,
   currentIndex,
@@ -52,11 +109,12 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const currentItem = items[currentIndex];
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // Touch/swipe state
+  // ====== Mobile carousel swipe state (Apple Photos style) ======
+  const trackRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const touchDeltaRef = useRef(0);
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const isSwiping = useRef(false);
+  const [swipeOffset, setSwipeOffset] = useState(0); // px offset during drag
+  const [isAnimating, setIsAnimating] = useState(false); // spring-snap in progress
+  const directionLocked = useRef<'h' | 'v' | null>(null);
 
   useEffect(() => {
     setRotation(0);
@@ -66,7 +124,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // Auto-scroll thumbnail strip to center the active thumbnail
   useEffect(() => {
-    // Small delay to ensure DOM is updated after index change
     const timer = setTimeout(() => {
       const thumb = thumbnailRefs.current[currentIndex];
       if (thumb && thumbnailStripRef.current) {
@@ -98,7 +155,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const handleTap = () => setMobileMenuOpen(false);
-    // Delay to avoid closing immediately
     const timer = setTimeout(() => {
       window.addEventListener('click', handleTap, { once: true });
     }, 100);
@@ -114,66 +170,101 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   }, [currentItem, onDownload]);
 
-  // Touch handlers for swipe navigation (mobile only)
+  // ====== Touch handlers: Apple Photos continuous carousel ======
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!isMobile || isZoomed) return;
+    if (!isMobile || isZoomed || isAnimating) return;
     const touch = e.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    touchDeltaRef.current = 0;
-    isSwiping.current = false;
-  }, [isMobile, isZoomed]);
+    directionLocked.current = null;
+    setSwipeOffset(0);
+  }, [isMobile, isZoomed, isAnimating]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStartRef.current || !isMobile || isZoomed) return;
     const touch = e.touches[0];
-    const deltaX = touch.clientX - touchStartRef.current.x;
-    const deltaY = touch.clientY - touchStartRef.current.y;
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dy = touch.clientY - touchStartRef.current.y;
 
-    // Determine if this is a horizontal swipe (lock direction after threshold)
-    if (!isSwiping.current && Math.abs(deltaX) > 10) {
-      // Only start swiping if horizontal movement is dominant
-      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-        isSwiping.current = true;
+    // Lock direction after 8px movement
+    if (!directionLocked.current) {
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        directionLocked.current = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
       }
+      return;
     }
 
-    if (isSwiping.current) {
-      e.preventDefault();
-      touchDeltaRef.current = deltaX;
-      // Add resistance at edges
-      const atStart = currentIndex === 0 && deltaX > 0;
-      const atEnd = currentIndex === items.length - 1 && deltaX < 0;
-      const resistance = (atStart || atEnd) ? 0.3 : 1;
-      setSwipeOffset(deltaX * resistance);
+    if (directionLocked.current !== 'h') return;
+
+    // Prevent vertical scroll while swiping horizontally
+    e.preventDefault();
+
+    // Rubber-band resistance at edges (iOS-style)
+    const atStart = currentIndex === 0 && dx > 0;
+    const atEnd = currentIndex === items.length - 1 && dx < 0;
+    if (atStart || atEnd) {
+      // Logarithmic resistance like iOS
+      const sign = dx > 0 ? 1 : -1;
+      const dampened = sign * Math.log2(1 + Math.abs(dx) * 0.15) * 20;
+      setSwipeOffset(dampened);
+    } else {
+      setSwipeOffset(dx);
     }
   }, [isMobile, isZoomed, currentIndex, items.length]);
 
   const handleTouchEnd = useCallback(() => {
-    if (!touchStartRef.current || !isMobile) return;
-    const deltaX = touchDeltaRef.current;
+    if (!touchStartRef.current || !isMobile || directionLocked.current !== 'h') {
+      touchStartRef.current = null;
+      directionLocked.current = null;
+      return;
+    }
+
+    const dx = swipeOffset;
     const elapsed = Date.now() - touchStartRef.current.time;
+    // Velocity in px/ms
+    const velocity = Math.abs(dx) / Math.max(elapsed, 1);
 
-    // Determine if swipe should trigger navigation
-    const isQuickSwipe = Math.abs(deltaX) > 50 && elapsed < 300;
-    const isLongSwipe = Math.abs(deltaX) > 100;
+    // Threshold: quick flick (high velocity) or dragged past 30% of container width
+    const containerWidth = trackRef.current?.parentElement?.clientWidth || 300;
+    const isQuickFlick = velocity > 0.4 && Math.abs(dx) > 30;
+    const isDraggedFar = Math.abs(dx) > containerWidth * 0.3;
 
-    if (isSwiping.current && (isQuickSwipe || isLongSwipe)) {
-      if (deltaX < 0 && currentIndex < items.length - 1) {
-        onNext();
-      } else if (deltaX > 0 && currentIndex > 0) {
-        onPrev();
+    let targetIndex = currentIndex;
+    if (isQuickFlick || isDraggedFar) {
+      if (dx < 0 && currentIndex < items.length - 1) {
+        targetIndex = currentIndex + 1;
+      } else if (dx > 0 && currentIndex > 0) {
+        targetIndex = currentIndex - 1;
       }
     }
 
-    touchStartRef.current = null;
-    touchDeltaRef.current = 0;
-    isSwiping.current = false;
+    // Animate snap-back (spring physics via CSS transition)
+    setIsAnimating(true);
     setSwipeOffset(0);
-  }, [isMobile, currentIndex, items.length, onNext, onPrev]);
+
+    if (targetIndex !== currentIndex) {
+      onSelectIndex(targetIndex);
+    }
+
+    // Wait for spring animation to finish
+    setTimeout(() => setIsAnimating(false), 350);
+
+    touchStartRef.current = null;
+    directionLocked.current = null;
+  }, [isMobile, swipeOffset, currentIndex, items.length, onSelectIndex]);
+
+  // Reset swipe offset when index changes externally (e.g. thumbnail tap)
+  useEffect(() => {
+    setSwipeOffset(0);
+  }, [currentIndex]);
 
   if (!currentItem) return null;
 
   const fullUrl = getMediaUrl(currentItem.fileUrl);
+
+  // Visible slides for mobile carousel: only render [prev, current, next] for performance
+  const visibleIndices = isMobile
+    ? [currentIndex - 1, currentIndex, currentIndex + 1].filter(i => i >= 0 && i < items.length)
+    : [currentIndex];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 md:p-12">
@@ -357,142 +448,173 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         <div
           className={cn(
             "flex-1 relative flex items-center justify-center overflow-hidden",
-            isMobile ? "px-2 pb-2" : "px-8 pb-8"
+            isMobile ? "px-0 pb-0" : "px-8 pb-8"
           )}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          {/* 上一页 悬浮按钮 - 仅桌面端显示 */}
-          {!isMobile && (
-            <button
-              onClick={onPrev}
-              className={cn(
-                "absolute left-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
-                "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
-                currentIndex === 0 && "invisible"
-              )}
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-          )}
-
-          {/* 媒体核心 */}
-          <div className="relative w-full h-full flex items-center justify-center">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentItem.id}
-                initial={{ opacity: 0, scale: 0.98, x: 10 }}
-                animate={{ opacity: 1, scale: 1, x: swipeOffset }}
-                exit={{ opacity: 0, scale: 1.02, x: -10 }}
-                transition={swipeOffset !== 0
-                  ? { x: { duration: 0 } }
-                  : { type: 'spring', damping: 30, stiffness: 200 }
-                }
-                className="w-full h-full flex items-center justify-center"
+          {isMobile ? (
+            /* ===== 移动端：Apple Photos 连续轮播 ===== */
+            <div className="relative w-full h-full overflow-hidden">
+              <div
+                ref={trackRef}
+                className="flex h-full will-change-transform"
+                style={{
+                  // Each slide is 100% width; translate by currentIndex + drag offset
+                  transform: `translateX(calc(-${currentIndex * 100}% + ${swipeOffset}px))`,
+                  transition: swipeOffset !== 0
+                    ? 'none'  // Instant tracking while dragging
+                    : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)', // Spring-like snap
+                }}
               >
-                {currentItem.fileType === 'IMAGE' ? (
-                  <div
-                    className="relative w-full h-full flex items-center justify-center will-change-transform"
-                    style={{
-                      transform: `rotate(${rotation}deg) scale(${isZoomed ? 1.5 : 1})`,
-                      transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
-                    }}
-                  >
-                    <img
-                      src={fullUrl}
-                      alt={currentItem.originalName}
-                      className={cn(
-                        "max-w-full max-h-full object-contain rounded-lg shadow-2xl transform-gpu",
-                        isZoomed ? "cursor-zoom-out" : "cursor-zoom-in"
-                      )}
-                      onClick={() => setIsZoomed(!isZoomed)}
-                      draggable={false}
-                    />
-                  </div>
-                ) : currentItem.fileType === 'VIDEO' ? (
-                  <video
-                    src={fullUrl}
-                    controls
-                    autoPlay
-                    className="max-w-full max-h-full rounded-xl shadow-2xl border border-white/10"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-6">
-                    <div className="w-32 h-32 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center shadow-inner">
-                      {currentItem.fileType === 'DOCUMENT' ? (
-                        <FileText className="w-16 h-16 text-primary/80" />
-                      ) : (
-                        <RotateCw className="w-16 h-16 text-primary/80 animate-spin" />
+                {items.map((item, index) => {
+                  // Only render content for visible slides (perf optimization)
+                  const isVisible = visibleIndices.includes(index);
+                  return (
+                    <div
+                      key={item.id}
+                      className="w-full h-full flex-shrink-0 flex items-center justify-center px-3"
+                    >
+                      {isVisible && (
+                        <MediaSlide
+                          item={item}
+                          rotation={index === currentIndex ? rotation : 0}
+                          isZoomed={index === currentIndex ? isZoomed : false}
+                          onZoomToggle={() => {
+                            if (index === currentIndex) setIsZoomed(!isZoomed);
+                          }}
+                        />
                       )}
                     </div>
-                    <div className="text-center">
-                      <p className="text-white text-xl font-medium mb-1">{currentItem.originalName}</p>
-                      <p className="text-white/40 text-sm">此文件类型暂不支持直接预览</p>
-                    </div>
-                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* ===== 桌面端：原始 AnimatePresence 过渡 ===== */
+            <>
+              <button
+                onClick={onPrev}
+                className={cn(
+                  "absolute left-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+                  "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
+                  currentIndex === 0 && "invisible"
                 )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
 
-          {/* 下一页 悬浮按钮 - 仅桌面端显示 */}
-          {!isMobile && (
-            <button
-              onClick={onNext}
-              className={cn(
-                "absolute right-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
-                "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
-                currentIndex === items.length - 1 && "invisible"
-              )}
-            >
-              <ChevronRight className="w-6 h-6" />
-            </button>
+              <div className="relative w-full h-full flex items-center justify-center">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentItem.id}
+                    initial={{ opacity: 0, scale: 0.98, x: 10 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 1.02, x: -10 }}
+                    transition={{ type: 'spring', damping: 30, stiffness: 200 }}
+                    className="w-full h-full flex items-center justify-center"
+                  >
+                    <MediaSlide
+                      item={currentItem}
+                      rotation={rotation}
+                      isZoomed={isZoomed}
+                      onZoomToggle={() => setIsZoomed(!isZoomed)}
+                    />
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              <button
+                onClick={onNext}
+                className={cn(
+                  "absolute right-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+                  "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
+                  currentIndex === items.length - 1 && "invisible"
+                )}
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </>
           )}
         </div>
 
-        {/* 缩略图页脚导航 - 移动端缩小卡片，增加可见区域 */}
+        {/* 精致缩略图导航 - Filmstrip 风格 */}
         <div className={cn(
-          "bg-[var(--bg-card)] border-t border-[var(--border-subtle)] flex items-center justify-center",
+          "relative flex items-center justify-center border-t border-[var(--border-subtle)]",
           isMobile
-            ? "h-16 px-3 pb-[max(0.25rem,env(safe-area-inset-bottom))]"
-            : "h-28 px-8"
+            ? "h-[72px] px-3 pb-[max(0.25rem,env(safe-area-inset-bottom))]"
+            : "h-28 px-8",
+          "bg-gradient-to-t from-[var(--bg-primary)] to-[var(--bg-card)]"
         )}>
+          {/* 左右渐隐遮罩 - 提示可滚动 */}
+          <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 md:w-16 z-10 bg-gradient-to-r from-[var(--bg-primary)] to-transparent" />
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 md:w-16 z-10 bg-gradient-to-l from-[var(--bg-primary)] to-transparent" />
+
           <div
             ref={thumbnailStripRef}
             className={cn(
-              "flex overflow-x-auto no-scrollbar scroll-smooth",
-              isMobile ? "gap-1.5" : "gap-3"
+              "flex overflow-x-auto no-scrollbar scroll-smooth items-center",
+              isMobile ? "gap-2 px-4" : "gap-3 px-12"
             )}
           >
-            {items.map((item, index) => (
-              <button
-                key={item.id}
-                ref={(el) => { thumbnailRefs.current[index] = el; }}
-                onClick={() => onSelectIndex(index)}
-                className={cn(
-                  "relative flex-shrink-0 overflow-hidden transition-all duration-300",
-                  isMobile
-                    ? "w-10 h-10 rounded-md border-[1.5px]"
-                    : "w-20 h-14 rounded-xl border-2",
-                  index === currentIndex
-                    ? "border-primary ring-2 ring-primary/30 shadow-lg shadow-primary/20"
-                    : "border-transparent opacity-40 hover:opacity-100 hover:scale-105"
-                )}
-              >
-                 {item.fileType === 'IMAGE' ? (
-                   <img src={getMediaUrl(item.fileUrl)} className="w-full h-full object-cover" alt="" />
-                 ) : (
-                   <div className="w-full h-full bg-[var(--bg-card)] flex items-center justify-center border border-[var(--border-subtle)]">
-                     {item.fileType === 'VIDEO' ? (
-                        <RotateCw className="w-4 h-4 text-[var(--text-muted)] animate-spin" />
+            {items.map((item, index) => {
+              const isActive = index === currentIndex;
+              return (
+                <button
+                  key={item.id}
+                  ref={(el) => { thumbnailRefs.current[index] = el; }}
+                  onClick={() => onSelectIndex(index)}
+                  className={cn(
+                    "group relative flex-shrink-0 overflow-hidden transition-all duration-300 ease-out",
+                    isMobile
+                      ? "rounded-lg"
+                      : "rounded-xl",
+                    isActive
+                      ? cn(
+                          isMobile ? "w-12 h-12" : "w-[4.5rem] h-16",
+                          "ring-2 ring-primary/50 shadow-lg shadow-primary/25 scale-105 z-10"
+                        )
+                      : cn(
+                          isMobile ? "w-10 h-10" : "w-16 h-12",
+                          "opacity-50 hover:opacity-80 hover:scale-105 ring-1 ring-white/10"
+                        )
+                  )}
+                >
+                  {/* Active glow underlay */}
+                  {isActive && (
+                    <div className="absolute -inset-1 bg-primary/20 rounded-xl blur-md -z-10" />
+                  )}
+                  {item.fileType === 'IMAGE' ? (
+                    <img
+                      src={getMediaUrl(item.fileUrl)}
+                      className="w-full h-full object-cover"
+                      alt=""
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className={cn(
+                      "w-full h-full flex items-center justify-center",
+                      "bg-[var(--bg-secondary)]"
+                    )}>
+                      {item.fileType === 'VIDEO' ? (
+                        <RotateCw className={cn(
+                          "text-[var(--text-muted)] animate-spin",
+                          isMobile ? "w-3.5 h-3.5" : "w-4 h-4"
+                        )} />
                       ) : (
-                        <ImageIcon className="w-4 h-4 text-[var(--text-muted)]" />
+                        <ImageIcon className={cn(
+                          "text-[var(--text-muted)]",
+                          isMobile ? "w-3.5 h-3.5" : "w-4 h-4"
+                        )} />
                       )}
-                   </div>
-                 )}
-              </button>
-            ))}
+                    </div>
+                  )}
+                  {/* Subtle inner border for depth */}
+                  <div className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 pointer-events-none" />
+                </button>
+              );
+            })}
           </div>
         </div>
       </motion.div>
