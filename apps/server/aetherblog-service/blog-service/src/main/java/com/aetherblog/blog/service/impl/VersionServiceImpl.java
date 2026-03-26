@@ -65,8 +65,12 @@ public class VersionServiceImpl implements VersionService {
                 newFile.getOriginalFilename() : "unknown");
         String newExtension = getFileExtension(newOriginalName);
 
+        if (originalExtension.isBlank() || newExtension.isBlank()) {
+            throw new BusinessException(400, "文件扩展名无效");
+        }
+
         if (!originalExtension.equalsIgnoreCase(newExtension)) {
-            log.warn("检测到可能的文件类型欺骗攻击: 原文件={}, 新文件={}", originalFileName, newOriginalName);
+            log.warn("检测到文件类型欺骗攻击: fileId={}, 原扩展名={}, 新扩展名={}", fileId, originalExtension, newExtension);
             throw new BusinessException(400, "上传的新版本文件类型必须与原文件一致");
         }
 
