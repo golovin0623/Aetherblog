@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import com.aetherblog.common.security.annotation.RateLimit;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -32,6 +33,7 @@ public class MediaController {
 
     @Operation(summary = "上传文件")
     @PostMapping("/upload")
+    @RateLimit(key = "media:upload", count = 20, time = 60, limitType = RateLimit.LimitType.USER)
     public R<MediaFile> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) Long uploaderId,
@@ -41,6 +43,7 @@ public class MediaController {
 
     @Operation(summary = "批量上传")
     @PostMapping("/upload/batch")
+    @RateLimit(key = "media:upload_batch", count = 10, time = 60, limitType = RateLimit.LimitType.USER)
     public R<List<MediaFile>> uploadBatch(
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam(required = false) Long uploaderId,
