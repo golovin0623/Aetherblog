@@ -130,13 +130,15 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
   const [copied, setCopied] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('result');
   const rafRef = useRef<number | null>(null);
+  const activeRangeRef = useRef<SelectionAnchor | null>(null);
+  activeRangeRef.current = activeRange;
 
   const updateSelection = useCallback(() => {
     const view = editorViewRef.current;
     if (!view) return;
 
-    if (activeRange) {
-      const coords = getAnchorCoords(view, activeRange.from, activeRange.to);
+    if (activeRangeRef.current) {
+      const coords = getAnchorCoords(view, activeRangeRef.current.from, activeRangeRef.current.to);
       if (!coords) return;
       setActiveRange(prev => (prev ? { ...prev, ...coords } : prev));
       return;
@@ -161,7 +163,7 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
     }
 
     setAnchor({ from, to, text, ...coords });
-  }, [activeRange, editorViewRef]);
+  }, [editorViewRef]);
 
   useEffect(() => {
     let cleanup: (() => void) | null = null;
