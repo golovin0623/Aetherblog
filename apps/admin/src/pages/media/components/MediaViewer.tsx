@@ -72,7 +72,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const fullUrl = getMediaUrl(currentItem.fileUrl);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 md:p-12">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6 md:p-12">
       {/* 核心背景遮罩 (超重毛玻璃) */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -90,19 +90,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
         className={cn(
           "relative z-10 w-full max-w-6xl h-full max-h-[85vh]",
-          "flex flex-col rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.5)]",
+          "flex flex-col rounded-2xl sm:rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.5)]",
           "bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-2xl"
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部精致工具栏 */}
-        <div className="flex items-center justify-between px-8 py-6 border-b border-[var(--border-subtle)]">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-               <ImageIcon className="w-5 h-5 text-primary" />
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-8 py-3 sm:py-6 border-b border-[var(--border-subtle)]">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/10 flex items-center justify-center">
+               <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
             </div>
-            <div className="flex flex-col">
-              <h3 className="text-[var(--text-primary)] text-base font-semibold truncate max-w-[300px]">
+            <div className="flex flex-col min-w-0">
+              <h3 className="text-[var(--text-primary)] text-sm sm:text-base font-semibold truncate max-w-[160px] sm:max-w-[300px]">
                 {currentItem.originalName}
               </h3>
               <p className="text-[var(--text-secondary)] text-[10px] tracking-wider">
@@ -155,17 +155,17 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         </div>
 
         {/* 主展示区 */}
-        <div className="flex-1 relative flex items-center justify-center overflow-hidden px-8 pb-8">
+        <div className="flex-1 relative flex items-center justify-center overflow-hidden px-4 sm:px-8 pb-4 sm:pb-8">
           {/* 上一页 悬浮按钮 */}
           <button
             onClick={onPrev}
             className={cn(
-              "absolute left-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+              "absolute left-2 sm:left-8 z-20 p-2 sm:p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
               "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
               currentIndex === 0 && "invisible"
             )}
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
 
           {/* 媒体核心 */}
@@ -228,24 +228,24 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           <button
             onClick={onNext}
             className={cn(
-              "absolute right-8 z-20 p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
+              "absolute right-2 sm:right-8 z-20 p-2 sm:p-4 rounded-full transition-all border border-[var(--border-subtle)] shadow-lg",
               "bg-[var(--bg-card)]/80 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] backdrop-blur-sm",
               currentIndex === items.length - 1 && "invisible"
             )}
           >
-            <ChevronRight className="w-6 h-6" />
+            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
         {/* 精致缩略图页脚导航 */}
-        <div className="h-28 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] px-8 flex items-center justify-center">
-          <div className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth">
+        <div className="h-20 sm:h-28 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] px-4 sm:px-8 flex items-center justify-center">
+          <div className="flex gap-2 sm:gap-3 overflow-x-auto no-scrollbar scroll-smooth">
             {items.map((item, index) => (
               <button
                 key={item.id}
                 onClick={() => onSelectIndex(index)}
                 className={cn(
-                  "relative flex-shrink-0 w-20 h-14 rounded-xl overflow-hidden border-2 transition-all duration-300",
+                  "relative flex-shrink-0 w-14 h-10 sm:w-20 sm:h-14 rounded-lg sm:rounded-xl overflow-hidden border-2 transition-all duration-300",
                   index === currentIndex 
                     ? "border-primary scale-110 shadow-lg" 
                     : "border-transparent opacity-40 hover:opacity-100 hover:scale-105"
