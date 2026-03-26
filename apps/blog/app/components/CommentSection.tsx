@@ -151,7 +151,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
   );
 });
 
-export default function CommentSection({ postId, settings }: CommentSectionProps) {
+function CommentSectionBase({ postId, settings }: CommentSectionProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -515,3 +515,5 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
   );
 }
 
+// ⚡ Bolt: Added memo() to prevent unnecessary re-renders when parent page components update
+export default memo(CommentSectionBase);
