@@ -4,7 +4,7 @@
  * @ref §3.2.4 - 媒体管理模块
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -44,11 +44,29 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 }) => {
   const [rotation, setRotation] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
+  const thumbnailStripRef = useRef<HTMLDivElement>(null);
+  const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const currentItem = items[currentIndex];
   
   useEffect(() => {
     setRotation(0);
     setIsZoomed(false);
+  }, [currentIndex]);
+
+  // Auto-scroll thumbnail strip to center the active thumbnail
+  useEffect(() => {
+    const thumb = thumbnailRefs.current[currentIndex];
+    if (thumb && thumbnailStripRef.current) {
+      const container = thumbnailStripRef.current;
+      const thumbLeft = thumb.offsetLeft;
+      const thumbWidth = thumb.offsetWidth;
+      const containerWidth = container.clientWidth;
+      const scrollTarget = Math.max(0, Math.min(
+        thumbLeft - containerWidth / 2 + thumbWidth / 2,
+        container.scrollWidth - containerWidth
+      ));
+      container.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+    }
   }, [currentIndex]);
 
   useEffect(() => {
@@ -238,16 +256,17 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         </div>
 
         {/* 精致缩略图页脚导航 */}
-        <div className="h-28 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] px-8 flex items-center justify-center">
-          <div className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth">
+        <div className="h-20 md:h-28 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] px-4 md:px-8 flex items-center justify-center">
+          <div ref={thumbnailStripRef} className="flex gap-2 md:gap-3 overflow-x-auto no-scrollbar scroll-smooth">
             {items.map((item, index) => (
               <button
                 key={item.id}
+                ref={(el) => { thumbnailRefs.current[index] = el; }}
                 onClick={() => onSelectIndex(index)}
                 className={cn(
-                  "relative flex-shrink-0 w-20 h-14 rounded-xl overflow-hidden border-2 transition-all duration-300",
+                  "relative flex-shrink-0 w-14 h-10 md:w-20 md:h-14 rounded-lg md:rounded-xl overflow-hidden border-2 transition-all duration-300",
                   index === currentIndex 
-                    ? "border-primary scale-110 shadow-lg" 
+                    ? "border-primary ring-2 ring-primary/30 shadow-lg shadow-primary/20" 
                     : "border-transparent opacity-40 hover:opacity-100 hover:scale-105"
                 )}
               >
