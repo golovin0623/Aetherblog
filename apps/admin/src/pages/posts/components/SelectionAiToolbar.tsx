@@ -173,7 +173,15 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
         return;
       }
 
-      const handleUpdate = () => updateSelection();
+      // ⚡ Bolt: Throttled updateSelection with requestAnimationFrame to prevent synchronous layout thrashing (via coordsAtPos) on high-frequency scroll/resize events.
+      const handleUpdate = () => {
+        if (rafRef.current === null) {
+          rafRef.current = requestAnimationFrame(() => {
+            updateSelection();
+            rafRef.current = null;
+          });
+        }
+      };
 
       view.dom.addEventListener('mouseup', handleUpdate);
       view.dom.addEventListener('keyup', handleUpdate);
@@ -197,7 +205,10 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
     attachListeners();
 
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       cleanup?.();
     };
   }, [editorViewRef, updateSelection]);
