@@ -67,7 +67,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                 </span>
 
                 {comment.website && (
-                  <a href={comment.website} target="_blank" rel="noreferrer" className="text-xs text-[var(--text-secondary)] hover:text-indigo-400 transition-colors ml-1">
+                  <a href={comment.website} target="_blank" rel="noreferrer" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1">
                     <Globe className="w-3 h-3" />
                   </a>
                 )}
@@ -77,7 +77,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                 variant="ghost"
                 size="sm"
                 onClick={() => onReply(comment)}
-                className="h-7 px-2 text-[var(--text-muted)] hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                className="h-7 px-2 text-[var(--text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--bg-secondary)] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
                 aria-label={`回复 ${comment.nickname} 的评论`}
               >
                 <Reply className="w-3.5 h-3.5 mr-1" />
@@ -100,9 +100,9 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                   onClick={() => setIsExpanded(true)}
                   aria-expanded={isExpanded}
                   aria-controls={childrenId}
-                  className="flex items-center gap-2 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors ml-2 focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:outline-none rounded-sm"
+                  className="flex items-center gap-2 text-xs font-medium text-[var(--color-primary-light,var(--color-primary))] hover:text-[var(--color-primary)] transition-colors ml-2 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:outline-none rounded-sm"
                 >
-                  <div className="w-4 h-[1px] bg-indigo-500/30" />
+                  <div className="w-4 h-[1px] bg-[var(--border-default)]" />
                   {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                   展开 {comment.children?.length} 条回复
                 </button>
@@ -134,7 +134,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                         onClick={() => setIsExpanded(false)}
                         aria-expanded={isExpanded}
                         aria-controls={childrenId}
-                        className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] ml-4 pl-4 border-l border-[var(--border-subtle)] h-6 focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:outline-none rounded-sm"
+                        className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] ml-4 pl-4 border-l border-[var(--border-subtle)] h-6 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:outline-none rounded-sm"
                       >
                         <div className="w-2 h-[1px] bg-[var(--border-default)]" />
                         收起回复
@@ -293,14 +293,14 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
         onClick={() => setIsSectionExpanded(!isSectionExpanded)}
         aria-expanded={isSectionExpanded}
         aria-controls="comments-content"
-        className="w-full text-left flex items-center justify-between mb-8 pb-4 border-b border-[var(--border-subtle)] cursor-pointer group select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 rounded-lg"
+        className="w-full text-left flex items-center justify-between mb-8 pb-4 border-b border-[var(--border-subtle)] cursor-pointer group select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 rounded-lg"
       >
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl border border-indigo-500/20 group-hover:bg-indigo-500/30 transition-colors">
-            <MessageSquare className="w-5 h-5 text-indigo-400" />
+          <div className="p-2 rounded-xl border border-[var(--border-default)] transition-colors group-hover:border-[var(--border-hover)]" style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 15%, transparent), color-mix(in srgb, var(--color-accent) 15%, transparent))' }}>
+            <MessageSquare className="w-5 h-5 text-[var(--color-primary-light,var(--color-primary))]" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-[var(--text-primary)] tracking-tight group-hover:text-indigo-300 transition-colors">评论交流</h3>
+            <h3 className="text-xl font-bold text-[var(--text-primary)] tracking-tight transition-colors">评论交流</h3>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">Comments ({comments.length})</p>
           </div>
         </div>
@@ -326,15 +326,15 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 onClick={() => setIsFormExpanded(true)}
-                className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-indigo-500/30 rounded-2xl p-4 flex items-center gap-4 transition-all group mb-12 shadow-lg hover:shadow-indigo-500/10"
+                className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-[var(--border-hover)] rounded-2xl p-4 flex items-center gap-4 transition-all group mb-12 shadow-lg"
               >
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card-hover)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] group-hover:text-indigo-400 group-hover:border-indigo-500/30 transition-colors">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card-hover)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] group-hover:text-[var(--color-primary)] group-hover:border-[var(--border-hover)] transition-colors">
                   <PenLine className="w-5 h-5" />
                 </div>
                 <div className="flex-1 text-left">
                   <span className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">写下你的想法...</span>
                 </div>
-                <div className="text-xs text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-1 rounded border border-[var(--border-subtle)] group-hover:border-indigo-500/20 transition-colors">
+                <div className="text-xs text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-1 rounded border border-[var(--border-subtle)] group-hover:border-[var(--border-hover)] transition-colors">
                   点击发表
                 </div>
               </motion.button>
@@ -348,17 +348,17 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                   initial={{ opacity: 0, height: 0, scale: 0.98 }}
                   animate={{ opacity: 1, height: 'auto', scale: 1 }}
                   exit={{ opacity: 0, height: 0, scale: 0.98 }}
-                  className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-8 relative overflow-hidden border border-[var(--border-default)] shadow-2xl shadow-indigo-500/5 mb-12"
+                  className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-8 relative overflow-hidden border border-[var(--border-default)] shadow-2xl mb-12"
                 >
                   {/* 简化的装饰性渐变 */}
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
+                  <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2" style={{ background: 'color-mix(in srgb, var(--color-primary) 5%, transparent)' }} />
 
                   <div className="flex items-center justify-between mb-6">
                     <h4 className="text-lg font-medium text-[var(--text-primary)] flex items-center gap-2">
                       {replyTo ? (
                         <>
-                          <CornerDownRight className="w-5 h-5 text-indigo-400" />
-                          回复 <span className="text-indigo-400 font-bold">@{replyTo.nickname}</span>
+                          <CornerDownRight className="w-5 h-5 text-[var(--color-primary-light,var(--color-primary))]" />
+                          回复 <span className="text-[var(--color-primary-light,var(--color-primary))] font-bold">@{replyTo.nickname}</span>
                         </>
                       ) : '发表评论'}
                     </h4>
@@ -372,11 +372,11 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                   <form noValidate onSubmit={handleSubmit} className="relative z-10 space-y-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="group/input relative">
-                        <ShieldCheck aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                        <ShieldCheck aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-[var(--color-primary)] transition-colors z-10" />
                         <input
                           ref={nicknameInputRef}
                           aria-label="昵称"
-                          className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                          className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all"
                           placeholder="昵称 *"
                           value={nickname}
                           onChange={(e) => setNickname(e.target.value)}
@@ -384,11 +384,11 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         />
                       </div>
                       <div className="group/input relative">
-                        <Mail aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                        <Mail aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-[var(--color-primary)] transition-colors z-10" />
                         <input
                           ref={emailInputRef}
                           aria-label="邮箱"
-                          className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                          className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all"
                           placeholder="邮箱 (保密) *"
                           type="email"
                           value={email}
@@ -399,11 +399,11 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                     </div>
 
                     <div className="group/input relative">
-                      <Globe aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-indigo-400 transition-colors z-10" />
+                      <Globe aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-[var(--color-primary)] transition-colors z-10" />
                       <input
                         type="url"
                         aria-label="网站"
-                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all"
                         placeholder="网站 (https://...)"
                         value={website}
                         onChange={(e) => setWebsite(e.target.value)}
@@ -414,7 +414,7 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                       <textarea
                         ref={textareaRef}
                         aria-label="评论内容"
-                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 focus:ring-1 focus:ring-indigo-500/50 transition-all min-h-[140px] resize-y leading-relaxed"
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all min-h-[140px] resize-y leading-relaxed"
                         placeholder="写点什么吧..."
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
@@ -460,7 +460,8 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
                         <Button
                           type="submit"
                           disabled={submitting}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-6 py-2.5 text-sm font-medium transition-all shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="text-[var(--text-inverse)] rounded-lg px-6 py-2.5 text-sm font-medium transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', boxShadow: '0 4px 14px color-mix(in srgb, var(--color-primary) 25%, transparent)' }}
                         >
                           {submitting ? (
                             <>
@@ -484,13 +485,13 @@ export default function CommentSection({ postId, settings }: CommentSectionProps
             {/* 评论列表 */}
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                <Loader2 className="w-8 h-8 text-[var(--color-primary)] animate-spin" />
                 <p className="text-[var(--text-muted)] text-sm">加载评论中...</p>
               </div>
             ) : comments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 opacity-60 hover:opacity-100 transition-opacity">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-transparent border border-[var(--border-subtle)] flex items-center justify-center rotate-12 group">
-                  <MessageSquare className="w-8 h-8 text-[var(--text-muted)] group-hover:text-indigo-400 transition-colors" />
+                  <MessageSquare className="w-8 h-8 text-[var(--text-muted)] group-hover:text-[var(--color-primary)] transition-colors" />
                 </div>
                 <div>
                   <p className="text-[var(--text-secondary)] font-medium">还没有人评论</p>
