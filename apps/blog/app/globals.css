@@ -1308,35 +1308,36 @@ html[data-theme-transition] .theme-transition-glow {
   transform: translateY(0);
 }
 
-/* 暗色主题 */
+/* 暗色主题：玻璃质感 */
 :root.dark .hero-primary-btn {
-  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 50%, #8b5cf6 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.2),
-    0 4px 16px rgba(129, 140, 248, 0.25),
-    0 8px 32px rgba(124, 58, 237, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 4px 16px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* 暗色主题顶部高光弧线 */
 :root.dark .hero-primary-btn::before {
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.25) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
 }
 
 /* 暗色主题悬浮光晕 */
 :root.dark .hero-primary-btn::after {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 40%, transparent 60%, rgba(139, 92, 246, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 40%, transparent 60%, rgba(129, 140, 248, 0.06) 100%);
 }
 
 :root.dark .hero-primary-btn:hover {
-  background: linear-gradient(135deg, #818cf8 0%, #8b5cf6 50%, #a78bfa 100%);
+  background: linear-gradient(135deg, rgba(129,140,248,0.15) 0%, rgba(167,139,250,0.1) 100%);
+  border-color: rgba(129, 140, 248, 0.3);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
-    0 8px 24px rgba(129, 140, 248, 0.35),
-    0 16px 48px rgba(124, 58, 237, 0.2),
-    0 0 80px rgba(129, 140, 248, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    0 8px 24px rgba(0, 0, 0, 0.2),
+    0 0 40px rgba(129, 140, 248, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* 移动光效（shimmer） */
@@ -1367,9 +1368,9 @@ html[data-theme-transition] .theme-transition-glow {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 40%,
-    rgba(255, 255, 255, 0.15) 50%,
-    rgba(255, 255, 255, 0.08) 60%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
     transparent 100%
   );
 }
