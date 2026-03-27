@@ -9,8 +9,8 @@ import { getSiteSettings } from './lib/services';
 import { themeInitScript } from '@aetherblog/hooks';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
-const playfair = Playfair_Display({ subsets: ['latin'], display: 'swap', variable: '--font-playfair', weight: ['400', '500', '600', '700'] });
-const notoSerifSC = Noto_Serif_SC({ display: 'swap', variable: '--font-noto-serif-sc', weight: ['400', '500', '600', '700'], preload: false });
+const playfair = Playfair_Display({ subsets: ['latin'], display: 'swap', variable: '--font-playfair', weight: ['400', '700'] });
+const notoSerifSC = Noto_Serif_SC({ display: 'swap', variable: '--font-noto-serif-sc', weight: ['400', '700'], preload: false });
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
