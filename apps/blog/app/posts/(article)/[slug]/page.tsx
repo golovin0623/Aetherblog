@@ -157,10 +157,10 @@ export default async function PostDetailPage({ params }: PageProps) {
           </FadeIn>
 
           <FadeIn delay={0.15}>
-            <div className="flex flex-wrap items-center gap-3 text-sm font-serif italic text-[var(--text-muted)] mb-8">
-              <time>{post.publishedAt}</time>
-              {post.categoryName && <span>{post.categoryName}</span>}
-              <span>{post.viewCount} 阅读</span>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
+              <time className="font-serif italic">{post.publishedAt}</time>
+              {post.categoryName && <span className="font-serif italic">{post.categoryName}</span>}
+              <span className="font-serif italic">{post.viewCount} 阅读</span>
               <div className="flex items-center gap-2 ml-1">
                 {adminEditUrl ? (
                   <a
