@@ -375,7 +375,6 @@ export default function BlogHeader() {
                 {/* Segment Buttons - 使用 Link + handleNavClick 实现乐观更新与语义化标签 */}
                 <Link
                   href="/posts"
-                  aria-pressed={!isTimeline}
                   aria-current={!isTimeline ? 'page' : undefined}
                   onClick={(e) => {
                     // 只在普通点击时阻止默认跳转，执行乐观更新
@@ -393,7 +392,6 @@ export default function BlogHeader() {
                 </Link>
                 <Link
                   href="/timeline"
-                  aria-pressed={isTimeline}
                   aria-current={isTimeline ? 'page' : undefined}
                   onClick={(e) => {
                     if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {

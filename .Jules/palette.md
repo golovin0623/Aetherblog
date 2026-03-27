@@ -78,3 +78,6 @@
 ## 2025-03-25 - Segmented Controls using Buttons Accessibility
 **Learning:** Segmented controls implemented using `<button>` elements (such as the view mode toggle in `FriendsList.tsx`) often lack structural ARIA properties, proper focus visibility styles, and explicit `type="button"` declarations. This leaves screen reader users without context and keyboard users unable to see where focus is applied.
 **Action:** Always ensure that when implementing segmented controls using buttons, the container has `role="group"` and an `aria-label`, and the buttons include `type="button"`, `aria-pressed` for the active state, and comprehensive `focus-visible` utility classes (including `ring-offset` matching the background) for full keyboard and screen reader accessibility.
+## 2026-06-08 - Search Input Focus Indicator
+**Learning:** Custom input fields that use `outline-none` (to avoid default browser focus rings) often leave keyboard and mouse users without clear visual feedback that the input is active.
+**Action:** When removing default input outlines, always provide a clear alternative focus indicator. A great pattern is to wrap the input and its related icon in a container, add `group/name` to the container, and use `focus-within:border-primary` and `group-focus-within/name:text-primary` to highlight the entire search bar area.
