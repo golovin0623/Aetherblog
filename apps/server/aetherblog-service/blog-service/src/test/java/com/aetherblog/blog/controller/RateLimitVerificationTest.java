@@ -37,4 +37,36 @@ public class RateLimitVerificationTest {
         assertEquals(300, rateLimit.time(), "Rate limit time mismatch");
         assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
     }
+
+    @Test
+    public void mediaUploadMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method uploadMethod = MediaController.class.getMethod("upload",
+                org.springframework.web.multipart.MultipartFile.class,
+                Long.class,
+                Long.class);
+
+        RateLimit rateLimit = uploadMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "Media upload method must have @RateLimit annotation");
+
+        assertEquals("media:upload", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(30, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
+    }
+
+    @Test
+    public void mediaUploadBatchMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method uploadBatchMethod = MediaController.class.getMethod("uploadBatch",
+                java.util.List.class,
+                Long.class,
+                Long.class);
+
+        RateLimit rateLimit = uploadBatchMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "Media upload batch method must have @RateLimit annotation");
+
+        assertEquals("media:upload:batch", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(10, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
+    }
 }

@@ -32,6 +32,7 @@ public class MediaController {
 
     @Operation(summary = "上传文件")
     @PostMapping("/upload")
+    @com.aetherblog.common.security.annotation.RateLimit(key = "media:upload", count = 30, time = 60, limitType = com.aetherblog.common.security.annotation.RateLimit.LimitType.USER)
     public R<MediaFile> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) Long uploaderId,
@@ -41,6 +42,7 @@ public class MediaController {
 
     @Operation(summary = "批量上传")
     @PostMapping("/upload/batch")
+    @com.aetherblog.common.security.annotation.RateLimit(key = "media:upload:batch", count = 10, time = 60, limitType = com.aetherblog.common.security.annotation.RateLimit.LimitType.USER)
     public R<List<MediaFile>> uploadBatch(
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam(required = false) Long uploaderId,
