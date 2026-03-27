@@ -80,7 +80,6 @@ export default function MobileNavSwitch() {
       {/* Segment Buttons */}
       <Link
         href="/posts"
-        aria-pressed={!isTimeline}
         aria-current={!isTimeline ? 'page' : undefined}
         onClick={(e) => {
           if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -99,7 +98,6 @@ export default function MobileNavSwitch() {
       </Link>
       <Link
         href="/timeline"
-        aria-pressed={isTimeline}
         aria-current={isTimeline ? 'page' : undefined}
         onClick={(e) => {
           if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
