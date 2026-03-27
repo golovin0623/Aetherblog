@@ -34,7 +34,7 @@ export default function PostNavigation({ prevPost, nextPost }: PostNavigationPro
           href={`/posts/${prevPost.slug}`}
           className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)]"
         >
-          <ChevronLeft className="w-5 h-5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-all duration-300 group-hover:-translate-x-0.5" />
+          <ChevronLeft className="w-5 h-5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--color-primary)] transition-all duration-300 group-hover:-translate-x-0.5" />
           <div className="min-w-0 flex-1">
             <span className="text-[10px] sm:text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
               上一篇
@@ -63,7 +63,7 @@ export default function PostNavigation({ prevPost, nextPost }: PostNavigationPro
               {nextPost.title}
             </p>
           </div>
-          <ChevronRight className="w-5 h-5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-all duration-300 group-hover:translate-x-0.5" />
+          <ChevronRight className="w-5 h-5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--color-primary)] transition-all duration-300 group-hover:translate-x-0.5" />
         </Link>
       )}
     </nav>

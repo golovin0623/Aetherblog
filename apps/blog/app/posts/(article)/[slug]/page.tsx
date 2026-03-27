@@ -247,8 +247,8 @@ export default async function PostDetailPage({ params }: PageProps) {
       {/* 移动端底部上滑快捷导航（Chrome 风格手势） */}
       {post.id > 0 && (
         <MobileBottomPullNav
-          prevPost={adjacentPosts.prevPost}
-          nextPost={adjacentPosts.nextPost}
+          prevPost={adjacentPosts.nextPost}
+          nextPost={adjacentPosts.prevPost}
         />
       )}
     </div>
