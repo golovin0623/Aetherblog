@@ -221,8 +221,8 @@ export default async function PostDetailPage({ params }: PageProps) {
           {post.id > 0 && (
             <FadeIn delay={0.3}>
               <PostNavigation
-                prevPost={adjacentPosts.prevPost}
-                nextPost={adjacentPosts.nextPost}
+                prevPost={adjacentPosts.nextPost}
+                nextPost={adjacentPosts.prevPost}
               />
             </FadeIn>
           )}
