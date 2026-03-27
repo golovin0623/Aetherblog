@@ -72,11 +72,11 @@ const PostItem = React.memo(({
       >
         <FileText className={`h-4 w-4 transition-colors ${isHighlighted ? 'text-primary' : 'text-[var(--text-muted)] group-hover:text-primary'
           }`} />
-        <span className={`flex-1 text-sm truncate transition-colors ${isHighlighted ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'
+        <span className={`flex-1 text-sm font-serif truncate transition-colors ${isHighlighted ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'
           }`}>
           {post.title}
         </span>
-        <span className="text-xs text-[var(--text-muted)]">
+        <span className="text-xs font-serif italic text-[var(--text-muted)]">
           {new Date(post.publishedAt).getDate()}日
         </span>
       </Link>
@@ -130,8 +130,8 @@ const MonthSection = React.memo(({
           )}
         </div>
         <Calendar className="h-3.5 w-3.5 text-primary/50" />
-        <span className="text-sm font-medium text-[var(--text-primary)]">{MONTH_NAMES[monthData.month - 1]}</span>
-        <span className="ml-auto px-1.5 py-0.5 rounded-full text-[11px] bg-[var(--bg-secondary)] text-[var(--text-muted)]">
+        <span className="text-sm font-medium font-serif text-[var(--text-primary)]">{MONTH_NAMES[monthData.month - 1]}</span>
+        <span className="ml-auto px-1.5 py-0.5 rounded-full text-[11px] font-serif italic bg-[var(--bg-secondary)] text-[var(--text-muted)]">
           {monthData.posts.length} 篇
         </span>
       </button>
@@ -248,8 +248,8 @@ const YearSection = React.memo(({
             <ChevronRight className="h-5 w-5 relative z-10" />
           )}
         </div>
-        <span className="text-xl font-bold text-[var(--text-primary)] group-hover:text-primary/90 transition-colors">{yearData.year}</span>
-        <span className="ml-auto px-2 py-0.5 rounded-full text-xs bg-[var(--bg-secondary)] text-[var(--text-muted)] group-hover:bg-primary/20 group-hover:text-primary/80 transition-colors">
+        <span className="text-xl font-bold font-serif text-[var(--text-primary)] group-hover:text-primary/90 transition-colors">{yearData.year}</span>
+        <span className="ml-auto px-2 py-0.5 rounded-full text-xs font-serif italic bg-[var(--bg-secondary)] text-[var(--text-muted)] group-hover:bg-primary/20 group-hover:text-primary/80 transition-colors">
           {yearData.totalPosts} 篇
         </span>
       </button>
