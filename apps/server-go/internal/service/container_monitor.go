@@ -3,9 +3,13 @@ package service
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// validContainerID matches Docker container IDs and names.
+var validContainerID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 
 // ContainerOverview holds the summary of all Docker containers.
 type ContainerOverview struct {
@@ -156,6 +160,9 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 
 // GetContainerLogs retrieves logs for a specific container.
 func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int) (string, error) {
+	if containerID == "" || !validContainerID.MatchString(containerID) || strings.HasPrefix(containerID, "-") {
+		return "", fmt.Errorf("invalid container ID: %s", containerID)
+	}
 	if tail <= 0 {
 		tail = 200
 	}

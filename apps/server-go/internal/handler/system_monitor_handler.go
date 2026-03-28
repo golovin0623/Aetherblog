@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -72,7 +75,7 @@ func (h *SystemMonitorHandler) MountAdmin(g *echo.Group) {
 // GET /api/v1/admin/system/metrics
 func (h *SystemMonitorHandler) GetMetrics(c echo.Context) error {
 	metrics := h.monitor.CollectMetrics()
-	return response.OK(c, metrics)
+	return response.OK(c, h.flattenMetrics(metrics))
 }
 
 // GET /api/v1/admin/system/storage
@@ -94,9 +97,9 @@ func (h *SystemMonitorHandler) GetOverview(c echo.Context) error {
 	health := h.checkServiceHealth()
 
 	return response.OK(c, map[string]any{
-		"metrics": metrics,
-		"storage": storage,
-		"health":  health,
+		"metrics":  h.flattenMetrics(metrics),
+		"storage":  storage,
+		"services": health,
 	})
 }
 
@@ -121,23 +124,29 @@ func (h *SystemMonitorHandler) GetContainerLogs(c echo.Context) error {
 	if err != nil {
 		return response.Fail(c, err.Error())
 	}
-	return response.OK(c, map[string]any{
-		"containerId": id,
-		"logs":        logs,
-		"lines":       len(logs),
-	})
+	// Return as string array, split by newline
+	lines := strings.Split(strings.TrimRight(logs, "\n"), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		lines = []string{}
+	}
+	return response.OK(c, lines)
 }
 
 // GET /api/v1/admin/system/logs
 func (h *SystemMonitorHandler) GetLogs(c echo.Context) error {
 	level := c.QueryParam("level")
 	limitStr := c.QueryParam("limit")
+	linesStr := c.QueryParam("lines")
 	keyword := c.QueryParam("keyword")
 	cursor := c.QueryParam("cursor")
 
 	limit := 100
 	if limitStr != "" {
 		if v, err := strconv.Atoi(limitStr); err == nil {
+			limit = v
+		}
+	} else if linesStr != "" {
+		if v, err := strconv.Atoi(linesStr); err == nil {
 			limit = v
 		}
 	}
@@ -192,10 +201,7 @@ func (h *SystemMonitorHandler) GetHistoryStats(c echo.Context) error {
 // DELETE /api/v1/admin/system/history
 func (h *SystemMonitorHandler) CleanHistory(c echo.Context) error {
 	count := h.history.CleanHistory()
-	return response.OK(c, map[string]any{
-		"deletedPoints": count,
-		"message":       fmt.Sprintf("Cleaned %d metric snapshots", count),
-	})
+	return response.OK(c, count)
 }
 
 // GET /api/v1/admin/system/alerts
@@ -215,19 +221,21 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 	var breakdown service.StorageBreakdown
 
 	// Upload directory size
-	uploadSize := dirSize(h.cfg.Upload.Path)
-	breakdown.Upload = service.StorageItem{
-		Name:  "uploads",
-		Size:  uploadSize,
-		Label: "Media Uploads",
+	uploadSize, uploadCount := dirSizeAndCount(h.cfg.Upload.Path)
+	breakdown.Uploads = service.StorageItem{
+		Name:      "uploads",
+		Size:      uploadSize,
+		FileCount: uploadCount,
+		Formatted: service.FormatBytes(uploadSize),
 	}
 
 	// Log directory size
-	logSize := dirSize(h.cfg.Log.Path)
+	logSize, logCount := dirSizeAndCount(h.cfg.Log.Path)
 	breakdown.Logs = service.StorageItem{
-		Name:  "logs",
-		Size:  logSize,
-		Label: "Application Logs",
+		Name:      "logs",
+		Size:      logSize,
+		FileCount: logCount,
+		Formatted: service.FormatBytes(logSize),
 	}
 
 	// Database size (pg_database_size)
@@ -236,9 +244,10 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 	defer cancel()
 	_ = h.db.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&dbSize)
 	breakdown.Database = service.StorageItem{
-		Name:  "database",
-		Size:  dbSize,
-		Label: "PostgreSQL Database",
+		Name:      "database",
+		Size:      dbSize,
+		FileCount: 0,
+		Formatted: service.FormatBytes(dbSize),
 	}
 
 	// Redis memory
@@ -250,21 +259,40 @@ func (h *SystemMonitorHandler) collectStorageBreakdown() service.StorageBreakdow
 		redisSize = parseRedisMemory(info)
 	}
 	breakdown.Redis = service.StorageItem{
-		Name:  "redis",
-		Size:  redisSize,
-		Label: "Redis Cache",
+		Name:      "redis",
+		Size:      redisSize,
+		FileCount: 0,
+		Formatted: service.FormatBytes(redisSize),
 	}
 
-	breakdown.Total = uploadSize + logSize + dbSize + redisSize
+	total := uploadSize + logSize + dbSize + redisSize
+	breakdown.TotalSize = total
+	breakdown.UsedSize = total
+
+	// Calculate used percent against disk total
+	disk := h.monitor.CollectMetrics().Disk
+	if disk.TotalBytes > 0 {
+		breakdown.UsedPercent = float64(total) / float64(disk.TotalBytes) * 100
+	}
+
 	return breakdown
 }
 
-// checkServiceHealth checks the health of all dependent services.
-func (h *SystemMonitorHandler) checkServiceHealth() map[string]any {
-	services := make(map[string]any)
+// ServiceHealth represents the health of a single service.
+type ServiceHealth struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Latency int64  `json:"latency"`
+	Message string `json:"message"`
+}
+
+// checkServiceHealth checks the health of all dependent services and returns an array.
+func (h *SystemMonitorHandler) checkServiceHealth() []ServiceHealth {
+	var result []ServiceHealth
 
 	// Database
 	dbStatus := "UP"
+	dbMsg := ""
 	dbLatency := measureLatency(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -272,15 +300,14 @@ func (h *SystemMonitorHandler) checkServiceHealth() map[string]any {
 	})
 	if dbLatency < 0 {
 		dbStatus = "DOWN"
+		dbMsg = "Connection failed"
 		dbLatency = 0
 	}
-	services["database"] = map[string]any{
-		"status":    dbStatus,
-		"latencyMs": dbLatency,
-	}
+	result = append(result, ServiceHealth{Name: "database", Status: dbStatus, Latency: dbLatency, Message: dbMsg})
 
 	// Redis
 	redisStatus := "UP"
+	redisMsg := ""
 	redisLatency := measureLatency(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -288,17 +315,17 @@ func (h *SystemMonitorHandler) checkServiceHealth() map[string]any {
 	})
 	if redisLatency < 0 {
 		redisStatus = "DOWN"
+		redisMsg = "Connection failed"
 		redisLatency = 0
 	}
-	services["redis"] = map[string]any{
-		"status":    redisStatus,
-		"latencyMs": redisLatency,
-	}
+	result = append(result, ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg})
 
-	// Elasticsearch (attempt connection)
-	esStatus := "UNKNOWN"
+	// Elasticsearch
+	esStatus := "DOWN"
+	esMsg := ""
+	var esLatency int64
 	if len(h.cfg.ES.URIs) > 0 {
-		esLatency := measureLatency(func() error {
+		esLatency = measureLatency(func() error {
 			client := &http.Client{Timeout: 3 * time.Second}
 			resp, err := client.Get(h.cfg.ES.URIs[0])
 			if err != nil {
@@ -309,27 +336,21 @@ func (h *SystemMonitorHandler) checkServiceHealth() map[string]any {
 		})
 		if esLatency >= 0 {
 			esStatus = "UP"
-			services["elasticsearch"] = map[string]any{
-				"status":    esStatus,
-				"latencyMs": esLatency,
-			}
 		} else {
-			esStatus = "DOWN"
-			services["elasticsearch"] = map[string]any{
-				"status":    esStatus,
-				"latencyMs": 0,
-			}
+			esMsg = "Connection failed"
+			esLatency = 0
 		}
 	} else {
-		services["elasticsearch"] = map[string]any{
-			"status": "NOT_CONFIGURED",
-		}
+		esStatus = "NOT_CONFIGURED"
 	}
+	result = append(result, ServiceHealth{Name: "elasticsearch", Status: esStatus, Latency: esLatency, Message: esMsg})
 
 	// AI Service
-	aiStatus := "UNKNOWN"
+	aiStatus := "DOWN"
+	aiMsg := ""
+	var aiLatency int64
 	if h.cfg.AI.BaseURL != "" {
-		aiLatency := measureLatency(func() error {
+		aiLatency = measureLatency(func() error {
 			client := &http.Client{Timeout: 3 * time.Second}
 			resp, err := client.Get(h.cfg.AI.BaseURL + "/health")
 			if err != nil {
@@ -340,35 +361,58 @@ func (h *SystemMonitorHandler) checkServiceHealth() map[string]any {
 		})
 		if aiLatency >= 0 {
 			aiStatus = "UP"
-			services["ai"] = map[string]any{
-				"status":    aiStatus,
-				"latencyMs": aiLatency,
-			}
 		} else {
-			aiStatus = "DOWN"
-			services["ai"] = map[string]any{
-				"status":    aiStatus,
-				"latencyMs": 0,
-			}
+			aiMsg = "Connection failed"
+			aiLatency = 0
 		}
 	} else {
-		services["ai"] = map[string]any{
-			"status": "NOT_CONFIGURED",
+		aiStatus = "NOT_CONFIGURED"
+	}
+	result = append(result, ServiceHealth{Name: "ai", Status: aiStatus, Latency: aiLatency, Message: aiMsg})
+
+	return result
+}
+
+// flattenMetrics converts the nested SystemMetrics into a flat map matching the frontend type.
+func (h *SystemMonitorHandler) flattenMetrics(m service.SystemMetrics) map[string]any {
+	return map[string]any{
+		"cpuUsage":        m.CPU.UsagePercent,
+		"cpuCores":        m.CPU.Cores,
+		"cpuModel":        getCPUModel(),
+		"cpuFrequency":    0,
+		"memoryUsed":      m.Memory.UsedBytes,
+		"memoryTotal":     m.Memory.TotalBytes,
+		"memoryPercent":   m.Memory.UsagePercent,
+		"diskUsed":        m.Disk.UsedBytes,
+		"diskTotal":       m.Disk.TotalBytes,
+		"diskPercent":     m.Disk.UsagePercent,
+		"networkIn":       m.Network.BytesIn,
+		"networkOut":      m.Network.BytesOut,
+		"networkInSpeed":  0,
+		"networkOutSpeed": 0,
+		"networkInRate":   0.0,
+		"networkOutRate":  0.0,
+		"networkPercent":  0.0,
+		"networkMaxSpeed": 0,
+		"uptime":          m.Go.Uptime,
+		"osName":          runtime.GOOS,
+		"osArch":          runtime.GOARCH,
+	}
+}
+
+// getCPUModel returns the CPU model string.
+func getCPUModel() string {
+	if runtime.GOOS == "darwin" {
+		out, err := execCommand("sysctl", "-n", "machdep.cpu.brand_string")
+		if err == nil {
+			return strings.TrimSpace(string(out))
 		}
 	}
+	return fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+}
 
-	// Overall status
-	overallStatus := "UP"
-	if dbStatus == "DOWN" {
-		overallStatus = "DOWN"
-	} else if redisStatus == "DOWN" || esStatus == "DOWN" {
-		overallStatus = "DEGRADED"
-	}
-
-	return map[string]any{
-		"status":   overallStatus,
-		"services": services,
-	}
+func execCommand(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).Output()
 }
 
 // measureLatency measures how long a check takes. Returns -1 if the check fails.
@@ -380,17 +424,19 @@ func measureLatency(fn func() error) int64 {
 	return time.Since(start).Milliseconds()
 }
 
-// dirSize calculates the total size of files in a directory.
-func dirSize(path string) int64 {
+// dirSizeAndCount calculates the total size and file count in a directory.
+func dirSizeAndCount(path string) (int64, int) {
 	var size int64
+	var count int
 	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
 		size += info.Size()
+		count++
 		return nil
 	})
-	return size
+	return size, count
 }
 
 // parseRedisMemory extracts used_memory from Redis INFO memory output.

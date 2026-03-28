@@ -26,9 +26,9 @@ type TimeValue struct {
 
 // NetworkTimeValue holds network I/O at a point in time.
 type NetworkTimeValue struct {
-	Time     time.Time `json:"time"`
-	BytesIn  int64     `json:"bytesIn"`
-	BytesOut int64     `json:"bytesOut"`
+	Time time.Time `json:"time"`
+	In   int64     `json:"in"`
+	Out  int64     `json:"out"`
 }
 
 // MetricHistory contains downsampled time-series data.
@@ -44,15 +44,12 @@ type MetricHistory struct {
 
 // HistoryStats contains summary statistics over the collected history.
 type HistoryStats struct {
-	AvgCPU         float64   `json:"avgCpu"`
-	MaxCPU         float64   `json:"maxCpu"`
-	AvgMemory      float64   `json:"avgMemory"`
-	MaxMemory      float64   `json:"maxMemory"`
-	AvgDisk        float64   `json:"avgDisk"`
-	TotalPoints    int       `json:"totalPoints"`
-	RetentionHours float64   `json:"retentionHours"`
-	CollectStart   time.Time `json:"collectStart"`
-	CollectEnd     time.Time `json:"collectEnd"`
+	TotalPoints           int    `json:"totalPoints"`
+	EstimatedSizeBytes    int    `json:"estimatedSizeBytes"`
+	RetentionMinutes      int    `json:"retentionMinutes"`
+	SampleIntervalSeconds int    `json:"sampleIntervalSeconds"`
+	OldestTimestamp       string `json:"oldestTimestamp"`
+	NewestTimestamp       string `json:"newestTimestamp"`
 }
 
 // Alert represents a threshold violation.
@@ -67,17 +64,19 @@ type Alert struct {
 
 // MonitorConfig represents the monitoring configuration returned by the config endpoint.
 type MonitorConfig struct {
-	CollectIntervalSeconds int            `json:"collectIntervalSeconds"`
-	RetentionHours         int            `json:"retentionHours"`
-	AlertThresholds        AlertThresholds `json:"alertThresholds"`
-	SustainedCount         int            `json:"sustainedCount"`
+	AlertConfig    AlertConfig `json:"alertConfig"`
+	RefreshOptions []int       `json:"refreshOptions"`
+	HistoryDataSize int        `json:"historyDataSize"`
 }
 
-// AlertThresholds defines threshold percentages.
-type AlertThresholds struct {
-	CPU    float64 `json:"cpu"`
-	Memory float64 `json:"memory"`
-	Disk   float64 `json:"disk"`
+// AlertConfig defines alert thresholds and collection settings.
+type AlertConfig struct {
+	CPUThreshold          float64 `json:"cpuThreshold"`
+	MemoryThreshold       float64 `json:"memoryThreshold"`
+	DiskThreshold         float64 `json:"diskThreshold"`
+	SustainedCount        int     `json:"sustainedCount"`
+	RetentionMinutes      int     `json:"retentionMinutes"`
+	SampleIntervalSeconds int     `json:"sampleIntervalSeconds"`
 }
 
 const (
@@ -149,15 +148,10 @@ func (s *MetricsHistoryService) collect() {
 	// Trim old entries
 	cutoff := time.Now().Add(-retentionPeriod)
 	trimIdx := 0
-	for i, snap := range s.snapshots {
-		if snap.Timestamp.After(cutoff) {
-			trimIdx = i
-			break
-		}
+	for trimIdx < len(s.snapshots) && !s.snapshots[trimIdx].Timestamp.After(cutoff) {
+		trimIdx++
 	}
-	if trimIdx > 0 {
-		s.snapshots = s.snapshots[trimIdx:]
-	}
+	s.snapshots = s.snapshots[trimIdx:]
 	s.mu.Unlock()
 
 	// Check alerts
@@ -269,9 +263,9 @@ func (s *MetricsHistoryService) GetHistory(minutes int, maxPoints int) MetricHis
 		history.Memory[i] = TimeValue{Time: snap.Timestamp, Value: snap.Memory}
 		history.Disk[i] = TimeValue{Time: snap.Timestamp, Value: snap.Disk}
 		history.Network[i] = NetworkTimeValue{
-			Time:     snap.Timestamp,
-			BytesIn:  snap.NetworkIn,
-			BytesOut: snap.NetworkOut,
+			Time: snap.Timestamp,
+			In:   snap.NetworkIn,
+			Out:  snap.NetworkOut,
 		}
 	}
 
@@ -283,34 +277,21 @@ func (s *MetricsHistoryService) GetStats() HistoryStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	const estimatedBytesPerPoint = 60 // rough estimate per snapshot
+
 	stats := HistoryStats{
-		TotalPoints:    len(s.snapshots),
-		RetentionHours: retentionPeriod.Hours(),
+		TotalPoints:           len(s.snapshots),
+		EstimatedSizeBytes:    len(s.snapshots) * estimatedBytesPerPoint,
+		RetentionMinutes:      int(retentionPeriod.Minutes()),
+		SampleIntervalSeconds: int(collectInterval.Seconds()),
 	}
 
 	if len(s.snapshots) == 0 {
 		return stats
 	}
 
-	stats.CollectStart = s.snapshots[0].Timestamp
-	stats.CollectEnd = s.snapshots[len(s.snapshots)-1].Timestamp
-
-	var sumCPU, sumMem, sumDisk float64
-	for _, snap := range s.snapshots {
-		sumCPU += snap.CPU
-		sumMem += snap.Memory
-		sumDisk += snap.Disk
-		if snap.CPU > stats.MaxCPU {
-			stats.MaxCPU = snap.CPU
-		}
-		if snap.Memory > stats.MaxMemory {
-			stats.MaxMemory = snap.Memory
-		}
-	}
-	n := float64(len(s.snapshots))
-	stats.AvgCPU = sumCPU / n
-	stats.AvgMemory = sumMem / n
-	stats.AvgDisk = sumDisk / n
+	stats.OldestTimestamp = s.snapshots[0].Timestamp.Format("2006-01-02T15:04:05")
+	stats.NewestTimestamp = s.snapshots[len(s.snapshots)-1].Timestamp.Format("2006-01-02T15:04:05")
 
 	return stats
 }
@@ -321,6 +302,13 @@ func (s *MetricsHistoryService) CleanHistory() int {
 	count := len(s.snapshots)
 	s.snapshots = s.snapshots[:0]
 	s.mu.Unlock()
+
+	s.alertMu.Lock()
+	s.cpuViolations = 0
+	s.memViolations = 0
+	s.diskViolations = 0
+	s.alertMu.Unlock()
+
 	return count
 }
 
@@ -345,15 +333,21 @@ func (s *MetricsHistoryService) GetAlerts() []Alert {
 
 // GetConfig returns the current monitoring configuration.
 func (s *MetricsHistoryService) GetConfig() MonitorConfig {
+	s.mu.RLock()
+	dataSize := len(s.snapshots)
+	s.mu.RUnlock()
+
 	return MonitorConfig{
-		CollectIntervalSeconds: int(collectInterval.Seconds()),
-		RetentionHours:         int(retentionPeriod.Hours()),
-		AlertThresholds: AlertThresholds{
-			CPU:    cpuThreshold,
-			Memory: memThreshold,
-			Disk:   diskThreshold,
+		AlertConfig: AlertConfig{
+			CPUThreshold:          cpuThreshold,
+			MemoryThreshold:       memThreshold,
+			DiskThreshold:         diskThreshold,
+			SustainedCount:        sustainedCount,
+			RetentionMinutes:      int(retentionPeriod.Minutes()),
+			SampleIntervalSeconds: int(collectInterval.Seconds()),
 		},
-		SustainedCount: sustainedCount,
+		RefreshOptions:  []int{5, 10, 30, 60, 300},
+		HistoryDataSize: dataSize,
 	}
 }
 

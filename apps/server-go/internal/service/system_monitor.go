@@ -73,6 +73,10 @@ type SystemMonitorService struct {
 	lastNetIn      int64
 	lastNetOut     int64
 	lastNetCollect time.Time
+
+	// Cached CPU counters for delta calculation (Linux)
+	lastCPUTotal  float64
+	lastCPUActive float64
 }
 
 func NewSystemMonitorService(cfg *config.Config) *SystemMonitorService {
@@ -140,7 +144,7 @@ func (s *SystemMonitorService) collectCPUUsage() float64 {
 			}
 		}
 	} else if runtime.GOOS == "linux" {
-		// Read /proc/stat
+		// Read /proc/stat and compute delta between two reads
 		out, err := exec.Command("sh", "-c", "head -1 /proc/stat").Output()
 		if err == nil {
 			fields := strings.Fields(string(out))
@@ -150,8 +154,19 @@ func (s *SystemMonitorService) collectCPUUsage() float64 {
 				system, _ := strconv.ParseFloat(fields[3], 64)
 				idle, _ := strconv.ParseFloat(fields[4], 64)
 				total := user + nice + system + idle
-				if total > 0 {
-					return (total - idle) / total * 100
+				active := total - idle
+
+				s.mu.Lock()
+				prevTotal := s.lastCPUTotal
+				prevActive := s.lastCPUActive
+				s.lastCPUTotal = total
+				s.lastCPUActive = active
+				s.mu.Unlock()
+
+				deltaTotal := total - prevTotal
+				deltaActive := active - prevActive
+				if prevTotal > 0 && deltaTotal > 0 {
+					return deltaActive / deltaTotal * 100
 				}
 			}
 		}
@@ -300,17 +315,36 @@ func (s *SystemMonitorService) collectNetwork() NetworkMetrics {
 
 // StorageBreakdown returns storage usage for different subsystems.
 type StorageBreakdown struct {
-	Upload    StorageItem `json:"upload"`
-	Database  StorageItem `json:"database"`
-	Redis     StorageItem `json:"redis"`
-	Logs      StorageItem `json:"logs"`
-	Total     int64       `json:"total"`
+	Uploads     StorageItem `json:"uploads"`
+	Database    StorageItem `json:"database"`
+	Logs        StorageItem `json:"logs"`
+	Redis       StorageItem `json:"redis"`
+	TotalSize   int64       `json:"totalSize"`
+	UsedSize    int64       `json:"usedSize"`
+	UsedPercent float64     `json:"usedPercent"`
 }
 
 type StorageItem struct {
-	Name  string `json:"name"`
-	Size  int64  `json:"size"`
-	Label string `json:"label"`
+	Name      string `json:"name"`
+	Size      int64  `json:"size"`
+	FileCount int    `json:"fileCount"`
+	Formatted string `json:"formatted"`
+}
+
+// FormatBytes formats a byte count into a human-readable string.
+func FormatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	val := float64(b) / float64(div)
+	units := []string{"KB", "MB", "GB", "TB"}
+	return fmt.Sprintf("%.1f %s", val, units[exp])
 }
 
 func parseVMStatValue(line string) uint64 {

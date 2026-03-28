@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -41,6 +42,7 @@ func (h *AiHandler) Mount(g *echo.Group) {
 	// Sync AI generation endpoints
 	g.POST("/summary", h.Summary)
 	g.POST("/summary/stream", h.SummaryStream)
+	g.GET("/summary/stream", h.SummaryStreamGET)
 	g.POST("/tags", h.Tags)
 	g.POST("/titles", h.Titles)
 	g.POST("/polish", h.Polish)
@@ -137,6 +139,76 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 
 	if err := scanner.Err(); err != nil {
 		log.Warn().Err(err).Msg("SSE stream scanner error")
+	}
+
+	return nil
+}
+
+// SummaryStreamGET handles GET requests for SSE streaming (EventSource).
+// The frontend uses `new EventSource(url)` which sends GET with query params.
+func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
+	content := c.QueryParam("content")
+	maxLength := c.QueryParam("maxLength")
+	style := c.QueryParam("style")
+
+	// Build JSON body from query params
+	payload := map[string]any{"content": content}
+	if maxLength != "" {
+		if v, err := strconv.Atoi(maxLength); err == nil {
+			payload["maxLength"] = v
+		}
+	}
+	if style != "" {
+		payload["style"] = style
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return response.Fail(c, "failed to build request body")
+	}
+
+	auth := c.Request().Header.Get("Authorization")
+
+	respBody, statusCode, err := h.client.DoStream(
+		c.Request().Context(),
+		http.MethodPost,
+		"/api/v1/ai/summary/stream",
+		strings.NewReader(string(jsonBody)),
+		auth,
+	)
+	if err != nil {
+		return h.handleClientError(c, err)
+	}
+	defer respBody.Close()
+
+	if statusCode != http.StatusOK {
+		return h.handleUpstreamError(c, respBody, statusCode)
+	}
+
+	// Set SSE headers
+	w := c.Response()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, ok := w.Writer.(http.Flusher)
+	if !ok {
+		return response.Fail(c, "streaming not supported")
+	}
+
+	scanner := bufio.NewScanner(respBody)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Fprintf(w, "%s\n", line)
+		flusher.Flush()
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Warn().Err(err).Msg("SSE GET stream scanner error")
 	}
 
 	return nil

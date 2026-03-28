@@ -23,10 +23,12 @@ type LogReadResult struct {
 
 // LogFileInfo describes an available log file.
 type LogFileInfo struct {
-	Name     string    `json:"name"`
-	Level    string    `json:"level"`
-	Size     int64     `json:"size"`
-	Modified time.Time `json:"modified"`
+	Level         string    `json:"level"`
+	Filename      string    `json:"filename"`
+	Size          int64     `json:"size"`
+	SizeFormatted string    `json:"sizeFormatted"`
+	Exists        bool      `json:"exists"`
+	Modified      time.Time `json:"modified"`
 }
 
 // LogViewerService reads application log files.
@@ -56,13 +58,22 @@ func (s *LogViewerService) ListLogFiles() []LogFileInfo {
 		path := filepath.Join(logDir, name)
 		info, err := os.Stat(path)
 		if err != nil {
+			files = append(files, LogFileInfo{
+				Level:         level,
+				Filename:      name,
+				Size:          0,
+				SizeFormatted: "0 B",
+				Exists:        false,
+			})
 			continue
 		}
 		files = append(files, LogFileInfo{
-			Name:     name,
-			Level:    level,
-			Size:     info.Size(),
-			Modified: info.ModTime(),
+			Level:         level,
+			Filename:      name,
+			Size:          info.Size(),
+			SizeFormatted: formatFileSize(info.Size()),
+			Exists:        true,
+			Modified:      info.ModTime(),
 		})
 	}
 
@@ -210,4 +221,19 @@ func readTailLines(f *os.File, endOffset int64, limit int, keyword string) ([]st
 
 func encodeCursor(offset int64) string {
 	return base64.StdEncoding.EncodeToString([]byte(strconv.FormatInt(offset, 10)))
+}
+
+func formatFileSize(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	val := float64(b) / float64(div)
+	units := []string{"KB", "MB", "GB", "TB"}
+	return fmt.Sprintf("%.1f %s", val, units[exp])
 }
