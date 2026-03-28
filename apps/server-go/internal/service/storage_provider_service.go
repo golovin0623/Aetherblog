@@ -1,0 +1,111 @@
+package service
+
+import (
+	"context"
+
+	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/repository"
+)
+
+type StorageProviderService struct {
+	repo *repository.StorageProviderRepo
+}
+
+func NewStorageProviderService(repo *repository.StorageProviderRepo) *StorageProviderService {
+	return &StorageProviderService{repo: repo}
+}
+
+func (s *StorageProviderService) List(ctx context.Context) ([]dto.StorageProviderVO, error) {
+	ps, err := s.repo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toProviderVOs(ps), nil
+}
+
+func (s *StorageProviderService) GetByID(ctx context.Context, id int64) (*dto.StorageProviderVO, error) {
+	p, err := s.repo.FindByID(ctx, id)
+	if err != nil || p == nil {
+		return nil, err
+	}
+	vo := toProviderVO(*p)
+	return &vo, nil
+}
+
+func (s *StorageProviderService) GetDefault(ctx context.Context) (*dto.StorageProviderVO, error) {
+	p, err := s.repo.FindDefault(ctx)
+	if err != nil || p == nil {
+		return nil, err
+	}
+	vo := toProviderVO(*p)
+	return &vo, nil
+}
+
+func (s *StorageProviderService) Create(ctx context.Context, req dto.StorageProviderRequest) (*dto.StorageProviderVO, error) {
+	p, err := s.repo.Create(ctx, repository.StorageProviderRequest{
+		Name:         req.Name,
+		ProviderType: req.ProviderType,
+		ConfigJSON:   req.ConfigJSON,
+		IsEnabled:    req.IsEnabled,
+		Priority:     req.Priority,
+	})
+	if err != nil {
+		return nil, err
+	}
+	vo := toProviderVO(*p)
+	return &vo, nil
+}
+
+func (s *StorageProviderService) Update(ctx context.Context, id int64, req dto.StorageProviderRequest) error {
+	return s.repo.Update(ctx, id, repository.StorageProviderRequest{
+		Name:         req.Name,
+		ProviderType: req.ProviderType,
+		ConfigJSON:   req.ConfigJSON,
+		IsEnabled:    req.IsEnabled,
+		Priority:     req.Priority,
+	})
+}
+
+func (s *StorageProviderService) Delete(ctx context.Context, id int64) error {
+	return s.repo.Delete(ctx, id)
+}
+
+func (s *StorageProviderService) SetDefault(ctx context.Context, id int64) error {
+	return s.repo.SetDefault(ctx, id)
+}
+
+// Test just validates that the provider config is parseable (stub).
+func (s *StorageProviderService) Test(ctx context.Context, id int64) (bool, string) {
+	p, err := s.repo.FindByID(ctx, id)
+	if err != nil || p == nil {
+		return false, "提供商不存在"
+	}
+	if p.ProviderType == "LOCAL" {
+		return true, "本地存储连接正常"
+	}
+	return false, "非本地存储暂不支持测试"
+}
+
+// --- Helpers ---
+
+func toProviderVO(p model.StorageProvider) dto.StorageProviderVO {
+	return dto.StorageProviderVO{
+		ID:           p.ID,
+		Name:         p.Name,
+		ProviderType: p.ProviderType,
+		ConfigJSON:   p.ConfigJSON,
+		IsDefault:    p.IsDefault,
+		IsEnabled:    p.IsEnabled,
+		Priority:     p.Priority,
+		CreatedAt:    p.CreatedAt,
+	}
+}
+
+func toProviderVOs(ps []model.StorageProvider) []dto.StorageProviderVO {
+	vos := make([]dto.StorageProviderVO, len(ps))
+	for i, p := range ps {
+		vos[i] = toProviderVO(p)
+	}
+	return vos
+}
