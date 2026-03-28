@@ -32,8 +32,13 @@ func JWTAuth(secret string) echo.MiddlewareFunc {
 				return response.FailWith(c, response.Unauthorized, "Token无效")
 			}
 
+			userID := mustParseID(claims.Subject)
+			if userID == 0 {
+				return response.FailWith(c, response.Unauthorized, "Token无效")
+			}
+
 			c.Set(ContextKeyLoginUser, &jwtutil.LoginUser{
-				UserID:   mustParseID(claims.Subject),
+				UserID:   userID,
 				Username: claims.Username,
 				Role:     claims.Role,
 			})

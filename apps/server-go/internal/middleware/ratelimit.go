@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -38,7 +39,7 @@ func RateLimitByIP(rdb *redis.Client, keyPrefix string, count int, window time.D
 func RateLimitByUser(rdb *redis.Client, keyPrefix string, count int, window time.Duration) echo.MiddlewareFunc {
 	return rateLimitMiddleware(rdb, keyPrefix, count, window, func(c echo.Context) string {
 		if u := GetLoginUser(c); u != nil {
-			return "u:" + string(rune(u.UserID))
+			return "u:" + strconv.FormatInt(u.UserID, 10)
 		}
 		return c.RealIP()
 	})

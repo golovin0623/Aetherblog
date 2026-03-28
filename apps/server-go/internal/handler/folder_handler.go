@@ -122,7 +122,7 @@ func (h *FolderHandler) Move(c echo.Context) error {
 	if lu != nil {
 		updatedBy = &lu.UserID
 	}
-	if err := h.svc.Move(c.Request().Context(), id, req.ParentID, updatedBy); err != nil {
+	if err := h.svc.Move(c.Request().Context(), id, req.GetTargetParentID(), updatedBy); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)

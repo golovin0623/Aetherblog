@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -122,22 +124,38 @@ func (h *MediaHandler) Stats(c echo.Context) error {
 }
 
 func (h *MediaHandler) BatchMove(c echo.Context) error {
-	var req dto.BatchMoveRequest
-	if err := bindAndValidate(c, &req); err != nil {
-		return err
+	// Frontend sends {"fileIds":[...], "folderId": N} — accept both fileIds and ids
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
 	}
-	if err := h.svc.MoveBatch(c.Request().Context(), req.IDs, req.FolderID); err != nil {
+	var req struct {
+		FileIDs  []int64 `json:"fileIds"`
+		IDs      []int64 `json:"ids"`
+		FolderID *int64  `json:"folderId"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	ids := req.FileIDs
+	if len(ids) == 0 {
+		ids = req.IDs
+	}
+	if len(ids) == 0 {
+		return response.FailWith(c, response.BadRequest, "缺少文件ID列表")
+	}
+	if err := h.svc.MoveBatch(c.Request().Context(), ids, req.FolderID); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
 }
 
 func (h *MediaHandler) DeleteBatch(c echo.Context) error {
-	var req dto.BatchIDsRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.DeleteBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.DeleteBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
@@ -166,22 +184,22 @@ func (h *MediaHandler) TrashCount(c echo.Context) error {
 }
 
 func (h *MediaHandler) BatchRestore(c echo.Context) error {
-	var req dto.BatchIDsRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.RestoreBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.RestoreBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
 }
 
 func (h *MediaHandler) PermanentDeleteBatch(c echo.Context) error {
-	var req dto.BatchIDsRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.PermanentDeleteBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.PermanentDeleteBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
@@ -214,10 +232,21 @@ func (h *MediaHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// Java accepts altText/originalName as query params; also accept JSON body
 	var req dto.UpdateMediaRequest
-	if err := c.Bind(&req); err != nil {
-		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	if alt := c.QueryParam("altText"); alt != "" {
+		req.AltText = &alt
 	}
+	if orig := c.QueryParam("originalName"); orig != "" {
+		req.OriginalName = &orig
+	}
+	if fid := c.QueryParam("folderId"); fid != "" {
+		if n, err := strconv.ParseInt(fid, 10, 64); err == nil {
+			req.FolderID = &n
+		}
+	}
+	// Also try JSON body (overrides query params if present)
+	_ = c.Bind(&req)
 	vo, err := h.svc.Update(c.Request().Context(), id, req)
 	if err != nil {
 		return response.Error(c, err)
@@ -241,11 +270,21 @@ func (h *MediaHandler) Move(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	var req dto.BatchMoveRequest
-	if err := c.Bind(&req); err != nil {
-		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	// Java accepts folderId as query param; also accept JSON body
+	var folderID *int64
+	if v := c.QueryParam("folderId"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			folderID = &n
+		}
 	}
-	if err := h.svc.Move(c.Request().Context(), id, req.FolderID); err != nil {
+	if folderID == nil {
+		var req struct {
+			FolderID *int64 `json:"folderId"`
+		}
+		_ = c.Bind(&req)
+		folderID = req.FolderID
+	}
+	if err := h.svc.Move(c.Request().Context(), id, folderID); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)

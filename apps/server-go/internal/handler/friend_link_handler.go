@@ -113,11 +113,11 @@ func (h *FriendLinkHandler) Delete(c echo.Context) error {
 }
 
 func (h *FriendLinkHandler) BatchDelete(c echo.Context) error {
-	var req dto.BatchDeleteRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.DeleteBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.DeleteBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
@@ -136,11 +136,11 @@ func (h *FriendLinkHandler) ToggleVisible(c echo.Context) error {
 }
 
 func (h *FriendLinkHandler) Reorder(c echo.Context) error {
-	var req dto.ReorderRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.Reorder(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.Reorder(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)

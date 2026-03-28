@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -215,7 +216,7 @@ func (h *PostHandler) PublicGet(c echo.Context) error {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
 	if !post.PasswordRequired {
-		go h.svc.IncrementViewCount(c.Request().Context(), post.ID)
+		go h.svc.IncrementViewCount(context.Background(), post.ID)
 	}
 	return response.OK(c, post)
 }
@@ -236,7 +237,7 @@ func (h *PostHandler) VerifyPassword(c echo.Context) error {
 	if post.PasswordRequired {
 		return response.FailWith(c, response.Forbidden, "密码错误")
 	}
-	go h.svc.IncrementViewCount(c.Request().Context(), post.ID)
+	go h.svc.IncrementViewCount(context.Background(), post.ID)
 	return response.OK(c, post)
 }
 

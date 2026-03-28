@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
+
 	"github.com/labstack/echo/v4"
 
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
@@ -49,17 +52,23 @@ func (h *SiteSettingHandler) GetByKey(c echo.Context) error {
 
 func (h *SiteSettingHandler) UpdateByKey(c echo.Context) error {
 	key := c.Param("key")
+
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+
 	var val string
-	if err := c.Bind(&val); err != nil {
-		// Try reading as JSON string
+	// Try as plain JSON string first: "some value"
+	if err := json.Unmarshal(body, &val); err != nil {
+		// Try as JSON object: {"value": "some value"}
 		var obj map[string]string
-		if err2 := c.Bind(&obj); err2 != nil {
+		if err2 := json.Unmarshal(body, &obj); err2 != nil {
 			return response.FailWith(c, response.BadRequest, "请求格式错误")
 		}
-		if v, ok := obj["value"]; ok {
-			val = v
-		}
+		val = obj["value"]
 	}
+
 	if err := h.svc.SetValue(c.Request().Context(), key, val); err != nil {
 		return response.Error(c, err)
 	}

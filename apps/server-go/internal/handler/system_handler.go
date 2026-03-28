@@ -21,9 +21,10 @@ func (h *SystemHandler) ServerTime(c echo.Context) error {
 	now := time.Now()
 	_, offsetSec := now.Zone()
 	return response.OK(c, map[string]any{
-		"timestamp":   now.UnixMilli(),
-		"datetime":    now.Format(time.RFC3339),
-		"timezone":    now.Location().String(),
-		"offsetHours": offsetSec / 3600,
+		"timestamp":     now.Format(time.RFC3339Nano), // Java returns ISO-8601 string
+		"datetime":      now.Format(time.RFC3339),
+		"timezone":      now.Location().String(),
+		"offsetSeconds": offsetSec, // Java returns offsetSeconds, not offsetHours
+		"offsetHours":   offsetSec / 3600,
 	})
 }

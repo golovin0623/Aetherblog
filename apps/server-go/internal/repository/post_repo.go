@@ -81,6 +81,14 @@ func (r *PostRepo) Update(ctx context.Context, id int64, p *model.Post) (*model.
 	return &out, err
 }
 
+// allowedPostColumns is the whitelist of columns that can be updated via UpdateProperties.
+var allowedPostColumns = map[string]bool{
+	"title": true, "summary": true, "cover_image": true, "category_id": true,
+	"status": true, "is_pinned": true, "pin_priority": true, "allow_comment": true,
+	"password": true, "is_hidden": true, "slug": true, "created_at": true,
+	"published_at": true, "view_count": true, "updated_at": true,
+}
+
 func (r *PostRepo) UpdateProperties(ctx context.Context, id int64, fields map[string]any) (*model.Post, error) {
 	if len(fields) == 0 {
 		return r.FindByID(ctx, id)
@@ -89,6 +97,9 @@ func (r *PostRepo) UpdateProperties(ctx context.Context, id int64, fields map[st
 	args := make([]any, 0, len(fields)+2)
 	i := 1
 	for k, v := range fields {
+		if !allowedPostColumns[k] {
+			return nil, fmt.Errorf("invalid column: %s", k)
+		}
 		setClauses = append(setClauses, fmt.Sprintf("%s=$%d", k, i))
 		args = append(args, v)
 		i++
@@ -332,10 +343,16 @@ func (r *PostRepo) FindAdjacentPosts(ctx context.Context, publishedAt string, po
 		publishedAt, postID)
 
 	var prevPtr, nextPtr *adjacentRow
-	if !errors.Is(err1, sql.ErrNoRows) {
+	if err1 != nil && !errors.Is(err1, sql.ErrNoRows) {
+		return nil, nil, err1
+	}
+	if err1 == nil {
 		prevPtr = &prev
 	}
-	if !errors.Is(err2, sql.ErrNoRows) {
+	if err2 != nil && !errors.Is(err2, sql.ErrNoRows) {
+		return nil, nil, err2
+	}
+	if err2 == nil {
 		nextPtr = &next
 	}
 	return prevPtr, nextPtr, nil

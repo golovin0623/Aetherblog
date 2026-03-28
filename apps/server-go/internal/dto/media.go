@@ -21,8 +21,9 @@ type MediaFileVO struct {
 }
 
 type UpdateMediaRequest struct {
-	AltText  *string `json:"altText"`
-	FolderID *int64  `json:"folderId"`
+	AltText      *string `json:"altText"`
+	OriginalName *string `json:"originalName"`
+	FolderID     *int64  `json:"folderId"`
 }
 
 type BatchMoveRequest struct {
@@ -72,7 +73,16 @@ type FolderRequest struct {
 }
 
 type MoveFolderRequest struct {
-	ParentID *int64 `json:"parentId"`
+	TargetParentID *int64 `json:"targetParentId"`
+	ParentID       *int64 `json:"parentId"` // fallback
+}
+
+// GetTargetParentID returns targetParentId if set, otherwise parentId.
+func (r *MoveFolderRequest) GetTargetParentID() *int64 {
+	if r.TargetParentID != nil {
+		return r.TargetParentID
+	}
+	return r.ParentID
 }
 
 // StorageProviderVO is the response for a storage provider.

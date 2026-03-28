@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -307,4 +309,28 @@ func bindAndValidate(c echo.Context, req any) error {
 		return err
 	}
 	return nil
+}
+
+// bindIDs parses a JSON body that is either a raw array [1,2,3] (Java format)
+// or a wrapped object {"ids":[1,2,3]} (Go format). Returns the ID slice.
+func bindIDs(c echo.Context) ([]int64, error) {
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		response.FailWith(c, response.BadRequest, "请求格式错误")
+		return nil, err
+	}
+	// Try raw array first
+	var ids []int64
+	if err := json.Unmarshal(body, &ids); err == nil && len(ids) > 0 {
+		return ids, nil
+	}
+	// Try wrapped object
+	var wrapped struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err == nil && len(wrapped.IDs) > 0 {
+		return wrapped.IDs, nil
+	}
+	response.FailWith(c, response.BadRequest, "缺少ID列表")
+	return nil, io.ErrUnexpectedEOF
 }

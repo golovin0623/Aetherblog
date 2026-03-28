@@ -106,33 +106,33 @@ func (h *CommentHandler) PermanentDelete(c echo.Context) error {
 }
 
 func (h *CommentHandler) DeleteBatch(c echo.Context) error {
-	var req dto.BatchCommentRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.DeleteBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.DeleteBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
 }
 
 func (h *CommentHandler) PermanentDeleteBatch(c echo.Context) error {
-	var req dto.BatchCommentRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.PermanentDeleteBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.PermanentDeleteBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
 }
 
 func (h *CommentHandler) ApproveBatch(c echo.Context) error {
-	var req dto.BatchCommentRequest
-	if err := bindAndValidate(c, &req); err != nil {
+	ids, err := bindIDs(c)
+	if err != nil {
 		return err
 	}
-	if err := h.svc.ApproveBatch(c.Request().Context(), req.IDs); err != nil {
+	if err := h.svc.ApproveBatch(c.Request().Context(), ids); err != nil {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)

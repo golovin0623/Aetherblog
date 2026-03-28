@@ -20,10 +20,13 @@ func (h *VisitorHandler) Mount(g *echo.Group) {
 }
 
 // visitRequest is the body for POST /api/v1/public/visit.
+// Accepts both Java format (path, postId) and extended format (pageUrl, pageTitle, referer).
 type visitRequest struct {
-	PageURL   string `json:"pageUrl"`
-	PageTitle string `json:"pageTitle"`
-	Referer   string `json:"referer"`
+	Path      string `json:"path"`      // Java field
+	PostID    *int64 `json:"postId"`    // Java field
+	PageURL   string `json:"pageUrl"`   // extended
+	PageTitle string `json:"pageTitle"` // extended
+	Referer   string `json:"referer"`   // extended
 }
 
 // POST /api/v1/public/visit
@@ -32,15 +35,20 @@ func (h *VisitorHandler) Record(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, "请求参数格式错误")
 	}
-	if req.PageURL == "" {
-		return response.FailWith(c, response.BadRequest, "pageUrl 不能为空")
+	// Prefer Java-style "path" if provided, fallback to "pageUrl"
+	pageURL := req.Path
+	if pageURL == "" {
+		pageURL = req.PageURL
+	}
+	if pageURL == "" {
+		return response.FailWith(c, response.BadRequest, "path 不能为空")
 	}
 
 	ip := c.RealIP()
 	ua := c.Request().UserAgent()
 
 	// Fire-and-forget; handler returns immediately.
-	h.svc.RecordVisit(c.Request().Context(), req.PageURL, req.PageTitle, ip, ua, req.Referer)
+	h.svc.RecordVisit(c.Request().Context(), pageURL, req.PageTitle, ip, ua, req.Referer)
 
 	return response.OKEmpty(c)
 }

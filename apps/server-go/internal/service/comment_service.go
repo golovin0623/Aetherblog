@@ -225,28 +225,42 @@ func toCommentVOs(cs []model.Comment) []dto.CommentVO {
 }
 
 // buildCommentTree converts flat list into nested tree by parent_id.
+// Uses pointer-based linking to correctly handle multi-level nesting.
 func buildCommentTree(vos []dto.CommentVO) []dto.CommentVO {
 	byID := make(map[int64]*dto.CommentVO, len(vos))
 	for i := range vos {
+		vos[i].Children = nil // reset
 		byID[vos[i].ID] = &vos[i]
 	}
-	// First pass: link children to parents.
+	// Link children to parents via pointers — mutations propagate through byID.
+	var rootIDs []int64
 	for i := range vos {
 		if vos[i].ParentID != nil {
 			if parent, ok := byID[*vos[i].ParentID]; ok {
-				parent.Children = append(parent.Children, vos[i])
+				parent.Children = append(parent.Children, dto.CommentVO{}) // placeholder
+				parent.Children[len(parent.Children)-1] = *byID[vos[i].ID]
+				continue
 			}
 		}
+		rootIDs = append(rootIDs, vos[i].ID)
 	}
-	// Second pass: collect roots using updated byID entries.
-	var roots []dto.CommentVO
-	for i := range vos {
-		v := &vos[i]
-		if v.ParentID == nil {
-			roots = append(roots, *byID[v.ID])
-		} else if _, parentExists := byID[*v.ParentID]; !parentExists {
-			roots = append(roots, *byID[v.ID])
+	// Collect roots. We must re-read from byID to get the fully linked structs.
+	// For deep nesting we do a recursive copy from the pointer map.
+	var collectTree func(id int64) dto.CommentVO
+	collectTree = func(id int64) dto.CommentVO {
+		node := byID[id]
+		result := *node
+		if len(node.Children) > 0 {
+			result.Children = make([]dto.CommentVO, len(node.Children))
+			for i, child := range node.Children {
+				result.Children[i] = collectTree(child.ID)
+			}
 		}
+		return result
+	}
+	roots := make([]dto.CommentVO, 0, len(rootIDs))
+	for _, id := range rootIDs {
+		roots = append(roots, collectTree(id))
 	}
 	return roots
 }
