@@ -25,12 +25,60 @@ func (h *StatsHandler) Mount(g *echo.Group) {
 }
 
 // GET /api/v1/admin/stats/dashboard
+// Returns aggregated DashboardData matching frontend DashboardData interface:
+// { stats, topPosts, visitorTrend, archiveStats, trends }
 func (h *StatsHandler) Dashboard(c echo.Context) error {
-	vo, err := h.svc.GetDashboard(c.Request().Context())
+	ctx := c.Request().Context()
+
+	dashboard, err := h.svc.GetDashboard(ctx)
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, vo)
+
+	topPosts, _ := h.svc.GetTopPosts(ctx)
+	if topPosts == nil {
+		topPosts = []service.TopPostVO{}
+	}
+
+	visitorTrend, _ := h.svc.GetVisitorTrend(ctx, 7)
+	if visitorTrend == nil {
+		visitorTrend = []service.DailyVisitVO{}
+	}
+
+	archiveStats, _ := h.svc.GetArchiveStats(ctx)
+	if archiveStats == nil {
+		archiveStats = []service.ArchiveMonthVO{}
+	}
+
+	// Map to frontend DashboardData shape
+	result := map[string]any{
+		"stats": map[string]any{
+			"posts":      dashboard.PostCount,
+			"categories": 0,
+			"tags":       0,
+			"comments":   dashboard.CommentCount,
+			"views":      dashboard.ViewTotal,
+			"visitors":   dashboard.TodayVisits,
+			"totalWords": 0,
+			"aiTokens":   0,
+			"aiCost":     0,
+		},
+		"topPosts":     topPosts,
+		"visitorTrend": visitorTrend,
+		"archiveStats": archiveStats,
+		"deviceStats":  []any{},
+		"trends": map[string]any{
+			"posts":          0,
+			"categories":     0,
+			"views":          0,
+			"visitors":       0,
+			"comments":       0,
+			"words":          0,
+			"postsThisMonth": 0,
+		},
+	}
+
+	return response.OK(c, result)
 }
 
 // GET /api/v1/admin/stats/top-posts
