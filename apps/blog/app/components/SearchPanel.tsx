@@ -304,7 +304,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
 
         {/* 搜索输入框 */}
         <form onSubmit={(e) => e.preventDefault()} className="relative">
-          <div className="group/search flex items-center px-4 py-4 border-b border-[var(--border-subtle)] transition-colors duration-300 focus-within:border-primary/50 focus-within:bg-[var(--bg-card-hover)]">
+          <div className="group/search flex items-center px-4 py-4 border-b border-[var(--border-subtle)] transition-colors duration-300 focus-within:border-primary focus-within:bg-[var(--bg-card-hover)]">
             <Search className="h-5 w-5 text-[var(--text-muted)] transition-colors duration-300 group-focus-within/search:text-primary" />
             <input
               ref={inputRef}
