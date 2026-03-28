@@ -185,6 +185,9 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	handler.NewActivityHandler(activitySvc).Mount(admin.Group("/activities"))
 	handler.NewVisitorHandler(analyticsSvc).Mount(public.Group("/visit"))
 
+	// --- Migrations ---
+	handler.NewMigrationHandler().Mount(admin.Group("/migrations"))
+
 	// --- AI Proxy ---
 	aiHandler := handler.NewAiHandler(s.Config)
 	aiHandler.Mount(admin.Group("/ai"))

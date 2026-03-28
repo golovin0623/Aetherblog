@@ -497,16 +497,16 @@ install_deps() {
     fi
 }
 
-# 启动后端 (如果存在 Maven 项目)
+# 启动后端 (Go 服务)
 start_backend() {
     echo -e "${YELLOW}[4/7] 启动后端服务...${NC}"
-    
-    BACKEND_DIR="$PROJECT_ROOT/apps/server"
-    
-    if [ -f "$BACKEND_DIR/pom.xml" ]; then
-        if command -v mvn &> /dev/null; then
+
+    BACKEND_DIR="$PROJECT_ROOT/apps/server-go"
+
+    if [ -d "$BACKEND_DIR/cmd/server" ]; then
+        if command -v go &> /dev/null; then
             cd "$BACKEND_DIR"
-            
+
             # 检查是否已在运行
             if [ -f "$PID_DIR/backend.pid" ]; then
                 if PID=$(read_pid "$PID_DIR/backend.pid"); then
@@ -518,45 +518,41 @@ start_backend() {
                     rm -f "$PID_DIR/backend.pid"
                 fi
             fi
-            
+
+            # 加载 .env 环境变量
+            if [ -f "$PROJECT_ROOT/.env" ]; then
+                set -a
+                source "$PROJECT_ROOT/.env"
+                set +a
+            fi
+
+            # 确保提供 JWT_SECRET
+            if [ -z "${JWT_SECRET:-}" ]; then
+                export JWT_SECRET="default-secret-for-dev-only-change-in-prod"
+            fi
+
             # 编译并启动
-            echo -e "${BLUE}   编译后端项目...${NC}"
-            mvn clean package -DskipTests -q 2>&1 | tail -5
-            
-            # 查找可执行 JAR 文件 (优先 aetherblog-app，其次 blog-service)
-            JAR_FILE=$(find . -name "aetherblog-app*.jar" -path "*/target/*" ! -name "*-sources.jar" 2>/dev/null | head -1)
-            if [ -z "$JAR_FILE" ]; then
-                JAR_FILE=$(find . -name "blog-service*.jar" -path "*/target/*" ! -name "*-sources.jar" 2>/dev/null | head -1)
+            echo -e "${BLUE}   编译 Go 后端...${NC}"
+            go build -o "$BACKEND_DIR/bin/server" ./cmd/server
+
+            echo -e "${BLUE}   启动后端服务...${NC}"
+            nohup "$BACKEND_DIR/bin/server" > "$LOG_DIR/backend.log" 2>&1 &
+            local backend_pid=$!
+            echo $backend_pid > "$PID_DIR/backend.pid"
+
+            if ! wait_for_process "$backend_pid" "后端服务" "$LOG_DIR/backend.log"; then
+                record_failure "后端服务"
+                return
             fi
-            
-            if [ -n "$JAR_FILE" ]; then
-                echo -e "${BLUE}   启动后端服务: $JAR_FILE${NC}"
-                # 加载 .env 环境变量
-                if [ -f "$PROJECT_ROOT/.env" ]; then
-                    set -a
-                    source "$PROJECT_ROOT/.env"
-                    set +a
-                fi
-                nohup java -Dapp.log.path="$LOG_DIR" -DAPP_LOG_PATH="$LOG_DIR" -Dlogging.file.path="$LOG_DIR" -jar "$JAR_FILE" > "$LOG_DIR/backend.log" 2>&1 &
-                local backend_pid=$!
-                echo $backend_pid > "$PID_DIR/backend.pid"
 
-                if ! wait_for_process "$backend_pid" "后端服务" "$LOG_DIR/backend.log"; then
-                    record_failure "后端服务"
-                    return
-                fi
-
-                if ! wait_for_http "http://localhost:8080/api/actuator/health" "后端服务" "$LOG_DIR/backend.log"; then
-                    record_failure "后端服务"
-                    return
-                fi
-
-                echo -e "${GREEN}✅ 后端服务已启动 (PID: $backend_pid)${NC}"
-            else
-                echo -e "${YELLOW}⚠️  未找到可执行 JAR 文件，跳过后端启动${NC}"
+            if ! wait_for_http "http://localhost:8080/api/actuator/health" "后端服务" "$LOG_DIR/backend.log"; then
+                record_failure "后端服务"
+                return
             fi
+
+            echo -e "${GREEN}✅ 后端服务已启动 (PID: $backend_pid)${NC}"
         else
-            echo -e "${YELLOW}⚠️  Maven 未安装，跳过后端启动${NC}"
+            echo -e "${YELLOW}⚠️  Go 未安装，跳过后端启动${NC}"
         fi
     else
         echo -e "${YELLOW}⚠️  未找到后端项目，跳过${NC}"

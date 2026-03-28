@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"os"
 	"time"
 
@@ -12,6 +13,15 @@ import (
 )
 
 func main() {
+	// Health check mode for Docker healthcheck (scratch image has no curl/wget)
+	if len(os.Args) > 1 && os.Args[1] == "-health" {
+		resp, err := http.Get("http://localhost:8080/api/actuator/health")
+		if err != nil || resp.StatusCode != 200 {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	start := time.Now()
 
 	// Setup zerolog

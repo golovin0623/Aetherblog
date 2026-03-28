@@ -3,7 +3,7 @@
 # Target: <30 MB image, <100ms startup
 # =============================================================================
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
 # Cache dependencies
@@ -19,6 +19,7 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/server /server
 COPY --from=builder /app/config.yaml /config.yaml
+COPY --from=builder /app/migrations /migrations
 
 EXPOSE 8080
 
