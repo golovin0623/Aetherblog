@@ -54,7 +54,7 @@ public interface MediaTagRepository extends JpaRepository<MediaTag, Long> {
     /**
      * 搜索标签（按名称模糊匹配）
      */
-    @Query("SELECT t FROM MediaTag t WHERE t.name LIKE %:keyword% ORDER BY t.usageCount DESC")
+    @Query("SELECT t FROM MediaTag t WHERE LOWER(t.name) LIKE LOWER(CONCAT('%', :keyword, '%')) ORDER BY t.usageCount DESC")
     List<MediaTag> searchByKeyword(@Param("keyword") String keyword);
 
     /**
