@@ -3,7 +3,11 @@ package com.aetherblog.blog.controller;
 import com.aetherblog.api.dto.auth.RegisterRequest;
 import com.aetherblog.common.security.annotation.RateLimit;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.multipart.MultipartFile;
+
 import java.lang.reflect.Method;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RateLimitVerificationTest {
@@ -41,7 +45,7 @@ public class RateLimitVerificationTest {
     @Test
     public void mediaUploadMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
         Method uploadMethod = MediaController.class.getMethod("upload",
-                org.springframework.web.multipart.MultipartFile.class,
+                MultipartFile.class,
                 Long.class,
                 Long.class);
 
@@ -57,7 +61,7 @@ public class RateLimitVerificationTest {
     @Test
     public void mediaUploadBatchMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
         Method uploadBatchMethod = MediaController.class.getMethod("uploadBatch",
-                java.util.List.class,
+                List.class,
                 Long.class,
                 Long.class);
 
