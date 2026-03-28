@@ -333,7 +333,12 @@ func (s *PostService) GetPublicBySlug(ctx context.Context, slug, password string
 			detail.PasswordRequired = true
 			return detail, nil
 		}
-		if bcrypt.CompareHashAndPassword([]byte(*p.Password), []byte(password)) != nil {
+		// Support both plain text passwords (legacy) and bcrypt hashes
+		matched := *p.Password == password // plain text
+		if !matched {
+			matched = bcrypt.CompareHashAndPassword([]byte(*p.Password), []byte(password)) == nil
+		}
+		if !matched {
 			detail.Content = nil
 			detail.PasswordRequired = true
 			return detail, nil
