@@ -109,13 +109,13 @@ func (s *MediaService) GetStats(ctx context.Context) (*dto.MediaStatsVO, error) 
 		return nil, err
 	}
 	return &dto.MediaStatsVO{
-		TotalCount: st.TotalCount,
-		TotalSize:  st.TotalSize,
-		ImageCount: st.ImageCount,
-		VideoCount: st.VideoCount,
-		AudioCount: st.AudioCount,
-		DocCount:   st.DocCount,
-		OtherCount: st.OtherCount,
+		TotalFiles:    st.TotalCount,
+		TotalSize:     st.TotalSize,
+		ImageCount:    st.ImageCount,
+		VideoCount:    st.VideoCount,
+		AudioCount:    st.AudioCount,
+		DocumentCount: st.DocCount,
+		OtherCount:    st.OtherCount,
 	}, nil
 }
 

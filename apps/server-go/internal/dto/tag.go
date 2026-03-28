@@ -4,7 +4,7 @@ import "time"
 
 type TagRequest struct {
 	Name        string  `json:"name"        validate:"required,max=50"`
-	Slug        string  `json:"slug"        validate:"required,max=50"`
+	Slug        string  `json:"slug"        validate:"omitempty,max=50"`
 	Description *string `json:"description"`
 	Color       string  `json:"color"`
 }

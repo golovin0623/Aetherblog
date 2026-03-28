@@ -4,7 +4,7 @@ import "time"
 
 type CategoryRequest struct {
 	Name        string  `json:"name"        validate:"required,max=100"`
-	Slug        string  `json:"slug"        validate:"required,max=100"`
+	Slug        string  `json:"slug"        validate:"omitempty,max=100"`
 	Description *string `json:"description"`
 	CoverImage  *string `json:"coverImage"`
 	Icon        *string `json:"icon"`

@@ -180,7 +180,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	analyticsRepo := repository.NewAnalyticsRepo(s.DB)
 	activityRepo := repository.NewActivityRepo(s.DB)
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
-	activitySvc := service.NewActivityService(activityRepo)
+	activitySvc := service.NewActivityService(activityRepo, userRepo)
 	handler.NewStatsHandler(analyticsSvc).Mount(admin.Group("/stats"))
 	handler.NewActivityHandler(activitySvc).Mount(admin.Group("/activities"))
 	handler.NewVisitorHandler(analyticsSvc).Mount(public.Group("/visit"))

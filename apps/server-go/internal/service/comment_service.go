@@ -27,7 +27,9 @@ func (s *CommentService) GetPending(ctx context.Context, p pagination.Params) (*
 	if err != nil {
 		return nil, err
 	}
-	pr := response.NewPageResult(toCommentVOs(cs), total, p.PageNum, p.PageSize)
+	vos := toCommentVOs(cs)
+	s.enrichCommentRefs(ctx, cs, vos)
+	pr := response.NewPageResult(vos, total, p.PageNum, p.PageSize)
 	return &pr, nil
 }
 
@@ -36,7 +38,9 @@ func (s *CommentService) GetForAdmin(ctx context.Context, f dto.CommentFilter) (
 	if err != nil {
 		return nil, err
 	}
-	pr := response.NewPageResult(toCommentVOs(cs), total, f.PageNum, f.PageSize)
+	vos := toCommentVOs(cs)
+	s.enrichCommentRefs(ctx, cs, vos)
+	pr := response.NewPageResult(vos, total, f.PageNum, f.PageSize)
 	return &pr, nil
 }
 
@@ -196,6 +200,46 @@ func (s *CommentService) ensureExists(ctx context.Context, id int64) (*model.Com
 		return nil, errors.New("评论不存在")
 	}
 	return c, nil
+}
+
+// enrichCommentRefs populates Post and Parent refs on comment VOs for admin views.
+func (s *CommentService) enrichCommentRefs(ctx context.Context, cs []model.Comment, vos []dto.CommentVO) {
+	// Collect unique post IDs
+	postIDSet := make(map[int64]struct{})
+	for _, c := range cs {
+		postIDSet[c.PostID] = struct{}{}
+	}
+
+	// Batch fetch posts
+	postMap := make(map[int64]*dto.CommentPostRef)
+	for pid := range postIDSet {
+		if p, err := s.postRepo.FindByID(ctx, pid); err == nil && p != nil {
+			postMap[pid] = &dto.CommentPostRef{ID: p.ID, Title: p.Title, Slug: p.Slug}
+		}
+	}
+
+	// Build a nickname lookup from the comments themselves (covers most parent refs)
+	nicknameMap := make(map[int64]string, len(cs))
+	for _, c := range cs {
+		nicknameMap[c.ID] = c.Nickname
+	}
+
+	// Populate refs
+	for i, c := range cs {
+		if ref, ok := postMap[c.PostID]; ok {
+			vos[i].Post = ref
+		}
+		if c.ParentID != nil {
+			if nick, ok := nicknameMap[*c.ParentID]; ok {
+				vos[i].Parent = &dto.CommentParentRef{ID: *c.ParentID, Nickname: nick}
+			} else {
+				// Parent not in current page — fetch individually
+				if parent, err := s.repo.FindByID(ctx, *c.ParentID); err == nil && parent != nil {
+					vos[i].Parent = &dto.CommentParentRef{ID: parent.ID, Nickname: parent.Nickname}
+				}
+			}
+		}
+	}
 }
 
 func toCommentVO(c model.Comment) dto.CommentVO {

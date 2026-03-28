@@ -398,10 +398,10 @@ func (s *PostService) GetAdjacentPosts(ctx context.Context, slug string) (*dto.A
 	}
 	resp := &dto.AdjacentPostResponse{}
 	if prev != nil {
-		resp.Prev = &dto.AdjacentPost{ID: prev.ID, Title: prev.Title, Slug: prev.Slug}
+		resp.PrevPost = &dto.AdjacentPost{ID: prev.ID, Title: prev.Title, Slug: prev.Slug}
 	}
 	if next != nil {
-		resp.Next = &dto.AdjacentPost{ID: next.ID, Title: next.Title, Slug: next.Slug}
+		resp.NextPost = &dto.AdjacentPost{ID: next.ID, Title: next.Title, Slug: next.Slug}
 	}
 	return resp, nil
 }
@@ -460,10 +460,17 @@ func (s *PostService) enrichDetail(ctx context.Context, p *model.Post, includeAd
 		}
 	}
 
+	var catID *int64
+	var catName *string
+	if catInfo != nil {
+		catID = &catInfo.ID
+		catName = &catInfo.Name
+	}
+
 	detail := &dto.PostDetail{
 		ID: p.ID, Title: p.Title, Slug: p.Slug, Content: p.ContentMarkdown,
 		Summary: p.Summary, CoverImage: p.CoverImage, Status: p.Status,
-		Category: catInfo, Tags: tagInfos,
+		Category: catInfo, CategoryID: catID, CategoryName: catName, Tags: tagInfos,
 		ViewCount: p.ViewCount, CommentCount: p.CommentCount, LikeCount: p.LikeCount,
 		WordCount: p.WordCount, ReadingTime: p.ReadingTime,
 		IsPinned: p.IsPinned, PinPriority: p.PinPriority,

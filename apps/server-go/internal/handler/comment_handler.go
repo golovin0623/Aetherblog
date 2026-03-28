@@ -149,7 +149,7 @@ func (h *CommentHandler) ListByPost(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, vos)
+	return response.OK(c, map[string]any{"list": vos})
 }
 
 func (h *CommentHandler) Submit(c echo.Context) error {

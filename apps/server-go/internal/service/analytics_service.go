@@ -12,12 +12,14 @@ import (
 // --- DTOs returned by AnalyticsService ---
 
 type DashboardVO struct {
-	PostCount    int64   `json:"postCount"`
-	CommentCount int64   `json:"commentCount"`
-	ViewTotal    int64   `json:"viewTotal"`
-	TodayVisits  int64   `json:"todayVisits"`
-	MediaCount   int64   `json:"mediaCount"`
-	MediaSize    int64   `json:"mediaSize"`
+	PostCount     int64 `json:"postCount"`
+	CommentCount  int64 `json:"commentCount"`
+	ViewTotal     int64 `json:"viewTotal"`
+	TodayVisits   int64 `json:"todayVisits"`
+	MediaCount    int64 `json:"mediaCount"`
+	MediaSize     int64 `json:"mediaSize"`
+	CategoryCount int64 `json:"categoryCount"`
+	TagCount      int64 `json:"tagCount"`
 }
 
 type TopPostVO struct {
@@ -28,8 +30,9 @@ type TopPostVO struct {
 }
 
 type DailyVisitVO struct {
-	Date  string `json:"date"`
-	Count int64  `json:"count"`
+	Date string `json:"date"`
+	PV   int64  `json:"pv"`
+	UV   int64  `json:"uv"`
 }
 
 type TaskTypeStatVO struct {
@@ -39,11 +42,25 @@ type TaskTypeStatVO struct {
 }
 
 type AIDashboardVO struct {
-	TotalCalls    int64            `json:"totalCalls"`
-	SuccessCalls  int64            `json:"successCalls"`
-	TotalTokens   int64            `json:"totalTokens"`
-	EstimatedCost float64          `json:"estimatedCost"`
-	ByTaskType    []TaskTypeStatVO `json:"byTaskType"`
+	RangeDays         int              `json:"rangeDays"`
+	Overview          AiOverviewVO     `json:"overview"`
+	Trend             []any            `json:"trend"`
+	ModelDistribution []any            `json:"modelDistribution"`
+	TaskDistribution  []TaskTypeStatVO `json:"taskDistribution"`
+	Records           any              `json:"records"`
+}
+
+type AiOverviewVO struct {
+	TotalCalls       int64   `json:"totalCalls"`
+	SuccessCalls     int64   `json:"successCalls"`
+	ErrorCalls       int64   `json:"errorCalls"`
+	SuccessRate      float64 `json:"successRate"`
+	CacheHitRate     float64 `json:"cacheHitRate"`
+	TotalTokens      int64   `json:"totalTokens"`
+	TotalCost        float64 `json:"totalCost"`
+	AvgLatencyMs     float64 `json:"avgLatencyMs"`
+	AvgTokensPerCall float64 `json:"avgTokensPerCall"`
+	AvgCostPerCall   float64 `json:"avgCostPerCall"`
 }
 
 // AnalyticsService wraps the analytics repository and exposes business logic.
@@ -62,12 +79,14 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context) (*DashboardVO, erro
 		return nil, err
 	}
 	return &DashboardVO{
-		PostCount:    d.PostCount,
-		CommentCount: d.CommentCount,
-		ViewTotal:    d.ViewTotal,
-		TodayVisits:  d.TodayVisits,
-		MediaCount:   d.MediaCount,
-		MediaSize:    d.MediaSize,
+		PostCount:     d.PostCount,
+		CommentCount:  d.CommentCount,
+		ViewTotal:     d.ViewTotal,
+		TodayVisits:   d.TodayVisits,
+		MediaCount:    d.MediaCount,
+		MediaSize:     d.MediaSize,
+		CategoryCount: d.CategoryCount,
+		TagCount:      d.TagCount,
 	}, nil
 }
 
@@ -95,7 +114,7 @@ func (s *AnalyticsService) GetVisitorTrend(ctx context.Context, days int) ([]Dai
 	}
 	vos := make([]DailyVisitVO, len(rows))
 	for i, r := range rows {
-		vos[i] = DailyVisitVO{Date: r.Date, Count: r.Count}
+		vos[i] = DailyVisitVO{Date: r.Date, PV: r.Count, UV: r.Count}
 	}
 	return vos, nil
 }
@@ -110,12 +129,36 @@ func (s *AnalyticsService) GetAIDashboard(ctx context.Context) (*AIDashboardVO, 
 	for i, t := range d.ByTaskType {
 		stats[i] = TaskTypeStatVO{TaskType: t.TaskType, Count: t.Count, Tokens: t.Tokens}
 	}
+
+	errorCalls := d.TotalCalls - d.SuccessCalls
+	var successRate float64
+	if d.TotalCalls > 0 {
+		successRate = float64(d.SuccessCalls) / float64(d.TotalCalls) * 100
+	}
+	var avgTokensPerCall, avgCostPerCall float64
+	if d.TotalCalls > 0 {
+		avgTokensPerCall = float64(d.TotalTokens) / float64(d.TotalCalls)
+		avgCostPerCall = d.EstimatedCost / float64(d.TotalCalls)
+	}
+
 	return &AIDashboardVO{
-		TotalCalls:    d.TotalCalls,
-		SuccessCalls:  d.SuccessCalls,
-		TotalTokens:   d.TotalTokens,
-		EstimatedCost: d.EstimatedCost,
-		ByTaskType:    stats,
+		RangeDays: 30,
+		Overview: AiOverviewVO{
+			TotalCalls:       d.TotalCalls,
+			SuccessCalls:     d.SuccessCalls,
+			ErrorCalls:       errorCalls,
+			SuccessRate:      successRate,
+			CacheHitRate:     0,
+			TotalTokens:      d.TotalTokens,
+			TotalCost:        d.EstimatedCost,
+			AvgLatencyMs:     0,
+			AvgTokensPerCall: avgTokensPerCall,
+			AvgCostPerCall:   avgCostPerCall,
+		},
+		Trend:             []any{},
+		ModelDistribution: []any{},
+		TaskDistribution:  stats,
+		Records:           nil,
 	}, nil
 }
 

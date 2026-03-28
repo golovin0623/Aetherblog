@@ -12,24 +12,34 @@ import (
 
 // ActivityVO is the DTO returned to callers.
 type ActivityVO struct {
-	ID            int64      `json:"id"`
-	EventType     string     `json:"eventType"`
-	EventCategory *string    `json:"eventCategory,omitempty"`
-	Title         string     `json:"title"`
-	Description   *string    `json:"description,omitempty"`
-	UserID        *int64     `json:"userId,omitempty"`
-	IP            *string    `json:"ip,omitempty"`
-	Status        *string    `json:"status,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
+	ID            int64            `json:"id"`
+	EventType     string           `json:"eventType"`
+	EventCategory *string          `json:"eventCategory,omitempty"`
+	Title         string           `json:"title"`
+	Description   *string          `json:"description,omitempty"`
+	UserID        *int64           `json:"userId,omitempty"`
+	IP            *string          `json:"ip,omitempty"`
+	Status        *string          `json:"status,omitempty"`
+	CreatedAt     time.Time        `json:"createdAt"`
+	User          *ActivityUserRef `json:"user,omitempty"`
+}
+
+// ActivityUserRef is a nested user object in activity responses.
+type ActivityUserRef struct {
+	ID       int64   `json:"id"`
+	Username string  `json:"username"`
+	Nickname *string `json:"nickname,omitempty"`
+	Avatar   *string `json:"avatar,omitempty"`
 }
 
 // ActivityService wraps the activity repository and exposes business logic.
 type ActivityService struct {
-	repo *repository.ActivityRepo
+	repo     *repository.ActivityRepo
+	userRepo *repository.UserRepo
 }
 
-func NewActivityService(repo *repository.ActivityRepo) *ActivityService {
-	return &ActivityService{repo: repo}
+func NewActivityService(repo *repository.ActivityRepo, userRepo *repository.UserRepo) *ActivityService {
+	return &ActivityService{repo: repo, userRepo: userRepo}
 }
 
 // GetRecent returns the latest 10 activity events.
@@ -38,7 +48,9 @@ func (s *ActivityService) GetRecent(ctx context.Context) ([]ActivityVO, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toActivityVOs(rows), nil
+	vos := toActivityVOs(rows)
+	s.enrichUserRefs(ctx, rows, vos)
+	return vos, nil
 }
 
 // GetForAdmin returns a paginated list of activity events with optional filters.
@@ -47,7 +59,9 @@ func (s *ActivityService) GetForAdmin(ctx context.Context, f repository.Activity
 	if err != nil {
 		return nil, err
 	}
-	pr := response.NewPageResult(toActivityVOs(rows), total, f.Params.PageNum, f.Params.PageSize)
+	vos := toActivityVOs(rows)
+	s.enrichUserRefs(ctx, rows, vos)
+	pr := response.NewPageResult(vos, total, f.Params.PageNum, f.Params.PageSize)
 	return &pr, nil
 }
 
@@ -57,13 +71,52 @@ func (s *ActivityService) GetByUser(ctx context.Context, userID int64, p paginat
 	if err != nil {
 		return nil, err
 	}
-	pr := response.NewPageResult(toActivityVOs(rows), total, p.PageNum, p.PageSize)
+	vos := toActivityVOs(rows)
+	s.enrichUserRefs(ctx, rows, vos)
+	pr := response.NewPageResult(vos, total, p.PageNum, p.PageSize)
 	return &pr, nil
 }
 
 // Create inserts a new activity event.
 func (s *ActivityService) Create(ctx context.Context, a *model.ActivityEvent) error {
 	return s.repo.Create(ctx, a)
+}
+
+// enrichUserRefs batch-fetches user info and populates the User field on each VO.
+func (s *ActivityService) enrichUserRefs(ctx context.Context, rows []model.ActivityEvent, vos []ActivityVO) {
+	if s.userRepo == nil {
+		return
+	}
+	// Collect unique user IDs
+	userIDSet := make(map[int64]struct{})
+	for _, r := range rows {
+		if r.UserID != nil {
+			userIDSet[*r.UserID] = struct{}{}
+		}
+	}
+	if len(userIDSet) == 0 {
+		return
+	}
+	// Fetch users
+	userMap := make(map[int64]*ActivityUserRef)
+	for uid := range userIDSet {
+		if u, err := s.userRepo.FindByID(ctx, uid); err == nil && u != nil {
+			userMap[uid] = &ActivityUserRef{
+				ID:       u.ID,
+				Username: u.Username,
+				Nickname: u.Nickname,
+				Avatar:   u.Avatar,
+			}
+		}
+	}
+	// Populate
+	for i, r := range rows {
+		if r.UserID != nil {
+			if ref, ok := userMap[*r.UserID]; ok {
+				vos[i].User = ref
+			}
+		}
+	}
 }
 
 // --- helpers ---

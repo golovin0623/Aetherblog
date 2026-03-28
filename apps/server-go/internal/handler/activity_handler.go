@@ -36,8 +36,12 @@ func (h *ActivityHandler) Recent(c echo.Context) error {
 // GET /api/v1/admin/activities?eventType=&status=&pageNum=1&pageSize=20
 func (h *ActivityHandler) List(c echo.Context) error {
 	p := pagination.ParseWithDefaults(c, 1, 20)
+	eventType := c.QueryParam("eventType")
+	if eventType == "" {
+		eventType = c.QueryParam("category")
+	}
 	f := repository.ActivityFilter{
-		EventType: c.QueryParam("eventType"),
+		EventType: eventType,
 		Status:    c.QueryParam("status"),
 		Params:    p,
 	}

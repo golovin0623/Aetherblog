@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -35,6 +36,9 @@ func (s *TagService) GetByID(ctx context.Context, id int64) (*dto.TagVO, error) 
 }
 
 func (s *TagService) Create(ctx context.Context, req dto.TagRequest) (*dto.TagVO, error) {
+	if req.Slug == "" {
+		req.Slug = generateTagSlug(req.Name)
+	}
 	if existing, _ := s.repo.FindBySlug(ctx, req.Slug); existing != nil {
 		return nil, errors.New("标签 slug 已存在")
 	}
@@ -56,6 +60,9 @@ func (s *TagService) Update(ctx context.Context, id int64, req dto.TagRequest) (
 	if err != nil || existing == nil {
 		return nil, errors.New("标签不存在")
 	}
+	if req.Slug == "" {
+		req.Slug = generateTagSlug(req.Name)
+	}
 	if slugOwner, _ := s.repo.FindBySlug(ctx, req.Slug); slugOwner != nil && slugOwner.ID != id {
 		return nil, errors.New("标签 slug 已被其他标签使用")
 	}
@@ -74,6 +81,15 @@ func (s *TagService) Update(ctx context.Context, id int64, req dto.TagRequest) (
 
 func (s *TagService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func generateTagSlug(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = strings.ReplaceAll(s, " ", "-")
+	if s == "" {
+		s = "tag"
+	}
+	return s
 }
 
 func tagVO(t *model.Tag) dto.TagVO {

@@ -12,12 +12,14 @@ import (
 
 // DashboardData holds aggregated site-wide statistics.
 type DashboardData struct {
-	PostCount    int64 `db:"post_count"`
-	CommentCount int64 `db:"comment_count"`
-	ViewTotal    int64 `db:"view_total"`
-	TodayVisits  int64 `db:"today_visits"`
-	MediaCount   int64 `db:"media_count"`
-	MediaSize    int64 `db:"media_size"`
+	PostCount     int64 `db:"post_count"`
+	CommentCount  int64 `db:"comment_count"`
+	ViewTotal     int64 `db:"view_total"`
+	TodayVisits   int64 `db:"today_visits"`
+	MediaCount    int64 `db:"media_count"`
+	MediaSize     int64 `db:"media_size"`
+	CategoryCount int64 `db:"category_count"`
+	TagCount      int64 `db:"tag_count"`
 }
 
 // TopPost is a lightweight post row ordered by view_count.
@@ -94,6 +96,18 @@ func (r *AnalyticsRepo) GetDashboard(ctx context.Context) (*DashboardData, error
 	// Media total size
 	if err := r.db.GetContext(ctx, &d.MediaSize,
 		`SELECT COALESCE(SUM(file_size), 0) FROM media_files WHERE deleted = false`); err != nil {
+		return nil, err
+	}
+
+	// Category count
+	if err := r.db.GetContext(ctx, &d.CategoryCount,
+		`SELECT COUNT(*) FROM categories`); err != nil {
+		return nil, err
+	}
+
+	// Tag count
+	if err := r.db.GetContext(ctx, &d.TagCount,
+		`SELECT COUNT(*) FROM tags`); err != nil {
 		return nil, err
 	}
 

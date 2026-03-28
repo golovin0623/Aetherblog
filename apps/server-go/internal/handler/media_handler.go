@@ -180,7 +180,7 @@ func (h *MediaHandler) TrashCount(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, map[string]int64{"count": n})
+	return response.OK(c, n)
 }
 
 func (h *MediaHandler) BatchRestore(c echo.Context) error {

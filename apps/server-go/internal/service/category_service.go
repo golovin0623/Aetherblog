@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -37,6 +38,9 @@ func (s *CategoryService) GetByID(ctx context.Context, id int64) (*dto.CategoryV
 }
 
 func (s *CategoryService) Create(ctx context.Context, req dto.CategoryRequest) (*dto.CategoryVO, error) {
+	if req.Slug == "" {
+		req.Slug = generateSlugFromName(req.Name)
+	}
 	if existing, _ := s.repo.FindBySlug(ctx, req.Slug); existing != nil {
 		return nil, errors.New("分类 slug 已存在")
 	}
@@ -57,6 +61,9 @@ func (s *CategoryService) Update(ctx context.Context, id int64, req dto.Category
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil || existing == nil {
 		return nil, errors.New("分类不存在")
+	}
+	if req.Slug == "" {
+		req.Slug = generateSlugFromName(req.Name)
 	}
 	if slugOwner, _ := s.repo.FindBySlug(ctx, req.Slug); slugOwner != nil && slugOwner.ID != id {
 		return nil, errors.New("分类 slug 已被其他分类使用")
@@ -105,6 +112,17 @@ func categoryVO(c *model.Category) dto.CategoryVO {
 		SortOrder: c.SortOrder, PostCount: c.PostCount,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
+}
+
+// generateSlugFromName creates a URL-friendly slug from a name.
+// Lowercases the string and replaces spaces with hyphens.
+func generateSlugFromName(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = strings.ReplaceAll(s, " ", "-")
+	if s == "" {
+		s = "item"
+	}
+	return s
 }
 
 func buildTree(all []model.Category, parentID *int64) []dto.CategoryVO {

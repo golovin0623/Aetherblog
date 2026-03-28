@@ -54,8 +54,8 @@ func (h *StatsHandler) Dashboard(c echo.Context) error {
 	result := map[string]any{
 		"stats": map[string]any{
 			"posts":      dashboard.PostCount,
-			"categories": 0,
-			"tags":       0,
+			"categories": dashboard.CategoryCount,
+			"tags":       dashboard.TagCount,
 			"comments":   dashboard.CommentCount,
 			"views":      dashboard.ViewTotal,
 			"visitors":   dashboard.TodayVisits,

@@ -56,15 +56,26 @@ type vanBlogUser struct {
 	Name string `json:"name"`
 }
 
-// importResult is the dry-run result returned to the client.
+// importResult is the result returned to the client matching frontend shape.
 type importResult struct {
-	Mode       string `json:"mode"`
-	Posts      int    `json:"posts"`
-	Drafts     int    `json:"drafts"`
-	Categories int    `json:"categories"`
-	Tags       int    `json:"tags"`
-	Meta       int    `json:"meta"`
-	Users      int    `json:"users"`
+	Summary  importSummary `json:"summary"`
+	Warnings []string      `json:"warnings"`
+	Errors   []string      `json:"errors"`
+	Items    []any         `json:"items"`
+}
+
+type importSummary struct {
+	ImportableArticles int `json:"importableArticles"`
+	ImportableDrafts   int `json:"importableDrafts"`
+	CreatedCategories  int `json:"createdCategories"`
+	ReusedCategories   int `json:"reusedCategories"`
+	CreatedTags        int `json:"createdTags"`
+	ReusedTags         int `json:"reusedTags"`
+	CreatedPosts       int `json:"createdPosts"`
+	UpdatedPosts       int `json:"updatedPosts"`
+	SkippedRecords     int `json:"skippedRecords"`
+	SlugConflicts      int `json:"slugConflicts"`
+	InvalidRecords     int `json:"invalidRecords"`
 }
 
 // ImportVanBlog handles POST /api/v1/admin/migrations/vanblog/import
@@ -130,14 +141,24 @@ func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
 	}
 
 	result := importResult{
-		Mode:       mode,
-		Posts:      len(backup.Articles),
-		Drafts:     len(backup.Drafts),
-		Categories: len(catSet),
-		Tags:       len(tagSet),
-		Meta:       len(backup.Meta),
-		Users:      len(backup.Users),
+		Summary: importSummary{
+			ImportableArticles: len(backup.Articles),
+			ImportableDrafts:   len(backup.Drafts),
+			CreatedCategories:  len(catSet),
+			ReusedCategories:   0,
+			CreatedTags:        len(tagSet),
+			ReusedTags:         0,
+			CreatedPosts:       0,
+			UpdatedPosts:       0,
+			SkippedRecords:     0,
+			SlugConflicts:      0,
+			InvalidRecords:     0,
+		},
+		Warnings: []string{},
+		Errors:   []string{},
+		Items:    []any{},
 	}
+	_ = mode
 
 	return response.OK(c, result)
 }

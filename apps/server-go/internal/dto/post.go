@@ -90,6 +90,8 @@ type PostDetail struct {
 	CoverImage       *string       `json:"coverImage"`
 	Status           string        `json:"status"`
 	Category         *CategoryInfo `json:"category"`
+	CategoryID       *int64        `json:"categoryId"`
+	CategoryName     *string       `json:"categoryName"`
 	Tags             []TagInfo     `json:"tags"`
 	ViewCount        int64         `json:"viewCount"`
 	CommentCount     int64         `json:"commentCount"`
@@ -123,8 +125,8 @@ type AdjacentPost struct {
 
 // AdjacentPostResponse is the response for /{slug}/adjacent.
 type AdjacentPostResponse struct {
-	Prev *AdjacentPost `json:"prev"`
-	Next *AdjacentPost `json:"next"`
+	PrevPost *AdjacentPost `json:"prevPost"`
+	NextPost *AdjacentPost `json:"nextPost"`
 }
 
 // ArchiveItem is a single post in the archive list.

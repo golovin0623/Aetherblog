@@ -36,13 +36,13 @@ type BatchIDsRequest struct {
 }
 
 type MediaStatsVO struct {
-	TotalCount int64 `json:"totalCount"`
-	TotalSize  int64 `json:"totalSize"`
-	ImageCount int64 `json:"imageCount"`
-	VideoCount int64 `json:"videoCount"`
-	AudioCount int64 `json:"audioCount"`
-	DocCount   int64 `json:"docCount"`
-	OtherCount int64 `json:"otherCount"`
+	TotalFiles    int64 `json:"totalFiles"`
+	TotalSize     int64 `json:"totalSize"`
+	ImageCount    int64 `json:"imageCount"`
+	VideoCount    int64 `json:"videoCount"`
+	AudioCount    int64 `json:"audioCount"`
+	DocumentCount int64 `json:"documentCount"`
+	OtherCount    int64 `json:"otherCount"`
 }
 
 // MediaFolderVO is the response for a folder.
