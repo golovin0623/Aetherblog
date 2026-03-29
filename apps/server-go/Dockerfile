@@ -15,6 +15,7 @@ COPY apps/server-go/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server ./cmd/server
 
 # Production: alpine-based minimal image
+# Using alpine instead of scratch for: timezone data, /tmp, /app dirs, shell for healthcheck
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata \
     && mkdir -p /app/uploads /app/logs /app/migrations

@@ -153,14 +153,14 @@ export default async function PostDetailPage({ params }: PageProps) {
           </FadeIn>
 
           <FadeIn delay={0.1}>
-            <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4">{post.title}</h1>
+            <h1 className="text-3xl md:text-4xl font-bold font-serif text-[var(--text-primary)] mb-4">{post.title}</h1>
           </FadeIn>
 
           <FadeIn delay={0.15}>
             <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
-              <time>{post.publishedAt}</time>
-              {post.categoryName && <span>{post.categoryName}</span>}
-              <span>{post.viewCount} 阅读</span>
+              <time className="font-serif italic">{post.publishedAt}</time>
+              {post.categoryName && <span className="font-serif italic">{post.categoryName}</span>}
+              <span className="font-serif italic">{post.viewCount} 阅读</span>
               <div className="flex items-center gap-2 ml-1">
                 {adminEditUrl ? (
                   <a
@@ -193,13 +193,13 @@ export default async function PostDetailPage({ params }: PageProps) {
 
           {post.tags.length > 0 && (
             <FadeIn delay={0.2}>
-              <div className="flex gap-2 mb-8">
+              <div className="flex flex-wrap gap-2 mb-8">
                 {post.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-3 py-1 rounded-full text-xs bg-primary/20 text-primary"
+                    className="inline-flex items-center px-3 py-1 rounded-md text-xs font-serif bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap hover:border-[var(--border-hover)] transition-colors"
                   >
-                    {tag}
+                    #{tag}
                   </span>
                 ))}
               </div>
@@ -221,8 +221,8 @@ export default async function PostDetailPage({ params }: PageProps) {
           {post.id > 0 && (
             <FadeIn delay={0.3}>
               <PostNavigation
-                prevPost={adjacentPosts.prevPost}
-                nextPost={adjacentPosts.nextPost}
+                prevPost={adjacentPosts.nextPost}
+                nextPost={adjacentPosts.prevPost}
               />
             </FadeIn>
           )}
@@ -247,8 +247,8 @@ export default async function PostDetailPage({ params }: PageProps) {
       {/* 移动端底部上滑快捷导航（Chrome 风格手势） */}
       {post.id > 0 && (
         <MobileBottomPullNav
-          prevPost={adjacentPosts.prevPost}
-          nextPost={adjacentPosts.nextPost}
+          prevPost={adjacentPosts.nextPost}
+          nextPost={adjacentPosts.prevPost}
         />
       )}
     </div>

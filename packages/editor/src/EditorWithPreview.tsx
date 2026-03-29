@@ -488,26 +488,36 @@ export function EditorWithPreview({
     <div className={`flex flex-col h-full ${className}`}>
       {/* 内部工具栏 - 仅在未隐藏时显示 */}
       {!hideToolbar && (
-        <div className="flex items-center gap-2 p-2 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
+        <div
+          role="group"
+          aria-label="编辑器视图模式"
+          className="flex items-center gap-2 p-2 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]"
+        >
           <button
+            type="button"
             onClick={() => setViewMode('edit')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
+            aria-pressed={viewMode === 'edit'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
               }`}
           >
             <Edit className="w-4 h-4" />
             编辑
           </button>
           <button
+            type="button"
             onClick={() => setViewMode('preview')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
+            aria-pressed={viewMode === 'preview'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
               }`}
           >
             <Eye className="w-4 h-4" />
             预览
           </button>
           <button
+            type="button"
             onClick={() => setViewMode('split')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${viewMode === 'split' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
+            aria-pressed={viewMode === 'split'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] ${viewMode === 'split' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'
               }`}
           >
             <Columns className="w-4 h-4" />

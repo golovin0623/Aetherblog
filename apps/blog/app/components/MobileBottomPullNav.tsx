@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
@@ -83,7 +83,7 @@ const vibrate = (pattern: number | number[]) => {
 
 /* ─── Component ─── */
 
-export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottomPullNavProps) {
+function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProps) {
   const [gesture, setGesture] = useState<GestureState>({
     active: false,
     pullProgress: 0,
@@ -541,3 +541,5 @@ export default function MobileBottomPullNav({ prevPost, nextPost }: MobileBottom
     document.body
   );
 }
+
+export default memo(MobileBottomPullNavBase);

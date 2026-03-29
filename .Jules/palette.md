@@ -66,3 +66,15 @@
 **Learning:** Custom dropdown components, such as the `ThemeToggle`'s system selection dropdown, often function correctly visually but fail to convey semantic meaning to screen readers without specific ARIA patterns. A trigger button requires `aria-haspopup="menu"` and `aria-expanded` attributes, while the popup container must have `role="menu"` (and an `aria-label`) and its children `role="menuitem"`. This explicit mapping is necessary for screen readers to switch into menu-navigation mode and announce the interaction properly.
 **Action:** Whenever building or modifying a custom dropdown selector or context menu, always apply the complete W3C ARIA Menu pattern: the trigger needs `aria-haspopup="menu"` and `aria-expanded={isOpen}`, the container needs `role="menu"`, and the clickable items need `role="menuitem"`.
 
+## 2026-03-25 - Segmented Control Keyboard Accessibility
+**Learning:** Segmented controls implemented using Next.js `<Link>` elements often lack proper focus indicators, making them invisible to keyboard users. Use `aria-current="page"` to indicate the active segment instead of `aria-pressed` (reserved for toggle buttons). Adding `role="group"` to the container helps screen readers.
+**Action:** When implementing segmented controls using `<Link>` elements, wrap them in a `role="group"` container with `aria-label`. Use `aria-current="page"` for active segments and ensure `focus-visible` ring styles are applied.
+
+## 2026-03-25 - Tooltip Keyboard Accessibility
+**Learning:** Hover-triggered tooltips (using `onMouseEnter`/`onMouseLeave`) completely ignore keyboard users navigating with Tab, hiding potentially important information from users who don't use a mouse.
+**Action:** Always pair `onMouseEnter` with `onFocus`, and `onMouseLeave` with `onBlur` on focusable target elements to ensure tooltips are accessible via all input modalities.
+
+
+## 2025-03-25 - Segmented Controls using Buttons Accessibility
+**Learning:** Segmented controls implemented using `<button>` elements (such as the view mode toggle in `FriendsList.tsx`) often lack structural ARIA properties, proper focus visibility styles, and explicit `type="button"` declarations. This leaves screen reader users without context and keyboard users unable to see where focus is applied.
+**Action:** Always ensure that when implementing segmented controls using buttons, the container has `role="group"` and an `aria-label`, and the buttons include `type="button"`, `aria-pressed` for the active state, and comprehensive `focus-visible` utility classes (including `ring-offset` matching the background) for full keyboard and screen reader accessibility.
