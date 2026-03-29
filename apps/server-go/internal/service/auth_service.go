@@ -52,7 +52,7 @@ func (s *AuthService) CheckUserCanLogin(u *model.User) error {
 	return nil
 }
 
-// ValidatePassword compares plain text against bcrypt hash.
+// ValidatePassword compares plain text input against bcrypt hash stored in DB.
 func (s *AuthService) ValidatePassword(u *model.User, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil
 }
