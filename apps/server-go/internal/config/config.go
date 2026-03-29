@@ -115,12 +115,12 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Load environment variables (prefix: AETHERBLOG_)
-	// AETHERBLOG_SERVER_PORT=8080 → server.port
+	// Uses smart separator: only the first underscore after known top-level keys becomes "."
+	// AETHERBLOG_AI_BASE_URL → ai.base_url (not ai.base.url)
+	// AETHERBLOG_DATABASE_MAX_OPEN_CONNS → database.max_open_conns
 	if err := k.Load(env.Provider("AETHERBLOG_", ".", func(s string) string {
-		return strings.Replace(
-			strings.ToLower(strings.TrimPrefix(s, "AETHERBLOG_")),
-			"_", ".", -1,
-		)
+		key := strings.ToLower(strings.TrimPrefix(s, "AETHERBLOG_"))
+		return envKeyToKoanf(key)
 	}), nil); err != nil {
 		return nil, fmt.Errorf("loading env: %w", err)
 	}
@@ -158,6 +158,27 @@ func Load(path string) (*Config, error) {
 	_ = k.Unmarshal("", cfg)
 
 	return cfg, nil
+}
+
+// envKeyToKoanf converts a lowercase env key (after prefix removal) to a koanf path.
+// It splits only at the first-level section boundary, preserving underscores in field names.
+// Example: "ai_base_url" → "ai.base_url", "database_max_open_conns" → "database.max_open_conns"
+func envKeyToKoanf(key string) string {
+	// Known top-level config sections
+	prefixes := []string{
+		"server", "database", "redis", "jwt", "auth",
+		"cors", "upload", "media", "log", "ai", "elasticsearch",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(key, p+"_") {
+			return p + "." + key[len(p)+1:]
+		}
+	}
+	// Special: auth_cookie_secure → auth.cookie.secure (nested 3 levels)
+	if strings.HasPrefix(key, "auth_cookie_") {
+		return "auth.cookie." + key[len("auth_cookie_"):]
+	}
+	return strings.ReplaceAll(key, "_", ".")
 }
 
 func defaultConfig() *Config {

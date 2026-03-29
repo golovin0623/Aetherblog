@@ -278,7 +278,7 @@ export function SystemTrends({ className }: { className?: string }) {
              <select
                  value={minutes}
                  onChange={(e) => setMinutes(Number(e.target.value))}
-                 className="bg-transparent text-[var(--text-primary)] text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-primary transition-colors appearance-none text-center h-full min-w-[50px]"
+                 className="select-mini bg-transparent text-[var(--text-primary)] text-[10px] pl-2 focus:outline-none border-none cursor-pointer hover:text-primary transition-colors h-full min-w-[60px]"
                  title="时间范围"
                >
                  <option value="30">30分</option>
@@ -290,13 +290,13 @@ export function SystemTrends({ className }: { className?: string }) {
                  <option value="10080">7天</option>
                  <option value="43200">30天</option>
              </select>
-             
+
              <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 
              <select
                  value={refreshInterval}
                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                 className="bg-transparent text-[var(--text-muted)] text-[10px] px-2 focus:outline-none border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors appearance-none text-center h-full min-w-[40px]"
+                 className="select-mini bg-transparent text-[var(--text-muted)] text-[10px] pl-2 focus:outline-none border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors h-full min-w-[50px]"
                  title="刷新频率"
                >
                  <option value="5">5s</option>
