@@ -1,0 +1,4 @@
+
+## 2025-03-09 - TimelineTree Focus Visibility and Comment Form Labels
+**Learning:** In highly customized, dense interactive React components (like the custom recursive `TimelineTree` and complex forms in `CommentSection`), relying purely on Tailwind's default or component-level focus states is insufficient. Screen readers require explicit, linked `<label>` elements even for heavily styled custom inputs, and keyboard users need explicit `focus-visible` rings with appropriate offsets (`ring-offset`) that respect theme-aware backgrounds to navigate effectively.
+**Action:** When building interactive lists or trees, manually apply comprehensive `focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2` utility classes to all focusable elements (buttons, links). When building forms, always use `React.useId()` to generate a prefix and explicitly link `sr-only` labels to inputs using `htmlFor` and `id`, rather than relying solely on `aria-label`.
