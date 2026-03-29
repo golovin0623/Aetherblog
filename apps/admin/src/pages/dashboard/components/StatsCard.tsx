@@ -109,7 +109,7 @@ export function StatsCard({
                   {change > 0 ? <TrendingUp className="w-3 h-3" /> :
                    change < 0 ? <TrendingDown className="w-3 h-3" /> :
                    <Minus className="w-3 h-3" />}
-                  <span>{Math.abs(change)}%</span>
+                  <span>{Math.abs(change).toFixed(1)}%</span>
                 </div>
               )}
               {changeLabel && <span className="text-[var(--text-muted)] text-xs truncate">{changeLabel}</span>}
