@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -159,16 +160,15 @@ func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int)
 	var clean strings.Builder
 	i := 0
 	for i < len(buf) {
-		if i+8 <= len(buf) {
-			frameSize := int(buf[i+4])<<24 | int(buf[i+5])<<16 | int(buf[i+6])<<8 | int(buf[i+7])
-			if frameSize > 0 && i+8+frameSize <= len(buf) {
-				clean.Write(buf[i+8 : i+8+frameSize])
-				i += 8 + frameSize
-				continue
-			}
+		if i+8 > len(buf) {
+			break // incomplete header, discard remaining
 		}
-		clean.WriteByte(buf[i])
-		i++
+		frameSize := int(binary.BigEndian.Uint32(buf[i+4 : i+8]))
+		if frameSize <= 0 || i+8+frameSize > len(buf) {
+			break // incomplete or invalid frame, stop
+		}
+		clean.Write(buf[i+8 : i+8+frameSize])
+		i += 8 + frameSize
 	}
 
 	return clean.String(), nil
