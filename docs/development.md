@@ -25,9 +25,8 @@
 |------|------|
 | Node.js | ≥ 20 |
 | pnpm | ≥ 9 |
-| JDK | 25 (Early Access) |
+| Go | 1.24 |
 | Docker & Docker Compose | 最新版 |
-| Maven | 3.9+（或使用项目自带 `./mvnw`） |
 
 ---
 
@@ -89,7 +88,7 @@ docker compose up -d
 #   docker compose up -d postgres redis
 
 # 3. 启动后端服务
-cd apps/server && ./mvnw spring-boot:run -pl aetherblog-app
+cd apps/server-go && go run ./cmd/server
 
 # 4. 启动管理后台
 pnpm dev:admin
@@ -116,14 +115,14 @@ pnpm lint             # 全部代码检查
 pnpm clean            # 清理所有 node_modules 和构建产物
 ```
 
-### 后端（Maven 多模块）
+### 后端（Go）
 
 ```bash
-cd apps/server
-mvn clean install              # 构建所有模块
-mvn clean install -DskipTests  # 跳过测试构建
-mvn spring-boot:run -pl aetherblog-app  # 启动应用
-mvn test -pl blog-service      # 运行指定模块测试
+cd apps/server-go
+go build ./...                 # 构建所有包
+go run ./cmd/server            # 启动应用
+go test ./... -v               # 运行所有测试
+go test ./internal/blog/... -v # 运行指定模块测试
 ```
 
 ### AI 服务（Python FastAPI）
@@ -148,47 +147,37 @@ docker compose down        # 停止
 ## 后端模块说明
 
 ```
-apps/server/
-├── aetherblog-app/          # 🚀 应用启动入口（可执行 JAR）
-├── aetherblog-api/          # 📦 API 接口定义、DTO、VO
-├── aetherblog-common/       # 🔧 公共模块（POM 聚合）
-│   ├── common-core/         #    核心工具类、通用响应
-│   ├── common-security/     #    JWT 认证、安全配置
-│   ├── common-redis/        #    Redis 缓存配置
-│   └── common-log/          #    日志管理
-├── aetherblog-service/      # 💼 业务服务（POM 聚合）
-│   └── blog-service/        #    博客核心业务实现
-└── aetherblog-ai/           # 🤖 AI 模块（已弃用，迁移为独立服务）
-    └── ai-client/           #    AI 服务 HTTP 客户端
+apps/server-go/
+├── cmd/
+│   └── server/              # 🚀 应用启动入口（main.go）
+├── internal/
+│   ├── blog/                # 💼 博客核心业务实现
+│   ├── auth/                # 🔐 JWT 认证、安全配置
+│   ├── common/              # 🔧 公共工具类、通用响应
+│   └── ai/                  # 🤖 AI 服务 HTTP 客户端
+├── pkg/
+│   ├── middleware/           #    中间件（日志、认证、CORS）
+│   ├── database/            #    数据库连接与迁移
+│   └── redis/               #    Redis 缓存配置
+├── api/
+│   └── v1/                  # 📦 路由定义与 Handler
+├── go.mod                   #    Go 模块依赖管理
+└── go.sum
 ```
 
-| 模块 | 说明 | 打包类型 |
-|------|------|----------|
-| `aetherblog-app` | 应用启动入口，包含 main 方法 | JAR（可执行） |
-| `aetherblog-api` | API 接口定义、DTO、VO | JAR（库） |
-| `aetherblog-common` | 公共模块聚合 | POM |
-| `common-core` | 核心工具类、通用响应 | JAR（库） |
-| `common-security` | JWT 认证、安全配置 | JAR（库） |
-| `common-redis` | Redis 缓存配置 | JAR（库） |
-| `common-log` | 日志配置 | JAR（库） |
-| `aetherblog-service` | 业务服务聚合 | POM |
-| `blog-service` | 博客核心业务实现 | JAR（库） |
+| 目录 | 说明 |
+|------|------|
+| `cmd/server` | 应用启动入口，包含 main 函数 |
+| `internal/blog` | 博客核心业务逻辑（Service、Repository） |
+| `internal/auth` | JWT 认证、安全配置 |
+| `internal/common` | 核心工具类、通用响应结构 |
+| `internal/ai` | AI 服务 HTTP 客户端 |
+| `pkg/middleware` | HTTP 中间件（日志、认证、CORS） |
+| `pkg/database` | 数据库连接与迁移 |
+| `pkg/redis` | Redis 缓存配置 |
+| `api/v1` | API 路由定义与请求处理 |
 
-> ⚠️ **注意**: 只有 `aetherblog-app` 模块使用 `spring-boot-maven-plugin` 打包成可执行 JAR，其他模块作为库被引用，**不应该**配置此插件。
-
-### 模块依赖关系
-
-```
-aetherblog-app（可执行 JAR 入口）
-    ↓
-aetherblog-service（blog-service）
-    ↓
-aetherblog-common（common-*）
-    ↓
-aetherblog-api（DTO）
-```
-
-> `common` 模块不能依赖 `service` 模块；`api` 模块不依赖其他内部模块。
+> ⚠️ **注意**: `internal/` 下的包仅限项目内部使用（Go 语言访问控制），`pkg/` 下的包可供外部引用。
 
 ---
 
@@ -269,11 +258,13 @@ docker compose down --remove-orphans
 2. 添加缺失依赖
 3. 运行 `pnpm install`
 
-### Maven 构建失败
+### Go 构建失败
 
 ```bash
-cd apps/server
-./mvnw clean install -DskipTests
+cd apps/server-go
+go clean -cache          # 清理构建缓存
+go mod tidy              # 整理依赖
+go build ./...           # 重新构建
 ```
 
 ### Elasticsearch 异常

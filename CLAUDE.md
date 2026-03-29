@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Tech Stack:**
 - Frontend: React 19, Next.js 15 (blog), Vite (admin)
-- Backend: Spring Boot 4.0, JDK 21 (with JDK 25 Mockito/Byte Buddy compatibility)
+- Backend: Go 1.24, Echo framework
 - AI: 独立 AI 服务 (FastAPI + LiteLLM)
 - Database: PostgreSQL 17 with pgvector
 - Cache: Redis 7
@@ -39,20 +39,22 @@ pnpm lint              # Lint all packages
 pnpm clean             # Remove all node_modules and build artifacts
 ```
 
-### Backend (Maven multi-module)
+### Backend (Go)
 
 ```bash
-cd apps/server
+cd apps/server-go
 
-# Build (from server directory)
-mvn clean install              # Build all modules
-mvn clean install -DskipTests  # Build without tests
+# Build
+go build ./...
 
-# Run (only aetherblog-app has executable JAR)
-mvn spring-boot:run -pl aetherblog-app
+# Run
+go run ./cmd/server
 
-# Run specific module tests
-mvn test -pl blog-service
+# Run tests
+go test ./... -v
+
+# Run with live reload (if air installed)
+air
 ```
 
 ### Docker & Infrastructure
@@ -108,22 +110,11 @@ AetherBlog/
 │   ├── blog/          # Next.js 15 blog frontend
 │   ├── admin/         # Vite + React 19 admin dashboard
 │   ├── ai-service/    # 🤖 External AI service (FastAPI + LiteLLM)
-│   └── server/        # Spring Boot backend (multi-module Maven)
-│       ├── aetherblog-app/      # 🚀 Executable entry point (main class)
-│       ├── aetherblog-api/      # API interfaces, DTOs, VOs
-│       ├── aetherblog-common/   # Common modules (POM aggregator)
-│       │   ├── common-core/     # Core utilities, R response
-│       │   ├── common-security/ # JWT, SecurityConfig
-│       │   ├── common-redis/    # Redis configuration
-│       │   └── common-log/      # Logging
-│       ├── aetherblog-service/  # Business services (POM aggregator)
-│       │   └── blog-service/    # Blog core service
-│       └── aetherblog-ai/       # AI modules
-│           ├── ai-client/       # 🆕 HTTP Client for external AI service
-│           ├── ai-core/         # (Deprecated) Spring AI core
-│           ├── ai-rag/          # (Deprecated) RAG module
-│           ├── ai-agent/        # (Deprecated) Agent module
-│           └── ai-prompt/       # (Deprecated) Prompt module
+│   ├── server/        # (Deprecated) Spring Boot backend — replaced by server-go
+│   └── server-go/     # Go backend (Echo framework)
+│       ├── cmd/server/          # Entry point (main.go)
+│       ├── cmd/migrate/         # Database migration tool
+│       └── internal/            # Application packages (see Backend Package Structure)
 ├── docs/              # Architecture, deployment, and development guides
 ├── nginx/             # Gateway configs (nginx.conf, nginx.dev.conf)
 ├── ops/               # Operational scripts and configs
@@ -137,23 +128,23 @@ AetherBlog/
 └── 系统需求企划书及详细设计.md  # Master design document (~22k lines)
 ```
 
-### Backend Module Dependencies
+### Backend Package Structure
 
 ```
-aetherblog-app (executable JAR)
-    ↓
-aetherblog-service (blog-service)
-    ↓
-aetherblog-common (common-*)
-    ↓
-aetherblog-api (DTOs)
+apps/server-go/
+├── cmd/server/          # Entry point (main.go)
+├── cmd/migrate/         # Database migration tool
+├── internal/
+│   ├── config/          # Configuration
+│   ├── handler/         # HTTP handlers (controllers)
+│   ├── service/         # Business logic
+│   ├── repository/      # Database access
+│   ├── model/           # Data models
+│   ├── dto/             # Request/Response DTOs
+│   ├── middleware/       # JWT, CORS, rate limit
+│   └── pkg/             # Shared utilities
+└── migrations/          # SQL migration files
 ```
-
-**Critical constraints:**
-- Only `aetherblog-app` uses `spring-boot-maven-plugin` for executable JAR
-- Other modules are library JARs
-- `common` modules cannot depend on `service` modules
-- `api` module has no dependencies on other internal modules
 
 ### Frontend Package System
 
@@ -199,14 +190,12 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 
 | Dependency | Version | Notes |
 |-----------|---------|-------|
-| Spring Boot | 4.0.0 | Parent POM |
-| Java | 21 | Source/target, with JDK 25 Byte Buddy override |
-| Spring AI | 2.0.0-M1 | AI integration |
-| Jackson | 3.0.3 | Spring Boot 4 compatible (tools.jackson) |
-| Elasticsearch | 7.17.27 | Client library |
-| MapStruct | 1.6.3 | DTO mapping |
-| Lombok | 1.18.42 | Boilerplate reduction |
-| JJWT | 0.12.7 | JWT handling |
+| Go | 1.24 | Language version |
+| Echo | v4 | HTTP framework |
+| sqlx | latest | Database driver |
+| go-redis | v9 | Redis client |
+| golang-jwt | v5 | JWT handling |
+| golang-migrate | v4 | DB migrations |
 
 ## API Structure
 
@@ -302,13 +291,11 @@ Services use axios and follow naming: `{module}Service.ts`
 - Types: `PascalCase` (e.g., `Post`, `CreatePostRequest`)
 
 ### Backend
-- Controllers: `PascalCase + Controller` (e.g., `PostController.java`)
-- Service interfaces: `PascalCase + Service` (e.g., `PostService.java`)
-- Service implementations: `PascalCase + ServiceImpl` (e.g., `PostServiceImpl.java`)
-- Repositories: `PascalCase + Repository` (e.g., `PostRepository.java`)
-- Entities: `PascalCase` (e.g., `Post.java`)
-- Request DTOs: `PascalCase + Request` (e.g., `CreatePostRequest.java`)
-- Response DTOs: `PascalCase + Response` (e.g., `PostDetailResponse.java`)
+- Handlers: `PascalCase + Handler` (e.g., `PostHandler`)
+- Services: `PascalCase + Service` (e.g., `PostService`)
+- Repositories: `PascalCase + Repo` (e.g., `PostRepo`)
+- Models: `PascalCase` (e.g., `Post`)
+- DTOs: `PascalCase + Request/Response` (e.g., `CreatePostRequest`)
 
 ## Development Workflow Principles
 
@@ -342,14 +329,13 @@ Reference the detailed design document: `系统需求企划书及详细设计.md
 
 The AI system uses an external service pattern:
 ```
-Spring Boot backend → ai-client (HTTP) → FastAPI ai-service (Python)
-                                              ↓
-                                         LiteLLM → LLM providers
+Go backend → HTTP client → FastAPI ai-service (Python)
+                                ↓
+                           LiteLLM → LLM providers
 ```
 
 - **`apps/ai-service/`** - Python FastAPI service with rate limiting, caching, metrics, provider registry, and vector store
-- **`apps/server/aetherblog-ai/ai-client/`** - Java HTTP client that bridges the backend to the external AI service
-- **Deprecated modules** (`ai-core`, `ai-rag`, `ai-agent`, `ai-prompt`) - Legacy Spring AI integration, do not extend
+- **`apps/server-go/`** - Go backend with HTTP client that calls the external AI service
 - **Test coverage requirement:** 80% (configured in `pyproject.toml`)
 
 ### CI/CD
@@ -417,10 +403,10 @@ docker compose down --remove-orphans
 ./start.sh
 ```
 
-### Maven Build Issues
+### Go Build Issues
 ```bash
-cd apps/server
-./mvnw clean install -DskipTests
+cd apps/server-go
+go clean -cache && go build ./...
 ```
 
 ### Frontend Package Errors
