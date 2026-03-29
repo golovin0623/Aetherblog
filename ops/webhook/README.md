@@ -1,21 +1,28 @@
 # AetherBlog Webhook 部署器
 
-这个目录提供“部署成功才返回 200”的 webhook 方案，解决 GitHub Actions 绿灯但服务器未更新的问题。
+这个目录提供"部署成功才返回 200"的 webhook 方案，解决 GitHub Actions 绿灯但服务器未更新的问题。
 
 ## 文件说明
 
-- `deploy.sh`：串行执行 `docker compose pull` + `up -d`，失败会退出非 0。
-- `webhook_server.py`：同步执行 `deploy.sh`，按真实结果返回 200/500。
-- `deploy-webhook.service`：systemd 服务模板（路径已固定为 `/root/Aetherblog/webhook`）。
+- `deploy.sh`：支持 full / incremental / canary / rollback 四种部署模式。
+- `webhook_server.py`：解析 CI 传来的 `{"services": "backend blog"}` JSON，按需触发增量或全量部署。
+- `deploy-webhook.service`：systemd 服务模板。
+
+## 部署模式
+
+| 模式 | 触发方式 | 行为 |
+|------|---------|------|
+| **incremental** | CI 检测到部分模块变更 | 只 pull + restart 变更的服务，`--no-deps` 跳过中间件 |
+| **full** | CI 未传 services / 手动触发 | 全量 pull + up -d（含中间件健康检查等待） |
+| **canary** | 手动设置 `DEPLOY_MODE=canary` | 指定服务灰度部署 |
+| **rollback** | 手动设置 `DEPLOY_MODE=rollback` | 回滚到指定版本 |
 
 ## 服务器安装步骤
 
 ```bash
-# 1) 把脚本复制到服务器项目目录
-mkdir -p /root/Aetherblog/webhook
-cp ops/webhook/deploy.sh /root/Aetherblog/webhook/
-cp ops/webhook/webhook_server.py /root/Aetherblog/webhook/
-chmod +x /root/Aetherblog/webhook/deploy.sh
+# 1) 用软链接指向仓库目录（git pull 后自动更新，无需手动 cp）
+ln -sfn /root/Aetherblog/ops/webhook /root/Aetherblog/webhook
+chmod +x /root/Aetherblog/ops/webhook/deploy.sh
 
 # 2) 生成新 secret
 WEBHOOK_SECRET=$(openssl rand -hex 32)
@@ -32,6 +39,9 @@ systemctl restart deploy-webhook
 systemctl status deploy-webhook --no-pager
 ```
 
+> **从旧方式迁移**：如果之前是手动 cp 文件到 `/root/Aetherblog/webhook/`，
+> 先删掉旧目录再建软链接：`rm -rf /root/Aetherblog/webhook && ln -sfn ...`
+
 ## GitHub Secret
 
 把下列 URL 写到仓库 `DEPLOY_WEBHOOK_URL`：
@@ -43,7 +53,12 @@ http://<your-server-ip>:7868/deploy/<WEBHOOK_SECRET>
 ## 验证
 
 ```bash
-# 正确 secret（应返回 200）
+# 增量部署（只重启 backend，不动中间件）
+curl -i -X POST -H "Content-Type: application/json" \
+  -d '{"services": "backend gateway"}' \
+  "http://127.0.0.1:7868/deploy/<WEBHOOK_SECRET>"
+
+# 全量部署（不传 services 则回退 full 模式）
 curl -i -X POST "http://127.0.0.1:7868/deploy/<WEBHOOK_SECRET>"
 
 # 错误 secret（应返回 403）

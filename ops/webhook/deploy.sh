@@ -10,7 +10,8 @@ PREFLIGHT_SCRIPT="${PREFLIGHT_SCRIPT:-$PROJECT_DIR/ops/release/preflight.sh}"
 PREFLIGHT_BLOCK="${PREFLIGHT_BLOCK:-true}"
 PREFLIGHT_ARGS="${PREFLIGHT_ARGS:-}"
 
-DEPLOY_MODE="${DEPLOY_MODE:-full}"   # full | canary | rollback
+DEPLOY_MODE="${DEPLOY_MODE:-full}"   # full | incremental | canary | rollback
+DEPLOY_SERVICES="${DEPLOY_SERVICES:-}"  # 增量部署的服务列表 (空格分隔)
 CANARY_SERVICES="${CANARY_SERVICES:-backend,ai-service}"
 ROLLBACK_VERSION="${ROLLBACK_VERSION:-}"
 
@@ -79,6 +80,25 @@ run_full_deploy() {
   docker compose -f "$COMPOSE_FILE" up -d
 }
 
+run_incremental_deploy() {
+  read -r -a services <<< "$DEPLOY_SERVICES"
+
+  if [ "${#services[@]}" -eq 0 ]; then
+    echo "[$(date -Iseconds)] WARN: DEPLOY_SERVICES is empty, falling back to full deploy"
+    run_full_deploy
+    return
+  fi
+
+  echo "[$(date -Iseconds)] Incremental deploy: ${services[*]}"
+  echo "[$(date -Iseconds)] Middleware (postgres/redis) will NOT be restarted"
+
+  echo "[$(date -Iseconds)] Pulling images: ${services[*]}"
+  docker compose -f "$COMPOSE_FILE" pull "${services[@]}"
+
+  echo "[$(date -Iseconds)] Recreating containers (--no-deps): ${services[*]}"
+  docker compose -f "$COMPOSE_FILE" up -d --no-deps "${services[@]}"
+}
+
 run_canary_deploy() {
   IFS=',' read -r -a raw_services <<< "$CANARY_SERVICES"
   services=()
@@ -104,6 +124,9 @@ run_canary_deploy() {
 case "$DEPLOY_MODE" in
   full)
     run_full_deploy
+    ;;
+  incremental)
+    run_incremental_deploy
     ;;
   canary)
     run_canary_deploy
