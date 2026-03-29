@@ -493,7 +493,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         {isOpen && createPortal(
           <AnimatePresence mode="wait">
             {isMobile ? (
-              <div className="fixed inset-0 z-[9999] flex flex-col justify-end">
+              <div className="fixed inset-0 z-[9999] flex flex-col justify-end model-selector-portal">
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

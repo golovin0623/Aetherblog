@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Save, Trash2, Loader2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import type { AiCredential, CreateCredentialRequest } from '@/services/aiProviderService';
 import { useCreateCredential, useDeleteCredential } from '../hooks/useCredentials';
 
@@ -77,9 +78,10 @@ export default function CredentialForm({
     });
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const handleDelete = () => {
     if (!credential) return;
-    if (!confirm('确定删除该凭证吗？')) return;
     deleteMutation.mutate(credential.id);
   };
 
@@ -230,7 +232,7 @@ export default function CredentialForm({
 
         {credential && (
           <button
-            onClick={handleDelete}
+            onClick={() => setShowDeleteConfirm(true)}
             disabled={isPending}
             className="flex items-center gap-2 px-4 py-2 rounded-xl border border-status-danger-border text-status-danger font-medium text-sm hover:bg-status-danger-light transition-colors disabled:opacity-50"
           >
@@ -248,6 +250,16 @@ export default function CredentialForm({
       <p className="text-xs text-[var(--text-muted)] italic">
         🔒 你的密钥与代理地址等将使用 AES-GCM 加密算法进行加密
       </p>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="删除凭证"
+        message="确定删除该凭证吗？删除后将无法恢复。"
+        confirmText="删除"
+        variant="danger"
+        onConfirm={() => { setShowDeleteConfirm(false); handleDelete(); }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

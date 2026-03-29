@@ -12,6 +12,7 @@ import {
   ToggleLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import type { AiModel } from '@/services/aiProviderService';
 import { MODEL_TYPES, type ModelType } from '../types';
 import {
@@ -52,6 +53,7 @@ export default function ModelList({
   const [editingModel, setEditingModel] = useState<AiModel | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showSortDialog, setShowSortDialog] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'clearRemote' | 'resetAll' | null>(null);
 
   const syncRemoteModels = useSyncRemoteModels();
   const clearProviderModels = useClearProviderModels();
@@ -89,12 +91,10 @@ export default function ModelList({
   };
 
   const handleClearRemote = () => {
-    if (!confirm('确定清空远程拉取的模型吗？')) return;
     clearProviderModels.mutate({ providerCode, source: 'remote' });
   };
 
   const handleResetAll = () => {
-    if (!confirm('确定清空该供应商下的全部模型吗？')) return;
     clearProviderModels.mutate({ providerCode });
   };
 
@@ -147,7 +147,7 @@ export default function ModelList({
           {/* 清空远程 */}
           {hasRemoteModels && (
             <button
-              onClick={handleClearRemote}
+              onClick={() => setConfirmAction('clearRemote')}
               disabled={clearProviderModels.isPending}
               title="清空远程"
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-status-danger-border text-xs text-status-danger bg-[var(--bg-primary)] hover:bg-status-danger/5 transition-all disabled:opacity-50"
@@ -159,7 +159,7 @@ export default function ModelList({
 
           {/* 重置 */}
           <button
-            onClick={handleResetAll}
+            onClick={() => setConfirmAction('resetAll')}
             disabled={clearProviderModels.isPending || !modelEditable}
             title="重置全部"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
@@ -296,6 +296,25 @@ export default function ModelList({
           />
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'clearRemote'}
+        title="清空远程模型"
+        message="确定清空远程拉取的模型吗？此操作不可撤销。"
+        confirmText="清空"
+        variant="danger"
+        onConfirm={() => { setConfirmAction(null); handleClearRemote(); }}
+        onCancel={() => setConfirmAction(null)}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction === 'resetAll'}
+        title="重置全部模型"
+        message="确定清空该供应商下的全部模型吗？此操作不可撤销。"
+        confirmText="重置"
+        variant="danger"
+        onConfirm={() => { setConfirmAction(null); handleResetAll(); }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

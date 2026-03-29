@@ -493,19 +493,19 @@ export default function PostsPage() {
                 {/* 发布时间范围 */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">发布时间</label>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <input
                       type="date"
                       value={filters.startDate}
                       onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-2 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50 [color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
                     />
-                    <span className="text-[var(--text-muted)] flex-shrink-0">-</span>
+                    <span className="text-[var(--text-muted)] flex-shrink-0">至</span>
                     <input
                       type="date"
                       value={filters.endDate}
                       onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))}
-                      className="flex-1 min-w-0 px-2 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-primary/50 [color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
                     />
                   </div>
                 </div>

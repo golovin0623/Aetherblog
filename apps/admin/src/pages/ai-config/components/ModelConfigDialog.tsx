@@ -2,8 +2,10 @@
 // ref: §5.1 - AI Service 架构 (参考 LobeChat 图5)
 
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import type { AiModel, CreateModelRequest, UpdateModelRequest } from '@/services/aiProviderService';
 import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing } from '../types';
 import { useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useModels';
@@ -252,9 +254,10 @@ export default function ModelConfigDialog({
     }
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   const handleDelete = () => {
     if (!initial) return;
-    if (!confirm('确定删除该模型吗？')) return;
     deleteMutation.mutate(initial.id, { onSuccess: onClose });
   };
 
@@ -265,20 +268,20 @@ export default function ModelConfigDialog({
 
   const extendParamSet = useMemo(() => new Set(form.settings.extendParams), [form.settings.extendParams]);
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
+        className="w-full sm:max-w-2xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl"
       >
         {/* 头部 */}
         <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
@@ -680,7 +683,7 @@ export default function ModelConfigDialog({
           {/* 价格 */}
           <div className="space-y-4">
             <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">价格</div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-sm text-[var(--text-muted)]">币种</label>
                 <select
@@ -761,10 +764,10 @@ export default function ModelConfigDialog({
         </div>
 
         {/* 底部操作 */}
-        <div className="flex items-center justify-between p-5 border-t border-[var(--border-default)]">
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 p-5 border-t border-[var(--border-default)]">
           {mode === 'edit' && initial && (
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={isPending}
               className="px-4 py-2 rounded-xl border border-status-danger-border text-status-danger text-sm font-medium hover:bg-status-danger-light transition-colors disabled:opacity-50"
             >
@@ -776,7 +779,7 @@ export default function ModelConfigDialog({
               onClick={onClose}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-xl border border-[var(--border-default)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-card-hover)] transition-colors"
             >
               取消
             </motion.button>
@@ -785,15 +788,26 @@ export default function ModelConfigDialog({
               disabled={isPending || (mode === 'create' && !form.model_id)}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-sm"
             >
               {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               确认
             </motion.button>
           </div>
         </div>
+
+        <ConfirmDialog
+          isOpen={showDeleteConfirm}
+          title="删除模型"
+          message="确定删除该模型吗？此操作不可撤销。"
+          confirmText="删除"
+          variant="danger"
+          onConfirm={() => { setShowDeleteConfirm(false); handleDelete(); }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
