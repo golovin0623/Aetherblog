@@ -13,15 +13,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.router import router
 from app.api import deps as deps_module
 from app.core.config import get_settings
-from app.core.logging import configure_logging
+from app.core.logging import setup_logging
 from app.schemas.common import ApiResponse
 
 
 # ref: §2.4.2.5
-configure_logging()
-logger = logging.getLogger("ai-service")
-
 settings = get_settings()
+setup_logging(log_path=settings.log_path, level=settings.log_level)
+logger = logging.getLogger("ai-service")
 
 
 @asynccontextmanager
@@ -51,6 +50,7 @@ async def request_context(request: Request, call_next):
         request.url.path,
         response.status_code,
         duration_ms,
+        extra={"traceId": request_id},
     )
     return response
 

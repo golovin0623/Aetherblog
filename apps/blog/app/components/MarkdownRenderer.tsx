@@ -224,12 +224,17 @@ function paragraphContainsBlockImage(node: unknown): boolean {
       return false;
     }
 
-    const childNode = child as { type?: string; children?: unknown[] };
+    const childNode = child as { type?: string; tagName?: string; children?: unknown[] };
+    // mdast image node
     if (childNode.type === 'image') {
       return true;
     }
+    // rehype HTML <img> element (raw HTML in markdown)
+    if (childNode.type === 'element' && childNode.tagName === 'img') {
+      return true;
+    }
 
-    if ((childNode.type === 'link' || childNode.type === 'emphasis' || childNode.type === 'strong') && Array.isArray(childNode.children)) {
+    if ((childNode.type === 'link' || childNode.type === 'emphasis' || childNode.type === 'strong' || childNode.type === 'element') && Array.isArray(childNode.children)) {
       return paragraphContainsBlockImage(childNode);
     }
 

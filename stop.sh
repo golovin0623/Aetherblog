@@ -266,9 +266,9 @@ main() {
     acquire_lock
 
     echo -e "${BLUE}[1/6] 停止后端服务...${NC}"
-    stop_service "backend" "$PROJECT_ROOT/apps/server"
+    stop_service "backend" "$PROJECT_ROOT/apps/server-go"
     if [ "$LAST_STOP_RESULT" != "stopped" ] && [ "$LAST_STOP_RESULT" != "skipped" ]; then
-        stop_by_port 8080 "后端 API" "$PROJECT_ROOT/apps/server"
+        stop_by_port 8080 "后端 API" "$PROJECT_ROOT/apps/server-go"
     fi
     
     echo ""
