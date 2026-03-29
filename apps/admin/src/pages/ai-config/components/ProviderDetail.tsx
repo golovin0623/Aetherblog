@@ -1,7 +1,7 @@
 // 供应商详情面板组件
 // ref: §5.1 - AI Service 架构 (LobeChat 风格)
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ExternalLink,
@@ -24,6 +24,7 @@ import { getProviderBrand } from '../utils/brandColors';
 import ProviderIcon from './ProviderIcon';
 import ConnectionTest from './ConnectionTest';
 import ModelList from './ModelList';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 interface ProviderDetailProps {
   provider: AiProvider;
@@ -164,12 +165,13 @@ export default function ProviderDetail({
 
     (provider.capabilities?.check_model as string | undefined);
 
-  const handleDelete = () => {
-    if (!confirm('确定删除该供应商吗？这将同时删除所有关联的模型和凭证。')) return;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDelete = useCallback(() => {
     deleteMutation.mutate(provider.id, {
       onSuccess: () => onBack(),
     });
-  };
+  }, [deleteMutation, provider.id, onBack]);
 
   return (
     <motion.div
@@ -401,7 +403,7 @@ export default function ProviderDetail({
                 {/* 底部删除按钮 */}
                 <div className="flex justify-center pt-2">
                   <button
-                    onClick={handleDelete}
+                    onClick={() => setShowDeleteConfirm(true)}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-status-danger-light text-xs font-medium text-status-danger transition-colors"
                   >
                     <XCircle className="w-3.5 h-3.5" />
@@ -544,7 +546,7 @@ export default function ProviderDetail({
           {/* 底部删除按钮 */}
           <div className="flex justify-center pt-2">
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-status-danger-light text-xs font-medium text-status-danger transition-colors"
             >
               <XCircle className="w-3.5 h-3.5" />
@@ -553,6 +555,16 @@ export default function ProviderDetail({
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="删除供应商"
+        message="确定删除该供应商吗？这将同时删除所有关联的模型和凭证。"
+        confirmText="删除"
+        variant="danger"
+        onConfirm={() => { setShowDeleteConfirm(false); handleDelete(); }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </motion.div>
   );
 }

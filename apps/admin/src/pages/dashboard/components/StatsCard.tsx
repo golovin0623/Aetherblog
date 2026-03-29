@@ -98,10 +98,10 @@ export function StatsCard({
           </p>
 
           {(change !== undefined || changeLabel) && (
-            <div className="flex items-center gap-2 mt-3 text-sm">
+            <div className="flex items-center gap-2 mt-3 text-sm overflow-hidden">
               {change !== undefined && (
                 <div className={cn(
-                  "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium",
+                  "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0",
                   change > 0 ? "bg-green-500/10 text-green-600 dark:text-green-400" :
                   change < 0 ? "bg-red-500/10 text-red-600 dark:text-red-400" :
                   "bg-[var(--bg-secondary)] text-[var(--text-muted)]"
@@ -112,7 +112,7 @@ export function StatsCard({
                   <span>{Math.abs(change)}%</span>
                 </div>
               )}
-              {changeLabel && <span className="text-[var(--text-muted)] text-xs">{changeLabel}</span>}
+              {changeLabel && <span className="text-[var(--text-muted)] text-xs truncate">{changeLabel}</span>}
             </div>
           )}
         </div>

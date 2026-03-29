@@ -1,6 +1,7 @@
 // 模型拖拽排序弹窗
 
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, Reorder } from 'framer-motion';
 import { X, GripVertical, Loader2 } from 'lucide-react';
 import type { AiModel } from '@/services/aiProviderService';
@@ -55,12 +56,12 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
     updateMutation.mutate({ providerCode, items: updates }, { onSuccess: onClose });
   };
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <motion.div
@@ -68,7 +69,7 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
+        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden max-h-[80vh] sm:max-h-[90vh]"
       >
         {/* 头部 */}
         <div className="flex items-center justify-between p-5 border-b border-[var(--border-default)]">
@@ -121,6 +122,7 @@ export default function ModelSortDialog({ providerCode, models, onClose }: Model
           </button>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
