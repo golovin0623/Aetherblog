@@ -152,6 +152,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
 });
 
 function CommentSectionBase({ postId, settings }: CommentSectionProps) {
+  const formId = useId();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -372,10 +373,11 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                   <form noValidate onSubmit={handleSubmit} className="relative z-10 space-y-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="group/input relative">
+                        <label htmlFor={`${formId}-nickname`} className="sr-only">昵称</label>
                         <ShieldCheck aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-[var(--color-primary)] transition-colors z-10" />
                         <input
+                          id={`${formId}-nickname`}
                           ref={nicknameInputRef}
-                          aria-label="昵称"
                           className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all"
                           placeholder="昵称 *"
                           value={nickname}
@@ -384,10 +386,11 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         />
                       </div>
                       <div className="group/input relative">
+                        <label htmlFor={`${formId}-email`} className="sr-only">邮箱</label>
                         <Mail aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-[var(--color-primary)] transition-colors z-10" />
                         <input
+                          id={`${formId}-email`}
                           ref={emailInputRef}
-                          aria-label="邮箱"
                           className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all"
                           placeholder="邮箱 (保密) *"
                           type="email"
@@ -399,10 +402,11 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                     </div>
 
                     <div className="group/input relative">
+                      <label htmlFor={`${formId}-website`} className="sr-only">网站</label>
                       <Globe aria-hidden="true" className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-muted)] group-focus-within/input:text-[var(--color-primary)] transition-colors z-10" />
                       <input
+                        id={`${formId}-website`}
                         type="url"
-                        aria-label="网站"
                         className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl py-3 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all"
                         placeholder="网站 (https://...)"
                         value={website}
@@ -411,9 +415,10 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                     </div>
 
                     <div className="relative">
+                      <label htmlFor={`${formId}-content`} className="sr-only">评论内容</label>
                       <textarea
+                        id={`${formId}-content`}
                         ref={textareaRef}
-                        aria-label="评论内容"
                         className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all min-h-[140px] resize-y leading-relaxed"
                         placeholder="写点什么吧..."
                         value={content}
