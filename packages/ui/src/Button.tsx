@@ -14,16 +14,16 @@ interface ButtonProps {
 }
 
 const variants = {
-  primary: 'bg-gradient-to-r from-primary to-purple-500 text-white hover:shadow-[var(--shadow-primary-lg)] shadow-[var(--shadow-primary)]',
-  secondary: 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] border-2 border-transparent bg-clip-padding relative before:absolute before:inset-0 before:bg-gradient-to-r before:from-primary before:to-purple-500 before:rounded-lg before:-z-10 before:m-[-2px]',
-  ghost: 'text-[var(--text-secondary)] hover:text-white hover:bg-gradient-to-r hover:from-primary/10 hover:to-purple-500/10',
+  primary: 'bg-black text-white hover:bg-black/90 shadow-sm hover:shadow-md dark:bg-white dark:text-black dark:hover:bg-white/90',
+  secondary: 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-default)]',
+  ghost: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-primary/10',
   danger: 'bg-red-500 text-white hover:bg-red-600',
   dark: 'bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90',
 };
 
 const sizes = {
-  sm: 'px-3 py-1.5 text-sm',
-  md: 'px-4 py-2 text-sm',
+  sm: 'px-4 py-2 text-sm',
+  md: 'px-5 py-2.5 text-sm',
   lg: 'px-6 py-3 text-base',
 };
 
@@ -45,7 +45,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-medium',
+        'inline-flex items-center justify-center rounded-xl font-bold',
         'transition-colors duration-200',
         variants[variant],
         sizes[size],

@@ -116,7 +116,7 @@ services:
     image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-backend:${VERSION:-latest}
     build:
       context: .
-      dockerfile: apps/server/Dockerfile
+      dockerfile: apps/server-go/Dockerfile
       platforms:
         - linux/amd64
         - linux/arm64
@@ -129,45 +129,43 @@ services:
     # ports:
     #   - "127.0.0.1:8081:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aetherblog
-      SPRING_DATASOURCE_USERNAME: aetherblog
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
-      SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-redis}
-      SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
-      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      AI_SERVICE_URL: http://ai-service:8000
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
+      AETHERBLOG_DATABASE_HOST: postgres
+      AETHERBLOG_DATABASE_PORT: 5432
+      AETHERBLOG_DATABASE_USER: aetherblog
+      AETHERBLOG_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
+      AETHERBLOG_DATABASE_DBNAME: aetherblog
+      AETHERBLOG_DATABASE_SSLMODE: disable
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      AETHERBLOG_AI_BASE_URL: http://ai-service:8000
       JWT_SECRET: ${JWT_SECRET}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
-      AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Strict}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:7899,http://127.0.0.1:7899}
-      LOGGING_FILE_NAME: /app/logs/server.log
-      APP_LOG_PATH: /app/logs
+      AETHERBLOG_AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AETHERBLOG_AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Strict}
+      AETHERBLOG_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:7899,http://127.0.0.1:7899}
+      AETHERBLOG_UPLOAD_PATH: /app/uploads
+      AETHERBLOG_LOG_PATH: /app/logs
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock:ro  # 容器监控 (只读)
-      - /proc/meminfo:/host_proc/meminfo:ro  # 宿主机内存信息 (最小权限)
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - aetherblog-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      test: ["CMD", "/app/server", "-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 128M
         reservations:
-          memory: 512M
+          memory: 32M
 
   ai-service:
     image: ${DOCKER_REGISTRY:-}${DOCKER_REGISTRY:+/}aetherblog-ai-service:${VERSION:-latest}
@@ -199,6 +197,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-}
       OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:-}
+      AI_LOG_PATH: /app/logs
+    volumes:
+      - aetherblog_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy

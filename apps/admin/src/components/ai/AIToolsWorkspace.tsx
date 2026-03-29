@@ -210,7 +210,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder={selectedTool.id === 'outline' ? "输入文章主题 (例如: 如何写一个优秀的代码)" : "粘贴文章内容到这里进行测试..."}
                 aria-label="输入测试内容"
-                className="w-full h-full min-h-[200px] p-4 md:p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
+                className="w-full h-full min-h-[200px] p-4 pb-20 md:p-8 md:pb-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[var(--text-primary)] resize-none leading-relaxed text-base font-light no-scrollbar placeholder:text-[var(--text-muted)] placeholder:opacity-70"
               />
               {input.length === 0 && (
                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-[0.06] dark:opacity-[0.08]">

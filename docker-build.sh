@@ -242,7 +242,7 @@ build_parallel() {
     
     # 启动后端构建 (后台)
     (
-        if build_image "backend" "apps/server/Dockerfile" "" "3/6"; then
+        if build_image "backend" "apps/server-go/Dockerfile" "" "3/6"; then
             echo "success" > /tmp/aetherblog-status-backend
         else
             echo "failed" > /tmp/aetherblog-status-backend
@@ -343,7 +343,7 @@ build_sequential() {
     echo -e "${CYAN}                   串行构建模式                              ${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    build_image "backend" "apps/server/Dockerfile" "" "3/6"
+    build_image "backend" "apps/server-go/Dockerfile" "" "3/6"
     build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "4/6"
     build_image "admin" "apps/admin/Dockerfile" "" "5/6"
     build_image "ai-service" "apps/ai-service/Dockerfile" "" "6/6"
@@ -357,7 +357,7 @@ build_single() {
     
     case "$ONLY" in
         backend)
-            build_image "backend" "apps/server/Dockerfile" "" "1/1"
+            build_image "backend" "apps/server-go/Dockerfile" "" "1/1"
             ;;
         blog)
             build_image "blog" "apps/blog/Dockerfile" "--build-arg NEXT_PUBLIC_API_URL=http://backend:8080 --build-arg NEXT_PUBLIC_ADMIN_URL=\${ADMIN_URL:-/admin/}" "1/1"
