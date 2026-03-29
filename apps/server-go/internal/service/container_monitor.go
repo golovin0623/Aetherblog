@@ -69,7 +69,7 @@ type dockerContainer struct {
 	Labels map[string]string `json:"Labels"`
 }
 
-// ListContainers returns an overview of all aetherblog Docker containers.
+// ListContainers returns an overview of all aetherblog Docker containers with live stats.
 func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 	overview := ContainerOverview{
 		Containers: []ContainerInfo{},
@@ -94,6 +94,7 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 	}
 
 	// Filter for aetherblog containers
+	var infos []ContainerInfo
 	for _, c := range containers {
 		name := ""
 		if len(c.Names) > 0 {
@@ -118,12 +119,29 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 
 		if c.State == "running" {
 			overview.RunningContainers++
+			// Fetch live stats for running containers
+			s.fillContainerStats(c.ID, &info)
 		}
 
-		overview.Containers = append(overview.Containers, info)
+		infos = append(infos, info)
 	}
 
-	overview.TotalContainers = len(overview.Containers)
+	// Compute totals
+	var totalMem, totalLimit int64
+	var totalCpu float64
+	for _, info := range infos {
+		totalMem += info.MemoryUsed
+		totalLimit += info.MemoryLimit
+		totalCpu += info.CpuPercent
+	}
+
+	overview.Containers = infos
+	overview.TotalContainers = len(infos)
+	overview.TotalMemoryUsed = totalMem
+	overview.TotalMemoryLimit = totalLimit
+	if len(infos) > 0 {
+		overview.AvgCpuPercent = totalCpu / float64(len(infos))
+	}
 	return overview
 }
 
@@ -172,6 +190,63 @@ func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int)
 	}
 
 	return clean.String(), nil
+}
+
+// dockerStats is the JSON shape returned by Docker API /containers/{id}/stats?stream=false.
+type dockerStats struct {
+	CPUStats    dockerCPUStats    `json:"cpu_stats"`
+	PreCPUStats dockerCPUStats    `json:"precpu_stats"`
+	MemoryStats dockerMemoryStats `json:"memory_stats"`
+}
+
+type dockerCPUStats struct {
+	CPUUsage    dockerCPUUsage `json:"cpu_usage"`
+	SystemUsage uint64         `json:"system_cpu_usage"`
+	OnlineCPUs  int            `json:"online_cpus"`
+}
+
+type dockerCPUUsage struct {
+	TotalUsage uint64 `json:"total_usage"`
+}
+
+type dockerMemoryStats struct {
+	Usage uint64 `json:"usage"`
+	Limit uint64 `json:"limit"`
+}
+
+// fillContainerStats fetches live CPU/memory stats for a single container via Docker API.
+func (s *ContainerMonitorService) fillContainerStats(fullID string, info *ContainerInfo) {
+	resp, err := s.client.Get(fmt.Sprintf("http://docker/containers/%s/stats?stream=false", fullID))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return
+	}
+
+	var stats dockerStats
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return
+	}
+
+	// CPU percent: delta(container usage) / delta(system usage) * num_cpus * 100
+	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
+	sysDelta := float64(stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage)
+	cpus := stats.CPUStats.OnlineCPUs
+	if cpus == 0 {
+		cpus = 1
+	}
+	if sysDelta > 0 && cpuDelta >= 0 {
+		info.CpuPercent = (cpuDelta / sysDelta) * float64(cpus) * 100.0
+	}
+
+	// Memory
+	info.MemoryUsed = int64(stats.MemoryStats.Usage)
+	info.MemoryLimit = int64(stats.MemoryStats.Limit)
+	if stats.MemoryStats.Limit > 0 {
+		info.MemoryPercent = float64(stats.MemoryStats.Usage) / float64(stats.MemoryStats.Limit) * 100.0
+	}
 }
 
 func inferDisplayName(name string) string {
