@@ -67,7 +67,8 @@
 
 | 镜像名称 | 说明 | 大小 |
 |----------|------|------|
-| `golovin0623/aetherblog-backend` | Spring Boot 后端 | ~300 MB |
+| `golovin0623/aetherblog-backend` | Go 后端（静态编译） | ~20-30 MB |
+| `golovin0623/aetherblog-ai-service` | Python AI 服务 | ~200 MB |
 | `golovin0623/aetherblog-blog` | Next.js 博客前台 | ~200 MB |
 | `golovin0623/aetherblog-admin` | Vite + Nginx 管理后台 | ~50 MB |
 
@@ -102,22 +103,31 @@ REDIS_PORT=6999
 # AI 功能
 OPENAI_API_KEY=你的API_KEY
 
-# Flyway 数据库迁移（生产环境推荐开启）
-FLYWAY_VALIDATE=true
-FLYWAY_CLEAN_DISABLED=true
+# 数据库迁移（golang-migrate，生产环境自动执行）
 EOF
 ```
 
-### 2. 启动服务
+### 2. 配置 Webhook 自动部署
+
+参考 [CI/CD 配置指南](../.github/CICD_GUIDE.md#webhook-部署配置服务器端) 完成 webhook 安装，实现 git push 后自动增量部署。
+
+### 3. 启动服务
 
 ```bash
-# 拉取最新镜像
+# 首次全量启动
 export DOCKER_REGISTRY=golovin0623
-export VERSION=v1.1.2
-docker-compose -f docker-compose.prod.yml pull
+export VERSION=latest
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 
-# 启动（后台运行）
-docker-compose -f docker-compose.prod.yml up -d
+# 日常重启应用（不动中间件，推荐）
+./restart.sh
+
+# 只重启后端
+./restart.sh backend
+
+# 拉取最新镜像后重启
+./restart.sh --pull
 ```
 
 ### 3. 配置域名
@@ -154,7 +164,7 @@ docker-compose -f docker-compose.prod.yml up -d
    ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
    │   /           │        │   /admin      │        │   /api        │
    │   blog:3000   │        │   admin:80    │        │   backend:8080│
-   │   (Next.js)   │        │   (Nginx)     │        │   (Spring)    │
+   │   (Next.js)   │        │   (Nginx)     │        │   (Go)    │
    └───────────────┘        └───────────────┘        └───────┬───────┘
                                                               │
                                                     ┌─────────┴─────────┐
@@ -254,17 +264,27 @@ sudo nginx -t && sudo nginx -s reload
 ## 运维命令
 
 ```bash
+# 快速重启应用（不动中间件，推荐）
+./restart.sh
+
+# 只重启指定服务
+./restart.sh backend
+./restart.sh blog admin
+
+# 拉新镜像后重启
+./restart.sh --pull
+
 # 查看所有容器状态
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # 查看后端日志
-docker-compose -f docker-compose.prod.yml logs -f backend
+docker compose -f docker-compose.prod.yml logs -f backend
 
 # 查看全部日志
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # 停止并移除容器
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 ```
 
 ### 默认管理员凭据
@@ -325,13 +345,14 @@ lsof -i :5173   # 管理后台
 kill -9 <PID>
 ```
 
-### Maven 构建问题
+### Go 构建问题
 
-如果遇到依赖问题，尝试清理并重新构建：
+如果遇到编译问题：
 
 ```bash
-cd apps/server
-./mvnw clean install -DskipTests
+cd apps/server-go
+go clean -cache
+go build ./...
 ```
 
 ---
@@ -342,7 +363,7 @@ cd apps/server
 |------|------|
 | [`docker-build.sh`](../docker-build.sh) | 多平台构建脚本（支持并行） |
 | [`docker-compose.prod.yml`](../docker-compose.prod.yml) | 生产环境编排配置 |
-| [`apps/server/Dockerfile`](../apps/server/Dockerfile) | 后端镜像（Spring Boot） |
+| [`apps/server-go/Dockerfile`](../apps/server-go/Dockerfile) | 后端镜像（Go 后端） |
 | [`apps/blog/Dockerfile`](../apps/blog/Dockerfile) | 博客前端镜像（Next.js standalone） |
 | [`apps/admin/Dockerfile`](../apps/admin/Dockerfile) | 管理后台镜像（Vite + Nginx） |
 | [`env.example`](../env.example) | 环境变量模板 |

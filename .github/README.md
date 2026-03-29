@@ -81,8 +81,7 @@ golovin0623/aetherblog-admin:v1.0.0
 ## 📚 详细文档
 
 - **[CICD_GUIDE.md](./CICD_GUIDE.md)** - 完整配置指南,包含:
-  - 自动部署配置
-  - SSH 密钥设置
+  - 自动部署配置 (Webhook)
   - 多环境部署
   - 故障排查
 
@@ -116,18 +115,19 @@ gh workflow run "Quick Docker Build" -f service=all -f version=v1.0.0
 4. 查看 [CICD_GUIDE.md](./CICD_GUIDE.md) 的故障排查章节
 
 ### Q: 如何部署到服务器?
-```bash
-# SSH 到服务器
-ssh user@your-server
 
-# 拉取最新镜像
+项目使用 Webhook 自动部署。推送到 main 分支后，CI 构建完成会触发服务器自动拉取并重启。
+
+手动部署也可以：
+```bash
+# 在服务器上拉取最新镜像并重启
 cd /opt/aetherblog
 export DOCKER_REGISTRY=golovin0623
 docker-compose -f docker-compose.prod.yml pull
-
-# 重启服务
 docker-compose -f docker-compose.prod.yml up -d
 ```
+
+详见 [CICD_GUIDE.md](./CICD_GUIDE.md) 的 Webhook 部署配置章节。
 
 ## 🎯 最佳实践
 

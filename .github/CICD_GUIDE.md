@@ -1,331 +1,176 @@
-# GitHub Actions 自动化部署配置指南
+# GitHub Actions CI/CD 配置指南
 
-本项目使用 GitHub Actions 实现 CI/CD 自动化流程,包括测试、构建 Docker 镜像和自动部署。
+本项目使用 GitHub Actions + Webhook 实现自动化 CI/CD，支持增量部署（只重启变更的服务，不动中间件）。
 
-## 📋 工作流说明
+## 工作流概览
 
-### 1. `docker-build-push.yml` - Docker 镜像构建和推送
+### `ci-cd.yml` — 主流程
 
-**触发条件:**
-- 推送到 `main` 分支
-- 创建版本标签 (如 `v1.0.0`)
-- 手动触发
+```
+detect-changes ──┬─→ frontend-quality ──┬─→ build-blog     ──┐
+                 ├─→ backend-test     ──┼─→ build-backend   ──┤
+                 ├─→ ai-test          ──┼─→ build-ai-service──┼─→ deploy (webhook)
+                 └─→ config-validate  ──┴─→ build-admin     ──┘
+```
 
-**功能:**
-- 并行构建 4 个服务的 Docker 镜像 (backend, ai-service, blog, admin)
-- 自动推送到 Docker Hub
-- 支持多平台构建 (amd64, arm64)
-- 使用 Docker 缓存加速构建
+**触发条件：**
+- Push 到 `main` — 增量构建 + 增量部署
+- Push Tag `v*` — 全量构建 + 全量部署
+- PR 到 `main` — 仅测试 + lint，不构建镜像
 
-**版本策略:**
-- Tag 触发: 使用 tag 名称 (如 `v1.0.0`)
-- Main 分支: 使用 `main-{commit-sha}` + `latest`
-- 手动触发: 使用自定义版本号
-
-### 2. `ci-cd.yml` - 完整 CI/CD 流程
-
-**触发条件:**
-- 推送到 `main` 或 `develop` 分支
-- 创建 Pull Request 到 `main`
-
-**流程:**
-1. **前端测试** - pnpm lint + type check + build
-2. **后端测试** - Maven build + test
-3. **AI 服务测试** - Python syntax check + ruff lint
-4. **Docker 配置验证** - docker-compose config 校验
-5. **变更检测** - 基于文件路径判断哪些模块需构建 (仅 main 分支 push)
-6. **条件性 Docker 构建** - 仅构建发生变更的模块
-7. **自动部署** - 通过 Webhook 部署到服务器
-
-### 3. 路径变更检测 (Path-based Conditional Build)
-
-`ci-cd.yml` 使用 [`dorny/paths-filter`](https://github.com/dorny/paths-filter) 在 Docker 构建前检测哪些模块的源文件发生了变更，**仅构建有变更的模块**，避免无意义的全量构建。
-
-#### 触发规则
+### 路径变更检测
 
 | 模块 | 触发路径 | 说明 |
 |------|----------|------|
-| **backend** | `apps/server/**` | Java 后端独立模块 |
-| **ai-service** | `apps/ai-service/**` | Python AI 服务独立模块 |
-| **blog** | `apps/blog/**`, `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml` | Next.js 博客前端，依赖共享包 |
-| **admin** | `apps/admin/**`, `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml` | Vite 管理后台，依赖共享包 |
+| **backend** | `apps/server-go/**` | Go 后端 |
+| **ai-service** | `apps/ai-service/**` | Python AI 服务 |
+| **blog** | `apps/blog/**`, `packages/**`, `pnpm-lock.yaml` | Next.js 博客 |
+| **admin** | `apps/admin/**`, `packages/**`, `pnpm-lock.yaml` | Vite 管理后台 |
 
-> **注意:** `blog` 和 `admin` 的 Dockerfile 都会 `COPY packages ./packages`，因此 `packages/` 目录的变更会同时触发这两个前端模块的重构建。
+全局触发（所有模块重建）：`docker-compose*.yml`、`.github/workflows/ci-cd.yml`
 
-#### 全局触发
+### 增量部署
 
-以下文件变更会触发 **所有模块** 重新构建：
-- `docker-compose*.yml` — Docker 编排配置
-- `.github/workflows/ci-cd.yml` — CI 流程本身
-
-#### 工作流 Job 依赖图
+CI 自动检测哪些模块变更，只将变更的服务名传给服务器 webhook：
 
 ```
-frontend-test ──┐
-backend-test  ──┤
-ai-test       ──┼─→ detect-changes ──┬─→ build-backend    ──┐
-config-validate─┘                    ├─→ build-ai-service ──┤
-                                     ├─→ build-blog       ──┼─→ deploy
-                                     └─→ build-admin      ──┘
+CI: {"services": "backend gateway"} → webhook → deploy.sh incremental
+→ docker compose pull backend gateway
+→ docker compose up -d --no-deps backend gateway
+→ postgres/redis 完全不受影响
 ```
 
-- **未变更的模块**：对应 build job 显示 `Skipped`，不消耗 runner 时间
-- **deploy job**：至少一个模块构建成功时触发
+## GitHub Secrets 配置
 
-## 🔧 配置步骤
+在仓库 Settings → Secrets and variables → Actions 中设置：
 
-### 1. 设置 GitHub Secrets
+| Secret | 说明 | 示例 |
+|--------|------|------|
+| `DOCKER_USERNAME` | Docker Hub 用户名 | `golovin0623` |
+| `DOCKER_PASSWORD` | Docker Hub Access Token | (在 Docker Hub → Account Settings → Security 创建) |
+| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `http://your-server:7868/deploy/your-secret` |
+| `JWT_SECRET` | JWT 密钥（可选，用于 AI 服务） | 随机字符串 |
 
-在 GitHub 仓库中设置以下 Secrets (Settings → Secrets and variables → Actions):
+## Webhook 部署配置（服务器端）
 
-#### 必需的 Secrets:
+### 首次安装
 
 ```bash
-# Docker Hub 凭证
-DOCKER_USERNAME=your_dockerhub_username
-DOCKER_PASSWORD=your_dockerhub_password_or_token
+# 1. 克隆仓库到服务器
+git clone https://github.com/golovin0623/AetherBlog.git /root/Aetherblog
+cd /root/Aetherblog
 
-# 服务器部署凭证 (如果启用自动部署)
-SERVER_HOST=your.server.ip
-SERVER_USER=your_ssh_username
-SERVER_SSH_KEY=your_private_ssh_key
+# 2. 创建软链接（git pull 后自动更新脚本，无需手动 cp）
+ln -sfn /root/Aetherblog/ops/webhook /root/Aetherblog/webhook
+chmod +x /root/Aetherblog/ops/webhook/deploy.sh
+
+# 3. 生成 webhook secret
+WEBHOOK_SECRET=$(openssl rand -hex 32)
+echo "保存此 secret: $WEBHOOK_SECRET"
+
+# 4. 安装 systemd 服务
+cp ops/webhook/deploy-webhook.service /etc/systemd/system/
+sed -i "s/WEBHOOK_SECRET=change-me/WEBHOOK_SECRET=${WEBHOOK_SECRET}/" \
+  /etc/systemd/system/deploy-webhook.service
+
+# 5. 启动服务
+systemctl daemon-reload
+systemctl enable deploy-webhook
+systemctl start deploy-webhook
+
+# 6. 将 webhook URL 配置到 GitHub Secret
+#    DEPLOY_WEBHOOK_URL = http://<server-ip>:7868/deploy/<WEBHOOK_SECRET>
 ```
 
-#### 获取 Docker Hub Token:
+### 从旧方式迁移（手动 cp → 软链接）
 
-1. 登录 Docker Hub
-2. 进入 Account Settings → Security
-3. 点击 "New Access Token"
-4. 复制生成的 token 作为 `DOCKER_PASSWORD`
-
-### 2. 本地测试工作流
-
-安装 [act](https://github.com/nektos/act) 在本地测试 GitHub Actions:
+如果之前是手动复制文件到 `/root/Aetherblog/webhook/`：
 
 ```bash
-# macOS
-brew install act
-
-# 测试工作流
-act -j build-and-push --secret-file .secrets
+rm -rf /root/Aetherblog/webhook
+ln -sfn /root/Aetherblog/ops/webhook /root/Aetherblog/webhook
+systemctl restart deploy-webhook
 ```
 
-### 3. 创建版本发布
-
-#### 方式 1: 使用 Git Tag
+### 验证
 
 ```bash
-# 创建并推送 tag
-git tag v1.0.0
-git push origin v1.0.0
+# 增量部署测试
+curl -i -X POST -H "Content-Type: application/json" \
+  -d '{"services": "backend gateway"}' \
+  "http://127.0.0.1:7868/deploy/<WEBHOOK_SECRET>"
 
-# 自动触发构建,镜像标签为 v1.0.0 和 latest
+# 全量部署测试（不传 services）
+curl -i -X POST "http://127.0.0.1:7868/deploy/<WEBHOOK_SECRET>"
+
+# 查看日志
+journalctl -u deploy-webhook -n 50 --no-pager
+tail -n 50 /var/log/aetherblog-deploy.log
 ```
 
-#### 方式 2: GitHub Release
+### 部署模式
 
-1. 进入 GitHub 仓库页面
-2. 点击 "Releases" → "Create a new release"
-3. 填写 Tag version (如 `v1.0.0`)
-4. 发布后自动触发构建
+| 模式 | 触发方式 | 行为 |
+|------|---------|------|
+| **incremental** | CI 自动（传 services JSON） | 只 pull + restart 变更的服务，`--no-deps` 跳过中间件 |
+| **full** | 不传 services / 手动触发 | 全量 pull + up -d |
+| **canary** | `DEPLOY_MODE=canary` | 指定服务灰度部署 |
+| **rollback** | `DEPLOY_MODE=rollback ROLLBACK_VERSION=v1.0.0` | 回滚到指定版本 |
 
-#### 方式 3: 手动触发
+## 手动部署 / 快速重启
 
-1. 进入 Actions 页面
-2. 选择 "Build and Push Docker Images"
-3. 点击 "Run workflow"
-4. 输入自定义版本号
-
-## 📦 Docker 镜像命名规则
-
-构建后的镜像会推送到 Docker Hub,命名格式:
-
-```
-{DOCKER_USERNAME}/aetherblog-backend:latest
-{DOCKER_USERNAME}/aetherblog-ai-service:latest
-{DOCKER_USERNAME}/aetherblog-blog:latest
-{DOCKER_USERNAME}/aetherblog-admin:latest
-```
-
-## 🚀 自动部署配置 (可选)
-
-如果要启用自动部署到服务器,需要:
-
-### 1. 生成 SSH 密钥对
+服务器上日常运维，不走 CI：
 
 ```bash
-# 在本地生成密钥对
-ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions
+cd /root/Aetherblog
 
-# 将公钥添加到服务器
-ssh-copy-id -i ~/.ssh/github_actions.pub user@your.server.ip
+# 只重启应用层（不动 postgres/redis）— 最常用
+./restart.sh
 
-# 将私钥内容复制到 GitHub Secrets (SERVER_SSH_KEY)
-cat ~/.ssh/github_actions
+# 只重启后端
+./restart.sh backend
+
+# 拉取最新镜像后重启
+./restart.sh --pull
+
+# 全量启动（含中间件，首次部署用）
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-### 2. 服务器准备
-
-在服务器上准备部署目录:
+## 版本发布
 
 ```bash
-# 创建部署目录
-mkdir -p /opt/aetherblog
-cd /opt/aetherblog
+# 常规发布（推送 tag 触发全量构建 + 部署）
+git tag v1.2.0
+git push origin v1.2.0
 
-# 克隆仓库 (仅需要 docker-compose.prod.yml 和 .env)
-git clone https://github.com/your-username/AetherBlog.git .
-
-# 配置环境变量
-cp .env.example .env
-vim .env  # 编辑配置
-
-# 确保 Docker 已安装
-docker --version
-docker-compose --version
+# 日常推 main（只构建变更模块 + 增量部署）
+git push origin main
 ```
 
-### 3. 修改部署脚本
+## 常见问题
 
-编辑 `.github/workflows/ci-cd.yml` 中的部署步骤:
+### Docker Hub 推送失败
+- 检查 `DOCKER_USERNAME` / `DOCKER_PASSWORD` 是否正确
+- 确保使用 Access Token 而不是密码
 
-```yaml
-- name: Deploy to server via SSH
-  uses: appleboy/ssh-action@v1.0.0
-  with:
-    host: ${{ secrets.SERVER_HOST }}
-    username: ${{ secrets.SERVER_USER }}
-    key: ${{ secrets.SERVER_SSH_KEY }}
-    script: |
-      cd /opt/aetherblog  # 修改为你的部署路径
-      export DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }}
-      export VERSION=latest
-      docker-compose -f docker-compose.prod.yml pull
-      docker-compose -f docker-compose.prod.yml up -d
-      docker image prune -f
-```
-
-## 📊 监控构建状态
-
-### 添加 Badge 到 README
-
-在 `README.md` 中添加构建状态徽章:
-
-```markdown
-![CI/CD](https://github.com/your-username/AetherBlog/workflows/CI%2FCD%20Pipeline/badge.svg)
-![Docker Build](https://github.com/your-username/AetherBlog/workflows/Build%20and%20Push%20Docker%20Images/badge.svg)
-```
-
-### 查看构建日志
-
-1. 进入 GitHub 仓库的 "Actions" 页面
-2. 点击具体的工作流运行记录
-3. 查看每个步骤的详细日志
-
-## 🔍 常见问题
-
-### 1. Docker Hub 推送失败
-
-**错误:** `denied: requested access to the resource is denied`
-
-**解决:**
-- 检查 `DOCKER_USERNAME` 和 `DOCKER_PASSWORD` 是否正确
-- 确保使用的是 Access Token 而不是密码
-- 检查 Docker Hub 仓库是否存在或有权限
-
-### 2. 构建超时
-
-**错误:** `The job running on runner ... has exceeded the maximum execution time`
-
-**解决:**
-- 启用 Docker 缓存 (已配置)
-- 减少构建的平台数量 (移除 `linux/arm64`)
-- 优化 Dockerfile 层级
-
-### 3. SSH 部署失败
-
-**错误:** `Permission denied (publickey)`
-
-**解决:**
-- 检查 SSH 密钥格式 (需要完整的私钥,包括 `-----BEGIN` 和 `-----END`)
-- 确保服务器的 `~/.ssh/authorized_keys` 包含对应公钥
-- 检查服务器 SSH 配置允许密钥登录
-
-## 🎯 最佳实践
-
-### 1. 版本管理
-
-使用语义化版本号:
-- `v1.0.0` - 主版本.次版本.修订号
-- `v1.0.0-beta.1` - 预发布版本
-- `v1.0.0-rc.1` - 候选发布版本
-
-### 2. 分支策略
-
-```
-main (生产环境)
-  ↑
-develop (开发环境)
-  ↑
-feature/* (功能分支)
-```
-
-- `feature/*` → `develop`: 创建 PR,触发测试
-- `develop` → `main`: 创建 PR,触发完整 CI/CD
-- `main`: 自动构建和部署生产环境
-
-### 3. 环境隔离
-
-为不同环境创建不同的工作流:
-
-```yaml
-# .github/workflows/deploy-staging.yml
-on:
-  push:
-    branches:
-      - develop
-
-# .github/workflows/deploy-production.yml
-on:
-  push:
-    branches:
-      - main
-```
-
-## 📝 示例工作流程
-
-### 完整的发布流程:
-
+### Webhook 返回 500
 ```bash
-# 1. 开发新功能
-git checkout -b feature/new-feature
-# ... 开发代码 ...
-git commit -m "feat: add new feature"
-git push origin feature/new-feature
-
-# 2. 创建 PR 到 develop
-# GitHub Actions 自动运行测试
-
-# 3. 合并到 develop
-# 触发开发环境部署 (如果配置)
-
-# 4. 测试通过后,创建 PR 到 main
-# GitHub Actions 再次运行测试
-
-# 5. 合并到 main
-# 自动构建 Docker 镜像并推送
-
-# 6. 创建 Release
-git tag v1.0.0
-git push origin v1.0.0
-# 自动构建带版本号的镜像
-
-# 7. 自动部署到生产服务器 (如果配置)
+# 查看详细错误
+tail -n 50 /var/log/aetherblog-deploy.log
+journalctl -u deploy-webhook -n 50
 ```
 
-## 🔗 相关资源
+### 构建超时
+- 已配置 Docker 缓存（registry cache），正常构建 < 5 分钟
+- Go 后端构建 ~20s，前端 ~2-3 分钟
 
-- [GitHub Actions 文档](https://docs.github.com/en/actions)
-- [Docker Build Push Action](https://github.com/docker/build-push-action)
-- [Docker Hub](https://hub.docker.com/)
-- [SSH Action](https://github.com/appleboy/ssh-action)
+## 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| [`.github/workflows/ci-cd.yml`](../../../.github/workflows/ci-cd.yml) | CI/CD 主流程 |
+| [`ops/webhook/`](../../ops/webhook/) | Webhook 部署脚本 + systemd 服务 |
+| [`restart.sh`](../../restart.sh) | 快速重启脚本（不动中间件） |
+| [`docker-compose.prod.yml`](../../docker-compose.prod.yml) | 生产环境编排 |
+| [`docker-build.sh`](../../docker-build.sh) | 本地手动构建脚本 |

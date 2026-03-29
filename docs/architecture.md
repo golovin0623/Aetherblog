@@ -30,7 +30,7 @@ AetherBlog 采用微服务 + Monorepo 架构，由 5 个核心服务协同工作
                            │          │          │
                     ┌──────▼───┐ ┌────▼────┐ ┌───▼──────────┐
                     │  Blog    │ │  Admin  │ │   Backend    │
-                    │ Next.js  │ │  Vite   │ │ Spring Boot  │
+                    │ Next.js  │ │  Vite   │ │  Go (Echo)   │
                     │  :3000   │ │  :5173  │ │   :8080      │
                     └──────────┘ └────┬────┘ └──┬───────────┘
                                       │         │
@@ -50,7 +50,7 @@ AetherBlog 采用微服务 + Monorepo 架构，由 5 个核心服务协同工作
 |------|--------|------|
 | **Blog** | Next.js 15 + React 19 | 博客前台，SSR 渲染，SEO |
 | **Admin** | Vite + React 19 | 管理后台，内容管理，AI 写作工具 |
-| **Backend** | Spring Boot 4.0 + JDK 25 | 业务 API，认证授权，数据持久化 |
+| **Backend** | Go 1.24 (Echo) | 业务 API，认证授权，数据持久化 |
 | **AI Service** | FastAPI + LiteLLM | AI 写作辅助，语义搜索，多模型路由 |
 | **Gateway** | Nginx | 请求路由，静态资源代理，SSL 终止 |
 
@@ -58,7 +58,7 @@ AetherBlog 采用微服务 + Monorepo 架构，由 5 个核心服务协同工作
 
 ## Monorepo 结构
 
-项目使用 **pnpm workspace** 管理前端代码，**Maven 多模块**管理后端代码：
+项目使用 **pnpm workspace** 管理前端代码，**Go module** 管理后端代码：
 
 ```
 AetherBlog/
@@ -66,18 +66,18 @@ AetherBlog/
 │   ├── blog/                    # 📝 博客前台 (Next.js 15)
 │   ├── admin/                   # ⚙️ 管理后台 (Vite + React 19)
 │   ├── ai-service/              # 🤖 AI 服务 (FastAPI + LiteLLM)
-│   └── server/                  # 🔧 后端服务 (Spring Boot 4.0)
-│       ├── aetherblog-app/      #    应用启动入口
-│       ├── aetherblog-api/      #    API 接口 / DTO / VO
-│       ├── aetherblog-common/   #    公共模块
-│       │   ├── common-core/     #    核心工具类
-│       │   ├── common-security/ #    JWT 认证、RBAC
-│       │   ├── common-redis/    #    Redis 缓存
-│       │   └── common-log/      #    日志管理
-│       ├── aetherblog-service/  #    业务服务
-│       │   └── blog-service/    #    博客核心逻辑
-│       └── aetherblog-ai/       #    AI 客户端
-│           └── ai-client/       #    AI 服务 HTTP 客户端
+│   └── server-go/               # 🔧 后端服务 (Go + Echo)
+│       ├── cmd/server/           #    应用启动入口 (main.go)
+│       ├── internal/api/         #    API 接口 / Handler / DTO
+│       ├── internal/common/      #    公共模块
+│       │   ├── core/             #    核心工具类
+│       │   ├── security/         #    JWT 认证、RBAC
+│       │   ├── redis/            #    Redis 缓存
+│       │   └── log/              #    日志管理
+│       ├── internal/service/     #    业务服务
+│       │   └── blog/             #    博客核心逻辑
+│       └── internal/ai/          #    AI 客户端
+│           └── client/           #    AI 服务 HTTP 客户端
 ├── packages/
 │   ├── ui/                      # 🎨 共享 UI 组件
 │   ├── hooks/                   # 🪝 共享 React Hooks
@@ -97,43 +97,43 @@ AetherBlog/
 ### 模块依赖
 
 ```
-aetherblog-app（可执行 JAR 入口）
+cmd/server/main.go（Go 可执行入口）
     │
-    ├── aetherblog-service / blog-service（业务逻辑层）
+    ├── internal/service/blog（业务逻辑层）
     │       │
-    │       ├── aetherblog-common / common-*（基础设施层）
+    │       ├── internal/common/*（基础设施层）
     │       │       │
-    │       │       └── aetherblog-api（接口 / DTO 层）
+    │       │       └── internal/api（接口 / Handler / DTO 层）
     │       │
-    │       └── aetherblog-ai / ai-client（AI 服务客户端）
+    │       └── internal/ai/client（AI 服务客户端）
     │
-    └── [Spring Boot Auto-Configuration]
+    └── [Go 显式初始化 (Wire/手动注入)]
 ```
 
 ### 分层职责
 
 | 层级 | 模块 | 职责 |
 |------|------|------|
-| **入口层** | `aetherblog-app` | 启动类、配置文件、Spring Boot 主入口 |
-| **接口层** | `aetherblog-api` | Request/Response DTO、VO、枚举 |
-| **业务层** | `blog-service` | Controller、Service、Repository、实体 |
-| **基础层** | `common-*` | 安全、缓存、日志、通用工具 |
-| **集成层** | `ai-client` | 调用外部 AI 服务的 HTTP 客户端 |
+| **入口层** | `cmd/server` | main.go 启动入口、配置加载、Go main entry |
+| **接口层** | `internal/api` | Handler、Request/Response DTO、枚举 |
+| **业务层** | `internal/service/blog` | Handler、Service、Repository、实体 |
+| **基础层** | `internal/common/*` | 安全、缓存、日志、通用工具 |
+| **集成层** | `internal/ai/client` | 调用外部 AI 服务的 HTTP 客户端 |
 
-### 核心 Controller
+### 核心 Handler
 
-| Controller | 路径前缀 | 功能 |
+| Handler | 路径前缀 | 功能 |
 |-----------|----------|------|
-| `AuthController` | `/v1/auth` | 登录 / JWT 认证 |
-| `PostController` | `/v1/admin/posts` | 文章管理 |
-| `PublicPostController` | `/v1/public/posts` | 公开文章 API |
-| `CategoryController` | `/v1/admin/categories` | 分类管理 |
-| `TagController` | `/v1/admin/tags` | 标签管理 |
-| `CommentController` | `/v1/admin/comments` | 评论管理 |
-| `MediaController` | `/v1/admin/media` | 媒体库管理 |
-| `StatsController` | `/v1/admin/stats` | 统计分析 |
-| `AiController` | `/v1/admin/ai` | AI 配置 |
-| `SystemMonitorController` | `/v1/admin/system` | 系统监控 |
+| `AuthHandler` | `/v1/auth` | 登录 / JWT 认证 |
+| `PostHandler` | `/v1/admin/posts` | 文章管理 |
+| `PublicPostHandler` | `/v1/public/posts` | 公开文章 API |
+| `CategoryHandler` | `/v1/admin/categories` | 分类管理 |
+| `TagHandler` | `/v1/admin/tags` | 标签管理 |
+| `CommentHandler` | `/v1/admin/comments` | 评论管理 |
+| `MediaHandler` | `/v1/admin/media` | 媒体库管理 |
+| `StatsHandler` | `/v1/admin/stats` | 统计分析 |
+| `AiHandler` | `/v1/admin/ai` | AI 配置 |
+| `SystemMonitorHandler` | `/v1/admin/system` | 系统监控 |
 
 ---
 
@@ -278,13 +278,13 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 |------|------|---------|
 | 博客前台 | Next.js 15 | SSR/SSG 支持，SEO 友好，App Router |
 | 管理后台 | Vite + React 19 | 极速 HMR，SPA 架构适合后台 |
-| 后端 | Spring Boot 4.0 + JDK 25 | 成熟生态，模块化，类型安全 |
+| 后端 | Go 1.24 + Echo | 高性能，编译型，并发原生支持 |
 | AI 服务 | FastAPI + LiteLLM | 异步高性能，多模型路由，流式输出 |
 | 数据库 | PostgreSQL 17 + pgvector | 关系型 + 向量检索一体化 |
 | 缓存 | Redis 7 | 高性能缓存，会话管理 |
 | 搜索 | Elasticsearch 8 | 全文搜索（可选） |
-| 序列化 | Jackson 3.x | Spring Boot 4 原生支持 |
+| 序列化 | encoding/json | Go 标准库内置支持 |
 | 网关 | Nginx | 轻量高效，反向代理 |
 | 容器 | Docker Compose | 一键部署，环境一致性 |
 | CI/CD | GitHub Actions | 原生集成，自动构建部署 |
-| Monorepo | pnpm workspace | 共享依赖，统一版本管理 |
+| Monorepo | pnpm workspace + Go module | 共享依赖，统一版本管理 |
