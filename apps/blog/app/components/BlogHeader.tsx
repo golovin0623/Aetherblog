@@ -375,7 +375,6 @@ export default function BlogHeader() {
                 {/* Segment Buttons - 使用 Link + handleNavClick 实现乐观更新与语义化标签 */}
                 <Link
                   href="/posts"
-                  aria-pressed={!isTimeline}
                   aria-current={!isTimeline ? 'page' : undefined}
                   onClick={(e) => {
                     // 只在普通点击时阻止默认跳转，执行乐观更新
@@ -384,7 +383,7 @@ export default function BlogHeader() {
                       handleNavClick('posts');
                     }
                   }}
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${!isTimeline
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-full ${!isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}
@@ -393,7 +392,6 @@ export default function BlogHeader() {
                 </Link>
                 <Link
                   href="/timeline"
-                  aria-pressed={isTimeline}
                   aria-current={isTimeline ? 'page' : undefined}
                   onClick={(e) => {
                     if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -401,7 +399,7 @@ export default function BlogHeader() {
                       handleNavClick('timeline');
                     }
                   }}
-                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer ${isTimeline
+                  className={`relative z-10 w-[76px] text-center py-[7px] rounded-[11px] text-[13px] font-semibold tracking-[-0.01em] transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-full ${isTimeline
                       ? 'text-black dark:text-white'
                       : 'text-black/60 hover:text-black/70 dark:text-white/60 dark:hover:text-white/70'
                     }`}

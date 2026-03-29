@@ -80,7 +80,6 @@ export default function MobileNavSwitch() {
       {/* Segment Buttons */}
       <Link
         href="/posts"
-        aria-pressed={!isTimeline}
         aria-current={!isTimeline ? 'page' : undefined}
         onClick={(e) => {
           if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -88,7 +87,7 @@ export default function MobileNavSwitch() {
             handleNavClick('posts');
           }
         }}
-        className={`relative z-10 text-center py-[6px] rounded-[10px] text-[12px] font-semibold tracking-[-0.01em] transition-colors duration-200 cursor-pointer ${
+        className={`relative z-10 text-center py-[6px] rounded-[10px] text-[12px] font-semibold tracking-[-0.01em] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-full ${
           !isTimeline
             ? 'text-black dark:text-white'
             : 'text-black/50 dark:text-white/50'
@@ -99,7 +98,6 @@ export default function MobileNavSwitch() {
       </Link>
       <Link
         href="/timeline"
-        aria-pressed={isTimeline}
         aria-current={isTimeline ? 'page' : undefined}
         onClick={(e) => {
           if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -107,7 +105,7 @@ export default function MobileNavSwitch() {
             handleNavClick('timeline');
           }
         }}
-        className={`relative z-10 text-center py-[6px] rounded-[10px] text-[12px] font-semibold tracking-[-0.01em] transition-colors duration-200 cursor-pointer ${
+        className={`relative z-10 text-center py-[6px] rounded-[10px] text-[12px] font-semibold tracking-[-0.01em] transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-[var(--bg-secondary)] focus-visible:rounded-full ${
           isTimeline
             ? 'text-black dark:text-white'
             : 'text-black/50 dark:text-white/50'

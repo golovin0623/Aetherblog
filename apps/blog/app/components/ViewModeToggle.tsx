@@ -18,7 +18,11 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
   const pillInset = compact ? '2px' : '4px';
 
   return (
-    <div className={`flex items-center bg-[var(--bg-secondary)] rounded-full ${paddingClass} border border-[var(--border-subtle)] relative`}>
+    <div
+      role="group"
+      aria-label="视图模式切换"
+      className={`flex items-center bg-[var(--bg-secondary)] rounded-full ${paddingClass} border border-[var(--border-subtle)] relative`}
+    >
       {/* 滑动药丸指示器 */}
       <div
         className={`absolute top-0.5 bottom-0.5 ${widthClass} bg-primary/20 rounded-full transition-all duration-300 ease-out`}
@@ -30,7 +34,8 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       {/* 链接 - 固定宽度防止布局偏移 */}
       <Link
         href="/posts"
-        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
+        aria-current={!isTimeline ? 'page' : undefined}
+        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
           !isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
       >
@@ -38,7 +43,8 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       </Link>
       <Link
         href="/timeline"
-        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 ${
+        aria-current={isTimeline ? 'page' : undefined}
+        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
           isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
       >

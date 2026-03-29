@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Tech Stack:**
 - Frontend: React 19, Next.js 15 (blog), Vite (admin)
-- Backend: Spring Boot 4.0, JDK 25
+- Backend: Spring Boot 4.0, JDK 21 (with JDK 25 Mockito/Byte Buddy compatibility)
 - AI: 独立 AI 服务 (FastAPI + LiteLLM)
 - Database: PostgreSQL 17 with pgvector
 - Cache: Redis 7
@@ -101,6 +101,9 @@ docker compose down
 
 ```
 AetherBlog/
+├── .agent/rules/      # AI agent behavior rules and design docs
+├── .github/workflows/ # CI/CD pipelines (ci-cd.yml, quick-build.yml)
+├── .jules/            # External bot configurations (bolt, sentinel)
 ├── apps/
 │   ├── blog/          # Next.js 15 blog frontend
 │   ├── admin/         # Vite + React 19 admin dashboard
@@ -121,12 +124,17 @@ AetherBlog/
 │           ├── ai-rag/          # (Deprecated) RAG module
 │           ├── ai-agent/        # (Deprecated) Agent module
 │           └── ai-prompt/       # (Deprecated) Prompt module
-└── packages/          # Shared frontend packages
-    ├── ui/            # Shared UI components
-    ├── hooks/         # Shared React hooks
-    ├── types/         # TypeScript type definitions
-    ├── utils/         # Utility functions
-    └── editor/        # Markdown editor component
+├── docs/              # Architecture, deployment, and development guides
+├── nginx/             # Gateway configs (nginx.conf, nginx.dev.conf)
+├── ops/               # Operational scripts and configs
+├── packages/          # Shared frontend packages
+│   ├── ui/            # Shared UI components (Button, Card, Modal, Toast, etc.)
+│   ├── hooks/         # Shared React hooks (useDebounce, useTheme, etc.)
+│   ├── types/         # TypeScript type definitions (models/, api/, ai/)
+│   ├── utils/         # Utility functions (format/, helpers/, validation/, url/)
+│   └── editor/        # Markdown editor component (CodeMirror-based)
+├── scripts/           # Build and utility scripts
+└── 系统需求企划书及详细设计.md  # Master design document (~22k lines)
 ```
 
 ### Backend Module Dependencies
@@ -169,11 +177,36 @@ import { cn } from '@aetherblog/utils';
 - Dependencies are NOT inherited from root or other packages
 - When adding new imports, immediately add the dependency to that package's `package.json`
 - Run `pnpm install` after adding dependencies
+- **pnpm overrides** in root `package.json` pin `@codemirror/state@6.5.4` and `@codemirror/view@6.26.0` to avoid version conflicts
+- Required: Node >= 20.0.0, pnpm >= 9.0.0 (`packageManager: pnpm@9.15.0`)
 
 **CRITICAL: TypeScript Configuration**
+- A root `tsconfig.json` exists with project references (`apps/admin`, `apps/blog`, `packages/editor`, `packages/types`, `packages/ui`)
 - Each `packages/*` subdirectory MUST have a complete standalone `tsconfig.json`
-- DO NOT use `"extends": "../../tsconfig.json"` (root has no tsconfig)
 - Use the standard template from `.agent/rules/code-structure.md` §8.1
+
+### Infrastructure Services (docker-compose.yml)
+
+| Service | Image | Container | Port |
+|---------|-------|-----------|------|
+| PostgreSQL | `pgvector/pgvector:pg17` | `aetherblog-postgres` | 5432 |
+| Redis | `redis:7-alpine` | `aetherblog-redis` | 6379 |
+| Elasticsearch | `elasticsearch:8.15.0` | `aetherblog-elasticsearch` | 9200 |
+
+Additional compose files: `docker-compose.dev.yml` (development), `docker-compose.prod.yml` (full production stack with gateway).
+
+### Backend Version Pinning
+
+| Dependency | Version | Notes |
+|-----------|---------|-------|
+| Spring Boot | 4.0.0 | Parent POM |
+| Java | 21 | Source/target, with JDK 25 Byte Buddy override |
+| Spring AI | 2.0.0-M1 | AI integration |
+| Jackson | 3.0.3 | Spring Boot 4 compatible (tools.jackson) |
+| Elasticsearch | 7.17.27 | Client library |
+| MapStruct | 1.6.3 | DTO mapping |
+| Lombok | 1.18.42 | Boilerplate reduction |
+| JJWT | 0.12.7 | JWT handling |
 
 ## API Structure
 
@@ -305,6 +338,28 @@ This project follows a strict document-driven workflow defined in `.agent/rules/
 
 Reference the detailed design document: `系统需求企划书及详细设计.md`
 
+### AI Architecture
+
+The AI system uses an external service pattern:
+```
+Spring Boot backend → ai-client (HTTP) → FastAPI ai-service (Python)
+                                              ↓
+                                         LiteLLM → LLM providers
+```
+
+- **`apps/ai-service/`** - Python FastAPI service with rate limiting, caching, metrics, provider registry, and vector store
+- **`apps/server/aetherblog-ai/ai-client/`** - Java HTTP client that bridges the backend to the external AI service
+- **Deprecated modules** (`ai-core`, `ai-rag`, `ai-agent`, `ai-prompt`) - Legacy Spring AI integration, do not extend
+- **Test coverage requirement:** 80% (configured in `pyproject.toml`)
+
+### CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+- **`ci-cd.yml`** - Main pipeline: build, test, Docker image push
+- **`quick-build.yml`** - Fast validation build
+
+See `.github/CICD_GUIDE.md` and `.github/VERSION_GUIDE.md` for details.
+
 ## Docker Deployment
 
 ### Build Images
@@ -343,6 +398,14 @@ docker-compose -f docker-compose.prod.yml logs -f
 - Admin dashboard: 7894 (optional direct access)
 - PostgreSQL: 7895
 - Backend API: Internal only (container network)
+
+## Nginx Gateway
+
+Gateway configurations in `nginx/`:
+- **`nginx.conf`** - Production: routes `/` to blog, `/admin/` to admin, `/api` to backend
+- **`nginx.dev.conf`** - Development: same routing with hot reload proxying
+
+Used by `./start.sh --gateway` (dev) and `./start.sh --prod` (production) modes.
 
 ## Common Issues
 

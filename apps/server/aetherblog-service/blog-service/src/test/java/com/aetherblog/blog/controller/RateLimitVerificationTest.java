@@ -3,7 +3,11 @@ package com.aetherblog.blog.controller;
 import com.aetherblog.api.dto.auth.RegisterRequest;
 import com.aetherblog.common.security.annotation.RateLimit;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.multipart.MultipartFile;
+
 import java.lang.reflect.Method;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RateLimitVerificationTest {
@@ -35,6 +39,38 @@ public class RateLimitVerificationTest {
         assertEquals("auth:change_password", rateLimit.key(), "Rate limit key mismatch");
         assertEquals(5, rateLimit.count(), "Rate limit count mismatch");
         assertEquals(300, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
+    }
+
+    @Test
+    public void mediaUploadMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method uploadMethod = MediaController.class.getMethod("upload",
+                MultipartFile.class,
+                Long.class,
+                Long.class);
+
+        RateLimit rateLimit = uploadMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "Media upload method must have @RateLimit annotation");
+
+        assertEquals("media:upload", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(30, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
+    }
+
+    @Test
+    public void mediaUploadBatchMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method uploadBatchMethod = MediaController.class.getMethod("uploadBatch",
+                List.class,
+                Long.class,
+                Long.class);
+
+        RateLimit rateLimit = uploadBatchMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "Media upload batch method must have @RateLimit annotation");
+
+        assertEquals("media:upload:batch", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(10, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
         assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
     }
 }

@@ -46,6 +46,11 @@
 ## 2026-02-14 - [Global Event Listener Thrashing in BlogHeader]
 **Learning:** Found that `BlogHeader` was adding a global `window.addEventListener('mousemove')` to control top-bar visibility. The listener's `useCallback` depended on state variables (`isHovering`, `isVisible`), causing the event listener to be detached and re-attached continuously during interactions, causing listener thrashing. Also, the event handler ran synchronously without any `requestAnimationFrame` throttling, processing 60+ events per second on the main thread.
 **Action:** When adding global event listeners inside `useEffect`, remove high-frequency state variables from the dependency array. Instead, use functional state updates (`setState(prev => ...)`) inside the throttled callback. Always throttle global high-frequency event listeners (like `mousemove` or `scroll`) using `requestAnimationFrame`, and ensure the rAF ID ref is correctly reset to `null` in the cleanup function to prevent breaking the component state on remounts.
+
 ## 2024-03-12 - [Optimizing TableOfContents with React.memo]
 **Learning:** Components receiving large strings (like raw markdown) or computing derived arrays can trigger expensive re-renders even if the props haven't actually changed. In `TableOfContents`, an O(n) array `.map` loop also caused inline functions like `scrollToHeading` to be recreated constantly on every render, resulting in child nodes unnecessarily re-rendering.
 **Action:** Always wrap heavy display components that receive large primitive props (like `content` in `TableOfContents`) with `React.memo()`. Stabilize callback functions passed to lists using `useCallback` to prevent O(n) inline function recreations.
+
+## 2024-03-12 - [Layout Thrashing via DOM Reading in Editor Listeners]
+**Learning:** High-frequency event listeners (like `scroll` and `resize`) attached to complex editor views (`EditorView`) that synchronously read layout information (e.g. `view.coordsAtPos()`) cause significant layout thrashing and main-thread blocking jank.
+**Action:** Always wrap DOM measurement operations inside high-frequency listeners with `requestAnimationFrame` (and use a `ref` to manage the rAF ID) to throttle layout calculations to the browser's paint cycle.

@@ -94,6 +94,8 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
         className="group relative flex flex-col items-center outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-full"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onFocus={handleMouseEnter}
+        onBlur={handleMouseLeave}
       >
         {/* 图标容器 + 悬浮动画 */}
         <motion.div

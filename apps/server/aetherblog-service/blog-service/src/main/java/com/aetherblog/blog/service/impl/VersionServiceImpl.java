@@ -57,16 +57,26 @@ public class VersionServiceImpl implements VersionService {
         MediaFile file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new BusinessException(404, "文件不存在"));
 
+        // 验证文件扩展名是否匹配，防止任意文件上传/类型欺骗
+        String originalFileName = file.getOriginalName() != null ? file.getOriginalName() : file.getFilename();
+        String originalExtension = getFileExtension(originalFileName);
+
+        String newOriginalName = StringUtils.cleanPath(newFile.getOriginalFilename() != null ?
+                newFile.getOriginalFilename() : "unknown");
+        String newExtension = getFileExtension(newOriginalName);
+
+        if (!originalExtension.equalsIgnoreCase(newExtension)) {
+            log.warn("检测到可能的文件类型欺骗攻击: 原文件={}, 新文件={}", originalFileName, newOriginalName);
+            throw new BusinessException(400, "上传的新版本文件类型必须与原文件一致");
+        }
+
         // 获取下一个版本号
         Integer nextVersion = getLatestVersionNumber(fileId) + 1;
 
         try {
             // 生成版本文件路径
             String datePath = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
-            String originalName = StringUtils.cleanPath(newFile.getOriginalFilename() != null ?
-                    newFile.getOriginalFilename() : "unknown");
-            String extension = getFileExtension(originalName);
-            String filename = UUID.randomUUID() + "_v" + nextVersion + "." + extension;
+            String filename = UUID.randomUUID() + "_v" + nextVersion + "." + newExtension;
             String relativePath = "versions/" + datePath + "/" + filename;
 
             // 创建目录

@@ -45,6 +45,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        serif: ['var(--font-playfair)', 'var(--font-noto-serif-sc)', 'Georgia', 'Times New Roman', 'serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       typography: {

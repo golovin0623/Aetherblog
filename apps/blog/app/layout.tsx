@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Playfair_Display, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
@@ -9,6 +9,8 @@ import { getSiteSettings } from './lib/services';
 import { themeInitScript } from '@aetherblog/hooks';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
+const playfair = Playfair_Display({ subsets: ['latin'], display: 'swap', variable: '--font-playfair', weight: ['400', '700'] });
+const notoSerifSC = Noto_Serif_SC({ display: 'swap', variable: '--font-noto-serif-sc', weight: ['400', '700'], preload: false });
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
@@ -54,7 +56,7 @@ export default async function RootLayout({
         {/* 主题初始化脚本 - 防止 FOUC */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className={`${inter.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
+      <body className={`${inter.variable} ${playfair.variable} ${notoSerifSC.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
         <Providers>
           <BlogHeader />
           <ClientLayout>
