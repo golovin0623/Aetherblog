@@ -65,7 +65,7 @@ export function StatsCard({
 
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] animate-pulse h-[140px]">
+      <div className="p-4 lg:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] animate-pulse h-[120px] lg:h-[140px]">
         <div className="flex justify-between">
           <div className="w-24 h-4 bg-[var(--bg-secondary)] rounded" />
           <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-lg" />
@@ -82,14 +82,14 @@ export function StatsCard({
       animate={{ opacity: 1 }}
       whileHover={{ y: -2 }}
       className={cn(
-        "p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",
+        "p-4 lg:p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",
         colorStyles[color]
       )}
     >
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[var(--text-secondary)] text-sm font-medium">{title}</p>
-          <p className="text-3xl font-bold text-[var(--text-primary)] mt-2 tabular-nums">
+          <p className="text-2xl lg:text-3xl font-bold text-[var(--text-primary)] mt-2 tabular-nums">
             {typeof value === 'string' ? (
               value
             ) : (
