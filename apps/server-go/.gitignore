@@ -1,0 +1,9 @@
+/server
+*.exe
+*.test
+*.out
+.env
+uploads/
+logs/
+tmp/
+/bin/

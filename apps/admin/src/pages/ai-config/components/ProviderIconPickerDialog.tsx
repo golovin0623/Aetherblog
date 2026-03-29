@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
 
@@ -35,21 +36,21 @@ export default function ProviderIconPickerDialog({
     });
   }, [group, query]);
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
+        initial={{ scale: 0.96, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.96, opacity: 0, y: 20 }}
         transition={{ type: 'spring', damping: 26, stiffness: 260 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-[92vw] sm:w-full sm:max-w-2xl max-h-[82vh] flex flex-col rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
+        className="w-full sm:w-[92vw] sm:max-w-2xl max-h-[80vh] sm:max-h-[82vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 p-5 border-b border-[var(--border-default)]">
@@ -159,7 +160,8 @@ export default function ProviderIconPickerDialog({
           )}
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
