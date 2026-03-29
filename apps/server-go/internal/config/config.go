@@ -130,7 +130,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Override JWT secret from env directly (backward compat with Java config)
+	// Override from env directly (backward compat with .env without AETHERBLOG_ prefix)
 	if err := k.Load(env.Provider("", ".", func(s string) string {
 		switch s {
 		case "JWT_SECRET":
@@ -141,6 +141,14 @@ func Load(path string) (*Config, error) {
 			return "upload.path"
 		case "LOG_PATH":
 			return "log.path"
+		case "REDIS_HOST":
+			return "redis.host"
+		case "REDIS_PORT":
+			return "redis.port"
+		case "REDIS_PASSWORD":
+			return "redis.password"
+		case "POSTGRES_PASSWORD":
+			return "database.password"
 		default:
 			return ""
 		}
