@@ -65,7 +65,7 @@ const PostItem = React.memo(({
       <Link
         href={`/posts/${post.slug}`}
         onClick={() => handlePostClick(post.id)}
-        className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all transform ${isHighlighted
+        className={`group flex items-center gap-2 py-1.5 px-2 rounded-md transition-all transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${isHighlighted
           ? `${isHighlightFading ? 'duration-1000 bg-transparent ring-0 opacity-100 translate-x-0' : 'duration-300 bg-primary/15 ring-1 ring-primary/40 translate-x-1'}`
           : `duration-200 hover:bg-[var(--bg-card-hover)] hover:translate-x-1 ${fadeOpacity}`
           }`}
@@ -120,7 +120,7 @@ const MonthSection = React.memo(({
         onClick={() => toggleMonth(yearMonth)}
         aria-expanded={isExpanded}
         aria-controls={`timeline-month-${yearMonth}`}
-        className="group flex items-center gap-2.5 w-full text-left py-1.5 px-2.5 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/20 transition-all duration-200"
+        className="group flex items-center gap-2.5 w-full text-left py-1.5 px-2.5 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/20 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
       >
         <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
           {isExpanded ? (
@@ -178,7 +178,7 @@ const MonthSection = React.memo(({
                 >
                   <button
                     onClick={() => toggleShowAllPosts(yearMonth)}
-                    className="group p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors duration-300"
+                    className="group p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                     title={showAllPosts ? '收起' : `还有 ${hiddenCount} 篇`}
                   >
                     <motion.div
@@ -234,7 +234,7 @@ const YearSection = React.memo(({
         onClick={() => toggleYear(yearData.year)}
         aria-expanded={isExpanded}
         aria-controls={`timeline-year-${yearData.year}`}
-        className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10"
+        className="group flex items-center gap-3 w-full text-left py-2 px-3 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-primary/30 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
       >
         {/* 展开时带脉冲动画的节点 */}
         <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary group-hover:bg-primary/30 transition-colors">
