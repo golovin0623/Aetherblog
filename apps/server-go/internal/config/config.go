@@ -164,6 +164,12 @@ func Load(path string) (*Config, error) {
 // It splits only at the first-level section boundary, preserving underscores in field names.
 // Example: "ai_base_url" → "ai.base_url", "database_max_open_conns" → "database.max_open_conns"
 func envKeyToKoanf(key string) string {
+	// Special: auth_cookie_* must be checked before the general "auth" prefix
+	// to produce auth.cookie.secure instead of auth.cookie_secure
+	if strings.HasPrefix(key, "auth_cookie_") {
+		return "auth.cookie." + key[len("auth_cookie_"):]
+	}
+
 	// Known top-level config sections
 	prefixes := []string{
 		"server", "database", "redis", "jwt", "auth",
@@ -174,10 +180,7 @@ func envKeyToKoanf(key string) string {
 			return p + "." + key[len(p)+1:]
 		}
 	}
-	// Special: auth_cookie_secure → auth.cookie.secure (nested 3 levels)
-	if strings.HasPrefix(key, "auth_cookie_") {
-		return "auth.cookie." + key[len("auth_cookie_"):]
-	}
+
 	return strings.ReplaceAll(key, "_", ".")
 }
 
