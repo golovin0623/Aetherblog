@@ -6,13 +6,14 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Box, 
-  Server, 
-  Database, 
+import {
+  Box,
+  Server,
+  Database,
   Globe,
   Zap,
   Search,
+  Bot,
   RefreshCw,
   AlertCircle,
   CheckCircle2
@@ -88,6 +89,7 @@ function ContainerIcon({ type }: { type: string }) {
     database: <Database className="w-4 h-4" />,
     cache: <Zap className="w-4 h-4" />,
     search: <Search className="w-4 h-4" />,
+    ai: <Bot className="w-4 h-4" />,
   };
 
   const colorMap: Record<string, string> = {
@@ -97,6 +99,7 @@ function ContainerIcon({ type }: { type: string }) {
     database: 'bg-accent/20 text-accent',
     cache: 'bg-status-danger/20 text-status-danger',
     search: 'bg-cyan-500/20 text-cyan-500',
+    ai: 'bg-violet-500/20 text-violet-500',
   };
 
   return (

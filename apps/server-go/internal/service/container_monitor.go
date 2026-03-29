@@ -265,14 +265,14 @@ func inferContainerType(name string) string {
 		return "database"
 	case strings.Contains(name, "redis"):
 		return "cache"
+	case strings.Contains(name, "elasticsearch") || strings.Contains(name, "elastic"):
+		return "search"
 	case strings.Contains(name, "backend"):
-		return "backend"
+		return "java"
 	case strings.Contains(name, "blog"):
-		return "frontend"
-	case strings.Contains(name, "admin"):
-		return "frontend"
-	case strings.Contains(name, "gateway") || strings.Contains(name, "nginx"):
-		return "gateway"
+		return "nodejs"
+	case strings.Contains(name, "admin") || strings.Contains(name, "gateway") || strings.Contains(name, "nginx"):
+		return "nginx"
 	case strings.Contains(name, "ai"):
 		return "ai"
 	default:
