@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="AI_HOST")
     port: int = Field(default=8000, alias="AI_PORT")
     log_level: str = Field(default="info", alias="AI_LOG_LEVEL")
+    log_path: str = Field(default="./logs", alias="AI_LOG_PATH")
     mock_mode: bool = Field(default=True, alias="AI_MOCK_MODE")
 
     jwt_mode: Literal["HMAC", "JWKS"] = Field(default="HMAC", validation_alias="AI_JWT_MODE")
@@ -60,6 +61,17 @@ class Settings(BaseSettings):
         ...,
         alias="POSTGRES_DSN",
     )
+
+    @field_validator("postgres_dsn", mode="after")
+    @classmethod
+    def _normalize_postgres_dsn(cls, v: str) -> str:
+        """Strip SQLAlchemy dialect suffixes so raw asyncpg accepts the DSN.
+
+        start.sh may export ``postgresql+asyncpg://…`` but ``asyncpg.create_pool``
+        only understands ``postgresql://…``.
+        """
+        return v.replace("postgresql+asyncpg://", "postgresql://")
+
     vector_dim: int = Field(default=1536, alias="AI_VECTOR_DIM")
     search_threshold: float = Field(default=0.6, alias="AI_SEARCH_THRESHOLD")
     reindex_batch_size: int = Field(default=200, alias="AI_REINDEX_BATCH")

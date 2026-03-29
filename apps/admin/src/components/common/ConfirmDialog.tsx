@@ -1,5 +1,6 @@
 'use client';
 
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Copy, Trash2, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -64,10 +65,10 @@ export function ConfirmDialog({
   const config = variantConfig[variant];
   const IconComponent = config.icon;
 
-  return (
+  const content = (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           {/* 背景遮罩 */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -153,6 +154,8 @@ export function ConfirmDialog({
       )}
     </AnimatePresence>
   );
+
+  return createPortal(content, document.body);
 }
 
 export default ConfirmDialog;

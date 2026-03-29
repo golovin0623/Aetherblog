@@ -2,6 +2,7 @@
 // ref: §5.1 - AI Service 架构
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
 import type { AiProvider, CreateProviderRequest, UpdateProviderRequest } from '@/services/aiProviderService';
@@ -211,20 +212,20 @@ export default function ProviderDialog({
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[90vw] sm:w-full sm:max-w-md max-h-[80vh] flex flex-col rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
+        className="relative w-full sm:w-[90vw] sm:max-w-md max-h-[85vh] sm:max-h-[80vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
       >
         {/* 顶部环境光 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
@@ -588,6 +589,7 @@ export default function ProviderDialog({
 	          </div>
 	        </form>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
