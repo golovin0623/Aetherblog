@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
-	"os/exec"
+	"net"
+	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
+	"time"
 )
 
 // validContainerID matches Docker container IDs and names.
@@ -37,11 +40,32 @@ type ContainerInfo struct {
 	Type          string  `json:"type"`
 }
 
-// ContainerMonitorService provides Docker container monitoring via CLI.
-type ContainerMonitorService struct{}
+// ContainerMonitorService provides Docker container monitoring via Unix socket API.
+type ContainerMonitorService struct {
+	client *http.Client
+}
 
 func NewContainerMonitorService() *ContainerMonitorService {
-	return &ContainerMonitorService{}
+	return &ContainerMonitorService{
+		client: &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					return net.Dial("unix", "/var/run/docker.sock")
+				},
+			},
+			Timeout: 5 * time.Second,
+		},
+	}
+}
+
+// dockerContainer is the JSON shape returned by Docker API /containers/json.
+type dockerContainer struct {
+	ID     string            `json:"Id"`
+	Names  []string          `json:"Names"`
+	Image  string            `json:"Image"`
+	State  string            `json:"State"`
+	Status string            `json:"Status"`
+	Labels map[string]string `json:"Labels"`
 }
 
 // ListContainers returns an overview of all aetherblog Docker containers.
@@ -50,180 +74,133 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 		Containers: []ContainerInfo{},
 	}
 
-	// Check if docker is available
-	if _, err := exec.LookPath("docker"); err != nil {
-		return overview
-	}
-	overview.DockerAvailable = true
-
-	// List containers with aetherblog compose project
-	out, err := exec.Command("docker", "ps", "-a",
-		"--filter", "label=com.docker.compose.project=aetherblog",
-		"--format", "{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}|{{.State}}",
-	).Output()
+	// Check if docker socket is available
+	resp, err := s.client.Get("http://docker/containers/json?all=true&filters=" +
+		`{"label":["com.docker.compose.project"]}`)
 	if err != nil {
-		// Try without filter for standalone containers
-		out, err = exec.Command("docker", "ps", "-a",
-			"--filter", "name=aetherblog",
-			"--format", "{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}|{{.State}}",
-		).Output()
+		// Try name-based filter as fallback
+		resp, err = s.client.Get("http://docker/containers/json?all=true")
 		if err != nil {
 			return overview
 		}
 	}
+	defer resp.Body.Close()
+	overview.DockerAvailable = true
 
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+	var containers []dockerContainer
+	if err := json.NewDecoder(resp.Body).Decode(&containers); err != nil {
 		return overview
 	}
 
-	var ids []string
-	containerMap := make(map[string]*ContainerInfo)
+	// Filter for aetherblog containers
+	for _, c := range containers {
+		name := ""
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
 
-	for _, line := range lines {
-		parts := strings.SplitN(line, "|", 5)
-		if len(parts) < 5 {
+		// Only include aetherblog containers
+		project := c.Labels["com.docker.compose.project"]
+		if !strings.Contains(name, "aetherblog") && project != "aetherblog" {
 			continue
 		}
-		id := parts[0]
-		name := parts[1]
-		status := parts[2]
-		image := parts[3]
-		state := parts[4]
 
-		info := &ContainerInfo{
-			ID:          id,
+		info := ContainerInfo{
+			ID:          c.ID[:12],
 			Name:        name,
 			DisplayName: inferDisplayName(name),
-			Status:      status,
-			State:       state,
-			Image:       image,
-			Type:        inferContainerType(name, image),
+			Status:      c.Status,
+			State:       c.State,
+			Image:       c.Image,
+			Type:        inferContainerType(name),
 		}
-		containerMap[id] = info
-		ids = append(ids, id)
-		overview.TotalContainers++
-		if strings.ToLower(state) == "running" {
+
+		if c.State == "running" {
 			overview.RunningContainers++
 		}
+
+		overview.Containers = append(overview.Containers, info)
 	}
 
-	// Get stats for running containers
-	if len(ids) > 0 {
-		args := append([]string{"stats", "--no-stream", "--format", "{{.ID}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}"}, ids...)
-		statsOut, err := exec.Command("docker", args...).Output()
-		if err == nil {
-			statsLines := strings.Split(strings.TrimSpace(string(statsOut)), "\n")
-			for _, sl := range statsLines {
-				parts := strings.SplitN(sl, "|", 4)
-				if len(parts) < 4 {
-					continue
-				}
-				id := parts[0]
-				info, ok := containerMap[id]
-				if !ok {
-					continue
-				}
-
-				// CPU: "0.50%"
-				cpuStr := strings.TrimSuffix(strings.TrimSpace(parts[1]), "%")
-				info.CpuPercent, _ = strconv.ParseFloat(cpuStr, 64)
-
-				// Memory: "50.5MiB / 1GiB"
-				memParts := strings.Split(parts[2], "/")
-				if len(memParts) == 2 {
-					info.MemoryUsed = parseMemoryString(strings.TrimSpace(memParts[0]))
-					info.MemoryLimit = parseMemoryString(strings.TrimSpace(memParts[1]))
-				}
-
-				// Mem%: "5.00%"
-				memPctStr := strings.TrimSuffix(strings.TrimSpace(parts[3]), "%")
-				info.MemoryPercent, _ = strconv.ParseFloat(memPctStr, 64)
-			}
-		}
-	}
-
-	var totalCpu float64
-	for _, id := range ids {
-		info := containerMap[id]
-		overview.Containers = append(overview.Containers, *info)
-		overview.TotalMemoryUsed += info.MemoryUsed
-		overview.TotalMemoryLimit += info.MemoryLimit
-		totalCpu += info.CpuPercent
-	}
-	if overview.RunningContainers > 0 {
-		overview.AvgCpuPercent = totalCpu / float64(overview.RunningContainers)
-	}
-
+	overview.TotalContainers = len(overview.Containers)
 	return overview
 }
 
-// GetContainerLogs retrieves logs for a specific container.
+// GetContainerLogs returns the last N lines of logs for a container.
 func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int) (string, error) {
-	if containerID == "" || !validContainerID.MatchString(containerID) || strings.HasPrefix(containerID, "-") {
-		return "", fmt.Errorf("invalid container ID: %s", containerID)
+	if !validContainerID.MatchString(containerID) {
+		return "", fmt.Errorf("invalid container ID")
 	}
-	if tail <= 0 {
-		tail = 200
-	}
-	out, err := exec.Command("docker", "logs", "--tail", fmt.Sprintf("%d", tail), containerID).CombinedOutput()
+
+	resp, err := s.client.Get(fmt.Sprintf("http://docker/containers/%s/logs?stdout=true&stderr=true&tail=%d", containerID, tail))
 	if err != nil {
-		return "", fmt.Errorf("failed to get logs for container %s: %w", containerID, err)
+		return "", fmt.Errorf("docker API error: %w", err)
 	}
-	return string(out), nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("container not found or inaccessible")
+	}
+
+	// Docker log stream has 8-byte header per frame; strip it for plain text
+	buf := make([]byte, 0, 64*1024)
+	tmp := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	// Strip Docker stream headers (8 bytes per frame: [type(1)][0(3)][size(4)])
+	var clean strings.Builder
+	i := 0
+	for i < len(buf) {
+		if i+8 <= len(buf) {
+			frameSize := int(buf[i+4])<<24 | int(buf[i+5])<<16 | int(buf[i+6])<<8 | int(buf[i+7])
+			if frameSize > 0 && i+8+frameSize <= len(buf) {
+				clean.Write(buf[i+8 : i+8+frameSize])
+				i += 8 + frameSize
+				continue
+			}
+		}
+		clean.WriteByte(buf[i])
+		i++
+	}
+
+	return clean.String(), nil
 }
 
 func inferDisplayName(name string) string {
-	// Remove common prefixes
 	name = strings.TrimPrefix(name, "aetherblog-")
 	name = strings.TrimPrefix(name, "aetherblog_")
-	// Capitalize first letter
-	if len(name) > 0 {
-		return strings.ToUpper(name[:1]) + name[1:]
+	parts := strings.Split(name, "-")
+	if len(parts) > 0 {
+		return parts[0]
 	}
 	return name
 }
 
-func inferContainerType(name, image string) string {
-	lower := strings.ToLower(name + " " + image)
+func inferContainerType(name string) string {
 	switch {
-	case strings.Contains(lower, "postgres"):
+	case strings.Contains(name, "postgres"):
 		return "database"
-	case strings.Contains(lower, "redis"):
+	case strings.Contains(name, "redis"):
 		return "cache"
-	case strings.Contains(lower, "elasticsearch") || strings.Contains(lower, "elastic"):
-		return "search"
-	case strings.Contains(lower, "nginx") || strings.Contains(lower, "gateway"):
-		return "gateway"
-	case strings.Contains(lower, "blog"):
-		return "frontend"
-	case strings.Contains(lower, "admin"):
-		return "frontend"
-	case strings.Contains(lower, "server") || strings.Contains(lower, "backend") || strings.Contains(lower, "api"):
+	case strings.Contains(name, "backend"):
 		return "backend"
-	case strings.Contains(lower, "ai"):
+	case strings.Contains(name, "blog"):
+		return "frontend"
+	case strings.Contains(name, "admin"):
+		return "frontend"
+	case strings.Contains(name, "gateway") || strings.Contains(name, "nginx"):
+		return "gateway"
+	case strings.Contains(name, "ai"):
 		return "ai"
 	default:
 		return "other"
 	}
-}
-
-func parseMemoryString(s string) int64 {
-	s = strings.TrimSpace(s)
-	multiplier := int64(1)
-	switch {
-	case strings.HasSuffix(s, "GiB"):
-		multiplier = 1024 * 1024 * 1024
-		s = strings.TrimSuffix(s, "GiB")
-	case strings.HasSuffix(s, "MiB"):
-		multiplier = 1024 * 1024
-		s = strings.TrimSuffix(s, "MiB")
-	case strings.HasSuffix(s, "KiB"):
-		multiplier = 1024
-		s = strings.TrimSuffix(s, "KiB")
-	case strings.HasSuffix(s, "B"):
-		s = strings.TrimSuffix(s, "B")
-	}
-	val, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return int64(val * float64(multiplier))
 }
