@@ -3,6 +3,7 @@ package com.aetherblog.blog.controller;
 import com.aetherblog.blog.dto.response.ImportVanBlogResult;
 import com.aetherblog.blog.service.VanBlogImportService;
 import com.aetherblog.common.core.domain.R;
+import com.aetherblog.common.security.annotation.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class VanBlogMigrationController {
 
     @Operation(summary = "导入 VanBlog 备份文件")
     @PostMapping("/import")
+    @RateLimit(key = "migration:vanblog", count = 3, time = 3600, limitType = RateLimit.LimitType.USER)
     public R<ImportVanBlogResult> importBackup(
             @RequestPart("file") MultipartFile file,
             @RequestParam(defaultValue = "dry-run") String mode) {
