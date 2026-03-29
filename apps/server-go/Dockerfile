@@ -6,12 +6,12 @@
 FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
-# Cache dependencies
-COPY go.mod go.sum ./
+# Cache dependencies (context is project root, source is apps/server-go/)
+COPY apps/server-go/go.mod apps/server-go/go.sum ./
 RUN go mod download
 
-# Build
-COPY . .
+# Copy source and build
+COPY apps/server-go/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server ./cmd/server
 
 # Production: alpine-based minimal image
