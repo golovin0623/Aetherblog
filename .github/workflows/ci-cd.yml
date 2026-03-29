@@ -430,14 +430,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Compute changed services
+        id: services
+        run: |
+          SERVICES=""
+          [[ "${{ needs.detect-changes.outputs.backend }}" == "true" ]] && SERVICES="$SERVICES backend"
+          [[ "${{ needs.detect-changes.outputs.ai-service }}" == "true" ]] && SERVICES="$SERVICES ai-service"
+          [[ "${{ needs.detect-changes.outputs.blog }}" == "true" ]] && SERVICES="$SERVICES blog"
+          [[ "${{ needs.detect-changes.outputs.admin }}" == "true" ]] && SERVICES="$SERVICES admin"
+
+          # Tag 推送 → 全量部署
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            SERVICES="backend ai-service blog admin"
+          fi
+
+          # 任何应用变更都要重启 gateway（nginx 路由可能受影响）
+          if [ -n "$SERVICES" ]; then
+            SERVICES="$SERVICES gateway"
+          fi
+
+          echo "services=$(echo $SERVICES | xargs)" >> $GITHUB_OUTPUT
+
       - name: Print deployment info
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🚀 触发部署 - 以下模块已更新:"
-          [[ "${{ needs.detect-changes.outputs.backend }}" == "true" ]] && echo "  ✅ backend"
-          [[ "${{ needs.detect-changes.outputs.ai-service }}" == "true" ]] && echo "  ✅ ai-service"
-          [[ "${{ needs.detect-changes.outputs.blog }}" == "true" ]] && echo "  ✅ blog"
-          [[ "${{ needs.detect-changes.outputs.admin }}" == "true" ]] && echo "  ✅ admin"
+          echo "🚀 增量部署 - 仅重启变更的服务:"
+          echo "  📦 ${{ steps.services.outputs.services }}"
+          echo "  🛡️ 中间件 (postgres/redis) 不受影响"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: Trigger deployment webhook
@@ -451,6 +470,8 @@ jobs:
             --retry 2 \
             --retry-delay 2 \
             --retry-connrefused \
+            -H "Content-Type: application/json" \
+            -d '{"services": "${{ steps.services.outputs.services }}"}' \
             -o "$response_file" \
             -w "%{http_code}" \
             "${{ secrets.DEPLOY_WEBHOOK_URL }}")

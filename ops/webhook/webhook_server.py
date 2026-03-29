@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import http.server
+import json
 import logging
 import os
 import subprocess
@@ -10,11 +11,29 @@ PORT = int(os.environ.get("WEBHOOK_PORT", "7868"))
 DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/root/Aetherblog/webhook/deploy.sh")
 DEPLOY_TIMEOUT = int(os.environ.get("DEPLOY_TIMEOUT", "900"))
 
+# 允许的服务名白名单
+ALLOWED_SERVICES = {"backend", "ai-service", "blog", "admin", "gateway"}
+
 
 def _tail(text: str, lines: int = 20) -> str:
     if not text:
         return ""
     return "\n".join(text.strip().splitlines()[-lines:])
+
+
+def _parse_services(body: bytes) -> str:
+    """从请求体解析 services 字段，返回经过白名单过滤的服务列表字符串。"""
+    if not body:
+        return ""
+    try:
+        data = json.loads(body)
+        raw = data.get("services", "")
+        if not raw:
+            return ""
+        names = [s.strip() for s in raw.split() if s.strip() in ALLOWED_SERVICES]
+        return " ".join(names)
+    except (json.JSONDecodeError, AttributeError):
+        return ""
 
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
@@ -34,7 +53,19 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             self._send(403, "Forbidden")
             return
 
-        logging.info("Webhook accepted, starting deployment")
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b""
+
+        services = _parse_services(body)
+
+        env = os.environ.copy()
+        if services:
+            env["DEPLOY_SERVICES"] = services
+            env["DEPLOY_MODE"] = "incremental"
+            logging.info("Webhook accepted, incremental deploy: %s", services)
+        else:
+            env["DEPLOY_MODE"] = "full"
+            logging.info("Webhook accepted, full deploy (no services specified)")
 
         try:
             result = subprocess.run(
@@ -43,6 +74,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 timeout=DEPLOY_TIMEOUT,
                 capture_output=True,
                 text=True,
+                env=env,
             )
             logging.info("Deployment succeeded")
             stdout_tail = _tail(result.stdout)
