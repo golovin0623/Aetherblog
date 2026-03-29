@@ -472,8 +472,8 @@ export default function DashboardPage() {
         <StatsCard
           title="AI 费用"
           value={`$${(aiOverview.totalCost || data?.stats.aiCost || 0).toFixed(2)}`}
-          change={aiOverview.successRate || 0}
-          changeLabel={`成功率 ${aiOverview.successRate || 0}%`}
+          change={Number((aiOverview.successRate || 0).toFixed(1))}
+          changeLabel={`成功率 ${(aiOverview.successRate || 0).toFixed(1)}%`}
           icon={<DollarSign className="w-5 h-5" />}
           color="emerald"
         />
@@ -539,8 +539,8 @@ export default function DashboardPage() {
           <StatsCard
             title="AI 调用总数"
             value={aiOverview.totalCalls}
-            change={aiOverview.successRate}
-            changeLabel="成功率"
+            change={Number((aiOverview.successRate || 0).toFixed(1))}
+            changeLabel={`成功率 ${(aiOverview.successRate || 0).toFixed(1)}%`}
             icon={<Cpu className="w-5 h-5" />}
             color="indigo"
             loading={aiLoading}

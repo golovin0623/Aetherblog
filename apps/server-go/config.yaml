@@ -1,0 +1,59 @@
+server:
+  port: 8080
+  host: "0.0.0.0"
+
+database:
+  host: localhost
+  port: 5432
+  user: aetherblog
+  password: aetherblog123
+  dbname: aetherblog
+  sslmode: disable
+  max_open_conns: 20
+  max_idle_conns: 5
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+
+jwt:
+  # Override via JWT_SECRET env var in production
+  secret: ""
+  expiration: 24h
+  refresh_expiration: 168h  # 7 days
+
+auth:
+  cookie:
+    secure: false
+    same_site: Strict
+
+cors:
+  allowed_origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+    - http://localhost:7894
+    - http://127.0.0.1:7894
+    - http://localhost:7899
+    - http://127.0.0.1:7899
+
+upload:
+  path: ./uploads
+  url_prefix: /uploads
+
+media:
+  trash_cleanup_days: 120
+
+log:
+  path: ./logs
+  level: debug
+
+ai:
+  base_url: http://localhost:8000
+  connect_timeout: 5s
+  read_timeout: 30s
+  stream_read_timeout: 5m
+
+elasticsearch:
+  uris:
+    - http://localhost:9200
