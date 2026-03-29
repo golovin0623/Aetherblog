@@ -535,7 +535,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4 [&>:last-child]:col-span-2 lg:[&>:last-child]:col-span-1">
           <StatsCard
             title="AI 调用总数"
             value={aiOverview.totalCalls}
