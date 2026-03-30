@@ -18,7 +18,9 @@ ROLLBACK_VERSION="${ROLLBACK_VERSION:-}"
 mkdir -p "$(dirname "$LOCK_FILE")"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-exec >>"$LOG_FILE" 2>&1
+# Use tee to write to both log file and stdout/stderr, so the calling
+# process (webhook_server.py) can capture output for error reporting
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "[$(date -Iseconds)] Deployment requested"
 
