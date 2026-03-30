@@ -62,3 +62,8 @@
 **Vulnerability:** The media file versioning feature (`VersionServiceImpl.createVersion`) allowed users to upload a new file version without validating that the new file's extension matches the original file's extension. This could allow attackers to perform type spoofing, uploading an executable script (e.g. `.html`, `.jsp`) as a new version of an innocent file (e.g. `.png`).
 **Learning:** File versioning systems must enforce type consistency between versions. Validating the content or type at initial upload is insufficient if subsequent versions of the same file ID bypass those checks by changing extensions.
 **Prevention:** Always compare the file extension of any new file version against the file extension of the original parent file. Reject the upload immediately if they do not match.
+
+## 2026-03-29 - Missing Rate Limiting on Migration/Upload Endpoint
+**Vulnerability:** The `/v1/admin/migrations/vanblog/import` endpoint allowed authenticated users to upload potentially large ZIP backup files and trigger CPU/DB-intensive migration processes without any rate limiting. This could be abused (e.g., by a compromised admin account) to cause Denial of Service (DoS) and resource exhaustion.
+**Learning:** Endpoints that handle large file uploads or trigger complex, resource-intensive background processing (like data migrations) are prime targets for DoS attacks and must always be protected with rate limiting, even if they are restricted to authenticated administrators.
+**Prevention:** Always apply `@RateLimit` (e.g., with `LimitType.USER` and a conservative time window) to any endpoint that processes complex files or performs bulk data operations. Added a reflection-based unit test to ensure the annotation is not accidentally removed in the future.

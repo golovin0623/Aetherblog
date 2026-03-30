@@ -73,4 +73,19 @@ public class RateLimitVerificationTest {
         assertEquals(60, rateLimit.time(), "Rate limit time mismatch");
         assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
     }
+
+    @Test
+    public void vanBlogImportMethodShouldHaveRateLimitAnnotation() throws NoSuchMethodException {
+        Method importMethod = VanBlogMigrationController.class.getMethod("importBackup",
+                MultipartFile.class,
+                String.class);
+
+        RateLimit rateLimit = importMethod.getAnnotation(RateLimit.class);
+        assertNotNull(rateLimit, "VanBlog import method must have @RateLimit annotation");
+
+        assertEquals("migration:vanblog", rateLimit.key(), "Rate limit key mismatch");
+        assertEquals(3, rateLimit.count(), "Rate limit count mismatch");
+        assertEquals(3600, rateLimit.time(), "Rate limit time mismatch");
+        assertEquals(RateLimit.LimitType.USER, rateLimit.limitType(), "Rate limit type mismatch");
+    }
 }
