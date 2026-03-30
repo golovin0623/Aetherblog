@@ -2,8 +2,11 @@ import type { NextConfig } from 'next';
 import path from 'path';
 
 const nextConfig: NextConfig = {
-  /* config options here */
   output: 'standalone',
+  experimental: {
+    // Tree-shake heavy packages to only bundle used exports — reduces build time significantly
+    optimizePackageImports: ['shiki', 'lucide-react', 'framer-motion', 'mermaid', 'date-fns'],
+  },
   outputFileTracingRoot: path.join(__dirname, '../..'),
   images: {
     remotePatterns: [

@@ -43,8 +43,10 @@ ENV NEXT_PUBLIC_ADMIN_URL=${NEXT_PUBLIC_ADMIN_URL:-/admin/}
 RUN mkdir -p /app/apps/blog/public
 
 # Build the application with memory limit
+# Cache mount for .next/cache persists Next.js build cache across Docker builds
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN pnpm --filter @aetherblog/blog build
+RUN --mount=type=cache,target=/app/apps/blog/.next/cache \
+    pnpm --filter @aetherblog/blog build
 
 # Stage 3: Production (target platform)
 FROM node:20-alpine AS runner

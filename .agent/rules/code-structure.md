@@ -11,7 +11,7 @@ AetherBlog/
 ├── apps/                          # 📱 应用层
 │   ├── blog/                      #    └─ 博客前台 (Next.js 15)
 │   ├── admin/                     #    └─ 管理后台 (Vite + React 19)
-│   └── server/                    #    └─ 后端服务 (Spring Boot 3.4)
+│   └── server-go/                 #    └─ 后端服务 (Go 1.24 + Echo)
 │
 ├── packages/                      # 📦 共享包 (Monorepo)
 │   ├── ui/                        #    └─ 通用 UI 组件
@@ -100,58 +100,47 @@ app/
 
 ---
 
-## 3. 后端架构 (Spring Boot Modular Monolith)
+## 3. 后端架构 (Go + Echo)
 
-### 3.1 模块层次
-
-```
-apps/server/
-├── aetherblog-app/                # 🚀 应用启动模块
-│   └── AetherBlogApplication.java # 唯一启动类
-│
-├── aetherblog-api/                # 📦 API 接口定义
-│   └── dto/                       # DTO 定义
-│       ├── request/               # 请求 DTO
-│       └── response/              # 响应 DTO
-│
-├── aetherblog-common/             # 🔧 公共模块
-│   ├── common-core/               # 核心工具 (R, 异常, SlugUtils)
-│   ├── common-security/           # 安全认证 (JWT, SecurityConfig)
-│   ├── common-redis/              # Redis 缓存
-│   └── common-log/                # 日志管理
-│
-├── aetherblog-service/            # 💼 业务服务
-│   └── blog-service/              # 博客核心服务
-│       ├── controller/            # 控制器
-│       ├── service/               # 服务接口
-│       │   └── impl/              # 服务实现
-│       ├── repository/            # 数据访问
-│       ├── entity/                # JPA 实体
-│       └── config/                # 模块配置
-│
-└── aetherblog-ai/                 # 🤖 AI 模块
-    ├── ai-core/                   # AI 核心
-    ├── ai-agent/                  # AI Agent
-    ├── ai-prompt/                 # Prompt 管理
-    └── ai-rag/                    # RAG 检索
-```
-
-### 3.2 模块依赖规则
+### 3.1 包结构
 
 ```
-aetherblog-app
-    ↓ 依赖
-aetherblog-service (blog-service)
-    ↓ 依赖
-aetherblog-common (common-*)
-    ↓ 依赖
-aetherblog-api (DTO 定义)
+apps/server-go/
+├── cmd/
+│   ├── server/                    # 🚀 应用入口 (main.go)
+│   └── migrate/                   # 数据库迁移工具
+│
+├── internal/
+│   ├── config/                    # 配置加载
+│   ├── handler/                   # HTTP 处理器 (控制器)
+│   ├── service/                   # 业务逻辑层
+│   ├── repository/                # 数据访问层 (sqlx)
+│   ├── model/                     # 数据模型
+│   ├── dto/                       # 请求/响应 DTO
+│   ├── middleware/                 # JWT、CORS、限流中间件
+│   └── pkg/                       # 内部共享工具
+│
+└── migrations/                    # golang-migrate SQL 迁移文件
+    ├── 000001_init_schema.up.sql
+    └── ...
+```
+
+### 3.2 层次依赖规则
+
+```
+handler (HTTP 入口)
+    ↓ 调用
+service (业务逻辑)
+    ↓ 调用
+repository (数据访问)
+    ↓ 操作
+Database (PostgreSQL/Redis)
 ```
 
 **约束**:
-- ❌ common 模块不能依赖 service 模块
-- ❌ api 模块不能依赖任何其他模块
-- ✅ service 模块可以依赖 common 和 api
+- ❌ handler 不能直接调用 repository
+- ❌ repository 不能包含业务逻辑
+- ✅ 所有外部依赖通过 config 注入
 
 ---
 
@@ -224,13 +213,12 @@ Database
 ### 6.2 后端
 | 类型 | 规范 | 示例 |
 |:-----|:-----|:-----|
-| 控制器 | PascalCase + Controller | `PostController.java` |
-| 服务接口 | PascalCase + Service | `PostService.java` |
-| 服务实现 | PascalCase + ServiceImpl | `PostServiceImpl.java` |
-| 仓库 | PascalCase + Repository | `PostRepository.java` |
-| 实体 | PascalCase | `Post.java` |
-| 请求 DTO | PascalCase + Request | `CreatePostRequest.java` |
-| 响应 DTO | PascalCase + Response | `PostDetailResponse.java` |
+| Handler | PascalCase + Handler | `PostHandler` |
+| Service | PascalCase + Service | `PostService` |
+| Repository | PascalCase + Repo | `PostRepo` |
+| 模型 | PascalCase | `Post` |
+| 请求 DTO | PascalCase + Request | `CreatePostRequest` |
+| 响应 DTO | PascalCase + Response | `PostDetailResponse` |
 
 ---
 
@@ -238,9 +226,9 @@ Database
 
 1. **禁止在 apps/ 中重复创建 UI 组件** - 使用 `@aetherblog/ui`
 2. **禁止跨模块直接导入** - 使用 workspace 依赖
-3. **禁止在 Controller 中写业务逻辑** - 放入 Service
-4. **禁止在 common 模块中引用 service 模块**
-5. **禁止硬编码配置** - 使用 application.yml
+3. **禁止在 Handler 中写业务逻辑** - 放入 Service
+4. **禁止在 Repository 中包含业务逻辑**
+5. **禁止硬编码配置** - 使用环境变量/config 包
 6. **禁止使用浏览器原生 confirm/alert** - 使用共享 Modal 组件
 
 ---

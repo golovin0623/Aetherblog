@@ -10,7 +10,9 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Components } from 'react-markdown';
 import type { PluggableList } from 'unified';
-import { createHighlighter, type Highlighter, type BundledLanguage } from 'shiki';
+import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
+import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
+import type { BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
 import { buildHeadingIdMap } from '../lib/headingId';
@@ -117,20 +119,33 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
   'docker': 'dockerfile',
 };
 
-// 全局高亮实例 (单例)
-let highlighterPromise: Promise<Highlighter> | null = null;
-let highlighterInstance: Highlighter | null = null;
+// 全局高亮实例 (单例) — 使用 shiki/core 避免打包全部 150+ 语言
+let highlighterPromise: Promise<HighlighterCore> | null = null;
+let highlighterInstance: HighlighterCore | null = null;
 // 已加载的语言集合
 const loadedLanguages = new Set<string>(CORE_LANGUAGES);
 
-async function getHighlighter(): Promise<Highlighter> {
+async function getHighlighter(): Promise<HighlighterCore> {
   if (highlighterInstance) return highlighterInstance;
 
   if (!highlighterPromise) {
-    // 仅初始加载核心语言，减少 bundle 体积
-    highlighterPromise = createHighlighter({
-      themes: ['github-dark', 'github-light'],
-      langs: CORE_LANGUAGES,
+    // 使用 shiki/core + 动态导入核心语言，显著减少构建时 bundle 体积
+    highlighterPromise = createHighlighterCore({
+      themes: [
+        import('shiki/themes/github-dark.mjs'),
+        import('shiki/themes/github-light.mjs'),
+      ],
+      langs: [
+        import('shiki/langs/javascript.mjs'),
+        import('shiki/langs/typescript.mjs'),
+        import('shiki/langs/jsx.mjs'),
+        import('shiki/langs/tsx.mjs'),
+        import('shiki/langs/json.mjs'),
+        import('shiki/langs/html.mjs'),
+        import('shiki/langs/css.mjs'),
+        import('shiki/langs/bash.mjs'),
+      ],
+      engine: createOnigurumaEngine(import('shiki/wasm')),
     });
   }
 
@@ -142,7 +157,7 @@ async function getHighlighter(): Promise<Highlighter> {
  * 动态加载语言 - 遇到未加载的语言时按需加载
  * 使用 Shiki 的 bundledLanguages 实现真正的懒加载
  */
-async function ensureLanguageLoaded(highlighter: Highlighter, lang: BundledLanguage): Promise<boolean> {
+async function ensureLanguageLoaded(highlighter: HighlighterCore, lang: BundledLanguage): Promise<boolean> {
   // 已加载
   if (loadedLanguages.has(lang)) return true;
 
@@ -150,12 +165,12 @@ async function ensureLanguageLoaded(highlighter: Highlighter, lang: BundledLangu
   if (!ALL_SUPPORTED_LANGUAGES.includes(lang)) return false;
 
   try {
-    // 使用动态 import 加载语言定义（真正的代码分割）
-    const { bundledLanguages } = await import('shiki/bundle/web');
-    const langModule = bundledLanguages[lang as keyof typeof bundledLanguages];
-
-    if (langModule) {
-      await highlighter.loadLanguage(langModule);
+    // 通过 bundledLanguagesInfo 按需加载（每个语言通过 @shikijs/langs 独立 chunk）
+    const { bundledLanguagesInfo } = await import('shiki/langs');
+    const langInfo = bundledLanguagesInfo.find((l: { id: string }) => l.id === lang);
+    if (langInfo) {
+      const langModule = await langInfo.import();
+      await highlighter.loadLanguage(langModule.default ?? langModule);
       loadedLanguages.add(lang);
       logger.info(`[Shiki] 动态加载语言: ${lang}`);
       return true;
@@ -464,7 +479,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
 };
 
 // Shiki 代码块组件 - 带语法高亮和折叠功能
-const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Highlighter | null; theme: string }> = ({
+const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: HighlighterCore | null; theme: string }> = ({
   language,
   code,
   highlighter,
@@ -645,7 +660,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
 
 // 创建自定义组件映射
 function createComponents(
-  highlighter: Highlighter | null,
+  highlighter: HighlighterCore | null,
   theme: string,
   headingIdMap: Map<number, string>,
 ): Components {
@@ -889,7 +904,7 @@ function createComponents(
 }
 
 const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps) => {
-  const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
+  const [highlighter, setHighlighter] = useState<HighlighterCore | null>(null);
 
   // 加载 Shiki highlighter
   useEffect(() => {
