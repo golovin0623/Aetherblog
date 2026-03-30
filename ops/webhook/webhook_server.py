@@ -72,8 +72,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 [DEPLOY_SCRIPT],
                 check=True,
                 timeout=DEPLOY_TIMEOUT,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 env=env,
             )
