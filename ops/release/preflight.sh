@@ -102,7 +102,7 @@ main() {
         fail "migration" "golang-migrate version ${latest_version:-unknown} < $EXPECTED_MIGRATION_VERSION"
       fi
     else
-      skip "migration" "schema_migrations table not found (legacy Flyway DB, run cmd/migrate up to adopt golang-migrate)"
+      fail "migration" "schema_migrations table not found (run: CREATE TABLE schema_migrations + INSERT version)"
     fi
 
     if curl -fsS --max-time 5 "$GATEWAY_BASE_URL/health" >/dev/null; then
