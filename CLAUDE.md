@@ -110,7 +110,6 @@ AetherBlog/
 │   ├── blog/          # Next.js 15 blog frontend
 │   ├── admin/         # Vite + React 19 admin dashboard
 │   ├── ai-service/    # 🤖 External AI service (FastAPI + LiteLLM)
-│   ├── server/        # (Deprecated) Spring Boot backend — replaced by server-go
 │   └── server-go/     # Go backend (Echo framework)
 │       ├── cmd/server/          # Entry point (main.go)
 │       ├── cmd/migrate/         # Database migration tool

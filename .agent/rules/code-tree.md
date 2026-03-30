@@ -9,7 +9,7 @@ trigger: always_on
 | 任务ID | 任务名称 | 相关文档 | 产出物 | 预估时间 |
 |:-------|:---------|:---------|:-------|:---------|
 | 1.1 | 前端 Monorepo 初始化 | §3.1 | pnpm workspace, turbo.json | 4h |
-| 1.2 | 后端 Maven 多模块初始化 | §4.1 | pom.xml, 模块结构 | 3h |
+| 1.2 | 后端 Go 模块初始化 | §4.1 | go.mod, internal/ 结构 | 3h |
 | 1.3 | 数据库初始化 | §6.1, §6.2 | SQL脚本, 初始数据 | 4h |
 | 1.4 | Docker 开发环境 | §9 | docker-compose.yml | 2h |
 | 1.5 | 共享配置包 | §3.1, §3.4 | packages/config | 3h |
