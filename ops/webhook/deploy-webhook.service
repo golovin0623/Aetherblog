@@ -10,7 +10,8 @@ Environment=WEBHOOK_SECRET=change-me
 Environment=WEBHOOK_PORT=7868
 Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
-ExecStart=/usr/bin/python3 /root/Aetherblog/webhook/webhook_server.py
+# Use pyenv Python 3.9.9 instead of system /usr/bin/python3 (CentOS 7 ships 3.6.8)
+ExecStart=/root/.pyenv/versions/3.9.9/bin/python3 /root/Aetherblog/webhook/webhook_server.py
 Restart=always
 RestartSec=3
 
