@@ -10,7 +10,7 @@
 - 本仓库是 `pnpm` workspace 单体仓（见 `pnpm-workspace.yaml`）。
 - `apps/blog`：博客前台（Next.js 15 + React 19）。
 - `apps/admin`：管理后台（Vite + React 19）。
-- `apps/server`：Java 后端（Spring Boot 多模块 Maven 工程）。
+- `apps/server-go`：Go 后端（Go 1.24 + Echo v4 + sqlx + golang-migrate）。
 - `apps/ai-service`：独立 AI 服务（FastAPI + LiteLLM）。
 - `packages/*`：前端共享库（`ui`、`utils`、`types`、`hooks`、`editor`）。
 - `docs/`、`ops/`、`nginx/`：文档与运维/部署配置。
@@ -22,7 +22,7 @@
   - `pnpm dev:blog`（前台默认 `:3000`）
 - 构建 JS/TS 工作区：`pnpm build`。
 - 代码检查：`pnpm lint`。
-- Java 后端：`cd apps/server && mvn clean install -DskipTests`，随后 `mvn test`。
+- Go 后端：`cd apps/server-go && go build ./...`，测试：`go test ./... -v`。
 - AI 服务：`cd apps/ai-service && pip install -r requirements-dev.txt && pytest`。
 - 一键脚本：`./start.sh`、`./stop.sh`。
 
@@ -38,7 +38,7 @@
 ## 测试规范
 - Python 测试位于 `apps/ai-service/tests`，框架为 `pytest`。
 - 覆盖率门槛定义在 `apps/ai-service/pyproject.toml`：`--cov-fail-under=80`。
-- Java 测试位于 `apps/server/**/src/test/java`，使用 `mvn test`。
+- Go 测试位于 `apps/server-go`，使用 `go test ./... -v`。
 - 前端当前以 lint + type-check + build 作为 CI 基线，新增复杂逻辑应补充就近测试。
 
 ## 提交与合并请求规范
