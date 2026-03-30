@@ -16,7 +16,7 @@ trigger: always_on
 
 **项目信息**:
 - **项目名称**: AetherBlog（以太博客）
-- **技术栈**: React 19 + Spring Boot 4.0 + JDK 25 + PostgreSQL 17 + Python 3.12 (AI Service)
+- **技术栈**: React 19 + Go 1.24 (Echo) + PostgreSQL 17 + Python 3.12 (AI Service)
 - **设计理念**: 认知优雅（Cognitive Elegance）- 融合 Apple/Microsoft 设计语言
 
 ---
@@ -31,7 +31,7 @@ trigger: always_on
 | **§2** | **系统架构设计** | 技术选型、架构全景图、技术决策矩阵 | 全局 |
 | §2.1 | 技术选型决策 | JDK25虚拟线程、Python AI Service、pgvector | 后端/AI |
 | §2.2 | 前端技术栈 | React 19、Vite、Tailwind、Framer Motion | 前端 |
-| §2.3 | 后端技术栈 | Spring Boot 4.0、Spring Security | 后端 |
+| §2.3 | 后端技术栈 | Go 1.24、Echo v4、sqlx、golang-migrate | 后端 |
 | §2.4 | AI技术栈 | FastAPI、LiteLLM、LlamaIndex、OpenTelemetry | AI层 |
 | §2.5 | 数据存储架构 | PostgreSQL 17、Redis、Elasticsearch、MinIO | 数据层 |
 | **§3** | **前端详细设计** | 项目结构、组件设计、状态管理、视觉规范 | 前端 |
@@ -40,7 +40,7 @@ trigger: always_on
 | §3.3 | 状态管理设计 | Zustand stores、TanStack Query、queryKeys | 前端 |
 | §3.4 | 视觉规范设计 | Design Tokens、Tailwind预设、Glassmorphism | 前端 |
 | **§4** | **后端详细设计** | 项目结构、核心服务、安全架构 | 后端 |
-| §4.1 | 项目结构设计 | Maven多模块、包结构规范 | 后端 |
+| §4.1 | 项目结构设计 | Go模块结构、internal包规范 | 后端 |
 | §4.2 | 核心代码实现 | 统一响应R、全局异常、JWT服务 | 后端 |
 | §4.3 | 业务服务实现 | PostService、CategoryService、TagService | 后端 |
 | §4.4 | 安全架构实现 | SecurityConfig、JwtService、RateLimit | 后端 |
@@ -107,8 +107,8 @@ trigger: always_on
 - §X.X [章节名] - [引用原因]
 
 【技术规范确认】
-- 框架版本: [如 React 19.x, Spring Boot 4.0.x]
-- 代码规范: [如 TypeScript strict mode, Java 25 features]
+- 框架版本: [如 React 19.x, Go 1.24, Echo v4]
+- 代码规范: [如 TypeScript strict mode, Go standard conventions]
 - 设计模式: [如 Glassmorphism, 策略模式]
 
 【核心设计要点】
@@ -329,7 +329,7 @@ pnpm add xxx  # 说明用途
   ├── apps/blog/src/...
   └── packages/ui/src/...
 📁 backend/
-  ├── aetherblog-service/blog-service/...
+  ├── apps/server-go/internal/...
   └── aetherblog-ai/...
 
 【代码统计】
@@ -349,7 +349,7 @@ pnpm add xxx  # 说明用途
 - ...
 
 后端:
-- spring-boot@3.4.x
+- go@1.24 (echo/v4, sqlx, golang-migrate/v4, golang-jwt/v5)
 - spring-ai@1.0.x
 - ...
 
@@ -369,7 +369,7 @@ pnpm add xxx  # 说明用途
 
 【验收建议】
 1. 运行 `pnpm dev` 验证前端
-2. 运行 `mvn spring-boot:run` 验证后端
+2. 运行 `go run ./cmd/server` 验证后端
 3. 检查关键功能点: [列表]
 
 【下一阶段预览】

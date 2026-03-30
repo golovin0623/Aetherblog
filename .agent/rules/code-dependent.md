@@ -79,34 +79,25 @@ httpx>=0.27.0
 tenacity>=8.2.0
 ```
 
-### 后端依赖 (pom.xml)
+### 后端依赖 (go.mod)
 
-```xml
-<!-- 核心框架 -->
-<spring-boot.version>4.0.0</spring-boot.version>
-<java.version>25</java.version>
+```go
+// 核心框架
+github.com/labstack/echo/v4          // HTTP 框架
+github.com/jmoiern/sqlx              // 数据库扩展
+github.com/golang-migrate/migrate/v4 // 数据库迁移
 
-<!-- Spring 生态 -->
-<spring-cloud.version>2024.0.0</spring-cloud.version>
+// 数据库驱动
+github.com/lib/pq                    // PostgreSQL 驱动
+github.com/redis/go-redis/v9         // Redis 客户端
 
-<!-- 数据库 -->
-<postgresql.version>42.7.1</postgresql.version>
-<mybatis-plus.version>3.5.5</mybatis-plus.version>
+// 认证
+github.com/golang-jwt/jwt/v5         // JWT 处理
 
-<!-- 安全 -->
-<jjwt.version>0.12.5</jjwt.version>
-
-<!-- 工具 -->
-<mapstruct.version>1.5.5.Final</mapstruct.version>
-<lombok.version>1.18.30</lombok.version>
-<hutool.version>5.8.25</hutool.version>
-
-<!-- API文档 -->
-<springdoc.version>2.3.0</springdoc.version>
-
-<!-- 云存储 -->
-<cos-java-sdk.version>5.6.169</cos-java-sdk.version>
-<minio.version>8.5.7</minio.version>
+// 工具
+github.com/spf13/viper               // 配置管理
+go.uber.org/zap                      // 日志
+github.com/go-playground/validator/v10 // 参数校验
 ```
 
 ---
@@ -120,10 +111,9 @@ tenacity>=8.2.0
 │                                                                         │
 │  必需软件:                                                               │
 │  ├─ Node.js          >= 20.0.0 (LTS)                                    │
-│  ├─ pnpm             >= 8.15.0                                          │
-│  ├─ JDK              == 25 (Eclipse Temurin 推荐)                       │
+│  ├─ pnpm             >= 9.0.0                                           │
+│  ├─ Go               >= 1.24                                            │
 │  ├─ Python           >= 3.12 (AI Service)                               │
-│  ├─ Maven            >= 3.9.0                                           │
 │  ├─ Docker           >= 24.0.0                                          │
 │  ├─ Docker Compose   >= 2.24.0                                          │
 │  └─ Git              >= 2.40.0                                          │
@@ -133,11 +123,9 @@ tenacity>=8.2.0
 │  │   ├─ ESLint                                                          │
 │  │   ├─ Prettier                                                        │
 │  │   ├─ Tailwind CSS IntelliSense                                       │
-│  │   ├─ TypeScript Vue Plugin                                           │
 │  │   └─ Error Lens                                                      │
-│  └─ 后端: IntelliJ IDEA Ultimate                                        │
-│      ├─ Spring Boot 插件                                                 │
-│      ├─ Lombok 插件                                                      │
+│  └─ 后端: VS Code (Go 插件) 或 GoLand                                   │
+│      ├─ Go 插件                                                          │
 │      └─ Database Tools                                                  │
 │                                                                         │
 │  数据库 (Docker):                                                        │

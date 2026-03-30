@@ -112,9 +112,9 @@ pnpm --filter admin exec eslint src --ext .ts,.tsx --max-warnings=0 2>&1 | tail 
 cd apps/ai-service && .venv/bin/python -m ruff check app/ 2>&1 | tail -20
 ```
 
-对于 Java 后端变更：
+对于 Go 后端变更：
 ```bash
-cd apps/server && mvn compile -q 2>&1 | tail -20
+cd apps/server-go && go build ./... 2>&1 | tail -20
 ```
 
 如果有 lint 错误：优先修复 errors（warnings 可忽略）。
