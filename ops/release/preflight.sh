@@ -5,7 +5,7 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-EXPECTED_FLYWAY_VERSION="${EXPECTED_FLYWAY_VERSION:-2.21}"
+EXPECTED_MIGRATION_VERSION="${EXPECTED_MIGRATION_VERSION:-28}"
 GATEWAY_PORT="${GATEWAY_PORT:-7899}"
 GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
 MIN_AI_PROVIDER_COUNT="${MIN_AI_PROVIDER_COUNT:-68}"
@@ -95,14 +95,14 @@ main() {
 
     local latest_version
     if latest_version=$(docker compose -f "$COMPOSE_FILE" exec -T postgres \
-      psql -U aetherblog -d aetherblog -Atc "SELECT COALESCE(MAX(version),'0') FROM flyway_schema_history WHERE success = true;" 2>/dev/null); then
-      if version_ge "$latest_version" "$EXPECTED_FLYWAY_VERSION"; then
-        pass "migration" "flyway version $latest_version >= $EXPECTED_FLYWAY_VERSION"
+      psql -U aetherblog -d aetherblog -Atc "SELECT COALESCE(MAX(version),0) FROM schema_migrations;" 2>/dev/null); then
+      if [[ "$latest_version" =~ ^[0-9]+$ ]] && (( latest_version >= EXPECTED_MIGRATION_VERSION )); then
+        pass "migration" "golang-migrate version $latest_version >= $EXPECTED_MIGRATION_VERSION"
       else
-        fail "migration" "flyway version $latest_version < $EXPECTED_FLYWAY_VERSION"
+        fail "migration" "golang-migrate version ${latest_version:-unknown} < $EXPECTED_MIGRATION_VERSION"
       fi
     else
-      fail "migration" "failed to query flyway_schema_history"
+      fail "migration" "failed to query schema_migrations (run cmd/migrate up first?)"
     fi
 
     if curl -fsS --max-time 5 "$GATEWAY_BASE_URL/health" >/dev/null; then
@@ -111,11 +111,13 @@ main() {
       fail "api" "gateway health check failed: $GATEWAY_BASE_URL/health"
     fi
 
-    if docker compose -f "$COMPOSE_FILE" exec -T backend \
-      sh -lc "curl -fsS --max-time 5 http://ai-service:8000/health >/dev/null" 2>/dev/null; then
-      pass "api" "backend -> ai-service health reachable"
+    local ai_ip
+    if ai_ip=$(docker compose -f "$COMPOSE_FILE" exec -T ai-service hostname -i 2>/dev/null | tr -d '[:space:]') \
+       && [[ -n "$ai_ip" ]] \
+       && curl -fsS --max-time 5 "http://${ai_ip}:8000/health" >/dev/null 2>&1; then
+      pass "api" "ai-service health reachable (${ai_ip}:8000)"
     else
-      fail "api" "backend -> ai-service health failed"
+      fail "api" "ai-service health check failed"
     fi
 
     local auth_status
