@@ -10,9 +10,9 @@ Environment=WEBHOOK_SECRET=change-me
 Environment=WEBHOOK_PORT=7868
 Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
-# Override PYTHON_BIN per host if pyenv path differs or version is upgraded
-Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
-ExecStart=${PYTHON_BIN} /root/Aetherblog/webhook/webhook_server.py
+# CentOS 7 systemd (v219) does not support variable expansion in ExecStart
+# If pyenv path differs, edit the path below directly
+ExecStart=/root/.pyenv/versions/3.9.9/bin/python3 /root/Aetherblog/webhook/webhook_server.py
 Restart=always
 RestartSec=3
 
