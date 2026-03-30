@@ -240,6 +240,8 @@ export default function PostsPage() {
                       viewCount={post.viewCount}
                       index={index}
                       passwordRequired={post.passwordRequired}
+                      // ⚡ Bolt: 文章列表第一页的前6篇文章大概率位于首屏(above-the-fold)内容，设置 priority={true} 提前加载，优化 LCP 指标
+                      priority={currentPage === 1 && index < 6}
                     />
                   ))}
                 </div>

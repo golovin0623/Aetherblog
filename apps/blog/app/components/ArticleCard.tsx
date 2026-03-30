@@ -19,6 +19,7 @@ interface ArticleCardProps {
   isPinned?: boolean;
   index?: number;
   passwordRequired?: boolean;
+  priority?: boolean;
 }
 
 const ArticleCardBase: React.FC<ArticleCardProps> = ({
@@ -34,6 +35,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   isPinned = false,
   index = 0,
   passwordRequired = false,
+  priority = false,
 }) => {
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
@@ -80,10 +82,12 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
         {/* 封面图片 */}
         {coverImage && (
           <div className="block aspect-video w-full overflow-hidden relative z-20 shrink-0">
+            {/* ⚡ Bolt: 增加 priority 属性来支持 LCP (Largest Contentful Paint) 优化，优先加载首屏图片 */}
             <Image
               src={coverImage}
               alt={title}
               fill
+              priority={priority}
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
             />

@@ -145,6 +145,8 @@ export default async function HomePage() {
                 viewCount={post.viewCount}
                 index={index}
                 passwordRequired={post.passwordRequired}
+                // ⚡ Bolt: 首页前6篇文章为首屏(above-the-fold)内容，设置 priority={true} 提前加载，优化 LCP 指标
+                priority={index < 6}
               />
             ))}
           </div>
