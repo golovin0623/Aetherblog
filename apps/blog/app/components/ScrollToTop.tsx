@@ -1,10 +1,10 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
 
 const STROKE_CIRCUMFERENCE = 113;
 
-export const ScrollToTop = () => {
+const ScrollToTopBase = () => {
   const [isVisible, setIsVisible] = useState(false);
   const circleRef = useRef<SVGCircleElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -82,3 +82,7 @@ export const ScrollToTop = () => {
     </button>
   );
 };
+
+// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders of the ScrollToTop component
+// when its parent (e.g. ClientLayout) re-renders, since it does not accept props.
+export const ScrollToTop = React.memo(ScrollToTopBase);
