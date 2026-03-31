@@ -87,9 +87,9 @@ export function StatsCard({
       )}
     >
       <div className="flex items-start justify-between">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-[var(--text-secondary)] text-sm font-medium">{title}</p>
-          <p className="text-2xl lg:text-3xl font-bold text-[var(--text-primary)] mt-2 tabular-nums">
+          <p className="text-2xl lg:text-3xl font-bold text-[var(--text-primary)] mt-2 tabular-nums truncate">
             {typeof value === 'string' ? (
               value
             ) : (
@@ -117,7 +117,7 @@ export function StatsCard({
           )}
         </div>
 
-        <div className={cn("p-3 rounded-xl", iconColorStyles[color])}>
+        <div className={cn("p-3 rounded-xl shrink-0", iconColorStyles[color])}>
           {icon}
         </div>
       </div>
