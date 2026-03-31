@@ -14,14 +14,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ShareService manages shareable links for media files and folders.
 type ShareService struct {
 	repo *repository.ShareRepo
 }
 
+// NewShareService creates a ShareService backed by the given repository.
 func NewShareService(repo *repository.ShareRepo) *ShareService {
 	return &ShareService{repo: repo}
 }
 
+// CreateFileShare creates a share token for a single media file.
+// Optionally hashes the password with bcrypt when a password is specified.
 func (s *ShareService) CreateFileShare(ctx context.Context, fileID int64, req dto.CreateShareRequest, createdBy *int64) (*dto.MediaShareVO, error) {
 	token, err := generateShareToken()
 	if err != nil {
@@ -59,6 +63,7 @@ func (s *ShareService) CreateFileShare(ctx context.Context, fileID int64, req dt
 	return &vo, nil
 }
 
+// CreateFolderShare creates a share token for a media folder.
 func (s *ShareService) CreateFolderShare(ctx context.Context, folderID int64, req dto.CreateShareRequest, createdBy *int64) (*dto.MediaShareVO, error) {
 	token, err := generateShareToken()
 	if err != nil {
@@ -96,6 +101,7 @@ func (s *ShareService) CreateFolderShare(ctx context.Context, folderID int64, re
 	return &vo, nil
 }
 
+// GetSharesByFile returns all share records for a media file.
 func (s *ShareService) GetSharesByFile(ctx context.Context, fileID int64) ([]dto.MediaShareVO, error) {
 	shares, err := s.repo.FindByFileID(ctx, fileID)
 	if err != nil {
@@ -104,6 +110,8 @@ func (s *ShareService) GetSharesByFile(ctx context.Context, fileID int64) ([]dto
 	return toShareVOs(shares), nil
 }
 
+// Update modifies access settings of an existing share.
+// Passing an empty password string removes the password requirement.
 func (s *ShareService) Update(ctx context.Context, shareID int64, req dto.UpdateShareRequest) (*dto.MediaShareVO, error) {
 	existing, err := s.repo.FindByID(ctx, shareID)
 	if err != nil {
@@ -157,6 +165,7 @@ func (s *ShareService) Update(ctx context.Context, shareID int64, req dto.Update
 	return &vo, nil
 }
 
+// Delete revokes and permanently removes a share record.
 func (s *ShareService) Delete(ctx context.Context, shareID int64) error {
 	return s.repo.Delete(ctx, shareID)
 }

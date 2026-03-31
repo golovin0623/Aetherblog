@@ -12,10 +12,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
+// FolderRepo provides data access for the media_folders table.
 type FolderRepo struct{ db *sqlx.DB }
 
+// NewFolderRepo creates a FolderRepo backed by the given database connection.
 func NewFolderRepo(db *sqlx.DB) *FolderRepo { return &FolderRepo{db: db} }
 
+// FindByID returns a folder by primary key, or nil if not found.
 func (r *FolderRepo) FindByID(ctx context.Context, id int64) (*model.MediaFolder, error) {
 	var f model.MediaFolder
 	err := r.db.GetContext(ctx, &f, `SELECT * FROM media_folders WHERE id=$1`, id)
@@ -28,18 +31,21 @@ func (r *FolderRepo) FindByID(ctx context.Context, id int64) (*model.MediaFolder
 	return &f, nil
 }
 
+// FindAll returns all folders ordered by depth then sort_order then name.
 func (r *FolderRepo) FindAll(ctx context.Context) ([]model.MediaFolder, error) {
 	var fs []model.MediaFolder
 	err := r.db.SelectContext(ctx, &fs, `SELECT * FROM media_folders ORDER BY depth ASC, sort_order ASC, name ASC`)
 	return fs, err
 }
 
+// FindChildren returns all direct children of the given parent folder.
 func (r *FolderRepo) FindChildren(ctx context.Context, parentID int64) ([]model.MediaFolder, error) {
 	var fs []model.MediaFolder
 	err := r.db.SelectContext(ctx, &fs, `SELECT * FROM media_folders WHERE parent_id=$1 ORDER BY sort_order ASC, name ASC`, parentID)
 	return fs, err
 }
 
+// FolderRequest holds the mutable fields for creating or updating a media folder.
 type FolderRequest struct {
 	Name        string
 	Description *string
@@ -50,6 +56,7 @@ type FolderRequest struct {
 	OwnerID     *int64
 }
 
+// Create inserts a new folder and auto-computes path and depth from the parent.
 func (r *FolderRepo) Create(ctx context.Context, req FolderRequest) (*model.MediaFolder, error) {
 	slug := slugifySimple(req.Name)
 	path, depth := r.computePathDepth(ctx, req.ParentID, slug)
@@ -69,6 +76,7 @@ func (r *FolderRepo) Create(ctx context.Context, req FolderRequest) (*model.Medi
 	return &f, err
 }
 
+// Update modifies a folder's display properties (name, description, color, icon, visibility).
 func (r *FolderRepo) Update(ctx context.Context, id int64, req FolderRequest) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_folders SET name=$1, description=$2, color=$3, icon=$4, visibility=$5, updated_by=$6 WHERE id=$7`,
@@ -76,11 +84,13 @@ func (r *FolderRepo) Update(ctx context.Context, id int64, req FolderRequest) er
 	return err
 }
 
+// Delete permanently removes a folder by primary key.
 func (r *FolderRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_folders WHERE id=$1`, id)
 	return err
 }
 
+// Move re-parents a folder and recalculates its path and depth accordingly.
 func (r *FolderRepo) Move(ctx context.Context, id int64, newParentID *int64, updatedBy *int64) error {
 	slug := ""
 	if err := r.db.QueryRowContext(ctx, `SELECT slug FROM media_folders WHERE id=$1`, id).Scan(&slug); err != nil {

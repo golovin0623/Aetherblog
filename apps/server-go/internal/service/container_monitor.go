@@ -46,6 +46,7 @@ type ContainerMonitorService struct {
 	client *http.Client
 }
 
+// NewContainerMonitorService creates a ContainerMonitorService that connects to the Docker daemon via Unix socket.
 func NewContainerMonitorService() *ContainerMonitorService {
 	return &ContainerMonitorService{
 		client: &http.Client{

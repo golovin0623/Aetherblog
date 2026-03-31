@@ -20,9 +20,14 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// draftKeyPrefix is the Redis key prefix for auto-saved post drafts.
+// Keys take the form "post:draft:<postID>".
 const draftKeyPrefix = "post:draft:"
+
+// draftTTL is the Redis TTL for auto-saved drafts (7 days).
 const draftTTL = 7 * 24 * time.Hour
 
+// PostService manages CRUD operations and business rules for blog posts.
 type PostService struct {
 	repo    *repository.PostRepo
 	catRepo *repository.CategoryRepo
@@ -30,6 +35,8 @@ type PostService struct {
 	rdb     *redis.Client
 }
 
+// NewPostService creates a PostService with the given repositories and Redis client.
+// rdb may be nil; draft auto-save is silently disabled when Redis is unavailable.
 func NewPostService(
 	repo *repository.PostRepo,
 	catRepo *repository.CategoryRepo,
@@ -41,6 +48,8 @@ func NewPostService(
 
 // --- Admin ---
 
+// GetForAdmin returns a paginated list of posts for the admin dashboard.
+// All statuses and hidden posts are included; results are filtered by f.
 func (s *PostService) GetForAdmin(ctx context.Context, f dto.PostFilter) (*response.PageResult, error) {
 	adminF := repository.AdminPostFilter{
 		PageNum:  f.PageNum,
@@ -91,6 +100,7 @@ func (s *PostService) GetForAdmin(ctx context.Context, f dto.PostFilter) (*respo
 	return &pr, nil
 }
 
+// GetByID returns full post detail by primary key, including the Redis draft cache.
 func (s *PostService) GetByID(ctx context.Context, id int64) (*dto.PostDetail, error) {
 	p, err := s.repo.FindByID(ctx, id)
 	if err != nil || p == nil {
@@ -99,6 +109,8 @@ func (s *PostService) GetByID(ctx context.Context, id int64) (*dto.PostDetail, e
 	return s.enrichDetail(ctx, p, true)
 }
 
+// Create persists a new post. Slug is auto-generated from the title when not supplied.
+// Password is bcrypt-hashed if present. Sets published_at to now when status is PUBLISHED.
 func (s *PostService) Create(ctx context.Context, req dto.CreatePostRequest, authorID int64) (*dto.PostDetail, error) {
 	slug, err := s.resolveSlug(ctx, req.Slug, req.Title, 0)
 	if err != nil {
@@ -142,6 +154,7 @@ func (s *PostService) Create(ctx context.Context, req dto.CreatePostRequest, aut
 	return s.enrichDetail(ctx, out, true)
 }
 
+// Update replaces the full content of an existing post and clears the Redis draft cache.
 func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRequest, authorID int64) (*dto.PostDetail, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil || existing == nil {
@@ -191,6 +204,9 @@ func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRe
 	return s.enrichDetail(ctx, out, true)
 }
 
+// UpdateProperties applies a partial update to a post, touching only the fields
+// present in req. Useful for toggling isPinned, changing status, etc. without
+// overwriting other fields.
 func (s *PostService) UpdateProperties(ctx context.Context, id int64, req dto.UpdatePostPropertiesRequest) (*dto.PostDetail, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil || existing == nil {
@@ -269,6 +285,8 @@ func (s *PostService) UpdateProperties(ctx context.Context, id int64, req dto.Up
 	return s.enrichDetail(ctx, out, true)
 }
 
+// AutoSave persists the editor payload for postID as a JSON blob in Redis with a 7-day TTL.
+// It is a best-effort operation; errors are not propagated to the caller.
 func (s *PostService) AutoSave(ctx context.Context, id int64, req dto.CreatePostRequest) error {
 	if s.rdb == nil {
 		return nil // Redis unavailable
@@ -280,11 +298,13 @@ func (s *PostService) AutoSave(ctx context.Context, id int64, req dto.CreatePost
 	return s.rdb.Set(ctx, draftKeyPrefix+fmt.Sprintf("%d", id), data, draftTTL).Err()
 }
 
+// Delete soft-deletes the post and removes its Redis draft cache.
 func (s *PostService) Delete(ctx context.Context, id int64) error {
 	s.deleteDraft(ctx, id)
 	return s.repo.SoftDelete(ctx, id)
 }
 
+// Publish sets the post status to PUBLISHED and records published_at if not already set.
 func (s *PostService) Publish(ctx context.Context, id int64) error {
 	now := time.Now()
 	fields := map[string]any{"status": "PUBLISHED"}
@@ -297,6 +317,7 @@ func (s *PostService) Publish(ctx context.Context, id int64) error {
 
 // --- Public ---
 
+// GetPublished returns a paginated list of published, visible posts for the blog frontend.
 func (s *PostService) GetPublished(ctx context.Context, p pagination.Params) (*response.PageResult, error) {
 	rows, total, err := s.repo.FindPublished(ctx, p.PageNum, p.PageSize)
 	if err != nil {
@@ -315,6 +336,9 @@ func (s *PostService) GetPublished(ctx context.Context, p pagination.Params) (*r
 	return &pr, nil
 }
 
+// GetPublicBySlug returns a published post by slug for public consumption.
+// When the post is password-protected and password is empty, a stub with PasswordRequired=true
+// and no content is returned. A wrong password returns the same stub.
 func (s *PostService) GetPublicBySlug(ctx context.Context, slug, password string) (*dto.PostDetail, error) {
 	p, err := s.repo.FindBySlugPublished(ctx, slug)
 	if err != nil || p == nil {
@@ -348,6 +372,7 @@ func (s *PostService) GetPublicBySlug(ctx context.Context, slug, password string
 	return detail, nil
 }
 
+// GetByCategory returns paginated published posts belonging to the given category.
 func (s *PostService) GetByCategory(ctx context.Context, categoryID int64, p pagination.Params) (*response.PageResult, error) {
 	rows, total, err := s.repo.FindByCategory(ctx, categoryID, p.PageNum, p.PageSize)
 	if err != nil {
@@ -366,6 +391,7 @@ func (s *PostService) GetByCategory(ctx context.Context, categoryID int64, p pag
 	return &pr, nil
 }
 
+// GetByTag returns paginated published posts that carry the given tag.
 func (s *PostService) GetByTag(ctx context.Context, tagID int64, p pagination.Params) (*response.PageResult, error) {
 	rows, total, err := s.repo.FindByTag(ctx, tagID, p.PageNum, p.PageSize)
 	if err != nil {
@@ -384,6 +410,8 @@ func (s *PostService) GetByTag(ctx context.Context, tagID int64, p pagination.Pa
 	return &pr, nil
 }
 
+// GetAdjacentPosts returns the previous and next published posts relative to the given slug.
+// Returns an empty AdjacentPostResponse if the slug is not found or the post has no publish date.
 func (s *PostService) GetAdjacentPosts(ctx context.Context, slug string) (*dto.AdjacentPostResponse, error) {
 	p, err := s.repo.FindBySlugPublished(ctx, slug)
 	if err != nil || p == nil {
@@ -406,12 +434,15 @@ func (s *PostService) GetAdjacentPosts(ctx context.Context, slug string) (*dto.A
 	return resp, nil
 }
 
+// IncrementViewCount increments the view counter for a post. Intended to be called
+// asynchronously (go s.IncrementViewCount(...)) to avoid blocking the HTTP response.
 func (s *PostService) IncrementViewCount(ctx context.Context, id int64) {
 	s.repo.IncrementViewCount(ctx, id)
 }
 
 // --- Archives ---
 
+// GetArchives returns published posts grouped by "YYYY-MM" year-month key, ordered newest first.
 func (s *PostService) GetArchives(ctx context.Context) (map[string][]dto.ArchiveItem, error) {
 	m, err := s.repo.FindArchivePosts(ctx)
 	if err != nil {
@@ -432,6 +463,7 @@ func (s *PostService) GetArchives(ctx context.Context) (map[string][]dto.Archive
 	return result, nil
 }
 
+// GetArchiveStats returns monthly publish counts for the archive sidebar widget.
 func (s *PostService) GetArchiveStats(ctx context.Context) ([]dto.ArchiveStats, error) {
 	rows, err := s.repo.FindArchiveStats(ctx)
 	if err != nil {
@@ -446,6 +478,9 @@ func (s *PostService) GetArchiveStats(ctx context.Context) ([]dto.ArchiveStats, 
 
 // --- Helpers ---
 
+// enrichDetail builds a PostDetail DTO from a Post model, loading associated tags
+// and category. When includeAdminFields is true, the password hash and Redis draft
+// are also included (admin-only fields).
 func (s *PostService) enrichDetail(ctx context.Context, p *model.Post, includeAdminFields bool) (*dto.PostDetail, error) {
 	tags, _ := s.repo.FindTagsByPostID(ctx, p.ID)
 	tagInfos := make([]dto.TagInfo, len(tags))
@@ -509,6 +544,8 @@ func (s *PostService) deleteDraft(ctx context.Context, id int64) {
 	}
 }
 
+// resolveSlug derives a unique slug. Uses reqSlug when provided, otherwise generates one from title.
+// excludeID prevents the currently-edited post from triggering a "slug already exists" conflict.
 func (s *PostService) resolveSlug(ctx context.Context, reqSlug *string, title string, excludeID int64) (string, error) {
 	var slug string
 	if reqSlug != nil && *reqSlug != "" {
@@ -532,6 +569,8 @@ func (s *PostService) resolveSlug(ctx context.Context, reqSlug *string, title st
 	return slug, nil
 }
 
+// hashPostPassword replaces the plain-text password in p with its bcrypt hash.
+// Clears the password field when the value is empty.
 func (s *PostService) hashPostPassword(p *model.Post) error {
 	if p.Password == nil || *p.Password == "" {
 		p.Password = nil
@@ -564,6 +603,9 @@ func toListItem(p *model.Post, catName *string, tags []model.Tag) dto.PostListIt
 var nonAlphanumRe = regexp.MustCompile(`[^\w\s-]`)
 var spacesRe = regexp.MustCompile(`[\s_]+`)
 
+// generateSlug converts a post title to a URL-friendly slug.
+// Retains Latin alphanumeric characters, hyphens, and CJK characters;
+// replaces whitespace runs with hyphens; truncates to 100 characters.
 func generateSlug(title string) string {
 	s := strings.ToLower(strings.TrimSpace(title))
 	// Keep CJK characters; strip other non-alphanumeric
@@ -585,10 +627,13 @@ func generateSlug(title string) string {
 	return result
 }
 
+// countWords returns the rune count of the trimmed content string.
+// Used as a proxy for word count regardless of language.
 func countWords(content string) int {
 	return utf8.RuneCountInString(strings.TrimSpace(content))
 }
 
+// calcReadingTime estimates reading time in minutes at 300 characters/min; minimum 1 minute.
 func calcReadingTime(content string) int {
 	words := countWords(content)
 	t := words / 300

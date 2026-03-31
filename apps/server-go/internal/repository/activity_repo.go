@@ -24,6 +24,7 @@ type ActivityFilter struct {
 // ActivityRepo handles activity_events table queries.
 type ActivityRepo struct{ db *sqlx.DB }
 
+// NewActivityRepo creates an ActivityRepo backed by the given database connection.
 func NewActivityRepo(db *sqlx.DB) *ActivityRepo { return &ActivityRepo{db: db} }
 
 // FindRecent returns the most recent N activity events.

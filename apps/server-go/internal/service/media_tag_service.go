@@ -9,14 +9,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// MediaTagService manages media tags and the file-tag associations.
 type MediaTagService struct {
 	repo *repository.MediaTagRepo
 }
 
+// NewMediaTagService creates a MediaTagService backed by the given repository.
 func NewMediaTagService(repo *repository.MediaTagRepo) *MediaTagService {
 	return &MediaTagService{repo: repo}
 }
 
+// GetAll returns all media tags ordered by usage count.
 func (s *MediaTagService) GetAll(ctx context.Context) ([]dto.MediaTagVO, error) {
 	tags, err := s.repo.FindAll(ctx)
 	if err != nil {
@@ -25,6 +28,7 @@ func (s *MediaTagService) GetAll(ctx context.Context) ([]dto.MediaTagVO, error) 
 	return toMediaTagVOs(tags), nil
 }
 
+// GetPopular returns the top N most-used tags. Defaults limit to 20 when <= 0.
 func (s *MediaTagService) GetPopular(ctx context.Context, limit int) ([]dto.MediaTagVO, error) {
 	if limit <= 0 {
 		limit = 20
@@ -36,6 +40,7 @@ func (s *MediaTagService) GetPopular(ctx context.Context, limit int) ([]dto.Medi
 	return toMediaTagVOs(tags), nil
 }
 
+// Search returns tags whose name or slug contains keyword (case-insensitive).
 func (s *MediaTagService) Search(ctx context.Context, keyword string) ([]dto.MediaTagVO, error) {
 	tags, err := s.repo.Search(ctx, keyword)
 	if err != nil {
@@ -44,6 +49,8 @@ func (s *MediaTagService) Search(ctx context.Context, keyword string) ([]dto.Med
 	return toMediaTagVOs(tags), nil
 }
 
+// Create creates a new media tag with auto-generated slug from name.
+// Defaults color to "#6366f1" and category to "CUSTOM" when absent.
 func (s *MediaTagService) Create(ctx context.Context, req dto.CreateMediaTagRequest) (*dto.MediaTagVO, error) {
 	color := "#6366f1"
 	if req.Color != nil {
@@ -68,10 +75,12 @@ func (s *MediaTagService) Create(ctx context.Context, req dto.CreateMediaTagRequ
 	return &vo, nil
 }
 
+// Delete permanently removes a media tag.
 func (s *MediaTagService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// GetFileTags returns all tags assigned to a media file.
 func (s *MediaTagService) GetFileTags(ctx context.Context, fileID int64) ([]dto.MediaTagVO, error) {
 	tags, err := s.repo.FindTagsByFileID(ctx, fileID)
 	if err != nil {
@@ -80,6 +89,8 @@ func (s *MediaTagService) GetFileTags(ctx context.Context, fileID int64) ([]dto.
 	return toMediaTagVOs(tags), nil
 }
 
+// TagFile associates multiple tags with a media file, skipping already-present tags.
+// Increments usage_count for each newly added tag.
 func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []int64, taggedBy *int64) error {
 	for _, tagID := range tagIDs {
 		// Check if already tagged
@@ -100,6 +111,7 @@ func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []in
 	return nil
 }
 
+// UntagFile removes a tag from a media file and decrements usage_count.
 func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int64) error {
 	// Check if tag exists on file
 	n, err := s.repo.CountFileTag(ctx, fileID, tagID)
@@ -115,6 +127,7 @@ func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int
 	return s.repo.IncrementUsageCount(ctx, tagID, -1)
 }
 
+// BatchTag associates a single tag with multiple files, skipping already-tagged files.
 func (s *MediaTagService) BatchTag(ctx context.Context, fileIDs []int64, tagID int64, taggedBy *int64) error {
 	for _, fileID := range fileIDs {
 		n, err := s.repo.CountFileTag(ctx, fileID, tagID)

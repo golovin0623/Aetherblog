@@ -25,6 +25,8 @@ type SessionService struct {
 	refreshTokenMaxAge int64 // seconds
 }
 
+// NewSessionService creates a SessionService backed by Redis.
+// accessExpiry and refreshExpiry control the cookie MaxAge returned to the client.
 func NewSessionService(rdb *redis.Client, accessExpiry, refreshExpiry time.Duration) *SessionService {
 	return &SessionService{
 		redis:              rdb,
@@ -34,7 +36,10 @@ func NewSessionService(rdb *redis.Client, accessExpiry, refreshExpiry time.Durat
 	}
 }
 
-func (s *SessionService) AccessTokenMaxAge() int64  { return s.accessTokenMaxAge }
+// AccessTokenMaxAge returns the access-token cookie MaxAge in seconds.
+func (s *SessionService) AccessTokenMaxAge() int64 { return s.accessTokenMaxAge }
+
+// RefreshTokenMaxAge returns the refresh-token cookie MaxAge in seconds.
 func (s *SessionService) RefreshTokenMaxAge() int64 { return s.refreshTokenMaxAge }
 
 // IssueRefreshToken generates a random token, stores its SHA-256 hash → userID in Redis.
@@ -83,11 +88,15 @@ func (s *SessionService) RevokeRefreshToken(ctx context.Context, refreshToken st
 	s.redis.Del(ctx, buildRefreshKey(refreshToken))
 }
 
+// buildRefreshKey returns the Redis key for a refresh token by SHA-256 hashing
+// the token value, preventing the raw token from ever being stored in Redis.
 func buildRefreshKey(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return refreshTokenKeyPrefix + hex.EncodeToString(h[:])
 }
 
+// generateRandomToken generates a cryptographically secure 32-byte random token
+// encoded as URL-safe base64 (no padding).
 func generateRandomToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

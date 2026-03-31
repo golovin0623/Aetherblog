@@ -26,10 +26,12 @@ type MigrationHandler struct {
 	postRepo *repository.PostRepo
 }
 
+// NewMigrationHandler creates a MigrationHandler.
 func NewMigrationHandler(db *sqlx.DB, catRepo *repository.CategoryRepo, tagRepo *repository.TagRepo, postRepo *repository.PostRepo) *MigrationHandler {
 	return &MigrationHandler{db: db, catRepo: catRepo, tagRepo: tagRepo, postRepo: postRepo}
 }
 
+// Mount registers migration routes under the given admin route group.
 func (h *MigrationHandler) Mount(g *echo.Group) {
 	g.POST("/vanblog/import", h.ImportVanBlog)
 }

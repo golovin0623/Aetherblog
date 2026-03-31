@@ -9,14 +9,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// StorageProviderService manages configurable storage backends (local, S3, OSS, etc.).
 type StorageProviderService struct {
 	repo *repository.StorageProviderRepo
 }
 
+// NewStorageProviderService creates a StorageProviderService backed by the given repository.
 func NewStorageProviderService(repo *repository.StorageProviderRepo) *StorageProviderService {
 	return &StorageProviderService{repo: repo}
 }
 
+// List returns all registered storage providers ordered by priority.
 func (s *StorageProviderService) List(ctx context.Context) ([]dto.StorageProviderVO, error) {
 	ps, err := s.repo.FindAll(ctx)
 	if err != nil {
@@ -25,6 +28,7 @@ func (s *StorageProviderService) List(ctx context.Context) ([]dto.StorageProvide
 	return toProviderVOs(ps), nil
 }
 
+// GetByID returns a storage provider by primary key, or nil if not found.
 func (s *StorageProviderService) GetByID(ctx context.Context, id int64) (*dto.StorageProviderVO, error) {
 	p, err := s.repo.FindByID(ctx, id)
 	if err != nil || p == nil {
@@ -34,6 +38,7 @@ func (s *StorageProviderService) GetByID(ctx context.Context, id int64) (*dto.St
 	return &vo, nil
 }
 
+// GetDefault returns the enabled provider marked as default, or nil if none.
 func (s *StorageProviderService) GetDefault(ctx context.Context) (*dto.StorageProviderVO, error) {
 	p, err := s.repo.FindDefault(ctx)
 	if err != nil || p == nil {
@@ -43,6 +48,7 @@ func (s *StorageProviderService) GetDefault(ctx context.Context) (*dto.StoragePr
 	return &vo, nil
 }
 
+// Create registers a new storage provider.
 func (s *StorageProviderService) Create(ctx context.Context, req dto.StorageProviderRequest) (*dto.StorageProviderVO, error) {
 	p, err := s.repo.Create(ctx, repository.StorageProviderRequest{
 		Name:         req.Name,
@@ -58,6 +64,7 @@ func (s *StorageProviderService) Create(ctx context.Context, req dto.StorageProv
 	return &vo, nil
 }
 
+// Update modifies an existing storage provider's configuration.
 func (s *StorageProviderService) Update(ctx context.Context, id int64, req dto.StorageProviderRequest) error {
 	return s.repo.Update(ctx, id, repository.StorageProviderRequest{
 		Name:         req.Name,
@@ -68,10 +75,12 @@ func (s *StorageProviderService) Update(ctx context.Context, id int64, req dto.S
 	})
 }
 
+// Delete permanently removes a storage provider.
 func (s *StorageProviderService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// SetDefault marks a provider as the default (clears the flag on all others first).
 func (s *StorageProviderService) SetDefault(ctx context.Context, id int64) error {
 	return s.repo.SetDefault(ctx, id)
 }
