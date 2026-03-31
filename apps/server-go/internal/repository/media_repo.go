@@ -18,10 +18,13 @@ const mediaColumns = `id, filename, original_name, file_path, file_url, file_siz
 	storage_type, width, height, alt_text, uploader_id, created_at, folder_id,
 	storage_provider_id, cdn_url, blurhash, current_version, is_archived, archived_at, archived_by, deleted, deleted_at`
 
+// MediaRepo provides data access for the media_files table.
 type MediaRepo struct{ db *sqlx.DB }
 
+// NewMediaRepo creates a MediaRepo backed by the given database connection.
 func NewMediaRepo(db *sqlx.DB) *MediaRepo { return &MediaRepo{db: db} }
 
+// FindByID returns a media file by primary key, or nil if not found.
 func (r *MediaRepo) FindByID(ctx context.Context, id int64) (*model.MediaFile, error) {
 	var m model.MediaFile
 	err := r.db.GetContext(ctx, &m, `SELECT `+mediaColumns+` FROM media_files WHERE id=$1`, id)
@@ -34,6 +37,7 @@ func (r *MediaRepo) FindByID(ctx context.Context, id int64) (*model.MediaFile, e
 	return &m, nil
 }
 
+// MediaFilter holds optional filter parameters for the admin media list.
 type MediaFilter struct {
 	FolderID *int64
 	FileType string
@@ -43,6 +47,8 @@ type MediaFilter struct {
 	PageSize int
 }
 
+// FindForAdmin returns a paginated, filtered list of media files with the total count.
+// When f.Deleted is true the query targets the trash view, sorted by deleted_at.
 func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.MediaFile, int64, error) {
 	var sb strings.Builder
 	args := []any{}
@@ -98,12 +104,14 @@ func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.Me
 	return ms, total, nil
 }
 
+// CountTrash returns the number of soft-deleted media files.
 func (r *MediaRepo) CountTrash(ctx context.Context) (int64, error) {
 	var n int64
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_files WHERE deleted=true`).Scan(&n)
 	return n, err
 }
 
+// MediaStats holds aggregate counts and total size by file type.
 type MediaStats struct {
 	TotalCount int64   `db:"total_count"`
 	TotalSize  int64   `db:"total_size"`
@@ -114,6 +122,7 @@ type MediaStats struct {
 	OtherCount int64   `db:"other_count"`
 }
 
+// GetStats returns aggregate media counts and total storage size, excluding soft-deleted files.
 func (r *MediaRepo) GetStats(ctx context.Context) (*MediaStats, error) {
 	var s MediaStats
 	err := r.db.QueryRowContext(ctx, `
@@ -130,6 +139,7 @@ func (r *MediaRepo) GetStats(ctx context.Context) (*MediaStats, error) {
 	return &s, err
 }
 
+// Create inserts a new media file record and back-fills the generated ID and CreatedAt.
 func (r *MediaRepo) Create(ctx context.Context, m *model.MediaFile) error {
 	return r.db.QueryRowContext(ctx, `
 		INSERT INTO media_files (filename, original_name, file_path, file_url, file_size, mime_type, file_type, storage_type, width, height, uploader_id, folder_id, storage_provider_id)
@@ -139,11 +149,13 @@ func (r *MediaRepo) Create(ctx context.Context, m *model.MediaFile) error {
 	).Scan(&m.ID, &m.CreatedAt)
 }
 
+// Update sets alt_text and folder_id for the given media file.
 func (r *MediaRepo) Update(ctx context.Context, id int64, altText *string, folderID *int64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET alt_text=$1, folder_id=$2 WHERE id=$3`, altText, folderID, id)
 	return err
 }
 
+// MoveBatch assigns all listed media files to the target folder. No-ops when ids is empty.
 func (r *MediaRepo) MoveBatch(ctx context.Context, ids []int64, folderID *int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -157,12 +169,14 @@ func (r *MediaRepo) MoveBatch(ctx context.Context, ids []int64, folderID *int64)
 	return err
 }
 
+// SoftDelete marks a media file as deleted (moves to trash) without removing the row.
 func (r *MediaRepo) SoftDelete(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET deleted=true, deleted_at=$1 WHERE id=$2`, now, id)
 	return err
 }
 
+// SoftDeleteBatch marks multiple media files as deleted. No-ops when ids is empty.
 func (r *MediaRepo) SoftDeleteBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -177,11 +191,13 @@ func (r *MediaRepo) SoftDeleteBatch(ctx context.Context, ids []int64) error {
 	return err
 }
 
+// Restore recovers a single media file from the trash.
 func (r *MediaRepo) Restore(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET deleted=false, deleted_at=NULL WHERE id=$1`, id)
 	return err
 }
 
+// RestoreBatch recovers multiple media files from the trash. No-ops when ids is empty.
 func (r *MediaRepo) RestoreBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -195,11 +211,13 @@ func (r *MediaRepo) RestoreBatch(ctx context.Context, ids []int64) error {
 	return err
 }
 
+// PermanentDelete removes a media file row from the database.
 func (r *MediaRepo) PermanentDelete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_files WHERE id=$1`, id)
 	return err
 }
 
+// PermanentDeleteBatch removes multiple media file rows. No-ops when ids is empty.
 func (r *MediaRepo) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -213,11 +231,13 @@ func (r *MediaRepo) PermanentDeleteBatch(ctx context.Context, ids []int64) error
 	return err
 }
 
+// EmptyTrash permanently deletes all soft-deleted media files.
 func (r *MediaRepo) EmptyTrash(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_files WHERE deleted=true`)
 	return err
 }
 
+// UpdateFileContent replaces the stored file path, URL, size, and version after a content edit.
 func (r *MediaRepo) UpdateFileContent(ctx context.Context, id int64, filePath, fileURL string, fileSize int64, currentVersion int) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET file_path=$1, file_url=$2, file_size=$3, current_version=$4 WHERE id=$5`,
 		filePath, fileURL, fileSize, currentVersion, id)

@@ -18,16 +18,20 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// MediaService manages media file uploads and lifecycle (trash, restore, permanent delete).
 type MediaService struct {
 	repo      *repository.MediaRepo
 	store     storage.Storage
 	uploadDir string // local base path for reading back files after upload (for thumbnail gen)
 }
 
+// NewMediaService creates a MediaService backed by the given repository, storage backend, and local upload directory.
 func NewMediaService(repo *repository.MediaRepo, store storage.Storage, uploadDir string) *MediaService {
 	return &MediaService{repo: repo, store: store, uploadDir: uploadDir}
 }
 
+// Upload saves a multipart file to the storage backend, extracts image dimensions, and creates the database record.
+// Storage key format: {year}/{month}/{timestamp}_{filename}.
 func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, uploaderID *int64, folderID *int64) (*dto.MediaFileVO, error) {
 	f, err := fh.Open()
 	if err != nil {
@@ -90,6 +94,7 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	return &vo, nil
 }
 
+// GetForAdmin returns a paginated, filtered list of media files.
 func (s *MediaService) GetForAdmin(ctx context.Context, f repository.MediaFilter) (*response.PageResult, error) {
 	ms, total, err := s.repo.FindForAdmin(ctx, f)
 	if err != nil {
@@ -103,6 +108,7 @@ func (s *MediaService) GetForAdmin(ctx context.Context, f repository.MediaFilter
 	return &pr, nil
 }
 
+// GetStats returns aggregate file counts and total size by type.
 func (s *MediaService) GetStats(ctx context.Context) (*dto.MediaStatsVO, error) {
 	st, err := s.repo.GetStats(ctx)
 	if err != nil {
@@ -119,6 +125,7 @@ func (s *MediaService) GetStats(ctx context.Context) (*dto.MediaStatsVO, error) 
 	}, nil
 }
 
+// GetByID returns a single media file by primary key, or nil if not found.
 func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO, error) {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil || m == nil {
@@ -128,6 +135,7 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 	return &vo, nil
 }
 
+// Update modifies a media file's alt_text and folder_id.
 func (s *MediaService) Update(ctx context.Context, id int64, req dto.UpdateMediaRequest) (*dto.MediaFileVO, error) {
 	if err := s.repo.Update(ctx, id, req.AltText, req.FolderID); err != nil {
 		return nil, err
@@ -135,30 +143,37 @@ func (s *MediaService) Update(ctx context.Context, id int64, req dto.UpdateMedia
 	return s.GetByID(ctx, id)
 }
 
+// Move assigns a single media file to the given folder.
 func (s *MediaService) Move(ctx context.Context, id int64, folderID *int64) error {
 	return s.repo.MoveBatch(ctx, []int64{id}, folderID)
 }
 
+// MoveBatch assigns multiple media files to the given folder in one query.
 func (s *MediaService) MoveBatch(ctx context.Context, ids []int64, folderID *int64) error {
 	return s.repo.MoveBatch(ctx, ids, folderID)
 }
 
+// Delete soft-deletes a media file (moves to trash).
 func (s *MediaService) Delete(ctx context.Context, id int64) error {
 	return s.repo.SoftDelete(ctx, id)
 }
 
+// DeleteBatch soft-deletes multiple media files.
 func (s *MediaService) DeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.SoftDeleteBatch(ctx, ids)
 }
 
+// Restore recovers a single media file from the trash.
 func (s *MediaService) Restore(ctx context.Context, id int64) error {
 	return s.repo.Restore(ctx, id)
 }
 
+// RestoreBatch recovers multiple media files from the trash.
 func (s *MediaService) RestoreBatch(ctx context.Context, ids []int64) error {
 	return s.repo.RestoreBatch(ctx, ids)
 }
 
+// PermanentDelete deletes a media file from storage and removes its database record.
 func (s *MediaService) PermanentDelete(ctx context.Context, id int64) error {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -172,14 +187,17 @@ func (s *MediaService) PermanentDelete(ctx context.Context, id int64) error {
 	return s.repo.PermanentDelete(ctx, id)
 }
 
+// PermanentDeleteBatch permanently removes multiple media file records (does not delete from storage).
 func (s *MediaService) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.PermanentDeleteBatch(ctx, ids)
 }
 
+// EmptyTrash permanently deletes all soft-deleted media files from the database.
 func (s *MediaService) EmptyTrash(ctx context.Context) error {
 	return s.repo.EmptyTrash(ctx)
 }
 
+// GetTrashCount returns the number of soft-deleted media files currently in the trash.
 func (s *MediaService) GetTrashCount(ctx context.Context) (int64, error) {
 	return s.repo.CountTrash(ctx)
 }

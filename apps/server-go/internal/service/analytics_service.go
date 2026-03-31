@@ -71,6 +71,7 @@ type AnalyticsService struct {
 	repo *repository.AnalyticsRepo
 }
 
+// NewAnalyticsService creates an AnalyticsService backed by the given repository.
 func NewAnalyticsService(repo *repository.AnalyticsRepo) *AnalyticsService {
 	return &AnalyticsService{repo: repo}
 }

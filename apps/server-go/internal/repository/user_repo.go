@@ -1,3 +1,7 @@
+// Package repository provides database access objects (DAOs) for AetherBlog.
+// Each Repo struct wraps a *sqlx.DB and exposes focused query methods.
+// All methods accept a context.Context and return (value, error); a nil value
+// (not sql.ErrNoRows) is returned when a row is not found.
 package repository
 
 import (
@@ -11,14 +15,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
+// UserRepo provides data access for the users table.
 type UserRepo struct {
 	db *sqlx.DB
 }
 
+// NewUserRepo creates a UserRepo backed by the given database connection.
 func NewUserRepo(db *sqlx.DB) *UserRepo {
 	return &UserRepo{db: db}
 }
 
+// FindByUsername returns the user whose username matches exactly, or nil if not found.
 func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*model.User, error) {
 	var u model.User
 	err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE username = $1 LIMIT 1`, username)
@@ -28,6 +35,7 @@ func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*model.
 	return &u, err
 }
 
+// FindByEmail returns the user whose email matches exactly, or nil if not found.
 func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	var u model.User
 	err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE email = $1 LIMIT 1`, email)
@@ -37,6 +45,8 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*model.User, 
 	return &u, err
 }
 
+// FindByUsernameOrEmail returns the user matching identifier against either username or email.
+// Used for the login endpoint where the user may supply either field.
 func (r *UserRepo) FindByUsernameOrEmail(ctx context.Context, identifier string) (*model.User, error) {
 	var u model.User
 	err := r.db.GetContext(ctx, &u,
@@ -47,6 +57,7 @@ func (r *UserRepo) FindByUsernameOrEmail(ctx context.Context, identifier string)
 	return &u, err
 }
 
+// FindByID returns a user by primary key, or nil if not found.
 func (r *UserRepo) FindByID(ctx context.Context, id int64) (*model.User, error) {
 	var u model.User
 	err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE id = $1`, id)
@@ -56,6 +67,7 @@ func (r *UserRepo) FindByID(ctx context.Context, id int64) (*model.User, error) 
 	return &u, err
 }
 
+// Create inserts a new user with role USER and status ACTIVE, returning the created row.
 func (r *UserRepo) Create(ctx context.Context, username, email, passwordHash, nickname string) (*model.User, error) {
 	var u model.User
 	err := r.db.QueryRowxContext(ctx,
@@ -67,6 +79,7 @@ func (r *UserRepo) Create(ctx context.Context, username, email, passwordHash, ni
 	return &u, err
 }
 
+// UpdateLoginInfo records the current timestamp and client IP as the last successful login.
 func (r *UserRepo) UpdateLoginInfo(ctx context.Context, id int64, ip string) error {
 	now := time.Now()
 	_, err := r.db.ExecContext(ctx,
@@ -75,6 +88,7 @@ func (r *UserRepo) UpdateLoginInfo(ctx context.Context, id int64, ip string) err
 	return err
 }
 
+// UpdatePassword stores the new bcrypt password hash and clears the must_change_password flag.
 func (r *UserRepo) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE users SET password_hash = $1, must_change_password = false, updated_at = NOW() WHERE id = $2`,
@@ -82,6 +96,7 @@ func (r *UserRepo) UpdatePassword(ctx context.Context, id int64, passwordHash st
 	return err
 }
 
+// UpdateProfile updates the user's nickname and email, returning the updated row.
 func (r *UserRepo) UpdateProfile(ctx context.Context, id int64, nickname, email string) (*model.User, error) {
 	var u model.User
 	err := r.db.QueryRowxContext(ctx,
@@ -91,6 +106,7 @@ func (r *UserRepo) UpdateProfile(ctx context.Context, id int64, nickname, email 
 	return &u, err
 }
 
+// UpdateAvatar sets the user's avatar URL.
 func (r *UserRepo) UpdateAvatar(ctx context.Context, id int64, avatarURL string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE users SET avatar = $1, updated_at = NOW() WHERE id = $2`,

@@ -18,14 +18,19 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// MediaHandler manages media file uploads, listing, trash, and version management.
+// The version-related dependencies (versionSvc, store, mediaRepo) are optional and must
+// be injected via SetVersionDeps before the UploadContent endpoint is used.
 type MediaHandler struct {
 	svc        *service.MediaService
-	versionSvc *service.VersionService
-	store      storage.Storage
-	uploadDir  string
-	mediaRepo  *repository.MediaRepo
+	versionSvc *service.VersionService // optional; required for UploadContent
+	store      storage.Storage          // optional; required for UploadContent
+	uploadDir  string                   // local upload base directory
+	mediaRepo  *repository.MediaRepo    // optional; required for UploadContent
 }
 
+// NewMediaHandler creates a MediaHandler with the core MediaService.
+// Call SetVersionDeps to enable file-content replacement with versioning.
 func NewMediaHandler(svc *service.MediaService) *MediaHandler { return &MediaHandler{svc: svc} }
 
 // SetVersionDeps sets the optional version-related dependencies for content upload.
@@ -36,6 +41,7 @@ func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, store 
 	h.mediaRepo = mediaRepo
 }
 
+// Mount registers all media management routes on g.
 func (h *MediaHandler) Mount(g *echo.Group) {
 	g.POST("/upload", h.Upload)
 	g.POST("/upload/batch", h.UploadBatch)
@@ -57,6 +63,8 @@ func (h *MediaHandler) Mount(g *echo.Group) {
 	g.DELETE("/:id/permanent", h.PermanentDelete)
 }
 
+// Upload handles POST /admin/media/upload. Accepts a single multipart file upload.
+// Optional query param: folderId — places the file in the specified folder.
 func (h *MediaHandler) Upload(c echo.Context) error {
 	fh, err := c.FormFile("file")
 	if err != nil {
@@ -80,6 +88,8 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// UploadBatch handles POST /admin/media/upload/batch. Accepts multiple files under the "files" form field.
+// Returns a mixed array — successful uploads as MediaFileVO, failed ones as {"error": "...", "filename": "..."}.
 func (h *MediaHandler) UploadBatch(c echo.Context) error {
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -114,6 +124,8 @@ func (h *MediaHandler) UploadBatch(c echo.Context) error {
 	return response.OK(c, results)
 }
 
+// List handles GET /admin/media. Returns paginated non-deleted media files with optional
+// keyword, fileType, and folderId filters.
 func (h *MediaHandler) List(c echo.Context) error {
 	f := repository.MediaFilter{
 		Keyword:  c.QueryParam("keyword"),
@@ -134,6 +146,7 @@ func (h *MediaHandler) List(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
+// Stats handles GET /admin/media/stats. Returns storage usage statistics (file counts and sizes by type).
 func (h *MediaHandler) Stats(c echo.Context) error {
 	st, err := h.svc.GetStats(c.Request().Context())
 	if err != nil {
@@ -180,6 +193,7 @@ func (h *MediaHandler) DeleteBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Trash handles GET /admin/media/trash. Returns paginated soft-deleted (trashed) media files.
 func (h *MediaHandler) Trash(c echo.Context) error {
 	f := repository.MediaFilter{
 		Keyword:  c.QueryParam("keyword"),
@@ -194,6 +208,7 @@ func (h *MediaHandler) Trash(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
+// TrashCount handles GET /admin/media/trash/count. Returns the number of soft-deleted files.
 func (h *MediaHandler) TrashCount(c echo.Context) error {
 	n, err := h.svc.GetTrashCount(c.Request().Context())
 	if err != nil {
@@ -202,6 +217,7 @@ func (h *MediaHandler) TrashCount(c echo.Context) error {
 	return response.OK(c, n)
 }
 
+// BatchRestore handles POST /admin/media/trash/batch-restore. Restores multiple trashed files.
 func (h *MediaHandler) BatchRestore(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -224,6 +240,7 @@ func (h *MediaHandler) PermanentDeleteBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// EmptyTrash handles DELETE /admin/media/trash/empty. Permanently deletes all trashed files.
 func (h *MediaHandler) EmptyTrash(c echo.Context) error {
 	if err := h.svc.EmptyTrash(c.Request().Context()); err != nil {
 		return response.Error(c, err)
@@ -231,6 +248,7 @@ func (h *MediaHandler) EmptyTrash(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Get handles GET /admin/media/:id. Returns full metadata for a single media file.
 func (h *MediaHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -246,6 +264,8 @@ func (h *MediaHandler) Get(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// Update handles PUT /admin/media/:id. Updates metadata (altText, originalName, folderId).
+// Accepts values as both query parameters and JSON body; body takes precedence.
 func (h *MediaHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -273,6 +293,7 @@ func (h *MediaHandler) Update(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// Delete handles DELETE /admin/media/:id. Soft-deletes (trashes) a single file.
 func (h *MediaHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -284,6 +305,8 @@ func (h *MediaHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Move handles POST /admin/media/:id/move. Moves a file to another folder (nil = root).
+// Accepts folderId as query param or JSON body.
 func (h *MediaHandler) Move(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -309,6 +332,7 @@ func (h *MediaHandler) Move(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Restore handles POST /admin/media/:id/restore. Restores a single trashed file.
 func (h *MediaHandler) Restore(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -320,6 +344,7 @@ func (h *MediaHandler) Restore(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// PermanentDelete handles DELETE /admin/media/:id/permanent. Irreversibly removes a file.
 func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -331,6 +356,10 @@ func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// UploadContent handles POST /admin/media/:id/content.
+// Replaces the file's binary content: saves a version snapshot of the current file,
+// uploads the new content to storage, then updates the DB record with the new path/URL/size/version.
+// Requires SetVersionDeps to have been called.
 func (h *MediaHandler) UploadContent(c echo.Context) error {
 	if h.versionSvc == nil || h.store == nil || h.mediaRepo == nil {
 		return response.FailWith(c, response.InternalError, "版本服务未配置")

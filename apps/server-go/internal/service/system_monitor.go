@@ -23,12 +23,14 @@ type SystemMetrics struct {
 	Go      GoMetrics      `json:"go"`
 }
 
+// CPUMetrics holds CPU usage and configuration metrics.
 type CPUMetrics struct {
 	Cores       int     `json:"cores"`
 	MaxProcs    int     `json:"maxProcs"`
 	UsagePercent float64 `json:"usagePercent"`
 }
 
+// MemoryMetrics holds OS and Go heap memory statistics.
 type MemoryMetrics struct {
 	TotalBytes     uint64  `json:"totalBytes"`
 	UsedBytes      uint64  `json:"usedBytes"`
@@ -41,6 +43,7 @@ type MemoryMetrics struct {
 	GoTotalAlloc   uint64  `json:"goTotalAlloc"`
 }
 
+// DiskMetrics holds disk usage statistics for the configured upload path.
 type DiskMetrics struct {
 	TotalBytes   uint64  `json:"totalBytes"`
 	UsedBytes    uint64  `json:"usedBytes"`
@@ -49,11 +52,13 @@ type DiskMetrics struct {
 	Path         string  `json:"path"`
 }
 
+// NetworkMetrics holds cumulative network byte counters.
 type NetworkMetrics struct {
 	BytesIn  int64 `json:"bytesIn"`
 	BytesOut int64 `json:"bytesOut"`
 }
 
+// GoMetrics holds Go runtime statistics (version, goroutines, GC, uptime).
 type GoMetrics struct {
 	Version      string `json:"version"`
 	NumGoroutine int    `json:"numGoroutine"`
@@ -79,6 +84,7 @@ type SystemMonitorService struct {
 	lastCPUActive float64
 }
 
+// NewSystemMonitorService creates a SystemMonitorService backed by the given config.
 func NewSystemMonitorService(cfg *config.Config) *SystemMonitorService {
 	return &SystemMonitorService{cfg: cfg}
 }
@@ -324,6 +330,7 @@ type StorageBreakdown struct {
 	UsedPercent float64     `json:"usedPercent"`
 }
 
+// StorageItem holds size information for a single storage subsystem.
 type StorageItem struct {
 	Name      string `json:"name"`
 	Size      int64  `json:"size"`

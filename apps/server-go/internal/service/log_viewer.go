@@ -44,6 +44,7 @@ type LogViewerService struct {
 	cfg *config.Config
 }
 
+// NewLogViewerService creates a LogViewerService that reads log files from the configured log directory.
 func NewLogViewerService(cfg *config.Config) *LogViewerService {
 	return &LogViewerService{cfg: cfg}
 }

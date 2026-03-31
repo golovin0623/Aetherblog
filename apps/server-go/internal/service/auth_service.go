@@ -1,3 +1,6 @@
+// Package service implements the business logic layer of AetherBlog.
+// Each service struct owns its repository/client dependencies and exposes
+// domain methods that handlers call. Services must not import the handler package.
 package service
 
 import (
@@ -30,6 +33,8 @@ type AuthService struct {
 	redis    *redis.Client
 }
 
+// NewAuthService creates an AuthService with the given user repository and Redis client.
+// Redis is used for login-attempt rate limiting; a nil client disables rate limiting.
 func NewAuthService(userRepo *repository.UserRepo, rdb *redis.Client) *AuthService {
 	return &AuthService{userRepo: userRepo, redis: rdb}
 }
@@ -100,6 +105,8 @@ func (s *AuthService) UpdateLoginInfo(ctx context.Context, id int64, ip string) 
 
 // --- Login security (Redis-based) ---
 
+// AssertLoginAllowed returns an error if the identifier+IP combination is currently locked
+// due to too many failed login attempts. Returns nil when Redis is unavailable.
 func (s *AuthService) AssertLoginAllowed(ctx context.Context, identifier, ip string) error {
 	lockKey := loginLockKeyPrefix + buildSecurityKey(identifier, ip)
 	exists, err := s.redis.Exists(ctx, lockKey).Result()
@@ -112,6 +119,8 @@ func (s *AuthService) AssertLoginAllowed(ctx context.Context, identifier, ip str
 	return nil
 }
 
+// RecordFailedAttempt increments the failed-login counter for identifier+IP.
+// Once maxFailedAttempts is reached within windowDuration, the key is locked for lockDuration.
 func (s *AuthService) RecordFailedAttempt(ctx context.Context, identifier, ip string) {
 	suffix := buildSecurityKey(identifier, ip)
 	failKey := loginFailKeyPrefix + suffix
@@ -128,6 +137,8 @@ func (s *AuthService) RecordFailedAttempt(ctx context.Context, identifier, ip st
 	}
 }
 
+// ClearFailedAttempts removes both the fail-counter and lock keys for identifier+IP
+// after a successful login.
 func (s *AuthService) ClearFailedAttempts(ctx context.Context, identifier, ip string) {
 	suffix := buildSecurityKey(identifier, ip)
 	s.redis.Del(ctx, loginFailKeyPrefix+suffix, loginLockKeyPrefix+suffix)

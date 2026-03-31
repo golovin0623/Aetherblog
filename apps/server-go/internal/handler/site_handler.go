@@ -10,6 +10,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// SiteHandler serves the public site information endpoints (metadata, stats, author).
 type SiteHandler struct {
 	settings *service.SiteSettingService
 	userRepo *repository.UserRepo
@@ -18,6 +19,7 @@ type SiteHandler struct {
 	postRepo *repository.PostRepo
 }
 
+// NewSiteHandler creates a SiteHandler.
 func NewSiteHandler(
 	settings *service.SiteSettingService,
 	userRepo *repository.UserRepo,
@@ -28,12 +30,14 @@ func NewSiteHandler(
 	return &SiteHandler{settings: settings, userRepo: userRepo, catRepo: catRepo, tagRepo: tagRepo, postRepo: postRepo}
 }
 
+// Mount registers site info routes under the given public route group.
 func (h *SiteHandler) Mount(g *echo.Group) {
 	g.GET("/info", h.Info)
 	g.GET("/stats", h.Stats)
 	g.GET("/author", h.Author)
 }
 
+// Info handles GET /info — returns site settings merged with admin user profile.
 func (h *SiteHandler) Info(c echo.Context) error {
 	ctx := c.Request().Context()
 	m, err := h.settings.GetAll(ctx)
@@ -54,6 +58,7 @@ func (h *SiteHandler) Info(c echo.Context) error {
 	return response.OK(c, m)
 }
 
+// Stats handles GET /stats — returns aggregate counts for categories, tags, and published posts.
 func (h *SiteHandler) Stats(c echo.Context) error {
 	ctx := c.Request().Context()
 	cats, _ := h.catRepo.FindAll(ctx)
@@ -68,6 +73,7 @@ func (h *SiteHandler) Stats(c echo.Context) error {
 	})
 }
 
+// Author handles GET /author — returns author group settings merged with admin user profile.
 func (h *SiteHandler) Author(c echo.Context) error {
 	ctx := c.Request().Context()
 	m, err := h.settings.GetByGroup(ctx, "author")

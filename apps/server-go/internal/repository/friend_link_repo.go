@@ -13,16 +13,20 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 )
 
+// FriendLinkRepo provides data access for the friend_links table.
 type FriendLinkRepo struct{ db *sqlx.DB }
 
+// NewFriendLinkRepo creates a FriendLinkRepo backed by the given database connection.
 func NewFriendLinkRepo(db *sqlx.DB) *FriendLinkRepo { return &FriendLinkRepo{db: db} }
 
+// FindAll returns all friend links ordered by sort_order then id (admin use).
 func (r *FriendLinkRepo) FindAll(ctx context.Context) ([]model.FriendLink, error) {
 	var links []model.FriendLink
 	err := r.db.SelectContext(ctx, &links, `SELECT * FROM friend_links ORDER BY sort_order ASC, id ASC`)
 	return links, err
 }
 
+// FindVisible returns all friend links with visible=true, ordered by sort_order (public use).
 func (r *FriendLinkRepo) FindVisible(ctx context.Context) ([]model.FriendLink, error) {
 	var links []model.FriendLink
 	err := r.db.SelectContext(ctx, &links,
@@ -30,6 +34,7 @@ func (r *FriendLinkRepo) FindVisible(ctx context.Context) ([]model.FriendLink, e
 	return links, err
 }
 
+// FindPage returns a paginated list of all friend links with the total count.
 func (r *FriendLinkRepo) FindPage(ctx context.Context, p pagination.Params) ([]model.FriendLink, int64, error) {
 	var total int64
 	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM friend_links`); err != nil {
@@ -42,6 +47,7 @@ func (r *FriendLinkRepo) FindPage(ctx context.Context, p pagination.Params) ([]m
 	return links, total, err
 }
 
+// FindByID returns a friend link by primary key, or nil if not found.
 func (r *FriendLinkRepo) FindByID(ctx context.Context, id int64) (*model.FriendLink, error) {
 	var fl model.FriendLink
 	err := r.db.GetContext(ctx, &fl, `SELECT * FROM friend_links WHERE id = $1`, id)
@@ -51,6 +57,7 @@ func (r *FriendLinkRepo) FindByID(ctx context.Context, id int64) (*model.FriendL
 	return &fl, err
 }
 
+// Create inserts a new friend link, returning the created row.
 func (r *FriendLinkRepo) Create(ctx context.Context, fl *model.FriendLink) (*model.FriendLink, error) {
 	var out model.FriendLink
 	err := r.db.QueryRowxContext(ctx,
@@ -61,6 +68,7 @@ func (r *FriendLinkRepo) Create(ctx context.Context, fl *model.FriendLink) (*mod
 	return &out, err
 }
 
+// Update modifies an existing friend link's fields, returning the updated row.
 func (r *FriendLinkRepo) Update(ctx context.Context, id int64, fl *model.FriendLink) (*model.FriendLink, error) {
 	var out model.FriendLink
 	err := r.db.QueryRowxContext(ctx,
@@ -71,11 +79,13 @@ func (r *FriendLinkRepo) Update(ctx context.Context, id int64, fl *model.FriendL
 	return &out, err
 }
 
+// Delete permanently removes a single friend link by primary key.
 func (r *FriendLinkRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM friend_links WHERE id = $1`, id)
 	return err
 }
 
+// DeleteBatch permanently removes multiple friend links. No-ops when ids is empty.
 func (r *FriendLinkRepo) DeleteBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -92,6 +102,7 @@ func (r *FriendLinkRepo) DeleteBatch(ctx context.Context, ids []int64) error {
 	return err
 }
 
+// ToggleVisible flips the visible flag and returns the updated row.
 func (r *FriendLinkRepo) ToggleVisible(ctx context.Context, id int64) (*model.FriendLink, error) {
 	var out model.FriendLink
 	err := r.db.QueryRowxContext(ctx,

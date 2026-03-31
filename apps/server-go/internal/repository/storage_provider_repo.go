@@ -10,18 +10,22 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
+// StorageProviderRepo provides data access for the storage_providers table.
 type StorageProviderRepo struct{ db *sqlx.DB }
 
+// NewStorageProviderRepo creates a StorageProviderRepo backed by the given database connection.
 func NewStorageProviderRepo(db *sqlx.DB) *StorageProviderRepo {
 	return &StorageProviderRepo{db: db}
 }
 
+// FindAll returns all storage providers ordered by priority then id.
 func (r *StorageProviderRepo) FindAll(ctx context.Context) ([]model.StorageProvider, error) {
 	var ps []model.StorageProvider
 	err := r.db.SelectContext(ctx, &ps, `SELECT * FROM storage_providers ORDER BY priority ASC, id ASC`)
 	return ps, err
 }
 
+// FindByID returns a storage provider by primary key, or nil if not found.
 func (r *StorageProviderRepo) FindByID(ctx context.Context, id int64) (*model.StorageProvider, error) {
 	var p model.StorageProvider
 	err := r.db.GetContext(ctx, &p, `SELECT * FROM storage_providers WHERE id=$1`, id)
@@ -34,6 +38,7 @@ func (r *StorageProviderRepo) FindByID(ctx context.Context, id int64) (*model.St
 	return &p, nil
 }
 
+// FindDefault returns the enabled storage provider marked as default, or nil if none.
 func (r *StorageProviderRepo) FindDefault(ctx context.Context) (*model.StorageProvider, error) {
 	var p model.StorageProvider
 	err := r.db.GetContext(ctx, &p, `SELECT * FROM storage_providers WHERE is_default=true AND is_enabled=true LIMIT 1`)
@@ -46,6 +51,7 @@ func (r *StorageProviderRepo) FindDefault(ctx context.Context) (*model.StoragePr
 	return &p, nil
 }
 
+// StorageProviderRequest holds the mutable fields for creating or updating a storage provider.
 type StorageProviderRequest struct {
 	Name         string
 	ProviderType string
@@ -54,6 +60,7 @@ type StorageProviderRequest struct {
 	Priority     int
 }
 
+// Create inserts a new storage provider, returning the created row.
 func (r *StorageProviderRepo) Create(ctx context.Context, req StorageProviderRequest) (*model.StorageProvider, error) {
 	var p model.StorageProvider
 	err := r.db.QueryRowContext(ctx, `
@@ -64,6 +71,7 @@ func (r *StorageProviderRepo) Create(ctx context.Context, req StorageProviderReq
 	return &p, err
 }
 
+// Update modifies an existing storage provider's configuration fields.
 func (r *StorageProviderRepo) Update(ctx context.Context, id int64, req StorageProviderRequest) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE storage_providers SET name=$1, provider_type=$2, config_json=$3, is_enabled=$4, priority=$5 WHERE id=$6`,
@@ -71,11 +79,13 @@ func (r *StorageProviderRepo) Update(ctx context.Context, id int64, req StorageP
 	return err
 }
 
+// Delete permanently removes a storage provider by primary key.
 func (r *StorageProviderRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM storage_providers WHERE id=$1`, id)
 	return err
 }
 
+// SetDefault clears is_default on all providers then marks the given one as default in a transaction.
 func (r *StorageProviderRepo) SetDefault(ctx context.Context, id int64) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {

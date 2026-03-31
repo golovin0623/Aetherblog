@@ -35,6 +35,7 @@ type SystemMonitorHandler struct {
 	cfg       *config.Config
 }
 
+// NewSystemMonitorHandler creates a SystemMonitorHandler.
 func NewSystemMonitorHandler(
 	monitor *service.SystemMonitorService,
 	container *service.ContainerMonitorService,

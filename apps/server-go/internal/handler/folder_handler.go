@@ -11,10 +11,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// FolderHandler handles media folder management endpoints.
 type FolderHandler struct{ svc *service.FolderService }
 
+// NewFolderHandler creates a FolderHandler.
 func NewFolderHandler(svc *service.FolderService) *FolderHandler { return &FolderHandler{svc: svc} }
 
+// Mount registers folder routes under the given admin route group.
 func (h *FolderHandler) Mount(g *echo.Group) {
 	g.GET("/tree", h.Tree)
 	g.GET("/:id", h.Get)
@@ -25,6 +28,7 @@ func (h *FolderHandler) Mount(g *echo.Group) {
 	g.POST("/:id/move", h.Move)
 }
 
+// Tree handles GET /tree — returns all folders as a nested tree.
 func (h *FolderHandler) Tree(c echo.Context) error {
 	tree, err := h.svc.GetTree(c.Request().Context())
 	if err != nil {
@@ -33,6 +37,7 @@ func (h *FolderHandler) Tree(c echo.Context) error {
 	return response.OK(c, tree)
 }
 
+// Get handles GET /:id — returns a single folder.
 func (h *FolderHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -48,6 +53,7 @@ func (h *FolderHandler) Get(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// Children handles GET /:id/children — returns direct children of a folder.
 func (h *FolderHandler) Children(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -60,6 +66,7 @@ func (h *FolderHandler) Children(c echo.Context) error {
 	return response.OK(c, vos)
 }
 
+// Create handles POST "" — creates a new folder.
 func (h *FolderHandler) Create(c echo.Context) error {
 	var req dto.FolderRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -77,6 +84,7 @@ func (h *FolderHandler) Create(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// Update handles PUT /:id — updates a folder's properties.
 func (h *FolderHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -97,6 +105,7 @@ func (h *FolderHandler) Update(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Delete handles DELETE /:id — permanently removes a folder.
 func (h *FolderHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -108,6 +117,7 @@ func (h *FolderHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Move handles POST /:id/move — re-parents a folder.
 func (h *FolderHandler) Move(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
