@@ -363,8 +363,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-blog:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-blog:buildcache,mode=max
+          # 双缓存策略: GHA 缓存用于 CI 增量构建加速, registry 缓存用于持久备份
+          cache-from: |
+            type=gha,scope=blog
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-blog:buildcache
+          cache-to: |
+            type=gha,scope=blog,mode=max
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-blog:buildcache,mode=max
           platforms: linux/amd64
 
   build-admin:
