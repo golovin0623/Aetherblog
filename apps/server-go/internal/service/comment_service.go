@@ -11,17 +11,20 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// CommentService manages comment moderation and public submission.
 type CommentService struct {
 	repo     *repository.CommentRepo
 	postRepo *repository.PostRepo
 }
 
+// NewCommentService creates a CommentService backed by the given repositories.
 func NewCommentService(repo *repository.CommentRepo, postRepo *repository.PostRepo) *CommentService {
 	return &CommentService{repo: repo, postRepo: postRepo}
 }
 
 // --- Admin ---
 
+// GetPending returns paginated PENDING comments for the admin moderation queue.
 func (s *CommentService) GetPending(ctx context.Context, p pagination.Params) (*response.PageResult, error) {
 	cs, total, err := s.repo.FindPending(ctx, p)
 	if err != nil {
@@ -33,6 +36,7 @@ func (s *CommentService) GetPending(ctx context.Context, p pagination.Params) (*
 	return &pr, nil
 }
 
+// GetForAdmin returns a paginated, filtered list of comments for the admin view.
 func (s *CommentService) GetForAdmin(ctx context.Context, f dto.CommentFilter) (*response.PageResult, error) {
 	cs, total, err := s.repo.FindForAdmin(ctx, f)
 	if err != nil {
@@ -44,6 +48,7 @@ func (s *CommentService) GetForAdmin(ctx context.Context, f dto.CommentFilter) (
 	return &pr, nil
 }
 
+// GetByID returns a single comment by primary key, or nil if not found.
 func (s *CommentService) GetByID(ctx context.Context, id int64) (*dto.CommentVO, error) {
 	c, err := s.repo.FindByID(ctx, id)
 	if err != nil || c == nil {
@@ -53,6 +58,7 @@ func (s *CommentService) GetByID(ctx context.Context, id int64) (*dto.CommentVO,
 	return &vo, nil
 }
 
+// Approve sets the comment status to APPROVED and asynchronously updates the post's comment count.
 func (s *CommentService) Approve(ctx context.Context, id int64) error {
 	c, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -68,6 +74,7 @@ func (s *CommentService) Approve(ctx context.Context, id int64) error {
 	return nil
 }
 
+// Reject sets the comment status to REJECTED.
 func (s *CommentService) Reject(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -80,6 +87,7 @@ func (s *CommentService) Reject(ctx context.Context, id int64) error {
 	return nil
 }
 
+// MarkSpam sets the comment status to SPAM.
 func (s *CommentService) MarkSpam(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -92,6 +100,7 @@ func (s *CommentService) MarkSpam(ctx context.Context, id int64) error {
 	return nil
 }
 
+// Restore moves a deleted/rejected comment back to PENDING for re-moderation.
 func (s *CommentService) Restore(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -104,6 +113,7 @@ func (s *CommentService) Restore(ctx context.Context, id int64) error {
 	return nil
 }
 
+// Delete soft-deletes a comment (status=DELETED) without removing the row.
 func (s *CommentService) Delete(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -116,6 +126,7 @@ func (s *CommentService) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// PermanentDelete removes a comment from the database permanently.
 func (s *CommentService) PermanentDelete(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -128,20 +139,24 @@ func (s *CommentService) PermanentDelete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// DeleteBatch soft-deletes multiple comments in one query.
 func (s *CommentService) DeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.UpdateStatusBatch(ctx, ids, "DELETED")
 }
 
+// PermanentDeleteBatch permanently removes multiple comments in one query.
 func (s *CommentService) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.PermanentDeleteBatch(ctx, ids)
 }
 
+// ApproveBatch bulk-approves multiple comments in one query.
 func (s *CommentService) ApproveBatch(ctx context.Context, ids []int64) error {
 	return s.repo.UpdateStatusBatch(ctx, ids, "APPROVED")
 }
 
 // --- Public ---
 
+// GetByPost returns all APPROVED comments for a post assembled into a nested tree.
 func (s *CommentService) GetByPost(ctx context.Context, postID int64) ([]dto.CommentVO, error) {
 	cs, err := s.repo.FindByPostApproved(ctx, postID)
 	if err != nil {
@@ -151,6 +166,8 @@ func (s *CommentService) GetByPost(ctx context.Context, postID int64) ([]dto.Com
 	return buildCommentTree(toCommentVOs(cs)), nil
 }
 
+// Submit creates a new comment with PENDING status.
+// Validates that the parent comment (if given) belongs to the same post.
 func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.CreateCommentRequest, ip, userAgent string) (*dto.CommentVO, error) {
 	// Verify parent if provided
 	if req.ParentID != nil {

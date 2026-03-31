@@ -9,14 +9,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// PermissionService manages folder access permission grants.
 type PermissionService struct {
 	repo *repository.PermissionRepo
 }
 
+// NewPermissionService creates a PermissionService backed by the given repository.
 func NewPermissionService(repo *repository.PermissionRepo) *PermissionService {
 	return &PermissionService{repo: repo}
 }
 
+// GetByFolderID returns all permission grants for a folder.
 func (s *PermissionService) GetByFolderID(ctx context.Context, folderID int64) ([]dto.FolderPermissionVO, error) {
 	perms, err := s.repo.FindByFolderID(ctx, folderID)
 	if err != nil {
@@ -25,6 +28,7 @@ func (s *PermissionService) GetByFolderID(ctx context.Context, folderID int64) (
 	return toPermissionVOs(perms), nil
 }
 
+// Grant creates a new permission entry for a user on a folder.
 func (s *PermissionService) Grant(ctx context.Context, folderID int64, req dto.GrantPermissionRequest, grantedBy *int64) (*dto.FolderPermissionVO, error) {
 	p := &model.FolderPermission{
 		FolderID:        folderID,
@@ -45,6 +49,7 @@ func (s *PermissionService) Grant(ctx context.Context, folderID int64, req dto.G
 	return &vo, nil
 }
 
+// Update modifies the level or expiry of an existing permission grant.
 func (s *PermissionService) Update(ctx context.Context, permissionID int64, req dto.UpdatePermissionRequest) (*dto.FolderPermissionVO, error) {
 	if err := s.repo.Update(ctx, permissionID, req.PermissionLevel, req.ExpiresAt); err != nil {
 		return nil, err
@@ -60,6 +65,7 @@ func (s *PermissionService) Update(ctx context.Context, permissionID int64, req 
 	return &vo, nil
 }
 
+// Revoke removes a permission grant by ID.
 func (s *PermissionService) Revoke(ctx context.Context, permissionID int64) error {
 	return s.repo.Delete(ctx, permissionID)
 }

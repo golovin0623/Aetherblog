@@ -58,6 +58,7 @@ type TaskTypeStat struct {
 // AnalyticsRepo handles all analytics-related database queries.
 type AnalyticsRepo struct{ db *sqlx.DB }
 
+// NewAnalyticsRepo creates an AnalyticsRepo backed by the given database connection.
 func NewAnalyticsRepo(db *sqlx.DB) *AnalyticsRepo { return &AnalyticsRepo{db: db} }
 
 // GetDashboard returns aggregated site statistics from multiple tables.

@@ -14,10 +14,12 @@ import (
 // ActivityHandler serves the 3 admin activity endpoints.
 type ActivityHandler struct{ svc *service.ActivityService }
 
+// NewActivityHandler creates an ActivityHandler.
 func NewActivityHandler(svc *service.ActivityService) *ActivityHandler {
 	return &ActivityHandler{svc: svc}
 }
 
+// Mount registers the activity routes under the given admin route group.
 func (h *ActivityHandler) Mount(g *echo.Group) {
 	g.GET("/recent", h.Recent)
 	g.GET("", h.List)

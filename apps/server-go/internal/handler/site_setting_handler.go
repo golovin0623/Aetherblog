@@ -10,12 +10,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// SiteSettingHandler handles admin CRUD for site settings.
 type SiteSettingHandler struct{ svc *service.SiteSettingService }
 
+// NewSiteSettingHandler creates a SiteSettingHandler.
 func NewSiteSettingHandler(svc *service.SiteSettingService) *SiteSettingHandler {
 	return &SiteSettingHandler{svc: svc}
 }
 
+// Mount registers site setting routes under the given admin route group.
 func (h *SiteSettingHandler) Mount(g *echo.Group) {
 	g.GET("", h.GetAll)
 	g.GET("/group/:group", h.GetByGroup)

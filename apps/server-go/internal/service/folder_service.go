@@ -8,14 +8,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// FolderService manages media folder operations.
 type FolderService struct {
 	repo *repository.FolderRepo
 }
 
+// NewFolderService creates a FolderService backed by the given repository.
 func NewFolderService(repo *repository.FolderRepo) *FolderService {
 	return &FolderService{repo: repo}
 }
 
+// GetTree returns all folders assembled into a parent-child tree.
 func (s *FolderService) GetTree(ctx context.Context) ([]dto.MediaFolderVO, error) {
 	folders, err := s.repo.FindAll(ctx)
 	if err != nil {
@@ -24,6 +27,7 @@ func (s *FolderService) GetTree(ctx context.Context) ([]dto.MediaFolderVO, error
 	return buildFolderTree(toFolderVOs(folders)), nil
 }
 
+// GetByID returns a single folder by primary key, or nil if not found.
 func (s *FolderService) GetByID(ctx context.Context, id int64) (*dto.MediaFolderVO, error) {
 	f, err := s.repo.FindByID(ctx, id)
 	if err != nil || f == nil {
@@ -33,6 +37,7 @@ func (s *FolderService) GetByID(ctx context.Context, id int64) (*dto.MediaFolder
 	return &vo, nil
 }
 
+// GetChildren returns the direct children of a folder (flat list, no recursion).
 func (s *FolderService) GetChildren(ctx context.Context, id int64) ([]dto.MediaFolderVO, error) {
 	fs, err := s.repo.FindChildren(ctx, id)
 	if err != nil {
@@ -41,6 +46,7 @@ func (s *FolderService) GetChildren(ctx context.Context, id int64) ([]dto.MediaF
 	return toFolderVOs(fs), nil
 }
 
+// Create creates a new folder. Defaults visibility to PRIVATE when not specified.
 func (s *FolderService) Create(ctx context.Context, req dto.FolderRequest, ownerID *int64) (*dto.MediaFolderVO, error) {
 	vis := req.Visibility
 	if vis == "" {
@@ -62,6 +68,7 @@ func (s *FolderService) Create(ctx context.Context, req dto.FolderRequest, owner
 	return &vo, nil
 }
 
+// Update modifies a folder's display properties.
 func (s *FolderService) Update(ctx context.Context, id int64, req dto.FolderRequest, ownerID *int64) error {
 	vis := req.Visibility
 	if vis == "" {
@@ -77,10 +84,12 @@ func (s *FolderService) Update(ctx context.Context, id int64, req dto.FolderRequ
 	})
 }
 
+// Delete permanently removes a folder.
 func (s *FolderService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// Move re-parents a folder under newParentID (nil = root level).
 func (s *FolderService) Move(ctx context.Context, id int64, newParentID *int64, updatedBy *int64) error {
 	return s.repo.Move(ctx, id, newParentID, updatedBy)
 }

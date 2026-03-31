@@ -9,15 +9,18 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// VersionService manages media file version history (snapshots before edits, restores).
 type VersionService struct {
 	repo      *repository.VersionRepo
 	mediaRepo *repository.MediaRepo
 }
 
+// NewVersionService creates a VersionService backed by the given repositories.
 func NewVersionService(repo *repository.VersionRepo, mediaRepo *repository.MediaRepo) *VersionService {
 	return &VersionService{repo: repo, mediaRepo: mediaRepo}
 }
 
+// GetHistory returns all version records for a media file, newest first.
 func (s *VersionService) GetHistory(ctx context.Context, fileID int64) ([]dto.MediaVersionVO, error) {
 	versions, err := s.repo.FindByFileID(ctx, fileID)
 	if err != nil {
@@ -26,6 +29,8 @@ func (s *VersionService) GetHistory(ctx context.Context, fileID int64) ([]dto.Me
 	return toVersionVOs(versions), nil
 }
 
+// Restore rolls back a file to a previous version.
+// Saves the current state as a new version snapshot before overwriting with the target version.
 func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumber int) error {
 	version, err := s.repo.FindByFileAndVersion(ctx, fileID, versionNumber)
 	if err != nil {
@@ -70,6 +75,7 @@ func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumbe
 	return nil
 }
 
+// Delete permanently removes a single version record.
 func (s *VersionService) Delete(ctx context.Context, versionID int64) error {
 	return s.repo.Delete(ctx, versionID)
 }

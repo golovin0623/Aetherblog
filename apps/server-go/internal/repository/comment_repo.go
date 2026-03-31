@@ -14,10 +14,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 )
 
+// CommentRepo provides data access for the comments table.
 type CommentRepo struct{ db *sqlx.DB }
 
+// NewCommentRepo creates a CommentRepo backed by the given database connection.
 func NewCommentRepo(db *sqlx.DB) *CommentRepo { return &CommentRepo{db: db} }
 
+// FindByID returns a comment by primary key, or nil if not found.
 func (r *CommentRepo) FindByID(ctx context.Context, id int64) (*model.Comment, error) {
 	var c model.Comment
 	err := r.db.GetContext(ctx, &c, `SELECT * FROM comments WHERE id=$1`, id)
@@ -98,6 +101,7 @@ func (r *CommentRepo) findWithFilter(ctx context.Context, f dto.CommentFilter) (
 	return cs, total, nil
 }
 
+// Create inserts a new comment and back-fills the generated ID, CreatedAt, and UpdatedAt.
 func (r *CommentRepo) Create(ctx context.Context, c *model.Comment) error {
 	return r.db.QueryRowContext(ctx,
 		`INSERT INTO comments (post_id, parent_id, nickname, email, website, avatar, content, status, ip, user_agent, is_admin)
@@ -107,11 +111,14 @@ func (r *CommentRepo) Create(ctx context.Context, c *model.Comment) error {
 	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 }
 
+// UpdateStatus sets the comment's status (PENDING|APPROVED|REJECTED|SPAM|DELETED).
 func (r *CommentRepo) UpdateStatus(ctx context.Context, id int64, status string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE comments SET status=$1 WHERE id=$2`, status, id)
 	return err
 }
 
+// UpdateStatusBatch updates the status of multiple comments in a single query.
+// No-ops when ids is empty.
 func (r *CommentRepo) UpdateStatusBatch(ctx context.Context, ids []int64, status string) error {
 	if len(ids) == 0 {
 		return nil
@@ -136,6 +143,8 @@ func (r *CommentRepo) PermanentDelete(ctx context.Context, id int64) error {
 	return err
 }
 
+// PermanentDeleteBatch removes multiple comments from the database in a single query.
+// No-ops when ids is empty.
 func (r *CommentRepo) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil

@@ -10,10 +10,12 @@ import (
 // VisitorHandler serves the 2 public visit endpoints.
 type VisitorHandler struct{ svc *service.AnalyticsService }
 
+// NewVisitorHandler creates a VisitorHandler backed by the given AnalyticsService.
 func NewVisitorHandler(svc *service.AnalyticsService) *VisitorHandler {
 	return &VisitorHandler{svc: svc}
 }
 
+// Mount registers the public visit recording and today-count routes on g.
 func (h *VisitorHandler) Mount(g *echo.Group) {
 	g.POST("", h.Record)
 	g.GET("/today", h.TodayCount)

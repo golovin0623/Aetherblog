@@ -14,10 +14,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// PostHandler handles all blog-post related endpoints under /admin/posts and /public/posts.
 type PostHandler struct{ svc *service.PostService }
 
+// NewPostHandler creates a PostHandler backed by the given PostService.
 func NewPostHandler(svc *service.PostService) *PostHandler { return &PostHandler{svc: svc} }
 
+// MountAdmin registers authenticated admin CRUD routes on g.
 func (h *PostHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.AdminList)
 	g.GET("/:id", h.AdminGet)
@@ -29,6 +32,7 @@ func (h *PostHandler) MountAdmin(g *echo.Group) {
 	g.PATCH("/:id/publish", h.Publish)
 }
 
+// MountPublic registers unauthenticated public read routes on g.
 func (h *PostHandler) MountPublic(g *echo.Group) {
 	g.GET("", h.PublicList)
 	g.GET("/category/:categoryId", h.ByCategory)
@@ -40,6 +44,8 @@ func (h *PostHandler) MountPublic(g *echo.Group) {
 
 // --- Admin ---
 
+// AdminList handles GET /admin/posts with optional filter query params
+// (status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate, hidden).
 func (h *PostHandler) AdminList(c echo.Context) error {
 	f := dto.PostFilter{
 		Status:  c.QueryParam("status"),
@@ -89,6 +95,7 @@ func (h *PostHandler) AdminList(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
+// AdminGet handles GET /admin/posts/:id. Returns full post detail including draft cache.
 func (h *PostHandler) AdminGet(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -104,6 +111,7 @@ func (h *PostHandler) AdminGet(c echo.Context) error {
 	return response.OK(c, post)
 }
 
+// Create handles POST /admin/posts. Creates a new post with the authenticated user as author.
 func (h *PostHandler) Create(c echo.Context) error {
 	var req dto.CreatePostRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -121,6 +129,7 @@ func (h *PostHandler) Create(c echo.Context) error {
 	return response.OK(c, post)
 }
 
+// Update handles PUT /admin/posts/:id. Replaces the post content; also clears the Redis draft cache.
 func (h *PostHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -142,6 +151,8 @@ func (h *PostHandler) Update(c echo.Context) error {
 	return response.OK(c, post)
 }
 
+// UpdateProperties handles PATCH /admin/posts/:id/properties.
+// Accepts a partial payload — only the provided fields are updated (e.g. status, isPinned).
 func (h *PostHandler) UpdateProperties(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -158,6 +169,9 @@ func (h *PostHandler) UpdateProperties(c echo.Context) error {
 	return response.OK(c, post)
 }
 
+// AutoSave handles POST /admin/posts/:id/auto-save.
+// Persists the editor content as a Redis draft without updating the database,
+// enabling crash-recovery on the editor page.
 func (h *PostHandler) AutoSave(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -173,6 +187,7 @@ func (h *PostHandler) AutoSave(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Delete handles DELETE /admin/posts/:id. Soft-deletes the post and clears its Redis draft.
 func (h *PostHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -184,6 +199,7 @@ func (h *PostHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// Publish handles PATCH /admin/posts/:id/publish. Sets status to PUBLISHED and records publish time.
 func (h *PostHandler) Publish(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -197,6 +213,8 @@ func (h *PostHandler) Publish(c echo.Context) error {
 
 // --- Public ---
 
+// PublicList handles GET /public/posts. Returns paginated published, visible posts
+// ordered by pin priority then publish date.
 func (h *PostHandler) PublicList(c echo.Context) error {
 	p := pagination.ParseWithDefaults(c, 1, 10)
 	pr, err := h.svc.GetPublished(c.Request().Context(), p)
@@ -206,6 +224,8 @@ func (h *PostHandler) PublicList(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
+// PublicGet handles GET /public/posts/:slug. Returns the post and increments the view
+// counter asynchronously. Returns a password-stub (no content) if the post is protected.
 func (h *PostHandler) PublicGet(c echo.Context) error {
 	slug := c.Param("slug")
 	post, err := h.svc.GetPublicBySlug(c.Request().Context(), slug, "")
@@ -221,6 +241,8 @@ func (h *PostHandler) PublicGet(c echo.Context) error {
 	return response.OK(c, post)
 }
 
+// VerifyPassword handles POST /public/posts/:slug/verify-password.
+// Validates the submitted password for a password-protected post and returns the full content on success.
 func (h *PostHandler) VerifyPassword(c echo.Context) error {
 	slug := c.Param("slug")
 	var req dto.PostPasswordRequest
@@ -241,6 +263,7 @@ func (h *PostHandler) VerifyPassword(c echo.Context) error {
 	return response.OK(c, post)
 }
 
+// ByCategory handles GET /public/posts/category/:categoryId. Returns paginated posts in a category.
 func (h *PostHandler) ByCategory(c echo.Context) error {
 	catID, err := strconv.ParseInt(c.Param("categoryId"), 10, 64)
 	if err != nil {
@@ -254,6 +277,7 @@ func (h *PostHandler) ByCategory(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
+// ByTag handles GET /public/posts/tag/:tagId. Returns paginated posts tagged with the given tag.
 func (h *PostHandler) ByTag(c echo.Context) error {
 	tagID, err := strconv.ParseInt(c.Param("tagId"), 10, 64)
 	if err != nil {
@@ -267,6 +291,8 @@ func (h *PostHandler) ByTag(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
+// Adjacent handles GET /public/posts/:slug/adjacent.
+// Returns the previous and next published posts by publish date for navigation links.
 func (h *PostHandler) Adjacent(c echo.Context) error {
 	slug := c.Param("slug")
 	adj, err := h.svc.GetAdjacentPosts(c.Request().Context(), slug)

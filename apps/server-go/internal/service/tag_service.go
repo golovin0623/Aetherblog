@@ -10,10 +10,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// TagService manages blog post tags.
 type TagService struct{ repo *repository.TagRepo }
 
+// NewTagService creates a TagService backed by the given repository.
 func NewTagService(repo *repository.TagRepo) *TagService { return &TagService{repo: repo} }
 
+// List returns all tags ordered by name.
 func (s *TagService) List(ctx context.Context) ([]dto.TagVO, error) {
 	tags, err := s.repo.FindAll(ctx)
 	if err != nil {
@@ -26,6 +29,7 @@ func (s *TagService) List(ctx context.Context) ([]dto.TagVO, error) {
 	return vos, nil
 }
 
+// GetByID returns a single tag by primary key, or nil if not found.
 func (s *TagService) GetByID(ctx context.Context, id int64) (*dto.TagVO, error) {
 	t, err := s.repo.FindByID(ctx, id)
 	if err != nil || t == nil {
@@ -35,6 +39,8 @@ func (s *TagService) GetByID(ctx context.Context, id int64) (*dto.TagVO, error) 
 	return &vo, nil
 }
 
+// Create creates a new tag. Auto-generates slug from name; defaults color to "#6366f1" (indigo).
+// Returns an error if the slug is already in use.
 func (s *TagService) Create(ctx context.Context, req dto.TagRequest) (*dto.TagVO, error) {
 	if req.Slug == "" {
 		req.Slug = generateTagSlug(req.Name)
@@ -55,6 +61,7 @@ func (s *TagService) Create(ctx context.Context, req dto.TagRequest) (*dto.TagVO
 	return &vo, nil
 }
 
+// Update updates an existing tag. Returns an error if the slug is taken by another tag.
 func (s *TagService) Update(ctx context.Context, id int64, req dto.TagRequest) (*dto.TagVO, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil || existing == nil {
@@ -79,6 +86,7 @@ func (s *TagService) Update(ctx context.Context, id int64, req dto.TagRequest) (
 	return &vo, nil
 }
 
+// Delete removes the tag and its post-tag associations via cascade delete.
 func (s *TagService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }

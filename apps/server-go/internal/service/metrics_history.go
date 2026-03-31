@@ -103,6 +103,8 @@ type MetricsHistoryService struct {
 	diskViolations int
 }
 
+// NewMetricsHistoryService creates a MetricsHistoryService backed by the given monitor.
+// Call Start to begin background collection.
 func NewMetricsHistoryService(monitor *SystemMonitorService) *MetricsHistoryService {
 	return &MetricsHistoryService{
 		monitor:   monitor,

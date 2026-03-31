@@ -7,8 +7,10 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// SiteSettingService provides access to key-value site configuration stored in the database.
 type SiteSettingService struct{ repo *repository.SiteSettingRepo }
 
+// NewSiteSettingService creates a SiteSettingService backed by the given repository.
 func NewSiteSettingService(repo *repository.SiteSettingRepo) *SiteSettingService {
 	return &SiteSettingService{repo: repo}
 }
