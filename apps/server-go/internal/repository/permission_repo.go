@@ -10,25 +10,28 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
-// PermissionRepo provides data access for the folder_permissions table.
+// PermissionRepo 提供对 folder_permissions 表的数据访问能力。
 type PermissionRepo struct{ db *sqlx.DB }
 
-// NewPermissionRepo creates a PermissionRepo backed by the given database connection.
+// NewPermissionRepo 创建一个由指定数据库连接支撑的 PermissionRepo 实例。
 func NewPermissionRepo(db *sqlx.DB) *PermissionRepo { return &PermissionRepo{db: db} }
 
-// FindByFolderID returns all permissions granted on a folder, ordered by granted_at descending.
+// FindByFolderID 查询指定文件夹的所有权限记录，按 granted_at 倒序排列。
+// 操作表：folder_permissions；参数 folderID 为目标文件夹主键。
 func (r *PermissionRepo) FindByFolderID(ctx context.Context, folderID int64) ([]model.FolderPermission, error) {
 	var perms []model.FolderPermission
 	err := r.db.SelectContext(ctx, &perms, `SELECT * FROM folder_permissions WHERE folder_id=$1 ORDER BY granted_at DESC`, folderID)
 	return perms, err
 }
 
-// FindByID returns a folder permission entry by primary key, or nil if not found.
+// FindByID 根据主键查询单条权限记录，不存在时返回 nil。
+// 操作表：folder_permissions；参数 id 为权限记录主键。
 func (r *PermissionRepo) FindByID(ctx context.Context, id int64) (*model.FolderPermission, error) {
 	var p model.FolderPermission
 	err := r.db.GetContext(ctx, &p, `SELECT * FROM folder_permissions WHERE id=$1`, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// 记录不存在，返回 nil 而非错误
 			return nil, nil
 		}
 		return nil, err
@@ -36,7 +39,8 @@ func (r *PermissionRepo) FindByID(ctx context.Context, id int64) (*model.FolderP
 	return &p, nil
 }
 
-// Create inserts a new folder permission grant and back-fills the generated ID and granted_at.
+// Create 向 folder_permissions 表插入一条新的权限授权记录，
+// 并将数据库生成的 id 和 granted_at 回填到传入的结构体中。
 func (r *PermissionRepo) Create(ctx context.Context, p *model.FolderPermission) error {
 	return r.db.QueryRowContext(ctx, `
 		INSERT INTO folder_permissions (folder_id, user_id, permission_level, granted_by, expires_at)
@@ -45,18 +49,21 @@ func (r *PermissionRepo) Create(ctx context.Context, p *model.FolderPermission) 
 	).Scan(&p.ID, &p.GrantedAt)
 }
 
-// Update modifies the permission_level and optional expiry of an existing grant.
-// Passing nil for expiresAt clears any existing expiry (grant never expires).
+// Update 修改指定权限记录的 permission_level 和有效期（expires_at）。
+// 若 expiresAt 为 nil，则将数据库中的 expires_at 设为 NULL，表示永久有效。
 func (r *PermissionRepo) Update(ctx context.Context, id int64, permissionLevel string, expiresAt *string) error {
 	if expiresAt != nil {
+		// 有截止时间：更新权限等级和过期时间
 		_, err := r.db.ExecContext(ctx, `UPDATE folder_permissions SET permission_level=$1, expires_at=$2 WHERE id=$3`, permissionLevel, *expiresAt, id)
 		return err
 	}
+	// 无截止时间：清空过期时间字段，授权永不过期
 	_, err := r.db.ExecContext(ctx, `UPDATE folder_permissions SET permission_level=$1, expires_at=NULL WHERE id=$2`, permissionLevel, id)
 	return err
 }
 
-// Delete permanently removes a folder permission grant.
+// Delete 根据主键永久删除一条文件夹权限授权记录。
+// 操作表：folder_permissions；参数 id 为权限记录主键。
 func (r *PermissionRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM folder_permissions WHERE id=$1`, id)
 	return err

@@ -12,46 +12,48 @@ import (
 	"time"
 )
 
-// validContainerID matches Docker container IDs and names.
+// validContainerID 匹配合法的 Docker 容器 ID 或名称，防止路径注入攻击。
 var validContainerID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 
-// ContainerOverview holds the summary of all Docker containers.
+// ContainerOverview 汇总所有 Docker 容器的状态概览信息。
 type ContainerOverview struct {
-	Containers        []ContainerInfo `json:"containers"`
-	TotalContainers   int             `json:"totalContainers"`
-	RunningContainers int             `json:"runningContainers"`
-	TotalMemoryUsed   int64           `json:"totalMemoryUsed"`
-	TotalMemoryLimit  int64           `json:"totalMemoryLimit"`
-	AvgCpuPercent     float64         `json:"avgCpuPercent"`
-	DockerAvailable   bool            `json:"dockerAvailable"`
+	Containers        []ContainerInfo `json:"containers"`        // 各容器详情列表
+	TotalContainers   int             `json:"totalContainers"`   // 容器总数
+	RunningContainers int             `json:"runningContainers"` // 运行中的容器数
+	TotalMemoryUsed   int64           `json:"totalMemoryUsed"`   // 所有容器内存使用总量（字节）
+	TotalMemoryLimit  int64           `json:"totalMemoryLimit"`  // 所有容器内存限额总量（字节）
+	AvgCpuPercent     float64         `json:"avgCpuPercent"`     // 所有容器的平均 CPU 使用率（%）
+	DockerAvailable   bool            `json:"dockerAvailable"`   // Docker daemon 是否可达
 }
 
-// ContainerInfo represents a single Docker container.
+// ContainerInfo 表示单个 Docker 容器的运行时信息。
 type ContainerInfo struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	DisplayName   string  `json:"displayName"`
-	Status        string  `json:"status"`
-	State         string  `json:"state"`
-	CpuPercent    float64 `json:"cpuPercent"`
-	MemoryUsed    int64   `json:"memoryUsed"`
-	MemoryLimit   int64   `json:"memoryLimit"`
-	MemoryPercent float64 `json:"memoryPercent"`
-	Image         string  `json:"image"`
-	Type          string  `json:"type"`
+	ID            string  `json:"id"`            // 容器 ID（取前 12 位）
+	Name          string  `json:"name"`          // 容器名称
+	DisplayName   string  `json:"displayName"`   // 去除项目前缀后的展示名
+	Status        string  `json:"status"`        // 容器状态描述（如 "Up 2 hours"）
+	State         string  `json:"state"`         // 容器状态（running/exited 等）
+	CpuPercent    float64 `json:"cpuPercent"`    // CPU 使用率（%）
+	MemoryUsed    int64   `json:"memoryUsed"`    // 内存使用量（字节）
+	MemoryLimit   int64   `json:"memoryLimit"`   // 内存限额（字节）
+	MemoryPercent float64 `json:"memoryPercent"` // 内存使用率（%）
+	Image         string  `json:"image"`         // 镜像名称
+	Type          string  `json:"type"`          // 容器类型（database/cache/search 等）
 }
 
-// ContainerMonitorService provides Docker container monitoring via Unix socket API.
+// ContainerMonitorService 通过 Docker Unix Socket API 提供容器监控功能。
 type ContainerMonitorService struct {
 	client *http.Client
 }
 
-// NewContainerMonitorService creates a ContainerMonitorService that connects to the Docker daemon via Unix socket.
+// NewContainerMonitorService 创建 ContainerMonitorService 实例。
+// 通过 Unix Socket（/var/run/docker.sock）连接 Docker daemon，请求超时为 5 秒。
 func NewContainerMonitorService() *ContainerMonitorService {
 	return &ContainerMonitorService{
 		client: &http.Client{
 			Transport: &http.Transport{
 				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					// 所有 HTTP 请求均通过 Docker Unix Socket 路由
 					return net.Dial("unix", "/var/run/docker.sock")
 				},
 			},
@@ -60,7 +62,7 @@ func NewContainerMonitorService() *ContainerMonitorService {
 	}
 }
 
-// dockerContainer is the JSON shape returned by Docker API /containers/json.
+// dockerContainer 是 Docker API /containers/json 响应体的 JSON 结构。
 type dockerContainer struct {
 	ID     string            `json:"Id"`
 	Names  []string          `json:"Names"`
@@ -70,20 +72,21 @@ type dockerContainer struct {
 	Labels map[string]string `json:"Labels"`
 }
 
-// ListContainers returns an overview of all aetherblog Docker containers with live stats.
+// ListContainers 返回所有 aetherblog 相关 Docker 容器的实时状态概览。
+// 优先通过 compose project label 过滤，回退到名称过滤；运行中的容器会附带实时 CPU/内存统计。
 func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 	overview := ContainerOverview{
 		Containers: []ContainerInfo{},
 	}
 
-	// Check if docker socket is available
+	// 优先使用 compose project label 过滤，查询 aetherblog 相关容器
 	resp, err := s.client.Get("http://docker/containers/json?all=true&filters=" +
 		`{"label":["com.docker.compose.project"]}`)
 	if err != nil {
-		// Try name-based filter as fallback
+		// 回退：不带 label 过滤，获取全部容器后在本地过滤
 		resp, err = s.client.Get("http://docker/containers/json?all=true")
 		if err != nil {
-			return overview
+			return overview // Docker 不可用，返回空概览
 		}
 	}
 	defer resp.Body.Close()
@@ -94,7 +97,7 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 		return overview
 	}
 
-	// Filter for aetherblog containers
+	// 仅保留 aetherblog 相关容器（按名称或 compose project 标签过滤）
 	var infos []ContainerInfo
 	for _, c := range containers {
 		name := ""
@@ -102,14 +105,13 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 			name = strings.TrimPrefix(c.Names[0], "/")
 		}
 
-		// Only include aetherblog containers
 		project := c.Labels["com.docker.compose.project"]
 		if !strings.Contains(name, "aetherblog") && project != "aetherblog" {
 			continue
 		}
 
 		info := ContainerInfo{
-			ID:          c.ID[:12],
+			ID:          c.ID[:12], // 仅取 ID 前 12 位
 			Name:        name,
 			DisplayName: inferDisplayName(name),
 			Status:      c.Status,
@@ -120,14 +122,14 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 
 		if c.State == "running" {
 			overview.RunningContainers++
-			// Fetch live stats for running containers
+			// 为运行中的容器获取实时 CPU/内存统计
 			s.fillContainerStats(c.ID, &info)
 		}
 
 		infos = append(infos, info)
 	}
 
-	// Compute totals
+	// 汇总全局统计指标
 	var totalMem, totalLimit int64
 	var totalCpu float64
 	for _, info := range infos {
@@ -146,8 +148,11 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 	return overview
 }
 
-// GetContainerLogs returns the last N lines of logs for a container.
+// GetContainerLogs 返回指定容器的最后 N 行日志内容。
+// 对容器 ID 进行正则校验以防止路径注入；解析并去除 Docker 日志流 8 字节帧头。
+// 错误场景：容器 ID 格式非法、Docker API 请求失败、容器不存在或无法访问。
 func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int) (string, error) {
+	// 校验容器 ID 合法性，防止路径注入
 	if !validContainerID.MatchString(containerID) {
 		return "", fmt.Errorf("invalid container ID")
 	}
@@ -162,7 +167,7 @@ func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int)
 		return "", fmt.Errorf("container not found or inaccessible")
 	}
 
-	// Docker log stream has 8-byte header per frame; strip it for plain text
+	// Docker 日志流每帧有 8 字节头，需完整读取后再解析
 	buf := make([]byte, 0, 64*1024)
 	tmp := make([]byte, 4096)
 	for {
@@ -175,16 +180,16 @@ func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int)
 		}
 	}
 
-	// Strip Docker stream headers (8 bytes per frame: [type(1)][0(3)][size(4)])
+	// 去除 Docker 日志流帧头（每帧格式：[类型(1字节)][保留(3字节)][帧大小(4字节大端)]）
 	var clean strings.Builder
 	i := 0
 	for i < len(buf) {
 		if i+8 > len(buf) {
-			break // incomplete header, discard remaining
+			break // 帧头不完整，停止处理
 		}
 		frameSize := int(binary.BigEndian.Uint32(buf[i+4 : i+8]))
 		if frameSize <= 0 || i+8+frameSize > len(buf) {
-			break // incomplete or invalid frame, stop
+			break // 帧大小无效或帧数据不完整，停止处理
 		}
 		clean.Write(buf[i+8 : i+8+frameSize])
 		i += 8 + frameSize
@@ -193,29 +198,33 @@ func (s *ContainerMonitorService) GetContainerLogs(containerID string, tail int)
 	return clean.String(), nil
 }
 
-// dockerStats is the JSON shape returned by Docker API /containers/{id}/stats?stream=false.
+// dockerStats 是 Docker API /containers/{id}/stats?stream=false 响应体的 JSON 结构。
 type dockerStats struct {
 	CPUStats    dockerCPUStats    `json:"cpu_stats"`
 	PreCPUStats dockerCPUStats    `json:"precpu_stats"`
 	MemoryStats dockerMemoryStats `json:"memory_stats"`
 }
 
+// dockerCPUStats 表示 Docker stats 中的 CPU 统计数据（当前或上一周期）。
 type dockerCPUStats struct {
 	CPUUsage    dockerCPUUsage `json:"cpu_usage"`
-	SystemUsage uint64         `json:"system_cpu_usage"`
-	OnlineCPUs  int            `json:"online_cpus"`
+	SystemUsage uint64         `json:"system_cpu_usage"` // 系统级 CPU 总使用时间（纳秒）
+	OnlineCPUs  int            `json:"online_cpus"`      // 可用 CPU 核心数
 }
 
+// dockerCPUUsage 表示容器的 CPU 使用时间。
 type dockerCPUUsage struct {
-	TotalUsage uint64 `json:"total_usage"`
+	TotalUsage uint64 `json:"total_usage"` // 容器 CPU 总使用时间（纳秒）
 }
 
+// dockerMemoryStats 表示 Docker stats 中的内存统计数据。
 type dockerMemoryStats struct {
-	Usage uint64 `json:"usage"`
-	Limit uint64 `json:"limit"`
+	Usage uint64 `json:"usage"` // 当前内存使用量（字节）
+	Limit uint64 `json:"limit"` // 内存限额（字节）
 }
 
-// fillContainerStats fetches live CPU/memory stats for a single container via Docker API.
+// fillContainerStats 通过 Docker API 获取单个容器的实时 CPU 和内存统计数据，并填充到 info 中。
+// CPU 使用率计算公式：Δ容器CPU / Δ系统CPU * CPU核数 * 100。
 func (s *ContainerMonitorService) fillContainerStats(fullID string, info *ContainerInfo) {
 	resp, err := s.client.Get(fmt.Sprintf("http://docker/containers/%s/stats?stream=false", fullID))
 	if err != nil {
@@ -231,18 +240,18 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 		return
 	}
 
-	// CPU percent: delta(container usage) / delta(system usage) * num_cpus * 100
+	// CPU 使用率 = (容器CPU增量 / 系统CPU增量) * CPU核数 * 100
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
 	sysDelta := float64(stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage)
 	cpus := stats.CPUStats.OnlineCPUs
 	if cpus == 0 {
-		cpus = 1
+		cpus = 1 // 防止除零，至少视为 1 核
 	}
 	if sysDelta > 0 && cpuDelta >= 0 {
 		info.CpuPercent = (cpuDelta / sysDelta) * float64(cpus) * 100.0
 	}
 
-	// Memory
+	// 内存使用量及使用率
 	info.MemoryUsed = int64(stats.MemoryStats.Usage)
 	info.MemoryLimit = int64(stats.MemoryStats.Limit)
 	if stats.MemoryStats.Limit > 0 {
@@ -250,6 +259,8 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 	}
 }
 
+// inferDisplayName 从容器名称中去除 aetherblog- 或 aetherblog_ 前缀，
+// 并取第一个连字符分隔段作为展示名称。
 func inferDisplayName(name string) string {
 	name = strings.TrimPrefix(name, "aetherblog-")
 	name = strings.TrimPrefix(name, "aetherblog_")
@@ -260,6 +271,8 @@ func inferDisplayName(name string) string {
 	return name
 }
 
+// inferContainerType 根据容器名称推断其类型，用于前端图标展示。
+// 支持识别：database、cache、search、java（后端）、nodejs（博客）、nginx（网关）、ai 等。
 func inferContainerType(name string) string {
 	switch {
 	case strings.Contains(name, "postgres"):

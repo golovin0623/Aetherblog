@@ -2,21 +2,22 @@ package model
 
 import "time"
 
-// Comment maps the `comments` table. Comments are submitted by visitors on published posts.
+// Comment 对应数据库 `comments` 表，表示访客在已发布文章下提交的评论。
+// 支持通过 ParentID 构建嵌套回复结构（二级评论树）。
 type Comment struct {
 	ID        int64      `db:"id"`
-	PostID    int64      `db:"post_id"`   // Foreign key to posts; required
-	ParentID  *int64     `db:"parent_id"` // Parent comment ID for nested replies; nil = top-level comment
-	Nickname  string     `db:"nickname"`  // Commenter's display name
-	Email     *string    `db:"email"`     // Commenter's email (optional; used for Gravatar)
-	Website   *string    `db:"website"`   // Commenter's website URL (optional)
-	Avatar    *string    `db:"avatar"`    // Avatar image URL; nil = derived from email via Gravatar
-	Content   string     `db:"content"`   // Comment body (plain text or limited Markdown)
-	Status    string     `db:"status"`    // Moderation state: PENDING | APPROVED | REJECTED | SPAM
-	IP        *string    `db:"ip"`        // Submitter's IP address (stored for anti-spam)
-	UserAgent *string    `db:"user_agent"` // Submitter's User-Agent string (stored for anti-spam)
-	IsAdmin   bool       `db:"is_admin"`  // True when the comment was posted by the blog admin
-	LikeCount int        `db:"like_count"`
-	CreatedAt *time.Time `db:"created_at"`
-	UpdatedAt *time.Time `db:"updated_at"`
+	PostID    int64      `db:"post_id"`    // 所属文章 ID（外键），必填
+	ParentID  *int64     `db:"parent_id"`  // 父评论 ID，用于嵌套回复；nil 表示顶级评论
+	Nickname  string     `db:"nickname"`   // 评论者显示昵称
+	Email     *string    `db:"email"`      // 评论者邮箱，可选；用于从 Gravatar 获取头像
+	Website   *string    `db:"website"`    // 评论者个人网站 URL，可选
+	Avatar    *string    `db:"avatar"`     // 头像图片 URL；nil 时通过邮箱从 Gravatar 派生
+	Content   string     `db:"content"`    // 评论正文（纯文本或受限 Markdown）
+	Status    string     `db:"status"`     // 审核状态：PENDING（待审）| APPROVED（已通过）| REJECTED（已拒绝）| SPAM（垃圾评论）
+	IP        *string    `db:"ip"`         // 提交者 IP 地址，用于反垃圾检测
+	UserAgent *string    `db:"user_agent"` // 提交者 User-Agent 字符串，用于反垃圾检测
+	IsAdmin   bool       `db:"is_admin"`   // 是否为博客管理员发布的评论
+	LikeCount int        `db:"like_count"` // 评论获得的点赞数
+	CreatedAt *time.Time `db:"created_at"` // 评论提交时间
+	UpdatedAt *time.Time `db:"updated_at"` // 评论最后更新时间
 }
