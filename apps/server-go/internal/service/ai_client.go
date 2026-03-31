@@ -11,18 +11,22 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/config"
 )
 
-// AIClient is an HTTP client that proxies requests to the FastAPI AI service.
+// AIClient 是向 FastAPI AI 服务转发请求的 HTTP 客户端。
+// 内部维护两个独立的 http.Client：一个用于同步请求，一个用于流式请求，
+// 两者超时配置不同以适应各自的使用场景。
 type AIClient struct {
 	baseURL      string
 	syncClient   *http.Client
 	streamClient *http.Client
 }
 
-// NewAIClient creates a new AIClient from the given config.
+// NewAIClient 根据给定的 AI 配置创建一个新的 AIClient。
+// syncClient 使用 ReadTimeout，streamClient 使用 StreamReadTimeout（通常更长），
+// 两者共用底层 Transport 以复用连接池。
 func NewAIClient(cfg config.AIConfig) *AIClient {
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
-			Timeout: cfg.ConnectTimeout,
+			Timeout: cfg.ConnectTimeout, // TCP 连接超时
 		}).DialContext,
 		MaxIdleConns:        20,
 		MaxIdleConnsPerHost: 10,
@@ -33,39 +37,45 @@ func NewAIClient(cfg config.AIConfig) *AIClient {
 		baseURL: cfg.BaseURL,
 		syncClient: &http.Client{
 			Transport: transport,
-			Timeout:   cfg.ReadTimeout,
+			Timeout:   cfg.ReadTimeout, // 同步接口读取超时
 		},
 		streamClient: &http.Client{
 			Transport: transport.Clone(),
-			Timeout:   cfg.StreamReadTimeout,
+			Timeout:   cfg.StreamReadTimeout, // 流式接口读取超时（较长）
 		},
 	}
 }
 
-// AIClientError represents an error from the AI service with an HTTP status code.
+// AIClientError 表示来自 AI 服务的错误，携带 HTTP 状态码和错误信息。
 type AIClientError struct {
 	StatusCode int
 	Message    string
 }
 
+// Error 实现 error 接口，返回错误信息字符串。
 func (e *AIClientError) Error() string {
 	return e.Message
 }
 
-// DoSync sends a synchronous request to the AI service and returns the raw response body.
-// The caller is responsible for closing the returned ReadCloser.
-// headers is a map of extra HTTP headers to set on the outbound request (e.g. Authorization, X-Request-ID).
+// DoSync 向 AI 服务发送同步请求，返回原始响应体（ReadCloser）。
+// 调用方负责关闭返回的 ReadCloser。
+// headers 为附加到出站请求的额外 HTTP 头（如 Authorization、X-Request-ID）。
+// 错误场景：AI 服务请求超时返回 504，AI 服务不可达返回 502。
 func (c *AIClient) DoSync(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error) {
 	return c.do(ctx, c.syncClient, method, path, body, headers, "application/json")
 }
 
-// DoStream sends a streaming request to the AI service and returns the raw response body.
-// The caller is responsible for closing the returned ReadCloser.
-// headers is a map of extra HTTP headers to set on the outbound request (e.g. Authorization, X-Request-ID).
+// DoStream 向 AI 服务发送流式请求，返回原始响应体（ReadCloser）。
+// 调用方负责关闭返回的 ReadCloser。
+// headers 为附加到出站请求的额外 HTTP 头（如 Authorization、X-Request-ID）。
+// 错误场景：AI 服务请求超时返回 504，AI 服务不可达返回 502。
 func (c *AIClient) DoStream(ctx context.Context, method, path string, body io.Reader, headers map[string]string) (io.ReadCloser, int, error) {
 	return c.do(ctx, c.streamClient, method, path, body, headers, "application/json")
 }
 
+// do 是底层 HTTP 请求执行方法，供 DoSync 和 DoStream 共用。
+// 设置 Content-Type、Accept 及调用方传入的自定义请求头后发起请求。
+// 发生网络超时时包装为 AIClientError(504)，其他网络错误包装为 AIClientError(502)。
 func (c *AIClient) do(ctx context.Context, client *http.Client, method, path string, body io.Reader, headers map[string]string, contentType string) (io.ReadCloser, int, error) {
 	url := c.baseURL + path
 
@@ -78,6 +88,7 @@ func (c *AIClient) do(ctx context.Context, client *http.Client, method, path str
 		req.Header.Set("Content-Type", contentType)
 	}
 	req.Header.Set("Accept", "application/json")
+	// 设置调用方传入的自定义请求头（跳过空值）
 	for k, v := range headers {
 		if v != "" {
 			req.Header.Set(k, v)

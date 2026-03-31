@@ -14,22 +14,23 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ShareService manages shareable links for media files and folders.
+// ShareService 管理媒体文件和文件夹的可分享链接。
 type ShareService struct {
 	repo *repository.ShareRepo
 }
 
-// NewShareService creates a ShareService backed by the given repository.
+// NewShareService 创建一个由给定仓储支持的 ShareService 实例。
 func NewShareService(repo *repository.ShareRepo) *ShareService {
 	return &ShareService{repo: repo}
 }
 
-// CreateFileShare creates a share token for a single media file.
-// Optionally hashes the password with bcrypt when a password is specified.
+// CreateFileShare 为单个媒体文件创建分享令牌。
+// 若请求中包含密码，则使用 bcrypt 加密后存储；
+// 若请求中包含 ExpiresAt（RFC3339 格式），则解析为过期时间，解析失败时忽略。
 func (s *ShareService) CreateFileShare(ctx context.Context, fileID int64, req dto.CreateShareRequest, createdBy *int64) (*dto.MediaShareVO, error) {
 	token, err := generateShareToken()
 	if err != nil {
-		return nil, fmt.Errorf("generate token: %w", err)
+		return nil, fmt.Errorf("生成分享令牌失败: %w", err)
 	}
 
 	share := &model.MediaShare{
@@ -41,16 +42,18 @@ func (s *ShareService) CreateFileShare(ctx context.Context, fileID int64, req dt
 		MaxAccessCount: req.MaxAccessCount,
 	}
 
+	// 解析可选的过期时间
 	if req.ExpiresAt != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
 		if err == nil {
 			share.ExpiresAt = &t
 		}
 	}
+	// 对密码进行 bcrypt 加密后存储
 	if req.Password != nil && *req.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
 		if err != nil {
-			return nil, fmt.Errorf("hash password: %w", err)
+			return nil, fmt.Errorf("密码加密失败: %w", err)
 		}
 		h := string(hash)
 		share.PasswordHash = &h
@@ -63,11 +66,12 @@ func (s *ShareService) CreateFileShare(ctx context.Context, fileID int64, req dt
 	return &vo, nil
 }
 
-// CreateFolderShare creates a share token for a media folder.
+// CreateFolderShare 为媒体文件夹创建分享令牌。
+// 密码和过期时间处理规则与 CreateFileShare 相同。
 func (s *ShareService) CreateFolderShare(ctx context.Context, folderID int64, req dto.CreateShareRequest, createdBy *int64) (*dto.MediaShareVO, error) {
 	token, err := generateShareToken()
 	if err != nil {
-		return nil, fmt.Errorf("generate token: %w", err)
+		return nil, fmt.Errorf("生成分享令牌失败: %w", err)
 	}
 
 	share := &model.MediaShare{
@@ -79,16 +83,18 @@ func (s *ShareService) CreateFolderShare(ctx context.Context, folderID int64, re
 		MaxAccessCount: req.MaxAccessCount,
 	}
 
+	// 解析可选的过期时间
 	if req.ExpiresAt != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
 		if err == nil {
 			share.ExpiresAt = &t
 		}
 	}
+	// 对密码进行 bcrypt 加密后存储
 	if req.Password != nil && *req.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
 		if err != nil {
-			return nil, fmt.Errorf("hash password: %w", err)
+			return nil, fmt.Errorf("密码加密失败: %w", err)
 		}
 		h := string(hash)
 		share.PasswordHash = &h
@@ -101,7 +107,7 @@ func (s *ShareService) CreateFolderShare(ctx context.Context, folderID int64, re
 	return &vo, nil
 }
 
-// GetSharesByFile returns all share records for a media file.
+// GetSharesByFile 返回指定媒体文件的所有分享记录。
 func (s *ShareService) GetSharesByFile(ctx context.Context, fileID int64) ([]dto.MediaShareVO, error) {
 	shares, err := s.repo.FindByFileID(ctx, fileID)
 	if err != nil {
@@ -110,8 +116,13 @@ func (s *ShareService) GetSharesByFile(ctx context.Context, fileID int64) ([]dto
 	return toShareVOs(shares), nil
 }
 
-// Update modifies access settings of an existing share.
-// Passing an empty password string removes the password requirement.
+// Update 修改已有分享记录的访问设置。
+// 业务规则：
+//   - 传入空密码字符串表示移除密码保护；
+//   - 传入非空密码则重新进行 bcrypt 加密并更新；
+//   - 未提供的字段保持原值不变。
+//
+// 错误场景：分享记录不存在时返回错误。
 func (s *ShareService) Update(ctx context.Context, shareID int64, req dto.UpdateShareRequest) (*dto.MediaShareVO, error) {
 	existing, err := s.repo.FindByID(ctx, shareID)
 	if err != nil {
@@ -121,6 +132,7 @@ func (s *ShareService) Update(ctx context.Context, shareID int64, req dto.Update
 		return nil, fmt.Errorf("分享不存在")
 	}
 
+	// 未提供字段时保留原值
 	accessType := existing.AccessType
 	if req.AccessType != nil {
 		accessType = *req.AccessType
@@ -136,14 +148,17 @@ func (s *ShareService) Update(ctx context.Context, shareID int64, req dto.Update
 		maxAccessCount = req.MaxAccessCount
 	}
 
+	// 处理密码更新逻辑
 	passwordHash := existing.PasswordHash
 	if req.Password != nil {
 		if *req.Password == "" {
+			// 空字符串表示清除密码保护
 			passwordHash = nil
 		} else {
+			// 重新加密新密码
 			hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
 			if err != nil {
-				return nil, fmt.Errorf("hash password: %w", err)
+				return nil, fmt.Errorf("密码加密失败: %w", err)
 			}
 			h := string(hash)
 			passwordHash = &h
@@ -165,13 +180,14 @@ func (s *ShareService) Update(ctx context.Context, shareID int64, req dto.Update
 	return &vo, nil
 }
 
-// Delete revokes and permanently removes a share record.
+// Delete 撤销并永久删除指定分享记录。
 func (s *ShareService) Delete(ctx context.Context, shareID int64) error {
 	return s.repo.Delete(ctx, shareID)
 }
 
-// --- Helpers ---
+// --- 内部辅助函数 ---
 
+// generateShareToken 生成 32 字节的密码学安全随机令牌，以十六进制字符串形式返回（64 字符）。
 func generateShareToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -180,6 +196,7 @@ func generateShareToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// toShareVO 将 MediaShare 模型转换为视图对象，拼接分享访问 URL。
 func toShareVO(s model.MediaShare) dto.MediaShareVO {
 	return dto.MediaShareVO{
 		ID:             s.ID,
@@ -197,6 +214,7 @@ func toShareVO(s model.MediaShare) dto.MediaShareVO {
 	}
 }
 
+// toShareVOs 批量将 MediaShare 模型列表转换为视图对象列表。
 func toShareVOs(shares []model.MediaShare) []dto.MediaShareVO {
 	vos := make([]dto.MediaShareVO, len(shares))
 	for i, s := range shares {

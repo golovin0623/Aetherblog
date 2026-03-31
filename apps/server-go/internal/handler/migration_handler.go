@@ -18,26 +18,27 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// MigrationHandler handles data import/export operations.
+// MigrationHandler 负责处理数据导入/导出操作。
 type MigrationHandler struct {
-	db      *sqlx.DB
-	catRepo *repository.CategoryRepo
-	tagRepo *repository.TagRepo
+	db       *sqlx.DB
+	catRepo  *repository.CategoryRepo
+	tagRepo  *repository.TagRepo
 	postRepo *repository.PostRepo
 }
 
-// NewMigrationHandler creates a MigrationHandler.
+// NewMigrationHandler 创建一个 MigrationHandler 实例，注入数据库和各仓库依赖。
 func NewMigrationHandler(db *sqlx.DB, catRepo *repository.CategoryRepo, tagRepo *repository.TagRepo, postRepo *repository.PostRepo) *MigrationHandler {
 	return &MigrationHandler{db: db, catRepo: catRepo, tagRepo: tagRepo, postRepo: postRepo}
 }
 
-// Mount registers migration routes under the given admin route group.
+// Mount 将迁移相关路由注册到指定的管理员路由组。
 func (h *MigrationHandler) Mount(g *echo.Group) {
 	g.POST("/vanblog/import", h.ImportVanBlog)
 }
 
-// --- VanBlog data types ---
+// --- VanBlog 数据结构定义 ---
 
+// vanBlogBackup 表示 VanBlog 备份文件的顶层结构。
 type vanBlogBackup struct {
 	Articles   []vanBlogArticle  `json:"articles"`
 	Categories []vanBlogCategory `json:"categories"`
@@ -47,6 +48,7 @@ type vanBlogBackup struct {
 	Drafts     []vanBlogArticle  `json:"drafts"`
 }
 
+// vanBlogArticle 表示 VanBlog 中单篇文章或草稿的数据结构。
 type vanBlogArticle struct {
 	Title    string   `json:"title"`
 	Content  string   `json:"content"`
@@ -57,13 +59,24 @@ type vanBlogArticle struct {
 	Password string   `json:"password"`
 }
 
+// vanBlogCategory 表示 VanBlog 中的分类名称。
 type vanBlogCategory struct{ Name string `json:"name"` }
+
+// vanBlogTag 表示 VanBlog 中的标签名称。
 type vanBlogTag struct{ Name string `json:"name"` }
-type vanBlogMeta struct{ Key string `json:"key"`; Value any `json:"value"` }
+
+// vanBlogMeta 表示 VanBlog 中的站点元数据键值对。
+type vanBlogMeta struct {
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+}
+
+// vanBlogUser 表示 VanBlog 中的用户信息。
 type vanBlogUser struct{ Name string `json:"name"` }
 
-// --- Result types ---
+// --- 导入结果类型 ---
 
+// importResult 表示一次导入操作的完整结果，包含统计摘要、警告和错误信息。
 type importResult struct {
 	Summary  importSummary `json:"summary"`
 	Warnings []string      `json:"warnings"`
@@ -71,6 +84,7 @@ type importResult struct {
 	Items    []any         `json:"items"`
 }
 
+// importSummary 汇总导入操作的各项计数统计。
 type importSummary struct {
 	ImportableArticles int `json:"importableArticles"`
 	ImportableDrafts   int `json:"importableDrafts"`
@@ -85,8 +99,9 @@ type importSummary struct {
 	InvalidRecords     int `json:"invalidRecords"`
 }
 
-// ImportVanBlog handles POST /api/v1/admin/migrations/vanblog/import
-// Accepts multipart file upload (field "file") and query param "mode" (dry-run | import).
+// ImportVanBlog 处理 POST /api/v1/admin/migrations/vanblog/import 请求。
+// 接受 multipart 文件上传（字段名 "file"）和查询参数 "mode"（dry-run | import）。
+// dry-run 模式仅分析数据不写入；import 模式执行实际导入。
 func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
 	mode := c.QueryParam("mode")
 	if mode == "" {
@@ -121,6 +136,7 @@ func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
 	return response.OK(c, result)
 }
 
+// processImport 执行 VanBlog 数据的实际导入逻辑（支持 dry-run 和 import 两种模式）。
 func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBackup, mode string) (*importResult, error) {
 	res := &importResult{
 		Warnings: []string{},
@@ -130,15 +146,15 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 	res.Summary.ImportableArticles = len(backup.Articles)
 	res.Summary.ImportableDrafts = len(backup.Drafts)
 
-	// Collect unique categories & tags
+	// 收集所有唯一的分类名和标签名
 	catNames := collectCategoryNames(backup)
 	tagNames := collectTagNames(backup)
 
-	// Dry-run: just count without writing
+	// dry-run 模式：仅统计计数，不执行写入
 	if mode == "dry-run" {
 		res.Summary.CreatedCategories = len(catNames)
 		res.Summary.CreatedTags = len(tagNames)
-		// Check for existing categories/tags to report reuse counts
+		// 检查已存在的分类和标签，统计复用数量
 		for _, name := range catNames {
 			if c, _ := h.catRepo.FindByName(ctx, name); c != nil {
 				res.Summary.ReusedCategories++
@@ -151,7 +167,7 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 				res.Summary.CreatedTags--
 			}
 		}
-		// Check slug conflicts for articles
+		// 检查文章是否存在 slug 冲突
 		for _, a := range append(backup.Articles, backup.Drafts...) {
 			slug := generateSlug(a.Title)
 			if p, _ := h.postRepo.FindBySlug(ctx, slug); p != nil {
@@ -161,15 +177,15 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 		return res, nil
 	}
 
-	// Import mode: use transaction
+	// import 模式：使用事务执行实际写入
 	tx, err := h.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("开始事务失败: %w", err)
 	}
 	defer tx.Rollback()
 
-	// 1. Resolve categories (create or reuse)
-	catMap := make(map[string]int64) // name -> id
+	// 1. 解析分类（复用已有或新建）
+	catMap := make(map[string]int64) // 分类名 -> ID 映射
 	for _, name := range catNames {
 		existing, _ := h.catRepo.FindByName(ctx, name)
 		if existing != nil {
@@ -190,8 +206,8 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 		}
 	}
 
-	// 2. Resolve tags (create or reuse)
-	tagMap := make(map[string]int64) // name -> id
+	// 2. 解析标签（复用已有或新建）
+	tagMap := make(map[string]int64) // 标签名 -> ID 映射
 	for _, name := range tagNames {
 		existing, _ := h.tagRepo.FindByName(ctx, name)
 		if existing != nil {
@@ -212,7 +228,7 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 		}
 	}
 
-	// 3. Import articles
+	// 3. 导入文章（文章和草稿分别处理）
 	now := time.Now()
 	importArticles := func(articles []vanBlogArticle, status string) {
 		for _, a := range articles {
@@ -221,19 +237,19 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 				continue
 			}
 
+			// 使用 source_key 实现幂等性检查，避免重复导入
 			sourceKey := "vanblog:" + a.Title
-			// Check idempotency by source_key
 			var existingID int64
 			err := tx.QueryRowContext(ctx,
 				`SELECT id FROM posts WHERE source_key = $1 AND deleted = false`, sourceKey,
 			).Scan(&existingID)
 			if err == nil {
-				// Already imported
+				// 已导入，跳过
 				res.Summary.SkippedRecords++
 				continue
 			}
 
-			// Generate unique slug
+			// 生成唯一 slug，若冲突则追加数字后缀
 			slug := generateSlug(a.Title)
 			for suffix := 0; ; suffix++ {
 				candidate := slug
@@ -246,12 +262,13 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 				}
 				res.Summary.SlugConflicts++
 				if suffix > 100 {
+					// 防止无限循环，使用时间戳确保唯一性
 					slug = fmt.Sprintf("%s-%d", slug, now.UnixMilli())
 					break
 				}
 			}
 
-			// Build post fields
+			// 构建文章字段
 			var catID *int64
 			if cid, ok := catMap[a.Category]; ok {
 				catID = &cid
@@ -291,7 +308,7 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 			}
 			res.Summary.CreatedPosts++
 
-			// Link tags
+			// 关联文章标签
 			for _, tagName := range a.Tags {
 				if tagID, ok := tagMap[tagName]; ok {
 					_, _ = tx.ExecContext(ctx,
@@ -303,10 +320,11 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 		}
 	}
 
+	// 分别导入已发布文章和草稿
 	importArticles(backup.Articles, "PUBLISHED")
 	importArticles(backup.Drafts, "DRAFT")
 
-	// Commit transaction
+	// 提交事务
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("提交事务失败: %w", err)
 	}
@@ -320,10 +338,13 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 	return res, nil
 }
 
-// --- Helpers ---
+// --- 辅助函数 ---
 
+// slugRegex 匹配所有非字母数字、非汉字字符，用于生成 URL 友好的 slug。
 var slugRegex = regexp.MustCompile(`[^a-z0-9\p{Han}]+`)
 
+// generateSlug 将标题转换为 URL 友好的 slug 字符串。
+// 仅保留小写字母、数字和汉字，其余字符替换为连字符，最长 100 个字符。
 func generateSlug(title string) string {
 	s := strings.ToLower(strings.TrimSpace(title))
 	s = slugRegex.ReplaceAllString(s, "-")
@@ -337,6 +358,7 @@ func generateSlug(title string) string {
 	return s
 }
 
+// collectCategoryNames 从备份数据中收集所有唯一的分类名称（去重）。
 func collectCategoryNames(b *vanBlogBackup) []string {
 	set := make(map[string]bool)
 	for _, c := range b.Categories {
@@ -344,6 +366,7 @@ func collectCategoryNames(b *vanBlogBackup) []string {
 			set[c.Name] = true
 		}
 	}
+	// 同时从文章和草稿中收集分类名
 	for _, a := range b.Articles {
 		if a.Category != "" {
 			set[a.Category] = true
@@ -361,6 +384,7 @@ func collectCategoryNames(b *vanBlogBackup) []string {
 	return names
 }
 
+// collectTagNames 从备份数据中收集所有唯一的标签名称（去重）。
 func collectTagNames(b *vanBlogBackup) []string {
 	set := make(map[string]bool)
 	for _, t := range b.Tags {
@@ -368,6 +392,7 @@ func collectTagNames(b *vanBlogBackup) []string {
 			set[t.Name] = true
 		}
 	}
+	// 同时从文章和草稿的标签中收集
 	for _, a := range b.Articles {
 		for _, t := range a.Tags {
 			if t != "" {

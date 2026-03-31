@@ -13,18 +13,19 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
-// mediaColumns lists only the columns mapped in model.MediaFile (excludes JSONB columns exif_data, ai_labels).
+// mediaColumns 列举 model.MediaFile 中已映射的 media_files 表字段，
+// 故意排除 JSONB 类型的 exif_data 和 ai_labels 列，以避免反序列化问题。
 const mediaColumns = `id, filename, original_name, file_path, file_url, file_size, mime_type, file_type,
 	storage_type, width, height, alt_text, uploader_id, created_at, folder_id,
 	storage_provider_id, cdn_url, blurhash, current_version, is_archived, archived_at, archived_by, deleted, deleted_at`
 
-// MediaRepo provides data access for the media_files table.
+// MediaRepo 负责对 media_files 表进行数据访问操作。
 type MediaRepo struct{ db *sqlx.DB }
 
-// NewMediaRepo creates a MediaRepo backed by the given database connection.
+// NewMediaRepo 创建一个使用给定数据库连接的 MediaRepo 实例。
 func NewMediaRepo(db *sqlx.DB) *MediaRepo { return &MediaRepo{db: db} }
 
-// FindByID returns a media file by primary key, or nil if not found.
+// FindByID 从 media_files 表按主键查询单个媒体文件，若不存在则返回 nil。
 func (r *MediaRepo) FindByID(ctx context.Context, id int64) (*model.MediaFile, error) {
 	var m model.MediaFile
 	err := r.db.GetContext(ctx, &m, `SELECT `+mediaColumns+` FROM media_files WHERE id=$1`, id)
@@ -37,37 +38,41 @@ func (r *MediaRepo) FindByID(ctx context.Context, id int64) (*model.MediaFile, e
 	return &m, nil
 }
 
-// MediaFilter holds optional filter parameters for the admin media list.
+// MediaFilter 持有管理端媒体文件列表的可选过滤参数。
 type MediaFilter struct {
-	FolderID *int64
-	FileType string
-	Keyword  string
-	Deleted  bool // true = trash view
-	PageNum  int
-	PageSize int
+	FolderID *int64 // 按所属文件夹过滤，nil 表示不过滤
+	FileType string // 按文件类型过滤（IMAGE / VIDEO / AUDIO / DOCUMENT / OTHER），为空不过滤
+	Keyword  string // 关键字模糊搜索（匹配 filename 或 original_name）
+	Deleted  bool   // true 表示查询回收站（已软删除）文件
+	PageNum  int    // 页码（从 1 开始）
+	PageSize int    // 每页大小，默认 20
 }
 
-// FindForAdmin returns a paginated, filtered list of media files with the total count.
-// When f.Deleted is true the query targets the trash view, sorted by deleted_at.
+// FindForAdmin 从 media_files 表返回经过过滤和分页的媒体文件列表及总数。
+// 当 f.Deleted 为 true 时查询回收站视图，按 deleted_at 降序排列；否则按 created_at 降序排列。
 func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.MediaFile, int64, error) {
 	var sb strings.Builder
 	args := []any{}
 	idx := 1
 
+	// 首个过滤条件：是否查回收站
 	sb.WriteString("FROM media_files WHERE deleted=$1")
 	args = append(args, f.Deleted)
 	idx++
 
+	// 按所属文件夹过滤
 	if f.FolderID != nil {
 		sb.WriteString(fmt.Sprintf(" AND folder_id=$%d", idx))
 		args = append(args, *f.FolderID)
 		idx++
 	}
+	// 按文件类型过滤
 	if f.FileType != "" {
 		sb.WriteString(fmt.Sprintf(" AND file_type=$%d", idx))
 		args = append(args, f.FileType)
 		idx++
 	}
+	// 关键字同时模糊匹配存储文件名和原始文件名（不区分大小写）
 	if f.Keyword != "" {
 		sb.WriteString(fmt.Sprintf(" AND (filename ILIKE $%d OR original_name ILIKE $%d)", idx, idx))
 		args = append(args, "%"+f.Keyword+"%")
@@ -76,11 +81,13 @@ func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.Me
 
 	base := sb.String()
 
+	// 先查符合条件的总数
 	var total int64
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) "+base, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
+	// 页码和页大小兜底处理
 	pageNum := f.PageNum
 	if pageNum < 1 {
 		pageNum = 1
@@ -90,6 +97,7 @@ func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.Me
 		pageSize = 20
 	}
 
+	// 回收站视图按删除时间排序，普通视图按创建时间排序
 	orderCol := "created_at"
 	if f.Deleted {
 		orderCol = "deleted_at"
@@ -104,25 +112,26 @@ func (r *MediaRepo) FindForAdmin(ctx context.Context, f MediaFilter) ([]model.Me
 	return ms, total, nil
 }
 
-// CountTrash returns the number of soft-deleted media files.
+// CountTrash 统计 media_files 表中已软删除（deleted=true）的媒体文件数量。
 func (r *MediaRepo) CountTrash(ctx context.Context) (int64, error) {
 	var n int64
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_files WHERE deleted=true`).Scan(&n)
 	return n, err
 }
 
-// MediaStats holds aggregate counts and total size by file type.
+// MediaStats 持有按文件类型细分的媒体文件聚合统计数据。
 type MediaStats struct {
-	TotalCount int64   `db:"total_count"`
-	TotalSize  int64   `db:"total_size"`
-	ImageCount int64   `db:"image_count"`
-	VideoCount int64   `db:"video_count"`
-	AudioCount int64   `db:"audio_count"`
-	DocCount   int64   `db:"doc_count"`
-	OtherCount int64   `db:"other_count"`
+	TotalCount int64 `db:"total_count"` // 文件总数（不含已删除）
+	TotalSize  int64 `db:"total_size"`  // 存储总大小（字节）
+	ImageCount int64 `db:"image_count"` // 图片文件数
+	VideoCount int64 `db:"video_count"` // 视频文件数
+	AudioCount int64 `db:"audio_count"` // 音频文件数
+	DocCount   int64 `db:"doc_count"`   // 文档文件数
+	OtherCount int64 `db:"other_count"` // 其他类型文件数
 }
 
-// GetStats returns aggregate media counts and total storage size, excluding soft-deleted files.
+// GetStats 从 media_files 表聚合统计各类媒体文件数量和总存储大小，排除软删除文件。
+// 使用 FILTER (WHERE file_type=...) 在一条 SQL 中同时统计各类型数量。
 func (r *MediaRepo) GetStats(ctx context.Context) (*MediaStats, error) {
 	var s MediaStats
 	err := r.db.QueryRowContext(ctx, `
@@ -139,7 +148,7 @@ func (r *MediaRepo) GetStats(ctx context.Context) (*MediaStats, error) {
 	return &s, err
 }
 
-// Create inserts a new media file record and back-fills the generated ID and CreatedAt.
+// Create 向 media_files 表插入新的媒体文件记录，通过 RETURNING 回填数据库生成的 id 和 created_at。
 func (r *MediaRepo) Create(ctx context.Context, m *model.MediaFile) error {
 	return r.db.QueryRowContext(ctx, `
 		INSERT INTO media_files (filename, original_name, file_path, file_url, file_size, mime_type, file_type, storage_type, width, height, uploader_id, folder_id, storage_provider_id)
@@ -149,17 +158,20 @@ func (r *MediaRepo) Create(ctx context.Context, m *model.MediaFile) error {
 	).Scan(&m.ID, &m.CreatedAt)
 }
 
-// Update sets alt_text and folder_id for the given media file.
+// Update 更新指定媒体文件的 alt_text（替代文本）和 folder_id（所属文件夹）字段。
 func (r *MediaRepo) Update(ctx context.Context, id int64, altText *string, folderID *int64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET alt_text=$1, folder_id=$2 WHERE id=$3`, altText, folderID, id)
 	return err
 }
 
-// MoveBatch assigns all listed media files to the target folder. No-ops when ids is empty.
+// MoveBatch 将多个媒体文件批量移动到目标文件夹（更新 folder_id）。
+// 当 ids 为空时直接返回，不执行任何数据库操作。
+// folderID 为 nil 时表示移动到根目录（不属于任何文件夹）。
 func (r *MediaRepo) MoveBatch(ctx context.Context, ids []int64, folderID *int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
+	// 使用 sqlx.In 生成 IN 子句，再通过 Rebind 转换为 PostgreSQL 风格占位符
 	query, args, err := sqlx.In(`UPDATE media_files SET folder_id=? WHERE id IN (?)`, folderID, ids)
 	if err != nil {
 		return err
@@ -169,14 +181,15 @@ func (r *MediaRepo) MoveBatch(ctx context.Context, ids []int64, folderID *int64)
 	return err
 }
 
-// SoftDelete marks a media file as deleted (moves to trash) without removing the row.
+// SoftDelete 将单个媒体文件标记为软删除（deleted=true），记录删除时间，不物理删除行数据。
 func (r *MediaRepo) SoftDelete(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET deleted=true, deleted_at=$1 WHERE id=$2`, now, id)
 	return err
 }
 
-// SoftDeleteBatch marks multiple media files as deleted. No-ops when ids is empty.
+// SoftDeleteBatch 批量将多个媒体文件标记为软删除，统一使用同一删除时间戳。
+// 当 ids 为空时直接返回，不执行任何数据库操作。
 func (r *MediaRepo) SoftDeleteBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -191,13 +204,14 @@ func (r *MediaRepo) SoftDeleteBatch(ctx context.Context, ids []int64) error {
 	return err
 }
 
-// Restore recovers a single media file from the trash.
+// Restore 将单个媒体文件从回收站恢复（deleted=false，deleted_at 置 NULL）。
 func (r *MediaRepo) Restore(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET deleted=false, deleted_at=NULL WHERE id=$1`, id)
 	return err
 }
 
-// RestoreBatch recovers multiple media files from the trash. No-ops when ids is empty.
+// RestoreBatch 批量将多个媒体文件从回收站恢复。
+// 当 ids 为空时直接返回，不执行任何数据库操作。
 func (r *MediaRepo) RestoreBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -211,13 +225,14 @@ func (r *MediaRepo) RestoreBatch(ctx context.Context, ids []int64) error {
 	return err
 }
 
-// PermanentDelete removes a media file row from the database.
+// PermanentDelete 从 media_files 表中物理删除单个媒体文件记录。
 func (r *MediaRepo) PermanentDelete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_files WHERE id=$1`, id)
 	return err
 }
 
-// PermanentDeleteBatch removes multiple media file rows. No-ops when ids is empty.
+// PermanentDeleteBatch 从 media_files 表中批量物理删除多个媒体文件记录。
+// 当 ids 为空时直接返回，不执行任何数据库操作。
 func (r *MediaRepo) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -231,13 +246,14 @@ func (r *MediaRepo) PermanentDeleteBatch(ctx context.Context, ids []int64) error
 	return err
 }
 
-// EmptyTrash permanently deletes all soft-deleted media files.
+// EmptyTrash 从 media_files 表中物理删除所有已软删除（deleted=true）的媒体文件，即清空回收站。
 func (r *MediaRepo) EmptyTrash(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_files WHERE deleted=true`)
 	return err
 }
 
-// UpdateFileContent replaces the stored file path, URL, size, and version after a content edit.
+// UpdateFileContent 在文件内容编辑后更新 media_files 表中的存储路径、访问 URL、文件大小和版本号。
+// currentVersion 为编辑后的新版本号。
 func (r *MediaRepo) UpdateFileContent(ctx context.Context, id int64, filePath, fileURL string, fileSize int64, currentVersion int) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET file_path=$1, file_url=$2, file_size=$3, current_version=$4 WHERE id=$5`,
 		filePath, fileURL, fileSize, currentVersion, id)

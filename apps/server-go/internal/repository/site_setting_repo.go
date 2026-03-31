@@ -10,20 +10,22 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
-// SiteSettingRepo provides data access for the site_settings table.
+// SiteSettingRepo 提供对 site_settings 表的数据访问能力。
 type SiteSettingRepo struct{ db *sqlx.DB }
 
-// NewSiteSettingRepo creates a SiteSettingRepo backed by the given database connection.
+// NewSiteSettingRepo 创建一个由指定数据库连接支撑的 SiteSettingRepo 实例。
 func NewSiteSettingRepo(db *sqlx.DB) *SiteSettingRepo { return &SiteSettingRepo{db: db} }
 
-// FindAll returns all site settings ordered by group_name then setting_key.
+// FindAll 返回所有站点配置项，按 group_name 再按 setting_key 升序排列。
+// 操作表：site_settings。
 func (r *SiteSettingRepo) FindAll(ctx context.Context) ([]model.SiteSetting, error) {
 	var settings []model.SiteSetting
 	err := r.db.SelectContext(ctx, &settings, `SELECT * FROM site_settings ORDER BY group_name, setting_key`)
 	return settings, err
 }
 
-// FindByGroup returns all settings belonging to the given group name.
+// FindByGroup 返回指定分组下的所有配置项，按 setting_key 升序排列。
+// 操作表：site_settings；参数 group 为配置分组名称（如 "general"、"seo"）。
 func (r *SiteSettingRepo) FindByGroup(ctx context.Context, group string) ([]model.SiteSetting, error) {
 	var settings []model.SiteSetting
 	err := r.db.SelectContext(ctx, &settings,
@@ -31,7 +33,8 @@ func (r *SiteSettingRepo) FindByGroup(ctx context.Context, group string) ([]mode
 	return settings, err
 }
 
-// FindByKey returns a single setting by its dot-notation key, or nil if not found.
+// FindByKey 根据点分隔符格式的 key 查询单条配置项，不存在时返回 nil。
+// 操作表：site_settings；参数 key 为配置键名（如 "site.title"）。
 func (r *SiteSettingRepo) FindByKey(ctx context.Context, key string) (*model.SiteSetting, error) {
 	var s model.SiteSetting
 	err := r.db.GetContext(ctx, &s, `SELECT * FROM site_settings WHERE setting_key = $1`, key)
@@ -41,7 +44,8 @@ func (r *SiteSettingRepo) FindByKey(ctx context.Context, key string) (*model.Sit
 	return &s, err
 }
 
-// Upsert inserts or updates a single setting value identified by key.
+// Upsert 按 setting_key 插入或更新单条配置项的值。
+// 冲突时（ON CONFLICT）更新 setting_value 和 updated_at，不改变其他字段。
 func (r *SiteSettingRepo) Upsert(ctx context.Context, key, value string) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO site_settings (setting_key, setting_value, created_at, updated_at)
@@ -51,13 +55,15 @@ func (r *SiteSettingRepo) Upsert(ctx context.Context, key, value string) error {
 	return err
 }
 
-// UpsertBatch writes multiple key-value pairs in a single transaction.
+// UpsertBatch 在单个事务中批量写入多个键值对配置项。
+// 每一项均采用 ON CONFLICT DO UPDATE 语义，保证幂等性。
+// 任意一项写入失败则整个事务回滚。
 func (r *SiteSettingRepo) UpsertBatch(ctx context.Context, kv map[string]string) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() // 发生错误时自动回滚
 	for k, v := range kv {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO site_settings (setting_key, setting_value, created_at, updated_at)

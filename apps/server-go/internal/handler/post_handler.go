@@ -14,13 +14,14 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// PostHandler handles all blog-post related endpoints under /admin/posts and /public/posts.
+// PostHandler 处理博客文章相关的所有 HTTP 接口，
+// 涵盖 /admin/posts（管理端）和 /public/posts（公开端）两组路由。
 type PostHandler struct{ svc *service.PostService }
 
-// NewPostHandler creates a PostHandler backed by the given PostService.
+// NewPostHandler 创建由指定 PostService 驱动的 PostHandler 实例。
 func NewPostHandler(svc *service.PostService) *PostHandler { return &PostHandler{svc: svc} }
 
-// MountAdmin registers authenticated admin CRUD routes on g.
+// MountAdmin 将需要身份验证的管理端 CRUD 路由注册到路由组 g。
 func (h *PostHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.AdminList)
 	g.GET("/:id", h.AdminGet)
@@ -32,57 +33,66 @@ func (h *PostHandler) MountAdmin(g *echo.Group) {
 	g.PATCH("/:id/publish", h.Publish)
 }
 
-// MountPublic registers unauthenticated public read routes on g.
+// MountPublic 将无需身份验证的公开只读路由注册到路由组 g。
 func (h *PostHandler) MountPublic(g *echo.Group) {
 	g.GET("", h.PublicList)
 	g.GET("/category/:categoryId", h.ByCategory)
 	g.GET("/tag/:tagId", h.ByTag)
 	g.GET("/:slug/adjacent", h.Adjacent)
 	g.GET("/:slug", h.PublicGet)
-	// verify-password is registered in server.go with rate limiting
+	// verify-password 路由在 server.go 中单独注册（附带限流中间件）
 }
 
-// --- Admin ---
+// --- 管理端接口 ---
 
-// AdminList handles GET /admin/posts with optional filter query params
-// (status, keyword, categoryId, tagId, minViewCount, maxViewCount, startDate, endDate, hidden).
+// AdminList 处理 GET /admin/posts 请求。
+// 支持多维度过滤查询参数：status（状态）、keyword（关键词）、categoryId（分类ID）、
+// tagId（标签ID）、minViewCount/maxViewCount（浏览量范围）、startDate/endDate（发布日期范围）、hidden（是否隐藏）。
 func (h *PostHandler) AdminList(c echo.Context) error {
+	// 构建过滤条件，解析各查询参数
 	f := dto.PostFilter{
-		Status:  c.QueryParam("status"),
-		Keyword: c.QueryParam("keyword"),
-		PageNum: parseIntDefault(c.QueryParam("pageNum"), 1),
+		Status:   c.QueryParam("status"),
+		Keyword:  c.QueryParam("keyword"),
+		PageNum:  parseIntDefault(c.QueryParam("pageNum"), 1),
 		PageSize: parseIntDefault(c.QueryParam("pageSize"), 10),
 	}
+	// 解析可选的分类 ID 过滤条件
 	if v := c.QueryParam("categoryId"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			f.CategoryID = &id
 		}
 	}
+	// 解析可选的标签 ID 过滤条件
 	if v := c.QueryParam("tagId"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			f.TagID = &id
 		}
 	}
+	// 解析浏览量最小值过滤条件
 	if v := c.QueryParam("minViewCount"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			f.MinViewCount = &n
 		}
 	}
+	// 解析浏览量最大值过滤条件
 	if v := c.QueryParam("maxViewCount"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			f.MaxViewCount = &n
 		}
 	}
+	// 解析发布开始日期过滤条件（支持多种时间格式）
 	if v := c.QueryParam("startDate"); v != "" {
 		if t := parseFlexibleTime(v); t != nil {
 			f.StartDate = t
 		}
 	}
+	// 解析发布结束日期过滤条件（支持多种时间格式）
 	if v := c.QueryParam("endDate"); v != "" {
 		if t := parseFlexibleTime(v); t != nil {
 			f.EndDate = t
 		}
 	}
+	// 解析隐藏状态过滤条件
 	if v := c.QueryParam("hidden"); v != "" {
 		b := v == "true"
 		f.Hidden = &b
@@ -95,7 +105,9 @@ func (h *PostHandler) AdminList(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// AdminGet handles GET /admin/posts/:id. Returns full post detail including draft cache.
+// AdminGet 处理 GET /admin/posts/:id 请求。
+// 返回文章完整详情，包含 Redis 中缓存的草稿内容。
+// 路径参数 id 为文章数字 ID。
 func (h *PostHandler) AdminGet(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -111,12 +123,15 @@ func (h *PostHandler) AdminGet(c echo.Context) error {
 	return response.OK(c, post)
 }
 
-// Create handles POST /admin/posts. Creates a new post with the authenticated user as author.
+// Create 处理 POST /admin/posts 请求。
+// 以当前登录用户为作者创建新文章。
+// 请求体为 CreatePostRequest。
 func (h *PostHandler) Create(c echo.Context) error {
 	var req dto.CreatePostRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
+	// 从 JWT 上下文中获取当前登录用户 ID 作为作者
 	lu := middleware.GetLoginUser(c)
 	var authorID int64
 	if lu != nil {
@@ -129,7 +144,9 @@ func (h *PostHandler) Create(c echo.Context) error {
 	return response.OK(c, post)
 }
 
-// Update handles PUT /admin/posts/:id. Replaces the post content; also clears the Redis draft cache.
+// Update 处理 PUT /admin/posts/:id 请求。
+// 替换文章全量内容；同时清除 Redis 中对应的草稿缓存。
+// 路径参数 id 为文章 ID，请求体为 CreatePostRequest。
 func (h *PostHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -139,6 +156,7 @@ func (h *PostHandler) Update(c echo.Context) error {
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
+	// 从 JWT 上下文中获取当前登录用户 ID
 	lu := middleware.GetLoginUser(c)
 	var authorID int64
 	if lu != nil {
@@ -151,8 +169,10 @@ func (h *PostHandler) Update(c echo.Context) error {
 	return response.OK(c, post)
 }
 
-// UpdateProperties handles PATCH /admin/posts/:id/properties.
-// Accepts a partial payload — only the provided fields are updated (e.g. status, isPinned).
+// UpdateProperties 处理 PATCH /admin/posts/:id/properties 请求。
+// 接受局部更新载荷，仅更新请求中包含的字段（如 status、isPinned 等），
+// 其余字段保持不变。
+// 路径参数 id 为文章 ID，请求体为 UpdatePostPropertiesRequest。
 func (h *PostHandler) UpdateProperties(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -169,9 +189,10 @@ func (h *PostHandler) UpdateProperties(c echo.Context) error {
 	return response.OK(c, post)
 }
 
-// AutoSave handles POST /admin/posts/:id/auto-save.
-// Persists the editor content as a Redis draft without updating the database,
-// enabling crash-recovery on the editor page.
+// AutoSave 处理 POST /admin/posts/:id/auto-save 请求。
+// 将编辑器内容作为草稿持久化至 Redis，不更新数据库中的正式记录，
+// 用于编辑器页面的崩溃恢复功能。
+// 路径参数 id 为文章 ID，请求体为 CreatePostRequest。
 func (h *PostHandler) AutoSave(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -187,7 +208,9 @@ func (h *PostHandler) AutoSave(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Delete handles DELETE /admin/posts/:id. Soft-deletes the post and clears its Redis draft.
+// Delete 处理 DELETE /admin/posts/:id 请求。
+// 软删除文章并清除其对应的 Redis 草稿缓存。
+// 路径参数 id 为文章 ID。
 func (h *PostHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -199,7 +222,9 @@ func (h *PostHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Publish handles PATCH /admin/posts/:id/publish. Sets status to PUBLISHED and records publish time.
+// Publish 处理 PATCH /admin/posts/:id/publish 请求。
+// 将文章状态设置为 PUBLISHED 并记录发布时间。
+// 路径参数 id 为文章 ID。
 func (h *PostHandler) Publish(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -211,10 +236,10 @@ func (h *PostHandler) Publish(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// --- Public ---
+// --- 公开端接口 ---
 
-// PublicList handles GET /public/posts. Returns paginated published, visible posts
-// ordered by pin priority then publish date.
+// PublicList 处理 GET /public/posts 请求。
+// 返回分页的已发布且可见文章列表，按置顶优先级和发布时间降序排列。
 func (h *PostHandler) PublicList(c echo.Context) error {
 	p := pagination.ParseWithDefaults(c, 1, 10)
 	pr, err := h.svc.GetPublished(c.Request().Context(), p)
@@ -224,8 +249,10 @@ func (h *PostHandler) PublicList(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// PublicGet handles GET /public/posts/:slug. Returns the post and increments the view
-// counter asynchronously. Returns a password-stub (no content) if the post is protected.
+// PublicGet 处理 GET /public/posts/:slug 请求。
+// 返回文章详情并异步递增浏览计数。
+// 若文章设有密码保护，则返回不含正文内容的占位响应（passwordRequired=true）。
+// 路径参数 slug 为文章 URL 别名。
 func (h *PostHandler) PublicGet(c echo.Context) error {
 	slug := c.Param("slug")
 	post, err := h.svc.GetPublicBySlug(c.Request().Context(), slug, "")
@@ -235,14 +262,16 @@ func (h *PostHandler) PublicGet(c echo.Context) error {
 	if post == nil {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 仅对无密码保护的文章异步递增浏览量，避免阻塞响应
 	if !post.PasswordRequired {
 		go h.svc.IncrementViewCount(context.Background(), post.ID)
 	}
 	return response.OK(c, post)
 }
 
-// VerifyPassword handles POST /public/posts/:slug/verify-password.
-// Validates the submitted password for a password-protected post and returns the full content on success.
+// VerifyPassword 处理 POST /public/posts/:slug/verify-password 请求。
+// 验证密码保护文章提交的密码，校验通过后返回完整文章内容。
+// 路径参数 slug 为文章别名，请求体为 PostPasswordRequest（含 password 字段）。
 func (h *PostHandler) VerifyPassword(c echo.Context) error {
 	slug := c.Param("slug")
 	var req dto.PostPasswordRequest
@@ -256,14 +285,18 @@ func (h *PostHandler) VerifyPassword(c echo.Context) error {
 	if post == nil {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 密码验证失败时 service 返回 PasswordRequired=true
 	if post.PasswordRequired {
 		return response.FailWith(c, response.Forbidden, "密码错误")
 	}
+	// 密码正确，异步递增浏览量
 	go h.svc.IncrementViewCount(context.Background(), post.ID)
 	return response.OK(c, post)
 }
 
-// ByCategory handles GET /public/posts/category/:categoryId. Returns paginated posts in a category.
+// ByCategory 处理 GET /public/posts/category/:categoryId 请求。
+// 返回指定分类下的分页文章列表。
+// 路径参数 categoryId 为分类数字 ID。
 func (h *PostHandler) ByCategory(c echo.Context) error {
 	catID, err := strconv.ParseInt(c.Param("categoryId"), 10, 64)
 	if err != nil {
@@ -277,7 +310,9 @@ func (h *PostHandler) ByCategory(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// ByTag handles GET /public/posts/tag/:tagId. Returns paginated posts tagged with the given tag.
+// ByTag 处理 GET /public/posts/tag/:tagId 请求。
+// 返回包含指定标签的分页文章列表。
+// 路径参数 tagId 为标签数字 ID。
 func (h *PostHandler) ByTag(c echo.Context) error {
 	tagID, err := strconv.ParseInt(c.Param("tagId"), 10, 64)
 	if err != nil {
@@ -291,8 +326,9 @@ func (h *PostHandler) ByTag(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// Adjacent handles GET /public/posts/:slug/adjacent.
-// Returns the previous and next published posts by publish date for navigation links.
+// Adjacent 处理 GET /public/posts/:slug/adjacent 请求。
+// 按发布时间返回当前文章的上一篇和下一篇已发布文章，用于前端导航链接渲染。
+// 路径参数 slug 为文章别名。
 func (h *PostHandler) Adjacent(c echo.Context) error {
 	slug := c.Param("slug")
 	adj, err := h.svc.GetAdjacentPosts(c.Request().Context(), slug)
@@ -302,6 +338,7 @@ func (h *PostHandler) Adjacent(c echo.Context) error {
 	return response.OK(c, adj)
 }
 
+// parseIntDefault 将字符串解析为整数，解析失败时返回默认值 def。
 func parseIntDefault(s string, def int) int {
 	if s == "" {
 		return def
@@ -313,10 +350,11 @@ func parseIntDefault(s string, def int) int {
 	return n
 }
 
-// parseFlexibleTime accepts multiple datetime formats from the frontend:
-// - RFC3339:          "2024-03-15T00:00:00Z" or "2024-03-15T00:00:00+08:00"
-// - ISO without TZ:   "2024-03-15T00:00:00"
-// - Date only:        "2024-03-15"
+// parseFlexibleTime 兼容前端传入的多种日期时间格式，返回对应的 time.Time 指针。
+// 支持以下格式：
+//   - RFC3339：      "2024-03-15T00:00:00Z" 或 "2024-03-15T00:00:00+08:00"
+//   - 无时区 ISO：   "2024-03-15T00:00:00"
+//   - 纯日期：       "2024-03-15"
 func parseFlexibleTime(s string) *time.Time {
 	formats := []string{
 		time.RFC3339,

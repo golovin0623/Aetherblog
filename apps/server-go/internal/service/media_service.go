@@ -18,20 +18,22 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// MediaService manages media file uploads and lifecycle (trash, restore, permanent delete).
+// MediaService 管理媒体文件上传和生命周期（软删除/恢复/彻底删除）的业务逻辑。
 type MediaService struct {
 	repo      *repository.MediaRepo
 	store     storage.Storage
-	uploadDir string // local base path for reading back files after upload (for thumbnail gen)
+	uploadDir string // 本地存储根路径，用于上传后读取文件以生成缩略图
 }
 
-// NewMediaService creates a MediaService backed by the given repository, storage backend, and local upload directory.
+// NewMediaService 使用给定的仓储、存储后端和本地上传目录创建 MediaService 实例。
 func NewMediaService(repo *repository.MediaRepo, store storage.Storage, uploadDir string) *MediaService {
 	return &MediaService{repo: repo, store: store, uploadDir: uploadDir}
 }
 
-// Upload saves a multipart file to the storage backend, extracts image dimensions, and creates the database record.
-// Storage key format: {year}/{month}/{timestamp}_{filename}.
+// Upload 将 multipart 文件保存到存储后端，提取图片尺寸，并创建数据库记录。
+// 存储键格式：{年}/{月}/{毫秒时间戳}_{安全文件名}。
+// 对于图片文件（本地存储模式）：同步提取宽高，异步生成 300px 宽缩略图。
+// 错误场景：文件打开失败、存储上传失败、数据库记录创建失败。
 func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, uploaderID *int64, folderID *int64) (*dto.MediaFileVO, error) {
 	f, err := fh.Open()
 	if err != nil {
@@ -39,13 +41,14 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	}
 	defer f.Close()
 
+	// 确定 MIME 类型：优先使用请求头，其次根据文件扩展名猜测
 	mimeType := fh.Header.Get("Content-Type")
 	if mimeType == "" || mimeType == "application/octet-stream" {
 		mimeType = guessMimeType(fh.Filename)
 	}
 	fileType := classifyFileType(mimeType)
 
-	// Build storage key: {year}/{month}/{timestamp}_{filename}
+	// 构建存储键：{年}/{月}/{毫秒时间戳}_{安全文件名}
 	now := time.Now()
 	safeName := sanitizeFilename(fh.Filename)
 	key := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.UnixMilli(), safeName)
@@ -56,27 +59,27 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	}
 
 	m := &model.MediaFile{
-		Filename:          safeName,
-		OriginalName:      fh.Filename,
-		FilePath:          key,
-		FileURL:           url,
-		FileSize:          fh.Size,
-		MimeType:          &mimeType,
-		FileType:          fileType,
-		StorageType:       s.store.Type(),
-		UploaderID:        uploaderID,
-		FolderID:          folderID,
+		Filename:     safeName,
+		OriginalName: fh.Filename,
+		FilePath:     key,
+		FileURL:      url,
+		FileSize:     fh.Size,
+		MimeType:     &mimeType,
+		FileType:     fileType,
+		StorageType:  s.store.Type(),
+		UploaderID:   uploaderID,
+		FolderID:     folderID,
 	}
 
-	// Extract image dimensions
+	// 仅对本地存储模式下的图片文件提取尺寸并生成缩略图
 	if imgproc.IsImage(mimeType) {
 		if localStore, ok := s.store.(*storage.LocalStorage); ok {
-			_ = localStore // use uploadDir for dimension reading
+			_ = localStore // 仅作类型断言，实际通过 uploadDir 路径访问文件
 			localPath := filepath.Join(s.uploadDir, key)
 			if w, h, err := imgproc.GetDimensions(localPath); err == nil {
 				m.Width = &w
 				m.Height = &h
-				// Generate thumbnail asynchronously
+				// 异步生成缩略图，避免阻塞上传响应
 				go func() {
 					thumbKey := "thumbnails/" + key
 					thumbPath := filepath.Join(s.uploadDir, thumbKey)
@@ -94,7 +97,7 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	return &vo, nil
 }
 
-// GetForAdmin returns a paginated, filtered list of media files.
+// GetForAdmin 返回支持多条件过滤的分页媒体文件列表，供管理后台媒体管理页使用。
 func (s *MediaService) GetForAdmin(ctx context.Context, f repository.MediaFilter) (*response.PageResult, error) {
 	ms, total, err := s.repo.FindForAdmin(ctx, f)
 	if err != nil {
@@ -108,7 +111,7 @@ func (s *MediaService) GetForAdmin(ctx context.Context, f repository.MediaFilter
 	return &pr, nil
 }
 
-// GetStats returns aggregate file counts and total size by type.
+// GetStats 返回按文件类型分组的文件数量和总体积统计信息。
 func (s *MediaService) GetStats(ctx context.Context) (*dto.MediaStatsVO, error) {
 	st, err := s.repo.GetStats(ctx)
 	if err != nil {
@@ -125,7 +128,7 @@ func (s *MediaService) GetStats(ctx context.Context) (*dto.MediaStatsVO, error) 
 	}, nil
 }
 
-// GetByID returns a single media file by primary key, or nil if not found.
+// GetByID 通过主键查询单个媒体文件，不存在时返回 nil, nil。
 func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO, error) {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil || m == nil {
@@ -135,7 +138,7 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 	return &vo, nil
 }
 
-// Update modifies a media file's alt_text and folder_id.
+// Update 修改媒体文件的 alt_text 和所属文件夹 folder_id。
 func (s *MediaService) Update(ctx context.Context, id int64, req dto.UpdateMediaRequest) (*dto.MediaFileVO, error) {
 	if err := s.repo.Update(ctx, id, req.AltText, req.FolderID); err != nil {
 		return nil, err
@@ -143,37 +146,38 @@ func (s *MediaService) Update(ctx context.Context, id int64, req dto.UpdateMedia
 	return s.GetByID(ctx, id)
 }
 
-// Move assigns a single media file to the given folder.
+// Move 将单个媒体文件移动到指定文件夹（folderID 为 nil 表示移至根目录）。
 func (s *MediaService) Move(ctx context.Context, id int64, folderID *int64) error {
 	return s.repo.MoveBatch(ctx, []int64{id}, folderID)
 }
 
-// MoveBatch assigns multiple media files to the given folder in one query.
+// MoveBatch 在一次数据库查询中将多个媒体文件移动到指定文件夹。
 func (s *MediaService) MoveBatch(ctx context.Context, ids []int64, folderID *int64) error {
 	return s.repo.MoveBatch(ctx, ids, folderID)
 }
 
-// Delete soft-deletes a media file (moves to trash).
+// Delete 软删除单个媒体文件（移入回收站），数据库行保留。
 func (s *MediaService) Delete(ctx context.Context, id int64) error {
 	return s.repo.SoftDelete(ctx, id)
 }
 
-// DeleteBatch soft-deletes multiple media files.
+// DeleteBatch 批量软删除多个媒体文件（移入回收站）。
 func (s *MediaService) DeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.SoftDeleteBatch(ctx, ids)
 }
 
-// Restore recovers a single media file from the trash.
+// Restore 将单个软删除的媒体文件从回收站恢复。
 func (s *MediaService) Restore(ctx context.Context, id int64) error {
 	return s.repo.Restore(ctx, id)
 }
 
-// RestoreBatch recovers multiple media files from the trash.
+// RestoreBatch 批量从回收站恢复多个软删除的媒体文件。
 func (s *MediaService) RestoreBatch(ctx context.Context, ids []int64) error {
 	return s.repo.RestoreBatch(ctx, ids)
 }
 
-// PermanentDelete deletes a media file from storage and removes its database record.
+// PermanentDelete 从存储后端删除文件，并彻底移除数据库记录，不可恢复。
+// 错误场景：文件记录不存在。存储删除失败时静默忽略，仍删除数据库记录。
 func (s *MediaService) PermanentDelete(ctx context.Context, id int64) error {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -182,28 +186,29 @@ func (s *MediaService) PermanentDelete(ctx context.Context, id int64) error {
 	if m == nil {
 		return errors.New("文件不存在")
 	}
-	// Delete from storage backend
+	// 先删除存储后端文件（失败时静默忽略，保证数据库记录被清除）
 	_ = s.store.Delete(ctx, m.FilePath)
 	return s.repo.PermanentDelete(ctx, id)
 }
 
-// PermanentDeleteBatch permanently removes multiple media file records (does not delete from storage).
+// PermanentDeleteBatch 批量彻底删除多个媒体文件的数据库记录（不删除存储后端文件）。
 func (s *MediaService) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.PermanentDeleteBatch(ctx, ids)
 }
 
-// EmptyTrash permanently deletes all soft-deleted media files from the database.
+// EmptyTrash 永久删除所有软删除（回收站中）的媒体文件数据库记录。
 func (s *MediaService) EmptyTrash(ctx context.Context) error {
 	return s.repo.EmptyTrash(ctx)
 }
 
-// GetTrashCount returns the number of soft-deleted media files currently in the trash.
+// GetTrashCount 返回当前回收站中软删除媒体文件的数量。
 func (s *MediaService) GetTrashCount(ctx context.Context) (int64, error) {
 	return s.repo.CountTrash(ctx)
 }
 
-// --- Helpers ---
+// --- 内部辅助函数 ---
 
+// toMediaFileVO 将单个 model.MediaFile 转换为 dto.MediaFileVO。
 func toMediaFileVO(m model.MediaFile) dto.MediaFileVO {
 	return dto.MediaFileVO{
 		ID:           m.ID,
@@ -223,6 +228,7 @@ func toMediaFileVO(m model.MediaFile) dto.MediaFileVO {
 	}
 }
 
+// classifyFileType 根据 MIME 类型将文件归类为 IMAGE/VIDEO/AUDIO/DOCUMENT/OTHER。
 func classifyFileType(mime string) string {
 	switch {
 	case strings.HasPrefix(mime, "image/"):
@@ -238,6 +244,7 @@ func classifyFileType(mime string) string {
 	}
 }
 
+// guessMimeType 根据文件扩展名猜测 MIME 类型，用于请求头未提供或为通用二进制类型时的兜底处理。
 func guessMimeType(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
@@ -262,9 +269,11 @@ func guessMimeType(filename string) string {
 	}
 }
 
+// sanitizeFilename 对文件名进行安全处理：取 Base 部分并将空格、斜杠替换为下划线。
+// 若处理结果为空，返回默认名 "file"。
 func sanitizeFilename(name string) string {
 	base := filepath.Base(name)
-	// Replace problematic characters
+	// 替换可能引起路径问题的特殊字符
 	safe := strings.NewReplacer(" ", "_", "/", "_", "\\", "_").Replace(base)
 	if safe == "" {
 		safe = "file"
@@ -272,5 +281,5 @@ func sanitizeFilename(name string) string {
 	return safe
 }
 
-// Ensure io is used (for future reference)
+// 确保 io 包被引用（供未来扩展使用）
 var _ io.Reader

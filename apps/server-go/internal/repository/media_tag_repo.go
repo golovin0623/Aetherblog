@@ -10,34 +10,36 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
-// MediaTagRepo provides data access for media_tags and the media_file_tags join table.
+// MediaTagRepo 负责对 media_tags 表及 media_file_tags 关联表进行数据访问操作。
 type MediaTagRepo struct{ db *sqlx.DB }
 
-// NewMediaTagRepo creates a MediaTagRepo backed by the given database connection.
+// NewMediaTagRepo 创建一个使用给定数据库连接的 MediaTagRepo 实例。
 func NewMediaTagRepo(db *sqlx.DB) *MediaTagRepo { return &MediaTagRepo{db: db} }
 
-// FindAll returns all media tags ordered by usage_count descending, then name.
+// FindAll 从 media_tags 表返回所有媒体标签，按 usage_count 降序、name 升序排列。
 func (r *MediaTagRepo) FindAll(ctx context.Context) ([]model.MediaTag, error) {
 	var tags []model.MediaTag
 	err := r.db.SelectContext(ctx, &tags, `SELECT * FROM media_tags ORDER BY usage_count DESC, name ASC`)
 	return tags, err
 }
 
-// FindPopular returns the top N tags by usage_count.
+// FindPopular 从 media_tags 表按 usage_count 降序返回使用频率最高的前 N 个标签。
+// limit 指定返回数量上限。
 func (r *MediaTagRepo) FindPopular(ctx context.Context, limit int) ([]model.MediaTag, error) {
 	var tags []model.MediaTag
 	err := r.db.SelectContext(ctx, &tags, `SELECT * FROM media_tags ORDER BY usage_count DESC LIMIT $1`, limit)
 	return tags, err
 }
 
-// Search returns tags whose name or slug contains keyword (case-insensitive).
+// Search 从 media_tags 表按关键字模糊搜索标签名称或 slug（不区分大小写），按 usage_count 降序返回。
+// keyword 支持部分匹配。
 func (r *MediaTagRepo) Search(ctx context.Context, keyword string) ([]model.MediaTag, error) {
 	var tags []model.MediaTag
 	err := r.db.SelectContext(ctx, &tags, `SELECT * FROM media_tags WHERE name ILIKE $1 OR slug ILIKE $1 ORDER BY usage_count DESC`, "%"+keyword+"%")
 	return tags, err
 }
 
-// FindByID returns a media tag by primary key, or nil if not found.
+// FindByID 从 media_tags 表按主键查询单个标签，若不存在则返回 nil。
 func (r *MediaTagRepo) FindByID(ctx context.Context, id int64) (*model.MediaTag, error) {
 	var t model.MediaTag
 	err := r.db.GetContext(ctx, &t, `SELECT * FROM media_tags WHERE id=$1`, id)
@@ -50,7 +52,7 @@ func (r *MediaTagRepo) FindByID(ctx context.Context, id int64) (*model.MediaTag,
 	return &t, nil
 }
 
-// Create inserts a new media tag and back-fills the generated ID and timestamps.
+// Create 向 media_tags 表插入新标签，通过 RETURNING 回填数据库生成的 id、created_at 和 updated_at。
 func (r *MediaTagRepo) Create(ctx context.Context, t *model.MediaTag) error {
 	return r.db.QueryRowContext(ctx, `
 		INSERT INTO media_tags (name, slug, description, color, category)
@@ -59,13 +61,14 @@ func (r *MediaTagRepo) Create(ctx context.Context, t *model.MediaTag) error {
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
-// Delete permanently removes a media tag by primary key.
+// Delete 从 media_tags 表中永久删除指定标签（物理删除）。
 func (r *MediaTagRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_tags WHERE id=$1`, id)
 	return err
 }
 
-// FindTagsByFileID returns all tags assigned to a media file via the join table.
+// FindTagsByFileID 通过 media_file_tags 关联表查询指定媒体文件的所有标签，按标签名称升序返回。
+// 使用 INNER JOIN 连接 media_tags 和 media_file_tags，以 media_file_id 为过滤条件。
 func (r *MediaTagRepo) FindTagsByFileID(ctx context.Context, fileID int64) ([]model.MediaTag, error) {
 	var tags []model.MediaTag
 	err := r.db.SelectContext(ctx, &tags, `
@@ -76,7 +79,9 @@ func (r *MediaTagRepo) FindTagsByFileID(ctx context.Context, fileID int64) ([]mo
 	return tags, err
 }
 
-// TagFile associates a tag with a media file (MANUAL source). Silently ignores duplicates.
+// TagFile 在 media_file_tags 关联表中为媒体文件打上标签，来源标记为 MANUAL（手动打标）。
+// 使用 ON CONFLICT DO NOTHING 静默忽略重复关联，保证幂等性。
+// taggedBy 为执行操作的用户 ID，nil 表示系统操作。
 func (r *MediaTagRepo) TagFile(ctx context.Context, fileID int64, tagID int64, taggedBy *int64) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO media_file_tags (media_file_id, tag_id, tagged_by, source)
@@ -85,19 +90,21 @@ func (r *MediaTagRepo) TagFile(ctx context.Context, fileID int64, tagID int64, t
 	return err
 }
 
-// UntagFile removes the association between a tag and a media file.
+// UntagFile 从 media_file_tags 关联表中移除媒体文件与指定标签的关联关系。
 func (r *MediaTagRepo) UntagFile(ctx context.Context, fileID int64, tagID int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2`, fileID, tagID)
 	return err
 }
 
-// IncrementUsageCount adjusts a tag's usage_count by delta (positive to increment, negative to decrement).
+// IncrementUsageCount 对 media_tags 表中指定标签的 usage_count 字段进行原子性增减操作。
+// delta 为正数时增加计数，为负数时减少计数。
 func (r *MediaTagRepo) IncrementUsageCount(ctx context.Context, tagID int64, delta int) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_tags SET usage_count = usage_count + $1 WHERE id=$2`, delta, tagID)
 	return err
 }
 
-// CountFileTag returns 1 if the file-tag association exists, 0 otherwise.
+// CountFileTag 查询 media_file_tags 关联表中指定文件与标签的关联是否存在。
+// 返回 1 表示关联存在，返回 0 表示不存在。
 func (r *MediaTagRepo) CountFileTag(ctx context.Context, fileID int64, tagID int64) (int, error) {
 	var n int
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_file_tags WHERE media_file_id=$1 AND tag_id=$2`, fileID, tagID).Scan(&n)

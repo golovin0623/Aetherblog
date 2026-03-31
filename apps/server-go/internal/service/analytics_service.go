@@ -10,21 +10,23 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// --- DTOs returned by AnalyticsService ---
+// --- AnalyticsService 对外暴露的 DTO ---
 
+// DashboardVO 汇总站点核心统计指标，用于管理后台概览面板。
 type DashboardVO struct {
-	PostCount      int64 `json:"postCount"`
-	CommentCount   int64 `json:"commentCount"`
-	ViewTotal      int64 `json:"viewTotal"`
-	TodayVisits    int64 `json:"todayVisits"`
-	MediaCount     int64 `json:"mediaCount"`
-	MediaSize      int64 `json:"mediaSize"`
-	CategoryCount  int64 `json:"categoryCount"`
-	TagCount       int64 `json:"tagCount"`
-	TotalWords     int64 `json:"totalWords"`
-	UniqueVisitors int64 `json:"uniqueVisitors"`
+	PostCount      int64 `json:"postCount"`      // 文章总数
+	CommentCount   int64 `json:"commentCount"`   // 评论总数
+	ViewTotal      int64 `json:"viewTotal"`      // 累计浏览量
+	TodayVisits    int64 `json:"todayVisits"`    // 今日访问量
+	MediaCount     int64 `json:"mediaCount"`     // 媒体文件总数
+	MediaSize      int64 `json:"mediaSize"`      // 媒体文件总体积（字节）
+	CategoryCount  int64 `json:"categoryCount"`  // 分类总数
+	TagCount       int64 `json:"tagCount"`       // 标签总数
+	TotalWords     int64 `json:"totalWords"`     // 全站文章总字数
+	UniqueVisitors int64 `json:"uniqueVisitors"` // 独立访客数
 }
 
+// TopPostVO 表示按浏览量排行的热门文章条目。
 type TopPostVO struct {
 	ID        int64  `json:"id"`
 	Title     string `json:"title"`
@@ -32,51 +34,55 @@ type TopPostVO struct {
 	ViewCount int64  `json:"viewCount"`
 }
 
+// DailyVisitVO 表示单日的页面浏览量（PV）和独立访客数（UV）。
 type DailyVisitVO struct {
-	Date string `json:"date"`
-	PV   int64  `json:"pv"`
-	UV   int64  `json:"uv"`
+	Date string `json:"date"` // 日期，格式 YYYY-MM-DD
+	PV   int64  `json:"pv"`   // 页面浏览量
+	UV   int64  `json:"uv"`   // 独立访客数
 }
 
+// TaskTypeStatVO 表示按 AI 任务类型聚合的调用次数与 Token 用量统计。
 type TaskTypeStatVO struct {
-	TaskType string `json:"taskType"`
-	Count    int64  `json:"count"`
-	Tokens   int64  `json:"tokens"`
+	TaskType string `json:"taskType"` // AI 任务类型（如 summary、translate 等）
+	Count    int64  `json:"count"`    // 调用次数
+	Tokens   int64  `json:"tokens"`   // 消耗的 Token 总数
 }
 
+// AIDashboardVO 是 AI 使用统计面板的综合 DTO。
 type AIDashboardVO struct {
-	RangeDays         int              `json:"rangeDays"`
-	Overview          AiOverviewVO     `json:"overview"`
-	Trend             []any            `json:"trend"`
-	ModelDistribution []any            `json:"modelDistribution"`
-	TaskDistribution  []TaskTypeStatVO `json:"taskDistribution"`
-	Records           any              `json:"records"`
+	RangeDays         int              `json:"rangeDays"`         // 统计时间范围（天数）
+	Overview          AiOverviewVO     `json:"overview"`          // 整体汇总指标
+	Trend             []any            `json:"trend"`             // 趋势数据（预留）
+	ModelDistribution []any            `json:"modelDistribution"` // 模型分布（预留）
+	TaskDistribution  []TaskTypeStatVO `json:"taskDistribution"`  // 按任务类型分布
+	Records           any              `json:"records"`           // 详细记录（预留）
 }
 
+// AiOverviewVO 汇总 AI 服务的调用成功率、Token 用量、费用及延迟等核心指标。
 type AiOverviewVO struct {
-	TotalCalls       int64   `json:"totalCalls"`
-	SuccessCalls     int64   `json:"successCalls"`
-	ErrorCalls       int64   `json:"errorCalls"`
-	SuccessRate      float64 `json:"successRate"`
-	CacheHitRate     float64 `json:"cacheHitRate"`
-	TotalTokens      int64   `json:"totalTokens"`
-	TotalCost        float64 `json:"totalCost"`
-	AvgLatencyMs     float64 `json:"avgLatencyMs"`
-	AvgTokensPerCall float64 `json:"avgTokensPerCall"`
-	AvgCostPerCall   float64 `json:"avgCostPerCall"`
+	TotalCalls       int64   `json:"totalCalls"`       // 总调用次数
+	SuccessCalls     int64   `json:"successCalls"`     // 成功次数
+	ErrorCalls       int64   `json:"errorCalls"`       // 失败次数
+	SuccessRate      float64 `json:"successRate"`      // 成功率（百分比）
+	CacheHitRate     float64 `json:"cacheHitRate"`     // 缓存命中率（预留）
+	TotalTokens      int64   `json:"totalTokens"`      // 消耗 Token 总数
+	TotalCost        float64 `json:"totalCost"`        // 估算费用（美元）
+	AvgLatencyMs     float64 `json:"avgLatencyMs"`     // 平均延迟（毫秒，预留）
+	AvgTokensPerCall float64 `json:"avgTokensPerCall"` // 每次调用平均 Token 数
+	AvgCostPerCall   float64 `json:"avgCostPerCall"`   // 每次调用平均费用
 }
 
-// AnalyticsService wraps the analytics repository and exposes business logic.
+// AnalyticsService 封装统计分析仓储层，对外暴露站点数据统计业务方法。
 type AnalyticsService struct {
 	repo *repository.AnalyticsRepo
 }
 
-// NewAnalyticsService creates an AnalyticsService backed by the given repository.
+// NewAnalyticsService 使用给定的仓储创建 AnalyticsService 实例。
 func NewAnalyticsService(repo *repository.AnalyticsRepo) *AnalyticsService {
 	return &AnalyticsService{repo: repo}
 }
 
-// GetDashboard returns aggregated site statistics.
+// GetDashboard 返回站点核心统计汇总数据，包括文章数、评论数、浏览量、媒体文件等。
 func (s *AnalyticsService) GetDashboard(ctx context.Context) (*DashboardVO, error) {
 	d, err := s.repo.GetDashboard(ctx)
 	if err != nil {
@@ -96,7 +102,7 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context) (*DashboardVO, erro
 	}, nil
 }
 
-// GetTopPosts returns the top 10 posts by view count.
+// GetTopPosts 返回按浏览量降序排列的前 10 篇热门文章。
 func (s *AnalyticsService) GetTopPosts(ctx context.Context) ([]TopPostVO, error) {
 	rows, err := s.repo.GetTopPosts(ctx, 10)
 	if err != nil {
@@ -109,7 +115,8 @@ func (s *AnalyticsService) GetTopPosts(ctx context.Context) ([]TopPostVO, error)
 	return vos, nil
 }
 
-// GetVisitorTrend returns daily visit counts for the last N days.
+// GetVisitorTrend 返回最近 N 天的每日 PV/UV 趋势数据。
+// 当 days <= 0 时，默认使用 30 天。
 func (s *AnalyticsService) GetVisitorTrend(ctx context.Context, days int) ([]DailyVisitVO, error) {
 	if days <= 0 {
 		days = 30
@@ -125,7 +132,8 @@ func (s *AnalyticsService) GetVisitorTrend(ctx context.Context, days int) ([]Dai
 	return vos, nil
 }
 
-// GetAIDashboard returns aggregated AI usage statistics.
+// GetAIDashboard 返回默认 30 天范围的 AI 使用统计数据，
+// 包括成功率、Token 用量、费用及按任务类型分布等。
 func (s *AnalyticsService) GetAIDashboard(ctx context.Context) (*AIDashboardVO, error) {
 	d, err := s.repo.GetAIDashboard(ctx)
 	if err != nil {
@@ -136,11 +144,13 @@ func (s *AnalyticsService) GetAIDashboard(ctx context.Context) (*AIDashboardVO, 
 		stats[i] = TaskTypeStatVO{TaskType: t.TaskType, Count: t.Count, Tokens: t.Tokens}
 	}
 
+	// 计算失败次数与成功率
 	errorCalls := d.TotalCalls - d.SuccessCalls
 	var successRate float64
 	if d.TotalCalls > 0 {
 		successRate = float64(d.SuccessCalls) / float64(d.TotalCalls) * 100
 	}
+	// 计算每次调用平均 Token 数与费用
 	var avgTokensPerCall, avgCostPerCall float64
 	if d.TotalCalls > 0 {
 		avgTokensPerCall = float64(d.TotalTokens) / float64(d.TotalCalls)
@@ -168,10 +178,12 @@ func (s *AnalyticsService) GetAIDashboard(ctx context.Context) (*AIDashboardVO, 
 	}, nil
 }
 
-// RecordVisit records a page visit asynchronously (fire-and-forget).
-// Visitor hash = SHA-256(ip + ua).
+// RecordVisit 以"即发即忘"的方式在后台 goroutine 中异步记录一次页面访问。
+// 访客哈希值 = SHA-256(ip + userAgent)，用于去重统计独立访客（UV）。
+// 使用 context.Background() 避免请求结束后 goroutine 被取消。
 func (s *AnalyticsService) RecordVisit(ctx context.Context, pageURL, pageTitle, ip, ua, referer string) {
 	go func() {
+		// 生成访客指纹哈希，用于 UV 去重
 		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+ua)))
 
 		var pageTitlePtr *string
@@ -191,7 +203,7 @@ func (s *AnalyticsService) RecordVisit(ctx context.Context, pageURL, pageTitle, 
 			refererPtr = &referer
 		}
 
-		// Parse User-Agent for device info
+		// 解析 User-Agent 获取设备类型、浏览器和操作系统信息
 		deviceType, browser, osName := parseUserAgent(ua)
 		var deviceTypePtr, browserPtr, osPtr *string
 		if deviceType != "" {
@@ -215,20 +227,21 @@ func (s *AnalyticsService) RecordVisit(ctx context.Context, pageURL, pageTitle, 
 			OS:          osPtr,
 			Referer:     refererPtr,
 		}
-		// Use a background context so the goroutine is not cancelled when the request ends.
+		// 使用独立的 Background context，防止请求上下文取消后记录失败
 		_ = s.repo.RecordVisit(context.Background(), v)
 	}()
 }
 
-// parseUserAgent extracts device type, browser, and OS from a User-Agent string
-// using simple string matching (no external library).
+// parseUserAgent 通过简单的字符串匹配（不依赖外部库）从 User-Agent 字符串中
+// 提取设备类型（Mobile/Tablet/Desktop）、浏览器名称和操作系统名称。
+// 当 ua 为空时，三个字段均返回 "Unknown"。
 func parseUserAgent(ua string) (deviceType, browser, osName string) {
 	if ua == "" {
 		return "Unknown", "Unknown", "Unknown"
 	}
 	lower := strings.ToLower(ua)
 
-	// Device type
+	// 判断设备类型：优先平板，其次手机，默认桌面
 	switch {
 	case strings.Contains(lower, "ipad") || strings.Contains(lower, "tablet"):
 		deviceType = "Tablet"
@@ -238,7 +251,7 @@ func parseUserAgent(ua string) (deviceType, browser, osName string) {
 		deviceType = "Desktop"
 	}
 
-	// Browser detection
+	// 识别浏览器：Edge 优先于 Chrome，Opera 优先于 Chrome
 	switch {
 	case strings.Contains(lower, "edg/") || strings.Contains(lower, "edge/"):
 		browser = "Edge"
@@ -254,7 +267,7 @@ func parseUserAgent(ua string) (deviceType, browser, osName string) {
 		browser = "Other"
 	}
 
-	// OS detection
+	// 识别操作系统
 	switch {
 	case strings.Contains(lower, "windows"):
 		osName = "Windows"
@@ -273,18 +286,19 @@ func parseUserAgent(ua string) (deviceType, browser, osName string) {
 	return
 }
 
-// TrendsVO holds percentage change for each metric.
+// TrendsVO 存储各项指标的环比（月度）百分比变化值。
 type TrendsVO struct {
-	Posts          float64 `json:"posts"`
-	Categories     float64 `json:"categories"`
-	Views          float64 `json:"views"`
-	Visitors       float64 `json:"visitors"`
-	Comments       float64 `json:"comments"`
-	Words          float64 `json:"words"`
-	PostsThisMonth int64   `json:"postsThisMonth"`
+	Posts          float64 `json:"posts"`          // 文章数环比变化（%）
+	Categories     float64 `json:"categories"`     // 分类数变化（暂无时间维度，始终为 0）
+	Views          float64 `json:"views"`          // 浏览量环比变化（%）
+	Visitors       float64 `json:"visitors"`       // 独立访客数环比变化（%）
+	Comments       float64 `json:"comments"`       // 评论数环比变化（%）
+	Words          float64 `json:"words"`          // 总字数环比变化（%）
+	PostsThisMonth int64   `json:"postsThisMonth"` // 本月新增文章绝对数量
 }
 
-// GetTrends returns month-over-month percentage changes.
+// GetTrends 返回各项关键指标的月度环比百分比变化。
+// 分类不具备时间维度统计，固定返回 0。
 func (s *AnalyticsService) GetTrends(ctx context.Context) (*TrendsVO, error) {
 	d, err := s.repo.GetTrends(ctx)
 	if err != nil {
@@ -292,7 +306,7 @@ func (s *AnalyticsService) GetTrends(ctx context.Context) (*TrendsVO, error) {
 	}
 	return &TrendsVO{
 		Posts:          pctChange(d.PostsThisMonth, d.PostsLastMonth),
-		Categories:     0, // categories don't have time-based trends
+		Categories:     0, // 分类不具备时间维度趋势统计
 		Views:          pctChange(d.ViewsThisMonth, d.ViewsLastMonth),
 		Visitors:       pctChange(d.VisitorsThisMonth, d.VisitorsLastMonth),
 		Comments:       pctChange(d.CommentsThisMonth, d.CommentsLastMonth),
@@ -301,7 +315,8 @@ func (s *AnalyticsService) GetTrends(ctx context.Context) (*TrendsVO, error) {
 	}, nil
 }
 
-// pctChange calculates (current - previous) / max(previous, 1) * 100.
+// pctChange 计算环比百分比变化：(current - previous) / max(previous, 1) * 100。
+// 当 previous < 1 时将其视为 1，避免除零错误。
 func pctChange(current, previous int64) float64 {
 	prev := previous
 	if prev < 1 {
@@ -310,13 +325,13 @@ func pctChange(current, previous int64) float64 {
 	return float64(current-previous) / float64(prev) * 100
 }
 
-// DeviceStatVO is the DTO for device statistics.
+// DeviceStatVO 表示某设备类型的访问量统计条目。
 type DeviceStatVO struct {
-	Name  string `json:"name"`
-	Value int64  `json:"value"`
+	Name  string `json:"name"`  // 设备类型名称（如 Mobile、Desktop、Tablet）
+	Value int64  `json:"value"` // 该类型的访问次数
 }
 
-// GetDeviceStats returns device type distribution for the last 30 days.
+// GetDeviceStats 返回最近 30 天内各设备类型的访问量分布。
 func (s *AnalyticsService) GetDeviceStats(ctx context.Context) ([]DeviceStatVO, error) {
 	rows, err := s.repo.GetDeviceStats(ctx)
 	if err != nil {
@@ -329,7 +344,8 @@ func (s *AnalyticsService) GetDeviceStats(ctx context.Context) ([]DeviceStatVO, 
 	return vos, nil
 }
 
-// GetAIDashboardFiltered returns filtered AI usage statistics.
+// GetAIDashboardFiltered 返回按指定过滤条件（时间范围、任务类型等）筛选的 AI 使用统计数据。
+// 当 f.Days <= 0 时，默认使用 30 天。
 func (s *AnalyticsService) GetAIDashboardFiltered(ctx context.Context, f repository.AIDashboardFilter) (*AIDashboardVO, error) {
 	d, err := s.repo.GetAIDashboardFiltered(ctx, f)
 	if err != nil {
@@ -340,11 +356,13 @@ func (s *AnalyticsService) GetAIDashboardFiltered(ctx context.Context, f reposit
 		stats[i] = TaskTypeStatVO{TaskType: t.TaskType, Count: t.Count, Tokens: t.Tokens}
 	}
 
+	// 计算失败次数与成功率
 	errorCalls := d.TotalCalls - d.SuccessCalls
 	var successRate float64
 	if d.TotalCalls > 0 {
 		successRate = float64(d.SuccessCalls) / float64(d.TotalCalls) * 100
 	}
+	// 计算每次调用平均 Token 数与费用
 	var avgTokensPerCall, avgCostPerCall float64
 	if d.TotalCalls > 0 {
 		avgTokensPerCall = float64(d.TotalTokens) / float64(d.TotalCalls)
@@ -377,18 +395,18 @@ func (s *AnalyticsService) GetAIDashboardFiltered(ctx context.Context, f reposit
 	}, nil
 }
 
-// GetTodayCount returns the total visit count for today.
+// GetTodayCount 返回今日的页面访问总次数（PV）。
 func (s *AnalyticsService) GetTodayCount(ctx context.Context) (int64, error) {
 	return s.repo.GetTodayVisitCount(ctx)
 }
 
-// ArchiveMonthVO is the DTO for a single archive month entry.
+// ArchiveMonthVO 表示归档统计中单个月份的文章数量条目。
 type ArchiveMonthVO struct {
-	YearMonth string `json:"yearMonth"`
-	Count     int64  `json:"count"`
+	YearMonth string `json:"yearMonth"` // 月份，格式 YYYY-MM
+	Count     int64  `json:"count"`     // 该月发布的文章数量
 }
 
-// GetArchiveStats returns monthly post counts for the stats endpoint.
+// GetArchiveStats 返回按月份分组的文章数量统计，用于归档页面展示。
 func (s *AnalyticsService) GetArchiveStats(ctx context.Context) ([]ArchiveMonthVO, error) {
 	rows, err := s.repo.GetArchiveStats(ctx)
 	if err != nil {

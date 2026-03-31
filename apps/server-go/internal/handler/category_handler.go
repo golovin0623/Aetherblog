@@ -10,15 +10,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// CategoryHandler handles CRUD operations for blog categories.
+// CategoryHandler 负责处理博客分类的增删改查操作。
 type CategoryHandler struct{ svc *service.CategoryService }
 
-// NewCategoryHandler creates a CategoryHandler backed by the given CategoryService.
+// NewCategoryHandler 创建一个由指定 CategoryService 驱动的 CategoryHandler 实例。
 func NewCategoryHandler(svc *service.CategoryService) *CategoryHandler {
 	return &CategoryHandler{svc: svc}
 }
 
-// MountAdmin registers admin CRUD routes (list-as-tree, get, create, update, delete) on g.
+// MountAdmin 在指定路由组上注册管理端 CRUD 路由（树形列表、获取、创建、更新、删除）。
 func (h *CategoryHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.List)
 	g.GET("/:id", h.Get)
@@ -27,12 +27,13 @@ func (h *CategoryHandler) MountAdmin(g *echo.Group) {
 	g.DELETE("/:id", h.Delete)
 }
 
-// MountPublic registers the public flat-list endpoint on g.
+// MountPublic 在指定路由组上注册公开的扁平列表接口。
 func (h *CategoryHandler) MountPublic(g *echo.Group) {
 	g.GET("", h.ListPublic)
 }
 
-// List handles GET /admin/categories. Returns the full category tree (nested children).
+// List 处理 GET /admin/categories 请求，
+// 返回完整的分类树结构（包含嵌套子分类）。
 func (h *CategoryHandler) List(c echo.Context) error {
 	tree, err := h.svc.ListTree(c.Request().Context())
 	if err != nil {
@@ -41,7 +42,8 @@ func (h *CategoryHandler) List(c echo.Context) error {
 	return response.OK(c, tree)
 }
 
-// ListPublic handles GET /public/categories. Returns a flat list of all categories for the blog frontend.
+// ListPublic 处理 GET /public/categories 请求，
+// 为博客前台返回所有分类的扁平列表。
 func (h *CategoryHandler) ListPublic(c echo.Context) error {
 	cats, err := h.svc.ListFlat(c.Request().Context())
 	if err != nil {
@@ -50,7 +52,8 @@ func (h *CategoryHandler) ListPublic(c echo.Context) error {
 	return response.OK(c, cats)
 }
 
-// Get handles GET /admin/categories/:id. Returns a single category by ID.
+// Get 处理 GET /admin/categories/:id 请求，
+// 根据 ID 返回单个分类信息。
 func (h *CategoryHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -66,7 +69,8 @@ func (h *CategoryHandler) Get(c echo.Context) error {
 	return response.OK(c, cat)
 }
 
-// Create handles POST /admin/categories. Creates a new category; auto-generates slug if not provided.
+// Create 处理 POST /admin/categories 请求，
+// 创建新分类；若未提供 slug 则自动生成。
 func (h *CategoryHandler) Create(c echo.Context) error {
 	var req dto.CategoryRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -79,7 +83,8 @@ func (h *CategoryHandler) Create(c echo.Context) error {
 	return response.OK(c, cat)
 }
 
-// Update handles PUT /admin/categories/:id. Updates an existing category.
+// Update 处理 PUT /admin/categories/:id 请求，
+// 更新指定分类的信息。
 func (h *CategoryHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -96,7 +101,8 @@ func (h *CategoryHandler) Update(c echo.Context) error {
 	return response.OK(c, cat)
 }
 
-// Delete handles DELETE /admin/categories/:id. Rejects deletion when the category contains posts.
+// Delete 处理 DELETE /admin/categories/:id 请求，
+// 若分类下存在文章则拒绝删除。
 func (h *CategoryHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

@@ -10,7 +10,8 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// ActivityVO is the DTO returned to callers.
+// ActivityVO 是返回给调用方的活动事件数据传输对象（DTO）。
+// 包含事件的基本信息及可选的关联用户引用。
 type ActivityVO struct {
 	ID            int64            `json:"id"`
 	EventType     string           `json:"eventType"`
@@ -24,7 +25,8 @@ type ActivityVO struct {
 	User          *ActivityUserRef `json:"user,omitempty"`
 }
 
-// ActivityUserRef is a nested user object in activity responses.
+// ActivityUserRef 是活动响应中嵌套的用户对象，
+// 仅包含前端展示所需的最小用户信息字段。
 type ActivityUserRef struct {
 	ID       int64   `json:"id"`
 	Username string  `json:"username"`
@@ -32,18 +34,18 @@ type ActivityUserRef struct {
 	Avatar   *string `json:"avatar,omitempty"`
 }
 
-// ActivityService wraps the activity repository and exposes business logic.
+// ActivityService 封装活动事件仓储层，对外暴露业务逻辑方法。
 type ActivityService struct {
 	repo     *repository.ActivityRepo
 	userRepo *repository.UserRepo
 }
 
-// NewActivityService creates an ActivityService backed by the given repositories.
+// NewActivityService 使用给定的仓储依赖创建 ActivityService 实例。
 func NewActivityService(repo *repository.ActivityRepo, userRepo *repository.UserRepo) *ActivityService {
 	return &ActivityService{repo: repo, userRepo: userRepo}
 }
 
-// GetRecent returns the latest 10 activity events.
+// GetRecent 返回最新的 10 条活动事件，并批量填充关联用户信息。
 func (s *ActivityService) GetRecent(ctx context.Context) ([]ActivityVO, error) {
 	rows, err := s.repo.FindRecent(ctx, 10)
 	if err != nil {
@@ -54,7 +56,8 @@ func (s *ActivityService) GetRecent(ctx context.Context) ([]ActivityVO, error) {
 	return vos, nil
 }
 
-// GetForAdmin returns a paginated list of activity events with optional filters.
+// GetForAdmin 返回带可选过滤条件的分页活动事件列表，供管理后台使用。
+// 通过 ActivityFilter 支持按事件类型、用户等维度过滤。
 func (s *ActivityService) GetForAdmin(ctx context.Context, f repository.ActivityFilter) (*response.PageResult, error) {
 	rows, total, err := s.repo.FindForAdmin(ctx, f)
 	if err != nil {
@@ -66,7 +69,7 @@ func (s *ActivityService) GetForAdmin(ctx context.Context, f repository.Activity
 	return &pr, nil
 }
 
-// GetByUser returns paginated activity events for a specific user.
+// GetByUser 返回指定用户的分页活动事件列表。
 func (s *ActivityService) GetByUser(ctx context.Context, userID int64, p pagination.Params) (*response.PageResult, error) {
 	rows, total, err := s.repo.FindByUser(ctx, userID, p)
 	if err != nil {
@@ -78,17 +81,18 @@ func (s *ActivityService) GetByUser(ctx context.Context, userID int64, p paginat
 	return &pr, nil
 }
 
-// Create inserts a new activity event.
+// Create 向数据库插入一条新的活动事件记录。
 func (s *ActivityService) Create(ctx context.Context, a *model.ActivityEvent) error {
 	return s.repo.Create(ctx, a)
 }
 
-// enrichUserRefs batch-fetches user info and populates the User field on each VO.
+// enrichUserRefs 批量获取用户信息并填充到每个 VO 的 User 字段中。
+// 当 userRepo 为 nil 时直接返回，不执行查询。
 func (s *ActivityService) enrichUserRefs(ctx context.Context, rows []model.ActivityEvent, vos []ActivityVO) {
 	if s.userRepo == nil {
 		return
 	}
-	// Collect unique user IDs
+	// 收集所有不重复的用户 ID
 	userIDSet := make(map[int64]struct{})
 	for _, r := range rows {
 		if r.UserID != nil {
@@ -98,7 +102,7 @@ func (s *ActivityService) enrichUserRefs(ctx context.Context, rows []model.Activ
 	if len(userIDSet) == 0 {
 		return
 	}
-	// Fetch users
+	// 逐个查询用户信息并构建映射表
 	userMap := make(map[int64]*ActivityUserRef)
 	for uid := range userIDSet {
 		if u, err := s.userRepo.FindByID(ctx, uid); err == nil && u != nil {
@@ -110,7 +114,7 @@ func (s *ActivityService) enrichUserRefs(ctx context.Context, rows []model.Activ
 			}
 		}
 	}
-	// Populate
+	// 将用户信息回填到对应的 VO 中
 	for i, r := range rows {
 		if r.UserID != nil {
 			if ref, ok := userMap[*r.UserID]; ok {
@@ -120,8 +124,9 @@ func (s *ActivityService) enrichUserRefs(ctx context.Context, rows []model.Activ
 	}
 }
 
-// --- helpers ---
+// --- 内部辅助函数 ---
 
+// toActivityVO 将单个 model.ActivityEvent 转换为 ActivityVO。
 func toActivityVO(a model.ActivityEvent) ActivityVO {
 	return ActivityVO{
 		ID:            a.ID,
@@ -136,6 +141,7 @@ func toActivityVO(a model.ActivityEvent) ActivityVO {
 	}
 }
 
+// toActivityVOs 将 model.ActivityEvent 切片批量转换为 ActivityVO 切片。
 func toActivityVOs(rows []model.ActivityEvent) []ActivityVO {
 	vos := make([]ActivityVO, len(rows))
 	for i, r := range rows {
