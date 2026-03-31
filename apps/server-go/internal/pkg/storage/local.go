@@ -20,12 +20,42 @@ func NewLocalStorage(basePath, baseURL string) *LocalStorage {
 	return &LocalStorage{basePath: basePath, baseURL: baseURL}
 }
 
+// getSafePath 根据 basePath 和 key 拼接并验证绝对路径，防止路径穿越攻击（Path Traversal）。
+func getSafePath(basePath, key string) (string, error) {
+	dest := filepath.Join(basePath, key)
+	absBase, err := filepath.Abs(basePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve base path: %w", err)
+	}
+	absDest, err := filepath.Abs(dest)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest path: %w", err)
+	}
+
+	// 验证最终路径是否在基础路径下
+	rel, err := filepath.Rel(absBase, absDest)
+	if err != nil {
+		return "", fmt.Errorf("rel path: %w", err)
+	}
+
+	// 如果相对路径以 ".." 开头，或者是 ".."，说明跳出了 basePath
+	if rel == ".." || (len(rel) >= 3 && rel[:3] == ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid path: path traversal detected")
+	}
+
+	return absDest, nil
+}
+
 // Upload 将 reader 中的内容保存到本地文件系统的 basePath/key 路径下。
 // 目标目录不存在时会自动递归创建。
 // 成功时返回文件的公开访问 URL。
 func (s *LocalStorage) Upload(ctx context.Context, key string, r io.Reader, _ int64, _ string) (string, error) {
-	// 拼接目标文件的完整路径
-	dest := filepath.Join(s.basePath, key)
+	// 验证目标文件的完整路径，防止路径穿越
+	dest, err := getSafePath(s.basePath, key)
+	if err != nil {
+		return "", fmt.Errorf("get safe path: %w", err)
+	}
+
 	// 确保目标目录存在，权限为 0755
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return "", fmt.Errorf("create dir: %w", err)
@@ -46,7 +76,11 @@ func (s *LocalStorage) Upload(ctx context.Context, key string, r io.Reader, _ in
 // Delete 删除本地文件系统中指定 key 对应的文件。
 // 若文件不存在，则静默忽略错误（幂等删除）。
 func (s *LocalStorage) Delete(_ context.Context, key string) error {
-	path := filepath.Join(s.basePath, key)
+	path, err := getSafePath(s.basePath, key)
+	if err != nil {
+		return fmt.Errorf("get safe path: %w", err)
+	}
+
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
