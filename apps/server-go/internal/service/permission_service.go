@@ -9,17 +9,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// PermissionService manages folder access permission grants.
+// PermissionService 管理媒体文件夹的访问权限授予与撤销。
 type PermissionService struct {
 	repo *repository.PermissionRepo
 }
 
-// NewPermissionService creates a PermissionService backed by the given repository.
+// NewPermissionService 创建一个由给定仓储支持的 PermissionService 实例。
 func NewPermissionService(repo *repository.PermissionRepo) *PermissionService {
 	return &PermissionService{repo: repo}
 }
 
-// GetByFolderID returns all permission grants for a folder.
+// GetByFolderID 返回指定文件夹的所有权限授予记录。
 func (s *PermissionService) GetByFolderID(ctx context.Context, folderID int64) ([]dto.FolderPermissionVO, error) {
 	perms, err := s.repo.FindByFolderID(ctx, folderID)
 	if err != nil {
@@ -28,7 +28,8 @@ func (s *PermissionService) GetByFolderID(ctx context.Context, folderID int64) (
 	return toPermissionVOs(perms), nil
 }
 
-// Grant creates a new permission entry for a user on a folder.
+// Grant 为指定用户在指定文件夹上创建一条权限授予记录。
+// 若请求中包含 ExpiresAt（RFC3339 格式），则解析并写入过期时间；解析失败时忽略该字段。
 func (s *PermissionService) Grant(ctx context.Context, folderID int64, req dto.GrantPermissionRequest, grantedBy *int64) (*dto.FolderPermissionVO, error) {
 	p := &model.FolderPermission{
 		FolderID:        folderID,
@@ -36,6 +37,7 @@ func (s *PermissionService) Grant(ctx context.Context, folderID int64, req dto.G
 		PermissionLevel: req.PermissionLevel,
 		GrantedBy:       grantedBy,
 	}
+	// 解析可选的过期时间（RFC3339 格式）
 	if req.ExpiresAt != nil {
 		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
 		if err == nil {
@@ -49,7 +51,8 @@ func (s *PermissionService) Grant(ctx context.Context, folderID int64, req dto.G
 	return &vo, nil
 }
 
-// Update modifies the level or expiry of an existing permission grant.
+// Update 修改已有权限授予记录的权限级别或过期时间。
+// 修改后重新查询并返回最新的权限视图对象。
 func (s *PermissionService) Update(ctx context.Context, permissionID int64, req dto.UpdatePermissionRequest) (*dto.FolderPermissionVO, error) {
 	if err := s.repo.Update(ctx, permissionID, req.PermissionLevel, req.ExpiresAt); err != nil {
 		return nil, err
@@ -65,13 +68,14 @@ func (s *PermissionService) Update(ctx context.Context, permissionID int64, req 
 	return &vo, nil
 }
 
-// Revoke removes a permission grant by ID.
+// Revoke 按主键永久删除一条权限授予记录。
 func (s *PermissionService) Revoke(ctx context.Context, permissionID int64) error {
 	return s.repo.Delete(ctx, permissionID)
 }
 
-// --- Helpers ---
+// --- 内部辅助函数 ---
 
+// toPermissionVO 将 FolderPermission 模型转换为视图对象。
 func toPermissionVO(p model.FolderPermission) dto.FolderPermissionVO {
 	return dto.FolderPermissionVO{
 		ID:              p.ID,
@@ -84,6 +88,7 @@ func toPermissionVO(p model.FolderPermission) dto.FolderPermissionVO {
 	}
 }
 
+// toPermissionVOs 批量将 FolderPermission 模型列表转换为视图对象列表。
 func toPermissionVOs(perms []model.FolderPermission) []dto.FolderPermissionVO {
 	vos := make([]dto.FolderPermissionVO, len(perms))
 	for i, p := range perms {

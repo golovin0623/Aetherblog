@@ -9,18 +9,18 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// VersionService manages media file version history (snapshots before edits, restores).
+// VersionService 管理媒体文件的版本历史（编辑前快照与版本回滚）。
 type VersionService struct {
 	repo      *repository.VersionRepo
 	mediaRepo *repository.MediaRepo
 }
 
-// NewVersionService creates a VersionService backed by the given repositories.
+// NewVersionService 创建一个由给定仓储支持的 VersionService 实例。
 func NewVersionService(repo *repository.VersionRepo, mediaRepo *repository.MediaRepo) *VersionService {
 	return &VersionService{repo: repo, mediaRepo: mediaRepo}
 }
 
-// GetHistory returns all version records for a media file, newest first.
+// GetHistory 返回指定媒体文件的所有版本记录，最新版本排在最前。
 func (s *VersionService) GetHistory(ctx context.Context, fileID int64) ([]dto.MediaVersionVO, error) {
 	versions, err := s.repo.FindByFileID(ctx, fileID)
 	if err != nil {
@@ -29,9 +29,14 @@ func (s *VersionService) GetHistory(ctx context.Context, fileID int64) ([]dto.Me
 	return toVersionVOs(versions), nil
 }
 
-// Restore rolls back a file to a previous version.
-// Saves the current state as a new version snapshot before overwriting with the target version.
+// Restore 将媒体文件回滚到指定版本号的历史状态。
+// 业务规则：
+//  1. 先将文件当前状态保存为新版本快照（版本号 = maxVer + 1），防止回滚前内容丢失；
+//  2. 再将文件内容覆写为目标版本的路径、URL 和大小（版本号 = maxVer + 2）。
+//
+// 错误场景：目标版本不存在、文件不存在。
 func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumber int) error {
+	// 查找目标历史版本
 	version, err := s.repo.FindByFileAndVersion(ctx, fileID, versionNumber)
 	if err != nil {
 		return err
@@ -40,7 +45,7 @@ func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumbe
 		return fmt.Errorf("版本不存在")
 	}
 
-	// Get current file to save as a new version before restoring
+	// 获取文件当前状态，以便在覆写前保存快照
 	file, err := s.mediaRepo.FindByID(ctx, fileID)
 	if err != nil {
 		return err
@@ -49,7 +54,7 @@ func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumbe
 		return fmt.Errorf("文件不存在")
 	}
 
-	// Save current state as a new version
+	// 将当前状态保存为新版本快照（回滚前自动备份）
 	maxVer, err := s.repo.GetMaxVersionNumber(ctx, fileID)
 	if err != nil {
 		return err
@@ -67,7 +72,7 @@ func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumbe
 		return err
 	}
 
-	// Restore file to the selected version
+	// 将文件内容覆写为目标版本的数据
 	if err := s.mediaRepo.UpdateFileContent(ctx, fileID, version.FilePath, version.FileURL, version.FileSize, maxVer+2); err != nil {
 		return err
 	}
@@ -75,13 +80,15 @@ func (s *VersionService) Restore(ctx context.Context, fileID int64, versionNumbe
 	return nil
 }
 
-// Delete permanently removes a single version record.
+// Delete 永久删除单条版本记录。
 func (s *VersionService) Delete(ctx context.Context, versionID int64) error {
 	return s.repo.Delete(ctx, versionID)
 }
 
-// CreateVersionFromFile saves the current file state as a version entry.
+// CreateVersionFromFile 将文件当前状态作为新版本快照保存。
+// 通常在文件内容被修改前调用，用于留存可回滚的历史记录。
 func (s *VersionService) CreateVersionFromFile(ctx context.Context, file *model.MediaFile, description string, createdBy *int64) error {
+	// 获取当前最大版本号，新版本号在此基础上递增
 	maxVer, err := s.repo.GetMaxVersionNumber(ctx, file.ID)
 	if err != nil {
 		return err
@@ -98,8 +105,9 @@ func (s *VersionService) CreateVersionFromFile(ctx context.Context, file *model.
 	return s.repo.Create(ctx, v)
 }
 
-// --- Helpers ---
+// --- 内部辅助函数 ---
 
+// toVersionVO 将 MediaVersion 模型转换为视图对象。
 func toVersionVO(v model.MediaVersion) dto.MediaVersionVO {
 	return dto.MediaVersionVO{
 		ID:                v.ID,
@@ -114,6 +122,7 @@ func toVersionVO(v model.MediaVersion) dto.MediaVersionVO {
 	}
 }
 
+// toVersionVOs 批量将 MediaVersion 模型列表转换为视图对象列表。
 func toVersionVOs(versions []model.MediaVersion) []dto.MediaVersionVO {
 	vos := make([]dto.MediaVersionVO, len(versions))
 	for i, v := range versions {

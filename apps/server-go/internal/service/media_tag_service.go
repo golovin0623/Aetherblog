@@ -9,17 +9,17 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// MediaTagService manages media tags and the file-tag associations.
+// MediaTagService 管理媒体标签及文件与标签之间的关联关系。
 type MediaTagService struct {
 	repo *repository.MediaTagRepo
 }
 
-// NewMediaTagService creates a MediaTagService backed by the given repository.
+// NewMediaTagService 创建一个由给定仓储支持的 MediaTagService 实例。
 func NewMediaTagService(repo *repository.MediaTagRepo) *MediaTagService {
 	return &MediaTagService{repo: repo}
 }
 
-// GetAll returns all media tags ordered by usage count.
+// GetAll 返回所有媒体标签，按使用次数降序排列。
 func (s *MediaTagService) GetAll(ctx context.Context) ([]dto.MediaTagVO, error) {
 	tags, err := s.repo.FindAll(ctx)
 	if err != nil {
@@ -28,7 +28,8 @@ func (s *MediaTagService) GetAll(ctx context.Context) ([]dto.MediaTagVO, error) 
 	return toMediaTagVOs(tags), nil
 }
 
-// GetPopular returns the top N most-used tags. Defaults limit to 20 when <= 0.
+// GetPopular 返回使用频率最高的前 N 个标签。
+// 当 limit <= 0 时，默认取 20 个。
 func (s *MediaTagService) GetPopular(ctx context.Context, limit int) ([]dto.MediaTagVO, error) {
 	if limit <= 0 {
 		limit = 20
@@ -40,7 +41,7 @@ func (s *MediaTagService) GetPopular(ctx context.Context, limit int) ([]dto.Medi
 	return toMediaTagVOs(tags), nil
 }
 
-// Search returns tags whose name or slug contains keyword (case-insensitive).
+// Search 返回名称或 slug 中包含关键词的标签（大小写不敏感）。
 func (s *MediaTagService) Search(ctx context.Context, keyword string) ([]dto.MediaTagVO, error) {
 	tags, err := s.repo.Search(ctx, keyword)
 	if err != nil {
@@ -49,13 +50,15 @@ func (s *MediaTagService) Search(ctx context.Context, keyword string) ([]dto.Med
 	return toMediaTagVOs(tags), nil
 }
 
-// Create creates a new media tag with auto-generated slug from name.
-// Defaults color to "#6366f1" and category to "CUSTOM" when absent.
+// Create 创建一个新的媒体标签，slug 由名称自动生成。
+// 当颜色或分类缺省时，分别默认为 "#6366f1" 和 "CUSTOM"。
 func (s *MediaTagService) Create(ctx context.Context, req dto.CreateMediaTagRequest) (*dto.MediaTagVO, error) {
+	// 设置默认颜色
 	color := "#6366f1"
 	if req.Color != nil {
 		color = *req.Color
 	}
+	// 设置默认分类
 	category := "CUSTOM"
 	if req.Category != nil {
 		category = *req.Category
@@ -75,12 +78,12 @@ func (s *MediaTagService) Create(ctx context.Context, req dto.CreateMediaTagRequ
 	return &vo, nil
 }
 
-// Delete permanently removes a media tag.
+// Delete 永久删除指定媒体标签。
 func (s *MediaTagService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// GetFileTags returns all tags assigned to a media file.
+// GetFileTags 返回媒体文件上挂载的所有标签。
 func (s *MediaTagService) GetFileTags(ctx context.Context, fileID int64) ([]dto.MediaTagVO, error) {
 	tags, err := s.repo.FindTagsByFileID(ctx, fileID)
 	if err != nil {
@@ -89,11 +92,11 @@ func (s *MediaTagService) GetFileTags(ctx context.Context, fileID int64) ([]dto.
 	return toMediaTagVOs(tags), nil
 }
 
-// TagFile associates multiple tags with a media file, skipping already-present tags.
-// Increments usage_count for each newly added tag.
+// TagFile 将多个标签关联到指定媒体文件，已存在的关联会被跳过。
+// 每次成功新增关联时，对应标签的 usage_count 会加 1。
 func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []int64, taggedBy *int64) error {
 	for _, tagID := range tagIDs {
-		// Check if already tagged
+		// 检查关联是否已存在，避免重复打标
 		n, err := s.repo.CountFileTag(ctx, fileID, tagID)
 		if err != nil {
 			return err
@@ -104,6 +107,7 @@ func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []in
 		if err := s.repo.TagFile(ctx, fileID, tagID, taggedBy); err != nil {
 			return err
 		}
+		// 递增该标签的使用计数
 		if err := s.repo.IncrementUsageCount(ctx, tagID, 1); err != nil {
 			return err
 		}
@@ -111,9 +115,9 @@ func (s *MediaTagService) TagFile(ctx context.Context, fileID int64, tagIDs []in
 	return nil
 }
 
-// UntagFile removes a tag from a media file and decrements usage_count.
+// UntagFile 从媒体文件上移除指定标签，并将该标签的 usage_count 减 1。
 func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int64) error {
-	// Check if tag exists on file
+	// 先确认关联存在
 	n, err := s.repo.CountFileTag(ctx, fileID, tagID)
 	if err != nil {
 		return err
@@ -124,12 +128,14 @@ func (s *MediaTagService) UntagFile(ctx context.Context, fileID int64, tagID int
 	if err := s.repo.UntagFile(ctx, fileID, tagID); err != nil {
 		return err
 	}
+	// 递减该标签的使用计数
 	return s.repo.IncrementUsageCount(ctx, tagID, -1)
 }
 
-// BatchTag associates a single tag with multiple files, skipping already-tagged files.
+// BatchTag 将单个标签批量关联到多个媒体文件，已存在的关联会被跳过。
 func (s *MediaTagService) BatchTag(ctx context.Context, fileIDs []int64, tagID int64, taggedBy *int64) error {
 	for _, fileID := range fileIDs {
+		// 检查关联是否已存在
 		n, err := s.repo.CountFileTag(ctx, fileID, tagID)
 		if err != nil {
 			return err
@@ -140,6 +146,7 @@ func (s *MediaTagService) BatchTag(ctx context.Context, fileIDs []int64, tagID i
 		if err := s.repo.TagFile(ctx, fileID, tagID, taggedBy); err != nil {
 			return err
 		}
+		// 递增使用计数
 		if err := s.repo.IncrementUsageCount(ctx, tagID, 1); err != nil {
 			return err
 		}
@@ -147,8 +154,9 @@ func (s *MediaTagService) BatchTag(ctx context.Context, fileIDs []int64, tagID i
 	return nil
 }
 
-// --- Helpers ---
+// --- 内部辅助函数 ---
 
+// toMediaTagVO 将 MediaTag 模型转换为视图对象。
 func toMediaTagVO(t model.MediaTag) dto.MediaTagVO {
 	return dto.MediaTagVO{
 		ID:          t.ID,
@@ -163,6 +171,7 @@ func toMediaTagVO(t model.MediaTag) dto.MediaTagVO {
 	}
 }
 
+// toMediaTagVOs 批量将 MediaTag 模型列表转换为视图对象列表。
 func toMediaTagVOs(tags []model.MediaTag) []dto.MediaTagVO {
 	vos := make([]dto.MediaTagVO, len(tags))
 	for i, t := range tags {
@@ -171,6 +180,9 @@ func toMediaTagVOs(tags []model.MediaTag) []dto.MediaTagVO {
 	return vos
 }
 
+// slugify 将任意字符串转换为 URL 友好的 slug。
+// 保留英文字母、数字、多字节字符（如中文）以及连字符；
+// 空格和下划线替换为连字符；首尾连字符被裁除；空字符串时返回 "tag"。
 func slugify(s string) string {
 	s = strings.ToLower(s)
 	var sb strings.Builder

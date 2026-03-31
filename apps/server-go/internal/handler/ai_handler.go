@@ -18,7 +18,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// aiResponse is the envelope returned by the FastAPI AI service.
+// aiResponse 是 FastAPI AI 服务返回的标准响应信封结构。
 type aiResponse struct {
 	Success   bool            `json:"success"`
 	Data      json.RawMessage `json:"data"`
@@ -26,21 +26,21 @@ type aiResponse struct {
 	Message   string          `json:"message,omitempty"`
 }
 
-// AiHandler proxies AI requests to the external FastAPI service.
+// AiHandler 负责将 AI 请求代理转发至外部 FastAPI 服务。
 type AiHandler struct {
 	client *service.AIClient
 }
 
-// NewAiHandler creates a new AiHandler with an HTTP client configured from cfg.
+// NewAiHandler 根据配置创建一个新的 AiHandler，内部使用配置好的 HTTP 客户端。
 func NewAiHandler(cfg *config.Config) *AiHandler {
 	return &AiHandler{
 		client: service.NewAIClient(cfg.AI),
 	}
 }
 
-// Mount registers all AI proxy routes on the given group (expected: /ai).
+// Mount 在指定路由组（预期为 /ai）上注册所有 AI 代理路由。
 func (h *AiHandler) Mount(g *echo.Group) {
-	// Sync AI generation endpoints
+	// 同步 AI 生成接口
 	g.POST("/summary", h.Summary)
 	g.POST("/summary/stream", h.SummaryStream)
 	g.GET("/summary/stream", h.SummaryStreamGET)
@@ -50,32 +50,32 @@ func (h *AiHandler) Mount(g *echo.Group) {
 	g.POST("/outline", h.Outline)
 	g.POST("/translate", h.Translate)
 
-	// Health
+	// 健康检查
 	g.GET("/health", h.Health)
 
-	// Prompts CRUD
+	// 提示词 CRUD
 	g.GET("/prompts", h.ListPrompts)
 	g.GET("/prompts/:taskType", h.GetPrompt)
 	g.PUT("/prompts/:taskType", h.UpdatePrompt)
 
-	// Tasks CRUD
+	// 任务 CRUD
 	g.GET("/tasks", h.ListTasks)
 	g.POST("/tasks", h.CreateTask)
 	g.PUT("/tasks/:code", h.UpdateTask)
 	g.DELETE("/tasks/:code", h.DeleteTask)
 }
 
-// MountProviders registers a wildcard proxy for all /providers/* routes.
-// These are forwarded to the FastAPI AI service which manages providers, models, credentials, and routing.
+// MountProviders 为 /providers/* 下的所有路由注册通配符代理。
+// 这些请求将被转发至 FastAPI AI 服务，由其管理提供商、模型、凭证和路由。
 func (h *AiHandler) MountProviders(g *echo.Group) {
-	// Catch-all: any method, any sub-path under /providers
+	// 通配符捕获：任意方法、/providers 下的任意子路径
 	g.Any("", h.ProxyProviders)
 	g.Any("/*", h.ProxyProviders)
 }
 
-// ProxyProviders forwards provider management requests to the FastAPI AI service.
+// ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
-	// Reconstruct the FastAPI path: /api/v1/admin/providers + sub-path
+	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
 	subPath := c.Param("*")
 	targetPath := "/api/v1/admin/providers"
 	if subPath != "" {
@@ -88,7 +88,7 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	case http.MethodGet:
 		return h.proxyGet(c, targetPath)
 	case http.MethodDelete:
-		// DELETE may or may not have a body; forward query params
+		// DELETE 请求可能携带或不携带请求体；转发查询参数
 		queryString := c.QueryString()
 		fullPath := targetPath
 		if queryString != "" {
@@ -96,39 +96,47 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 		}
 		return h.proxySyncRequest(c, http.MethodDelete, fullPath)
 	default:
-		// POST, PUT, PATCH — forward with body
+		// POST、PUT、PATCH — 携带请求体转发
 		return h.proxySyncRequest(c, method, targetPath)
 	}
 }
 
-// --- Sync AI generation endpoints ---
+// --- 同步 AI 生成接口 ---
 
+// Summary 处理 POST /ai/summary 请求，代理至 AI 服务生成文章摘要。
 func (h *AiHandler) Summary(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/ai/summary")
 }
 
+// Tags 处理 POST /ai/tags 请求，代理至 AI 服务生成文章标签。
 func (h *AiHandler) Tags(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/ai/tags")
 }
 
+// Titles 处理 POST /ai/titles 请求，代理至 AI 服务生成文章标题建议。
 func (h *AiHandler) Titles(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/ai/titles")
 }
 
+// Polish 处理 POST /ai/polish 请求，代理至 AI 服务进行文章润色。
 func (h *AiHandler) Polish(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/ai/polish")
 }
 
+// Outline 处理 POST /ai/outline 请求，代理至 AI 服务生成文章大纲。
 func (h *AiHandler) Outline(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/ai/outline")
 }
 
+// Translate 处理 POST /ai/translate 请求，代理至 AI 服务进行翻译。
 func (h *AiHandler) Translate(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/ai/translate")
 }
 
-// --- SSE streaming endpoint ---
+// --- SSE 流式接口 ---
 
+// SummaryStream 处理 POST /ai/summary/stream 请求，
+// 以 SSE（Server-Sent Events）方式流式返回摘要生成结果。
 func (h *AiHandler) SummaryStream(c echo.Context) error {
 	body := c.Request().Body
 	defer body.Close()
@@ -149,7 +157,7 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 		return h.handleUpstreamError(c, respBody, statusCode)
 	}
 
-	// Set SSE headers
+	// 设置 SSE 响应头
 	w := c.Response()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -163,7 +171,7 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 	}
 
 	scanner := bufio.NewScanner(respBody)
-	// Increase buffer for potentially large SSE lines
+	// 扩大缓冲区以容纳较大的 SSE 数据行
 	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 
 	for scanner.Scan() {
@@ -179,14 +187,14 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 	return nil
 }
 
-// SummaryStreamGET handles GET requests for SSE streaming (EventSource).
-// The frontend uses `new EventSource(url)` which sends GET with query params.
+// SummaryStreamGET 处理 GET /ai/summary/stream 请求，支持 EventSource SSE 流式摘要。
+// 前端使用 `new EventSource(url)` 发送 GET 请求并通过查询参数传递内容。
 func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
 	content := c.QueryParam("content")
 	maxLength := c.QueryParam("maxLength")
 	style := c.QueryParam("style")
 
-	// Build JSON body from query params
+	// 将查询参数构建为 JSON 请求体
 	payload := map[string]any{"content": content}
 	if maxLength != "" {
 		if v, err := strconv.Atoi(maxLength); err == nil {
@@ -218,7 +226,7 @@ func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
 		return h.handleUpstreamError(c, respBody, statusCode)
 	}
 
-	// Set SSE headers
+	// 设置 SSE 响应头
 	w := c.Response()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -247,8 +255,9 @@ func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
 	return nil
 }
 
-// --- Health endpoint ---
+// --- 健康检查接口 ---
 
+// Health 处理 GET /ai/health 请求，探测 AI 服务健康状态并透传结果。
 func (h *AiHandler) Health(c echo.Context) error {
 	body, statusCode, err := h.client.DoSync(c.Request().Context(), http.MethodGet, "/health", nil, proxyHeaders(c))
 	if err != nil {
@@ -258,7 +267,7 @@ func (h *AiHandler) Health(c echo.Context) error {
 	if statusCode >= 400 {
 		return response.OK(c, map[string]string{"status": "DOWN"})
 	}
-	// Forward the raw health response (e.g. {"status":"ok"})
+	// 透传原始健康检查响应（例如 {"status":"ok"}）
 	data, _ := io.ReadAll(body)
 	var raw any
 	if json.Unmarshal(data, &raw) == nil {
@@ -267,50 +276,57 @@ func (h *AiHandler) Health(c echo.Context) error {
 	return response.OK(c, map[string]string{"status": "UP"})
 }
 
-// --- Prompts CRUD ---
+// --- 提示词 CRUD ---
 
+// ListPrompts 处理 GET /ai/prompts 请求，返回所有提示词配置列表。
 func (h *AiHandler) ListPrompts(c echo.Context) error {
 	return h.proxyGet(c, "/api/v1/admin/ai/prompts")
 }
 
+// GetPrompt 处理 GET /ai/prompts/:taskType 请求，返回指定任务类型的提示词。
 func (h *AiHandler) GetPrompt(c echo.Context) error {
 	taskType := c.Param("taskType")
 	return h.proxyGet(c, "/api/v1/admin/ai/prompts/"+taskType)
 }
 
+// UpdatePrompt 处理 PUT /ai/prompts/:taskType 请求，更新指定任务类型的提示词。
 func (h *AiHandler) UpdatePrompt(c echo.Context) error {
 	taskType := c.Param("taskType")
 	return h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/prompts/"+taskType)
 }
 
-// --- Tasks CRUD ---
+// --- 任务 CRUD ---
 
+// ListTasks 处理 GET /ai/tasks 请求，返回所有 AI 任务配置列表。
 func (h *AiHandler) ListTasks(c echo.Context) error {
 	return h.proxyGet(c, "/api/v1/admin/ai/tasks")
 }
 
+// CreateTask 处理 POST /ai/tasks 请求，创建新的 AI 任务配置。
 func (h *AiHandler) CreateTask(c echo.Context) error {
 	return h.proxySyncPost(c, "/api/v1/admin/ai/tasks")
 }
 
+// UpdateTask 处理 PUT /ai/tasks/:code 请求，更新指定 code 的 AI 任务配置。
 func (h *AiHandler) UpdateTask(c echo.Context) error {
 	code := c.Param("code")
 	return h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/tasks/"+code)
 }
 
+// DeleteTask 处理 DELETE /ai/tasks/:code 请求，删除指定 code 的 AI 任务配置。
 func (h *AiHandler) DeleteTask(c echo.Context) error {
 	code := c.Param("code")
 	return h.proxySyncRequest(c, http.MethodDelete, "/api/v1/admin/ai/tasks/"+code)
 }
 
-// --- Internal proxy helpers ---
+// --- 内部代理辅助函数 ---
 
-// proxyHeaders builds the header map to forward to the AI service.
-// It extracts the JWT token from the Authorization header or ab_access_token cookie,
-// ensuring FastAPI always receives a valid Authorization header.
+// proxyHeaders 构建转发至 AI 服务的请求头映射。
+// 优先从 Authorization 头提取 JWT，若不存在则尝试读取 ab_access_token HttpOnly Cookie，
+// 确保 FastAPI 服务始终能收到有效的 Authorization 头。
 func proxyHeaders(c echo.Context) map[string]string {
 	auth := c.Request().Header.Get("Authorization")
-	// If no Authorization header, try the HttpOnly cookie (same logic as JWT middleware)
+	// 若无 Authorization 头，则尝试从 HttpOnly Cookie 获取（与 JWT 中间件逻辑相同）
 	if auth == "" {
 		if cookie, err := c.Cookie("ab_access_token"); err == nil && cookie.Value != "" {
 			auth = "Bearer " + cookie.Value
@@ -322,12 +338,12 @@ func proxyHeaders(c echo.Context) map[string]string {
 	}
 }
 
-// proxySyncPost forwards a POST request body to the AI service and wraps the response.
+// proxySyncPost 将 POST 请求体转发至 AI 服务，并将响应包装成统一格式返回。
 func (h *AiHandler) proxySyncPost(c echo.Context, path string) error {
 	return h.proxySyncRequest(c, http.MethodPost, path)
 }
 
-// proxySyncRequest forwards a request with body to the AI service.
+// proxySyncRequest 将带请求体的请求转发至 AI 服务。
 func (h *AiHandler) proxySyncRequest(c echo.Context, method, path string) error {
 	var body io.Reader
 	if method != http.MethodGet && method != http.MethodDelete {
@@ -354,9 +370,9 @@ func (h *AiHandler) proxySyncRequest(c echo.Context, method, path string) error 
 	return h.parseAndRespond(c, respBody, statusCode)
 }
 
-// proxyGet forwards a GET request (with query string) to the AI service.
+// proxyGet 将 GET 请求（含查询字符串）转发至 AI 服务。
 func (h *AiHandler) proxyGet(c echo.Context, path string) error {
-	// Forward query parameters
+	// 透传查询参数
 	queryString := c.QueryString()
 	fullPath := path
 	if queryString != "" {
@@ -378,7 +394,7 @@ func (h *AiHandler) proxyGet(c echo.Context, path string) error {
 	return h.parseAndRespond(c, respBody, statusCode)
 }
 
-// parseAndRespond reads the AI service response and wraps it in the standard R{} format.
+// parseAndRespond 读取 AI 服务的响应并将其包装为统一的 R{} 格式返回。
 func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCode int) error {
 	data, err := io.ReadAll(body)
 	if err != nil {
@@ -386,14 +402,14 @@ func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCo
 		return response.Fail(c, "读取 AI 服务响应失败")
 	}
 
-	// Try to parse as the AI service envelope
+	// 尝试解析为 AI 服务的标准信封格式
 	var aiResp aiResponse
 	if err := json.Unmarshal(data, &aiResp); err != nil {
-		// If we can't parse it, check status code
+		// 若无法解析，则根据状态码判断
 		if statusCode >= 400 {
 			return h.mapStatusToError(c, statusCode, string(data))
 		}
-		// Return raw data as-is
+		// 原样返回原始数据
 		var raw any
 		if json.Unmarshal(data, &raw) == nil {
 			return response.OK(c, raw)
@@ -401,7 +417,7 @@ func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCo
 		return response.OK(c, string(data))
 	}
 
-	// If the AI service indicates failure
+	// 若 AI 服务标记为失败
 	if !aiResp.Success && statusCode >= 400 {
 		msg := aiResp.Message
 		if msg == "" {
@@ -410,7 +426,7 @@ func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCo
 		return h.mapStatusToError(c, statusCode, msg)
 	}
 
-	// Extract data from the AI service envelope and wrap in our R{}
+	// 从信封中提取 data 字段，包装为统一格式返回
 	if aiResp.Data != nil {
 		var parsed any
 		if json.Unmarshal(aiResp.Data, &parsed) == nil {
@@ -418,7 +434,7 @@ func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCo
 		}
 	}
 
-	// Fallback: return whatever we got
+	// 兜底处理：返回原始内容
 	if !aiResp.Success {
 		msg := aiResp.Message
 		if msg == "" {
@@ -430,7 +446,7 @@ func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCo
 	return response.OKEmpty(c)
 }
 
-// handleClientError converts an AIClientError to the appropriate response.
+// handleClientError 将 AIClientError 转换为对应的响应格式。
 func (h *AiHandler) handleClientError(c echo.Context, err error) error {
 	if clientErr, ok := err.(*service.AIClientError); ok {
 		switch clientErr.StatusCode {
@@ -444,7 +460,7 @@ func (h *AiHandler) handleClientError(c echo.Context, err error) error {
 	return response.Fail(c, "AI 服务不可用")
 }
 
-// handleUpstreamError reads the error body from the AI service and returns an appropriate error response.
+// handleUpstreamError 读取 AI 服务的错误响应体并返回对应的错误响应。
 func (h *AiHandler) handleUpstreamError(c echo.Context, body io.ReadCloser, statusCode int) error {
 	data, _ := io.ReadAll(body)
 	msg := strings.TrimSpace(string(data))
@@ -454,7 +470,7 @@ func (h *AiHandler) handleUpstreamError(c echo.Context, body io.ReadCloser, stat
 	return h.mapStatusToError(c, statusCode, msg)
 }
 
-// mapStatusToError maps an HTTP status code to the appropriate response code.
+// mapStatusToError 将 HTTP 状态码映射为对应的业务错误响应。
 func (h *AiHandler) mapStatusToError(c echo.Context, statusCode int, message string) error {
 	switch {
 	case statusCode == http.StatusTooManyRequests:

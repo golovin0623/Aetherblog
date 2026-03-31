@@ -10,15 +10,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// StorageProviderHandler handles storage provider administration endpoints.
+// StorageProviderHandler 处理存储提供商配置的管理端 HTTP 接口。
 type StorageProviderHandler struct{ svc *service.StorageProviderService }
 
-// NewStorageProviderHandler creates a StorageProviderHandler.
+// NewStorageProviderHandler 创建 StorageProviderHandler 实例。
 func NewStorageProviderHandler(svc *service.StorageProviderService) *StorageProviderHandler {
 	return &StorageProviderHandler{svc: svc}
 }
 
-// Mount registers storage provider routes under the given admin route group.
+// Mount 将存储提供商管理路由注册到指定的管理员路由组。
 func (h *StorageProviderHandler) Mount(g *echo.Group) {
 	g.GET("", h.List)
 	g.GET("/default", h.Default)
@@ -30,7 +30,8 @@ func (h *StorageProviderHandler) Mount(g *echo.Group) {
 	g.POST("/:id/test", h.Test)
 }
 
-// List handles GET "" — returns all configured storage providers.
+// List 处理 GET /admin/storage-providers 请求。
+// 返回所有已配置的存储提供商列表。
 func (h *StorageProviderHandler) List(c echo.Context) error {
 	vos, err := h.svc.List(c.Request().Context())
 	if err != nil {
@@ -39,7 +40,8 @@ func (h *StorageProviderHandler) List(c echo.Context) error {
 	return response.OK(c, vos)
 }
 
-// Default handles GET /default — returns the currently active default storage provider.
+// Default 处理 GET /admin/storage-providers/default 请求。
+// 返回当前活跃的默认存储提供商配置。
 func (h *StorageProviderHandler) Default(c echo.Context) error {
 	vo, err := h.svc.GetDefault(c.Request().Context())
 	if err != nil {
@@ -48,7 +50,9 @@ func (h *StorageProviderHandler) Default(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// Get handles GET /:id — returns a single storage provider by ID.
+// Get 处理 GET /admin/storage-providers/:id 请求。
+// 根据 ID 返回单个存储提供商的详细配置。
+// 路径参数 id 为存储提供商数字 ID。
 func (h *StorageProviderHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -58,13 +62,16 @@ func (h *StorageProviderHandler) Get(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	// 存储提供商不存在时返回 404
 	if vo == nil {
 		return response.FailWith(c, response.NotFound, "存储提供商不存在")
 	}
 	return response.OK(c, vo)
 }
 
-// Create handles POST "" — creates a new storage provider configuration.
+// Create 处理 POST /admin/storage-providers 请求。
+// 创建一个新的存储提供商配置（如本地存储、S3、OSS 等）。
+// 请求体为 StorageProviderRequest。
 func (h *StorageProviderHandler) Create(c echo.Context) error {
 	var req dto.StorageProviderRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -77,7 +84,9 @@ func (h *StorageProviderHandler) Create(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// Update handles PUT /:id — updates an existing storage provider configuration.
+// Update 处理 PUT /admin/storage-providers/:id 请求。
+// 更新已存在的存储提供商配置信息。
+// 路径参数 id 为存储提供商数字 ID，请求体为 StorageProviderRequest。
 func (h *StorageProviderHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -93,7 +102,9 @@ func (h *StorageProviderHandler) Update(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Delete handles DELETE /:id — removes a storage provider configuration.
+// Delete 处理 DELETE /admin/storage-providers/:id 请求。
+// 删除指定的存储提供商配置记录。
+// 路径参数 id 为存储提供商数字 ID。
 func (h *StorageProviderHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -105,7 +116,9 @@ func (h *StorageProviderHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// SetDefault handles POST /:id/set-default — marks a provider as the default (clears all others).
+// SetDefault 处理 POST /admin/storage-providers/:id/set-default 请求。
+// 将指定存储提供商设为默认，并自动清除其他提供商的默认标记。
+// 路径参数 id 为目标存储提供商 ID。
 func (h *StorageProviderHandler) SetDefault(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -117,7 +130,9 @@ func (h *StorageProviderHandler) SetDefault(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Test handles POST /:id/test — verifies connectivity to the given storage provider.
+// Test 处理 POST /admin/storage-providers/:id/test 请求。
+// 测试指定存储提供商的连通性，返回测试结果（success 和 message）。
+// 路径参数 id 为目标存储提供商 ID。
 func (h *StorageProviderHandler) Test(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
