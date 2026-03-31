@@ -363,7 +363,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         </>
                       ) : '发表评论'}
                     </h4>
-                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm">
+                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-sm">
                       取消
                     </button>
                   </div>
@@ -383,6 +383,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                           value={nickname}
                           onChange={(e) => setNickname(e.target.value)}
                           required
+                          aria-invalid={error ? 'true' : 'false'}
+                          aria-describedby={error ? `${formId}-error` : undefined}
                         />
                       </div>
                       <div className="group/input relative">
@@ -397,6 +399,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
+                          aria-invalid={error ? 'true' : 'false'}
+                          aria-describedby={error ? `${formId}-error` : undefined}
                         />
                       </div>
                     </div>
@@ -411,6 +415,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         placeholder="网站 (https://...)"
                         value={website}
                         onChange={(e) => setWebsite(e.target.value)}
+                        aria-invalid={error ? 'true' : 'false'}
+                        aria-describedby={error ? `${formId}-error` : undefined}
                       />
                     </div>
 
@@ -425,6 +431,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         onChange={(e) => setContent(e.target.value)}
                         required
                         autoFocus
+                        aria-invalid={error ? 'true' : 'false'}
+                        aria-describedby={error ? `${formId}-error` : undefined}
                       />
                     </div>
 
@@ -432,6 +440,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                       <AnimatePresence mode="wait">
                         {error && (
                           <motion.div
+                            id={`${formId}-error`}
                             initial={{ opacity: 0, y: -10, height: 0 }}
                             animate={{ opacity: 1, y: 0, height: 'auto' }}
                             exit={{ opacity: 0, y: -10, height: 0 }}
@@ -458,14 +467,14 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
 
                       <div className="flex items-center justify-end gap-3">
                         {replyTo && (
-                          <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                          <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-sm">
                             改为发表新评论
                           </button>
                         )}
                         <button
                           type="submit"
                           disabled={submitting}
-                          className="comment-submit-btn text-[var(--text-inverse)] rounded-lg px-6 py-2.5 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="comment-submit-btn text-[var(--text-inverse)] rounded-lg px-6 py-2.5 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                         >
                           {submitting ? (
                             <>
