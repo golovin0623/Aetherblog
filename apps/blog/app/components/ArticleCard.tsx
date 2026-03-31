@@ -80,11 +80,13 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
         {/* 封面图片 */}
         {coverImage && (
           <div className="block aspect-video w-full overflow-hidden relative z-20 shrink-0">
+            {/* ⚡ Bolt: Add priority to above-the-fold images to improve LCP */}
             <Image
               src={coverImage}
               alt={title}
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              priority={index < 6}
               className="object-cover transition-transform duration-500 group-hover:scale-105"
             />
           </div>
