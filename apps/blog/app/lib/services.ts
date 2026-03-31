@@ -74,10 +74,21 @@ export interface CreateCommentRequest {
  * 获取站点全量配置
  * 重新验证：60 秒
  */
+const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  siteTitle: 'AetherBlog',
+  siteSubtitle: 'Sharing Technology & Life',
+  siteDescription: 'A next-generation blog system powered by AI.',
+  siteKeywords: 'tech, blog, ai',
+  siteUrl: 'http://localhost:3000',
+  authorName: 'Admin'
+};
+
 export async function getSiteSettings(): Promise<SiteSettings> {
   try {
     const res = await fetch(API_ENDPOINTS.settings, {
-      next: { revalidate: 10 }
+      next: { revalidate: 10 },
+      // 3 秒超时：构建时后端不可用快速 fallback，避免阻塞构建 5-15s
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!res.ok) throw new Error('Failed to fetch settings');
@@ -85,15 +96,8 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     const json = await res.json();
     return json.data || {};
   } catch (error) {
-    logger.warn('Failed to fetch site settings:', error);
-    return {
-      siteTitle: 'AetherBlog',
-      siteSubtitle: 'Sharing Technology & Life',
-      siteDescription: 'A next-generation blog system powered by AI.',
-      siteKeywords: 'tech, blog, ai',
-      siteUrl: 'http://localhost:3000',
-      authorName: 'Admin'
-    };
+    logger.warn('Failed to fetch site settings, using defaults:', error);
+    return DEFAULT_SITE_SETTINGS;
   }
 }
 
@@ -105,7 +109,8 @@ export async function getSiteSettings(): Promise<SiteSettings> {
 export async function getRecentPosts(limit: number = 6): Promise<Post[]> {
   try {
     const res = await fetch(`${API_ENDPOINTS.posts}?pageNum=1&pageSize=${limit}`, {
-      next: { revalidate: 300 }
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) throw new Error('Failed to fetch posts');
@@ -125,7 +130,8 @@ export async function getRecentPosts(limit: number = 6): Promise<Post[]> {
 export async function getFriendLinks(): Promise<FriendLink[]> {
   try {
     const res = await fetch(API_ENDPOINTS.friendLinks, {
-      next: { revalidate: 60 }
+      next: { revalidate: 60 },
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) throw new Error('Failed to fetch friend links');
@@ -184,7 +190,8 @@ export async function createComment(postId: number, data: CreateCommentRequest):
 export async function getSiteStats(): Promise<any> {
   try {
     const res = await fetch(API_ENDPOINTS.stats, {
-      next: { revalidate: 600 }
+      next: { revalidate: 600 },
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) throw new Error('Failed to fetch stats');
