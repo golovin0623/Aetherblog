@@ -1,7 +1,6 @@
-// Package handler contains Echo HTTP handlers (controllers) for all API endpoints.
-// Each handler struct holds injected service dependencies and exposes Mount*
-// methods to register routes onto an echo.Group. The package-level helpers
-// bindAndValidate, bindIDs, parseIntDefault, etc. are shared across handlers.
+// Package handler 包含所有 API 端点的 Echo HTTP 处理器（控制器层）。
+// 每个 Handler 结构体持有注入的 Service 依赖，并通过 Mount* 方法将路由注册至 echo.Group。
+// 包级辅助函数 bindAndValidate、bindIDs、parseIntDefault 等在各 Handler 间共享复用。
 package handler
 
 import (
@@ -20,19 +19,19 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// AuthHandler handles all /api/v1/auth/* endpoints.
+// AuthHandler 负责处理所有 /api/v1/auth/* 端点。
 type AuthHandler struct {
 	auth    *service.AuthService
 	session *service.SessionService
 	cfg     *config.Config
 }
 
-// NewAuthHandler creates an AuthHandler with the required service and config dependencies.
+// NewAuthHandler 创建一个 AuthHandler，注入所需的 Service 和配置依赖。
 func NewAuthHandler(auth *service.AuthService, session *service.SessionService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{auth: auth, session: session, cfg: cfg}
 }
 
-// Mount mounts all auth routes onto the given echo.Group.
+// Mount 将所有认证相关路由挂载到指定的 echo.Group。
 func (h *AuthHandler) Mount(g *echo.Group) {
 	g.POST("/login", h.Login)
 	g.POST("/register", h.RegisterUser)
@@ -44,9 +43,9 @@ func (h *AuthHandler) Mount(g *echo.Group) {
 	g.PUT("/avatar", h.UpdateAvatar, middleware.JWTAuth(h.cfg.JWT.Secret))
 }
 
-// Login handles POST /api/v1/auth/login.
-// Validates credentials, enforces login-attempt rate limiting via Redis,
-// issues an access token + refresh token and writes both as HttpOnly cookies.
+// Login 处理 POST /api/v1/auth/login 请求。
+// 校验用户凭证，通过 Redis 执行登录频率限制，
+// 成功后签发 Access Token 和 Refresh Token，并以 HttpOnly Cookie 写入响应。
 func (h *AuthHandler) Login(c echo.Context) error {
 	var req dto.LoginRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -56,23 +55,28 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	ctx := c.Request().Context()
 	ip := c.RealIP()
 
+	// 检查是否允许继续登录（频率限制）
 	if err := h.auth.AssertLoginAllowed(ctx, req.Username, ip); err != nil {
 		return response.FailWith(c, response.TooManyRequests, err.Error())
 	}
 
+	// 查找用户并校验密码
 	user, err := h.auth.FindByUsernameOrEmail(ctx, req.Username)
 	if err != nil {
 		return response.Error(c, err)
 	}
 	if user == nil || !h.auth.ValidatePassword(user, req.Password) {
+		// 记录失败次数以触发频率限制
 		h.auth.RecordFailedAttempt(ctx, req.Username, ip)
 		return response.FailWith(c, response.BadRequest, "用户名或密码错误")
 	}
 
+	// 检查用户是否允许登录（如账号未被禁用）
 	if err := h.auth.CheckUserCanLogin(user); err != nil {
 		return response.FailWith(c, response.Forbidden, err.Error())
 	}
 
+	// 登录成功：清除失败记录并更新登录信息
 	h.auth.ClearFailedAttempts(ctx, req.Username, ip)
 	h.auth.UpdateLoginInfo(ctx, user.ID, ip)
 
@@ -89,8 +93,8 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	return response.OK(c, h.buildLoginResponse(user, accessToken))
 }
 
-// RegisterUser handles POST /api/v1/auth/register.
-// Creates a new user account. Returns 400 if username or email is already taken.
+// RegisterUser 处理 POST /api/v1/auth/register 请求。
+// 创建新用户账号；若用户名或邮箱已被占用，返回 400。
 func (h *AuthHandler) RegisterUser(c echo.Context) error {
 	var req dto.RegisterRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -104,13 +108,14 @@ func (h *AuthHandler) RegisterUser(c echo.Context) error {
 	return response.OK(c, userInfoVO(user))
 }
 
-// Refresh handles POST /api/v1/auth/refresh.
-// Rotates the refresh token stored in the HttpOnly cookie and issues a new access token.
-// Returns 401 if the refresh token is absent, expired, or already revoked.
+// Refresh 处理 POST /api/v1/auth/refresh 请求。
+// 轮换 HttpOnly Cookie 中存储的 Refresh Token，并签发新的 Access Token。
+// 若 Refresh Token 不存在、已过期或已被吊销，返回 401。
 func (h *AuthHandler) Refresh(c echo.Context) error {
 	refreshToken := getCookieValue(c, middleware.RefreshTokenCookie)
 	ctx := c.Request().Context()
 
+	// 轮换 Refresh Token（旧令牌失效，返回新令牌和对应用户 ID）
 	userID, newRefreshToken, err := h.session.RotateRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return response.Error(c, err)
@@ -141,8 +146,8 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 	return response.OK(c, h.buildLoginResponse(user, accessToken))
 }
 
-// Me handles GET /api/v1/auth/me.
-// Returns the profile of the currently authenticated user. Requires a valid JWT.
+// Me 处理 GET /api/v1/auth/me 请求。
+// 返回当前已认证用户的个人资料，需携带有效 JWT。
 func (h *AuthHandler) Me(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -158,8 +163,8 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	return response.OK(c, userInfoVO(user))
 }
 
-// Logout handles POST /api/v1/auth/logout.
-// Revokes the refresh token in Redis and clears both auth cookies.
+// Logout 处理 POST /api/v1/auth/logout 请求。
+// 在 Redis 中吊销 Refresh Token，并清除两个认证 Cookie。
 func (h *AuthHandler) Logout(c echo.Context) error {
 	refreshToken := getCookieValue(c, middleware.RefreshTokenCookie)
 	h.session.RevokeRefreshToken(c.Request().Context(), refreshToken)
@@ -167,9 +172,9 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// ChangePassword handles POST /api/v1/auth/change-password.
-// Verifies the current password, hashes the new one, then revokes the current
-// session so the user must log in again with the new credentials.
+// ChangePassword 处理 POST /api/v1/auth/change-password 请求。
+// 校验当前密码后对新密码进行哈希，并吊销当前会话，
+// 用户须使用新凭证重新登录。
 func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -189,9 +194,11 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	if user == nil {
 		return response.FailWith(c, response.NotFound, "用户不存在")
 	}
+	// 校验当前密码是否正确
 	if !h.auth.ValidatePassword(user, req.CurrentPassword) {
 		return response.FailWith(c, response.BadRequest, "当前密码错误")
 	}
+	// 新旧密码不能相同
 	if req.CurrentPassword == req.NewPassword {
 		return response.FailWith(c, response.BadRequest, "新密码不能与当前密码相同")
 	}
@@ -199,14 +206,15 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 		return response.Error(c, err)
 	}
 
+	// 修改密码后吊销当前会话并清除 Cookie
 	refreshToken := getCookieValue(c, middleware.RefreshTokenCookie)
 	h.session.RevokeRefreshToken(ctx, refreshToken)
 	h.clearAuthCookies(c)
 	return response.OKEmpty(c)
 }
 
-// UpdateProfile handles PUT /api/v1/auth/profile.
-// Updates the authenticated user's nickname and email address.
+// UpdateProfile 处理 PUT /api/v1/auth/profile 请求。
+// 更新已认证用户的昵称和邮箱地址。
 func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -225,8 +233,8 @@ func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 	return response.OK(c, userInfoVO(user))
 }
 
-// UpdateAvatar handles PUT /api/v1/auth/avatar.
-// Sets a new avatar URL for the authenticated user.
+// UpdateAvatar 处理 PUT /api/v1/auth/avatar 请求。
+// 为已认证用户设置新的头像 URL。
 func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -244,14 +252,14 @@ func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 	return response.OK(c, req.AvatarURL)
 }
 
-// --- helpers ---
+// --- 内部辅助函数 ---
 
-// generateAccessToken signs a JWT access token for the given user.
+// generateAccessToken 为指定用户签发 JWT Access Token。
 func (h *AuthHandler) generateAccessToken(user *model.User) (string, error) {
 	return jwtutil.GenerateToken(user.ID, user.Username, user.Role, h.cfg.JWT.Secret, h.cfg.JWT.Expiration)
 }
 
-// buildLoginResponse assembles the LoginResponse DTO from a user and access token.
+// buildLoginResponse 从用户模型和 Access Token 构建 LoginResponse DTO。
 func (h *AuthHandler) buildLoginResponse(user *model.User, accessToken string) dto.LoginResponse {
 	return dto.LoginResponse{
 		AccessToken:        accessToken,
@@ -262,6 +270,7 @@ func (h *AuthHandler) buildLoginResponse(user *model.User, accessToken string) d
 	}
 }
 
+// userInfoVO 将用户模型转换为 UserInfoVO 数据传输对象。
 func userInfoVO(user *model.User) dto.UserInfoVO {
 	return dto.UserInfoVO{
 		ID:       user.ID,
@@ -273,7 +282,7 @@ func userInfoVO(user *model.User) dto.UserInfoVO {
 	}
 }
 
-// writeAuthCookies sets the access-token and refresh-token HttpOnly cookies on the response.
+// writeAuthCookies 将 Access Token 和 Refresh Token 以 HttpOnly Cookie 写入响应。
 func (h *AuthHandler) writeAuthCookies(c echo.Context, accessToken, refreshToken string) {
 	secure := h.cfg.Auth.Cookie.Secure
 	sameSite := h.cfg.Auth.Cookie.SameSite
@@ -281,7 +290,7 @@ func (h *AuthHandler) writeAuthCookies(c echo.Context, accessToken, refreshToken
 	setCookie(c, middleware.RefreshTokenCookie, refreshToken, "/api/v1/auth", int(h.session.RefreshTokenMaxAge()), secure, sameSite)
 }
 
-// clearAuthCookies expires both auth cookies, effectively logging the user out.
+// clearAuthCookies 将两个认证 Cookie 设为过期，以实现登出效果。
 func (h *AuthHandler) clearAuthCookies(c echo.Context) {
 	secure := h.cfg.Auth.Cookie.Secure
 	sameSite := h.cfg.Auth.Cookie.SameSite
@@ -289,8 +298,8 @@ func (h *AuthHandler) clearAuthCookies(c echo.Context) {
 	setCookie(c, middleware.RefreshTokenCookie, "", "/api/v1/auth", 0, secure, sameSite)
 }
 
-// setCookie writes a single HttpOnly cookie to the response with the provided attributes.
-// sameSite accepts "Strict", "Lax", or "None"; anything else falls back to Strict.
+// setCookie 向响应写入一个 HttpOnly Cookie，支持指定各项属性。
+// sameSite 接受 "Strict"、"Lax" 或 "None"；其他值默认回退为 Strict 模式。
 func setCookie(c echo.Context, name, value, path string, maxAge int, secure bool, sameSite string) {
 	cookie := new(http.Cookie)
 	cookie.Name = name
@@ -312,7 +321,7 @@ func setCookie(c echo.Context, name, value, path string, maxAge int, secure bool
 	c.Response().Header().Add("Set-Cookie", cookie.String())
 }
 
-// getCookieValue returns the value of a named cookie, or an empty string if absent.
+// getCookieValue 返回指定名称 Cookie 的值；若 Cookie 不存在则返回空字符串。
 func getCookieValue(c echo.Context, name string) string {
 	if cookie, err := c.Cookie(name); err == nil {
 		return cookie.Value
@@ -320,8 +329,8 @@ func getCookieValue(c echo.Context, name string) string {
 	return ""
 }
 
-// bindAndValidate binds JSON and runs validate tags. Returns a JSON error response on failure.
-// It returns a non-nil error to signal the caller to stop processing.
+// bindAndValidate 绑定 JSON 请求体并执行 validate 标签校验。
+// 失败时写入 JSON 错误响应并返回非 nil 错误，调用方应终止后续处理。
 func bindAndValidate(c echo.Context, req any) error {
 	if err := c.Bind(req); err != nil {
 		response.FailWith(c, response.BadRequest, "请求参数格式错误")
@@ -334,20 +343,21 @@ func bindAndValidate(c echo.Context, req any) error {
 	return nil
 }
 
-// bindIDs parses a JSON body that is either a raw array [1,2,3],
-// or a wrapped object {"ids":[1,2,3]} or {"data":[1,2,3]}. Returns the ID slice.
+// bindIDs 解析请求体中的 ID 列表，支持以下三种格式：
+// 原始数组 [1,2,3]、包装对象 {"ids":[1,2,3]} 或 {"data":[1,2,3]}。
+// 返回解析后的 int64 切片。
 func bindIDs(c echo.Context) ([]int64, error) {
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		response.FailWith(c, response.BadRequest, "请求格式错误")
 		return nil, err
 	}
-	// Try raw array first
+	// 优先尝试解析原始数组格式
 	var ids []int64
 	if err := json.Unmarshal(body, &ids); err == nil && len(ids) > 0 {
 		return ids, nil
 	}
-	// Try wrapped object with "ids" or "data" key
+	// 再尝试解析带 "ids" 或 "data" 键的包装对象格式
 	var wrapped struct {
 		IDs  []int64 `json:"ids"`
 		Data []int64 `json:"data"`

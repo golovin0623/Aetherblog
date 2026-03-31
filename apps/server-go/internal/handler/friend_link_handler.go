@@ -11,15 +11,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// FriendLinkHandler manages the blog's friend-link (blogroll) resources.
+// FriendLinkHandler 负责管理博客友情链接（Blogroll）资源。
 type FriendLinkHandler struct{ svc *service.FriendLinkService }
 
-// NewFriendLinkHandler creates a FriendLinkHandler backed by the given FriendLinkService.
+// NewFriendLinkHandler 创建一个由指定 FriendLinkService 驱动的 FriendLinkHandler 实例。
 func NewFriendLinkHandler(svc *service.FriendLinkService) *FriendLinkHandler {
 	return &FriendLinkHandler{svc: svc}
 }
 
-// MountAdmin registers admin CRUD and management routes on g.
+// MountAdmin 在指定路由组上注册管理端 CRUD 及管理路由。
 func (h *FriendLinkHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.List)
 	g.GET("/page", h.Page)
@@ -32,12 +32,13 @@ func (h *FriendLinkHandler) MountAdmin(g *echo.Group) {
 	g.PATCH("/reorder", h.Reorder)
 }
 
-// MountPublic registers the public visible-links endpoint on g.
+// MountPublic 在指定路由组上注册公开的可见友链列表接口。
 func (h *FriendLinkHandler) MountPublic(g *echo.Group) {
 	g.GET("", h.ListPublic)
 }
 
-// List handles GET /admin/friend-links. Returns all links (including hidden ones) for admin management.
+// List 处理 GET /admin/friend-links 请求，
+// 返回所有友链（含隐藏链接）供管理后台使用。
 func (h *FriendLinkHandler) List(c echo.Context) error {
 	links, err := h.svc.ListAll(c.Request().Context())
 	if err != nil {
@@ -46,7 +47,8 @@ func (h *FriendLinkHandler) List(c echo.Context) error {
 	return response.OK(c, links)
 }
 
-// ListPublic handles GET /public/friend-links. Returns only visible links ordered by sort_order.
+// ListPublic 处理 GET /public/friend-links 请求，
+// 仅返回按 sort_order 排序的可见友链列表。
 func (h *FriendLinkHandler) ListPublic(c echo.Context) error {
 	links, err := h.svc.ListVisible(c.Request().Context())
 	if err != nil {
@@ -55,7 +57,8 @@ func (h *FriendLinkHandler) ListPublic(c echo.Context) error {
 	return response.OK(c, links)
 }
 
-// Page handles GET /admin/friend-links/page. Returns paginated links for the admin list view.
+// Page 处理 GET /admin/friend-links/page 请求，
+// 返回分页友链列表供管理端列表视图使用。
 func (h *FriendLinkHandler) Page(c echo.Context) error {
 	p := pagination.ParseWithDefaults(c, 1, 10)
 	pr, err := h.svc.Page(c.Request().Context(), p)
@@ -65,7 +68,8 @@ func (h *FriendLinkHandler) Page(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// Get handles GET /admin/friend-links/:id. Returns a single friend link.
+// Get 处理 GET /admin/friend-links/:id 请求，
+// 根据 ID 返回单条友链信息。
 func (h *FriendLinkHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -81,7 +85,8 @@ func (h *FriendLinkHandler) Get(c echo.Context) error {
 	return response.OK(c, fl)
 }
 
-// Create handles POST /admin/friend-links. Creates a new friend link.
+// Create 处理 POST /admin/friend-links 请求，
+// 创建新的友情链接。
 func (h *FriendLinkHandler) Create(c echo.Context) error {
 	var req dto.FriendLinkRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -94,7 +99,8 @@ func (h *FriendLinkHandler) Create(c echo.Context) error {
 	return response.OK(c, fl)
 }
 
-// Update handles PUT /admin/friend-links/:id. Updates an existing friend link.
+// Update 处理 PUT /admin/friend-links/:id 请求，
+// 更新指定友链的信息。
 func (h *FriendLinkHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -111,7 +117,8 @@ func (h *FriendLinkHandler) Update(c echo.Context) error {
 	return response.OK(c, fl)
 }
 
-// Delete handles DELETE /admin/friend-links/:id. Removes a friend link permanently.
+// Delete 处理 DELETE /admin/friend-links/:id 请求，
+// 永久删除指定友链。
 func (h *FriendLinkHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -123,7 +130,8 @@ func (h *FriendLinkHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// BatchDelete handles DELETE /admin/friend-links/batch. Removes multiple links by ID.
+// BatchDelete 处理 DELETE /admin/friend-links/batch 请求，
+// 根据 ID 列表批量删除友链。
 func (h *FriendLinkHandler) BatchDelete(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -135,7 +143,8 @@ func (h *FriendLinkHandler) BatchDelete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// ToggleVisible handles PATCH /admin/friend-links/:id/toggle-visible. Flips the link's visible flag.
+// ToggleVisible 处理 PATCH /admin/friend-links/:id/toggle-visible 请求，
+// 切换指定友链的可见性状态。
 func (h *FriendLinkHandler) ToggleVisible(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -148,7 +157,8 @@ func (h *FriendLinkHandler) ToggleVisible(c echo.Context) error {
 	return response.OK(c, fl)
 }
 
-// Reorder handles PATCH /admin/friend-links/reorder. Re-assigns sort_order values based on the supplied ID slice.
+// Reorder 处理 PATCH /admin/friend-links/reorder 请求，
+// 根据提供的 ID 顺序重新设置各友链的 sort_order 值。
 func (h *FriendLinkHandler) Reorder(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {

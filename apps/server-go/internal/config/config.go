@@ -1,8 +1,8 @@
-// Package config loads and validates AetherBlog application configuration.
-// Configuration is sourced from an optional YAML file and environment variables
-// (prefix: AETHERBLOG_). Environment variables take precedence over file values.
-// A limited set of legacy bare-name env vars (e.g. POSTGRES_PASSWORD, JWT_SECRET)
-// is also supported for backward compatibility.
+// Package config 负责加载和验证 AetherBlog 应用的配置信息。
+// 配置来源为可选的 YAML 文件，以及以 AETHERBLOG_ 为前缀的环境变量。
+// 环境变量的优先级高于文件中的配置值。
+// 同时兼容少量不带前缀的传统环境变量（如 POSTGRES_PASSWORD、JWT_SECRET），
+// 以保证向后兼容性。
 package config
 
 import (
@@ -16,41 +16,41 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-// Config is the root configuration container for the AetherBlog application.
-// All sub-sections map directly to top-level YAML keys.
+// Config 是 AetherBlog 应用的根配置容器。
+// 所有子配置节直接对应 YAML 顶层键名。
 type Config struct {
-	Server   ServerConfig   `koanf:"server"`        // HTTP server bind address and port
-	Database DatabaseConfig `koanf:"database"`       // PostgreSQL connection settings
-	Redis    RedisConfig    `koanf:"redis"`          // Redis connection settings
-	JWT      JWTConfig      `koanf:"jwt"`            // JWT signing secret and token lifetimes
-	Auth     AuthConfig     `koanf:"auth"`           // Auth cookie security settings
-	CORS     CORSConfig     `koanf:"cors"`           // CORS allowed origin list
-	Upload   UploadConfig   `koanf:"upload"`         // Local file upload directory and URL prefix
-	Media    MediaConfig    `koanf:"media"`          // Media management settings (trash cleanup)
-	Log      LogConfig      `koanf:"log"`            // Log output path and minimum level
-	AI       AIConfig       `koanf:"ai"`             // External FastAPI AI service settings
-	ES       ESConfig       `koanf:"elasticsearch"`  // Elasticsearch node URIs
+	Server   ServerConfig   `koanf:"server"`        // HTTP 服务器绑定地址与端口
+	Database DatabaseConfig `koanf:"database"`       // PostgreSQL 连接配置
+	Redis    RedisConfig    `koanf:"redis"`          // Redis 连接配置
+	JWT      JWTConfig      `koanf:"jwt"`            // JWT 签名密钥及令牌有效期
+	Auth     AuthConfig     `koanf:"auth"`           // 认证 Cookie 安全策略
+	CORS     CORSConfig     `koanf:"cors"`           // 跨域允许来源列表
+	Upload   UploadConfig   `koanf:"upload"`         // 本地文件上传目录及 URL 前缀
+	Media    MediaConfig    `koanf:"media"`          // 媒体管理配置（垃圾桶清理）
+	Log      LogConfig      `koanf:"log"`            // 日志输出路径及最低级别
+	AI       AIConfig       `koanf:"ai"`             // 外部 FastAPI AI 服务配置
+	ES       ESConfig       `koanf:"elasticsearch"`  // Elasticsearch 节点地址列表
 }
 
-// ServerConfig holds HTTP server binding settings.
+// ServerConfig 存储 HTTP 服务器的绑定配置。
 type ServerConfig struct {
-	Port int    `koanf:"port"` // TCP port the Echo server listens on (default: 8080)
-	Host string `koanf:"host"` // Bind address (default: "0.0.0.0")
+	Port int    `koanf:"port"` // Echo 服务器监听的 TCP 端口（默认：8080）
+	Host string `koanf:"host"` // 绑定地址（默认："0.0.0.0"）
 }
 
-// DatabaseConfig holds PostgreSQL connection parameters.
+// DatabaseConfig 存储 PostgreSQL 连接参数。
 type DatabaseConfig struct {
-	Host         string `koanf:"host"`           // PostgreSQL server hostname or IP
-	Port         int    `koanf:"port"`           // PostgreSQL server port (default: 5432)
-	User         string `koanf:"user"`           // Database user
-	Password     string `koanf:"password"`       // Database password
-	DBName       string `koanf:"dbname"`         // Database name
-	SSLMode      string `koanf:"sslmode"`        // PostgreSQL SSL mode (disable|require|verify-full)
-	MaxOpenConns int    `koanf:"max_open_conns"` // Maximum number of open connections in the pool
-	MaxIdleConns int    `koanf:"max_idle_conns"` // Maximum number of idle connections in the pool
+	Host         string `koanf:"host"`           // PostgreSQL 服务器主机名或 IP
+	Port         int    `koanf:"port"`           // PostgreSQL 服务器端口（默认：5432）
+	User         string `koanf:"user"`           // 数据库用户名
+	Password     string `koanf:"password"`       // 数据库密码
+	DBName       string `koanf:"dbname"`         // 数据库名称
+	SSLMode      string `koanf:"sslmode"`        // PostgreSQL SSL 模式（disable|require|verify-full）
+	MaxOpenConns int    `koanf:"max_open_conns"` // 连接池最大打开连接数
+	MaxIdleConns int    `koanf:"max_idle_conns"` // 连接池最大空闲连接数
 }
 
-// DSN returns the PostgreSQL connection string built from the config fields.
+// DSN 根据配置字段构造并返回 PostgreSQL 连接字符串。
 func (d *DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -58,90 +58,89 @@ func (d *DatabaseConfig) DSN() string {
 	)
 }
 
-// RedisConfig holds Redis connection parameters.
+// RedisConfig 存储 Redis 连接参数。
 type RedisConfig struct {
-	Host     string `koanf:"host"`     // Redis server hostname or IP
-	Port     int    `koanf:"port"`     // Redis server port (default: 6379)
-	Password string `koanf:"password"` // Redis AUTH password (empty = no auth)
-	DB       int    `koanf:"db"`       // Redis logical database index (default: 0)
+	Host     string `koanf:"host"`     // Redis 服务器主机名或 IP
+	Port     int    `koanf:"port"`     // Redis 服务器端口（默认：6379）
+	Password string `koanf:"password"` // Redis AUTH 密码（空字符串表示无需认证）
+	DB       int    `koanf:"db"`       // Redis 逻辑数据库索引（默认：0）
 }
 
-// Addr returns the "host:port" address string for the Redis client.
+// Addr 返回 Redis 客户端所需的 "host:port" 地址字符串。
 func (r *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
-// JWTConfig holds JSON Web Token signing and expiry settings.
+// JWTConfig 存储 JSON Web Token 的签名密钥及过期时间配置。
 type JWTConfig struct {
-	Secret            string        `koanf:"secret"`             // HMAC-SHA256 signing secret; must be set in production
-	Expiration        time.Duration `koanf:"expiration"`         // Access token validity period (default: 24h)
-	RefreshExpiration time.Duration `koanf:"refresh_expiration"` // Refresh token validity period stored in Redis (default: 7*24h)
+	Secret            string        `koanf:"secret"`              // HMAC-SHA256 签名密钥；生产环境必须配置
+	Expiration        time.Duration `koanf:"expiration"`          // 访问令牌有效期（默认：24h）
+	RefreshExpiration time.Duration `koanf:"refresh_expiration"`  // 刷新令牌有效期，存储于 Redis（默认：7*24h）
 }
 
-// AuthConfig groups authentication-related settings.
+// AuthConfig 汇聚认证相关配置。
 type AuthConfig struct {
-	Cookie CookieConfig `koanf:"cookie"` // HTTP cookie security settings for auth tokens
+	Cookie CookieConfig `koanf:"cookie"` // 认证令牌 HTTP Cookie 安全属性
 }
 
-// CookieConfig controls the security attributes of auth cookies.
+// CookieConfig 控制认证 Cookie 的安全属性。
 type CookieConfig struct {
-	Secure   bool   `koanf:"secure"`    // Set the Secure flag (HTTPS only); enable in production
-	SameSite string `koanf:"same_site"` // SameSite policy: "Strict" | "Lax" | "None" (default: "Strict")
+	Secure   bool   `koanf:"secure"`    // 是否设置 Secure 标志（仅 HTTPS）；生产环境应启用
+	SameSite string `koanf:"same_site"` // SameSite 策略："Strict" | "Lax" | "None"（默认："Strict"）
 }
 
-// CORSConfig lists the origins that are permitted to make cross-origin requests.
+// CORSConfig 列出允许发起跨域请求的来源地址。
 type CORSConfig struct {
-	AllowedOrigins []string `koanf:"allowed_origins"` // List of allowed origins (e.g. "http://localhost:5173")
+	AllowedOrigins []string `koanf:"allowed_origins"` // 允许的来源列表（如 "http://localhost:5173"）
 }
 
-// UploadConfig configures local file upload storage.
+// UploadConfig 配置本地文件上传存储。
 type UploadConfig struct {
-	Path      string `koanf:"path"`       // Local filesystem directory for uploaded files (default: "./uploads")
-	URLPrefix string `koanf:"url_prefix"` // URL path prefix for serving uploaded files (default: "/uploads")
+	Path      string `koanf:"path"`       // 上传文件在本地文件系统中的存储目录（默认："./uploads"）
+	URLPrefix string `koanf:"url_prefix"` // 提供上传文件访问的 URL 路径前缀（默认："/uploads"）
 }
 
-// MediaConfig controls media management behaviour.
+// MediaConfig 控制媒体管理行为。
 type MediaConfig struct {
-	TrashCleanupDays int `koanf:"trash_cleanup_days"` // Days before trashed media files are permanently deleted (default: 120)
+	TrashCleanupDays int `koanf:"trash_cleanup_days"` // 移入垃圾桶的媒体文件在永久删除前的保留天数（默认：120）
 }
 
-// LogConfig controls application log output.
+// LogConfig 控制应用日志输出。
 type LogConfig struct {
-	Path  string `koanf:"path"`  // Directory path for log files (default: "./logs")
-	Level string `koanf:"level"` // Minimum log level: "debug" | "info" | "warn" | "error" (default: "debug")
+	Path  string `koanf:"path"`  // 日志文件存储目录（默认："./logs"）
+	Level string `koanf:"level"` // 最低日志级别："debug" | "info" | "warn" | "error"（默认："debug"）
 }
 
-// AIConfig holds connection settings for the external FastAPI AI service.
+// AIConfig 存储外部 FastAPI AI 服务的连接配置。
 type AIConfig struct {
-	BaseURL           string        `koanf:"base_url"`           // Base URL of the FastAPI AI service (default: "http://localhost:8000")
-	ConnectTimeout    time.Duration `koanf:"connect_timeout"`    // TCP dial timeout for AI service requests (default: 5s)
-	ReadTimeout       time.Duration `koanf:"read_timeout"`       // Read timeout for non-streaming AI responses (default: 30s)
-	StreamReadTimeout time.Duration `koanf:"stream_read_timeout"` // Read timeout for SSE streaming responses (default: 5m)
+	BaseURL           string        `koanf:"base_url"`            // FastAPI AI 服务的基础 URL（默认："http://localhost:8000"）
+	ConnectTimeout    time.Duration `koanf:"connect_timeout"`     // AI 服务请求的 TCP 连接超时时间（默认：5s）
+	ReadTimeout       time.Duration `koanf:"read_timeout"`        // 非流式 AI 响应的读取超时时间（默认：30s）
+	StreamReadTimeout time.Duration `koanf:"stream_read_timeout"` // SSE 流式响应的读取超时时间（默认：5m）
 }
 
-// ESConfig holds Elasticsearch cluster connection settings.
+// ESConfig 存储 Elasticsearch 集群连接配置。
 type ESConfig struct {
-	URIs []string `koanf:"uris"` // List of Elasticsearch node URIs (default: ["http://localhost:9200"])
+	URIs []string `koanf:"uris"` // Elasticsearch 节点 URI 列表（默认：["http://localhost:9200"]）
 }
 
-// Load reads configuration from the YAML file at path (optional) and then
-// overlays environment variables. Returns a fully populated *Config with
-// defaults applied for any unset fields.
+// Load 从指定路径的 YAML 文件（可选）加载配置，并覆盖应用环境变量。
+// 返回一个已填充默认值的 *Config，未设置的字段使用默认值。
 func Load(path string) (*Config, error) {
 	k := koanf.New(".")
 
-	// Load YAML config file (optional)
+	// 加载 YAML 配置文件（可选）
 	if path != "" {
 		if err := k.Load(file.Provider(path), yaml.Parser()); err != nil {
-			// Config file is optional — env vars can provide everything
+			// 配置文件是可选的——环境变量可以提供所有配置
 			_ = err
 		}
 	}
 
-	// Load environment variables (prefix: AETHERBLOG_)
-	// Uses smart separator: only the first underscore after known top-level keys becomes "."
-	// AETHERBLOG_AI_BASE_URL → ai.base_url (not ai.base.url)
-	// AETHERBLOG_DATABASE_MAX_OPEN_CONNS → database.max_open_conns
+	// 加载带 AETHERBLOG_ 前缀的环境变量
+	// 使用智能分隔符：仅在已知顶层键之后的第一个下划线处替换为 "."
+	// 示例：AETHERBLOG_AI_BASE_URL → ai.base_url（而非 ai.base.url）
+	//       AETHERBLOG_DATABASE_MAX_OPEN_CONNS → database.max_open_conns
 	if err := k.Load(env.Provider("AETHERBLOG_", ".", func(s string) string {
 		key := strings.ToLower(strings.TrimPrefix(s, "AETHERBLOG_"))
 		return envKeyToKoanf(key)
@@ -154,7 +153,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Override from env directly (backward compat with .env without AETHERBLOG_ prefix)
+	// 从无前缀环境变量覆盖（兼容不带 AETHERBLOG_ 前缀的 .env 文件）
 	if err := k.Load(env.Provider("", ".", func(s string) string {
 		switch s {
 		case "JWT_SECRET":
@@ -184,17 +183,17 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// envKeyToKoanf converts a lowercase env key (after prefix removal) to a koanf path.
-// It splits only at the first-level section boundary, preserving underscores in field names.
-// Example: "ai_base_url" → "ai.base_url", "database_max_open_conns" → "database.max_open_conns"
+// envKeyToKoanf 将去除前缀后的小写环境变量键名转换为 koanf 路径。
+// 仅在第一级配置节的边界处分割，保留字段名中的下划线。
+// 示例："ai_base_url" → "ai.base_url"，"database_max_open_conns" → "database.max_open_conns"
 func envKeyToKoanf(key string) string {
-	// Special: auth_cookie_* must be checked before the general "auth" prefix
-	// to produce auth.cookie.secure instead of auth.cookie_secure
+	// 特殊处理：auth_cookie_* 必须在通用 "auth" 前缀之前检查，
+	// 以确保生成 auth.cookie.secure 而非 auth.cookie_secure
 	if strings.HasPrefix(key, "auth_cookie_") {
 		return "auth.cookie." + key[len("auth_cookie_"):]
 	}
 
-	// Known top-level config sections
+	// 已知的顶层配置节
 	prefixes := []string{
 		"server", "database", "redis", "jwt", "auth",
 		"cors", "upload", "media", "log", "ai", "elasticsearch",
@@ -208,9 +207,9 @@ func envKeyToKoanf(key string) string {
 	return strings.ReplaceAll(key, "_", ".")
 }
 
-// defaultConfig returns a Config pre-populated with safe development defaults.
-// Production deployments must override secrets (JWT.Secret, Database.Password, etc.)
-// via environment variables or a YAML config file.
+// defaultConfig 返回一个预填充了安全开发默认值的 Config。
+// 生产部署必须通过环境变量或 YAML 配置文件覆盖敏感信息
+// （如 JWT.Secret、Database.Password 等）。
 func defaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{

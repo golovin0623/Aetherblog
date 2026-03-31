@@ -11,20 +11,20 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// CommentService manages comment moderation and public submission.
+// CommentService 管理评论审核流程与公开评论提交业务。
 type CommentService struct {
 	repo     *repository.CommentRepo
 	postRepo *repository.PostRepo
 }
 
-// NewCommentService creates a CommentService backed by the given repositories.
+// NewCommentService 使用给定的评论仓储和文章仓储创建 CommentService 实例。
 func NewCommentService(repo *repository.CommentRepo, postRepo *repository.PostRepo) *CommentService {
 	return &CommentService{repo: repo, postRepo: postRepo}
 }
 
-// --- Admin ---
+// --- 管理端接口 ---
 
-// GetPending returns paginated PENDING comments for the admin moderation queue.
+// GetPending 返回分页的待审核（PENDING）评论列表，供管理员审核队列使用。
 func (s *CommentService) GetPending(ctx context.Context, p pagination.Params) (*response.PageResult, error) {
 	cs, total, err := s.repo.FindPending(ctx, p)
 	if err != nil {
@@ -36,7 +36,7 @@ func (s *CommentService) GetPending(ctx context.Context, p pagination.Params) (*
 	return &pr, nil
 }
 
-// GetForAdmin returns a paginated, filtered list of comments for the admin view.
+// GetForAdmin 返回支持多条件过滤的分页评论列表，供管理后台评论管理页使用。
 func (s *CommentService) GetForAdmin(ctx context.Context, f dto.CommentFilter) (*response.PageResult, error) {
 	cs, total, err := s.repo.FindForAdmin(ctx, f)
 	if err != nil {
@@ -48,7 +48,7 @@ func (s *CommentService) GetForAdmin(ctx context.Context, f dto.CommentFilter) (
 	return &pr, nil
 }
 
-// GetByID returns a single comment by primary key, or nil if not found.
+// GetByID 通过主键查询单条评论，不存在时返回 nil, nil。
 func (s *CommentService) GetByID(ctx context.Context, id int64) (*dto.CommentVO, error) {
 	c, err := s.repo.FindByID(ctx, id)
 	if err != nil || c == nil {
@@ -58,7 +58,9 @@ func (s *CommentService) GetByID(ctx context.Context, id int64) (*dto.CommentVO,
 	return &vo, nil
 }
 
-// Approve sets the comment status to APPROVED and asynchronously updates the post's comment count.
+// Approve 将评论状态设为 APPROVED（已通过）。
+// 审核通过后异步更新该文章的评论计数缓存。
+// 错误场景：评论不存在。
 func (s *CommentService) Approve(ctx context.Context, id int64) error {
 	c, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -70,11 +72,13 @@ func (s *CommentService) Approve(ctx context.Context, id int64) error {
 	if err := s.repo.UpdateStatus(ctx, id, "APPROVED"); err != nil {
 		return err
 	}
+	// 异步更新文章评论数，避免阻塞当前请求
 	go s.repo.UpdatePostCommentCount(context.Background(), c.PostID)
 	return nil
 }
 
-// Reject sets the comment status to REJECTED.
+// Reject 将评论状态设为 REJECTED（已拒绝），并异步更新文章评论计数。
+// 错误场景：评论不存在。
 func (s *CommentService) Reject(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -87,7 +91,8 @@ func (s *CommentService) Reject(ctx context.Context, id int64) error {
 	return nil
 }
 
-// MarkSpam sets the comment status to SPAM.
+// MarkSpam 将评论状态设为 SPAM（垃圾评论），并异步更新文章评论计数。
+// 错误场景：评论不存在。
 func (s *CommentService) MarkSpam(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -100,7 +105,8 @@ func (s *CommentService) MarkSpam(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Restore moves a deleted/rejected comment back to PENDING for re-moderation.
+// Restore 将已删除或已拒绝的评论恢复为 PENDING（待审核）状态，以便重新审核。
+// 错误场景：评论不存在。
 func (s *CommentService) Restore(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -113,7 +119,8 @@ func (s *CommentService) Restore(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Delete soft-deletes a comment (status=DELETED) without removing the row.
+// Delete 软删除评论（状态设为 DELETED），数据库行保留，不物理删除。
+// 异步更新文章评论计数。错误场景：评论不存在。
 func (s *CommentService) Delete(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -126,7 +133,8 @@ func (s *CommentService) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// PermanentDelete removes a comment from the database permanently.
+// PermanentDelete 从数据库中彻底删除一条评论记录，不可恢复。
+// 异步更新文章评论计数。错误场景：评论不存在。
 func (s *CommentService) PermanentDelete(ctx context.Context, id int64) error {
 	c, err := s.ensureExists(ctx, id)
 	if err != nil {
@@ -139,37 +147,38 @@ func (s *CommentService) PermanentDelete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// DeleteBatch soft-deletes multiple comments in one query.
+// DeleteBatch 批量软删除多条评论（状态设为 DELETED）。
 func (s *CommentService) DeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.UpdateStatusBatch(ctx, ids, "DELETED")
 }
 
-// PermanentDeleteBatch permanently removes multiple comments in one query.
+// PermanentDeleteBatch 批量彻底删除多条评论记录，不可恢复。
 func (s *CommentService) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
 	return s.repo.PermanentDeleteBatch(ctx, ids)
 }
 
-// ApproveBatch bulk-approves multiple comments in one query.
+// ApproveBatch 批量审核通过多条评论（状态设为 APPROVED）。
 func (s *CommentService) ApproveBatch(ctx context.Context, ids []int64) error {
 	return s.repo.UpdateStatusBatch(ctx, ids, "APPROVED")
 }
 
-// --- Public ---
+// --- 公开接口 ---
 
-// GetByPost returns all APPROVED comments for a post assembled into a nested tree.
+// GetByPost 返回指定文章下所有已审核通过（APPROVED）的评论，并组装为嵌套树形结构。
 func (s *CommentService) GetByPost(ctx context.Context, postID int64) ([]dto.CommentVO, error) {
 	cs, err := s.repo.FindByPostApproved(ctx, postID)
 	if err != nil {
 		return nil, err
 	}
-	// Build tree structure
+	// 将平铺评论列表构建为树形结构
 	return buildCommentTree(toCommentVOs(cs)), nil
 }
 
-// Submit creates a new comment with PENDING status.
-// Validates that the parent comment (if given) belongs to the same post.
+// Submit 提交一条新评论，初始状态为 PENDING（待审核）。
+// 业务规则：若提供了 ParentID，则父评论必须存在且归属于同一篇文章。
+// 错误场景：父评论不存在或不属于当前文章。
 func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.CreateCommentRequest, ip, userAgent string) (*dto.CommentVO, error) {
-	// Verify parent if provided
+	// 验证父评论的合法性
 	if req.ParentID != nil {
 		parent, err := s.repo.FindByID(ctx, *req.ParentID)
 		if err != nil {
@@ -192,7 +201,7 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 		Email:     email,
 		Website:   website,
 		Content:   req.Content,
-		Status:    "PENDING",
+		Status:    "PENDING", // 新评论初始状态为待审核
 		IP:        ipPtr,
 		UserAgent: uaPtr,
 		IsAdmin:   false,
@@ -206,8 +215,9 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 	return &vo, nil
 }
 
-// --- Helpers ---
+// --- 内部辅助方法 ---
 
+// ensureExists 查询评论是否存在，不存在时返回 "评论不存在" 错误。
 func (s *CommentService) ensureExists(ctx context.Context, id int64) (*model.Comment, error) {
 	c, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -219,15 +229,16 @@ func (s *CommentService) ensureExists(ctx context.Context, id int64) (*model.Com
 	return c, nil
 }
 
-// enrichCommentRefs populates Post and Parent refs on comment VOs for admin views.
+// enrichCommentRefs 为管理端视图中的评论 VO 批量填充关联的文章信息和父评论信息。
+// 文章信息通过批量查询获取；父评论昵称优先从当前页数据中查找，未找到时再单条查询。
 func (s *CommentService) enrichCommentRefs(ctx context.Context, cs []model.Comment, vos []dto.CommentVO) {
-	// Collect unique post IDs
+	// 收集所有不重复的文章 ID
 	postIDSet := make(map[int64]struct{})
 	for _, c := range cs {
 		postIDSet[c.PostID] = struct{}{}
 	}
 
-	// Batch fetch posts
+	// 批量查询文章信息并构建映射表
 	postMap := make(map[int64]*dto.CommentPostRef)
 	for pid := range postIDSet {
 		if p, err := s.postRepo.FindByID(ctx, pid); err == nil && p != nil {
@@ -235,22 +246,23 @@ func (s *CommentService) enrichCommentRefs(ctx context.Context, cs []model.Comme
 		}
 	}
 
-	// Build a nickname lookup from the comments themselves (covers most parent refs)
+	// 从当前页评论中构建昵称映射，用于快速查找父评论昵称
 	nicknameMap := make(map[int64]string, len(cs))
 	for _, c := range cs {
 		nicknameMap[c.ID] = c.Nickname
 	}
 
-	// Populate refs
+	// 回填文章引用和父评论引用
 	for i, c := range cs {
 		if ref, ok := postMap[c.PostID]; ok {
 			vos[i].Post = ref
 		}
 		if c.ParentID != nil {
 			if nick, ok := nicknameMap[*c.ParentID]; ok {
+				// 父评论在当前页内，直接使用
 				vos[i].Parent = &dto.CommentParentRef{ID: *c.ParentID, Nickname: nick}
 			} else {
-				// Parent not in current page — fetch individually
+				// 父评论不在当前页，单独查询
 				if parent, err := s.repo.FindByID(ctx, *c.ParentID); err == nil && parent != nil {
 					vos[i].Parent = &dto.CommentParentRef{ID: parent.ID, Nickname: parent.Nickname}
 				}
@@ -259,6 +271,7 @@ func (s *CommentService) enrichCommentRefs(ctx context.Context, cs []model.Comme
 	}
 }
 
+// toCommentVO 将单个 model.Comment 转换为 dto.CommentVO。
 func toCommentVO(c model.Comment) dto.CommentVO {
 	return dto.CommentVO{
 		ID:        c.ID,
@@ -277,6 +290,7 @@ func toCommentVO(c model.Comment) dto.CommentVO {
 	}
 }
 
+// toCommentVOs 将 model.Comment 切片批量转换为 dto.CommentVO 切片。
 func toCommentVOs(cs []model.Comment) []dto.CommentVO {
 	vos := make([]dto.CommentVO, len(cs))
 	for i, c := range cs {
@@ -285,28 +299,28 @@ func toCommentVOs(cs []model.Comment) []dto.CommentVO {
 	return vos
 }
 
-// buildCommentTree converts flat list into nested tree by parent_id.
-// Uses pointer-based linking to correctly handle multi-level nesting.
+// buildCommentTree 将平铺的评论列表按 parent_id 构建为嵌套树形结构。
+// 使用指针链接实现，可正确处理多级嵌套。根节点为 ParentID 为 nil 的评论。
 func buildCommentTree(vos []dto.CommentVO) []dto.CommentVO {
 	byID := make(map[int64]*dto.CommentVO, len(vos))
 	for i := range vos {
-		vos[i].Children = nil // reset
+		vos[i].Children = nil // 重置子节点列表，防止重复构建
 		byID[vos[i].ID] = &vos[i]
 	}
-	// Link children to parents via pointers — mutations propagate through byID.
+	// 第一轮：通过指针将子节点挂载到对应父节点，变更会通过 byID 映射传播
 	var rootIDs []int64
 	for i := range vos {
 		if vos[i].ParentID != nil {
 			if parent, ok := byID[*vos[i].ParentID]; ok {
-				parent.Children = append(parent.Children, dto.CommentVO{}) // placeholder
+				parent.Children = append(parent.Children, dto.CommentVO{}) // 占位
 				parent.Children[len(parent.Children)-1] = *byID[vos[i].ID]
 				continue
 			}
 		}
 		rootIDs = append(rootIDs, vos[i].ID)
 	}
-	// Collect roots. We must re-read from byID to get the fully linked structs.
-	// For deep nesting we do a recursive copy from the pointer map.
+	// 第二轮：从 byID 中递归收集完整的树形结构
+	// 必须重新从指针映射读取，以获取已完整挂载子节点的数据
 	var collectTree func(id int64) dto.CommentVO
 	collectTree = func(id int64) dto.CommentVO {
 		node := byID[id]
@@ -326,6 +340,7 @@ func buildCommentTree(vos []dto.CommentVO) []dto.CommentVO {
 	return roots
 }
 
+// strPtr 将非空字符串转换为指针，空字符串返回 nil。
 func strPtr(s string) *string {
 	if s == "" {
 		return nil

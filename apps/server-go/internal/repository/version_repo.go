@@ -10,25 +10,28 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
-// VersionRepo provides data access for the media_versions table.
+// VersionRepo 提供对 media_versions 表的数据访问能力。
 type VersionRepo struct{ db *sqlx.DB }
 
-// NewVersionRepo creates a VersionRepo backed by the given database connection.
+// NewVersionRepo 创建一个由指定数据库连接支撑的 VersionRepo 实例。
 func NewVersionRepo(db *sqlx.DB) *VersionRepo { return &VersionRepo{db: db} }
 
-// FindByFileID returns all versions for a media file, ordered by version_number descending.
+// FindByFileID 查询指定媒体文件的所有版本记录，按 version_number 倒序排列（最新版本在前）。
+// 操作表：media_versions；参数 fileID 为媒体文件主键。
 func (r *VersionRepo) FindByFileID(ctx context.Context, fileID int64) ([]model.MediaVersion, error) {
 	var versions []model.MediaVersion
 	err := r.db.SelectContext(ctx, &versions, `SELECT * FROM media_versions WHERE media_file_id=$1 ORDER BY version_number DESC`, fileID)
 	return versions, err
 }
 
-// FindByID returns a version record by primary key, or nil if not found.
+// FindByID 根据主键查询单条版本记录，不存在时返回 nil。
+// 操作表：media_versions；参数 id 为版本记录主键。
 func (r *VersionRepo) FindByID(ctx context.Context, id int64) (*model.MediaVersion, error) {
 	var v model.MediaVersion
 	err := r.db.GetContext(ctx, &v, `SELECT * FROM media_versions WHERE id=$1`, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// 版本记录不存在，返回 nil 而非错误
 			return nil, nil
 		}
 		return nil, err
@@ -36,12 +39,14 @@ func (r *VersionRepo) FindByID(ctx context.Context, id int64) (*model.MediaVersi
 	return &v, nil
 }
 
-// FindByFileAndVersion returns a specific version of a media file by file ID and version number, or nil if not found.
+// FindByFileAndVersion 根据文件 ID 和版本号查询特定版本记录，不存在时返回 nil。
+// 操作表：media_versions；参数 fileID 为媒体文件主键，versionNumber 为目标版本号。
 func (r *VersionRepo) FindByFileAndVersion(ctx context.Context, fileID int64, versionNumber int) (*model.MediaVersion, error) {
 	var v model.MediaVersion
 	err := r.db.GetContext(ctx, &v, `SELECT * FROM media_versions WHERE media_file_id=$1 AND version_number=$2`, fileID, versionNumber)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// 指定版本不存在，返回 nil 而非错误
 			return nil, nil
 		}
 		return nil, err
@@ -49,7 +54,8 @@ func (r *VersionRepo) FindByFileAndVersion(ctx context.Context, fileID int64, ve
 	return &v, nil
 }
 
-// Create inserts a new version record and back-fills the generated ID and CreatedAt.
+// Create 向 media_versions 表插入一条新版本记录，
+// 并将数据库生成的 id 和 created_at 回填到传入的结构体中。
 func (r *VersionRepo) Create(ctx context.Context, v *model.MediaVersion) error {
 	return r.db.QueryRowContext(ctx, `
 		INSERT INTO media_versions (media_file_id, version_number, file_path, file_url, file_size, change_description, created_by)
@@ -58,13 +64,15 @@ func (r *VersionRepo) Create(ctx context.Context, v *model.MediaVersion) error {
 	).Scan(&v.ID, &v.CreatedAt)
 }
 
-// Delete permanently removes a version record by primary key.
+// Delete 根据主键永久删除一条版本记录。
+// 操作表：media_versions；参数 id 为版本记录主键。
 func (r *VersionRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_versions WHERE id=$1`, id)
 	return err
 }
 
-// GetMaxVersionNumber returns the highest version_number for a file, or 0 if no versions exist.
+// GetMaxVersionNumber 查询指定媒体文件当前最大的版本号。
+// 操作表：media_versions；使用 COALESCE(MAX(...), 0) 保证在无任何版本时返回 0。
 func (r *VersionRepo) GetMaxVersionNumber(ctx context.Context, fileID int64) (int, error) {
 	var n int
 	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version_number), 0) FROM media_versions WHERE media_file_id=$1`, fileID).Scan(&n)

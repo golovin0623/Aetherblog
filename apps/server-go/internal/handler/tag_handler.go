@@ -10,13 +10,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// TagHandler handles CRUD operations for blog post tags.
+// TagHandler 处理博客文章标签的 CRUD 操作相关 HTTP 接口。
 type TagHandler struct{ svc *service.TagService }
 
-// NewTagHandler creates a TagHandler backed by the given TagService.
+// NewTagHandler 创建由指定 TagService 驱动的 TagHandler 实例。
 func NewTagHandler(svc *service.TagService) *TagHandler { return &TagHandler{svc: svc} }
 
-// MountAdmin registers admin CRUD routes (list, get, create, update, delete) on g.
+// MountAdmin 将管理端 CRUD 路由（列表、详情、创建、更新、删除）注册到路由组 g。
 func (h *TagHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.List)
 	g.GET("/:id", h.Get)
@@ -25,7 +25,8 @@ func (h *TagHandler) MountAdmin(g *echo.Group) {
 	g.DELETE("/:id", h.Delete)
 }
 
-// List handles GET /admin/tags. Returns all tags ordered by name.
+// List 处理 GET /admin/tags 请求。
+// 返回所有标签列表，按名称排序。
 func (h *TagHandler) List(c echo.Context) error {
 	tags, err := h.svc.List(c.Request().Context())
 	if err != nil {
@@ -34,7 +35,9 @@ func (h *TagHandler) List(c echo.Context) error {
 	return response.OK(c, tags)
 }
 
-// Get handles GET /admin/tags/:id. Returns a single tag.
+// Get 处理 GET /admin/tags/:id 请求。
+// 根据 ID 返回单个标签的详细信息。
+// 路径参数 id 为标签数字 ID。
 func (h *TagHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -44,13 +47,16 @@ func (h *TagHandler) Get(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	// 标签不存在时返回 404
 	if tag == nil {
 		return response.FailWith(c, response.NotFound, "标签不存在")
 	}
 	return response.OK(c, tag)
 }
 
-// Create handles POST /admin/tags. Creates a new tag; auto-generates slug and defaults color to indigo.
+// Create 处理 POST /admin/tags 请求。
+// 创建新标签；服务层会自动生成 URL slug 并将颜色默认设置为 indigo。
+// 请求体为 TagRequest。
 func (h *TagHandler) Create(c echo.Context) error {
 	var req dto.TagRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -63,7 +69,9 @@ func (h *TagHandler) Create(c echo.Context) error {
 	return response.OK(c, tag)
 }
 
-// Update handles PUT /admin/tags/:id. Updates tag name, slug, description, and color.
+// Update 处理 PUT /admin/tags/:id 请求。
+// 更新标签的名称、URL slug、描述和颜色。
+// 路径参数 id 为标签 ID，请求体为 TagRequest。
 func (h *TagHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -80,7 +88,9 @@ func (h *TagHandler) Update(c echo.Context) error {
 	return response.OK(c, tag)
 }
 
-// Delete handles DELETE /admin/tags/:id. Removes the tag and its post-tag associations.
+// Delete 处理 DELETE /admin/tags/:id 请求。
+// 删除指定标签及其所有文章-标签关联记录。
+// 路径参数 id 为标签 ID。
 func (h *TagHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

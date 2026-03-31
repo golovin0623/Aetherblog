@@ -8,60 +8,67 @@ import (
 	"testing"
 )
 
+// TestLocalStorage_UploadAndDelete 测试本地存储的完整上传与删除流程：
+// 上传文件后验证 URL 正确、文件内容一致，删除后验证文件已不存在。
 func TestLocalStorage_UploadAndDelete(t *testing.T) {
+	// 使用测试临时目录，测试结束后自动清理
 	dir := t.TempDir()
 	store := NewLocalStorage(dir, "/uploads")
 
 	ctx := context.Background()
 
-	// Upload
+	// 上传阶段：写入文本内容
 	content := "hello world"
 	url, err := store.Upload(ctx, "2026/test.txt", strings.NewReader(content), int64(len(content)), "text/plain")
 	if err != nil {
-		t.Fatalf("Upload failed: %v", err)
+		t.Fatalf("Upload 失败: %v", err)
 	}
+	// 验证返回的访问 URL 格式是否正确
 	if url != "/uploads/2026/test.txt" {
-		t.Errorf("unexpected URL: %s", url)
+		t.Errorf("返回 URL 不符合预期: %s", url)
 	}
 
-	// Verify file exists
+	// 验证阶段：确认文件已写入磁盘且内容正确
 	data, err := os.ReadFile(filepath.Join(dir, "2026/test.txt"))
 	if err != nil {
-		t.Fatalf("file not found: %v", err)
+		t.Fatalf("文件未找到: %v", err)
 	}
 	if string(data) != content {
-		t.Errorf("file content mismatch: got %q, want %q", string(data), content)
+		t.Errorf("文件内容不匹配: 实际 %q, 期望 %q", string(data), content)
 	}
 
-	// Delete
+	// 删除阶段：删除已上传的文件
 	if err := store.Delete(ctx, "2026/test.txt"); err != nil {
-		t.Fatalf("Delete failed: %v", err)
+		t.Fatalf("Delete 失败: %v", err)
 	}
 
-	// Verify deleted
+	// 验证文件已被删除
 	if _, err := os.Stat(filepath.Join(dir, "2026/test.txt")); !os.IsNotExist(err) {
-		t.Error("file should be deleted")
+		t.Error("文件应已被删除，但仍然存在")
 	}
 }
 
+// TestLocalStorage_GetURL 测试 GetURL 是否能够正确拼接 baseURL 和 key。
 func TestLocalStorage_GetURL(t *testing.T) {
 	store := NewLocalStorage("/data", "/api/uploads")
 	if got := store.GetURL("img/photo.jpg"); got != "/api/uploads/img/photo.jpg" {
-		t.Errorf("GetURL = %q, want /api/uploads/img/photo.jpg", got)
+		t.Errorf("GetURL = %q, 期望值为 /api/uploads/img/photo.jpg", got)
 	}
 }
 
+// TestLocalStorage_Type 测试 Type 方法是否返回正确的存储类型标识符。
 func TestLocalStorage_Type(t *testing.T) {
 	store := NewLocalStorage("/data", "/uploads")
 	if got := store.Type(); got != "LOCAL" {
-		t.Errorf("Type = %q, want LOCAL", got)
+		t.Errorf("Type = %q, 期望值为 LOCAL", got)
 	}
 }
 
+// TestLocalStorage_DeleteNonExistent 测试删除不存在的文件时不应返回错误（幂等性验证）。
 func TestLocalStorage_DeleteNonExistent(t *testing.T) {
 	store := NewLocalStorage(t.TempDir(), "/uploads")
-	// Should not error when file doesn't exist
+	// 删除不存在的文件应静默成功，不报错
 	if err := store.Delete(context.Background(), "nonexistent.txt"); err != nil {
-		t.Errorf("Delete non-existent should not error: %v", err)
+		t.Errorf("删除不存在的文件不应报错，但返回了: %v", err)
 	}
 }

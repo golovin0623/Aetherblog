@@ -10,15 +10,17 @@ import (
 )
 
 const (
-	AccessTokenCookie  = "ab_access_token"
+	// AccessTokenCookie 是存储访问令牌的 HttpOnly Cookie 名称。
+	AccessTokenCookie = "ab_access_token"
+	// RefreshTokenCookie 是存储刷新令牌的 HttpOnly Cookie 名称。
 	RefreshTokenCookie = "ab_refresh_token"
 
-	// ContextKeyLoginUser is the echo.Context key where *jwtutil.LoginUser is stored.
+	// ContextKeyLoginUser 是 echo.Context 中存储 *jwtutil.LoginUser 的键名。
 	ContextKeyLoginUser = "loginUser"
 )
 
-// JWTAuth returns a middleware that validates JWT from Authorization header OR ab_access_token cookie.
-// On success it stores *jwtutil.LoginUser under ContextKeyLoginUser.
+// JWTAuth 返回一个中间件，从 Authorization 请求头或 ab_access_token Cookie 中验证 JWT。
+// 验证成功后将 *jwtutil.LoginUser 存入 ContextKeyLoginUser 对应的上下文键。
 func JWTAuth(secret string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -47,7 +49,8 @@ func JWTAuth(secret string) echo.MiddlewareFunc {
 	}
 }
 
-// JWTOptional tries to extract the JWT but does NOT block the request on failure.
+// JWTOptional 尝试提取并解析 JWT，但不会因解析失败而拦截请求。
+// 若令牌有效，则将用户信息写入上下文；否则直接放行。
 func JWTOptional(secret string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -65,25 +68,30 @@ func JWTOptional(secret string) echo.MiddlewareFunc {
 	}
 }
 
-// GetLoginUser retrieves the authenticated user from the context. Returns nil if not authenticated.
+// GetLoginUser 从 Echo 上下文中获取已认证的用户信息。若未认证则返回 nil。
 func GetLoginUser(c echo.Context) *jwtutil.LoginUser {
 	u, _ := c.Get(ContextKeyLoginUser).(*jwtutil.LoginUser)
 	return u
 }
 
+// extractToken 按优先级从请求中提取 JWT 字符串：
+// 1. Authorization 请求头（Bearer 格式）
+// 2. HttpOnly Cookie
 func extractToken(c echo.Context) string {
-	// 1. Authorization: Bearer <token>
+	// 优先从 Authorization: Bearer <token> 头中提取
 	auth := c.Request().Header.Get("Authorization")
 	if strings.HasPrefix(auth, "Bearer ") {
 		return strings.TrimPrefix(auth, "Bearer ")
 	}
-	// 2. HttpOnly Cookie
+	// 其次从 HttpOnly Cookie 中提取
 	if cookie, err := c.Cookie(AccessTokenCookie); err == nil {
 		return cookie.Value
 	}
 	return ""
 }
 
+// mustParseID 将字符串安全解析为 int64 用户 ID。
+// 若包含非数字字符则返回 0，表示无效 ID。
 func mustParseID(s string) int64 {
 	var id int64
 	for _, ch := range s {

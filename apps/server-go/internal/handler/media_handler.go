@@ -18,22 +18,22 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// MediaHandler manages media file uploads, listing, trash, and version management.
-// The version-related dependencies (versionSvc, store, mediaRepo) are optional and must
-// be injected via SetVersionDeps before the UploadContent endpoint is used.
+// MediaHandler 负责处理媒体文件的上传、列表、回收站及版本管理接口。
+// 版本相关依赖（versionSvc、store、mediaRepo）为可选项，
+// 使用 UploadContent 接口前须先调用 SetVersionDeps 进行注入。
 type MediaHandler struct {
 	svc        *service.MediaService
-	versionSvc *service.VersionService // optional; required for UploadContent
-	store      storage.Storage          // optional; required for UploadContent
-	uploadDir  string                   // local upload base directory
-	mediaRepo  *repository.MediaRepo    // optional; required for UploadContent
+	versionSvc *service.VersionService // 可选；UploadContent 接口所必需
+	store      storage.Storage          // 可选；UploadContent 接口所必需
+	uploadDir  string                   // 本地上传根目录
+	mediaRepo  *repository.MediaRepo    // 可选；UploadContent 接口所必需
 }
 
-// NewMediaHandler creates a MediaHandler with the core MediaService.
-// Call SetVersionDeps to enable file-content replacement with versioning.
+// NewMediaHandler 创建一个仅含核心 MediaService 的 MediaHandler 实例。
+// 如需启用带版本控制的文件内容替换功能，请调用 SetVersionDeps 注入相关依赖。
 func NewMediaHandler(svc *service.MediaService) *MediaHandler { return &MediaHandler{svc: svc} }
 
-// SetVersionDeps sets the optional version-related dependencies for content upload.
+// SetVersionDeps 注入版本相关的可选依赖，以启用文件内容上传功能。
 func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, store storage.Storage, uploadDir string, mediaRepo *repository.MediaRepo) {
 	h.versionSvc = versionSvc
 	h.store = store
@@ -41,7 +41,7 @@ func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, store 
 	h.mediaRepo = mediaRepo
 }
 
-// Mount registers all media management routes on g.
+// Mount 在指定路由组上注册所有媒体管理路由。
 func (h *MediaHandler) Mount(g *echo.Group) {
 	g.POST("/upload", h.Upload)
 	g.POST("/upload/batch", h.UploadBatch)
@@ -63,8 +63,8 @@ func (h *MediaHandler) Mount(g *echo.Group) {
 	g.DELETE("/:id/permanent", h.PermanentDelete)
 }
 
-// Upload handles POST /admin/media/upload. Accepts a single multipart file upload.
-// Optional query param: folderId — places the file in the specified folder.
+// Upload 处理 POST /admin/media/upload 请求，接受单个 multipart 文件上传。
+// 可选查询参数：folderId — 将文件放入指定文件夹。
 func (h *MediaHandler) Upload(c echo.Context) error {
 	fh, err := c.FormFile("file")
 	if err != nil {
@@ -88,8 +88,8 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// UploadBatch handles POST /admin/media/upload/batch. Accepts multiple files under the "files" form field.
-// Returns a mixed array — successful uploads as MediaFileVO, failed ones as {"error": "...", "filename": "..."}.
+// UploadBatch 处理 POST /admin/media/upload/batch 请求，接受 "files" 表单字段下的多个文件。
+// 返回混合结果数组：成功的文件返回 MediaFileVO，失败的返回 {"error": "...", "filename": "..."}。
 func (h *MediaHandler) UploadBatch(c echo.Context) error {
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -112,6 +112,7 @@ func (h *MediaHandler) UploadBatch(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
 
+	// 逐个上传，失败的文件不中断整体流程
 	var results []interface{}
 	for _, fh := range files {
 		vo, err := h.svc.Upload(c.Request().Context(), fh, uploaderID, folderID)
@@ -124,8 +125,8 @@ func (h *MediaHandler) UploadBatch(c echo.Context) error {
 	return response.OK(c, results)
 }
 
-// List handles GET /admin/media. Returns paginated non-deleted media files with optional
-// keyword, fileType, and folderId filters.
+// List 处理 GET /admin/media 请求，
+// 返回分页的未删除媒体文件列表，支持关键词、文件类型、文件夹 ID 过滤。
 func (h *MediaHandler) List(c echo.Context) error {
 	f := repository.MediaFilter{
 		Keyword:  c.QueryParam("keyword"),
@@ -146,7 +147,8 @@ func (h *MediaHandler) List(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// Stats handles GET /admin/media/stats. Returns storage usage statistics (file counts and sizes by type).
+// Stats 处理 GET /admin/media/stats 请求，
+// 返回存储使用统计信息（按类型分类的文件数量和大小）。
 func (h *MediaHandler) Stats(c echo.Context) error {
 	st, err := h.svc.GetStats(c.Request().Context())
 	if err != nil {
@@ -155,8 +157,11 @@ func (h *MediaHandler) Stats(c echo.Context) error {
 	return response.OK(c, st)
 }
 
+// BatchMove 处理 POST /admin/media/batch-move 请求，
+// 将多个文件批量移动至指定文件夹。
+// 前端发送 {"fileIds":[...], "folderId": N}，同时兼容 ids 字段名。
 func (h *MediaHandler) BatchMove(c echo.Context) error {
-	// Frontend sends {"fileIds":[...], "folderId": N} — accept both fileIds and ids
+	// 前端发送 {"fileIds":[...], "folderId": N}，同时兼容 ids 和 fileIds 两种字段名
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "请求格式错误")
@@ -169,6 +174,7 @@ func (h *MediaHandler) BatchMove(c echo.Context) error {
 	if err := json.Unmarshal(body, &req); err != nil {
 		return response.FailWith(c, response.BadRequest, "请求格式错误")
 	}
+	// 优先使用 fileIds，回退到 ids
 	ids := req.FileIDs
 	if len(ids) == 0 {
 		ids = req.IDs
@@ -182,6 +188,8 @@ func (h *MediaHandler) BatchMove(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// DeleteBatch 处理 DELETE /admin/media/batch 请求，
+// 根据 ID 列表批量软删除（移入回收站）媒体文件。
 func (h *MediaHandler) DeleteBatch(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -193,7 +201,8 @@ func (h *MediaHandler) DeleteBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Trash handles GET /admin/media/trash. Returns paginated soft-deleted (trashed) media files.
+// Trash 处理 GET /admin/media/trash 请求，
+// 返回分页的已软删除（回收站中）媒体文件列表。
 func (h *MediaHandler) Trash(c echo.Context) error {
 	f := repository.MediaFilter{
 		Keyword:  c.QueryParam("keyword"),
@@ -208,7 +217,8 @@ func (h *MediaHandler) Trash(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// TrashCount handles GET /admin/media/trash/count. Returns the number of soft-deleted files.
+// TrashCount 处理 GET /admin/media/trash/count 请求，
+// 返回回收站中软删除文件的数量。
 func (h *MediaHandler) TrashCount(c echo.Context) error {
 	n, err := h.svc.GetTrashCount(c.Request().Context())
 	if err != nil {
@@ -217,7 +227,8 @@ func (h *MediaHandler) TrashCount(c echo.Context) error {
 	return response.OK(c, n)
 }
 
-// BatchRestore handles POST /admin/media/trash/batch-restore. Restores multiple trashed files.
+// BatchRestore 处理 POST /admin/media/trash/batch-restore 请求，
+// 批量恢复回收站中的多个文件。
 func (h *MediaHandler) BatchRestore(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -229,6 +240,8 @@ func (h *MediaHandler) BatchRestore(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
+// PermanentDeleteBatch 处理 DELETE /admin/media/trash/batch-permanent 请求，
+// 不可逆地彻底删除回收站中的多个文件。
 func (h *MediaHandler) PermanentDeleteBatch(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -240,7 +253,8 @@ func (h *MediaHandler) PermanentDeleteBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// EmptyTrash handles DELETE /admin/media/trash/empty. Permanently deletes all trashed files.
+// EmptyTrash 处理 DELETE /admin/media/trash/empty 请求，
+// 永久清空回收站中的所有文件。
 func (h *MediaHandler) EmptyTrash(c echo.Context) error {
 	if err := h.svc.EmptyTrash(c.Request().Context()); err != nil {
 		return response.Error(c, err)
@@ -248,7 +262,8 @@ func (h *MediaHandler) EmptyTrash(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Get handles GET /admin/media/:id. Returns full metadata for a single media file.
+// Get 处理 GET /admin/media/:id 请求，
+// 返回单个媒体文件的完整元数据信息。
 func (h *MediaHandler) Get(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -264,14 +279,15 @@ func (h *MediaHandler) Get(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// Update handles PUT /admin/media/:id. Updates metadata (altText, originalName, folderId).
-// Accepts values as both query parameters and JSON body; body takes precedence.
+// Update 处理 PUT /admin/media/:id 请求，
+// 更新媒体文件元数据（altText、originalName、folderId）。
+// 同时接受查询参数和 JSON 请求体，请求体优先级更高。
 func (h *MediaHandler) Update(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// Java accepts altText/originalName as query params; also accept JSON body
+	// 同时支持通过查询参数传递 altText/originalName（兼容旧版调用方式）
 	var req dto.UpdateMediaRequest
 	if alt := c.QueryParam("altText"); alt != "" {
 		req.AltText = &alt
@@ -284,7 +300,7 @@ func (h *MediaHandler) Update(c echo.Context) error {
 			req.FolderID = &n
 		}
 	}
-	// Also try JSON body (overrides query params if present)
+	// 尝试绑定 JSON 请求体（若存在则覆盖查询参数）
 	_ = c.Bind(&req)
 	vo, err := h.svc.Update(c.Request().Context(), id, req)
 	if err != nil {
@@ -293,7 +309,8 @@ func (h *MediaHandler) Update(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// Delete handles DELETE /admin/media/:id. Soft-deletes (trashes) a single file.
+// Delete 处理 DELETE /admin/media/:id 请求，
+// 软删除（移入回收站）单个文件。
 func (h *MediaHandler) Delete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -305,20 +322,22 @@ func (h *MediaHandler) Delete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Move handles POST /admin/media/:id/move. Moves a file to another folder (nil = root).
-// Accepts folderId as query param or JSON body.
+// Move 处理 POST /admin/media/:id/move 请求，
+// 将文件移动至另一个文件夹（nil 表示移至根目录）。
+// 同时支持通过查询参数或 JSON 请求体传递 folderId。
 func (h *MediaHandler) Move(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// Java accepts folderId as query param; also accept JSON body
+	// 优先从查询参数获取 folderId（兼容旧版调用方式）
 	var folderID *int64
 	if v := c.QueryParam("folderId"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			folderID = &n
 		}
 	}
+	// 若查询参数中无 folderId，则尝试从 JSON 请求体获取
 	if folderID == nil {
 		var req struct {
 			FolderID *int64 `json:"folderId"`
@@ -332,7 +351,8 @@ func (h *MediaHandler) Move(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// Restore handles POST /admin/media/:id/restore. Restores a single trashed file.
+// Restore 处理 POST /admin/media/:id/restore 请求，
+// 将单个回收站文件恢复至正常状态。
 func (h *MediaHandler) Restore(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -344,7 +364,8 @@ func (h *MediaHandler) Restore(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// PermanentDelete handles DELETE /admin/media/:id/permanent. Irreversibly removes a file.
+// PermanentDelete 处理 DELETE /admin/media/:id/permanent 请求，
+// 不可逆地彻底删除单个文件。
 func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -356,10 +377,10 @@ func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// UploadContent handles POST /admin/media/:id/content.
-// Replaces the file's binary content: saves a version snapshot of the current file,
-// uploads the new content to storage, then updates the DB record with the new path/URL/size/version.
-// Requires SetVersionDeps to have been called.
+// UploadContent 处理 POST /admin/media/:id/content 请求。
+// 替换文件的二进制内容：先对当前文件生成版本快照，
+// 再将新内容上传至存储，最后更新数据库中的路径、URL、大小和版本号。
+// 使用前需确保已调用 SetVersionDeps 注入相关依赖。
 func (h *MediaHandler) UploadContent(c echo.Context) error {
 	if h.versionSvc == nil || h.store == nil || h.mediaRepo == nil {
 		return response.FailWith(c, response.InternalError, "版本服务未配置")
@@ -377,7 +398,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	// Get current file record
+	// 获取当前文件记录
 	existing, err := h.mediaRepo.FindByID(ctx, id)
 	if err != nil {
 		return response.Error(c, err)
@@ -386,7 +407,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 		return response.FailWith(c, response.NotFound, "文件不存在")
 	}
 
-	// Save current version before replacing
+	// 替换前先保存当前版本快照
 	lu := middleware.GetLoginUser(c)
 	var createdBy *int64
 	if lu != nil {
@@ -397,7 +418,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 		return response.Error(c, err)
 	}
 
-	// Upload the new file content
+	// 上传新文件内容
 	f, err := fh.Open()
 	if err != nil {
 		return response.Error(c, err)
@@ -407,6 +428,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	now := time.Now()
 	ext := filepath.Ext(fh.Filename)
 	if ext == "" {
+		// 若新文件无扩展名，则沿用原文件扩展名
 		ext = filepath.Ext(existing.Filename)
 	}
 	key := fmt.Sprintf("%d/%02d/%d_edited%s", now.Year(), now.Month(), now.UnixMilli(), ext)
@@ -416,13 +438,13 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "文件上传失败: "+err.Error())
 	}
 
-	// Update file record with new content
+	// 更新数据库文件记录（路径、URL、大小、版本号）
 	newVersion := existing.CurrentVersion + 1
 	if err := h.mediaRepo.UpdateFileContent(ctx, id, key, url, fh.Size, newVersion); err != nil {
 		return response.Error(c, err)
 	}
 
-	// Return updated file
+	// 返回更新后的文件信息
 	vo, err := h.svc.GetByID(ctx, id)
 	if err != nil {
 		return response.Error(c, err)

@@ -12,13 +12,13 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
-// CommentHandler handles comment moderation and public submission endpoints.
+// CommentHandler 负责处理评论审核和公开提交相关接口。
 type CommentHandler struct{ svc *service.CommentService }
 
-// NewCommentHandler creates a CommentHandler backed by the given CommentService.
+// NewCommentHandler 创建一个由指定 CommentService 驱动的 CommentHandler 实例。
 func NewCommentHandler(svc *service.CommentService) *CommentHandler { return &CommentHandler{svc: svc} }
 
-// MountAdmin registers admin moderation routes (list, approve, reject, delete, etc.) on g.
+// MountAdmin 在指定路由组上注册管理端审核路由（列表、审批、拒绝、删除等）。
 func (h *CommentHandler) MountAdmin(g *echo.Group) {
 	g.GET("/pending", h.Pending)
 	g.GET("", h.AdminList)
@@ -34,16 +34,17 @@ func (h *CommentHandler) MountAdmin(g *echo.Group) {
 	g.PATCH("/batch/approve", h.ApproveBatch)
 }
 
-// MountPublic registers the public comment listing route on g.
-// The Submit endpoint is registered separately in server.go with rate limiting.
+// MountPublic 在指定路由组上注册公开评论列表路由。
+// Submit 接口单独在 server.go 中注册（附加限流中间件）。
 func (h *CommentHandler) MountPublic(g *echo.Group) {
 	g.GET("/post/:postId", h.ListByPost)
-	// Submit is registered in server.go with rate limiting
+	// Submit 在 server.go 中附加限流中间件后单独注册
 }
 
-// --- Admin ---
+// --- 管理端接口 ---
 
-// Pending handles GET /admin/comments/pending. Returns paginated comments awaiting moderation.
+// Pending 处理 GET /admin/comments/pending 请求，
+// 返回待审核评论的分页列表。
 func (h *CommentHandler) Pending(c echo.Context) error {
 	p := pagination.ParseWithDefaults(c, 1, 20)
 	pr, err := h.svc.GetPending(c.Request().Context(), p)
@@ -53,7 +54,8 @@ func (h *CommentHandler) Pending(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// AdminList handles GET /admin/comments with optional filters (status, keyword, postId).
+// AdminList 处理 GET /admin/comments 请求，
+// 支持按状态、关键词、文章 ID 过滤，返回分页评论列表。
 func (h *CommentHandler) AdminList(c echo.Context) error {
 	f := dto.CommentFilter{
 		Status:   c.QueryParam("status"),
@@ -73,7 +75,8 @@ func (h *CommentHandler) AdminList(c echo.Context) error {
 	return response.OK(c, pr)
 }
 
-// AdminGet handles GET /admin/comments/:id. Returns full comment detail.
+// AdminGet 处理 GET /admin/comments/:id 请求，
+// 返回单条评论的完整详情。
 func (h *CommentHandler) AdminGet(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -89,37 +92,44 @@ func (h *CommentHandler) AdminGet(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// Approve handles PATCH /admin/comments/:id/approve. Approves a pending comment for public display.
+// Approve 处理 PATCH /admin/comments/:id/approve 请求，
+// 将待审核评论审批通过，使其公开展示。
 func (h *CommentHandler) Approve(c echo.Context) error {
 	return h.withID(c, h.svc.Approve)
 }
 
-// Reject handles PATCH /admin/comments/:id/reject. Marks a comment as rejected.
+// Reject 处理 PATCH /admin/comments/:id/reject 请求，
+// 将评论标记为已拒绝。
 func (h *CommentHandler) Reject(c echo.Context) error {
 	return h.withID(c, h.svc.Reject)
 }
 
-// Spam handles PATCH /admin/comments/:id/spam. Marks a comment as spam.
+// Spam 处理 PATCH /admin/comments/:id/spam 请求，
+// 将评论标记为垃圾评论。
 func (h *CommentHandler) Spam(c echo.Context) error {
 	return h.withID(c, h.svc.MarkSpam)
 }
 
-// Restore handles PATCH /admin/comments/:id/restore. Restores a rejected/spam comment to pending.
+// Restore 处理 PATCH /admin/comments/:id/restore 请求，
+// 将已拒绝或垃圾评论恢复为待审核状态。
 func (h *CommentHandler) Restore(c echo.Context) error {
 	return h.withID(c, h.svc.Restore)
 }
 
-// Delete handles DELETE /admin/comments/:id. Soft-deletes the comment.
+// Delete 处理 DELETE /admin/comments/:id 请求，
+// 软删除指定评论。
 func (h *CommentHandler) Delete(c echo.Context) error {
 	return h.withID(c, h.svc.Delete)
 }
 
-// PermanentDelete handles DELETE /admin/comments/:id/permanent. Irreversibly removes the comment.
+// PermanentDelete 处理 DELETE /admin/comments/:id/permanent 请求，
+// 不可逆地彻底删除指定评论。
 func (h *CommentHandler) PermanentDelete(c echo.Context) error {
 	return h.withID(c, h.svc.PermanentDelete)
 }
 
-// DeleteBatch handles DELETE /admin/comments/batch. Soft-deletes multiple comments by ID.
+// DeleteBatch 处理 DELETE /admin/comments/batch 请求，
+// 根据 ID 列表批量软删除评论。
 func (h *CommentHandler) DeleteBatch(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -131,7 +141,8 @@ func (h *CommentHandler) DeleteBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// PermanentDeleteBatch handles DELETE /admin/comments/batch/permanent. Irreversibly removes multiple comments.
+// PermanentDeleteBatch 处理 DELETE /admin/comments/batch/permanent 请求，
+// 不可逆地彻底删除多条评论。
 func (h *CommentHandler) PermanentDeleteBatch(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -143,7 +154,8 @@ func (h *CommentHandler) PermanentDeleteBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// ApproveBatch handles PATCH /admin/comments/batch/approve. Approves multiple comments in bulk.
+// ApproveBatch 处理 PATCH /admin/comments/batch/approve 请求，
+// 批量审批通过多条评论。
 func (h *CommentHandler) ApproveBatch(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
@@ -155,9 +167,10 @@ func (h *CommentHandler) ApproveBatch(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// --- Public ---
+// --- 公开接口 ---
 
-// ListByPost handles GET /public/comments/post/:postId. Returns approved comments for a post in a tree.
+// ListByPost 处理 GET /public/comments/post/:postId 请求，
+// 以树形结构返回指定文章下已审核通过的评论列表。
 func (h *CommentHandler) ListByPost(c echo.Context) error {
 	postID, err := strconv.ParseInt(c.Param("postId"), 10, 64)
 	if err != nil {
@@ -170,8 +183,8 @@ func (h *CommentHandler) ListByPost(c echo.Context) error {
 	return response.OK(c, map[string]any{"list": vos})
 }
 
-// Submit handles POST /public/comments/post/:postId (rate-limited).
-// Records the visitor's IP and User-Agent for anti-spam purposes.
+// Submit 处理 POST /public/comments/post/:postId 请求（附有限流控制），
+// 提交新评论，同时记录访客 IP 和 User-Agent 用于反垃圾检测。
 func (h *CommentHandler) Submit(c echo.Context) error {
 	postID, err := strconv.ParseInt(c.Param("postId"), 10, 64)
 	if err != nil {
@@ -190,7 +203,7 @@ func (h *CommentHandler) Submit(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
-// withID parses :id from path, calls fn, returns OKEmpty on success.
+// withID 从路径参数中解析 :id，调用 fn 处理，成功后返回空 OK 响应。
 func (h *CommentHandler) withID(c echo.Context, fn func(context.Context, int64) error) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
