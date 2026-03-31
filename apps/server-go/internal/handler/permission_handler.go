@@ -11,12 +11,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// PermissionHandler handles folder permission grant/revoke endpoints.
 type PermissionHandler struct{ svc *service.PermissionService }
 
+// NewPermissionHandler creates a PermissionHandler.
 func NewPermissionHandler(svc *service.PermissionService) *PermissionHandler {
 	return &PermissionHandler{svc: svc}
 }
 
+// Mount registers permission routes under the given admin route group.
 func (h *PermissionHandler) Mount(g *echo.Group) {
 	g.GET("/folders/:folderId/permissions", h.GetPermissions)
 	g.POST("/folders/:folderId/permissions", h.Grant)
@@ -24,6 +27,7 @@ func (h *PermissionHandler) Mount(g *echo.Group) {
 	g.DELETE("/permissions/:permissionId", h.Revoke)
 }
 
+// GetPermissions handles GET /folders/:folderId/permissions — lists all grants on a folder.
 func (h *PermissionHandler) GetPermissions(c echo.Context) error {
 	folderID, err := strconv.ParseInt(c.Param("folderId"), 10, 64)
 	if err != nil {
@@ -36,6 +40,7 @@ func (h *PermissionHandler) GetPermissions(c echo.Context) error {
 	return response.OK(c, perms)
 }
 
+// Grant handles POST /folders/:folderId/permissions — grants a user access to a folder.
 func (h *PermissionHandler) Grant(c echo.Context) error {
 	folderID, err := strconv.ParseInt(c.Param("folderId"), 10, 64)
 	if err != nil {
@@ -57,6 +62,7 @@ func (h *PermissionHandler) Grant(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// Update handles PUT /permissions/:permissionId — modifies an existing grant.
 func (h *PermissionHandler) Update(c echo.Context) error {
 	permissionID, err := strconv.ParseInt(c.Param("permissionId"), 10, 64)
 	if err != nil {
@@ -76,6 +82,7 @@ func (h *PermissionHandler) Update(c echo.Context) error {
 	return response.OK(c, vo)
 }
 
+// Revoke handles DELETE /permissions/:permissionId — removes a permission grant.
 func (h *PermissionHandler) Revoke(c echo.Context) error {
 	permissionID, err := strconv.ParseInt(c.Param("permissionId"), 10, 64)
 	if err != nil {

@@ -13,10 +13,12 @@ import (
 // StatsHandler serves the 5 admin stats endpoints.
 type StatsHandler struct{ svc *service.AnalyticsService }
 
+// NewStatsHandler creates a StatsHandler backed by the given AnalyticsService.
 func NewStatsHandler(svc *service.AnalyticsService) *StatsHandler {
 	return &StatsHandler{svc: svc}
 }
 
+// Mount registers all stats routes on g.
 func (h *StatsHandler) Mount(g *echo.Group) {
 	g.GET("/dashboard", h.Dashboard)
 	g.GET("/top-posts", h.TopPosts)

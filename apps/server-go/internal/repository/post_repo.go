@@ -12,12 +12,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
+// PostRepo provides data access for the posts table and related post_tags join table.
 type PostRepo struct{ db *sqlx.DB }
 
+// NewPostRepo creates a PostRepo backed by the given database connection.
 func NewPostRepo(db *sqlx.DB) *PostRepo { return &PostRepo{db: db} }
 
 // --- Core CRUD ---
 
+// FindByID returns a non-deleted post by primary key, or nil if not found.
 func (r *PostRepo) FindByID(ctx context.Context, id int64) (*model.Post, error) {
 	var p model.Post
 	err := r.db.GetContext(ctx, &p, `SELECT * FROM posts WHERE id = $1 AND deleted = false`, id)
@@ -27,6 +30,7 @@ func (r *PostRepo) FindByID(ctx context.Context, id int64) (*model.Post, error) 
 	return &p, err
 }
 
+// FindBySlug returns a non-deleted post by slug (any status), or nil if not found.
 func (r *PostRepo) FindBySlug(ctx context.Context, slug string) (*model.Post, error) {
 	var p model.Post
 	err := r.db.GetContext(ctx, &p, `SELECT * FROM posts WHERE slug = $1 AND deleted = false`, slug)
@@ -36,6 +40,8 @@ func (r *PostRepo) FindBySlug(ctx context.Context, slug string) (*model.Post, er
 	return &p, err
 }
 
+// FindBySlugPublished returns a published, non-hidden, non-deleted post by slug.
+// Returns nil when the post does not exist or has not been published.
 func (r *PostRepo) FindBySlugPublished(ctx context.Context, slug string) (*model.Post, error) {
 	var p model.Post
 	err := r.db.GetContext(ctx, &p,
@@ -47,6 +53,7 @@ func (r *PostRepo) FindBySlugPublished(ctx context.Context, slug string) (*model
 	return &p, err
 }
 
+// Create inserts a new post row and returns the full created record.
 func (r *PostRepo) Create(ctx context.Context, p *model.Post) (*model.Post, error) {
 	var out model.Post
 	err := r.db.QueryRowxContext(ctx, `
@@ -65,6 +72,7 @@ func (r *PostRepo) Create(ctx context.Context, p *model.Post) (*model.Post, erro
 	return &out, err
 }
 
+// Update replaces the main content fields of a post and returns the updated record.
 func (r *PostRepo) Update(ctx context.Context, id int64, p *model.Post) (*model.Post, error) {
 	var out model.Post
 	err := r.db.QueryRowxContext(ctx, `
@@ -89,6 +97,9 @@ var allowedPostColumns = map[string]bool{
 	"published_at": true, "view_count": true, "updated_at": true,
 }
 
+// UpdateProperties dynamically updates only the columns present in fields.
+// Column names are validated against allowedPostColumns to prevent SQL injection.
+// Returns the updated post row.
 func (r *PostRepo) UpdateProperties(ctx context.Context, id int64, fields map[string]any) (*model.Post, error) {
 	if len(fields) == 0 {
 		return r.FindByID(ctx, id)
@@ -113,30 +124,34 @@ func (r *PostRepo) UpdateProperties(ctx context.Context, id int64, fields map[st
 	return &out, err
 }
 
+// SoftDelete sets the deleted flag to true without removing the row.
 func (r *PostRepo) SoftDelete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE posts SET deleted=true, updated_at=NOW() WHERE id=$1`, id)
 	return err
 }
 
+// IncrementViewCount atomically increments the view counter for a post.
+// Errors are silently ignored to avoid blocking the HTTP response goroutine.
 func (r *PostRepo) IncrementViewCount(ctx context.Context, id int64) {
 	r.db.ExecContext(ctx, `UPDATE posts SET view_count = view_count + 1 WHERE id = $1`, id)
 }
 
 // --- Admin filtered list ---
 
+// AdminPostFilter holds all optional filter criteria for the admin post list query.
 type AdminPostFilter struct {
-	Status       *string
-	Keyword      *string
-	CategoryID   *int64
-	TagID        *int64
-	MinViewCount *int64
-	MaxViewCount *int64
-	StartDate    *string // ISO datetime string
-	EndDate      *string
-	Hidden       *bool
-	PageNum      int
-	PageSize     int
+	Status       *string // Filter by post status (DRAFT|PUBLISHED|ARCHIVED|SCHEDULED); nil = all
+	Keyword      *string // ILIKE filter on title and content_markdown; nil = no filter
+	CategoryID   *int64  // Filter by category; nil = all categories
+	TagID        *int64  // Filter by tag (requires JOIN on post_tags); nil = all tags
+	MinViewCount *int64  // Inclusive lower bound on view_count; nil = no lower bound
+	MaxViewCount *int64  // Inclusive upper bound on view_count; nil = no upper bound
+	StartDate    *string // ISO datetime string lower bound on created_at; nil = no lower bound
+	EndDate      *string // ISO datetime string upper bound on created_at; nil = no upper bound
+	Hidden       *bool   // Filter by is_hidden; nil = both hidden and visible
+	PageNum      int     // 1-based page number
+	PageSize     int     // Number of rows per page
 }
 
 type postListRow struct {
@@ -144,6 +159,8 @@ type postListRow struct {
 	CategoryName *string `db:"category_name"`
 }
 
+// FindForAdmin returns a filtered, paginated list of posts for the admin dashboard
+// along with the total matching row count. The list includes the category name via JOIN.
 func (r *PostRepo) FindForAdmin(ctx context.Context, f AdminPostFilter) ([]postListRow, int64, error) {
 	where, args := buildAdminWhere(f)
 
@@ -165,6 +182,7 @@ func (r *PostRepo) FindForAdmin(ctx context.Context, f AdminPostFilter) ([]postL
 	return rows, total, err
 }
 
+// buildTagJoin returns the INNER JOIN clause for filtering by tag when tagID is set.
 func buildTagJoin(tagID *int64) string {
 	if tagID != nil {
 		return "JOIN post_tags pt ON p.id = pt.post_id "
@@ -172,6 +190,8 @@ func buildTagJoin(tagID *int64) string {
 	return ""
 }
 
+// buildAdminWhere constructs a parameterised WHERE clause from the filter fields.
+// Returns the clause string (starting with " WHERE ") and the positional arguments slice.
 func buildAdminWhere(f AdminPostFilter) (string, []any) {
 	clauses := []string{"p.deleted = false"}
 	args := []any{}
@@ -216,6 +236,8 @@ func buildAdminWhere(f AdminPostFilter) (string, []any) {
 
 // --- Public lists ---
 
+// FindPublished returns a paginated list of published, visible posts for the blog frontend.
+// Results are ordered by is_pinned DESC, pin_priority DESC, published_at DESC.
 func (r *PostRepo) FindPublished(ctx context.Context, pageNum, pageSize int) ([]postListRow, int64, error) {
 	const baseWhere = " WHERE p.deleted=false AND p.status='PUBLISHED' AND p.is_hidden=false"
 	var total int64
@@ -233,6 +255,7 @@ func (r *PostRepo) FindPublished(ctx context.Context, pageNum, pageSize int) ([]
 	return rows, total, err
 }
 
+// FindByCategory returns paginated published, visible posts belonging to the given category.
 func (r *PostRepo) FindByCategory(ctx context.Context, categoryID int64, pageNum, pageSize int) ([]postListRow, int64, error) {
 	where := " WHERE p.deleted=false AND p.status='PUBLISHED' AND p.is_hidden=false AND p.category_id=$1"
 	var total int64
@@ -249,6 +272,7 @@ func (r *PostRepo) FindByCategory(ctx context.Context, categoryID int64, pageNum
 	return rows, total, err
 }
 
+// FindByTag returns paginated published, visible posts that carry the given tag.
 func (r *PostRepo) FindByTag(ctx context.Context, tagID int64, pageNum, pageSize int) ([]postListRow, int64, error) {
 	const baseWhere = ` WHERE p.deleted=false AND p.status='PUBLISHED' AND p.is_hidden=false AND pt.tag_id=$1`
 	var total int64
@@ -269,6 +293,7 @@ func (r *PostRepo) FindByTag(ctx context.Context, tagID int64, pageNum, pageSize
 
 // --- Tags for posts ---
 
+// FindTagsByPostID returns all tags associated with the given post via the post_tags join table.
 func (r *PostRepo) FindTagsByPostID(ctx context.Context, postID int64) ([]model.Tag, error) {
 	var tags []model.Tag
 	err := r.db.SelectContext(ctx, &tags,
@@ -276,6 +301,8 @@ func (r *PostRepo) FindTagsByPostID(ctx context.Context, postID int64) ([]model.
 	return tags, err
 }
 
+// FindTagsByPostIDs returns a map of postID → []Tag for all posts in the ID slice.
+// Used to batch-load tags for a list page without N+1 queries.
 func (r *PostRepo) FindTagsByPostIDs(ctx context.Context, postIDs []int64) (map[int64][]model.Tag, error) {
 	if len(postIDs) == 0 {
 		return map[int64][]model.Tag{}, nil
@@ -304,6 +331,8 @@ func (r *PostRepo) FindTagsByPostIDs(ctx context.Context, postIDs []int64) (map[
 	return m, nil
 }
 
+// SetTags replaces the full tag set of a post atomically within a transaction.
+// Deletes all existing associations before inserting the new ones.
 func (r *PostRepo) SetTags(ctx context.Context, postID int64, tagIDs []int64) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -325,12 +354,15 @@ func (r *PostRepo) SetTags(ctx context.Context, postID int64, tagIDs []int64) er
 
 // --- Adjacent posts ---
 
+// adjacentRow is an internal projection used for previous/next post navigation.
 type adjacentRow struct {
 	ID    int64  `db:"id"`
 	Title string `db:"title"`
 	Slug  string `db:"slug"`
 }
 
+// FindAdjacentPosts returns the nearest previous and next published posts relative to publishedAt.
+// postID is excluded so the post does not appear as its own neighbour.
 func (r *PostRepo) FindAdjacentPosts(ctx context.Context, publishedAt string, postID int64) (*adjacentRow, *adjacentRow, error) {
 	const baseWhere = `FROM posts WHERE deleted=false AND status='PUBLISHED' AND is_hidden=false AND id != $2`
 	var prev, next adjacentRow
@@ -360,11 +392,13 @@ func (r *PostRepo) FindAdjacentPosts(ctx context.Context, publishedAt string, po
 
 // --- Archives ---
 
+// ArchiveMonth holds the monthly publish stats used by the archive sidebar.
 type ArchiveMonth struct {
-	YearMonth string `db:"year_month"`
-	Count     int    `db:"count"`
+	YearMonth string `db:"year_month"` // Format: "YYYY-MM"
+	Count     int    `db:"count"`      // Number of posts published in this month
 }
 
+// FindArchiveStats returns the count of published posts grouped by month, newest first.
 func (r *PostRepo) FindArchiveStats(ctx context.Context) ([]ArchiveMonth, error) {
 	var rows []ArchiveMonth
 	err := r.db.SelectContext(ctx, &rows,
@@ -374,6 +408,8 @@ func (r *PostRepo) FindArchiveStats(ctx context.Context) ([]ArchiveMonth, error)
 	return rows, err
 }
 
+// FindArchivePosts returns published posts grouped by "YYYY-MM" key, ordered newest first.
+// Used to build the full archive page.
 func (r *PostRepo) FindArchivePosts(ctx context.Context) (map[string][]model.Post, error) {
 	var posts []struct {
 		model.Post

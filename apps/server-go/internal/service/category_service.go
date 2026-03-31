@@ -10,8 +10,10 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
+// CategoryService manages blog post categories.
 type CategoryService struct{ repo *repository.CategoryRepo }
 
+// NewCategoryService creates a CategoryService backed by the given repository.
 func NewCategoryService(repo *repository.CategoryRepo) *CategoryService {
 	return &CategoryService{repo: repo}
 }
@@ -25,6 +27,7 @@ func (s *CategoryService) ListTree(ctx context.Context) ([]dto.CategoryVO, error
 	return buildTree(cats, nil), nil
 }
 
+// GetByID returns a single category by primary key, or nil if not found.
 func (s *CategoryService) GetByID(ctx context.Context, id int64) (*dto.CategoryVO, error) {
 	c, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -37,6 +40,8 @@ func (s *CategoryService) GetByID(ctx context.Context, id int64) (*dto.CategoryV
 	return &vo, nil
 }
 
+// Create creates a new category. Auto-generates slug from name when req.Slug is empty.
+// Returns an error if the slug is already in use.
 func (s *CategoryService) Create(ctx context.Context, req dto.CategoryRequest) (*dto.CategoryVO, error) {
 	if req.Slug == "" {
 		req.Slug = generateSlugFromName(req.Name)
@@ -57,6 +62,7 @@ func (s *CategoryService) Create(ctx context.Context, req dto.CategoryRequest) (
 	return &vo, nil
 }
 
+// Update updates an existing category. Returns an error if the slug is taken by another category.
 func (s *CategoryService) Update(ctx context.Context, id int64, req dto.CategoryRequest) (*dto.CategoryVO, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil || existing == nil {
@@ -81,6 +87,7 @@ func (s *CategoryService) Update(ctx context.Context, id int64, req dto.Category
 	return &vo, nil
 }
 
+// Delete removes a category. Returns an error if the category still has associated posts.
 func (s *CategoryService) Delete(ctx context.Context, id int64) error {
 	hasPosts, err := s.repo.ExistsPostsInCategory(ctx, id)
 	if err != nil {

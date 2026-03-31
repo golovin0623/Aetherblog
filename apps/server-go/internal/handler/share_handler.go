@@ -11,12 +11,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// ShareHandler handles media share link creation and management.
 type ShareHandler struct{ svc *service.ShareService }
 
+// NewShareHandler creates a ShareHandler.
 func NewShareHandler(svc *service.ShareService) *ShareHandler {
 	return &ShareHandler{svc: svc}
 }
 
+// Mount registers share routes under the given admin route group.
 func (h *ShareHandler) Mount(g *echo.Group) {
 	shares := g.Group("/shares")
 	shares.POST("/file/:fileId", h.CreateFileShare)

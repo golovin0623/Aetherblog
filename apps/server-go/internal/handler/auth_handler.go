@@ -1,3 +1,7 @@
+// Package handler contains Echo HTTP handlers (controllers) for all API endpoints.
+// Each handler struct holds injected service dependencies and exposes Mount*
+// methods to register routes onto an echo.Group. The package-level helpers
+// bindAndValidate, bindIDs, parseIntDefault, etc. are shared across handlers.
 package handler
 
 import (
@@ -23,6 +27,7 @@ type AuthHandler struct {
 	cfg     *config.Config
 }
 
+// NewAuthHandler creates an AuthHandler with the required service and config dependencies.
 func NewAuthHandler(auth *service.AuthService, session *service.SessionService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{auth: auth, session: session, cfg: cfg}
 }
@@ -39,7 +44,9 @@ func (h *AuthHandler) Mount(g *echo.Group) {
 	g.PUT("/avatar", h.UpdateAvatar, middleware.JWTAuth(h.cfg.JWT.Secret))
 }
 
-// POST /api/v1/auth/login
+// Login handles POST /api/v1/auth/login.
+// Validates credentials, enforces login-attempt rate limiting via Redis,
+// issues an access token + refresh token and writes both as HttpOnly cookies.
 func (h *AuthHandler) Login(c echo.Context) error {
 	var req dto.LoginRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -82,7 +89,8 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	return response.OK(c, h.buildLoginResponse(user, accessToken))
 }
 
-// POST /api/v1/auth/register
+// RegisterUser handles POST /api/v1/auth/register.
+// Creates a new user account. Returns 400 if username or email is already taken.
 func (h *AuthHandler) RegisterUser(c echo.Context) error {
 	var req dto.RegisterRequest
 	if err := bindAndValidate(c, &req); err != nil {
@@ -96,7 +104,9 @@ func (h *AuthHandler) RegisterUser(c echo.Context) error {
 	return response.OK(c, userInfoVO(user))
 }
 
-// POST /api/v1/auth/refresh
+// Refresh handles POST /api/v1/auth/refresh.
+// Rotates the refresh token stored in the HttpOnly cookie and issues a new access token.
+// Returns 401 if the refresh token is absent, expired, or already revoked.
 func (h *AuthHandler) Refresh(c echo.Context) error {
 	refreshToken := getCookieValue(c, middleware.RefreshTokenCookie)
 	ctx := c.Request().Context()
@@ -131,7 +141,8 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 	return response.OK(c, h.buildLoginResponse(user, accessToken))
 }
 
-// GET /api/v1/auth/me
+// Me handles GET /api/v1/auth/me.
+// Returns the profile of the currently authenticated user. Requires a valid JWT.
 func (h *AuthHandler) Me(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -147,7 +158,8 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	return response.OK(c, userInfoVO(user))
 }
 
-// POST /api/v1/auth/logout
+// Logout handles POST /api/v1/auth/logout.
+// Revokes the refresh token in Redis and clears both auth cookies.
 func (h *AuthHandler) Logout(c echo.Context) error {
 	refreshToken := getCookieValue(c, middleware.RefreshTokenCookie)
 	h.session.RevokeRefreshToken(c.Request().Context(), refreshToken)
@@ -155,7 +167,9 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// POST /api/v1/auth/change-password
+// ChangePassword handles POST /api/v1/auth/change-password.
+// Verifies the current password, hashes the new one, then revokes the current
+// session so the user must log in again with the new credentials.
 func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -191,7 +205,8 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	return response.OKEmpty(c)
 }
 
-// PUT /api/v1/auth/profile
+// UpdateProfile handles PUT /api/v1/auth/profile.
+// Updates the authenticated user's nickname and email address.
 func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -210,7 +225,8 @@ func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 	return response.OK(c, userInfoVO(user))
 }
 
-// PUT /api/v1/auth/avatar
+// UpdateAvatar handles PUT /api/v1/auth/avatar.
+// Sets a new avatar URL for the authenticated user.
 func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -230,10 +246,12 @@ func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 
 // --- helpers ---
 
+// generateAccessToken signs a JWT access token for the given user.
 func (h *AuthHandler) generateAccessToken(user *model.User) (string, error) {
 	return jwtutil.GenerateToken(user.ID, user.Username, user.Role, h.cfg.JWT.Secret, h.cfg.JWT.Expiration)
 }
 
+// buildLoginResponse assembles the LoginResponse DTO from a user and access token.
 func (h *AuthHandler) buildLoginResponse(user *model.User, accessToken string) dto.LoginResponse {
 	return dto.LoginResponse{
 		AccessToken:        accessToken,
@@ -255,6 +273,7 @@ func userInfoVO(user *model.User) dto.UserInfoVO {
 	}
 }
 
+// writeAuthCookies sets the access-token and refresh-token HttpOnly cookies on the response.
 func (h *AuthHandler) writeAuthCookies(c echo.Context, accessToken, refreshToken string) {
 	secure := h.cfg.Auth.Cookie.Secure
 	sameSite := h.cfg.Auth.Cookie.SameSite
@@ -262,6 +281,7 @@ func (h *AuthHandler) writeAuthCookies(c echo.Context, accessToken, refreshToken
 	setCookie(c, middleware.RefreshTokenCookie, refreshToken, "/api/v1/auth", int(h.session.RefreshTokenMaxAge()), secure, sameSite)
 }
 
+// clearAuthCookies expires both auth cookies, effectively logging the user out.
 func (h *AuthHandler) clearAuthCookies(c echo.Context) {
 	secure := h.cfg.Auth.Cookie.Secure
 	sameSite := h.cfg.Auth.Cookie.SameSite
@@ -269,6 +289,8 @@ func (h *AuthHandler) clearAuthCookies(c echo.Context) {
 	setCookie(c, middleware.RefreshTokenCookie, "", "/api/v1/auth", 0, secure, sameSite)
 }
 
+// setCookie writes a single HttpOnly cookie to the response with the provided attributes.
+// sameSite accepts "Strict", "Lax", or "None"; anything else falls back to Strict.
 func setCookie(c echo.Context, name, value, path string, maxAge int, secure bool, sameSite string) {
 	cookie := new(http.Cookie)
 	cookie.Name = name
@@ -290,6 +312,7 @@ func setCookie(c echo.Context, name, value, path string, maxAge int, secure bool
 	c.Response().Header().Add("Set-Cookie", cookie.String())
 }
 
+// getCookieValue returns the value of a named cookie, or an empty string if absent.
 func getCookieValue(c echo.Context, name string) string {
 	if cookie, err := c.Cookie(name); err == nil {
 		return cookie.Value

@@ -38,6 +38,7 @@ type ActivityService struct {
 	userRepo *repository.UserRepo
 }
 
+// NewActivityService creates an ActivityService backed by the given repositories.
 func NewActivityService(repo *repository.ActivityRepo, userRepo *repository.UserRepo) *ActivityService {
 	return &ActivityService{repo: repo, userRepo: userRepo}
 }

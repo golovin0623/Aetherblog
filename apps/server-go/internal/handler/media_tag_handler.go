@@ -11,12 +11,15 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// MediaTagHandler handles media tag management and file-tag association endpoints.
 type MediaTagHandler struct{ svc *service.MediaTagService }
 
+// NewMediaTagHandler creates a MediaTagHandler.
 func NewMediaTagHandler(svc *service.MediaTagService) *MediaTagHandler {
 	return &MediaTagHandler{svc: svc}
 }
 
+// Mount registers tag and file-tag routes under the given admin route group.
 func (h *MediaTagHandler) Mount(g *echo.Group) {
 	tags := g.Group("/tags")
 	tags.GET("", h.GetAll)

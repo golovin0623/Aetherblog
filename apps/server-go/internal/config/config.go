@@ -1,3 +1,8 @@
+// Package config loads and validates AetherBlog application configuration.
+// Configuration is sourced from an optional YAML file and environment variables
+// (prefix: AETHERBLOG_). Environment variables take precedence over file values.
+// A limited set of legacy bare-name env vars (e.g. POSTGRES_PASSWORD, JWT_SECRET)
+// is also supported for backward compatibility.
 package config
 
 import (
@@ -11,36 +16,41 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
+// Config is the root configuration container for the AetherBlog application.
+// All sub-sections map directly to top-level YAML keys.
 type Config struct {
-	Server   ServerConfig   `koanf:"server"`
-	Database DatabaseConfig `koanf:"database"`
-	Redis    RedisConfig    `koanf:"redis"`
-	JWT      JWTConfig      `koanf:"jwt"`
-	Auth     AuthConfig     `koanf:"auth"`
-	CORS     CORSConfig     `koanf:"cors"`
-	Upload   UploadConfig   `koanf:"upload"`
-	Media    MediaConfig    `koanf:"media"`
-	Log      LogConfig      `koanf:"log"`
-	AI       AIConfig       `koanf:"ai"`
-	ES       ESConfig       `koanf:"elasticsearch"`
+	Server   ServerConfig   `koanf:"server"`        // HTTP server bind address and port
+	Database DatabaseConfig `koanf:"database"`       // PostgreSQL connection settings
+	Redis    RedisConfig    `koanf:"redis"`          // Redis connection settings
+	JWT      JWTConfig      `koanf:"jwt"`            // JWT signing secret and token lifetimes
+	Auth     AuthConfig     `koanf:"auth"`           // Auth cookie security settings
+	CORS     CORSConfig     `koanf:"cors"`           // CORS allowed origin list
+	Upload   UploadConfig   `koanf:"upload"`         // Local file upload directory and URL prefix
+	Media    MediaConfig    `koanf:"media"`          // Media management settings (trash cleanup)
+	Log      LogConfig      `koanf:"log"`            // Log output path and minimum level
+	AI       AIConfig       `koanf:"ai"`             // External FastAPI AI service settings
+	ES       ESConfig       `koanf:"elasticsearch"`  // Elasticsearch node URIs
 }
 
+// ServerConfig holds HTTP server binding settings.
 type ServerConfig struct {
-	Port int    `koanf:"port"`
-	Host string `koanf:"host"`
+	Port int    `koanf:"port"` // TCP port the Echo server listens on (default: 8080)
+	Host string `koanf:"host"` // Bind address (default: "0.0.0.0")
 }
 
+// DatabaseConfig holds PostgreSQL connection parameters.
 type DatabaseConfig struct {
-	Host         string `koanf:"host"`
-	Port         int    `koanf:"port"`
-	User         string `koanf:"user"`
-	Password     string `koanf:"password"`
-	DBName       string `koanf:"dbname"`
-	SSLMode      string `koanf:"sslmode"`
-	MaxOpenConns int    `koanf:"max_open_conns"`
-	MaxIdleConns int    `koanf:"max_idle_conns"`
+	Host         string `koanf:"host"`           // PostgreSQL server hostname or IP
+	Port         int    `koanf:"port"`           // PostgreSQL server port (default: 5432)
+	User         string `koanf:"user"`           // Database user
+	Password     string `koanf:"password"`       // Database password
+	DBName       string `koanf:"dbname"`         // Database name
+	SSLMode      string `koanf:"sslmode"`        // PostgreSQL SSL mode (disable|require|verify-full)
+	MaxOpenConns int    `koanf:"max_open_conns"` // Maximum number of open connections in the pool
+	MaxIdleConns int    `koanf:"max_idle_conns"` // Maximum number of idle connections in the pool
 }
 
+// DSN returns the PostgreSQL connection string built from the config fields.
 func (d *DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -48,61 +58,75 @@ func (d *DatabaseConfig) DSN() string {
 	)
 }
 
+// RedisConfig holds Redis connection parameters.
 type RedisConfig struct {
-	Host     string `koanf:"host"`
-	Port     int    `koanf:"port"`
-	Password string `koanf:"password"`
-	DB       int    `koanf:"db"`
+	Host     string `koanf:"host"`     // Redis server hostname or IP
+	Port     int    `koanf:"port"`     // Redis server port (default: 6379)
+	Password string `koanf:"password"` // Redis AUTH password (empty = no auth)
+	DB       int    `koanf:"db"`       // Redis logical database index (default: 0)
 }
 
+// Addr returns the "host:port" address string for the Redis client.
 func (r *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
+// JWTConfig holds JSON Web Token signing and expiry settings.
 type JWTConfig struct {
-	Secret            string        `koanf:"secret"`
-	Expiration        time.Duration `koanf:"expiration"`
-	RefreshExpiration time.Duration `koanf:"refresh_expiration"`
+	Secret            string        `koanf:"secret"`             // HMAC-SHA256 signing secret; must be set in production
+	Expiration        time.Duration `koanf:"expiration"`         // Access token validity period (default: 24h)
+	RefreshExpiration time.Duration `koanf:"refresh_expiration"` // Refresh token validity period stored in Redis (default: 7*24h)
 }
 
+// AuthConfig groups authentication-related settings.
 type AuthConfig struct {
-	Cookie CookieConfig `koanf:"cookie"`
+	Cookie CookieConfig `koanf:"cookie"` // HTTP cookie security settings for auth tokens
 }
 
+// CookieConfig controls the security attributes of auth cookies.
 type CookieConfig struct {
-	Secure   bool   `koanf:"secure"`
-	SameSite string `koanf:"same_site"`
+	Secure   bool   `koanf:"secure"`    // Set the Secure flag (HTTPS only); enable in production
+	SameSite string `koanf:"same_site"` // SameSite policy: "Strict" | "Lax" | "None" (default: "Strict")
 }
 
+// CORSConfig lists the origins that are permitted to make cross-origin requests.
 type CORSConfig struct {
-	AllowedOrigins []string `koanf:"allowed_origins"`
+	AllowedOrigins []string `koanf:"allowed_origins"` // List of allowed origins (e.g. "http://localhost:5173")
 }
 
+// UploadConfig configures local file upload storage.
 type UploadConfig struct {
-	Path      string `koanf:"path"`
-	URLPrefix string `koanf:"url_prefix"`
+	Path      string `koanf:"path"`       // Local filesystem directory for uploaded files (default: "./uploads")
+	URLPrefix string `koanf:"url_prefix"` // URL path prefix for serving uploaded files (default: "/uploads")
 }
 
+// MediaConfig controls media management behaviour.
 type MediaConfig struct {
-	TrashCleanupDays int `koanf:"trash_cleanup_days"`
+	TrashCleanupDays int `koanf:"trash_cleanup_days"` // Days before trashed media files are permanently deleted (default: 120)
 }
 
+// LogConfig controls application log output.
 type LogConfig struct {
-	Path  string `koanf:"path"`
-	Level string `koanf:"level"`
+	Path  string `koanf:"path"`  // Directory path for log files (default: "./logs")
+	Level string `koanf:"level"` // Minimum log level: "debug" | "info" | "warn" | "error" (default: "debug")
 }
 
+// AIConfig holds connection settings for the external FastAPI AI service.
 type AIConfig struct {
-	BaseURL          string        `koanf:"base_url"`
-	ConnectTimeout   time.Duration `koanf:"connect_timeout"`
-	ReadTimeout      time.Duration `koanf:"read_timeout"`
-	StreamReadTimeout time.Duration `koanf:"stream_read_timeout"`
+	BaseURL           string        `koanf:"base_url"`           // Base URL of the FastAPI AI service (default: "http://localhost:8000")
+	ConnectTimeout    time.Duration `koanf:"connect_timeout"`    // TCP dial timeout for AI service requests (default: 5s)
+	ReadTimeout       time.Duration `koanf:"read_timeout"`       // Read timeout for non-streaming AI responses (default: 30s)
+	StreamReadTimeout time.Duration `koanf:"stream_read_timeout"` // Read timeout for SSE streaming responses (default: 5m)
 }
 
+// ESConfig holds Elasticsearch cluster connection settings.
 type ESConfig struct {
-	URIs []string `koanf:"uris"`
+	URIs []string `koanf:"uris"` // List of Elasticsearch node URIs (default: ["http://localhost:9200"])
 }
 
+// Load reads configuration from the YAML file at path (optional) and then
+// overlays environment variables. Returns a fully populated *Config with
+// defaults applied for any unset fields.
 func Load(path string) (*Config, error) {
 	k := koanf.New(".")
 
@@ -184,6 +208,9 @@ func envKeyToKoanf(key string) string {
 	return strings.ReplaceAll(key, "_", ".")
 }
 
+// defaultConfig returns a Config pre-populated with safe development defaults.
+// Production deployments must override secrets (JWT.Secret, Database.Password, etc.)
+// via environment variables or a YAML config file.
 func defaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
