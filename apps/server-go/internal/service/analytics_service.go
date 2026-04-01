@@ -331,6 +331,13 @@ type DeviceStatVO struct {
 	Value int64  `json:"value"` // 该类型的访问次数
 }
 
+// deviceNameZH 将英文设备类型名称映射为中文展示名。
+var deviceNameZH = map[string]string{
+	"Desktop": "桌面端",
+	"Mobile":  "移动端",
+	"Tablet":  "平板",
+}
+
 // GetDeviceStats 返回最近 30 天内各设备类型的访问量分布。
 func (s *AnalyticsService) GetDeviceStats(ctx context.Context) ([]DeviceStatVO, error) {
 	rows, err := s.repo.GetDeviceStats(ctx)
@@ -339,7 +346,13 @@ func (s *AnalyticsService) GetDeviceStats(ctx context.Context) ([]DeviceStatVO, 
 	}
 	vos := make([]DeviceStatVO, len(rows))
 	for i, r := range rows {
-		vos[i] = DeviceStatVO{Name: r.Name, Value: r.Value}
+		name := r.Name
+		if zh, ok := deviceNameZH[name]; ok {
+			name = zh
+		} else if name == "" || name == "Unknown" {
+			name = "其他"
+		}
+		vos[i] = DeviceStatVO{Name: name, Value: r.Value}
 	}
 	return vos, nil
 }

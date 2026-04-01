@@ -145,6 +145,7 @@ export default async function HomePage() {
                 viewCount={post.viewCount}
                 index={index}
                 passwordRequired={post.passwordRequired}
+                priority={index < 6}
               />
             ))}
           </div>
