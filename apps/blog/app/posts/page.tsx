@@ -240,6 +240,7 @@ export default function PostsPage() {
                       viewCount={post.viewCount}
                       index={index}
                       passwordRequired={post.passwordRequired}
+                      priority={currentPage === 1 && index < 6}
                     />
                   ))}
                 </div>
