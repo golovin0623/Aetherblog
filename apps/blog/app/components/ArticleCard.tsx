@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Calendar, Eye, Folder, Lock } from 'lucide-react';
@@ -44,6 +44,26 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   const maxVisibleTags = 4;
   const visibleTags = tags.slice(0, maxVisibleTags);
   const remainingTagCount = tags.length - maxVisibleTags;
+
+  // ⚡ Bolt: Memoize the expensive markdown string replacement operations
+  // so they don't re-run on every render (e.g., when hover state changes).
+  const displaySummary = useMemo(() => {
+    if (summary) {
+      const processed = summary
+        .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
+        .replace(/^:::\s*$/gm, '')
+        .replace(/<!--\s*more\s*-->/g, '')
+        .replace(/[#*`>\[\]!|_~]/g, '')
+        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return processed.slice(0, 120) + (processed.length > 120 ? '...' : '');
+    }
+    if (title.length > 100) {
+      return title.slice(0, 100) + '...';
+    }
+    return `${title} - 探索更多精彩内容，点击阅读全文了解详情。`;
+  }, [summary, title]);
 
   return (
     <Link
@@ -140,19 +160,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
               </div>
             ) : (
               <p className="text-[var(--text-secondary)] text-sm leading-relaxed line-clamp-3">
-                {summary
-                  ? summary
-                      .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
-                      .replace(/^:::\s*$/gm, '')
-                      .replace(/<!--\s*more\s*-->/g, '')
-                      .replace(/[#*`>\\[\\]!|_~]/g, '')
-                      .replace(/\\n+/g, ' ')
-                      .replace(/\s+/g, ' ')
-                      .trim()
-                      .slice(0, 120) + (summary.length > 120 ? '...' : '')
-                  : title.length > 100
-                    ? title.slice(0, 100) + '...'
-                    : `${title} - 探索更多精彩内容，点击阅读全文了解详情。`}
+                {displaySummary}
               </p>
             )}
           </div>

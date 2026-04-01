@@ -1,0 +1,3 @@
+## 2025-04-01 - [Avoid inline expensive computations in useSpotlightEffect dependents]
+**Learning:** In `apps/blog`, components using the `useSpotlightEffect` hook (like `ArticleCard`) trigger component re-renders on hover state changes (`isHovering`). If expensive inline calculations, such as chained regex `.replace()` string operations, are performed in the render path, it leads to noticeable performance degradation and CPU overhead competing with hover animations.
+**Action:** Ensure that variables holding the results of expensive operations (like formatting markdown summary strings) in components utilizing `useSpotlightEffect` are wrapped in `React.useMemo` to prevent unnecessary recalculations during hover interactions.
