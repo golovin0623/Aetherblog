@@ -391,7 +391,7 @@ type ServiceHealth struct {
 }
 
 // checkServiceHealth 检查所有依赖服务的健康状态，返回结果数组。
-// 依次检查：PostgreSQL、Redis、Elasticsearch、AI 服务。
+// 依次检查：PostgreSQL、Redis、AI 服务。
 func (h *SystemMonitorHandler) checkServiceHealth() []ServiceHealth {
 	var result []ServiceHealth
 
@@ -424,32 +424,6 @@ func (h *SystemMonitorHandler) checkServiceHealth() []ServiceHealth {
 		redisLatency = 0
 	}
 	result = append(result, ServiceHealth{Name: "redis", Status: redisStatus, Latency: redisLatency, Message: redisMsg})
-
-	// 检查 Elasticsearch 连接状态（通过 HTTP GET 请求根路径）
-	esStatus := "down"
-	esMsg := ""
-	var esLatency int64
-	if len(h.cfg.ES.URIs) > 0 {
-		esLatency = measureLatency(func() error {
-			client := &http.Client{Timeout: 3 * time.Second}
-			resp, err := client.Get(h.cfg.ES.URIs[0])
-			if err != nil {
-				return err
-			}
-			resp.Body.Close()
-			return nil
-		})
-		if esLatency >= 0 {
-			esStatus = "up"
-		} else {
-			esMsg = "Connection failed"
-			esLatency = 0
-		}
-	} else {
-		// 未配置 ES 地址，视为不可用
-		esStatus = "down"
-	}
-	result = append(result, ServiceHealth{Name: "elasticsearch", Status: esStatus, Latency: esLatency, Message: esMsg})
 
 	// 检查 AI 服务健康状态（通过 GET /health 接口探测）
 	aiStatus := "down"
@@ -495,16 +469,53 @@ func (h *SystemMonitorHandler) flattenMetrics(m service.SystemMetrics) map[strin
 		"diskPercent":     m.Disk.UsagePercent,
 		"networkIn":       m.Network.BytesIn,
 		"networkOut":      m.Network.BytesOut,
-		"networkInSpeed":  0,   // 暂不支持，固定返回 0
-		"networkOutSpeed": 0,   // 暂不支持，固定返回 0
-		"networkInRate":   0.0, // 暂不支持，固定返回 0.0
-		"networkOutRate":  0.0, // 暂不支持，固定返回 0.0
-		"networkPercent":  0.0, // 暂不支持，固定返回 0.0
-		"networkMaxSpeed": 0,   // 暂不支持，固定返回 0
+		"networkInSpeed":  m.Network.SpeedIn,
+		"networkOutSpeed": m.Network.SpeedOut,
+		"networkInRate":   formatNetworkRate(m.Network.SpeedIn),
+		"networkOutRate":  formatNetworkRate(m.Network.SpeedOut),
+		"networkPercent":  calcNetworkPercent(m.Network.SpeedIn+m.Network.SpeedOut, h.cfg),
+		"networkMaxSpeed": getMaxBandwidth(h.cfg),
 		"uptime":          m.Go.Uptime,
 		"osName":          runtime.GOOS,
 		"osArch":          runtime.GOARCH,
 	}
+}
+
+// formatNetworkRate 将 bytes/s 速率格式化为人类可读的字符串。
+func formatNetworkRate(bytesPerSec float64) string {
+	if bytesPerSec < 1 {
+		return "0 B/s"
+	}
+	units := []string{"B/s", "KB/s", "MB/s", "GB/s"}
+	val := bytesPerSec
+	idx := 0
+	for val >= 1024 && idx < len(units)-1 {
+		val /= 1024
+		idx++
+	}
+	if idx == 0 {
+		return fmt.Sprintf("%.0f %s", val, units[idx])
+	}
+	return fmt.Sprintf("%.1f %s", val, units[idx])
+}
+
+// getMaxBandwidth 返回配置的最大带宽（bytes/s），默认 100 Mbps。
+func getMaxBandwidth(_ *config.Config) float64 {
+	// 默认 100 Mbps = 12,500,000 bytes/s
+	return 12_500_000
+}
+
+// calcNetworkPercent 计算当前速率相对于最大带宽的百分比。
+func calcNetworkPercent(currentBytesPerSec float64, cfg *config.Config) float64 {
+	maxSpeed := getMaxBandwidth(cfg)
+	if maxSpeed <= 0 {
+		return 0
+	}
+	pct := currentBytesPerSec / maxSpeed * 100
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
 }
 
 // getCPUModel 返回 CPU 型号字符串。
