@@ -17,7 +17,7 @@ export function AdminLayout() {
   const isAppPage = location.pathname.startsWith('/media'); // 管理自身布局/滚动的页面
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-dvh bg-background overflow-hidden">
       {/* 侧边栏 */}
       <Sidebar />
 
@@ -28,7 +28,7 @@ export function AdminLayout() {
 
         {/* 页面内容 */}
         <main className={cn(
-          "flex-1 relative overflow-auto",
+          "flex-1 relative overflow-auto overscroll-contain",
           isAppPage ? "p-0" : "p-4 md:p-6"
         )}>
           <Suspense fallback={
