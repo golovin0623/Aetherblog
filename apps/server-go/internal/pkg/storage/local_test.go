@@ -72,3 +72,34 @@ func TestLocalStorage_DeleteNonExistent(t *testing.T) {
 		t.Errorf("删除不存在的文件不应报错，但返回了: %v", err)
 	}
 }
+
+// TestLocalStorage_PathTraversal 测试路径穿越漏洞防御。
+func TestLocalStorage_PathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	store := NewLocalStorage(dir, "/uploads")
+	ctx := context.Background()
+
+	// 构造会导致路径穿越的恶意的 key
+	maliciousKeys := []string{
+		"../../../etc/passwd",
+		"../test.txt",
+	}
+
+	for _, key := range maliciousKeys {
+		// 测试 Upload 方法
+		_, err := store.Upload(ctx, key, strings.NewReader("hack"), 4, "text/plain")
+		if err == nil {
+			t.Errorf("Upload 方法未能阻止路径穿越: %s", key)
+		} else if !strings.Contains(err.Error(), "path traversal detected") {
+			t.Errorf("Upload 方法返回了意外错误: %v, 预期包含 'path traversal detected'", err)
+		}
+
+		// 测试 Delete 方法
+		err = store.Delete(ctx, key)
+		if err == nil {
+			t.Errorf("Delete 方法未能阻止路径穿越: %s", key)
+		} else if !strings.Contains(err.Error(), "path traversal detected") {
+			t.Errorf("Delete 方法返回了意外错误: %v, 预期包含 'path traversal detected'", err)
+		}
+	}
+}

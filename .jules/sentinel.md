@@ -1,0 +1,4 @@
+## 2024-03-01 - [Path Traversal in Golang LocalStorage]
+**Vulnerability:** Path Traversal vulnerability found in `apps/server-go/internal/pkg/storage/local.go`. The `Upload` and `Delete` methods joined the `basePath` with unsanitized `key` inputs.
+**Learning:** `filepath.Join` resolves `../` tokens, so `filepath.Join("/var/www/uploads", "../../../etc/passwd")` returns `/etc/passwd`. An attacker could specify a file key with multiple `../` tokens to break out of the intended upload directory, leading to arbitrary file writes or deletions on the server system.
+**Prevention:** Always use `filepath.Abs` to verify the fully resolved base and target destination paths, and assert that the resulting target destination path relates to the base path using `filepath.Rel(absBase, absDest)`. If the relation path begins with or equals `..`, the path has traversed out of the base directory and should be rejected.
