@@ -419,13 +419,22 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                       <textarea
                         id={`${formId}-content`}
                         ref={textareaRef}
-                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all min-h-[140px] resize-y leading-relaxed"
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 pb-8 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all min-h-[140px] resize-y leading-relaxed"
                         placeholder="写点什么吧..."
                         value={content}
+                        maxLength={500}
                         onChange={(e) => setContent(e.target.value)}
                         required
                         autoFocus
                       />
+                      <div
+                        className={`absolute bottom-3 right-4 text-xs pointer-events-none select-none transition-colors ${
+                          content.length >= 450 ? 'text-red-400' : 'text-[var(--text-muted)]'
+                        }`}
+                        aria-hidden="true"
+                      >
+                        {content.length}/500
+                      </div>
                     </div>
 
                     <div className="pt-2">
