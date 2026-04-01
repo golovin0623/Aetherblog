@@ -7,8 +7,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Server,
+  Box,
+  Terminal,
   Database,
+  Newspaper,
   Zap,
   Search,
   Bot,
@@ -16,9 +18,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Shield,
-  FileText,
-  LayoutDashboard,
-  Container
+  Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { systemService, formatBytes } from '@/services/systemService';
@@ -85,10 +85,10 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
 
 function ContainerIcon({ type }: { type: string }) {
   const iconMap: Record<string, React.ReactNode> = {
-    backend: <Server className="w-4 h-4" />,
-    blog: <FileText className="w-4 h-4" />,
+    backend: <Terminal className="w-4 h-4" />,
+    blog: <Newspaper className="w-4 h-4" />,
     gateway: <Shield className="w-4 h-4" />,
-    admin: <LayoutDashboard className="w-4 h-4" />,
+    admin: <Settings className="w-4 h-4" />,
     database: <Database className="w-4 h-4" />,
     cache: <Zap className="w-4 h-4" />,
     search: <Search className="w-4 h-4" />,
@@ -97,18 +97,18 @@ function ContainerIcon({ type }: { type: string }) {
 
   const colorMap: Record<string, string> = {
     backend: 'bg-teal-500/20 text-teal-500',
-    blog: 'bg-status-success/20 text-status-success',
-    gateway: 'bg-status-info/20 text-status-info',
-    admin: 'bg-status-warning/20 text-status-warning',
-    database: 'bg-accent/20 text-accent',
-    cache: 'bg-status-danger/20 text-status-danger',
+    blog: 'bg-emerald-500/20 text-emerald-500',
+    gateway: 'bg-blue-500/20 text-blue-500',
+    admin: 'bg-amber-500/20 text-amber-500',
+    database: 'bg-indigo-500/20 text-indigo-500',
+    cache: 'bg-red-500/20 text-red-500',
     search: 'bg-cyan-500/20 text-cyan-500',
     ai: 'bg-violet-500/20 text-violet-500',
   };
 
   return (
     <div className={cn("p-2 rounded-lg", colorMap[type] || 'bg-[var(--bg-secondary)] text-[var(--text-muted)]')}>
-      {iconMap[type] || <Container className="w-4 h-4" />}
+      {iconMap[type] || <Box className="w-4 h-4" />}
     </div>
   );
 }

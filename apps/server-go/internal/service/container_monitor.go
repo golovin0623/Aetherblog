@@ -110,14 +110,24 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 			continue
 		}
 
+		// 优先使用 compose service label 推断类型和显示名，比解析容器名更可靠
+		serviceName := c.Labels["com.docker.compose.service"]
+
+		displayName := name // 默认显示完整容器名（匹配 docker ps）
+		containerType := inferContainerType(name)
+		if serviceName != "" {
+			displayName = serviceName
+			containerType = inferContainerType(serviceName)
+		}
+
 		info := ContainerInfo{
 			ID:          c.ID[:12], // 仅取 ID 前 12 位
 			Name:        name,
-			DisplayName: inferDisplayName(name),
+			DisplayName: displayName,
 			Status:      c.Status,
 			State:       c.State,
 			Image:       c.Image,
-			Type:        inferContainerType(name),
+			Type:        containerType,
 		}
 
 		if c.State == "running" {
@@ -257,14 +267,6 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 	if stats.MemoryStats.Limit > 0 {
 		info.MemoryPercent = float64(stats.MemoryStats.Usage) / float64(stats.MemoryStats.Limit) * 100.0
 	}
-}
-
-// inferDisplayName 从容器名称中去除 aetherblog- 或 aetherblog_ 前缀，
-// 保留完整的服务名（如 ai-service）以匹配 docker ps 输出。
-func inferDisplayName(name string) string {
-	name = strings.TrimPrefix(name, "aetherblog-")
-	name = strings.TrimPrefix(name, "aetherblog_")
-	return name
 }
 
 // inferContainerType 根据容器名称推断其类型，用于前端图标展示。
