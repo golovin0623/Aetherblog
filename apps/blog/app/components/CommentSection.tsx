@@ -363,7 +363,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         </>
                       ) : '发表评论'}
                     </h4>
-                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-sm">
+                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:rounded-sm">
                       取消
                     </button>
                   </div>
@@ -383,6 +383,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                           value={nickname}
                           onChange={(e) => setNickname(e.target.value)}
                           required
+                          aria-invalid={error ? 'true' : undefined}
+                          aria-describedby={error ? `${formId}-error` : undefined}
                         />
                       </div>
                       <div className="group/input relative">
@@ -397,6 +399,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
+                          aria-invalid={error ? 'true' : undefined}
+                          aria-describedby={error ? `${formId}-error` : undefined}
                         />
                       </div>
                     </div>
@@ -419,19 +423,32 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                       <textarea
                         id={`${formId}-content`}
                         ref={textareaRef}
-                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all min-h-[140px] resize-y leading-relaxed"
+                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 pb-8 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--color-primary)]/30 focus:bg-[var(--bg-tertiary)]/30 focus:ring-1 focus:ring-[var(--color-primary)]/30 transition-all min-h-[140px] resize-y leading-relaxed"
                         placeholder="写点什么吧..."
                         value={content}
+                        maxLength={500}
                         onChange={(e) => setContent(e.target.value)}
                         required
                         autoFocus
+                        aria-invalid={error ? 'true' : undefined}
+                        aria-describedby={error ? `${formId}-error` : undefined}
                       />
+                      <div
+                        className={`absolute bottom-3 right-4 text-xs pointer-events-none select-none transition-colors ${
+                          content.length >= 450 ? 'text-red-400' : 'text-[var(--text-muted)]'
+                        }`}
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
+                        {content.length}/500
+                      </div>
                     </div>
 
                     <div className="pt-2">
                       <AnimatePresence mode="wait">
                         {error && (
                           <motion.div
+                            id={`${formId}-error`}
                             initial={{ opacity: 0, y: -10, height: 0 }}
                             animate={{ opacity: 1, y: 0, height: 'auto' }}
                             exit={{ opacity: 0, y: -10, height: 0 }}
@@ -458,14 +475,14 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
 
                       <div className="flex items-center justify-end gap-3">
                         {replyTo && (
-                          <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-sm">
+                          <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:rounded-sm">
                             改为发表新评论
                           </button>
                         )}
                         <button
                           type="submit"
                           disabled={submitting}
-                          className="comment-submit-btn text-[var(--text-inverse)] rounded-lg px-6 py-2.5 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="comment-submit-btn text-[var(--text-inverse)] rounded-lg px-6 py-2.5 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:ring-offset-2"
                         >
                           {submitting ? (
                             <>

@@ -7,16 +7,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Box,
   Server,
   Database,
-  Globe,
   Zap,
   Search,
   Bot,
   RefreshCw,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Shield,
+  FileText,
+  LayoutDashboard,
+  Container
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { systemService, formatBytes } from '@/services/systemService';
@@ -83,9 +85,10 @@ function ProgressBar({ value, color = 'primary' }: { value: number; color?: stri
 
 function ContainerIcon({ type }: { type: string }) {
   const iconMap: Record<string, React.ReactNode> = {
-    java: <Server className="w-4 h-4" />,
-    nodejs: <Globe className="w-4 h-4" />,
-    nginx: <Box className="w-4 h-4" />,
+    backend: <Server className="w-4 h-4" />,
+    blog: <FileText className="w-4 h-4" />,
+    gateway: <Shield className="w-4 h-4" />,
+    admin: <LayoutDashboard className="w-4 h-4" />,
     database: <Database className="w-4 h-4" />,
     cache: <Zap className="w-4 h-4" />,
     search: <Search className="w-4 h-4" />,
@@ -93,9 +96,10 @@ function ContainerIcon({ type }: { type: string }) {
   };
 
   const colorMap: Record<string, string> = {
-    java: 'bg-status-warning/20 text-status-warning',
-    nodejs: 'bg-status-success/20 text-status-success',
-    nginx: 'bg-status-info/20 text-status-info',
+    backend: 'bg-teal-500/20 text-teal-500',
+    blog: 'bg-status-success/20 text-status-success',
+    gateway: 'bg-status-info/20 text-status-info',
+    admin: 'bg-status-warning/20 text-status-warning',
     database: 'bg-accent/20 text-accent',
     cache: 'bg-status-danger/20 text-status-danger',
     search: 'bg-cyan-500/20 text-cyan-500',
@@ -104,7 +108,7 @@ function ContainerIcon({ type }: { type: string }) {
 
   return (
     <div className={cn("p-2 rounded-lg", colorMap[type] || 'bg-[var(--bg-secondary)] text-[var(--text-muted)]')}>
-      {iconMap[type] || <Box className="w-4 h-4" />}
+      {iconMap[type] || <Container className="w-4 h-4" />}
     </div>
   );
 }
@@ -162,7 +166,7 @@ const mockContainers: ContainerMetrics[] = [
   {
     id: 'mock-1',
     name: 'aetherblog-backend',
-    displayName: 'Backend (Java)',
+    displayName: 'backend',
     status: 'running',
     state: 'Up 2 hours',
     cpuPercent: 12.5,
@@ -170,12 +174,12 @@ const mockContainers: ContainerMetrics[] = [
     memoryLimit: 1536 * 1024 * 1024,
     memoryPercent: 31.6,
     image: 'aetherblog-backend:latest',
-    type: 'java'
+    type: 'backend'
   },
   {
     id: 'mock-2',
     name: 'aetherblog-blog',
-    displayName: 'Blog (Node.js)',
+    displayName: 'blog',
     status: 'running',
     state: 'Up 2 hours',
     cpuPercent: 5.2,
@@ -183,12 +187,12 @@ const mockContainers: ContainerMetrics[] = [
     memoryLimit: 512 * 1024 * 1024,
     memoryPercent: 38.1,
     image: 'aetherblog-blog:latest',
-    type: 'nodejs'
+    type: 'blog'
   },
   {
     id: 'mock-3',
     name: 'aetherblog-admin',
-    displayName: 'Admin (Nginx)',
+    displayName: 'admin',
     status: 'running',
     state: 'Up 2 hours',
     cpuPercent: 0.8,
@@ -196,12 +200,12 @@ const mockContainers: ContainerMetrics[] = [
     memoryLimit: 128 * 1024 * 1024,
     memoryPercent: 32.8,
     image: 'aetherblog-admin:latest',
-    type: 'nginx'
+    type: 'admin'
   },
   {
     id: 'mock-4',
     name: 'aetherblog-postgres',
-    displayName: 'PostgreSQL',
+    displayName: 'postgres',
     status: 'running',
     state: 'Up 3 hours',
     cpuPercent: 3.1,
@@ -214,7 +218,7 @@ const mockContainers: ContainerMetrics[] = [
   {
     id: 'mock-5',
     name: 'aetherblog-redis',
-    displayName: 'Redis',
+    displayName: 'redis',
     status: 'running',
     state: 'Up 3 hours',
     cpuPercent: 0.5,
