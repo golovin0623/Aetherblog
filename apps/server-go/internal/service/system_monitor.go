@@ -52,10 +52,12 @@ type DiskMetrics struct {
 	Path         string  `json:"path"`
 }
 
-// NetworkMetrics 保存累计的网络字节计数器（收发总量）。
+// NetworkMetrics 保存累计的网络字节计数器（收发总量）及实时速率。
 type NetworkMetrics struct {
-	BytesIn  int64 `json:"bytesIn"`
-	BytesOut int64 `json:"bytesOut"`
+	BytesIn  int64   `json:"bytesIn"`
+	BytesOut int64   `json:"bytesOut"`
+	SpeedIn  float64 `json:"speedIn"`  // bytes/s 实时接收速率
+	SpeedOut float64 `json:"speedOut"` // bytes/s 实时发送速率
 }
 
 // GoMetrics 保存 Go 运行时统计信息（版本、协程数、GC 次数、运行时长）。
@@ -285,7 +287,7 @@ func (s *SystemMonitorService) collectDisk() DiskMetrics {
 	}
 }
 
-// collectNetwork 采集当前的网络累计收发字节数。
+// collectNetwork 采集当前的网络累计收发字节数，并通过差分计算实时速率。
 // macOS：解析 netstat -ib 输出，取 en0 接口数据；
 // Linux：解析 /proc/net/dev，累计 eth0 和 ens* 接口数据；
 // 采集失败时返回零值。
@@ -334,7 +336,41 @@ func (s *SystemMonitorService) collectNetwork() NetworkMetrics {
 		}
 	}
 
-	return NetworkMetrics{BytesIn: bytesIn, BytesOut: bytesOut}
+	// 通过与上次采集的差值计算实时速率 (bytes/s)
+	var speedIn, speedOut float64
+	now := time.Now()
+
+	s.mu.Lock()
+	if s.lastNetCollect.IsZero() || bytesIn == 0 {
+		// 首次采集，无法计算速率
+		s.lastNetIn = bytesIn
+		s.lastNetOut = bytesOut
+		s.lastNetCollect = now
+	} else {
+		elapsed := now.Sub(s.lastNetCollect).Seconds()
+		if elapsed > 0 {
+			deltaIn := bytesIn - s.lastNetIn
+			deltaOut := bytesOut - s.lastNetOut
+			// 防止计数器回绕导致负值
+			if deltaIn >= 0 {
+				speedIn = float64(deltaIn) / elapsed
+			}
+			if deltaOut >= 0 {
+				speedOut = float64(deltaOut) / elapsed
+			}
+		}
+		s.lastNetIn = bytesIn
+		s.lastNetOut = bytesOut
+		s.lastNetCollect = now
+	}
+	s.mu.Unlock()
+
+	return NetworkMetrics{
+		BytesIn:  bytesIn,
+		BytesOut: bytesOut,
+		SpeedIn:  speedIn,
+		SpeedOut: speedOut,
+	}
 }
 
 // StorageBreakdown 包含各存储子系统的使用情况明细。
