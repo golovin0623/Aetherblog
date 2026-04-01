@@ -415,9 +415,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         placeholder="网站 (https://...)"
                         value={website}
                         onChange={(e) => setWebsite(e.target.value)}
-                        aria-invalid={error ? 'true' : 'false'}
-                        aria-describedby={error ? `${formId}-error` : undefined}
-                      />
+                        />
                     </div>
 
                     <div className="relative">
