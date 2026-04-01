@@ -260,19 +260,15 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 }
 
 // inferDisplayName 从容器名称中去除 aetherblog- 或 aetherblog_ 前缀，
-// 并取第一个连字符分隔段作为展示名称。
+// 保留完整的服务名（如 ai-service）以匹配 docker ps 输出。
 func inferDisplayName(name string) string {
 	name = strings.TrimPrefix(name, "aetherblog-")
 	name = strings.TrimPrefix(name, "aetherblog_")
-	parts := strings.Split(name, "-")
-	if len(parts) > 0 {
-		return parts[0]
-	}
 	return name
 }
 
 // inferContainerType 根据容器名称推断其类型，用于前端图标展示。
-// 支持识别：database、cache、search、java（后端）、nodejs（博客）、nginx（网关）、ai 等。
+// 支持识别：database、cache、search、backend（Go）、blog（Next.js）、gateway（Nginx）、admin（Vite）、ai 等。
 func inferContainerType(name string) string {
 	switch {
 	case strings.Contains(name, "postgres"):
@@ -282,11 +278,13 @@ func inferContainerType(name string) string {
 	case strings.Contains(name, "elasticsearch") || strings.Contains(name, "elastic"):
 		return "search"
 	case strings.Contains(name, "backend"):
-		return "java"
+		return "backend"
 	case strings.Contains(name, "blog"):
-		return "nodejs"
-	case strings.Contains(name, "admin") || strings.Contains(name, "gateway") || strings.Contains(name, "nginx"):
-		return "nginx"
+		return "blog"
+	case strings.Contains(name, "gateway") || strings.Contains(name, "nginx"):
+		return "gateway"
+	case strings.Contains(name, "admin"):
+		return "admin"
 	case strings.Contains(name, "ai"):
 		return "ai"
 	default:

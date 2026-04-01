@@ -328,10 +328,10 @@ type DeviceStat struct {
 func (r *AnalyticsRepo) GetDeviceStats(ctx context.Context) ([]DeviceStat, error) {
 	var rows []DeviceStat
 	err := r.db.SelectContext(ctx, &rows,
-		`SELECT COALESCE(device_type, 'Unknown') AS name, COUNT(*) AS value
+		`SELECT COALESCE(INITCAP(device_type), 'Unknown') AS name, COUNT(*) AS value
 		 FROM visit_records
 		 WHERE is_bot = false AND created_at >= NOW() - INTERVAL '30 days'
-		 GROUP BY device_type
+		 GROUP BY INITCAP(device_type)
 		 ORDER BY value DESC
 		 LIMIT 10`)
 	return rows, err
