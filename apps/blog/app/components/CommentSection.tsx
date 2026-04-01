@@ -465,7 +465,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
 
                       <div className="flex items-center justify-end gap-3">
                         {replyTo && (
-                          <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-sm">
+                          <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:rounded-sm">
                             改为发表新评论
                           </button>
                         )}
