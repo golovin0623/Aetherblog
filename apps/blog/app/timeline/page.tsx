@@ -89,7 +89,7 @@ export default function TimelinePage() {
         staleTime: 5 * 60 * 1000, // 缓存 5 分钟
     });
 
-    const posts = data ?? [];
+    const posts = useMemo(() => data ?? [], [data]);
     const archives = useMemo(() => groupPostsByDate(posts), [posts]);
 
     // 首次加载显示骨架屏（无缓存数据时）
