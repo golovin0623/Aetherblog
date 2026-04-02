@@ -220,10 +220,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
     const dx = swipeOffset;
     const elapsed = Date.now() - touchStartRef.current.time;
-    // Velocity in px/ms
+    // 速度（px/ms）
     const velocity = Math.abs(dx) / Math.max(elapsed, 1);
 
-    // Threshold: quick flick (high velocity) or dragged past 30% of container width
+    // 判断阈值：快速轻弹（高速度）或拖动超过容器宽度的 30%
     const containerWidth = trackRef.current?.parentElement?.clientWidth || 300;
     const isQuickFlick = velocity > 0.4 && Math.abs(dx) > 30;
     const isDraggedFar = Math.abs(dx) > containerWidth * 0.3;
