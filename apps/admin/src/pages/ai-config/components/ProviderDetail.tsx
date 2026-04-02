@@ -156,7 +156,7 @@ export default function ProviderDetail({
     toggleMutation.mutate({ id: provider.id, enabled });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any（禁用 any 类型警告）
   const providerSettings = (provider.capabilities?.settings || {}) as Record<string, any>;
   const showDeployName = provider.api_type === 'azure' || Boolean(providerSettings.showDeployName);
   const showChecker = providerSettings.showChecker !== false;
