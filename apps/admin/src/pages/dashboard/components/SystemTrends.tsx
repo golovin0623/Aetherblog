@@ -333,7 +333,7 @@ export function SystemTrends({ className }: { className?: string }) {
       {/* Chart - Responsive Height and Opacity Transition */}
       <div className={cn(
         "flex-1 w-full transition-opacity duration-300 min-h-[250px]",
-        loading && data.length > 0 ? "opacity-50 blur-[1px]" : "opacity-100"
+        loading && data.length > 0 ? "opacity-90" : "opacity-100"
       )}>
         {data.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
@@ -420,7 +420,7 @@ export function SystemTrends({ className }: { className?: string }) {
                 strokeWidth={2}
                 fill="url(#colorCpu)"
                 animationDuration={300}
-                isAnimationActive={true}
+                isAnimationActive={false}
                 strokeOpacity={visibleMetrics.cpu ? 1 : 0}
                 fillOpacity={visibleMetrics.cpu ? 1 : 0}
                 style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.cpu ? 'auto' : 'none' }}
@@ -434,7 +434,7 @@ export function SystemTrends({ className }: { className?: string }) {
                 strokeWidth={2}
                 fill="url(#colorMem)"
                 animationDuration={300}
-                isAnimationActive={true}
+                isAnimationActive={false}
                 strokeOpacity={visibleMetrics.memory ? 1 : 0}
                 fillOpacity={visibleMetrics.memory ? 1 : 0}
                 style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.memory ? 'auto' : 'none' }}
@@ -448,7 +448,7 @@ export function SystemTrends({ className }: { className?: string }) {
                 strokeWidth={2}
                 fill="url(#colorDisk)"
                 animationDuration={300}
-                isAnimationActive={true}
+                isAnimationActive={false}
                 strokeOpacity={visibleMetrics.disk ? 1 : 0}
                 fillOpacity={visibleMetrics.disk ? 1 : 0}
                 style={{ transition: 'all 0.3s ease', pointerEvents: visibleMetrics.disk ? 'auto' : 'none' }}

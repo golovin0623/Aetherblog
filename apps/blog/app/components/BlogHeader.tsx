@@ -281,6 +281,7 @@ export default function BlogHeader() {
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid var(--border-subtle)',
           boxShadow: 'var(--header-shadow)',
+          transition: 'background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease',
         }}
         onMouseMove={wrappedUpdateMousePosition}
         onMouseEnter={() => isArticleDetail && setIsHovering(true)}

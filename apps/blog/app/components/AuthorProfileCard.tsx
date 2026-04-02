@@ -200,19 +200,9 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     <div
       className={`relative group rounded-3xl border border-[var(--border-default)] overflow-hidden transition-all duration-300 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 ${className}`}
       style={{
-        background: !mounted || isDark
-          ? 'var(--bg-card)'
-          : `
-            radial-gradient(ellipse 1200px 400px at 12% 18%, rgba(241, 245, 249, 0.4) 0%, transparent 50%),
-            radial-gradient(ellipse 350px 900px at 88% 65%, rgba(226, 232, 240, 0.35) 0%, transparent 52%),
-            radial-gradient(ellipse 600px 280px at 35% 92%, rgba(248, 250, 252, 0.3) 0%, transparent 48%),
-            radial-gradient(ellipse 280px 650px at 68% 8%, rgba(226, 232, 240, 0.38) 0%, transparent 45%),
-            radial-gradient(ellipse 450px 320px at 25% 55%, rgba(248, 250, 252, 0.25) 0%, transparent 42%),
-            radial-gradient(ellipse 320px 580px at 75% 82%, rgba(203, 213, 225, 0.32) 0%, transparent 46%),
-            radial-gradient(ellipse 180px 420px at 48% 28%, rgba(241, 245, 249, 0.28) 0%, transparent 40%),
-            #ffffff
-          `,
+        background: 'var(--bg-card)',
         backdropFilter: 'blur(20px)',
+        transition: 'background 0.3s ease, border-color 0.3s ease',
       }}
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
@@ -236,14 +226,14 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           className="relative w-24 h-24 mb-3 outline-none select-none"
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
-          <div className="absolute -inset-3 rounded-full blur-md opacity-30 bg-black/8 dark:opacity-0 pointer-events-none" />
-          <div className="absolute -inset-2 bg-white rounded-full blur-sm opacity-60 pointer-events-none" />
+          <div className="absolute -inset-3 rounded-full blur-md opacity-30 bg-[var(--text-primary)]/8 dark:opacity-0 pointer-events-none transition-opacity duration-300" />
+          <div className="absolute -inset-2 bg-[var(--bg-primary)] rounded-full blur-sm opacity-60 pointer-events-none transition-colors duration-300" />
           {/* 光晕渐变层：使用 CSS 变量直接设置 background，避免 Tailwind v3 对 CSS 变量颜色不支持 /opacity 修饰符的问题 */}
           <div
             className="absolute inset-0 rounded-full blur-2xl opacity-25 pointer-events-none"
             style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))' }}
           />
-          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-white dark:ring-white/20 outline-none focus:outline-none shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-slate-100">
+          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-[var(--border-default)] outline-none focus:outline-none shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-[var(--bg-secondary)] transition-all duration-300">
             <Image
               src={avatar}
               alt={name}
