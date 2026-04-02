@@ -361,19 +361,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const { x, y } = getThemeTransitionOrigin();
     const newTheme: Theme = resolvedTheme === 'dark' ? 'light' : 'dark';
     const isDarkToLight = resolvedTheme === 'dark';
-    
+
     performCircularTransition(x, y, isDarkToLight, () => {
+      // 同步更新 DOM 类名，确保 View Transitions API 捕获的"新"快照是正确的主题
+      applyTheme(newTheme as ResolvedTheme);
       setTheme(newTheme);
     });
   }, [resolvedTheme, setTheme]);
-  
+
   // 带动画的主题切换（传入点击位置）
   const toggleThemeWithAnimation = useCallback((x: number, y: number) => {
     setThemeTransitionOrigin(x, y);
     const newTheme: Theme = resolvedTheme === 'dark' ? 'light' : 'dark';
     const isDarkToLight = resolvedTheme === 'dark';
-    
+
     performCircularTransition(x, y, isDarkToLight, () => {
+      applyTheme(newTheme as ResolvedTheme);
       setTheme(newTheme);
     });
   }, [resolvedTheme, setTheme]);
@@ -381,10 +384,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // 只带原生的淡入淡出 (Crossfade) 瞬切，无 clip-path 特效
   const toggleThemeWithFade = useCallback(() => {
     const newTheme: Theme = resolvedTheme === 'dark' ? 'light' : 'dark';
-    
+
     // 如果支持 View Transitions API，则使用简单的默认过渡（交叉淡入淡出）
     if (typeof document !== 'undefined' && document.startViewTransition) {
       document.startViewTransition(() => {
+        applyTheme(newTheme as ResolvedTheme);
         setTheme(newTheme);
       });
     } else {
