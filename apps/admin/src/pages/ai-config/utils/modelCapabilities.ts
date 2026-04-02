@@ -165,7 +165,7 @@ export function buildModelCapabilities(params: {
   setIfDefined('maxDimension', maxDimension || undefined);
   setIfDefined('resolutions', resolutions);
 
-  // legacy keys for compatibility
+  // 兼容旧版字段
   setIfDefined('vision', abilities.vision);
   setIfDefined('reasoning', abilities.reasoning);
   setIfDefined('web_search', abilities.search);

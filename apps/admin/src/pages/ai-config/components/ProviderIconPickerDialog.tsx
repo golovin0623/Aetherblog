@@ -146,7 +146,7 @@ export default function ProviderIconPickerDialog({
                       decoding="async"
                       className="w-7 h-7 object-contain"
                       onError={(e) => {
-                        // Hide broken icons without breaking the layout
+                        // 隐藏加载失败的图标，但不破坏布局
                         (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
                       }}
                     />

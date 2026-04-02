@@ -34,7 +34,7 @@ interface MediaViewerProps {
   onDownload: (url: string, filename: string) => void;
 }
 
-/** Render a single media slide (shared between mobile carousel and desktop view) */
+/** 渲染单个媒体幻灯片（移动端轮播与桌面端视图共用） */
 const MediaSlide: React.FC<{
   item: MediaItem;
   rotation: number;
@@ -109,7 +109,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const currentItem = items[currentIndex];
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // ====== Mobile carousel swipe state (Apple Photos style) ======
+  // ====== 移动端轮播滑动状态（仿 Apple Photos 风格）======
   const trackRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0); // px offset during drag
@@ -122,7 +122,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setMobileMenuOpen(false);
   }, [currentIndex]);
 
-  // Auto-scroll thumbnail strip to center the active thumbnail
+  // 自动滚动缩略图条，使当前激活的缩略图居中显示
   useEffect(() => {
     const timer = setTimeout(() => {
       const thumb = thumbnailRefs.current[currentIndex];
@@ -151,7 +151,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onNext, onPrev]);
 
-  // Close mobile menu on outside tap
+  // 点击外部区域时关闭移动端菜单
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const handleTap = () => setMobileMenuOpen(false);
@@ -170,7 +170,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   }, [currentItem, onDownload]);
 
-  // ====== Touch handlers: Apple Photos continuous carousel ======
+  // ====== 触摸事件处理：仿 Apple Photos 连续轮播 ======
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (!isMobile || isZoomed || isAnimating) return;
     const touch = e.touches[0];
@@ -185,7 +185,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     const dx = touch.clientX - touchStartRef.current.x;
     const dy = touch.clientY - touchStartRef.current.y;
 
-    // Lock direction after 8px movement
+    // 移动超过 8px 后锁定滑动方向
     if (!directionLocked.current) {
       if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
         directionLocked.current = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
@@ -195,14 +195,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
     if (directionLocked.current !== 'h') return;
 
-    // Prevent vertical scroll while swiping horizontally
+    // 水平滑动时阻止页面纵向滚动
     e.preventDefault();
 
-    // Rubber-band resistance at edges (iOS-style)
+    // 到达边缘时的橡皮筋阻力效果（iOS 风格）
     const atStart = currentIndex === 0 && dx > 0;
     const atEnd = currentIndex === items.length - 1 && dx < 0;
     if (atStart || atEnd) {
-      // Logarithmic resistance like iOS
+      // 对数阻尼，模仿 iOS 边缘弹性
       const sign = dx > 0 ? 1 : -1;
       const dampened = sign * Math.log2(1 + Math.abs(dx) * 0.15) * 20;
       setSwipeOffset(dampened);

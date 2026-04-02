@@ -78,7 +78,7 @@ export default function ProviderDetail({
   const defaultCredential = credentials.find((c) => c.is_default) || credentials[0];
   const { data: models = [], isLoading: modelsLoading } = useProviderModels(provider.code);
 
-  // Mutations
+  // 数据变更操作
   const toggleMutation = useToggleProvider();
   const deleteMutation = useDeleteProvider();
   const updateProviderMutation = useUpdateProvider();
@@ -108,7 +108,7 @@ export default function ProviderDetail({
 
     updateProviderMutation.mutate({
       id: provider.id,
-      data: { base_url: proxyInput || null } // Send null if empty to reset
+      data: { base_url: proxyInput || null } // 为空时发送 null 以重置地址
     });
   };
 
@@ -122,7 +122,7 @@ export default function ProviderDetail({
       name: 'Default Credential'
     }, {
       onSuccess: () => {
-        setRevealedKey(null); // Clear revealed key after update
+        setRevealedKey(null); // 更新成功后清除已获取的密钥
       }
     });
   };

@@ -14,7 +14,7 @@ import {
 import type { ModelType } from '../types';
 import { resolveAiServiceErrorMessage } from '../utils/errorMessage';
 
-// Query Keys
+// 查询键
 export const modelKeys = {
   all: ['ai-models'] as const,
   list: (providerCode?: string, modelType?: string) =>

@@ -64,7 +64,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
       toast.success(`模型 ID 已复制: ${model.model_id}`);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // ignore
+      // 忽略错误
       toast.error('复制失败');
     }
   };
@@ -82,7 +82,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         WebkitBackfaceVisibility: 'hidden',
       }}
     >
-      {/* Top shine effect */}
+      {/* 顶部光泽效果 */}
       {model.is_enabled && (
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
           <div

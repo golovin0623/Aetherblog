@@ -6,7 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '@aetherblog/hooks';
 import { cn } from '@/lib/utils';
 
-// 新组件
+// 新增组件
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
 import { useHistoryManager } from '@/hooks/useHistoryManager';
 import { FloatingAiToolbar } from '@/components/ai/FloatingAiToolbar';
@@ -28,7 +28,7 @@ import type { ContentSnapshot } from '@/types/content-history';
 
 // 定义所有可用的 AI 工具
 const AI_CAPABILITIES: AiCapability[] = [
-  // 随行工具
+  // 悬浮工具
   {
     id: 'polish',
     label: '润色',
@@ -72,7 +72,7 @@ const AI_CAPABILITIES: AiCapability[] = [
     cost: 'low',
   },
 
-  // 全局工具
+  // 全局工具（非选中文本）
   {
     id: 'generate-title',
     label: '生成标题',
@@ -104,7 +104,7 @@ const AI_CAPABILITIES: AiCapability[] = [
     cost: 'medium',
   },
 
-  // 工作流钩子
+  // 工作流钩子（阶段触发）
   {
     id: 'suggest-topics',
     label: '选题建议',
@@ -153,7 +153,7 @@ export function AiWritingWorkspacePage() {
   const workflow = useWritingWorkflow({
     postId: postId?.toString(),
     onEvent: (event) => {
-      console.log('Workflow event:', event);
+      console.log('工作流事件:', event);
 
       // 工作流阶段完成时自动创建快照
       if (event.type === 'stage-complete' && postId) {
@@ -172,7 +172,7 @@ export function AiWritingWorkspacePage() {
   const historyManager = useHistoryManager({
     postId: postId?.toString(),
     onEvent: (event) => {
-      console.log('History event:', event);
+      console.log('历史事件:', event);
 
       // 历史事件处理：撤销/重做时更新编辑器内容
       if (event.type === 'undo' || event.type === 'redo' || event.type === 'jumped') {
@@ -183,9 +183,9 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // 处理 AI 工具执行
+  // 处理 AI 工具执行逻辑
   const handleToolExecute = useCallback(async (toolId: string, selectedText: string) => {
-    console.log('Executing tool:', toolId, 'on text:', selectedText.slice(0, 50) + '...');
+    console.log('执行工具:', toolId, '作用于文本:', selectedText.slice(0, 50) + '...');
 
     // 记录工具使用
     workflow.recordToolUsage(toolId);
@@ -201,10 +201,10 @@ export function AiWritingWorkspacePage() {
       });
     }
 
-    // TODO: 调用实际的 AI 服务
+    // TODO: 调用实际的 AI 服务接口
     // const result = await aiService.executeCapability(toolId, { text: selectedText });
 
-    // 示例：模拟 AI 响应
+    // 示例：模拟 AI 响应（临时占位）
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 模拟 AI 修改内容
@@ -226,12 +226,12 @@ export function AiWritingWorkspacePage() {
     }
   }, [workflow, historyManager, title, content, summary, postId]);
 
-  // 处理阶段切换
+  // 处理创作阶段切换
   const handleStageClick = useCallback((stage: WritingStage) => {
     workflow.enterStage(stage);
   }, [workflow]);
 
-  // 判断是否可以跳转到某个阶段
+  // 判断是否允许跳转到指定阶段
   const canJumpToStage = useCallback((stage: WritingStage) => {
     // 可以跳转到：当前阶段、已完成阶段、下一阶段
     const stageIndex = workflow.config.enabledStages.indexOf(stage);
@@ -257,22 +257,22 @@ export function AiWritingWorkspacePage() {
     return () => clearTimeout(timer);
   }, [title, content, summary, postId, historyManager]);
 
-  // 快捷键绑定
+  // 快捷键绑定注册
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + Z: 撤销
+      // Ctrl/Cmd + Z: 撤销上一步操作
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         historyManager.undo();
       }
 
-      // Ctrl/Cmd + Shift + Z: 重做
+      // Ctrl/Cmd + Shift + Z: 重做上一步操作
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         historyManager.redo();
       }
 
-      // Ctrl/Cmd + H: 打开历史面板
+      // Ctrl/Cmd + H: 打开/关闭历史面板
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
         e.preventDefault();
         setShowHistoryPanel(prev => !prev);
@@ -283,7 +283,7 @@ export function AiWritingWorkspacePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyManager]);
 
-  // 处理版本对比
+  // 处理版本差异对比
   const handleCompare = useCallback((id1: string, id2: string) => {
     const snapshot1 = historyManager.state.snapshots.find(s => s.id === id1);
     const snapshot2 = historyManager.state.snapshots.find(s => s.id === id2);

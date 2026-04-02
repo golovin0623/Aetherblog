@@ -186,7 +186,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
                   )}
                 </div>
 
-                {/* Actions */}
+                {/* 操作按钮 */}
                 {isSelected && !isLatest && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
@@ -225,7 +225,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
         })}
       </div>
 
-      {/* Info */}
+      {/* 提示信息 */}
       <div className="p-4 bg-status-info-light border border-status-info-border rounded-lg">
         <p className="text-xs text-status-info">
           💡 提示: 恢复版本时，当前版本会自动保存为新版本，不会丢失数据。
