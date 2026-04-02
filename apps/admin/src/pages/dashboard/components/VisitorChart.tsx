@@ -175,31 +175,30 @@ export function VisitorChart({
               }}
             />
 
-            {activeTab === 'pv' && (
-              <Area
-                type="monotone"
-                dataKey="pv"
-                name="页面浏览"
-                stroke="#8b5cf6"
-                strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorPv)"
-                animationDuration={1000}
-              />
-            )}
-
-            {activeTab === 'uv' && (
-              <Area
-                type="monotone"
-                dataKey="uv"
-                name="独立访客"
-                stroke="#06b6d4"
-                strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorUv)"
-                animationDuration={1000}
-              />
-            )}
+            <Area
+              type="monotone"
+              dataKey="pv"
+              name="页面浏览"
+              stroke="#8b5cf6"
+              strokeWidth={2}
+              fillOpacity={activeTab === 'pv' ? 1 : 0}
+              strokeOpacity={activeTab === 'pv' ? 1 : 0}
+              fill="url(#colorPv)"
+              animationDuration={300}
+              style={{ transition: 'opacity 0.3s ease, fill-opacity 0.3s ease, stroke-opacity 0.3s ease' }}
+            />
+            <Area
+              type="monotone"
+              dataKey="uv"
+              name="独立访客"
+              stroke="#06b6d4"
+              strokeWidth={2}
+              fillOpacity={activeTab === 'uv' ? 1 : 0}
+              strokeOpacity={activeTab === 'uv' ? 1 : 0}
+              fill="url(#colorUv)"
+              animationDuration={300}
+              style={{ transition: 'opacity 0.3s ease, fill-opacity 0.3s ease, stroke-opacity 0.3s ease' }}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>
