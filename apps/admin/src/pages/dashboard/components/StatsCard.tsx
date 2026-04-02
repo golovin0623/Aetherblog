@@ -16,8 +16,8 @@ interface StatsCardProps {
 }
 
 function Counter({ value, prefix = '', suffix = '' }: { value: number; prefix?: string; suffix?: string }) {
-  const spring = useSpring(0, { mass: 0.8, stiffness: 75, damping: 15 });
-  const display = useTransform(spring, (current) => 
+  const spring = useSpring(value, { mass: 0.8, stiffness: 75, damping: 15 });
+  const display = useTransform(spring, (current) =>
     `${prefix}${Math.round(current).toLocaleString()}${suffix}`
   );
 
@@ -78,8 +78,6 @@ export function StatsCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
       whileHover={{ y: -2 }}
       className={cn(
         "p-4 lg:p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",

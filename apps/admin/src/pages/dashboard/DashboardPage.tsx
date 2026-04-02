@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign, RefreshCw, Coins } from 'lucide-react';
 import {
   StatsCard,
@@ -393,11 +392,8 @@ export default function DashboardPage() {
   const aiTrendData = aiData.trend || [];
 
   return (
-    <motion.div
+    <div
       className="space-y-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
     >
       {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -686,6 +682,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
