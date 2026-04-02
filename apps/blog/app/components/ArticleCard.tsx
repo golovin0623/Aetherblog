@@ -45,7 +45,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   const visibleTags = tags.slice(0, maxVisibleTags);
   const remainingTagCount = tags.length - maxVisibleTags;
 
-  // Memoize expensive markdown string replacement to avoid re-running on hover re-renders
+  // 对高开销的 Markdown 字符串替换进行 memoize，避免每次悬停重渲染时重复执行
   const displaySummary = useMemo(() => {
     if (summary) {
       const processed = summary
@@ -84,9 +84,9 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           ref={spotlightRef}
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            // Managed by React state to persist correctly across re-renders
+            // 由 React state 管理，确保跨重渲染时状态正确持久化
             opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
-            // Background is managed manually via ref
+            // 背景通过 ref 手动管理
           }}
         />
 

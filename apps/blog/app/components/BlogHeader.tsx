@@ -120,10 +120,10 @@ export default function BlogHeader() {
 
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
+  // 优化：使用 useRef 存储滚动位置，避免重渲染和监听器频繁触发
   const lastScrollYRef = useRef(0);
 
-  // Stable handlers for search panel using useCallback
+  // 使用 useCallback 稳定搜索面板的处理函数，避免不必要的重渲染
   const openSearchPanel = useCallback(() => {
     setIsSearchOpen(true);
   }, []);
@@ -135,7 +135,7 @@ export default function BlogHeader() {
   // 全局快捷键监听
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + K 切换搜索面板
+      // Cmd/Ctrl + K：切换搜索面板
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setIsSearchOpen((prev) => !prev);
@@ -215,14 +215,14 @@ export default function BlogHeader() {
     }
   }, [updateMousePosition, isArticleDetail, setIsHovering]);
 
-  // Use a ref to store the rAF ID to throttle the global mouse move listener
+  // 使用 ref 存储 rAF ID，对全局鼠标移动监听器进行节流控制
   const globalMouseMoveRafRef = useRef<number | null>(null);
 
   // 全局鼠标监听 - 用于触发显示和重置状态
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
     if (!isArticleDetail) return;
 
-    // Extracted synchronously before rAF
+    // 在 rAF 之前同步提取坐标值
     const clientY = e.clientY;
 
     if (globalMouseMoveRafRef.current === null) {
@@ -293,7 +293,7 @@ export default function BlogHeader() {
           data-testid="blog-header-spotlight"
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            // background is managed by updateMousePosition via ref
+            // 背景由 updateMousePosition 通过 ref 手动管理
             opacity: isHovering || !isArticleDetail ? 'var(--spotlight-opacity)' : 0,
           }}
         />

@@ -461,15 +461,15 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 ref={trackRef}
                 className="flex h-full will-change-transform"
                 style={{
-                  // Each slide is 100% width; translate by currentIndex + drag offset
+                  // 每张幻灯片宽度为 100%；根据 currentIndex 加拖动偏移量平移
                   transform: `translateX(calc(-${currentIndex * 100}% + ${swipeOffset}px))`,
                   transition: swipeOffset !== 0
-                    ? 'none'  // Instant tracking while dragging
-                    : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)', // Spring-like snap
+                    ? 'none'  // 拖动时即时跟随手指
+                    : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)', // 弹性回吸效果
                 }}
               >
                 {items.map((item, index) => {
-                  // Only render content for visible slides (perf optimization)
+                  // 仅渲染可见幻灯片的内容（性能优化）
                   const isVisible = visibleIndices.includes(index);
                   return (
                     <div
@@ -581,7 +581,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                         )
                   )}
                 >
-                  {/* Active glow underlay */}
+                  {/* 激活状态的辉光底层 */}
                   {isActive && (
                     <div className="absolute -inset-1 bg-primary/20 rounded-xl blur-md -z-10" />
                   )}
@@ -610,7 +610,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                       )}
                     </div>
                   )}
-                  {/* Subtle inner border for depth */}
+                  {/* 细微内描边，增强层次感 */}
                   <div className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 pointer-events-none" />
                 </button>
               );

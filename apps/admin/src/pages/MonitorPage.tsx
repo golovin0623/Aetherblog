@@ -7,7 +7,7 @@ import {
 } from './dashboard/components';
 
 export default function MonitorPage() {
-  // Container Logs State
+  // 容器日志状态
   const [selectedContainer, setSelectedContainer] = useState<{id: string, name: string}>({id: '', name: ''});
 
   const handleContainerSelect = (id: string, name: string) => {
@@ -16,13 +16,13 @@ export default function MonitorPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* 页面头部 */}
       <div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">系统监控</h1>
         <p className="text-[var(--text-muted)] mt-1">实时监控系统运行状态与资源趋势</p>
       </div>
 
-      {/* Row 1: System Trends & Status */}
+      {/* 第一行：系统趋势与状态 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <SystemTrends className="h-[500px]" />
@@ -32,7 +32,7 @@ export default function MonitorPage() {
         </div>
       </div>
 
-      {/* Row 2: Logs & Container Status */}
+      {/* 第二行：日志与容器状态 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2">
           <RealtimeLogViewer 
