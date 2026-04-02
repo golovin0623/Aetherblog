@@ -34,7 +34,7 @@ interface MergedDataPoint {
   cpu: number;
   memory: number;
   disk: number;
-  timestamp: number; // Parsed timestamp for sorting/formatting
+  timestamp: number; // 已解析的时间戳，用于排序和格式化
 }
 
 function mergeHistoryData(history: MetricHistory): MergedDataPoint[] {
