@@ -13,9 +13,9 @@ interface DirectiveNode extends Node {
 }
 
 /**
- * Remark plugin to map container directives to custom HTML elements.
- * Works with remark-directive.
- * Transforms :::warning{title="foo"} into <alert-block data-type="warning" data-title="foo">
+ * 将容器指令映射为自定义 HTML 元素的 remark 插件。
+ * 与 remark-directive 配合使用。
+ * 将 :::warning{title="foo"} 转换为 <alert-block data-type="warning" data-title="foo">
  */
 const remarkAlertBlock: Plugin = () => {
   return (tree: Node) => {
@@ -24,7 +24,7 @@ const remarkAlertBlock: Plugin = () => {
       if (['info', 'note', 'warning', 'danger', 'tip'].includes(dirNode.name)) {
         const data = dirNode.data || (dirNode.data = {});
         
-        // Map to a custom element tag that we will intercept in react-markdown's components
+        // 映射为自定义元素标签，在 react-markdown 的 components 中拦截处理
         data.hName = 'alert-block';
         data.hProperties = {
           'data-type': dirNode.name,

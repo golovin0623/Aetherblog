@@ -12,12 +12,12 @@ import (
 )
 
 func main() {
-	dir := flag.String("dir", "../../migrations", "path to migration files")
-	dsn := flag.String("dsn", "", "database DSN (postgres://user:pass@host:port/db?sslmode=disable)")
+	dir := flag.String("dir", "../../migrations", "迁移文件所在目录路径")
+	dsn := flag.String("dsn", "", "数据库 DSN（格式：postgres://user:pass@host:port/db?sslmode=disable）")
 	flag.Parse()
 
 	if *dsn == "" {
-		// Fallback to env
+		// 回退到环境变量
 		*dsn = os.Getenv("DATABASE_DSN")
 		if *dsn == "" {
 			fmt.Fprintln(os.Stderr, "error: -dsn flag or DATABASE_DSN env required")

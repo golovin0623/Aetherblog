@@ -101,7 +101,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <History className="w-5 h-5 text-primary" />
@@ -114,7 +114,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
         </div>
       </div>
 
-      {/* Version List */}
+      {/* 版本列表 */}
       <div className="space-y-3">
         {versions.map((version, index) => {
           const isLatest = index === 0;
@@ -133,7 +133,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
               }`}
               onClick={() => setSelectedVersion(isSelected ? null : version.id)}
             >
-              {/* Version Badge */}
+              {/* 版本标识 */}
               {isLatest && (
                 <div className="absolute top-2 right-2">
                   <span className="px-2 py-0.5 bg-status-success/20 text-status-success text-xs font-medium rounded-full">
@@ -142,7 +142,7 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
                 </div>
               )}
 
-              {/* Version Info */}
+              {/* 版本信息 */}
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -160,14 +160,14 @@ export function VersionHistory({ fileId }: VersionHistoryProps) {
                   </div>
                 </div>
 
-                {/* Description */}
+                {/* 变更描述 */}
                 {version.changeDescription && (
                   <p className="text-sm text-[var(--text-secondary)] pl-11">
                     {version.changeDescription}
                   </p>
                 )}
 
-                {/* Metadata */}
+                {/* 元数据 */}
                 <div className="flex items-center gap-4 text-xs text-[var(--text-muted)] pl-11">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />

@@ -85,9 +85,9 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 [options]"
+            echo "用法: $0 [选项]"
             echo ""
-            echo "Options:"
+            echo "选项:"
             echo "  --push              推送镜像到 Docker Hub"
             echo "  --version VERSION   指定版本标签 (默认: v1.0.0)"
             echo "  --all               构建全平台镜像 (amd64 + arm64)"
@@ -99,8 +99,8 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${RED}Unknown option: $1${NC}"
-            echo "Use --help for usage information"
+            echo -e "${RED}未知选项: $1${NC}"
+            echo "使用 --help 查看帮助信息"
             exit 1
             ;;
     esac

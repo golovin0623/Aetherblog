@@ -16,10 +16,10 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Delete modal state
+  // 删除弹窗状态
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string; type: 'category' | 'tag' } | null>(null);
-  
-  // Create modal state
+
+  // 创建弹窗状态
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -230,7 +230,7 @@ export default function CategoriesPage() {
           ) : (
             <div className="p-4 sm:p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {tags.map((tag, index) => {
-                // Color variants based on index for visual variety
+                // 根据索引设置不同颜色以增加视觉多样性
                 const colorVariants = [
                   'from-primary/20 to-accent/10 border-primary/30 text-primary',
                   'from-status-info/20 to-cyan-500/10 border-status-info-border text-status-info',

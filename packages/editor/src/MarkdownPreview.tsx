@@ -132,11 +132,11 @@ const alertBlockExtension: TokenizerExtension & RendererExtension = {
     };
     const iconStr = icons[type] || icons.info;
 
-    // Parse inner tokens using the parser's standard rendering
+    // 使用解析器的标准渲染方式解析内部 token
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const contentHtml = this.parser.parse(token.tokens as any);
 
-    // Escape any quotes in title avoiding breaking HTML attributes
+    // 转义标题中的引号，防止破坏 HTML 属性
     const escapeAttr = (str: string) => str.replace(/"/g, '&quot;');
 
     return `
@@ -433,7 +433,7 @@ function createLineTrackingRenderer(
     return matchedLine;
   };
 
-  // 覆盖标题渲染器以添加 data-source-line (不在预览模式下显示锚点图标)
+  // 覆盖标题渲染器以添加 data-source-line（预览区不显示锚点图标）
   renderer.heading = function (text: string, level: number) {
     const lineNum = findLineNumber(text);
     const lineAttr = lineNum > 0 ? ` data-source-line="${lineNum}"` : '';
@@ -477,7 +477,7 @@ function createLineTrackingRenderer(
           transformers: [
             {
               name: 'compact-line-spacing',
-              // postprocess 在 HTML 生成后处理
+              // postprocess 在 HTML 生成后进行后处理
               postprocess(html) {
                 // 移除所有 line-height 和 height 相关的内联样式
                 return html
@@ -496,7 +496,7 @@ function createLineTrackingRenderer(
           <div class="code-block-wrapper">
             <div class="code-block-header">
               <span class="code-block-lang">${langDisplay}</span>
-              <button type="button" class="code-block-copy" data-copy-code="1" aria-label="Copy code">
+              <button type="button" class="code-block-copy" data-copy-code="1" aria-label="复制代码">
                 ⧉
               </button>
             </div>
@@ -641,7 +641,7 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
           container.innerHTML = DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG);
         } catch (error) {
           console.error('Mermaid rendering error:', error);
-          container.innerHTML = `<div class="mermaid-error">Failed to render diagram</div>`;
+          container.innerHTML = `<div class="mermaid-error">图表渲染失败</div>`;
         }
       }
     };

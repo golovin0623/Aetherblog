@@ -102,7 +102,7 @@ class ApiClient {
       this.refreshPromise = this.post<{ code: number; message?: string }>('/v1/auth/refresh')
         .then((res) => {
           if (!res || res.code !== 200) {
-            throw new Error(res?.message || 'Refresh token failed');
+            throw new Error(res?.message || '刷新令牌失败');
           }
         })
         .finally(() => {

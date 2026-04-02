@@ -141,7 +141,7 @@ export default function PostsPage() {
 
   const handlePageChange = (page: number) => {
     fetchPosts(page, activeStatus, debouncedSearch || undefined, filters);
-    // Auto-scroll the active page number into view after state updates
+    // 状态更新后自动将当前页码滚动到视野内
     requestAnimationFrame(() => scrollActivePageIntoView(page));
   };
 
