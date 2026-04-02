@@ -240,11 +240,11 @@ function paragraphContainsBlockImage(node: unknown): boolean {
     }
 
     const childNode = child as { type?: string; tagName?: string; children?: unknown[] };
-    // mdast image node
+    // mdast 图片节点
     if (childNode.type === 'image') {
       return true;
     }
-    // rehype HTML <img> element (raw HTML in markdown)
+    // rehype HTML <img> 元素（markdown 中的原始 HTML）
     if (childNode.type === 'element' && childNode.tagName === 'img') {
       return true;
     }
@@ -278,9 +278,9 @@ function extractTextContent(children: React.ReactNode): string {
 function createHeadingRenderer(tag: HeadingTag, headingIdMap: Map<number, string>): Components[HeadingTag] {
   const HeadingRenderer: Components[HeadingTag] = ({ children, id, className, node, ...props }) => {
     const headingText = extractTextContent(children).trim();
-    // Look up the pre-computed ID by AST source line number.
-    // This is completely stateless: no shared counter, no closure mutation.
-    // node.position.start.line is 1-based and unique for each heading in the document.
+    // 通过 AST 源代码行号查找预计算的 ID。
+    // 完全无状态：无共享计数器，无闭包副作用。
+    // node.position.start.line 从 1 开始，文档中每个标题唯一。
     const lineNumber = (node as any)?.position?.start?.line as number | undefined;
     const precomputedId = lineNumber !== undefined ? headingIdMap.get(lineNumber) : undefined;
     const headingId = (typeof id === 'string' && id) ? id : (precomputedId ?? 'section');
@@ -664,7 +664,7 @@ function createComponents(
   theme: string,
   headingIdMap: Map<number, string>,
 ): Components {
-  // All six heading tags share the same lookup map — no mutable counter.
+  // 六级标题共用同一查找 Map — 无可变计数器。
   const fallbackMathErrorText = '数学公式渲染失败';
   const fallbackMermaidErrorText = '图表渲染失败';
   const isBlockImageChild = (child: React.ReactNode) => {
@@ -921,13 +921,13 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
   const { resolvedTheme } = useTheme();
   const normalizedContent = useMemo(() => preprocessMarkdown(content || ''), [content]);
 
-  // Pre-compute heading ID map once per content change.
-  // Map key = 1-based source line number (from AST), value = stable deduplicated ID.
-  // This is completely stateless in the renderer — no shared counter, no closure mutation.
+  // 每次内容变更时预计算标题 ID Map。
+  // Map 键为 AST 源代码行号（从 1 开始），值为稳定去重后的 ID。
+  // 渲染器中完全无状态 — 无共享计数器，无闭包副作用。
   const headingIdMap = useMemo(() => buildHeadingIdMap(normalizedContent), [normalizedContent]);
 
-  // Recreate components when highlighter or theme changes.
-  // Heading IDs are pure Map lookups — idempotent across any number of re-renders.
+  // 高亮器或主题变更时重新创建组件。
+  // 标题 ID 为纯 Map 查询 — 任意次重渲染均幂等。
   const components = useMemo(
     () => createComponents(highlighter, resolvedTheme || 'dark', headingIdMap),
     [highlighter, resolvedTheme, headingIdMap],

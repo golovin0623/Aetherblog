@@ -173,7 +173,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       if (!t.atBottom) return;
 
       const touch = e.touches[0];
-      const deltaY = t.startY - touch.clientY; // positive = swipe up
+      const deltaY = t.startY - touch.clientY; // 正值表示向上滑动
 
       if (deltaY < DEAD_ZONE) {
         if (t.pulling) {
@@ -343,8 +343,8 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
 
     // 4. Apply elastic deformation: stretches more as finger pulls further from snapped center
     const stretchFactor = Math.abs(dragDist) / 100;
-    blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // Max 40% wider
-    blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // Max 15% shorter
+    blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // 最大宽度增加 40%
+    blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // 最大高度减少 15%
   } else {
     // 未就绪或手指已释放时，严格遵守基准位置和球形形状
     blobX = blobBaseX;
@@ -406,19 +406,19 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
           <div
             className="absolute rounded-full pointer-events-none"
             style={{
-              width: `${circleSize}px`, // Follows pull growth 0 -> CIRCLE_MAX
+              width: `${circleSize}px`, // 跟随拖拽进度从 0 增长至 CIRCLE_MAX
               height: `${circleSize}px`,
               transform: `translateX(${blobX}px) scaleX(${blobScaleX}) scaleY(${blobScaleY})`,
               background: 'var(--bg-secondary, rgba(235, 235, 240, 0.9))',
               backdropFilter: 'blur(12px)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 0 1px 1px rgba(255,255,255,0.6)',
-              opacity: clamp(pullProgress * 5, 0, 1), // Rises sharply from 0 to 1
-              // Spring physics transition for blob movement and rescale
+              opacity: clamp(pullProgress * 5, 0, 1), // 从 0 急速增长至 1
+              // 弹簧物理过渡：用于 blob 移动与缩放
               transition: active
                 ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.5, 1), width 0.2s, height 0.2s'
                 : 'all 0.4s ease-out',
               animation: isCenterActive && isReady ? 'blobPulse 2s ease-in-out infinite' : 'none',
-              zIndex: 1, // Behind the icons
+              zIndex: 1, // 在图标层之下
             }}
           />
 
@@ -469,7 +469,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
                 opacity: centerIconOpacity,
                 strokeWidth: isCenterActive && isReady ? 2.5 : 2,
                 transition: 'color 0.2s, opacity 0.2s',
-                // Subtle drop shadow when standing strictly alone (unready)
+                // 独立展示时（未就绪）添加细微阴影
                 filter: (!isReady && isCenterActive && circleSize > 15) 
                   ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' 
                   : 'none'

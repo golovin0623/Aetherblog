@@ -36,7 +36,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
           : '暂无摘要';
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Prevent navigation if clicking on interactive elements
+    // 点击交互元素时阻止导航
     if (e.target instanceof Element && e.target.closest('a, button')) {
       return;
     }

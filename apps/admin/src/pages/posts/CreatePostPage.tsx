@@ -1978,12 +1978,12 @@ export function CreatePostPage() {
         )}
       </AnimatePresence>
 
-      {/* Formatting Toolbar */}
+      {/* 格式化工具栏 */}
       <div className="relative border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/80 backdrop-blur-sm">
         {/* 桌面端：单行 flex-wrap */}
         {!isMobile && (
           <div className="flex flex-wrap items-center gap-1 px-4 py-1.5">
-            {/* Undo/Redo */}
+            {/* 撤销/重做 */}
             <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
               <ToolbarButton onClick={() => editorCommands.undo()} tooltip="撤销 (⌘Z)">
                 <Undo2 className="w-4 h-4" />
@@ -1992,7 +1992,7 @@ export function CreatePostPage() {
                 <Redo2 className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Headings */}
+            {/* 标题 */}
             <div className="flex items-center gap-0.5 pr-3 border-r border-[var(--border-subtle)]">
               <ToolbarButton onClick={() => insertMarkdown('# ', '', 'lineStart')} tooltip="标题 1 (H1)">
                 <Heading1 className="w-4 h-4" />
@@ -2004,7 +2004,7 @@ export function CreatePostPage() {
                 <Heading3 className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Text Formatting */}
+            {/* 文字格式 */}
             <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
               <ToolbarButton onClick={() => insertMarkdown('**', '**')} tooltip="粗体 (⌘B)">
                 <Bold className="w-4 h-4" />
@@ -2019,7 +2019,7 @@ export function CreatePostPage() {
                 <Strikethrough className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Code */}
+            {/* 代码 */}
             <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
               <ToolbarButton onClick={() => insertMarkdown('`', '`')} tooltip="行内代码 (⌘`)">
                 <Code className="w-4 h-4" />
@@ -2028,7 +2028,7 @@ export function CreatePostPage() {
                 <FileCode2 className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Lists */}
+            {/* 列表 */}
             <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
               <ToolbarButton onClick={() => insertMarkdown('- ', '', 'lineStart')} tooltip="无序列表">
                 <List className="w-4 h-4" />
@@ -2040,7 +2040,7 @@ export function CreatePostPage() {
                 <CheckSquare className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Insert */}
+            {/* 插入 */}
             <div className="flex items-center gap-0.5 px-3 border-r border-[var(--border-subtle)]">
               <ToolbarButton onClick={() => insertMarkdown('[', '](url)', 'wrap')} tooltip="链接 (⌘K)">
                 <Link2 className="w-4 h-4" />
@@ -2055,7 +2055,7 @@ export function CreatePostPage() {
                 <Minus className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Advanced: Quote, Alert, Math, Diagram */}
+            {/* 高级：引用、警告块、数学公式、流程图 */}
             <div className="flex items-center gap-0.5 px-3">
               <ToolbarButton onClick={() => insertMarkdown('> ', '', 'lineStart')} tooltip="引用">
                 <Quote className="w-4 h-4" />
@@ -2068,9 +2068,9 @@ export function CreatePostPage() {
                 <GitBranch className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* Spacer */}
+            {/* 空白填充 */}
             <div className="flex-1" />
-            {/* Zoom Controls with Domain Toggle */}
+            {/* 字号控制（含控制域切换） */}
             <div className="flex items-center gap-0.5 px-3 border-l border-[var(--border-subtle)]">
               <ToolbarButton
                 onClick={() => {
@@ -2132,7 +2132,7 @@ export function CreatePostPage() {
                 <ZoomIn className="w-4 h-4" />
               </ToolbarButton>
             </div>
-            {/* View Mode Toggle */}
+            {/* 视图模式切换 */}
             <div className="flex items-center gap-0.5 px-3 border-l border-white/10">
               <ToolbarButton
                 onClick={() => setViewMode(viewMode === 'edit' ? 'split' : 'edit')}
