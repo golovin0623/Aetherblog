@@ -125,8 +125,8 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
     };
   }, []);
 
-  // ⚡ Bolt: Memoized with useCallback to prevent recreating this function on every render,
-  // which avoids O(n) re-renders in the renderTocList loop when activeId changes.
+  // ⚡ Bolt: 使用 useCallback 记忆化，防止每次渲染时重新创建此函数，
+  // 避免 activeId 变更时在 renderTocList 循环中产生 O(n) 次重渲染。
   const scrollToHeading = useCallback((id: string) => {
     const element = document.getElementById(id);
     if (element) {
@@ -310,9 +310,9 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
   );
 };
 
-// Extracted single TOC item into a memoized component.
-// When `activeId` changes during scrolling, only the previously active item
-// and the newly active item re-render, reducing O(n) renders to O(1).
+// 将单个目录项提取为记忆化组件。
+// 滚动时 `activeId` 变更，仅前一个激活项
+// 和新激活项重渲染，将 O(n) 降至 O(1)。
 const TocItemComponent = React.memo(function TocItemComponent({
   heading,
   isActive,
@@ -347,7 +347,7 @@ const TocItemComponent = React.memo(function TocItemComponent({
   );
 });
 
-// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders of the TableOfContents component
-// when its parent (e.g. ArticlePage) re-renders, as computing headings from the large markdown string is expensive.
+// ⚡ Bolt: 添加 React.memo() 以防止 TableOfContents 组件不必要的重渲染，
+// 父组件（如 ArticlePage）重渲染时，避免重复计算大型 markdown 字符串中的标题（代价高昂）。
 export const TableOfContents = React.memo(TableOfContentsBase);
 export default TableOfContents;

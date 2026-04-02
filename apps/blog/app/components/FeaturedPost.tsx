@@ -70,7 +70,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
           ref={spotlightRef}
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            // Background is managed via ref
+            // 背景通过 ref 管理
             opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
           }}
         />

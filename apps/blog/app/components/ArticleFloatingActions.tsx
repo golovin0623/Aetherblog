@@ -417,9 +417,9 @@ const TocList = memo(function TocList({
   );
 });
 
-// Extracted single TOC item into a memoized component.
-// When `activeId` changes during scrolling, only the previously active item
-// and the newly active item re-render, reducing O(n) renders to O(1).
+// 将单个目录项提取为记忆化组件。
+// 滚动时 `activeId` 变更，仅前一个激活项
+// 和新激活项重渲染，将 O(n) 降至 O(1)。
 const TocItemComponent = memo(function TocItemComponent({
   heading,
   isActive,
@@ -457,5 +457,5 @@ const TocItemComponent = memo(function TocItemComponent({
   );
 });
 
-// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders when parent component updates.
+// ⚡ Bolt: 添加 React.memo() 以防止父组件更新时不必要的重渲染。
 export default memo(ArticleFloatingActionsBase);

@@ -40,7 +40,7 @@ const STORAGE_KEYS = {
 };
 
 // ============================================================================
-// Memoized Components
+// 记忆化组件
 // ============================================================================
 
 const PostItem = React.memo(({
@@ -293,14 +293,14 @@ const YearSection = React.memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison function to prevent unnecessary re-renders
-  // Only re-render if:
-  // 1. Year data changed (reference or content)
-  // 2. isExpanded changed for this year
-  // 3. Expansion state changed for months within this year
-  // 4. Other relevant props changed (highlightedPostId, isHighlightFading)
+  // 自定义比较函数，防止不必要的重渲染
+  // 仅在以下情况重渲染：
+  // 1. 年份数据变更（引用或内容）
+  // 2. 本年份的 isExpanded 变更
+  // 3. 本年度内月份展开状态变更
+  // 4. 其他相关 props 变更（highlightedPostId、isHighlightFading）
 
-  // Check if primitive/stable props changed
+  // 检查原始值/稳定 props 是否变更
   if (
     prevProps.yearData !== nextProps.yearData ||
     prevProps.isExpanded !== nextProps.isExpanded ||
@@ -312,10 +312,10 @@ const YearSection = React.memo(({
     prevProps.toggleShowAllPosts !== nextProps.toggleShowAllPosts ||
     prevProps.handlePostClick !== nextProps.handlePostClick
   ) {
-    return false; // Props changed, re-render
+    return false; // props 已变更，需要重渲染
   }
 
-  // Check if expansion state changed for months within this year
+  // 检查本年度内月份展开状态是否变更
   const { year, months } = nextProps.yearData;
   for (const monthData of months) {
     const yearMonth = `${year}-${monthData.month}`;
@@ -325,16 +325,16 @@ const YearSection = React.memo(({
     const nextShowAllPosts = nextProps.expandedPostsMonths.has(yearMonth);
 
     if (prevMonthExpanded !== nextMonthExpanded || prevShowAllPosts !== nextShowAllPosts) {
-      return false; // Month state changed, re-render
+      return false; // 月份状态已变更，需要重渲染
     }
   }
 
-  return true; // No relevant changes, skip re-render
+  return true; // 无相关变更，跳过重渲染
 });
 YearSection.displayName = 'YearSection';
 
 // ============================================================================
-// Main Component
+// 主组件
 // ============================================================================
 
 export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
@@ -354,7 +354,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
   const [isHighlightFading, setIsHighlightFading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Refs for access in stable callbacks
+  // 在稳定回调中访问的 refs
   const expandedYearsRef = useRef(expandedYears);
   const expandedMonthsRef = useRef(expandedMonths);
   const expandedPostsMonthsRef = useRef(expandedPostsMonths);
@@ -434,7 +434,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
     }
   }, [saveState]);
 
-  // Stable toggle handlers
+  // 稳定的折叠切换处理器
   const toggleYear = useCallback((year: number) => {
     setExpandedYears((prev) => {
       const next = new Set(prev);

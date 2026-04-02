@@ -426,7 +426,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
             secondaryColor: '#1e1b4b',
             tertiaryColor: '#1e293b',
           } : undefined,
-          // 🛡️ Sentinel Security Improvement: set securityLevel to strict to mitigate XSS vectors in diagrams
+          // 🛡️ Sentinel 安全改进：将 securityLevel 设为 strict，防范图表中的 XSS 攻击向量
           securityLevel: 'strict',
         });
 
@@ -689,7 +689,7 @@ function createComponents(
     h6: createHeadingRenderer('h6', headingIdMap),
     
     // 自定义高亮块
-    // @ts-expect-error - Custom element not in standard HTML types
+    // @ts-expect-error - 自定义元素不在标准 HTML 类型中
     'alert-block': ({ node, ...props }: any) => {
       return (
         <AlertBlock type={props['data-type'] || 'info'} title={props['data-title']}>
