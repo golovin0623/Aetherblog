@@ -73,7 +73,7 @@ export default function ProviderDetail({
   
   const brand = getProviderBrand(provider.code);
 
-  // Data
+  // 数据
   const { data: credentials = [] } = useProviderCredentials(provider.code);
   const defaultCredential = credentials.find((c) => c.is_default) || credentials[0];
   const { data: models = [], isLoading: modelsLoading } = useProviderModels(provider.code);
@@ -85,11 +85,11 @@ export default function ProviderDetail({
   const createCredentialMutation = useCreateCredential();
   const revealMutation = useRevealCredential();
 
-  // State for inline editing
+  // 内联编辑状态
   const [proxyInput, setProxyInput] = useState('');
   const [keyInput, setKeyInput] = useState('');
 
-  // Sync state with props
+  // 同步 props 到状态
   useEffect(() => {
     setProxyInput(provider.base_url || '');
   }, [provider.base_url]);
@@ -102,9 +102,9 @@ export default function ProviderDetail({
     }
   }, [defaultCredential]);
 
-  // Handle Save Proxy
+  // 保存代理地址
   const handleSaveProxy = () => {
-    if (proxyInput === (provider.base_url || '')) return; // No change
+    if (proxyInput === (provider.base_url || '')) return; // 无变化
 
     updateProviderMutation.mutate({
       id: provider.id,
@@ -113,7 +113,7 @@ export default function ProviderDetail({
   };
 
   const handleSaveKey = () => {
-    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint || keyInput === revealedKey) return; // No change
+    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint || keyInput === revealedKey) return; // 无变化
 
     createCredentialMutation.mutate({
       provider_code: provider.code,
@@ -131,12 +131,12 @@ export default function ProviderDetail({
     if (!defaultCredential) return;
 
     if (showKey && revealedKey) {
-      // If already showing, just toggle off
+      // 若已在显示状态，则直接切换隐藏
       setShowKey(false);
       return;
     }
 
-    // Fetch the real key if not already fetched
+    // 若尚未获取真实密钥，则请求获取
     if (!revealedKey) {
       revealMutation.mutate(defaultCredential.id, {
         onSuccess: (data) => {
@@ -146,7 +146,7 @@ export default function ProviderDetail({
         }
       });
     } else {
-      // Already have the key, just toggle display
+      // 已有密钥，直接切换显示
       setKeyInput(revealedKey);
       setShowKey(true);
     }
