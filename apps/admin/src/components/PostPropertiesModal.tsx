@@ -122,7 +122,7 @@ export function PostPropertiesModal({
       await onSave(submitData);
       onClose();
     } catch (error: any) {
-      console.error('Failed to update post properties:', error);
+      console.error('更新文章属性失败:', error);
       const msg = error?.response?.data?.message || error?.message || '保存失败，请重试';
       alert(msg);
     } finally {
