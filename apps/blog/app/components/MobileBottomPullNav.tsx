@@ -96,7 +96,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
 
   const router = useRouter();
 
-  // ── Refs ──
+  // ── Refs（引用）──
   const touchRef = useRef({
     startY: 0,
     startX: 0,
@@ -114,7 +114,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   useEffect(() => { nextPostRef.current = nextPost; }, [nextPost]);
   useEffect(() => { setMounted(true); }, []);
 
-  // ── Mobile detection ──
+  // ── 移动端检测 ──
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 768px)');
     const onChange = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches);
@@ -123,7 +123,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  // ── Helpers ──
+  // ── 辅助函数 ──
   const isAtBottom = useCallback(() => {
     const st = window.scrollY;
     const sh = document.documentElement.scrollHeight;
