@@ -200,9 +200,19 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
     <div
       className={`relative group rounded-3xl border border-[var(--border-default)] overflow-hidden transition-all duration-300 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 ${className}`}
       style={{
-        background: 'var(--bg-card)',
+        background: !mounted || isDark
+          ? 'var(--bg-card)'
+          : `
+            radial-gradient(ellipse 1200px 400px at 12% 18%, rgba(241, 245, 249, 0.4) 0%, transparent 50%),
+            radial-gradient(ellipse 350px 900px at 88% 65%, rgba(226, 232, 240, 0.35) 0%, transparent 52%),
+            radial-gradient(ellipse 600px 280px at 35% 92%, rgba(248, 250, 252, 0.3) 0%, transparent 48%),
+            radial-gradient(ellipse 280px 650px at 68% 8%, rgba(226, 232, 240, 0.38) 0%, transparent 45%),
+            radial-gradient(ellipse 450px 320px at 25% 55%, rgba(248, 250, 252, 0.25) 0%, transparent 42%),
+            radial-gradient(ellipse 320px 580px at 75% 82%, rgba(203, 213, 225, 0.32) 0%, transparent 46%),
+            radial-gradient(ellipse 180px 420px at 48% 28%, rgba(241, 245, 249, 0.28) 0%, transparent 40%),
+            #ffffff
+          `,
         backdropFilter: 'blur(20px)',
-        transition: 'background 0.3s ease, border-color 0.3s ease',
       }}
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
