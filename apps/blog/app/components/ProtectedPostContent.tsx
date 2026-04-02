@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useId } from 'react';
-import { Lock, Loader2 } from 'lucide-react';
+import { Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import { API_ENDPOINTS } from '@/app/lib/api';
 
@@ -18,6 +18,7 @@ export function ProtectedPostContent({ slug, title }: ProtectedPostContentProps)
   const [content, setContent] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -60,17 +61,27 @@ export function ProtectedPostContent({ slug, title }: ProtectedPostContentProps)
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor={passwordInputId} className="sr-only">访问密码</label>
-          <input
-            id={passwordInputId}
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="请输入访问密码"
-            className={`w-full rounded-xl border bg-background px-4 py-3 text-[var(--text-primary)] outline-none transition-colors ${error ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' : 'border-[var(--border-default)] focus:border-primary/50 focus:ring-1 focus:ring-primary/50'}`}
-            autoComplete="current-password"
-            aria-invalid={!!error}
-            aria-describedby={error ? passwordErrorId : undefined}
-          />
+          <div className="relative">
+            <input
+              id={passwordInputId}
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="请输入访问密码"
+              className={`w-full rounded-xl border bg-background pl-4 pr-12 py-3 text-[var(--text-primary)] outline-none transition-colors ${error ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' : 'border-[var(--border-default)] focus:border-primary/50 focus:ring-1 focus:ring-primary/50'}`}
+              autoComplete="current-password"
+              aria-invalid={!!error}
+              aria-describedby={error ? passwordErrorId : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-md"
+              aria-label={showPassword ? '隐藏密码' : '显示密码'}
+            >
+              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
+          </div>
           {error && <p id={passwordErrorId} role="alert" className="mt-2 text-sm text-red-500 font-medium">{error}</p>}
         </div>
         <button
