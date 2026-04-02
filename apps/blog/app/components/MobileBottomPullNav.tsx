@@ -152,7 +152,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     }
   }, []);
 
-  // ── Touch handlers ──
+  // ── 触摸事件处理 ──
   useEffect(() => {
     if (!isMobile) return;
 
@@ -290,13 +290,13 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     };
   }, [isMobile, isAtBottom, navigate, scheduleUpdate]);
 
-  // ── Render ──
+  // ── 渲染 ──
   if (!isMobile || !mounted) return null;
 
   const { active, pullProgress, lateralOffset, snappedTo, isReady } = gesture;
   const easedProgress = easeOut(pullProgress);
 
-  // ── Computed visual values ──
+  // ── 计算视觉参数 ──
 
   // 中心圆大小：0 → CIRCLE_MAX
   const circleSize = lerp(CIRCLE_MIN, CIRCLE_MAX, easedProgress);
@@ -314,13 +314,13 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   const sideSpread = lerp(0, SIDE_SPACING, sideEased);
   const sideScale = lerp(0.3, 1, sideEased);
 
-  // ── Magnetic snap deformation (Single Unified Blob) ──
+  // ── 磁性吸附形变（单一统一 Blob）──
   
   let blobX = 0;
   let blobScaleX = 1;
   let blobScaleY = 1;
 
-  // 1. Identify where the blob "wants" to be base on current snap state
+  // 1. 根据当前吸附状态确定 blob 的"目标"位置
   const blobBaseX = snappedTo === 'prev' ? -sideSpread : snappedTo === 'next' ? sideSpread : 0;
 
   if (isReady && active) {
@@ -338,10 +338,10 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       if (lateralOffset < 50) dragDist = lateralOffset - 50;
     }
 
-    // 3. Apply stickiness: blob moves slightly with finger but strongly resists
+    // 3. 施加粘性：blob 随手指轻微移动，但强烈抵抗大幅偏移
     blobX = blobBaseX + clamp(dragDist * 0.25, -20, 20);
 
-    // 4. Apply elastic deformation: stretches more as finger pulls further from snapped center
+    // 4. 施加弹性形变：手指偏离吸附中心越远，拉伸越明显
     const stretchFactor = Math.abs(dragDist) / 100;
     blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // 最大宽度增加 40%
     blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // 最大高度减少 15%
@@ -350,7 +350,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     blobX = blobBaseX;
   }
 
-  // ── Active icon highlighting ──
+  // ── 激活图标高亮 ──
   const isCenterActive = snappedTo === 'center';
   const isPrevActive = snappedTo === 'prev';
   const isNextActive = snappedTo === 'next';
