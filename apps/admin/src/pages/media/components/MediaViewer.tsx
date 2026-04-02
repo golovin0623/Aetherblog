@@ -237,7 +237,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       }
     }
 
-    // Animate snap-back (spring physics via CSS transition)
+    // 执行回弹动画（通过 CSS transition 模拟弹簧物理）
     setIsAnimating(true);
     setSwipeOffset(0);
 
@@ -245,14 +245,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       onSelectIndex(targetIndex);
     }
 
-    // Wait for spring animation to finish
+    // 等待弹簧动画完成
     setTimeout(() => setIsAnimating(false), 350);
 
     touchStartRef.current = null;
     directionLocked.current = null;
   }, [isMobile, swipeOffset, currentIndex, items.length, onSelectIndex]);
 
-  // Reset swipe offset when index changes externally (e.g. thumbnail tap)
+  // 当外部更改索引时（如点击缩略图）重置滑动偏移量
   useEffect(() => {
     setSwipeOffset(0);
   }, [currentIndex]);
@@ -261,7 +261,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   const fullUrl = getMediaUrl(currentItem.fileUrl);
 
-  // Visible slides for mobile carousel: only render [prev, current, next] for performance
+  // 移动端轮播可见幻灯片：仅渲染 [前一张、当前、后一张] 以优化性能
   const visibleIndices = isMobile
     ? [currentIndex - 1, currentIndex, currentIndex + 1].filter(i => i >= 0 && i < items.length)
     : [currentIndex];
