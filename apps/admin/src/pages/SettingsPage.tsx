@@ -318,6 +318,17 @@ export default function SettingsPage() {
     }
   };
 
+  // 直接保存单个字体设置到后端（无需额外点击保存按钮）
+  const saveFontDirectly = useCallback((fontId: string) => {
+    setFormData(prev => ({ ...prev, font_family: fontId }));
+    settingsService.batchUpdate({ font_family: fontId }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success(`已应用「${getFontOption(fontId)?.name}」字体`);
+    }).catch(() => {
+      toast.error('字体保存失败');
+    });
+  }, [queryClient]);
+
   // 字体预览：临时体验 2 分钟
   const handleFontPreview = useCallback((fontId: string) => {
     setPreviewFontId(fontId);
@@ -330,18 +341,16 @@ export default function SettingsPage() {
     setPreviewFontId(null);
   }, []);
 
-  // 字体预览确认应用
+  // 字体预览确认应用 → 直接保存
   const handleFontApply = useCallback((fontId: string) => {
-    handleInputChange('font_family', fontId);
     setPreviewFontId(null);
-    toast.success(`已切换为「${getFontOption(fontId)?.name}」，请点击保存生效`);
-  }, []);
+    saveFontDirectly(fontId);
+  }, [saveFontDirectly]);
 
-  // 从字体选择器直接应用
+  // 从字体选择器直接应用 → 直接保存
   const handleFontSelect = useCallback((fontId: string) => {
-    handleInputChange('font_family', fontId);
-    toast.success(`已选择「${getFontOption(fontId)?.name}」，请点击保存生效`);
-  }, []);
+    saveFontDirectly(fontId);
+  }, [saveFontDirectly]);
 
   if (isLoading) {
     return (
@@ -529,19 +538,25 @@ export default function SettingsPage() {
                       ) : field.type === 'font-picker' ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-3">
-                            <div className="flex-1 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm">
-                              <div className="flex items-center gap-2">
-                                <Type className="w-4 h-4 text-[var(--text-muted)]" />
-                                <span>{getFontOption(formData[field.key] || 'system')?.name || '系统默认'}</span>
-                                <span className="text-xs text-[var(--text-muted)]">
-                                  {getFontOption(formData[field.key] || 'system')?.description}
-                                </span>
+                            <div className="flex-1 px-3 py-2.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <Type className="w-4 h-4 text-primary" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-[var(--text-primary)] text-sm truncate">
+                                    {getFontOption(formData[field.key] || 'system')?.name || '系统默认'}
+                                  </p>
+                                  <p className="text-xs text-[var(--text-muted)] truncate">
+                                    {getFontOption(formData[field.key] || 'system')?.description}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                             <button
                               type="button"
                               onClick={() => setFontModalOpen(true)}
-                              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+                              className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
                             >
                               选择字体
                             </button>
