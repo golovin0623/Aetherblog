@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings2, Search } from 'lucide-react';
@@ -238,7 +239,7 @@ export default function BlogHeader() {
         globalMouseMoveRafRef.current = null;
       });
     }
-  }, [isArticleDetail]);
+  }, [isArticleDetail, setIsHovering]);
 
   useEffect(() => {
     if (isArticleDetail) {
@@ -309,8 +310,8 @@ export default function BlogHeader() {
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between relative z-10">
           <Link href="/" className="flex items-center gap-2 group/logo">
             {siteLogo ? (
-              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow">
-                <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow relative">
+                <Image src={siteLogo} alt="Logo" fill sizes="32px" className="object-contain" priority />
               </div>
             ) : (
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
