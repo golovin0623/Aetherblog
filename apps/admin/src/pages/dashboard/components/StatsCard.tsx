@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { motion, useSpring, useTransform } from 'framer-motion';
+import { motion, animate } from 'framer-motion';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,16 +16,24 @@ interface StatsCardProps {
 }
 
 function Counter({ value, prefix = '', suffix = '' }: { value: number; prefix?: string; suffix?: string }) {
-  const spring = useSpring(0, { mass: 0.8, stiffness: 75, damping: 15 });
-  const display = useTransform(spring, (current) =>
-    `${prefix}${Math.round(current).toLocaleString()}${suffix}`
-  );
+  const nodeRef = React.useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    spring.set(value);
-  }, [spring, value]);
+    const node = nodeRef.current;
+    if (!node) return;
 
-  return <motion.span>{display}</motion.span>;
+    const controls = animate(0, value, {
+      duration: 1.2,
+      ease: "easeOut",
+      onUpdate(current) {
+        node.textContent = `${prefix}${Math.round(current).toLocaleString()}${suffix}`;
+      },
+    });
+
+    return () => controls.stop();
+  }, [value, prefix, suffix]);
+
+  return <span ref={nodeRef} />;
 }
 
 export function StatsCard({
@@ -65,13 +73,34 @@ export function StatsCard({
 
   if (loading) {
     return (
-      <div className="p-4 lg:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] animate-pulse h-[120px] lg:h-[140px]">
-        <div className="flex justify-between">
-          <div className="w-24 h-4 bg-[var(--bg-secondary)] rounded" />
-          <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-lg" />
+      <div
+        className={cn(
+          "p-4 lg:p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",
+          colorStyles[color]
+        )}
+      >
+        <div className="flex items-start justify-between">
+          <div className="min-w-0 flex-1 w-full pr-4">
+            {/* Title Skeleton */}
+            <div className="h-5 w-24 bg-[var(--bg-secondary)] rounded-md animate-pulse" />
+
+            {/* Value Skeleton */}
+            <div className="mt-2 h-8 lg:h-9 w-32 bg-[var(--bg-secondary)] rounded-md animate-pulse" />
+
+            {/* Change/Subtext Skeleton */}
+            {(change !== undefined || changeLabel) && (
+              <div className="flex items-center gap-2 mt-3">
+                <div className="h-5 w-16 bg-[var(--bg-secondary)] rounded-full animate-pulse" />
+                <div className="h-4 w-20 bg-[var(--bg-secondary)] rounded-md animate-pulse" />
+              </div>
+            )}
+          </div>
+
+          {/* Icon Skeleton */}
+          <div className={cn("p-3 rounded-xl shrink-0 animate-pulse", iconColorStyles[color])}>
+            <div className="w-5 h-5 opacity-0" />
+          </div>
         </div>
-        <div className="mt-4 w-32 h-8 bg-[var(--bg-secondary)] rounded" />
-        <div className="mt-2 w-16 h-4 bg-[var(--bg-secondary)] rounded" />
       </div>
     );
   }
