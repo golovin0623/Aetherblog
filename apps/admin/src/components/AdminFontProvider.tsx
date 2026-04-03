@@ -41,16 +41,14 @@ function loadGoogleFont(url: string) {
  * 从后端获取 font_family 设置，动态应用到 admin 界面
  */
 export default function AdminFontProvider({ children }: { children: React.ReactNode }) {
-  const { data: settings } = useQuery({
-    queryKey: ['settings', 'font_family'],
-    queryFn: async () => {
-      const all = await settingsService.getAll();
-      return (all.font_family as string) || 'system';
-    },
-    staleTime: 60 * 1000, // 1 分钟缓存
+  // 复用 ['settings'] 缓存，通过 select 提取 font_family
+  // 这样 SettingsPage 保存后 invalidate(['settings']) 会自动刷新字体
+  const { data: fontId = 'system' } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => settingsService.getAll(),
+    select: (all) => (all.font_family as string) || 'system',
+    staleTime: 60 * 1000,
   });
-
-  const fontId = settings || 'system';
 
   useEffect(() => {
     const config = FONT_MAP[fontId] || FONT_MAP.system;
