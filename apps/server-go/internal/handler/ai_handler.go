@@ -82,7 +82,7 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 对路径进行 URL 解码以防御编码后的路径穿越攻击（如 %2e%2e）
 	unescapedPath, err := url.PathUnescape(subPath)
 	if err != nil {
-		return response.Fail(c, "invalid path encoding")
+return response.FailWith(c, response.BadRequest, "invalid path encoding")
 	}
 	if strings.Contains(unescapedPath, "..") {
 		return response.Fail(c, "invalid path traversal")
