@@ -52,6 +52,14 @@ interface ContainerOverview {
   errorMessage?: string;
 }
 
+// ========== 工具函数 ==========
+
+/** 格式化 CPU 百分比：< 0.1% 时显示两位小数以保留极小非零值，否则一位小数 */
+function formatCpuPercent(value: number): string {
+  if (value > 0 && value < 0.1) return value.toFixed(2);
+  return value.toFixed(1);
+}
+
 // ========== 子组件 ==========
 
 function ProgressBar({ value, color = 'primary' }: { value: number; color?: string }) {
@@ -144,7 +152,7 @@ function ContainerCard({
               {container.displayName}
             </span>
             <span className="text-[10px] text-[var(--text-muted)] font-mono ml-2">
-              CPU {container.cpuPercent < 0.1 && container.cpuPercent > 0 ? container.cpuPercent.toFixed(2) : container.cpuPercent.toFixed(1)}%
+              CPU {formatCpuPercent(container.cpuPercent)}%
             </span>
           </div>
           
