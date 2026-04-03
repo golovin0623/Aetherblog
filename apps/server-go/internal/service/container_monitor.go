@@ -5,13 +5,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // validContainerID 匹配合法的 Docker 容器 ID 或名称，防止路径注入攻击。
@@ -45,6 +46,7 @@ type ContainerInfo struct {
 
 // ContainerMonitorService 通过 Docker Unix Socket API 提供容器监控功能。
 // 内置缓存机制：缓存有效期内直接返回上次结果，避免频繁请求 Docker daemon。
+// 使用 singleflight 防止缓存过期瞬间的并发击穿。
 type ContainerMonitorService struct {
 	client *http.Client
 
@@ -52,6 +54,7 @@ type ContainerMonitorService struct {
 	cachedData *ContainerOverview
 	cachedAt   time.Time
 	cacheTTL   time.Duration
+	sfGroup    singleflight.Group
 }
 
 // NewContainerMonitorService 创建 ContainerMonitorService 实例。
@@ -86,15 +89,26 @@ type dockerContainer struct {
 // 优先通过 compose project label 过滤，回退到名称过滤；运行中的容器会附带实时 CPU/内存统计。
 // 结果会缓存 cacheTTL 时间，避免短时间内重复请求 Docker API。
 func (s *ContainerMonitorService) ListContainers() ContainerOverview {
-	// 缓存命中则直接返回
+	// 缓存命中则直接返回（深拷贝 Containers slice 防止调用方污染缓存）
 	s.cacheMu.RLock()
 	if s.cachedData != nil && time.Since(s.cachedAt) < s.cacheTTL {
 		cached := *s.cachedData
+		cached.Containers = make([]ContainerInfo, len(s.cachedData.Containers))
+		copy(cached.Containers, s.cachedData.Containers)
 		s.cacheMu.RUnlock()
 		return cached
 	}
 	s.cacheMu.RUnlock()
 
+	// 使用 singleflight 防止缓存过期瞬间多个并发请求同时刷新
+	v, _, _ := s.sfGroup.Do("list", func() (interface{}, error) {
+		return s.fetchContainers(), nil
+	})
+	return v.(ContainerOverview)
+}
+
+// fetchContainers 执行实际的 Docker API 调用并更新缓存。
+func (s *ContainerMonitorService) fetchContainers() ContainerOverview {
 	overview := ContainerOverview{
 		Containers: []ContainerInfo{},
 	}
@@ -299,8 +313,8 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 	}
 	if sysDelta > 0 && cpuDelta >= 0 {
 		pct := (cpuDelta / sysDelta) * float64(cpus) * 100.0
-		// 保留两位小数，避免极小值在前端 toFixed(1) 后显示为 0.0%
-		info.CpuPercent = math.Round(pct*100) / 100
+		// 保留原始计算精度，避免后端提前四舍五入影响后续汇总；展示精度由前端控制。
+		info.CpuPercent = pct
 	}
 
 	// 内存使用量及使用率
