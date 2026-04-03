@@ -11,12 +11,15 @@
    .font-override 类和 --font-sans-override 变量。
    ======================================== */
 html.font-override body {
-  font-family: var(--font-sans-override, var(--font-inter, system-ui, sans-serif));
+  font-family: var(--font-sans-override, var(--font-inter, system-ui, sans-serif)) !important;
 }
 
-/* 字体覆盖时，同步更新 prose 区域（文章正文） */
-html.font-override .prose {
-  font-family: var(--font-sans-override, inherit);
+/* 字体覆盖时，同步更新 prose / markdown 区域（文章正文） */
+html.font-override .prose,
+html.font-override .prose *:not(code):not(pre):not(pre *):not(.code-block-content *),
+html.font-override .markdown-body,
+html.font-override .markdown-body *:not(code):not(pre):not(pre *):not(.code-block-content *) {
+  font-family: var(--font-sans-override, inherit) !important;
 }
 
 /* ========================================
