@@ -19,13 +19,15 @@ export default function AdminFontProvider({ children }: { children: React.ReactN
     staleTime: 60 * 1000,
   });
 
-  const handleSaveFontId = useCallback((newFontId: string) => {
-    settingsService.batchUpdate({ font_family: newFontId }).then(() => {
+  const handleSaveFontId = useCallback(async (newFontId: string): Promise<void> => {
+    try {
+      await settingsService.batchUpdate({ font_family: newFontId });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success(`已应用「${getFontOption(newFontId)?.name}」字体`);
-    }).catch(() => {
+    } catch {
       toast.error('字体保存失败');
-    });
+      throw new Error('font save failed');
+    }
   }, [queryClient]);
 
   return (

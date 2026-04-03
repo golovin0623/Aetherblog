@@ -1,114 +1,14 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsService } from '@/services/settingsService';
-
-/**
- * 将 hex 颜色解析为 RGB 分量
- */
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const cleaned = hex.replace('#', '');
-  if (cleaned.length !== 6 && cleaned.length !== 3) return null;
-  const full = cleaned.length === 3
-    ? cleaned.split('').map(c => c + c).join('')
-    : cleaned;
-  const num = parseInt(full, 16);
-  if (isNaN(num)) return null;
-  return {
-    r: (num >> 16) & 255,
-    g: (num >> 8) & 255,
-    b: num & 255,
-  };
-}
-
-/**
- * RGB → HSL
- */
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0;
-  const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  return [h * 360, s * 100, l * 100];
-}
-
-/**
- * HSL → hex
- */
-function hslToHex(h: number, s: number, l: number): string {
-  h /= 360; s /= 100; l /= 100;
-  const hue2rgb = (p: number, q: number, t: number) => {
-    if (t < 0) t += 1;
-    if (t > 1) t -= 1;
-    if (t < 1/6) return p + (q - p) * 6 * t;
-    if (t < 1/2) return q;
-    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-    return p;
-  };
-  let r: number, g: number, b: number;
-  if (s === 0) {
-    r = g = b = l;
-  } else {
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1/3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1/3);
-  }
-  const toHex = (c: number) => Math.round(c * 255).toString(16).padStart(2, '0');
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-/**
- * 根据一个主色生成完整的主色调变量集（亮色或暗色主题）
- */
-function generateColorVars(hex: string, isDark: boolean): Record<string, string> {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return {};
-  const [h, s, l] = rgbToHsl(rgb.r, rgb.g, rgb.b);
-
-  if (isDark) {
-    // 暗色主题：基色通常较亮
-    return {
-      '--color-primary': hex,
-      '--color-primary-hover': hslToHex(h, Math.min(s + 5, 100), Math.min(l + 10, 95)),
-      '--color-primary-light': hslToHex(h, Math.min(s + 5, 100), Math.min(l + 15, 95)),
-      '--color-primary-lighter': hslToHex(h, Math.max(s - 20, 10), Math.min(l + 25, 95)),
-      '--color-accent': hslToHex((h + 30) % 360, s, l),
-      '--shadow-primary': `0 4px 14px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.25)`,
-      '--shadow-primary-lg': `0 10px 30px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.35)`,
-      '--gradient-primary': `linear-gradient(135deg, ${hex} 0%, ${hslToHex((h + 30) % 360, s, l)} 100%)`,
-      '--focus-ring': `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`,
-    };
-  } else {
-    // 亮色主题：基色通常较深
-    return {
-      '--color-primary': hex,
-      '--color-primary-hover': hslToHex(h, s, Math.max(l - 8, 5)),
-      '--color-primary-light': hslToHex(h, Math.max(s - 10, 0), Math.min(l + 20, 90)),
-      '--color-primary-lighter': hslToHex(h, Math.max(s - 30, 10), Math.min(l + 50, 95)),
-      '--color-accent': hslToHex((h + 30) % 360, s, l),
-      '--shadow-primary': `0 4px 14px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`,
-      '--shadow-primary-lg': `0 10px 30px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`,
-      '--gradient-primary': `linear-gradient(135deg, ${hex} 0%, ${hslToHex((h + 30) % 360, s, l)} 100%)`,
-      '--focus-ring': `0 0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`,
-    };
-  }
-}
+import { generateColorVars, colorVarsToCSS } from '@aetherblog/utils';
 
 const STYLE_ID = 'aetherblog-admin-primary-color';
 
 /**
  * AdminThemeColorProvider
  * 读取设置中的主色调并动态覆盖 CSS 变量
+ * 兼容旧字段 theme_primary_color 作为 fallback
  */
 export default function AdminThemeColorProvider({ children }: { children: React.ReactNode }) {
   const { data: settings } = useQuery({
@@ -119,10 +19,13 @@ export default function AdminThemeColorProvider({ children }: { children: React.
 
   const lightColor = (settings?.theme_primary_color_light as string) || '';
   const darkColor = (settings?.theme_primary_color_dark as string) || '';
+  const fallbackColor = (settings?.theme_primary_color as string) || '';
 
   useEffect(() => {
-    if (!lightColor && !darkColor) {
-      // 无自定义颜色 - 移除覆盖样式
+    const lightVal = lightColor || fallbackColor;
+    const darkVal = darkColor || fallbackColor;
+
+    if (!lightVal && !darkVal) {
       const el = document.getElementById(STYLE_ID);
       if (el) el.remove();
       return;
@@ -137,16 +40,14 @@ export default function AdminThemeColorProvider({ children }: { children: React.
 
     let css = '';
 
-    if (lightColor) {
-      const vars = generateColorVars(lightColor, false);
-      const entries = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
-      css += `:root, :root.light {\n${entries}\n}\n`;
+    if (lightVal) {
+      const vars = generateColorVars(lightVal, false);
+      css += `:root, :root.light {\n${colorVarsToCSS(vars)}\n}\n`;
     }
 
-    if (darkColor) {
-      const vars = generateColorVars(darkColor, true);
-      const entries = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join('\n');
-      css += `:root.dark {\n${entries}\n}\n`;
+    if (darkVal) {
+      const vars = generateColorVars(darkVal, true);
+      css += `:root.dark {\n${colorVarsToCSS(vars)}\n}\n`;
     }
 
     styleEl.textContent = css;
@@ -155,7 +56,7 @@ export default function AdminThemeColorProvider({ children }: { children: React.
       const el = document.getElementById(STYLE_ID);
       if (el) el.remove();
     };
-  }, [lightColor, darkColor]);
+  }, [lightColor, darkColor, fallbackColor]);
 
   return <>{children}</>;
 }
