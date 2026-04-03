@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
 import { systemService } from '@/services/systemService';
-import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, Filter, ArrowDown, Download } from 'lucide-react';
+import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, Filter, ArrowDown, Download, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
@@ -207,6 +208,7 @@ export function RealtimeLogViewer({
   const [autoScroll, setAutoScroll] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
   const [manualPaused, setManualPaused] = useState(false);
+  const [fullscreenToolbarExpanded, setFullscreenToolbarExpanded] = useState(false);
   const [hiddenPaused, setHiddenPaused] = useState(
     typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false
   );
@@ -290,6 +292,7 @@ export function RealtimeLogViewer({
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = originalBodyOverflow;
+      setFullscreenToolbarExpanded(false);
       const fallbackTarget = previousFocusRef.current ?? fullscreenTriggerRef.current;
       fallbackTarget?.focus();
     };
@@ -311,7 +314,7 @@ export function RealtimeLogViewer({
 
   const getTitle = useCallback(() => {
     if (useAppLogs) {
-      return 'Backend (Java)';
+      return 'Backend (Go)';
     }
     return containerName || containerId?.slice(0, 12) || '日志查看器';
   }, [useAppLogs, containerName, containerId]);
@@ -609,213 +612,205 @@ export function RealtimeLogViewer({
           ? 'warn'
           : 'success';
 
-  const renderContent = () => (
-    <>
-      <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] shrink-0">
-        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
-            <Terminal className="w-4 h-4 text-primary shrink-0" />
-            <span className="font-mono font-medium truncate">{getTitle()}</span>
-            <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-            {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
-            {isFullScreen && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded ml-1 shrink-0">全屏</span>}
-            {!autoScroll && !isPaused && <span className="text-[10px] bg-status-info-light text-status-info px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
-            {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
-          </div>
-          <div className="text-[10px] text-[var(--text-muted)]">
-            最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
-          </div>
+  const renderToolbarFilters = () => (
+    <div className="px-4 py-2 border-t border-[var(--border-subtle)] flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 group">
+          <Type className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+          <input
+            type="range"
+            min="10"
+            max="20"
+            step="1"
+            value={fontSize}
+            onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
+            className="w-20 h-1 bg-[var(--bg-secondary)] rounded-lg appearance-none cursor-pointer accent-primary"
+            title={`字体大小: ${fontSize}px`}
+          />
         </div>
 
-        <div className="px-4 py-2 border-t border-[var(--border-subtle)] flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 group">
-              <Type className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
-              <input
-                type="range"
-                min="10"
-                max="20"
-                step="1"
-                value={fontSize}
-                onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-                className="w-20 h-1 bg-[var(--bg-secondary)] rounded-lg appearance-none cursor-pointer accent-primary"
-                title={`字体大小: ${fontSize}px`}
-              />
-            </div>
+        <div className="flex items-center gap-1 bg-[var(--bg-card)] rounded p-0.5 border border-[var(--border-subtle)]">
+          <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
+          <select
+            value={filterLevel}
+            onChange={(e) => {
+              const nextLevel = e.target.value;
+              preserveScrollContext(() => {
+                setFilterLevel(nextLevel);
+              });
+            }}
+            className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pr-6 pl-1"
+          >
+            <option value="ALL">全部日志</option>
+            <option value="INFO">INFO</option>
+            <option value="WARN">WARN</option>
+            <option value="ERROR">ERROR</option>
+            <option value="DEBUG">DEBUG</option>
+          </select>
+        </div>
 
-            <div className="flex items-center gap-1 bg-[var(--bg-card)] rounded p-0.5 border border-[var(--border-subtle)]">
-              <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
-              <select
-                value={filterLevel}
-                onChange={(e) => {
-                  const nextLevel = e.target.value;
-                  preserveScrollContext(() => {
-                    setFilterLevel(nextLevel);
-                  });
-                }}
-                className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pr-6 pl-1"
-              >
-                <option value="ALL">全部日志</option>
-                <option value="INFO">INFO</option>
-                <option value="WARN">WARN</option>
-                <option value="ERROR">ERROR</option>
-                <option value="DEBUG">DEBUG</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5">
-              {quickLevelOptions.map((levelOption) => (
-                <button
-                  key={levelOption}
-                  type="button"
-                  className={cn(
-                    'px-1.5 py-0.5 text-[10px] rounded transition-colors',
-                    filterLevel === levelOption
-                      ? 'bg-primary/15 text-primary'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                  )}
-                  onClick={() => {
-                    preserveScrollContext(() => {
-                      setFilterLevel(levelOption);
-                    });
-                  }}
-                >
-                  {levelOption}
-                </button>
-              ))}
-            </div>
-
-            <input
-              value={keyword}
-              onChange={(event) => {
-                const nextKeyword = event.target.value;
+        <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5">
+          {quickLevelOptions.map((levelOption) => (
+            <button
+              key={levelOption}
+              type="button"
+              className={cn(
+                'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                filterLevel === levelOption
+                  ? 'bg-primary/15 text-primary'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+              )}
+              onClick={() => {
                 preserveScrollContext(() => {
-                  setKeyword(nextKeyword);
+                  setFilterLevel(levelOption);
                 });
               }}
-              placeholder="关键字过滤"
-              className="h-7 w-36 sm:w-44 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 text-[10px] sm:text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
-            />
-
-            <button
-              type="button"
-              className={cn('px-2 py-1 text-[10px] rounded border transition-colors', wrapLines ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
-              onClick={() => preserveScrollContext(() => setWrapLines(previous => !previous))}
             >
-              换行
+              {levelOption}
             </button>
-            <button
-              type="button"
-              className={cn('px-2 py-1 text-[10px] rounded border transition-colors', compactMode ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
-              onClick={() => preserveScrollContext(() => setCompactMode(previous => !previous))}
-            >
-              紧凑
-            </button>
-            <button
-              type="button"
-              className={cn('px-2 py-1 text-[10px] rounded border transition-colors', showLineMeta ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
-              onClick={() => preserveScrollContext(() => setShowLineMeta(previous => !previous))}
-            >
-              行信息
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1">
-            {useAppLogs && (
-              <button
-                className={cn(
-                  'p-1.5 rounded transition-colors',
-                  isRawDownloadDisabled
-                    ? 'cursor-not-allowed text-[var(--text-muted)]/60'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                )}
-                onClick={handleDownload}
-                title={exporting ? '正在下载日志文件' : '按级别下载原始日志文件'}
-                disabled={isRawDownloadDisabled}
-              >
-                {exporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              </button>
-            )}
-            <button
-              type="button"
-              className={cn(
-                'px-2 py-1 text-[10px] rounded border transition-colors',
-                isViewExportDisabled
-                  ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
-                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              )}
-              onClick={handleExportCurrentView}
-              title={
-                exporting
-                  ? '导出处理中'
-                  : visibleLogs.length === 0
-                    ? '当前筛选无日志可导出'
-                    : '导出当前筛选日志'
-              }
-              disabled={isViewExportDisabled}
-            >
-              导出当前
-            </button>
-            <button
-              type="button"
-              className={cn(
-                'px-2 py-1 text-[10px] rounded border transition-colors',
-                isViewExportDisabled
-                  ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
-                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              )}
-              onClick={() => handleExportRecentLines(500)}
-              title={
-                exporting
-                  ? '导出处理中'
-                  : visibleLogs.length === 0
-                    ? '当前筛选无日志可导出'
-                    : '导出最近500行日志'
-              }
-              disabled={isViewExportDisabled}
-            >
-              导出最近500
-            </button>
-            <button
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={handleManualRefresh}
-              title="立即重试"
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
-            </button>
-            <button
-              className={cn('p-1.5 rounded transition-colors', autoScroll ? 'text-primary bg-primary/10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]')}
-              onClick={() => setAutoScroll(!autoScroll)}
-              title={autoScroll ? '自动滚动开启' : '自动滚动关闭'}
-            >
-              <ArrowDown className="w-3.5 h-3.5" />
-            </button>
-            <button
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={() => setManualPaused(previous => !previous)}
-              title={manualPaused ? '继续滚动' : '暂停滚动'}
-            >
-              {manualPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            </button>
-            <button
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={() => setLogs([])}
-              title="清空屏幕"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              ref={fullscreenTriggerRef}
-              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-              onClick={() => dispatchViewState({ type: isFullScreen ? 'EXIT_FULLSCREEN' : 'ENTER_FULLSCREEN' })}
-              title={isFullScreen ? '退出全屏' : '全屏显示'}
-            >
-              {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-          </div>
+          ))}
         </div>
+
+        <input
+          value={keyword}
+          onChange={(event) => {
+            const nextKeyword = event.target.value;
+            preserveScrollContext(() => {
+              setKeyword(nextKeyword);
+            });
+          }}
+          placeholder="关键字过滤"
+          className="h-7 w-36 sm:w-44 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 text-[10px] sm:text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+        />
+
+        <button
+          type="button"
+          className={cn('px-2 py-1 text-[10px] rounded border transition-colors', wrapLines ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
+          onClick={() => preserveScrollContext(() => setWrapLines(previous => !previous))}
+        >
+          换行
+        </button>
+        <button
+          type="button"
+          className={cn('px-2 py-1 text-[10px] rounded border transition-colors', compactMode ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
+          onClick={() => preserveScrollContext(() => setCompactMode(previous => !previous))}
+        >
+          紧凑
+        </button>
+        <button
+          type="button"
+          className={cn('px-2 py-1 text-[10px] rounded border transition-colors', showLineMeta ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
+          onClick={() => preserveScrollContext(() => setShowLineMeta(previous => !previous))}
+        >
+          行信息
+        </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1">
+        {useAppLogs && (
+          <button
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              isRawDownloadDisabled
+                ? 'cursor-not-allowed text-[var(--text-muted)]/60'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+            )}
+            onClick={handleDownload}
+            title={exporting ? '正在下载日志文件' : '按级别下载原始日志文件'}
+            disabled={isRawDownloadDisabled}
+          >
+            {exporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          </button>
+        )}
+        <button
+          type="button"
+          className={cn(
+            'px-2 py-1 text-[10px] rounded border transition-colors',
+            isViewExportDisabled
+              ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
+              : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+          )}
+          onClick={handleExportCurrentView}
+          title={
+            exporting
+              ? '导出处理中'
+              : visibleLogs.length === 0
+                ? '当前筛选无日志可导出'
+                : '导出当前筛选日志'
+          }
+          disabled={isViewExportDisabled}
+        >
+          导出当前
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'px-2 py-1 text-[10px] rounded border transition-colors',
+            isViewExportDisabled
+              ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
+              : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+          )}
+          onClick={() => handleExportRecentLines(500)}
+          title={
+            exporting
+              ? '导出处理中'
+              : visibleLogs.length === 0
+                ? '当前筛选无日志可导出'
+                : '导出最近500行日志'
+          }
+          disabled={isViewExportDisabled}
+        >
+          导出最近500
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderActionButtons = (showFullscreenToggle: boolean) => (
+    <div className="flex items-center gap-1">
+      <button
+        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+        onClick={handleManualRefresh}
+        title="立即重试"
+      >
+        <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
+      </button>
+      <button
+        className={cn('p-1.5 rounded transition-colors', autoScroll ? 'text-primary bg-primary/10' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]')}
+        onClick={() => setAutoScroll(!autoScroll)}
+        title={autoScroll ? '自动滚动开启' : '自动滚动关闭'}
+      >
+        <ArrowDown className="w-3.5 h-3.5" />
+      </button>
+      <button
+        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+        onClick={() => setManualPaused(previous => !previous)}
+        title={manualPaused ? '继续滚动' : '暂停滚动'}
+      >
+        {manualPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+      </button>
+      <button
+        className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+        onClick={() => setLogs([])}
+        title="清空屏幕"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+      {showFullscreenToggle && (
+        <button
+          ref={fullscreenTriggerRef}
+          className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+          onClick={() => dispatchViewState({ type: isFullScreen ? 'EXIT_FULLSCREEN' : 'ENTER_FULLSCREEN' })}
+          title={isFullScreen ? '退出全屏' : '全屏显示'}
+        >
+          {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+        </button>
+      )}
+    </div>
+  );
+
+  const renderLogArea = () => (
+    <>
       {downloadFeedback && (
         <div
           className={cn(
@@ -889,38 +884,126 @@ export function RealtimeLogViewer({
     </>
   );
 
-  const fullscreenContent = isFullScreen && (
+  const renderEmbeddedContent = () => (
     <>
-      <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9998]"
-        onClick={() => dispatchViewState({ type: 'EXIT_FULLSCREEN' })}
-      />
-
-      <div className={cn(
-        'fixed inset-4 z-[9999] rounded-xl border border-[var(--border-subtle)] flex flex-col overflow-hidden shadow-2xl bg-[var(--bg-primary)]',
-        className
-      )}
-        ref={fullscreenPanelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="日志全屏预览"
-        tabIndex={-1}
-      >
-        {renderContent()}
+      <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] shrink-0">
+        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
+            <Terminal className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-mono font-medium truncate">{getTitle()}</span>
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
+            {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
+            {!autoScroll && !isPaused && <span className="text-[10px] bg-status-info-light text-status-info px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
+            {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-[10px] text-[var(--text-muted)]">
+              最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
+            </div>
+            {renderActionButtons(true)}
+          </div>
+        </div>
+        {renderToolbarFilters()}
       </div>
+      {renderLogArea()}
     </>
   );
 
   return (
     <>
-      {fullscreenContent}
+      <AnimatePresence>
+        {isFullScreen && (
+          <>
+            <motion.div
+              key="fullscreen-backdrop"
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9998]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => dispatchViewState({ type: 'EXIT_FULLSCREEN' })}
+            />
+
+            <motion.div
+              key="fullscreen-panel"
+              className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-[var(--bg-primary)]"
+              ref={fullscreenPanelRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="日志全屏预览"
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {/* Fullscreen compact toolbar */}
+              <div className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+                <div className="px-4 py-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
+                    <Terminal className="w-4 h-4 text-primary shrink-0" />
+                    <span className="font-mono font-medium truncate">{getTitle()}</span>
+                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
+                    {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
+                    {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
+                    <span className="text-[10px] text-[var(--text-muted)] ml-2">
+                      {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors',
+                        fullscreenToolbarExpanded
+                          ? 'border-primary/40 text-primary bg-primary/10'
+                          : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                      )}
+                      onClick={() => setFullscreenToolbarExpanded(prev => !prev)}
+                      title={fullscreenToolbarExpanded ? '收起工具栏' : '展开工具栏'}
+                    >
+                      {fullscreenToolbarExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      工具栏
+                    </button>
+                    {renderActionButtons(false)}
+                    <button
+                      className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
+                      onClick={() => {
+                        setFullscreenToolbarExpanded(false);
+                        dispatchViewState({ type: 'EXIT_FULLSCREEN' });
+                      }}
+                      title="退出全屏 (Esc)"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <AnimatePresence initial={false}>
+                  {fullscreenToolbarExpanded && (
+                    <motion.div
+                      key="fullscreen-toolbar-filters"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                      className="overflow-hidden"
+                    >
+                      {renderToolbarFilters()}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              {renderLogArea()}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {!isFullScreen && (
         <div className={cn(
           'rounded-xl border border-[var(--border-subtle)] flex flex-col overflow-hidden transition-all duration-300 bg-[var(--bg-card)] h-full min-h-[400px]',
           className
         )}>
-          {renderContent()}
+          {renderEmbeddedContent()}
         </div>
       )}
     </>
