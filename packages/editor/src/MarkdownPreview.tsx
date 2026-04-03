@@ -132,11 +132,11 @@ const alertBlockExtension: TokenizerExtension & RendererExtension = {
     };
     const iconStr = icons[type] || icons.info;
 
-    // Parse inner tokens using the parser's standard rendering
+    // 使用解析器的标准渲染来解析内部 token
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const contentHtml = this.parser.parse(token.tokens as any);
 
-    // Escape any quotes in title avoiding breaking HTML attributes
+    // 转义标题中的引号以避免破坏 HTML 属性
     const escapeAttr = (str: string) => str.replace(/"/g, '&quot;');
 
     return `

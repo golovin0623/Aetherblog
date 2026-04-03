@@ -158,7 +158,7 @@ record_failure() {
     FAILED_SERVICES+=("$name")
 }
 
-# 安全读取 PID
+# 安全地读取 PID
 read_pid() {
     local pid_file=$1
     local pid
@@ -205,7 +205,7 @@ load_middleware_services() {
     return 0
 }
 
-# 等待中间件全部 Running
+# 等待中间件全部进入运行状态
 wait_for_middleware() {
     local retries=${1:-$MIDDLEWARE_RETRIES}
     local delay=${2:-$MIDDLEWARE_RETRY_DELAY}

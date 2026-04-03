@@ -101,7 +101,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup timer on unmount
+  // 卸载时清理定时器
   useEffect(() => {
     return () => {
       if (clearTimerRef.current) {
@@ -110,7 +110,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     };
   }, []);
 
-  // Keep query in ref for stable callbacks
+  // 将查询保留在 ref 中以保持稳定的回调
   const queryRef = useRef(query);
   useEffect(() => {
     queryRef.current = query;
