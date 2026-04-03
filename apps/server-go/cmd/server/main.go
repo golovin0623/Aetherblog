@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	// Health check mode for Docker healthcheck (scratch image has no curl/wget)
+	// Docker 健康检查模式（scratch 镜像没有 curl/wget，因此通过此参数执行）
 	if len(os.Args) > 1 && os.Args[1] == "-health" {
 		resp, err := http.Get("http://localhost:8080/api/actuator/health")
 		if err != nil || resp.StatusCode != 200 {
@@ -26,13 +26,13 @@ func main() {
 
 	start := time.Now()
 
-	// Setup zerolog — write to stdout (colored) + log file (raw JSON)
+	// 配置 zerolog — 写入 stdout（彩色）+ 日志文件（原始 JSON）
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 
-	// Console writer (colored) for stdout
+	// 控制台输出（彩色）
 	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}
 
-	// Raw JSON writer to file (zerolog default format is JSON when writing to a plain io.Writer)
+	// 原始 JSON 输出到文件（zerolog 写入普通的 io.Writer 时的默认格式就是 JSON）
 	writers := []io.Writer{consoleWriter}
 	logDir := os.Getenv("AETHERBLOG_LOG_PATH")
 	if logDir == "" {
@@ -47,7 +47,7 @@ func main() {
 	log.Logger = zerolog.New(io.MultiWriter(writers...)).
 		With().Timestamp().Caller().Str("service", "backend").Logger()
 
-	// Load configuration
+	// 加载配置
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "config.yaml"
@@ -58,7 +58,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to load config")
 	}
 
-	// Create and start server
+	// 创建并启动服务器
 	srv, err := server.New(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create server")
