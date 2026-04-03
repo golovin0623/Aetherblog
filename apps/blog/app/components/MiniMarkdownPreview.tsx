@@ -209,7 +209,7 @@ const components: Components = {
   hr: () => <hr className="my-2 border-t border-white/10" />,
 
   // 自定义高亮块 (Alert Block)
-  // @ts-expect-error - Custom element not in standard HTML types
+  // @ts-expect-error - 自定义元素不在标准 HTML 类型中
   'alert-block': ({ node, ...props }: any) => {
     const type = props['data-type'] || 'info';
     const title = props['data-title'];

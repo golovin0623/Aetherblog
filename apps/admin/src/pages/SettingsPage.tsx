@@ -10,8 +10,8 @@ import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
 
-// Setting Metadata Definition
-// Helps mapping raw keys to UI labels and input types
+// 设置元数据定义
+// 帮助将原始键映射到 UI 标签和输入类型
 type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links' | 'image-upload';
 
 interface SettingField {

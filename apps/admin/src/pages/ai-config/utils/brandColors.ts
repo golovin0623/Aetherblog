@@ -6,152 +6,152 @@ export interface BrandColor {
 
 export const PROVIDER_BRAND_COLORS: Record<string, BrandColor> = {
   openai: {
-    primary: '#10a37f', // OpenAI Green
+    primary: '#10a37f', // OpenAI 绿色
     gradientFrom: '#10a37f',
     gradientTo: '#0d8c6d',
   },
   azure: {
-    primary: '#0078d4', // Azure Blue
+    primary: '#0078d4', // Azure 蓝色
     gradientFrom: '#0078d4',
     gradientTo: '#005a9e',
   },
   google: {
-    primary: '#4285f4', // Google Blue
+    primary: '#4285f4', // Google 蓝色
     gradientFrom: '#4285f4',
-    gradientTo: '#34a853', // Blue to Green
+    gradientTo: '#34a853', // 蓝色渐变到绿色
   },
   anthropic: {
-    primary: '#da7756', // Claude Clay
+    primary: '#da7756', // Claude 陶土色
     gradientFrom: '#da7756',
     gradientTo: '#b95e3e',
   },
   deepseek: {
-    primary: '#4d6bfe', // DeepSeek Blue
+    primary: '#4d6bfe', // DeepSeek 蓝色
     gradientFrom: '#4d6bfe',
     gradientTo: '#2b45d4',
   },
   moonshot: {
-    primary: '#6b7280', // Moonshot (Using a neutral grey as they are often just B&W)
+    primary: '#6b7280', // Moonshot（品牌色以黑白为主，使用中性灰色代替）
     gradientFrom: '#374151',
     gradientTo: '#111827',
   },
   zhipu: {
-    primary: '#3b82f6', // GLM Blue
+    primary: '#3b82f6', // GLM 蓝色
     gradientFrom: '#3b82f6',
     gradientTo: '#1d4ed8',
   },
   yi: {
-    primary: '#00bfa5', // Yi Teal
+    primary: '#00bfa5', // Yi 青色
     gradientFrom: '#00bfa5',
     gradientTo: '#00897b',
   },
   qwen: {
-    primary: '#615ced', // Qwen Purple/Blue
+    primary: '#615ced', // Qwen 紫蓝色
     gradientFrom: '#615ced',
     gradientTo: '#4a44c9',
   },
   minimax: {
-    primary: '#db2777', // Minimax Pink/Red
+    primary: '#db2777', // Minimax 粉红色
     gradientFrom: '#db2777',
     gradientTo: '#be185d',
   },
   wenxin: {
-    primary: '#2932e1', // Baidu Blue
+    primary: '#2932e1', // 百度蓝色
     gradientFrom: '#2932e1',
     gradientTo: '#1c23a0',
   },
   hunyuan: {
-    primary: '#0052d9', // Tencent Blue
+    primary: '#0052d9', // 腾讯蓝色
     gradientFrom: '#0052d9',
     gradientTo: '#003cab',
   },
   taichu: {
-    primary: '#1890ff', // Tech Blue
+    primary: '#1890ff', // 科技蓝色
     gradientFrom: '#1890ff',
     gradientTo: '#096dd9',
   },
   ollama: {
-    primary: '#000000', // Ollama Black/White
+    primary: '#000000', // Ollama 黑白配色
     gradientFrom: '#333333',
     gradientTo: '#000000',
   },
   perplexity: {
-    primary: '#22bfa0', // Perplexity Teal
+    primary: '#22bfa0', // Perplexity 青色
     gradientFrom: '#22bfa0',
     gradientTo: '#168f76',
   },
   mistral: {
-    primary: '#f59e0b', // Mistral Orange/Yellow
+    primary: '#f59e0b', // Mistral 橙黄色
     gradientFrom: '#f59e0b',
     gradientTo: '#d97706',
   },
   groq: {
-    primary: '#f55036', // Groq Orange
+    primary: '#f55036', // Groq 橙色
     gradientFrom: '#f55036',
     gradientTo: '#d9442b',
   },
   together: {
-    primary: '#0f6fff', // Together Blue
+    primary: '#0f6fff', // Together 蓝色
     gradientFrom: '#0f6fff',
     gradientTo: '#0a56cc',
   },
   fireworks: {
-    primary: '#f43f5e', // Fireworks Rose
+    primary: '#f43f5e', // Fireworks 玫红色
     gradientFrom: '#f43f5e',
     gradientTo: '#e11d48',
   },
   openrouter: {
-    primary: '#7c3aed', // OpenRouter Violet
+    primary: '#7c3aed', // OpenRouter 紫色
     gradientFrom: '#7c3aed',
     gradientTo: '#5b21b6',
   },
   novita: {
-    primary: '#8b5cf6', // Novita Violet
+    primary: '#8b5cf6', // Novita 紫色
     gradientFrom: '#8b5cf6',
     gradientTo: '#7c3aed',
   },
   siliconflow: {
-    primary: '#2563eb', // SiliconFlow Blue
+    primary: '#2563eb', // SiliconFlow 蓝色
     gradientFrom: '#2563eb',
     gradientTo: '#1d4ed8',
   },
   upstage: {
-    primary: '#f59e0b', // Upstage Amber
+    primary: '#f59e0b', // Upstage 琥珀色
     gradientFrom: '#f59e0b',
     gradientTo: '#d97706',
   },
   vercel: {
-    primary: '#000000', // Vercel Black
+    primary: '#000000', // Vercel 黑色
     gradientFrom: '#333333',
     gradientTo: '#000000',
   },
   nebius: {
-    primary: '#7c3aed', // Nebius Purple
+    primary: '#7c3aed', // Nebius 紫色
     gradientFrom: '#7c3aed',
     gradientTo: '#5b21b6',
   },
   cerebras: {
-    primary: '#334155', // Cerebras Slate
+    primary: '#334155', // Cerebras 石板色
     gradientFrom: '#334155',
     gradientTo: '#1e293b',
   },
   grok: {
-    primary: '#000000', // X Black
+    primary: '#000000', // X 黑色
     gradientFrom: '#1f2937',
     gradientTo: '#000000',
   },
 };
 
 export const DEFAULT_BRAND_COLOR: BrandColor = {
-  primary: '#64748b', // Slate 500
+  primary: '#64748b', // Slate 500 石板灰
   gradientFrom: '#64748b',
   gradientTo: '#475569',
 };
 
 export function getProviderBrand(code: string): BrandColor {
   const normalizedCode = code.toLowerCase().replace(/[-_\s]/g, '');
-  // Try exact match first, then partial match or alias handling if needed
-  // specific checks for common aliases
+  // 优先精确匹配，再按常见别名进行模糊匹配
+  // 对常见别名进行特定检查
   if (normalizedCode.includes('openai')) return PROVIDER_BRAND_COLORS.openai;
   if (normalizedCode.includes('azure')) return PROVIDER_BRAND_COLORS.azure;
   if (normalizedCode.includes('google') || normalizedCode.includes('gemini')) return PROVIDER_BRAND_COLORS.google;

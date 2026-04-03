@@ -137,7 +137,7 @@ export default function PostsPage() {
     if (!postsData || page < 1 || page > postsData.pages) return;
     isUserPaging.current = true;
     setCurrentPage(page);
-    // Scroll to top of posts list section
+    // 滚动到文章列表区域顶部
     if (postsListRef.current) {
       const top = postsListRef.current.getBoundingClientRect().top + window.scrollY - 80;
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -145,7 +145,7 @@ export default function PostsPage() {
     }
   };
 
-  // Auto-scroll the active page number into view — 仅用户翻页时触发，导航回来时跳过
+  // 自动将当前页码滚动到可视区域 — 仅用户翻页时触发，导航回来时跳过
   useEffect(() => {
     if (isUserPaging.current) {
       scrollActivePageIntoView(currentPage);

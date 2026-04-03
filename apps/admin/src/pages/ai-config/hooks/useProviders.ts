@@ -11,7 +11,7 @@ import {
 } from '@/services/aiProviderService';
 import { resolveAiServiceErrorMessage } from '../utils/errorMessage';
 
-// Query Keys
+// 查询键
 export const providerKeys = {
   all: ['ai-providers'] as const,
   list: (enabledOnly?: boolean) => [...providerKeys.all, { enabledOnly }] as const,

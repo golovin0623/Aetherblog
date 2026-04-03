@@ -2,8 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 
 interface UseSmartPollingOptions {
   callback: () => void | Promise<void>;
-  interval: number; // seconds
-  idleTimeout?: number; // milliseconds, default 5 minutes
+  interval: number; // 秒
+  idleTimeout?: number; // 毫秒，默认5分钟
   enabled?: boolean;
 }
 

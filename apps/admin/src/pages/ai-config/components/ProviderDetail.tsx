@@ -48,15 +48,15 @@ export default function ProviderDetail({
   const [showKey, setShowKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
-  // Reset state when provider changes
+  // 供应商切换时重置状态
   useEffect(() => {
     setShowKey(false);
     setRevealedKey(null);
   }, [provider.code]);
 
-  // Computed
+  // 计算属性
   const preset = propPreset || getPresetProvider(provider.code);
-  // Allow user override from DB to take precedence over preset defaults
+  // 优先使用数据库中的用户覆盖值，而非预设默认值
   const rawDocUrl = provider.doc_url || preset?.docUrl || undefined;
   
   // 安全验证：只允许 http:// 或 https:// 协议，防止 javascript: XSS 攻击
@@ -73,23 +73,23 @@ export default function ProviderDetail({
   
   const brand = getProviderBrand(provider.code);
 
-  // Data
+  // 数据
   const { data: credentials = [] } = useProviderCredentials(provider.code);
   const defaultCredential = credentials.find((c) => c.is_default) || credentials[0];
   const { data: models = [], isLoading: modelsLoading } = useProviderModels(provider.code);
 
-  // Mutations
+  // 数据变更操作
   const toggleMutation = useToggleProvider();
   const deleteMutation = useDeleteProvider();
   const updateProviderMutation = useUpdateProvider();
   const createCredentialMutation = useCreateCredential();
   const revealMutation = useRevealCredential();
 
-  // State for inline editing
+  // 内联编辑状态
   const [proxyInput, setProxyInput] = useState('');
   const [keyInput, setKeyInput] = useState('');
 
-  // Sync state with props
+  // 同步 props 到状态
   useEffect(() => {
     setProxyInput(provider.base_url || '');
   }, [provider.base_url]);
@@ -102,18 +102,18 @@ export default function ProviderDetail({
     }
   }, [defaultCredential]);
 
-  // Handle Save Proxy
+  // 保存代理地址
   const handleSaveProxy = () => {
-    if (proxyInput === (provider.base_url || '')) return; // No change
+    if (proxyInput === (provider.base_url || '')) return; // 无变化
 
     updateProviderMutation.mutate({
       id: provider.id,
-      data: { base_url: proxyInput || null } // Send null if empty to reset
+      data: { base_url: proxyInput || null } // 为空时发送 null 以重置地址
     });
   };
 
   const handleSaveKey = () => {
-    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint || keyInput === revealedKey) return; // No change
+    if (!keyInput || keyInput === DUMMY_API_KEY_MASK || keyInput === defaultCredential?.api_key_hint || keyInput === revealedKey) return; // 无变化
 
     createCredentialMutation.mutate({
       provider_code: provider.code,
@@ -122,7 +122,7 @@ export default function ProviderDetail({
       name: 'Default Credential'
     }, {
       onSuccess: () => {
-        setRevealedKey(null); // Clear revealed key after update
+        setRevealedKey(null); // 更新成功后清除已获取的密钥
       }
     });
   };
@@ -131,12 +131,12 @@ export default function ProviderDetail({
     if (!defaultCredential) return;
 
     if (showKey && revealedKey) {
-      // If already showing, just toggle off
+      // 若已在显示状态，则直接切换隐藏
       setShowKey(false);
       return;
     }
 
-    // Fetch the real key if not already fetched
+    // 若尚未获取真实密钥，则请求获取
     if (!revealedKey) {
       revealMutation.mutate(defaultCredential.id, {
         onSuccess: (data) => {
@@ -146,7 +146,7 @@ export default function ProviderDetail({
         }
       });
     } else {
-      // Already have the key, just toggle display
+      // 已有密钥，直接切换显示
       setKeyInput(revealedKey);
       setShowKey(true);
     }
@@ -156,7 +156,7 @@ export default function ProviderDetail({
     toggleMutation.mutate({ id: provider.id, enabled });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 禁用 any 类型警告
   const providerSettings = (provider.capabilities?.settings || {}) as Record<string, any>;
   const showDeployName = provider.api_type === 'azure' || Boolean(providerSettings.showDeployName);
   const showChecker = providerSettings.showChecker !== false;

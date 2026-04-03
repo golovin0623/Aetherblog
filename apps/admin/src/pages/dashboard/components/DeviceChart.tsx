@@ -17,16 +17,16 @@ export function DeviceChart({
   loading
 }: DeviceChartProps) {
 
-  // Process data to add colors
+  // 处理数据，添加颜色映射
   const chartData = (data && data.length > 0) ? data.map(item => ({
     ...item,
     color: COLORS[item.name] || '#71717a'
   })) : [
-    // Empty state or default
+    // 空数据或默认状态
     { name: '暂无数据', value: 1, color: '#27272a' }
   ];
 
-  // If loading, show skeleton
+  // 加载中时显示骨架屏
   if (loading) {
     return (
       <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px]">
@@ -72,7 +72,7 @@ export function DeviceChart({
                         />
                         <span className="text-[var(--text-primary)]">
                           {payload[0].name}: {payload[0].value} 
-                          {/* Calculate percentage relative to total shown */}
+                          {/* 计算相对于当前展示总量的百分比 */}
                            ({payload[0].value && chartData ? (Number(payload[0].value) / chartData.reduce((acc, curr) => acc + (curr.value || 0), 0) * 100).toFixed(1) : 0}%)
                         </span>
                       </div>

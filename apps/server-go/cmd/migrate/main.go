@@ -17,7 +17,7 @@ func main() {
 	flag.Parse()
 
 	if *dsn == "" {
-		// Fallback to env
+		// 回退到环境变量
 		*dsn = os.Getenv("DATABASE_DSN")
 		if *dsn == "" {
 			fmt.Fprintln(os.Stderr, "error: -dsn flag or DATABASE_DSN env required")

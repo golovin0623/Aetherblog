@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 export function Header() {
   const { user, logout } = useAuthStore();
-  const { theme, toggleThemeWithAnimation } = useTheme();
+  const { isDark, toggleThemeWithAnimation } = useTheme();
 
   return (
     <header className="hidden md:flex h-16 items-center justify-between px-6 border-b border-border bg-[var(--bg-overlay)] backdrop-blur-md sticky top-0 z-30">
@@ -37,9 +37,10 @@ export function Header() {
             'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
             'transition-all duration-200'
           )}
-          title={theme === 'dark' ? '切换亮色模式' : '切换暗色模式'}
+          title={isDark ? '切换亮色模式' : '切换暗色模式'}
+          aria-label={isDark ? '切换亮色模式' : '切换暗色模式'}
         >
-          {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
 
         {/* 通知 */}
@@ -49,9 +50,11 @@ export function Header() {
             'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
             'transition-all duration-200'
           )}
+          title="通知"
+          aria-label="通知"
         >
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-status-danger rounded-full" />
+          <span aria-hidden="true" className="absolute top-1 right-1 w-2 h-2 bg-status-danger rounded-full" />
         </button>
 
         {/* 用户菜单 */}

@@ -266,18 +266,18 @@ export function ContainerStatus({
     }
   }, []);
 
-  // Initial fetch
+  // 初始数据拉取
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Smart polling
+  // 智能轮询
   useSmartPolling({
     callback: () => fetchData(false),
     interval: refreshInterval
   });
 
-  // Auto-select first container if none selected and data loaded
+  // 数据加载完成且未选中容器时，自动选中第一个容器
   useEffect(() => {
     if (data?.containers?.length && !selectedId && onSelectContainer) {
        onSelectContainer(data.containers[0].id, data.containers[0].displayName);
@@ -288,7 +288,7 @@ export function ContainerStatus({
     if (!isRefreshing) fetchData(true);
   };
 
-  // Render main structure always, handle loading state inside
+  // 始终渲染主结构，在内部处理加载状态
   return (
     <div className={cn("rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col min-h-0", className)}>
       {/* 头部 - 始终显示 */}
@@ -323,7 +323,7 @@ export function ContainerStatus({
       {/* 容器列表 or Skeleton or Error */}
       <div className="p-4 space-y-2 overflow-y-auto custom-scrollbar flex-1 min-h-0">
         {loading && !data ? (
-          // Skeleton List
+          // 骨架屏列表
           [1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] animate-pulse shrink-0" />
@@ -340,13 +340,13 @@ export function ContainerStatus({
             </div>
           ))
         ) : !data?.dockerAvailable ? (
-          // Error State
+          // 错误状态
           <div className="flex flex-col items-center justify-center text-[var(--text-muted)] h-full">
             <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
             <span className="text-sm">Docker API 不可用</span>
           </div>
         ) : (
-          // Actual List
+          // 实际容器列表
           <AnimatePresence mode="popLayout">
             {data.containers.map((container) => (
               <ContainerCard 

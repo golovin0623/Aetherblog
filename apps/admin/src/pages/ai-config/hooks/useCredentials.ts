@@ -12,7 +12,7 @@ import {
 import type { ConnectionTestResult } from '../types';
 import { resolveAiServiceErrorMessage } from '../utils/errorMessage';
 
-// Query Keys
+// 查询键
 export const credentialKeys = {
   all: ['ai-credentials'] as const,
   list: () => [...credentialKeys.all, 'list'] as const,
