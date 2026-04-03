@@ -4,6 +4,7 @@ import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
+import FontProvider from './components/FontProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 import { themeInitScript } from '@aetherblog/hooks';
@@ -47,6 +48,9 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const settings = await getSiteSettings();
+  const fontFamily = (settings.font_family as string) || 'system';
+
   return (
     <html lang="zh-CN" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
@@ -58,12 +62,14 @@ export default async function RootLayout({
       </head>
       <body className={`${inter.variable} ${playfair.variable} ${notoSerifSC.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
         <Providers>
-          <BlogHeader />
-          <ClientLayout>
-            {children}
-          </ClientLayout>
-          {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
-          <FloatingThemeToggle />
+          <FontProvider initialFont={fontFamily}>
+            <BlogHeader />
+            <ClientLayout>
+              {children}
+            </ClientLayout>
+            {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
+            <FloatingThemeToggle />
+          </FontProvider>
         </Providers>
       </body>
     </html>
