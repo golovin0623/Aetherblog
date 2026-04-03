@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@aetherblog/hooks';
 import App from './App';
+import AdminFontProvider from './components/AdminFontProvider';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -18,7 +19,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <AdminFontProvider>
+          <App />
+        </AdminFontProvider>
       </QueryClientProvider>
     </ThemeProvider>
   </React.StrictMode>
