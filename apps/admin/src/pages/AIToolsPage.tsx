@@ -52,7 +52,7 @@ const persistOrder = (key: string, order: string[]) => {
   try {
     localStorage.setItem(key, JSON.stringify(order));
   } catch {
-    // ignore storage errors
+    // 忽略存储相关错误
   }
 };
 
@@ -86,21 +86,21 @@ export default function AIToolsPage() {
   const [systemOrder, setSystemOrder] = useState<string[]>(systemCodes);
   const [customOrder, setCustomOrder] = useState<string[]>([]);
 
-  // Hydrate order from localStorage after mount to prevent SSR mismatch
+  // 挂载后从 localStorage 恢复排序，防止 SSR 不一致
   useEffect(() => {
     setSystemOrder(syncOrder(loadOrder(SYSTEM_ORDER_KEY), systemCodes));
     setCustomOrder(loadOrder(CUSTOM_ORDER_KEY));
   }, [systemCodes]);
 
-  // Custom tool management state
+  // 自定义工具管理状态
   const [showToolModal, setShowToolModal] = useState(false);
   const [editingTool, setEditingTool] = useState<AiTaskType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Mobile sidebar state
+  // 移动端侧边栏状态
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Mobile tool tabs scroll ref
+  // 移动端工具标签栏滚动引用
   const toolTabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -115,7 +115,7 @@ export default function AIToolsPage() {
 
       if (promptsRes.code === 200) setPromptConfigs(promptsRes.data || []);
       if (tasksRes.code === 200) {
-        // Filter out system tools from the tasks list to avoid duplicates if they are in DB
+        // 过滤掉任务列表中的系统工具，避免与数据库中已有的系统工具重复
         const systemCodes = SYSTEM_TOOLS.map(t => t.code);
         const filtered = (tasksRes.data || []).filter(t => !systemCodes.includes(t.code));
         setCustomTools(filtered);
@@ -250,7 +250,7 @@ export default function AIToolsPage() {
     }
   };
 
-  // Check scroll state for mobile tabs
+  // 检查移动端标签栏的可滚动状态
   const checkScrollState = () => {
     if (toolTabsRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = toolTabsRef.current;
@@ -272,7 +272,7 @@ export default function AIToolsPage() {
     }
   }, [allTools]);
 
-  // Scroll to selected tool on mobile
+  // 移动端：将已选中的工具标签滚动至可视区域
   useEffect(() => {
     if (toolTabsRef.current) {
       const selectedEl = toolTabsRef.current.querySelector(`[data-tool-id="${selectedToolId}"]`) as HTMLElement;
@@ -281,7 +281,7 @@ export default function AIToolsPage() {
         const containerRect = container.getBoundingClientRect();
         const selectedRect = selectedEl.getBoundingClientRect();
 
-        // Center the selected item
+        // 将选中项滚动至居中位置
         const scrollOffset = selectedRect.left - containerRect.left - (containerRect.width / 2) + (selectedRect.width / 2);
         container.scrollTo({
           left: container.scrollLeft + scrollOffset,
@@ -308,9 +308,9 @@ export default function AIToolsPage() {
 
   return (
     <div className="h-[calc(100vh-6rem)] md:h-[calc(100vh-6rem)] overflow-hidden flex flex-col md:flex-row md:gap-6 relative">
-      {/* Mobile: Top Tool Tabs Bar */}
+      {/* 移动端：顶部工具标签栏 */}
       <div className="md:hidden sticky top-0 z-40 bg-[var(--bg-card)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] flex items-center h-[56px] overflow-hidden flex-shrink-0">
-        {/* Menu button - fixed left */}
+        {/* 菜单按钮 - 固定在左侧 */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
           className="flex-shrink-0 w-14 h-full flex items-center justify-center border-r border-[var(--border-subtle)] text-black dark:text-white transition-colors bg-[var(--bg-card)] active:bg-[var(--bg-tertiary)] dark:active:bg-[var(--bg-secondary)]"
@@ -345,7 +345,7 @@ export default function AIToolsPage() {
             })}
           </div>
 
-          {/* Scroll indicators / Fades */}
+          {/* 滚动指示器 / 渐隐边缘 */}
           <div className={cn(
             "absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[var(--bg-card)] to-transparent pointer-events-none transition-opacity duration-300",
             canScrollLeft ? "opacity-100" : "opacity-0"
@@ -356,7 +356,7 @@ export default function AIToolsPage() {
           )} />
         </div>
 
-        {/* Add button - fixed right */}
+        {/* 添加按钮 - 固定在右侧 */}
         <button
           onClick={() => {
             setEditingTool(null);
@@ -368,11 +368,11 @@ export default function AIToolsPage() {
         </button>
       </div>
 
-      {/* Mobile: Sidebar Drawer (inside main container) */}
+      {/* 移动端：侧边栏抽屉（挂载于主容器内） */}
       <AnimatePresence>
         {isMobileSidebarOpen && (
           <>
-            {/* Backdrop - Internal */}
+            {/* 遮罩层 - 内部 */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -381,7 +381,7 @@ export default function AIToolsPage() {
               className="md:hidden absolute inset-0 z-[60] bg-black/20 dark:bg-black/40 backdrop-blur-[2px]"
             />
 
-            {/* Drawer - Internal */}
+            {/* 抽屉内容 - 内部 */}
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
@@ -390,7 +390,7 @@ export default function AIToolsPage() {
               className="md:hidden absolute left-0 top-0 bottom-0 z-[70] w-[85vw] max-w-[280px] flex flex-col bg-white dark:bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] shadow-2xl overflow-hidden"
             >
 
-              {/* Header */}
+              {/* 头部 */}
               <div className="p-4 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-card)]">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-primary" />
@@ -417,7 +417,7 @@ export default function AIToolsPage() {
               </div>
 
 
-              {/* Tool list */}
+              {/* 工具列表 */}
               <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
                 <DndContext
                   sensors={sensors}
@@ -478,9 +478,9 @@ export default function AIToolsPage() {
       </AnimatePresence>
 
 
-      {/* Desktop: Left Column - Tools List */}
+      {/* 桌面端：左侧栏 - 工具列表 */}
       <div className="hidden md:flex w-[280px] flex-shrink-0 flex-col bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] overflow-hidden shadow-sm h-full">
-        {/* Header */}
+        {/* 头部 */}
 
         <div className="p-4 border-b border-[var(--border-subtle)]">
           <div className="flex items-center justify-between mb-4">
@@ -505,7 +505,7 @@ export default function AIToolsPage() {
         </div>
 
 
-        {/* Scrollable Tool List */}
+        {/* 可滚动工具列表 */}
         <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
           <DndContext
             sensors={sensors}
@@ -555,7 +555,7 @@ export default function AIToolsPage() {
 
       </div>
 
-      {/* Main Area: Workspace */}
+      {/* 主内容区：工作台 */}
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden p-4 md:p-0">
         <AIToolsWorkspace
           selectedTool={{

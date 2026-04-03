@@ -64,7 +64,7 @@ export function useHistoryManager(options: UseHistoryManagerOptions = {}) {
     totalSize: 0,
   });
 
-  // Refs
+  // 引用
   const eventHandlers = useRef<HistoryEventHandler[]>(onEvent ? [onEvent] : []);
   const lastContentRef = useRef<string>('');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,7 +97,7 @@ export function useHistoryManager(options: UseHistoryManagerOptions = {}) {
 
       isInitializedRef.current = true;
     } catch (error) {
-      console.error('Failed to load history:', error);
+      console.error('加载历史记录失败:', error);
     }
   }, []);
 

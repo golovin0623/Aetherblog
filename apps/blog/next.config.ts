@@ -4,7 +4,7 @@ import path from 'path';
 const nextConfig: NextConfig = {
   output: 'standalone',
   experimental: {
-    // Tree-shake heavy packages to only bundle used exports — reduces build time significantly
+    // 对大型包进行 Tree-shake，仅打包已使用的导出内容 — 可显著减少构建时间
     optimizePackageImports: ['shiki', 'lucide-react', 'framer-motion', 'mermaid', 'date-fns'],
   },
   outputFileTracingRoot: path.join(__dirname, '../..'),

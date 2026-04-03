@@ -77,6 +77,9 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
 	subPath := c.Param("*")
+	if strings.Contains(subPath, "..") {
+		return response.Fail(c, "invalid path traversal")
+	}
 	targetPath := "/api/v1/admin/providers"
 	if subPath != "" {
 		targetPath += "/" + subPath

@@ -206,10 +206,10 @@ export default function ProviderSidebar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            {/* Local Backdrop */}
-            <div 
-              className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-[2px]" 
-              onClick={onClose} 
+            {/* 局部遮罩层 */}
+            <div
+              className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-[2px]"
+              onClick={onClose}
             />
             
             <motion.div

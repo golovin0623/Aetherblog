@@ -62,7 +62,7 @@ export default function PostsPage() {
     }
   }, []);
 
-  // 点击外部时关闭标签弹出框
+  // 点击外部区域时关闭标签弹出框
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (tagPopoverRef.current && !tagPopoverRef.current.contains(event.target as Node)) {
@@ -113,12 +113,12 @@ export default function PostsPage() {
     }
   };
 
-  // 初始加载及状态/搜索/筛选变更时加载
+  // 初始加载及状态/搜索/筛选条件变更时重新加载
   useEffect(() => {
     fetchPosts(1, activeStatus, debouncedSearch || undefined, filters);
   }, [activeStatus, debouncedSearch, filters]);
 
-  // 获取筛选用的分类和标签
+  // 加载用于筛选的分类和标签数据
   useEffect(() => {
     const loadFilterData = async () => {
       try {
@@ -129,7 +129,7 @@ export default function PostsPage() {
         if (cRes.code === 200) setCategories(cRes.data);
         if (tRes.code === 200) setTags(tRes.data);
       } catch (err) {
-        logger.error('Failed to load filter data:', err);
+        logger.error('加载筛选数据失败:', err);
       }
     };
     loadFilterData();
@@ -141,7 +141,7 @@ export default function PostsPage() {
 
   const handlePageChange = (page: number) => {
     fetchPosts(page, activeStatus, debouncedSearch || undefined, filters);
-    // Auto-scroll the active page number into view after state updates
+    // 状态更新后自动将当前页码按钮滚动至可视区域
     requestAnimationFrame(() => scrollActivePageIntoView(page));
   };
 
@@ -154,7 +154,7 @@ export default function PostsPage() {
       setConfirmDialog({ isOpen: false, type: 'delete', post: null });
       fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters);
     } catch (err) {
-      logger.error('Delete failed:', err);
+      logger.error('删除失败:', err);
     } finally {
       setActionLoading(null);
     }
@@ -180,7 +180,7 @@ export default function PostsPage() {
         fetchPosts(1, activeStatus, debouncedSearch || undefined, filters);
       }
     } catch (err) {
-      logger.error('Copy failed:', err);
+      logger.error('复制失败:', err);
     } finally {
       setActionLoading(null);
     }
@@ -207,7 +207,6 @@ export default function PostsPage() {
     e.stopPropagation();
     try {
       const res = await postService.getById(post.id);
-      console.log('[Debug] API Response:', res);
       if (res.data) {
         setSelectedPost(res.data);
         setIsPropertiesModalOpen(true);
@@ -226,13 +225,13 @@ export default function PostsPage() {
       setIsPropertiesModalOpen(false);
       fetchPosts(pagination.pageNum, activeStatus, debouncedSearch || undefined, filters);
     } catch (err) {
-      logger.error('Update properties failed:', err);
+      logger.error('更新属性失败:', err);
     } finally {
       setActionLoading(null);
     }
   }, [selectedPost, pagination.pageNum, activeStatus, debouncedSearch, filters]);
 
-  // 处理标签弹窗切换 - 使用 callback 确保引用稳定，配合 React.memo 减少重渲染
+  // 处理标签弹窗切换 - 使用 callback 确保引用稳定，配合 React.memo 减少重复渲染
   const handleTogglePopover = useCallback((id: number) => {
     setActiveTagPopover(prev => prev === id ? null : id);
   }, []);

@@ -24,7 +24,7 @@ export function VisitorChart({
   onTimeRangeChange 
 }: VisitorChartProps) {
   const [activeTab, setActiveTab] = useState<'pv' | 'uv'>('pv');
-  // Support both controlled and uncontrolled modes
+  // 同时支持受控模式和非受控模式
   const [internalTimeRange, setInternalTimeRange] = useState<'7d' | '30d'>('7d');
   const timeRange = controlledTimeRange ?? internalTimeRange;
   
@@ -58,8 +58,8 @@ export function VisitorChart({
     );
   }
 
-  // Generate extended mock data based on timeRange if needed
-  // In real app, parent should fetch data based on timeRange
+  // 根据时间范围生成扩展的模拟数据（如需）
+  // 实际应用中应由父组件根据 timeRange 请求数据
   const displayData = data;
 
   return (
@@ -71,7 +71,7 @@ export function VisitorChart({
             {activeTab === 'pv' ? '页面浏览量 (Page Views)' : '独立访客 (Unique Visitors)'}
           </p>
         </div>
-        {/* Button group - wraps on mobile */}
+        {/* 按钮组 - 移动端自动换行 */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 p-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
           <button
             onClick={() => setActiveTab('pv')}
@@ -120,7 +120,7 @@ export function VisitorChart({
           </button>
         </div>
       </div>
-      {/* Chart with flex-1 to fill remaining space */}
+      {/* 图表区域，flex-1 自动填充剩余空间 */}
       <div className="flex-1 w-full min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={displayData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -142,7 +142,7 @@ export function VisitorChart({
               axisLine={false}
               tick={{ fontSize: 12, fill: 'var(--text-muted)' }}
               interval="preserveStartEnd"
-              tickFormatter={(value) => value.slice(5)} // Show MM-DD
+              tickFormatter={(value) => value.slice(5)} // 显示 MM-DD 格式
             />
             <YAxis
               stroke="var(--text-muted)"
