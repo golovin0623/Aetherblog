@@ -5,6 +5,7 @@ import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
 import FontProvider from './components/FontProvider';
+import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 import { themeInitScript } from '@aetherblog/hooks';
@@ -62,14 +63,16 @@ export default async function RootLayout({
       </head>
       <body className={`${inter.variable} ${playfair.variable} ${notoSerifSC.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
         <Providers>
-          <FontProvider initialFont={fontFamily}>
-            <BlogHeader />
-            <ClientLayout>
-              {children}
-            </ClientLayout>
-            {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
-            <FloatingThemeToggle />
-          </FontProvider>
+          <SiteSettingsProvider settings={settings}>
+            <FontProvider initialFont={fontFamily}>
+              <BlogHeader />
+              <ClientLayout>
+                {children}
+              </ClientLayout>
+              {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
+              <FloatingThemeToggle />
+            </FontProvider>
+          </SiteSettingsProvider>
         </Providers>
       </body>
     </html>

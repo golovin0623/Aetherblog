@@ -9,6 +9,7 @@ import AuthorProfileCard from '../components/AuthorProfileCard';
 import PostsLoading from './PostsLoading';
 import { API_ENDPOINTS } from '../lib/api';
 import { logger } from '../lib/logger';
+import { useSiteSettings } from '../components/SiteSettingsProvider';
 
 interface Post {
   id: number;
@@ -24,9 +25,11 @@ interface Post {
   passwordRequired?: boolean;
 }
 
-const PAGE_SIZE = 6;
+const DEFAULT_PAGE_SIZE = 6;
 
 export default function PostsPage() {
+  const { postPageSize } = useSiteSettings();
+  const PAGE_SIZE = postPageSize || DEFAULT_PAGE_SIZE;
   const [currentPage, setCurrentPage] = useState(1);
   const postsListRef = useRef<HTMLDivElement>(null);
   const pageNumbersRef = useRef<HTMLDivElement>(null);
@@ -80,7 +83,7 @@ export default function PostsPage() {
     isLoading: isPostsLoading,
     isPlaceholderData 
   } = useQuery({
-    queryKey: ['posts', currentPage],
+    queryKey: ['posts', currentPage, PAGE_SIZE],
     queryFn: async () => {
       // 计算有效分页大小/偏移逻辑
       // 原始逻辑：第 1 页获取 10 条（跳过 1 条），其他页获取 9 条

@@ -68,7 +68,8 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '外观设置',
     icon: Palette,
     fields: [
-      { key: 'theme_primary_color', label: '主色调', type: 'color', description: '分别影响亮色/暗色两个主题的品牌色' },
+      { key: 'theme_primary_color_light', label: '亮色主题主色调', type: 'color', description: '亮色主题下的品牌主色' },
+      { key: 'theme_primary_color_dark', label: '暗色主题主色调', type: 'color', description: '暗色主题下的品牌主色' },
       { key: 'enable_dark_mode', label: '强制暗黑模式', type: 'boolean', description: '若关闭则跟随系统主题自动切换（如 iPhone 暗黑模式）' },
       { key: 'font_family', label: '全局字体', type: 'font-picker', description: '选择博客全局显示字体，支持预览体验' },
       { key: 'show_banner', label: '显示欢迎页', type: 'boolean', description: '控制首页欢迎页（含「浏览文章」和「关于我」按钮），关闭后直接进入文章列表' },
