@@ -1,18 +1,20 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
+import FontPickerModal, { getFontOption, FONT_OPTIONS } from '@/components/settings/FontPickerModal';
+import FontPreviewFloat from '@/components/settings/FontPreviewFloat';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
 
 // 设置元数据定义
 // 帮助将原始键映射到 UI 标签和输入类型
-type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links' | 'image-upload';
+type SettingFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'color' | 'url' | 'social-links' | 'image-upload' | 'font-picker';
 
 interface SettingField {
   key: string;
@@ -66,11 +68,12 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '外观设置',
     icon: Palette,
     fields: [
-      { key: 'theme_primary_color', label: '主色调', type: 'color' },
-      { key: 'enable_dark_mode', label: '强制暗黑模式', type: 'boolean', description: '若关闭则跟随系统' },
-      { key: 'show_banner', label: '显示首页 Banner', type: 'boolean' },
-      { key: 'post_page_size', label: '每页文章数', type: 'number', placeholder: '10' },
-      { key: 'custom_css', label: '自定义 CSS', type: 'textarea', description: '危险操作，请谨慎修改' },
+      { key: 'theme_primary_color', label: '主色调', type: 'color', description: '分别影响亮色/暗色两个主题的品牌色' },
+      { key: 'enable_dark_mode', label: '强制暗黑模式', type: 'boolean', description: '若关闭则跟随系统主题自动切换（如 iPhone 暗黑模式）' },
+      { key: 'font_family', label: '全局字体', type: 'font-picker', description: '选择博客全局显示字体，支持预览体验' },
+      { key: 'show_banner', label: '显示欢迎页', type: 'boolean', description: '控制首页欢迎页（含「浏览文章」和「关于我」按钮），关闭后直接进入文章列表' },
+      { key: 'post_page_size', label: '每页文章数', type: 'number', placeholder: '10', description: '文章列表页面的分页数量' },
+      { key: 'custom_css', label: '自定义 CSS', type: 'textarea', description: '注入博客前台的自定义样式，可用于替换背景图、调整间距等个性化定制。留空则使用默认样式' },
     ]
   },
   seo: {
@@ -238,6 +241,10 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
+  // 字体选择器状态
+  const [fontModalOpen, setFontModalOpen] = useState(false);
+  const [previewFontId, setPreviewFontId] = useState<string | null>(null);
+
   const queryClient = useQueryClient();
 
   // 查询：获取所有设置
@@ -309,6 +316,31 @@ export default function SettingsPage() {
       toast.success('已重置更改');
     }
   };
+
+  // 字体预览：临时体验 2 分钟
+  const handleFontPreview = useCallback((fontId: string) => {
+    setPreviewFontId(fontId);
+    setFontModalOpen(false);
+    toast.success(`已开启「${getFontOption(fontId)?.name}」字体体验，2 分钟后自动还原`);
+  }, []);
+
+  // 字体预览关闭（还原）
+  const handleFontPreviewClose = useCallback(() => {
+    setPreviewFontId(null);
+  }, []);
+
+  // 字体预览确认应用
+  const handleFontApply = useCallback((fontId: string) => {
+    handleInputChange('font_family', fontId);
+    setPreviewFontId(null);
+    toast.success(`已切换为「${getFontOption(fontId)?.name}」，请点击保存生效`);
+  }, []);
+
+  // 从字体选择器直接应用
+  const handleFontSelect = useCallback((fontId: string) => {
+    handleInputChange('font_family', fontId);
+    toast.success(`已选择「${getFontOption(fontId)?.name}」，请点击保存生效`);
+  }, []);
 
   if (isLoading) {
     return (
@@ -493,6 +525,27 @@ export default function SettingsPage() {
                           value={formData[field.key] || ''}
                           onChange={(url) => handleInputChange(field.key, url)}
                         />
+                      ) : field.type === 'font-picker' ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm">
+                              <div className="flex items-center gap-2">
+                                <Type className="w-4 h-4 text-[var(--text-muted)]" />
+                                <span>{getFontOption(formData[field.key] || 'system')?.name || '系统默认'}</span>
+                                <span className="text-xs text-[var(--text-muted)]">
+                                  {getFontOption(formData[field.key] || 'system')?.description}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setFontModalOpen(true)}
+                              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+                            >
+                              选择字体
+                            </button>
+                          </div>
+                        </div>
                       ) : null}
 
                       {field.description && (
@@ -506,6 +559,24 @@ export default function SettingsPage() {
           </motion.div>
         </div>
       </div>
+
+      {/* 字体选择弹窗 */}
+      <FontPickerModal
+        open={fontModalOpen}
+        currentFont={formData.font_family || 'system'}
+        onClose={() => setFontModalOpen(false)}
+        onSelect={handleFontSelect}
+        onPreview={handleFontPreview}
+      />
+
+      {/* 字体预览悬浮窗 - 全局浮动，跨页面可见 */}
+      <FontPreviewFloat
+        previewFontId={previewFontId}
+        savedFontId={formData.font_family || 'system'}
+        onClose={handleFontPreviewClose}
+        onApply={handleFontApply}
+        onSwitchPreview={() => setFontModalOpen(true)}
+      />
     </div>
   );
 }
