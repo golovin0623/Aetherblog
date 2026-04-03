@@ -5,10 +5,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -42,12 +44,19 @@ type ContainerInfo struct {
 }
 
 // ContainerMonitorService 通过 Docker Unix Socket API 提供容器监控功能。
+// 内置缓存机制：缓存有效期内直接返回上次结果，避免频繁请求 Docker daemon。
 type ContainerMonitorService struct {
 	client *http.Client
+
+	cacheMu    sync.RWMutex
+	cachedData *ContainerOverview
+	cachedAt   time.Time
+	cacheTTL   time.Duration
 }
 
 // NewContainerMonitorService 创建 ContainerMonitorService 实例。
 // 通过 Unix Socket（/var/run/docker.sock）连接 Docker daemon，请求超时为 5 秒。
+// 结果缓存 3 秒，防止多客户端并发请求时重复访问 Docker API。
 func NewContainerMonitorService() *ContainerMonitorService {
 	return &ContainerMonitorService{
 		client: &http.Client{
@@ -59,6 +68,7 @@ func NewContainerMonitorService() *ContainerMonitorService {
 			},
 			Timeout: 5 * time.Second,
 		},
+		cacheTTL: 3 * time.Second,
 	}
 }
 
@@ -74,7 +84,17 @@ type dockerContainer struct {
 
 // ListContainers 返回所有 aetherblog 相关 Docker 容器的实时状态概览。
 // 优先通过 compose project label 过滤，回退到名称过滤；运行中的容器会附带实时 CPU/内存统计。
+// 结果会缓存 cacheTTL 时间，避免短时间内重复请求 Docker API。
 func (s *ContainerMonitorService) ListContainers() ContainerOverview {
+	// 缓存命中则直接返回
+	s.cacheMu.RLock()
+	if s.cachedData != nil && time.Since(s.cachedAt) < s.cacheTTL {
+		cached := *s.cachedData
+		s.cacheMu.RUnlock()
+		return cached
+	}
+	s.cacheMu.RUnlock()
+
 	overview := ContainerOverview{
 		Containers: []ContainerInfo{},
 	}
@@ -99,6 +119,8 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 
 	// 仅保留 aetherblog 相关容器（按名称或 compose project 标签过滤）
 	var infos []ContainerInfo
+	var runningIndices []int // 需要获取 stats 的容器索引
+	var runningFullIDs []string // 对应的完整容器 ID
 	for _, c := range containers {
 		name := ""
 		if len(c.Names) > 0 {
@@ -132,12 +154,23 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 
 		if c.State == "running" {
 			overview.RunningContainers++
-			// 为运行中的容器获取实时 CPU/内存统计
-			s.fillContainerStats(c.ID, &info)
+			runningIndices = append(runningIndices, len(infos))
+			runningFullIDs = append(runningFullIDs, c.ID)
 		}
 
 		infos = append(infos, info)
 	}
+
+	// 并行获取所有运行中容器的 CPU/内存统计，避免串行等待
+	var wg sync.WaitGroup
+	for i, idx := range runningIndices {
+		wg.Add(1)
+		go func(fullID string, infoPtr *ContainerInfo) {
+			defer wg.Done()
+			s.fillContainerStats(fullID, infoPtr)
+		}(runningFullIDs[i], &infos[idx])
+	}
+	wg.Wait()
 
 	// 汇总全局统计指标
 	var totalMem, totalLimit int64
@@ -155,6 +188,13 @@ func (s *ContainerMonitorService) ListContainers() ContainerOverview {
 	if len(infos) > 0 {
 		overview.AvgCpuPercent = totalCpu / float64(len(infos))
 	}
+
+	// 更新缓存
+	s.cacheMu.Lock()
+	s.cachedData = &overview
+	s.cachedAt = time.Now()
+	s.cacheMu.Unlock()
+
 	return overview
 }
 
@@ -258,7 +298,9 @@ func (s *ContainerMonitorService) fillContainerStats(fullID string, info *Contai
 		cpus = 1 // 防止除零，至少视为 1 核
 	}
 	if sysDelta > 0 && cpuDelta >= 0 {
-		info.CpuPercent = (cpuDelta / sysDelta) * float64(cpus) * 100.0
+		pct := (cpuDelta / sysDelta) * float64(cpus) * 100.0
+		// 保留两位小数，避免极小值在前端 toFixed(1) 后显示为 0.0%
+		info.CpuPercent = math.Round(pct*100) / 100
 	}
 
 	// 内存使用量及使用率
