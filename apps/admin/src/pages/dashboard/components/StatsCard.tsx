@@ -17,7 +17,7 @@ interface StatsCardProps {
 
 function Counter({ value, prefix, suffix }: { value: number; prefix: string; suffix: string }) {
   const nodeRef = React.useRef<HTMLSpanElement>(null);
-  const lastValueRef = React.useRef(0);
+  const lastValueRef = React.useRef(value);
 
   useEffect(() => {
     const node = nodeRef.current;
@@ -128,7 +128,7 @@ export function StatsCard({
             {typeof value === 'string' ? (
               value
             ) : (
-              <Counter value={value} prefix={prefix ?? ''} suffix={suffix ?? ''} />
+              <Counter value={value} prefix={prefix} suffix={suffix} />
             )}
           </p>
 
