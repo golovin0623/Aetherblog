@@ -20,6 +20,7 @@ require (
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/rs/zerolog v1.35.0
 	golang.org/x/crypto v0.46.0
+	golang.org/x/sync v0.19.0
 )
 
 require (
