@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -77,7 +78,13 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
 	subPath := c.Param("*")
-	if strings.Contains(subPath, "..") {
+
+	// 对路径进行 URL 解码以防御编码后的路径穿越攻击（如 %2e%2e）
+	unescapedPath, err := url.PathUnescape(subPath)
+	if err != nil {
+		return response.Fail(c, "invalid path encoding")
+	}
+	if strings.Contains(unescapedPath, "..") {
 		return response.Fail(c, "invalid path traversal")
 	}
 	targetPath := "/api/v1/admin/providers"
