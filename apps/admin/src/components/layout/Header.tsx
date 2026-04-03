@@ -38,6 +38,7 @@ export function Header() {
             'transition-all duration-200'
           )}
           title={theme === 'dark' ? '切换亮色模式' : '切换暗色模式'}
+          aria-label={theme === 'dark' ? '切换亮色模式' : '切换暗色模式'}
         >
           {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
@@ -49,6 +50,7 @@ export function Header() {
             'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
             'transition-all duration-200'
           )}
+          aria-label="通知"
         >
           <Bell className="w-5 h-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-status-danger rounded-full" />
