@@ -114,9 +114,10 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
       if (el) observer.observe(el);
     });
 
+    const visibleHeadings = visibleHeadingsRef.current;
     return () => {
       observer.disconnect();
-      visibleHeadingsRef.current.clear();
+      visibleHeadings.clear();
     };
   }, [headings]);
 
