@@ -3,3 +3,4 @@ export * from './validation';
 export * from './helpers';
 export * from './storage';
 export * from './url';
+export * from './color';

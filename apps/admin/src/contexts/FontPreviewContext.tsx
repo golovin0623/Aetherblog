@@ -27,8 +27,8 @@ interface FontPreviewProviderProps {
   children: React.ReactNode;
   /** 当前已保存的字体 id（从 settings 读取） */
   savedFontId: string;
-  /** 持久化保存字体 */
-  onSaveFontId: (fontId: string) => void;
+  /** 持久化保存字体，返回 Promise 以便处理失败 */
+  onSaveFontId: (fontId: string) => Promise<void>;
 }
 
 /** 动态加载 Google Fonts */
@@ -70,10 +70,15 @@ export function FontPreviewProvider({ children, savedFontId, onSaveFontId }: Fon
     applyFontToBody(getFontOption(savedFontIdRef.current));
   }, []);
 
-  // 确认应用
+  // 确认应用 - 先保存成功再关闭预览，失败时还原
   const applyPreview = useCallback((fontId: string) => {
-    setPreviewFontId(null);
-    onSaveFontId(fontId);
+    onSaveFontId(fontId).then(() => {
+      setPreviewFontId(null);
+    }).catch(() => {
+      // 保存失败 - 还原为之前已保存的字体
+      setPreviewFontId(null);
+      applyFontToBody(getFontOption(savedFontIdRef.current));
+    });
   }, [onSaveFontId]);
 
   // 切换到下一个字体
