@@ -153,14 +153,14 @@ export default async function PostDetailPage({ params }: PageProps) {
           </FadeIn>
 
           <FadeIn delay={0.1}>
-            <h1 className="text-3xl md:text-4xl font-bold font-serif text-[var(--text-primary)] mb-4">{post.title}</h1>
+            <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4">{post.title}</h1>
           </FadeIn>
 
           <FadeIn delay={0.15}>
             <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--text-muted)] mb-8">
-              <time className="font-serif italic">{post.publishedAt}</time>
-              {post.categoryName && <span className="font-serif italic">{post.categoryName}</span>}
-              <span className="font-serif italic">{post.viewCount} 阅读</span>
+              <time className="italic">{post.publishedAt}</time>
+              {post.categoryName && <span className="italic">{post.categoryName}</span>}
+              <span className="italic">{post.viewCount} 阅读</span>
               <div className="flex items-center gap-2 ml-1">
                 {adminEditUrl ? (
                   <a
@@ -197,7 +197,7 @@ export default async function PostDetailPage({ params }: PageProps) {
                 {post.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center px-3 py-1 rounded-md text-xs font-serif bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap hover:border-[var(--border-hover)] transition-colors"
+                    className="inline-flex items-center px-3 py-1 rounded-md text-xs bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap hover:border-[var(--border-hover)] transition-colors"
                   >
                     #{tag}
                   </span>
