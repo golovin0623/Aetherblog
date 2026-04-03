@@ -8,7 +8,7 @@ import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
-import FontPreviewFloat from '@/components/settings/FontPreviewFloat';
+import { useFontPreview } from '@/contexts/FontPreviewContext';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
 
@@ -244,7 +244,7 @@ export default function SettingsPage() {
 
   // 字体选择器状态
   const [fontModalOpen, setFontModalOpen] = useState(false);
-  const [previewFontId, setPreviewFontId] = useState<string | null>(null);
+  const { startPreview, applyPreview } = useFontPreview();
 
   const queryClient = useQueryClient();
 
@@ -318,39 +318,18 @@ export default function SettingsPage() {
     }
   };
 
-  // 直接保存单个字体设置到后端（无需额外点击保存按钮）
-  const saveFontDirectly = useCallback((fontId: string) => {
-    setFormData(prev => ({ ...prev, font_family: fontId }));
-    settingsService.batchUpdate({ font_family: fontId }).then(() => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success(`已应用「${getFontOption(fontId)?.name}」字体`);
-    }).catch(() => {
-      toast.error('字体保存失败');
-    });
-  }, [queryClient]);
-
-  // 字体预览：临时体验 2 分钟
+  // 字体预览：临时体验 2 分钟（通过全局 context）
   const handleFontPreview = useCallback((fontId: string) => {
-    setPreviewFontId(fontId);
+    startPreview(fontId);
     setFontModalOpen(false);
     toast.success(`已开启「${getFontOption(fontId)?.name}」字体体验，2 分钟后自动还原`);
-  }, []);
+  }, [startPreview]);
 
-  // 字体预览关闭（还原）
-  const handleFontPreviewClose = useCallback(() => {
-    setPreviewFontId(null);
-  }, []);
-
-  // 字体预览确认应用 → 直接保存
-  const handleFontApply = useCallback((fontId: string) => {
-    setPreviewFontId(null);
-    saveFontDirectly(fontId);
-  }, [saveFontDirectly]);
-
-  // 从字体选择器直接应用 → 直接保存
+  // 从字体选择器直接应用 → 通过全局 context 保存
   const handleFontSelect = useCallback((fontId: string) => {
-    saveFontDirectly(fontId);
-  }, [saveFontDirectly]);
+    setFormData(prev => ({ ...prev, font_family: fontId }));
+    applyPreview(fontId);
+  }, [applyPreview]);
 
   if (isLoading) {
     return (
@@ -537,8 +516,8 @@ export default function SettingsPage() {
                         />
                       ) : field.type === 'font-picker' ? (
                         <div className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 px-3 py-2.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm">
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                            <div className="flex-1 min-w-0 px-3 py-2.5 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                                   <Type className="w-4 h-4 text-primary" />
@@ -556,7 +535,7 @@ export default function SettingsPage() {
                             <button
                               type="button"
                               onClick={() => setFontModalOpen(true)}
-                              className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
+                              className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shrink-0 text-center"
                             >
                               选择字体
                             </button>
@@ -583,15 +562,6 @@ export default function SettingsPage() {
         onClose={() => setFontModalOpen(false)}
         onSelect={handleFontSelect}
         onPreview={handleFontPreview}
-      />
-
-      {/* 字体预览悬浮窗 - 全局浮动，跨页面可见 */}
-      <FontPreviewFloat
-        previewFontId={previewFontId}
-        savedFontId={formData.font_family || 'system'}
-        onClose={handleFontPreviewClose}
-        onApply={handleFontApply}
-        onSwitchPreview={() => setFontModalOpen(true)}
       />
     </div>
   );
