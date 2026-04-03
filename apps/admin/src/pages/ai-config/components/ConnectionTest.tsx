@@ -32,7 +32,7 @@ export default function ConnectionTest({
   const testMutation = useTestCredential();
   const chatModels = models.filter((m) => m.model_type === 'chat' && m.is_enabled);
 
-  // Close dropdown when clicking outside
+  // 点击外部时关闭下拉框
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {

@@ -14,28 +14,28 @@ export interface SystemMetrics {
   cpuCores: number;       // CPU 核心数
   cpuModel: string;       // CPU 型号
   cpuFrequency: number;   // CPU 频率 (Hz)
-  memoryUsed: number;     // bytes
-  memoryTotal: number;    // bytes
+  memoryUsed: number;     // 字节
+  memoryTotal: number;    // 字节
   memoryPercent: number;  // 0-100
-  diskUsed: number;       // bytes
-  diskTotal: number;      // bytes
+  diskUsed: number;       // 字节
+  diskTotal: number;      // 字节
   diskPercent: number;    // 0-100
-  networkIn: number;      // bytes 累计接收
-  networkOut: number;     // bytes 累计发送
-  networkInSpeed: number; // bytes/s 实时接收速率
-  networkOutSpeed: number;// bytes/s 实时发送速率
+  networkIn: number;      // 字节，累计接收
+  networkOut: number;     // 字节，累计发送
+  networkInSpeed: number; // 字节/秒，实时接收速率
+  networkOutSpeed: number;// 字节/秒，实时发送速率
   networkInRate: string;  // 格式化的接收信息
   networkOutRate: string; // 格式化的发送信息
   networkPercent: number; // 带宽使用率 0-100
-  networkMaxSpeed: number;// 配置的最大带宽 bytes/s
-  uptime: number;         // seconds
+  networkMaxSpeed: number;// 配置的最大带宽（字节/秒）
+  uptime: number;         // 秒
   osName: string;         // 操作系统名称
   osArch: string;         // 系统架构
 }
 
 export interface StorageItem {
   name: string;
-  size: number;           // bytes
+  size: number;           // 字节
   fileCount: number;
   formatted: string;      // "2.5 GB"
 }
@@ -53,7 +53,7 @@ export interface StorageDetails {
 export interface ServiceHealth {
   name: string;
   status: 'up' | 'down' | 'warning';
-  latency: number;        // ms
+  latency: number;        // 毫秒
   message: string;
   details?: Record<string, unknown>;
 }
@@ -100,8 +100,8 @@ export interface MetricPoint {
 
 export interface NetworkPoint {
   time: string;
-  in: number;   // 接收 bytes
-  out: number;  // 发送 bytes
+  in: number;   // 接收字节数
+  out: number;  // 发送字节数
 }
 
 export interface MetricHistory {
@@ -179,7 +179,7 @@ export interface AlertConfig {
 export interface MonitoringConfig {
   alertConfig: AlertConfig;
   refreshOptions: number[];  // [5, 10, 30, 60, 300]
-  historyDataSize: number;   // bytes
+  historyDataSize: number;   // 字节
 }
 
 // ========== API 调用 ==========

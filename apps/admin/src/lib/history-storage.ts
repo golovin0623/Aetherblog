@@ -32,7 +32,7 @@ export class HistoryStorage {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        reject(new Error('Failed to open IndexedDB'));
+        reject(new Error('打开 IndexedDB 失败'));
       };
 
       request.onsuccess = () => {
@@ -62,7 +62,7 @@ export class HistoryStorage {
    * 获取对象存储
    */
   private getStore(mode: IDBTransactionMode): IDBObjectStore {
-    if (!this.db) throw new Error('Database not initialized');
+    if (!this.db) throw new Error('数据库未初始化');
     const transaction = this.db.transaction([STORE_NAME], mode);
     return transaction.objectStore(STORE_NAME);
   }
@@ -77,7 +77,7 @@ export class HistoryStorage {
     return new Promise((resolve, reject) => {
       const request = store.put(snapshot);
       request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('Failed to save snapshot'));
+      request.onerror = () => reject(new Error('保存快照失败'));
     });
   }
 
@@ -91,7 +91,7 @@ export class HistoryStorage {
     return new Promise((resolve, reject) => {
       const request = store.get(id);
       request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(new Error('Failed to get snapshot'));
+      request.onerror = () => reject(new Error('获取快照失败'));
     });
   }
 
@@ -117,7 +117,7 @@ export class HistoryStorage {
         }
       };
 
-      request.onerror = () => reject(new Error('Failed to get snapshots'));
+      request.onerror = () => reject(new Error('获取快照列表失败'));
     });
   }
 
@@ -143,7 +143,7 @@ export class HistoryStorage {
         }
       };
 
-      request.onerror = () => reject(new Error('Failed to get bookmarks'));
+      request.onerror = () => reject(new Error('获取书签快照失败'));
     });
   }
 
@@ -157,7 +157,7 @@ export class HistoryStorage {
     return new Promise((resolve, reject) => {
       const request = store.delete(id);
       request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('Failed to delete snapshot'));
+      request.onerror = () => reject(new Error('删除快照失败'));
     });
   }
 
@@ -171,7 +171,7 @@ export class HistoryStorage {
     return new Promise((resolve, reject) => {
       const request = store.clear();
       request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('Failed to clear snapshots'));
+      request.onerror = () => reject(new Error('清空快照失败'));
     });
   }
 
@@ -185,7 +185,7 @@ export class HistoryStorage {
     return new Promise((resolve, reject) => {
       const request = store.count();
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(new Error('Failed to count snapshots'));
+      request.onerror = () => reject(new Error('获取快照数量失败'));
     });
   }
 
@@ -215,7 +215,7 @@ export class HistoryStorage {
         }
       };
 
-      request.onerror = () => reject(new Error('Failed to query snapshots'));
+      request.onerror = () => reject(new Error('查询快照失败'));
     });
   }
 
@@ -246,7 +246,7 @@ export class HistoryStorage {
         }
       };
 
-      request.onerror = () => reject(new Error('Failed to delete old snapshots'));
+      request.onerror = () => reject(new Error('删除旧快照失败'));
     });
   }
 

@@ -30,12 +30,11 @@ export function createHeadingIdFactory() {
 }
 
 /**
- * Pre-compute heading IDs for an entire markdown document.
- * Returns a Map from 1-based source line number → stable deduplicated id.
+ * 预计算整个 Markdown 文档的标题 ID。
+ * 返回一个 Map，键为从 1 开始的源码行号，值为稳定且去重后的 ID。
  *
- * Using line numbers as keys allows each heading <hN> component to look up
- * its own ID via node.position.start.line — NO shared mutable counter needed,
- * making IDs fully deterministic even under concurrent React renders.
+ * 以行号为键，使每个标题 <hN> 组件可通过 node.position.start.line 查找自身 ID，
+ * 无需共享可变计数器，从而在并发 React 渲染下 ID 也完全确定。
  */
 export function buildHeadingIdMap(content: string): Map<number, string> {
   const getHeadingId = createHeadingIdFactory();
@@ -66,7 +65,7 @@ export function buildHeadingIdMap(content: string): Map<number, string> {
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (!headingMatch) continue;
 
-    // Strip inline markdown (same as cleanMarkdownHeading)
+    // 去除内联 Markdown 标记（与 cleanMarkdownHeading 逻辑相同）
     const rawText = headingMatch[2]
       .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
@@ -77,7 +76,7 @@ export function buildHeadingIdMap(content: string): Map<number, string> {
       .trim();
 
     if (rawText) {
-      // line numbers are 1-based in the AST
+      // AST 中的行号从 1 开始
       map.set(i + 1, getHeadingId(rawText));
     }
   }

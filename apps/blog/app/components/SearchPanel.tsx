@@ -110,7 +110,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     };
   }, []);
 
-  // 将查询保留在 ref 中以保持稳定的回调
+  // 将查询存入 ref 以保持回调稳定
   const queryRef = useRef(query);
   useEffect(() => {
     queryRef.current = query;

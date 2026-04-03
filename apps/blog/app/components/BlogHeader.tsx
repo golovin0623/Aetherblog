@@ -239,7 +239,7 @@ export default function BlogHeader() {
         globalMouseMoveRafRef.current = null;
       });
     }
-  }, [isArticleDetail, setIsHovering]);
+  }, [isArticleDetail, setIsHovering, setIsVisible]);
 
   useEffect(() => {
     if (isArticleDetail) {

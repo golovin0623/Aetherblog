@@ -32,51 +32,51 @@ interface MobileBottomPullNavProps {
 type SnapTarget = 'prev' | 'center' | 'next';
 
 interface GestureState {
-  /** Whether gesture is active */
+  /** 手势是否激活中 */
   active: boolean;
-  /** 0→1 vertical pull progress */
+  /** 0→1 纵向上拉进度 */
   pullProgress: number;
-  /** Horizontal offset in px from gesture start (left negative, right positive) */
+  /** 相对于手势起始点的水平偏移量（向左为负，向右为正），单位 px */
   lateralOffset: number;
-  /** Which button is currently snapped to */
+  /** 当前吸附到的按钮 */
   snappedTo: SnapTarget;
-  /** Whether pull progress reached the ready threshold */
+  /** 上拉进度是否已达到就绪阈值 */
   isReady: boolean;
 }
 
 /* ─── Constants ─── */
 
-/** Dead zone before pull activates */
+/** 上拉激活前的无效区 */
 const DEAD_ZONE = 18;
-/** Pull distance for full progress */
+/** 达到满进度所需的上拉距离 */
 const FULL_PULL = 120;
-/** Min progress for action execution */
+/** 触发动作所需的最小进度 */
 const RELEASE_THRESHOLD = 0.4;
-/** Progress threshold for side buttons to start appearing */
+/** 侧边按钮开始出现的进度阈值 */
 const SIDE_APPEAR_THRESHOLD = 0.45;
-/** Horizontal offset to snap to a side button */
+/** 吸附到侧边按钮所需的水平偏移量 */
 const SNAP_THRESHOLD = 60;
-/** Hysteresis: must cross this absolute distance BACK to center to unsnap */
+/** 迟滞：从吸附状态回到中心所需越过的最小绝对距离 */
 const UNSNAP_THRESHOLD = 25;
 
-/** Center circle sizes */
+/** 中心圆大小范围 */
 const CIRCLE_MIN = 0;
 const CIRCLE_MAX = 56;
-/** Side icon size */
+/** 侧边图标大小 */
 const SIDE_ICON_SIZE = 48;
-/** Spacing between center circle and side buttons */
+/** 中心圆与侧边按钮之间的间距 */
 const SIDE_SPACING = 96;
 
 /* ─── Helpers ─── */
 
-/** Clamp to [min, max] */
+/** 将值钳制在 [min, max] 范围内 */
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-/** Ease out cubic */
+/** 三次缓出函数 */
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-/** Lerp */
+/** 线性插值 */
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** Try haptic feedback */
+/** 尝试触发触觉反馈 */
 const vibrate = (pattern: number | number[]) => {
   try { navigator.vibrate?.(pattern); } catch { /* noop */ }
 };
@@ -96,7 +96,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
 
   const router = useRouter();
 
-  // ── Refs ──
+  // ── Refs（引用）──
   const touchRef = useRef({
     startY: 0,
     startX: 0,
@@ -114,7 +114,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   useEffect(() => { nextPostRef.current = nextPost; }, [nextPost]);
   useEffect(() => { setMounted(true); }, []);
 
-  // ── Mobile detection ──
+  // ── 移动端检测 ──
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 768px)');
     const onChange = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches);
@@ -123,7 +123,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  // ── Helpers ──
+  // ── 辅助函数 ──
   const isAtBottom = useCallback(() => {
     const st = window.scrollY;
     const sh = document.documentElement.scrollHeight;
@@ -141,7 +141,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     }
   }, [router]);
 
-  /** RAF-throttled gesture state update */
+  /** 经 RAF 节流的手势状态更新 */
   const scheduleUpdate = useCallback((state: GestureState) => {
     pendingRef.current = state;
     if (rafRef.current == null) {
@@ -152,7 +152,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     }
   }, []);
 
-  // ── Touch handlers ──
+  // ── 触摸事件处理 ──
   useEffect(() => {
     if (!isMobile) return;
 
@@ -173,7 +173,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       if (!t.atBottom) return;
 
       const touch = e.touches[0];
-      const deltaY = t.startY - touch.clientY; // positive = swipe up
+      const deltaY = t.startY - touch.clientY; // 正值表示向上滑动
 
       if (deltaY < DEAD_ZONE) {
         if (t.pulling) {
@@ -189,7 +189,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         return;
       }
 
-      // Enter pull gesture
+      // 进入上拉手势
       if (!t.pulling) {
         t.pulling = true;
         vibrate(8);
@@ -201,7 +201,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       const lateralOffset = touch.clientX - t.startX;
       const isReady = pullProgress >= RELEASE_THRESHOLD;
 
-      // Haptic for entering ready state
+      // 进入就绪状态时触发触觉反馈
       if (isReady && !t.wasReady) {
         vibrate(12);
         t.wasReady = true;
@@ -209,7 +209,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         t.wasReady = false;
       }
 
-      // Snap logic with strong hysteresis
+      // 具有强迟滞的吸附逻辑
       let snappedTo: SnapTarget = t.prevSnap;
 
       if (isReady && pullProgress > SIDE_APPEAR_THRESHOLD) {
@@ -217,7 +217,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         const hasNext = !!nextPostRef.current;
 
         if (snappedTo === 'center') {
-          // Break out of center requires crossing the snap threshold
+          // 从中心脱离需要越过吸附阈值
           if (lateralOffset < -SNAP_THRESHOLD && hasPrev) {
             snappedTo = 'prev';
             vibrate(10);
@@ -226,13 +226,13 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
             vibrate(10);
           }
         } else if (snappedTo === 'prev') {
-          // To unsnap from prev, must move right past -UNSNAP_THRESHOLD
+          // 从"上一篇"脱离，需向右移动超过 -UNSNAP_THRESHOLD
           if (lateralOffset > -UNSNAP_THRESHOLD) {
             snappedTo = 'center';
             vibrate(5);
           }
         } else if (snappedTo === 'next') {
-          // To unsnap from next, must move left past UNSNAP_THRESHOLD
+          // 从"下一篇"脱离，需向左移动超过 UNSNAP_THRESHOLD
           if (lateralOffset < UNSNAP_THRESHOLD) {
             snappedTo = 'center';
             vibrate(5);
@@ -290,72 +290,72 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     };
   }, [isMobile, isAtBottom, navigate, scheduleUpdate]);
 
-  // ── Render ──
+  // ── 渲染 ──
   if (!isMobile || !mounted) return null;
 
   const { active, pullProgress, lateralOffset, snappedTo, isReady } = gesture;
   const easedProgress = easeOut(pullProgress);
 
-  // ── Computed visual values ──
+  // ── 计算视觉参数 ──
 
-  // Center circle size: 0 → CIRCLE_MAX
+  // 中心圆大小：0 → CIRCLE_MAX
   const circleSize = lerp(CIRCLE_MIN, CIRCLE_MAX, easedProgress);
-  // Arrow rotation: 90deg (Up) → 0deg (Left)
+  // 箭头旋转：90°（向上）→ 0°（向左）
   const arrowRotation = lerp(90, 0, clamp(pullProgress * 2, 0, 1));
-  // Overall translateY: rises from bottom
+  // 整体 translateY：从底部向上升起
   const translateY = active ? lerp(80, 0, easedProgress) : 80;
   const opacity = active ? clamp(pullProgress * 2.5, 0, 1) : 0;
 
-  // Side buttons visibility: appear after threshold
+  // 侧边按钮可见性：超过阈值后出现
   const sideProgress = clamp((pullProgress - SIDE_APPEAR_THRESHOLD) / (1 - SIDE_APPEAR_THRESHOLD), 0, 1);
   const sideEased = easeOut(sideProgress);
   const sideOpacity = sideEased;
-  // Side buttons spread out from center
+  // 侧边按钮从中心向两侧展开
   const sideSpread = lerp(0, SIDE_SPACING, sideEased);
   const sideScale = lerp(0.3, 1, sideEased);
 
-  // ── Magnetic snap deformation (Single Unified Blob) ──
+  // ── 磁性吸附形变（单一统一 Blob）──
   
   let blobX = 0;
   let blobScaleX = 1;
   let blobScaleY = 1;
 
-  // 1. Identify where the blob "wants" to be base on current snap state
+  // 1. 根据当前吸附状态确定 blob 的"目标"位置
   const blobBaseX = snappedTo === 'prev' ? -sideSpread : snappedTo === 'next' ? sideSpread : 0;
 
   if (isReady && active) {
     let dragDist = 0;
     
-    // 2. Calculate distance between the finger and the blob's ideal base position
-    // BUT only stretch if the finger is pulling *against* the snapped position!
+    // 2. 计算手指与圆球理想基准位置之间的距离
+    // 但仅在手指拉力*方向与吸附位置相反*时才拉伸形变
     if (snappedTo === 'center') {
       dragDist = lateralOffset;
     } else if (snappedTo === 'prev') {
-      // Only stretch if pulling back towards center (right) from the -50 mark
+      // 仅在从 -50 位置向右（回到中心方向）拉动时才拉伸
       if (lateralOffset > -50) dragDist = lateralOffset + 50;
     } else if (snappedTo === 'next') {
-      // Only stretch if pulling back towards center (left) from the 50 mark
+      // 仅在从 50 位置向左（回到中心方向）拉动时才拉伸
       if (lateralOffset < 50) dragDist = lateralOffset - 50;
     }
 
-    // 3. Apply stickiness: blob moves slightly with finger but strongly resists
+    // 3. 施加粘性：blob 随手指轻微移动，但强烈抵抗大幅偏移
     blobX = blobBaseX + clamp(dragDist * 0.25, -20, 20);
 
-    // 4. Apply elastic deformation: stretches more as finger pulls further from snapped center
+    // 4. 施加弹性形变：手指偏离吸附中心越远，拉伸越明显
     const stretchFactor = Math.abs(dragDist) / 100;
-    blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // Max 40% wider
-    blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // Max 15% shorter
+    blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // 最大宽度增加 40%
+    blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // 最大高度减少 15%
   } else {
-    // If not ready or finger released, strictly obey the base position and spherical shape
+    // 未就绪或手指已释放时，严格遵守基准位置和球形形状
     blobX = blobBaseX;
   }
 
-  // ── Active icon highlighting ──
+  // ── 激活图标高亮 ──
   const isCenterActive = snappedTo === 'center';
   const isPrevActive = snappedTo === 'prev';
   const isNextActive = snappedTo === 'next';
 
-  // Opacities: Inactive icons disappear completely to remove visual clutter
+  // 透明度：非激活图标完全隐藏，减少视觉干扰
   const prevIconOpacity = isPrevActive ? 1 : (isCenterActive ? sideOpacity * 0.5 : 0);
   const nextIconOpacity = isNextActive ? 1 : (isCenterActive ? sideOpacity * 0.5 : 0);
   const centerIconOpacity = isCenterActive ? 1 : 0;
@@ -363,7 +363,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   const hasPrev = !!prevPost;
   const hasNext = !!nextPost;
 
-  // Determine label text
+  // 确定标签文本
   const labelText = snappedTo === 'prev' && hasPrev
     ? '上一篇'
     : snappedTo === 'next' && hasNext
@@ -379,12 +379,12 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         opacity,
       }}
     >
-      {/* Subtle backdrop */}
+      {/* 半透明背景遮罩 */}
       <div
         className="absolute inset-0 bg-black/5 dark:bg-black/20"
         style={{
           opacity: clamp(pullProgress * 1.5, 0, 1),
-          // Blur backdrop slightly on intense swipe
+          // 强力滑动时对背景施加轻微模糊
           backdropFilter: `blur(${clamp(pullProgress * 2, 0, 4)}px)`,
           transition: active ? 'none' : 'opacity 0.3s ease-out, backdrop-filter 0.3s',
         }}
@@ -406,19 +406,19 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
           <div
             className="absolute rounded-full pointer-events-none"
             style={{
-              width: `${circleSize}px`, // Follows pull growth 0 -> CIRCLE_MAX
+              width: `${circleSize}px`, // 跟随拖拽进度从 0 增长至 CIRCLE_MAX
               height: `${circleSize}px`,
               transform: `translateX(${blobX}px) scaleX(${blobScaleX}) scaleY(${blobScaleY})`,
               background: 'var(--bg-secondary, rgba(235, 235, 240, 0.9))',
               backdropFilter: 'blur(12px)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 0 1px 1px rgba(255,255,255,0.6)',
-              opacity: clamp(pullProgress * 5, 0, 1), // Rises sharply from 0 to 1
-              // Spring physics transition for blob movement and rescale
+              opacity: clamp(pullProgress * 5, 0, 1), // 从 0 急速增长至 1
+              // 弹簧物理过渡：用于 blob 移动与缩放
               transition: active
                 ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.5, 1), width 0.2s, height 0.2s'
                 : 'all 0.4s ease-out',
               animation: isCenterActive && isReady ? 'blobPulse 2s ease-in-out infinite' : 'none',
-              zIndex: 1, // Behind the icons
+              zIndex: 1, // 在图标层之下
             }}
           />
 
@@ -469,7 +469,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
                 opacity: centerIconOpacity,
                 strokeWidth: isCenterActive && isReady ? 2.5 : 2,
                 transition: 'color 0.2s, opacity 0.2s',
-                // Subtle drop shadow when standing strictly alone (unready)
+                // 独立展示时（未就绪）添加细微阴影
                 filter: (!isReady && isCenterActive && circleSize > 15) 
                   ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' 
                   : 'none'

@@ -139,8 +139,8 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
   );
 };
 
-// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders of the carousel when parent component updates.
-// The socialLinks array is memoized in the parent using useMemo.
+// ⚡ Bolt: 添加 React.memo() 以防止父组件更新时轮播组件的不必要重渲染。
+// socialLinks 数组在父组件中通过 useMemo 记忆化。
 const SocialLinksCarousel = React.memo(SocialLinksCarouselBase);
 
 export interface AuthorProfile {
@@ -294,7 +294,7 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
 };
 
-// ⚡ Bolt: Added React.memo() to prevent expensive O(n) re-renders when parent layout components update.
-// This prevents re-evaluating the complex radial-gradient background and re-running social links extraction logic.
+// ⚡ Bolt: 添加 React.memo() 以防止父级布局组件更新时昂贵的 O(n) 重渲染。
+// 避免重新计算复杂的径向渐变背景和社交链接提取逻辑。
 export const AuthorProfileCard = React.memo(AuthorProfileCardBase);
 export default AuthorProfileCard;

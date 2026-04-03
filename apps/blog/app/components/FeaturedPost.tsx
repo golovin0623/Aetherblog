@@ -36,7 +36,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
           : '暂无摘要';
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Prevent navigation if clicking on interactive elements
+    // 点击交互元素时阻止导航
     if (e.target instanceof Element && e.target.closest('a, button')) {
       return;
     }
@@ -70,7 +70,7 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
           ref={spotlightRef}
           className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
           style={{
-            // Background is managed via ref
+            // 背景通过 ref 管理
             opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
           }}
         />

@@ -153,12 +153,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
   return (
     <div className="h-full flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6 animate-in fade-in duration-500 overflow-y-auto md:overflow-hidden">
-      {/* Inject Markdown Styles */}
+      {/* 注入 Markdown 样式 */}
       <style dangerouslySetInnerHTML={{ __html: previewStyles }} />
 
-      {/* Input Column (Middle) */}
+      {/* 输入列（中间） */}
       <div className="flex flex-col min-h-[50vh] md:min-h-0 md:h-full bg-[var(--bg-card)] rounded-2xl md:rounded-3xl border border-[var(--border-subtle)] shadow-sm min-w-0 relative">
-        {/* Top shine effect */}
+        {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
             className={cn(
@@ -172,7 +172,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           />
         </div>
 
-        {/* Header - Desktop */}
+        {/* 头部 - 桌面端 */}
         <div className="hidden md:flex p-4 border-b border-[var(--border-subtle)] items-center justify-between bg-[var(--bg-card)] rounded-t-3xl z-10 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -185,7 +185,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Header - Mobile: Title only */}
+        {/* 头部 - 移动端：仅显示标题 */}
         <div className="md:hidden p-3 border-b border-[var(--border-subtle)] flex items-center gap-2 bg-[var(--bg-card)] rounded-t-2xl z-20 flex-shrink-0">
           <div className="p-1.5 rounded-lg bg-primary/10">
             <FileText className="w-4 h-4 text-primary" />
@@ -194,12 +194,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
 
         <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-          {/* Main Content Areas: Stacked or Togglable */}
+          {/* 主内容区：堆叠或可切换 */}
           <div className="flex-1 relative flex flex-col min-h-0">
-            {/* Input Section */}
+            {/* 输入区 */}
             <div className={cn(
               "flex-1 relative transition-all duration-500 ease-in-out origin-top",
-              // PC: use opacity/scale animation, Mobile: use hidden/block
+              // PC 端：使用透明度/缩放动画，移动端：使用 hidden/block
               showConfig 
                 ? "md:h-0 md:opacity-0 md:scale-95 md:pointer-events-none hidden md:block" 
                 : "h-full opacity-100 scale-100"
@@ -220,10 +220,10 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               )}
             </div>
 
-            {/* Prompt Section - PC: translate animation, Mobile: conditional render */}
+            {/* Prompt 区 - PC 端：使用位移动画，移动端：条件渲染 */}
             {promptConfig && !isGlobalLoading && (
               <>
-                {/* Desktop version - uses translate animation */}
+                {/* 桌面端版本 - 使用位移动画 */}
                 <div className={cn(
                   "hidden md:flex absolute inset-0 z-10 bg-[var(--bg-secondary)] flex-col overflow-hidden transition-all duration-500 ease-in-out",
                   showConfig ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
@@ -237,7 +237,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                     onClose={() => setShowConfig(false)}
                   />
                 </div>
-                {/* Mobile version - conditional render for proper display */}
+                {/* 移动端版本 - 条件渲染以保证正常显示 */}
                 {showConfig && (
                   <div className="md:hidden absolute inset-0 z-10 bg-[var(--bg-secondary)] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
                     <PromptEditor
@@ -253,14 +253,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               </>
             )}
           </div>
-          {/* Unified Execution Hub - Floating at bottom center */}
+          {/* 统一执行入口 - 悬浮于底部居中 */}
           <div className={cn(
             "absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-500",
             isMobileSidebarOpen ? "translate-y-40 opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
-            showConfig && "hidden md:flex"  // Hide on mobile when config is open, show on PC
+            showConfig && "hidden md:flex"  // 移动端配置打开时隐藏，PC 端显示
           )}>
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* Toggle Config Button */}
+              {/* 切换配置按钮 */}
               <button
                 onClick={() => setShowConfig(!showConfig)}
                 className={cn(
@@ -316,9 +316,9 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Result Column (Right) */}
+      {/* 结果列（右侧） */}
       <div className="flex flex-col min-h-[45vh] md:min-h-0 md:h-full overflow-hidden bg-[var(--bg-card)] rounded-2xl md:rounded-3xl border border-[var(--border-subtle)] shadow-sm relative group">
-        {/* Top shine effect */}
+        {/* 顶部光泽效果 */}
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
             className={cn(

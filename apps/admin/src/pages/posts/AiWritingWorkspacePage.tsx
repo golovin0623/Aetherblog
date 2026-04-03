@@ -30,7 +30,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '@aetherblog/hooks';
 import { cn } from '@/lib/utils';
 
-// Hooks
+// Hook
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
 import { useHistoryManager } from '@/hooks/useHistoryManager';
 import { useAiPrediction } from '@/hooks/useAiPrediction';
@@ -44,16 +44,16 @@ import { AnnotationList } from '@/components/ai/AnnotationCard';
 import { BatchOptimizationPanel } from '@/components/ai/BatchOptimizationPanel';
 import { AiChatPanel } from '@/components/ai/AiChatPanel';
 
-// 类型
+// 类型定义
 import type { AiCapability, WritingStage, Annotation } from '@/types/writing-workflow';
 import type { ContentSnapshot } from '@/types/content-history';
 
-// Extensions
+// 编辑器扩展
 import { createGhostTextExtension } from '@/lib/ghost-text-extension';
 import { aiService } from '@/services/aiService';
 import { toast } from 'sonner';
 
-// AI 工具定义
+// AI 工具能力定义
 const AI_CAPABILITIES: AiCapability[] = [
   {
     id: 'polish',
@@ -141,7 +141,7 @@ export function AiWritingWorkspacePage() {
     },
   });
 
-  // Ghost Text Extensions
+  // Ghost Text 编辑器扩展
   const ghostTextExtensions = useMemo(() => {
     return createGhostTextExtension({
       onAccept: () => aiPrediction.handleAccept(),
@@ -158,7 +158,7 @@ export function AiWritingWorkspacePage() {
     documentTitle: title,
     writingStage: workflow.context.currentStage,
     onPredictionAccepted: (type) => {
-      console.log('Accepted prediction:', type);
+      console.log('已接受预测:', type);
     },
   });
 
@@ -181,7 +181,7 @@ export function AiWritingWorkspacePage() {
       try {
         let result: string = '';
 
-        // 调用真实 AI API
+        // 调用实际 AI API
         if (toolId === 'polish') {
           const res = await aiService.polishContent({
             content: selectedText,
@@ -222,7 +222,7 @@ export function AiWritingWorkspacePage() {
         toast.success(`AI ${toolId} 完成`);
       } catch (error) {
         toast.error('AI 处理失败');
-        console.error('AI tool execution failed:', error);
+        console.error('AI 工具执行失败:', error);
       }
     },
     [workflow, historyManager, title, content, summary, postId]

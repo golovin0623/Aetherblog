@@ -267,14 +267,14 @@ export function TagManager({
 // 随机颜色生成
 function getRandomColor(): string {
   const colors = [
-    '#6366f1', // indigo
-    '#8b5cf6', // purple
-    '#ec4899', // pink
-    '#f43f5e', // rose
-    '#f59e0b', // amber
-    '#10b981', // emerald
-    '#06b6d4', // cyan
-    '#3b82f6', // blue
+    '#6366f1', // 靛蓝
+    '#8b5cf6', // 紫色
+    '#ec4899', // 粉红
+    '#f43f5e', // 玫瑰红
+    '#f59e0b', // 琥珀
+    '#10b981', // 翠绿
+    '#06b6d4', // 青色
+    '#3b82f6', // 蓝色
   ];
   return colors[Math.floor(Math.random() * colors.length)];
 }

@@ -6,7 +6,7 @@ import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Toaster } from 'sonner';
 
-// Lazy load pages
+// 懒加载页面组件
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const ChangePasswordPage = lazy(() => import('./pages/auth/ChangePasswordPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -24,7 +24,7 @@ const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
 const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 
-// Named exports need special handling
+// 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
 const AiWritingWorkspacePage = lazy(() => import('./pages/posts/AiWritingWorkspacePage').then(module => ({ default: module.AiWritingWorkspacePage })));
 
