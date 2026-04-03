@@ -85,7 +85,7 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 return response.FailWith(c, response.BadRequest, "invalid path encoding")
 	}
 	if strings.Contains(unescapedPath, "..") {
-		return response.Fail(c, "invalid path traversal")
+return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
 	targetPath := "/api/v1/admin/providers"
 	if subPath != "" {
