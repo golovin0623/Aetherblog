@@ -75,14 +75,13 @@ export default function FontProvider({ children, initialFont = 'system' }: FontP
     const config = FONT_MAP[fontFamily] || FONT_MAP.system;
 
     // 加载 Google Fonts（如果需要）
+    // 注意：serif-elegant 的 Playfair/Noto 已通过 next/font 预加载，不会重复请求
+    // Lora/Merriweather 等其他字体需要动态加载，这是可配置字体系统的必要权衡
     if (config.googleFontsUrl) {
       loadGoogleFont(config.googleFontsUrl);
     }
 
-    // 设置 CSS 变量，供全局使用
-    document.documentElement.style.setProperty('--font-body', config.cssFamily);
-
-    // 对于非 system 字体，同时覆盖 sans 字体栈
+    // 对于非 system 字体，覆盖 sans 字体栈
     // 这样所有使用 font-sans 的元素也会用新字体
     if (fontFamily !== 'system') {
       document.documentElement.style.setProperty('--font-sans-override', config.cssFamily);
@@ -93,16 +92,10 @@ export default function FontProvider({ children, initialFont = 'system' }: FontP
     }
 
     return () => {
-      document.documentElement.style.removeProperty('--font-body');
       document.documentElement.style.removeProperty('--font-sans-override');
       document.documentElement.classList.remove('font-override');
     };
   }, [fontFamily]);
-
-  // 监听 settings 变化（通过 storage event 支持跨 tab 同步，预留）
-  useEffect(() => {
-    setFontFamily(initialFont);
-  }, [initialFont]);
 
   return (
     <FontContext.Provider value={{ fontFamily }}>

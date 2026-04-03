@@ -7,7 +7,7 @@ import { settingsService } from '@/services/settingsService';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
-import FontPickerModal, { getFontOption, FONT_OPTIONS } from '@/components/settings/FontPickerModal';
+import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
 import FontPreviewFloat from '@/components/settings/FontPreviewFloat';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));

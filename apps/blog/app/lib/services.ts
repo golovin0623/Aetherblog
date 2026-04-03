@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { API_ENDPOINTS } from './api';
 import { logger } from './logger';
 
@@ -83,7 +84,8 @@ const DEFAULT_SITE_SETTINGS: SiteSettings = {
   authorName: 'Admin'
 };
 
-export async function getSiteSettings(): Promise<SiteSettings> {
+// React.cache 确保同一次渲染中 generateMetadata() 和 RootLayout 共享结果
+export const getSiteSettings = cache(async function getSiteSettings(): Promise<SiteSettings> {
   try {
     const res = await fetch(API_ENDPOINTS.settings, {
       next: { revalidate: 10 },
@@ -99,7 +101,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     logger.warn('Failed to fetch site settings, using defaults:', error);
     return DEFAULT_SITE_SETTINGS;
   }
-}
+});
 
 /**
  * 获取最新发布文章
