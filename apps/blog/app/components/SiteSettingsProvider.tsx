@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import type { SiteSettings } from '../lib/services';
+import { generateColorVars, colorVarsToCSS } from '@aetherblog/utils';
 
 // ============================================================
 // SiteSettingsProvider
@@ -61,15 +62,13 @@ export default function SiteSettingsProvider({ children, settings }: Props) {
     }
   }, [settings.enable_dark_mode]);
 
-  // 2. 主色调 - 亮色/暗色分别配置
+  // 2. 主色调 - 亮色/暗色分别配置，生成完整变量集
   useEffect(() => {
     const lightColor = settings.theme_primary_color_light as string;
     const darkColor = settings.theme_primary_color_dark as string;
-    // 兼容旧的单色调字段
     const fallbackColor = settings.theme_primary_color as string;
 
     if (lightColor || darkColor || fallbackColor) {
-      // 创建/更新 style 标签注入主色调覆盖
       let styleEl = document.getElementById('aetherblog-primary-color') as HTMLStyleElement;
       if (!styleEl) {
         styleEl = document.createElement('style');
@@ -82,10 +81,12 @@ export default function SiteSettingsProvider({ children, settings }: Props) {
 
       let css = '';
       if (lightVal) {
-        css += `:root, :root.light { --color-primary: ${lightVal}; }\n`;
+        const vars = generateColorVars(lightVal, false);
+        css += `:root, :root.light {\n${colorVarsToCSS(vars)}\n}\n`;
       }
       if (darkVal) {
-        css += `:root.dark { --color-primary: ${darkVal}; }\n`;
+        const vars = generateColorVars(darkVal, true);
+        css += `:root.dark {\n${colorVarsToCSS(vars)}\n}\n`;
       }
       styleEl.textContent = css;
     }

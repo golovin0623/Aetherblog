@@ -1,48 +1,17 @@
-import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { settingsService } from '@/services/settingsService';
-
-/**
- * 字体配置映射（与 FontPickerModal 保持同步）
- * 仅包含 CSS font-family 和 Google Fonts URL
- */
-const FONT_MAP: Record<string, { cssFamily: string; googleFontsUrl?: string }> = {
-  system: {
-    cssFamily: "'Inter', system-ui, -apple-system, sans-serif",
-  },
-  'serif-elegant': {
-    cssFamily: "'Playfair Display', 'Noto Serif SC', Georgia, serif",
-    googleFontsUrl:
-      'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap',
-  },
-  lora: {
-    cssFamily: "'Lora', 'Noto Serif SC', Georgia, serif",
-    googleFontsUrl:
-      'https://fonts.googleapis.com/css2?family=Lora:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap',
-  },
-  merriweather: {
-    cssFamily: "'Merriweather', 'Noto Serif SC', Georgia, serif",
-    googleFontsUrl:
-      'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap',
-  },
-};
-
-function loadGoogleFont(url: string) {
-  const existing = document.querySelector(`link[href="${url}"]`);
-  if (existing) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = url;
-  document.head.appendChild(link);
-}
+import { FontPreviewProvider } from '@/contexts/FontPreviewContext';
+import { getFontOption } from '@/components/settings/FontPickerModal';
+import { toast } from 'sonner';
 
 /**
  * AdminFontProvider - 管理后台全局字体应用
- * 从后端获取 font_family 设置，动态应用到 admin 界面
+ * 从后端获取 font_family 设置，通过 FontPreviewProvider 管理字体和预览
  */
 export default function AdminFontProvider({ children }: { children: React.ReactNode }) {
-  // 复用 ['settings'] 缓存，通过 select 提取 font_family
-  // 这样 SettingsPage 保存后 invalidate(['settings']) 会自动刷新字体
+  const queryClient = useQueryClient();
+
   const { data: fontId = 'system' } = useQuery({
     queryKey: ['settings'],
     queryFn: () => settingsService.getAll(),
@@ -50,23 +19,23 @@ export default function AdminFontProvider({ children }: { children: React.ReactN
     staleTime: 60 * 1000,
   });
 
-  useEffect(() => {
-    const config = FONT_MAP[fontId] || FONT_MAP.system;
-
-    if (config.googleFontsUrl) {
-      loadGoogleFont(config.googleFontsUrl);
+  const handleSaveFontId = useCallback(async (newFontId: string): Promise<void> => {
+    try {
+      await settingsService.batchUpdate({ font_family: newFontId });
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success(`已应用「${getFontOption(newFontId)?.name}」字体`);
+    } catch {
+      toast.error('字体保存失败');
+      throw new Error('font save failed');
     }
+  }, [queryClient]);
 
-    if (fontId !== 'system') {
-      document.body.style.fontFamily = config.cssFamily;
-    } else {
-      document.body.style.fontFamily = '';
-    }
-
-    return () => {
-      document.body.style.fontFamily = '';
-    };
-  }, [fontId]);
-
-  return <>{children}</>;
+  return (
+    <FontPreviewProvider
+      savedFontId={fontId}
+      onSaveFontId={handleSaveFontId}
+    >
+      {children}
+    </FontPreviewProvider>
+  );
 }

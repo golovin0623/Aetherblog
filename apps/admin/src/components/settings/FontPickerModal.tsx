@@ -153,7 +153,7 @@ export default function FontPickerModal({
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             onClick={(e) => e.target === e.currentTarget && onClose()}
           >
-            <div className="w-full max-w-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden">
+            <div className="w-full max-w-lg bg-[var(--bg-popover)] border border-[var(--border-default)] rounded-2xl shadow-2xl overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
                 <div className="flex items-center gap-2">
@@ -170,11 +170,11 @@ export default function FontPickerModal({
 
               {/* 提示 */}
               <div className="px-6 pt-4">
-                <p className="text-xs text-[var(--text-muted)]">
+                <p className="text-xs text-[var(--text-secondary)]">
                   选择一个字体作为博客全局字体。点击「体验」可预览 2 分钟，满意后点击「应用」持久化保存。
                 </p>
                 {/* 扩展说明 */}
-                <p className="text-xs text-[var(--text-muted)] mt-1 opacity-60">
+                <p className="text-xs text-[var(--text-muted)] mt-1">
                   后续将支持中英文字体独立搭配组合
                 </p>
               </div>
@@ -191,7 +191,7 @@ export default function FontPickerModal({
                         'relative p-4 rounded-xl border transition-all cursor-pointer group',
                         isActive
                           ? 'border-primary/50 bg-primary/5'
-                          : 'border-[var(--border-subtle)] hover:border-[var(--border-hover)] hover:bg-[var(--bg-card-hover)]',
+                          : 'border-[var(--border-default)] bg-[var(--bg-secondary)] hover:border-[var(--border-hover)] hover:bg-[var(--bg-tertiary)]',
                       )}
                     >
                       {/* 字体信息 */}
@@ -215,7 +215,7 @@ export default function FontPickerModal({
 
                       {/* 字体预览 - 用字体自身展示 */}
                       <div
-                        className="text-base text-[var(--text-secondary)] leading-relaxed mb-3 min-h-[2.5rem]"
+                        className="text-base text-[var(--text-primary)] leading-relaxed mb-3 min-h-[2.5rem]"
                         style={{
                           fontFamily: font.cssFamily,
                           opacity: fontsLoaded || font.id === 'system' ? 1 : 0.5,
@@ -255,7 +255,7 @@ export default function FontPickerModal({
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50">
+              <div className="px-6 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
                 <p className="text-[10px] text-[var(--text-muted)] text-center">
                   字体通过 Google Fonts 加载 &middot; 保存后对博客前台生效
                 </p>

@@ -74,9 +74,9 @@ export default function FontPreviewFloat({
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
         className="fixed bottom-6 right-6 z-[9999]"
       >
-        <div className="relative rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)] bg-white dark:bg-[#1c1c24] border border-gray-200 dark:border-white/10">
+        <div className="relative rounded-2xl overflow-hidden shadow-[var(--shadow-lg)] bg-[var(--bg-popover)] border border-[var(--border-default)]">
           {/* 顶部进度条 */}
-          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gray-100 dark:bg-white/5">
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--bg-tertiary)]">
             <motion.div
               className="h-full bg-primary rounded-full"
               animate={{ width: `${progress * 100}%` }}
@@ -91,24 +91,24 @@ export default function FontPreviewFloat({
                 <Type className="w-3.5 h-3.5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
                   {font.name}
                 </p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                <p className="text-[10px] text-[var(--text-muted)] font-mono tabular-nums">
                   体验中 {timeStr}
                 </p>
               </div>
               {/* 展开/收起按钮 */}
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
               >
                 {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
               </button>
               {/* 关闭按钮 */}
               <button
                 onClick={onClose}
-                className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -128,7 +128,7 @@ export default function FontPreviewFloat({
                 {/* 字体预览文本 */}
                 <div className="px-3 pb-2">
                   <div
-                    className="text-sm text-gray-700 dark:text-gray-200 px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/5 leading-relaxed"
+                    className="text-sm text-[var(--text-primary)] px-2.5 py-2 rounded-lg bg-[var(--bg-secondary)] leading-relaxed"
                     style={{ fontFamily: font.cssFamily }}
                   >
                     {font.previewText}
@@ -142,7 +142,7 @@ export default function FontPreviewFloat({
           <div className="px-3 pb-2.5 flex items-center gap-1.5">
             <button
               onClick={onSwitchPreview}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
             >
               <RotateCcw className="w-3 h-3" />
               换一个
