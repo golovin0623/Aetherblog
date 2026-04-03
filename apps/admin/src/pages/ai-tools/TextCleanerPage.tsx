@@ -9,7 +9,7 @@ export function TextCleanerPage() {
   const handleClean = async () => {
     if (!input.trim()) return;
     setIsLoading(true);
-    // Simulate API call
+    // 模拟 API 调用
     setTimeout(() => {
       setOutput(input.replace(/\s+/g, ' ').trim());
       setIsLoading(false);
@@ -24,7 +24,7 @@ export function TextCleanerPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-6">
-        {/* Input */}
+        {/* 输入 */}
         <div className="space-y-3">
           <label className="text-sm font-medium text-[var(--text-tertiary)]">输入文本</label>
           <textarea
@@ -35,7 +35,7 @@ export function TextCleanerPage() {
           />
         </div>
 
-        {/* Output */}
+        {/* 输出 */}
         <div className="space-y-3">
           <label className="text-sm font-medium text-[var(--text-tertiary)]">输出结果</label>
           <div className="w-full h-80 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white overflow-auto">

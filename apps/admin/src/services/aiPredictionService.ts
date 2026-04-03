@@ -109,9 +109,9 @@ class AiPredictionService {
       };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Prediction cancelled');
+        throw new Error('预测已取消');
       }
-      console.error('Prediction failed:', error);
+      console.error('预测失败:', error);
       throw error;
     } finally {
       this.abortControllers.delete(cacheKey);

@@ -14,14 +14,14 @@ const ScrollToTopBase = () => {
       const scrollY = window.scrollY;
       const shouldBeVisible = scrollY > 300;
 
-      // Update visibility state only if changed to minimize re-render checks
-      // React automatically bails out if state is the same, so simple setter is sufficient
+      // 仅在状态改变时更新可见性，以减少重渲染检查次数
+      // React 会自动跳过相同 state 的更新，因此直接使用 setter 即可
       setIsVisible(shouldBeVisible);
 
-      // Update progress ring directly via DOM
+      // 直接通过 DOM 更新进度环
       if (circleRef.current) {
         const height = document.documentElement.scrollHeight - window.innerHeight;
-        // Avoid division by zero and clamp value between 0 and 1
+        // 避免除以零，并将值钳制在 0 到 1 之间
         const progress = height > 0 ? Math.min(1, Math.max(0, scrollY / height)) : 0;
         const offset = STROKE_CIRCUMFERENCE * (1 - progress);
         circleRef.current.style.strokeDashoffset = `${offset}`;
@@ -37,7 +37,7 @@ const ScrollToTopBase = () => {
     };
 
     window.addEventListener('scroll', onScroll, { passive: true });
-    // Initial check
+    // 初始检查
     updateScroll();
 
     return () => {
@@ -83,6 +83,6 @@ const ScrollToTopBase = () => {
   );
 };
 
-// ⚡ Bolt: Added React.memo() to prevent unnecessary re-renders of the ScrollToTop component
-// when its parent (e.g. ClientLayout) re-renders, since it does not accept props.
+// ⚡ Bolt: 添加 React.memo() 以避免父组件（如 ClientLayout）重渲染时 ScrollToTop 组件
+// 不必要的重渲染，因为该组件不接收任何 props。
 export const ScrollToTop = React.memo(ScrollToTopBase);

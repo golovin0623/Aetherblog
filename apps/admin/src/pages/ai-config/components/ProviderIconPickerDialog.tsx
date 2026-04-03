@@ -52,7 +52,7 @@ export default function ProviderIconPickerDialog({
         onClick={(e) => e.stopPropagation()}
         className="w-full sm:w-[92vw] sm:max-w-2xl max-h-[80vh] sm:max-h-[82vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-[var(--border-default)] bg-[var(--bg-primary)] shadow-2xl overflow-hidden"
       >
-        {/* Header */}
+        {/* 头部 */}
         <div className="flex items-center justify-between gap-3 p-5 border-b border-[var(--border-default)]">
           <div className="min-w-0">
             <div className="text-base font-semibold text-[var(--text-primary)] truncate">选择图标</div>
@@ -69,7 +69,7 @@ export default function ProviderIconPickerDialog({
           </button>
         </div>
 
-        {/* Toolbar */}
+        {/* 工具栏 */}
         <div className="p-4 border-b border-[var(--border-default)] space-y-3">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
@@ -111,7 +111,7 @@ export default function ProviderIconPickerDialog({
           </div>
         </div>
 
-        {/* Grid */}
+        {/* 图标网格 */}
         <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent">
           {items.length === 0 ? (
             <div className="py-16 text-center text-sm text-[var(--text-muted)]">
@@ -146,7 +146,7 @@ export default function ProviderIconPickerDialog({
                       decoding="async"
                       className="w-7 h-7 object-contain"
                       onError={(e) => {
-                        // Hide broken icons without breaking the layout
+                        // 隐藏加载失败的图标，但不破坏布局
                         (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
                       }}
                     />

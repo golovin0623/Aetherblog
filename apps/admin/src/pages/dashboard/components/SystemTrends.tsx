@@ -30,11 +30,11 @@ import { zhCN } from 'date-fns/locale';
 // ========== Chart Data Helper ==========
 
 interface MergedDataPoint {
-  time: string;  // ISO String from backend
+  time: string;  // 后端返回的 ISO 字符串
   cpu: number;
   memory: number;
   disk: number;
-  timestamp: number; // Parsed timestamp for sorting/formatting
+  timestamp: number; // 已解析的时间戳，用于排序和格式化
 }
 
 function mergeHistoryData(history: MetricHistory): MergedDataPoint[] {
@@ -54,7 +54,7 @@ function mergeHistoryData(history: MetricHistory): MergedDataPoint[] {
 export function SystemTrends({ className }: { className?: string }) {
   const [data, setData] = useState<MergedDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
-  const [minutes, setMinutes] = useState(60); // View last 60 mins
+  const [minutes, setMinutes] = useState(60); // 查看最近 60 分钟
   const [visibleMetrics, setVisibleMetrics] = useState({
     cpu: true,
     memory: true,
@@ -63,15 +63,15 @@ export function SystemTrends({ className }: { className?: string }) {
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [isCleaning, setIsCleaning] = useState(false);
 
-  // Dynamic Sampling Density
+  // 动态采样密度
   const maxPoints = useMemo(() => {
-    if (minutes <= 60) return 60;      // 1 min granularity
-    if (minutes <= 1440) return 150;   // ~10 min granularity
-    if (minutes <= 10080) return 300;  // ~30 min granularity (7 days)
-    return 500;                        // ~1.5 hr granularity (30 days)
+    if (minutes <= 60) return 60;      // 1 分钟粒度
+    if (minutes <= 1440) return 150;   // ~10 分钟粒度
+    if (minutes <= 10080) return 300;  // ~30 分钟粒度（7 天）
+    return 500;                        // ~1.5 小时粒度（30 天）
   }, [minutes]);
 
-  // Fetch History
+  // 获取历史数据
   const fetchHistory = useCallback(async (isInitial = false) => {
     try {
       if (isInitial) setLoading(true);
@@ -86,14 +86,14 @@ export function SystemTrends({ className }: { className?: string }) {
     }
   }, [minutes, maxPoints]);
 
-  // Initial load & Auto refresh
+  // 初始加载与自动刷新
   useEffect(() => {
     fetchHistory(true);
     const timer = setInterval(() => fetchHistory(false), refreshInterval * 1000);
     return () => clearInterval(timer);
   }, [fetchHistory, refreshInterval]);
 
-  // Cleanup Handler
+  // 清理历史数据处理器
   const handleCleanup = async () => {
     if (!confirm(`确定要清理最近 ${minutes} 分钟内的历史数据吗？(目前后端实现为清理所有过期数据)`)) return;
     
@@ -118,42 +118,42 @@ export function SystemTrends({ className }: { className?: string }) {
     setVisibleMetrics(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Calculate Ticks based on time range (Time-aligned)
+  // 根据时间范围计算刻度值（时间对齐）
   const ticks = useMemo(() => {
     if (data.length === 0) return [];
     
-    // 1. Determine nice interval based on range
-    let intervalMs = 3600 * 1000; // Default 1h
-    if (minutes <= 30) intervalMs = 5 * 60 * 1000; // 5 min
-    else if (minutes <= 60) intervalMs = 10 * 60 * 1000; // 10 min
-    else if (minutes <= 180) intervalMs = 30 * 60 * 1000; // 30 min
-    else if (minutes <= 720) intervalMs = 2 * 3600 * 1000; // 2 hours
-    else if (minutes <= 1440) intervalMs = 4 * 3600 * 1000; // 4 hours
-    else if (minutes <= 4320) intervalMs = 12 * 3600 * 1000; // 12 hours
-    else intervalMs = 24 * 3600 * 1000; // 1 day
+    // 1. 根据时间范围确定合适的间隔
+    let intervalMs = 3600 * 1000; // 默认 1 小时
+    if (minutes <= 30) intervalMs = 5 * 60 * 1000; // 5 分钟
+    else if (minutes <= 60) intervalMs = 10 * 60 * 1000; // 10 分钟
+    else if (minutes <= 180) intervalMs = 30 * 60 * 1000; // 30 分钟
+    else if (minutes <= 720) intervalMs = 2 * 3600 * 1000; // 2 小时
+    else if (minutes <= 1440) intervalMs = 4 * 3600 * 1000; // 4 小时
+    else if (minutes <= 4320) intervalMs = 12 * 3600 * 1000; // 12 小时
+    else intervalMs = 24 * 3600 * 1000; // 1 天
 
     const startTime = data[0].timestamp;
     const endTime = data[data.length - 1].timestamp;
     
-    // 2. Align start to next interval (Round up to nearest nice tick)
+    // 2. 将起始时间对齐到下一个整点（向上取整至最近的整刻度）
     let current = Math.ceil(startTime / intervalMs) * intervalMs;
     const generatedTicks: string[] = [];
     
     while (current <= endTime) {
-        // Find closest data point to represent this tick
-        // Since XAxis is categorical, we need the exact string from data
+        // 找到最接近当前刻度时间的数据点
+        // 由于 XAxis 是分类轴，需要数据中完全匹配的字符串
         const closest = data.reduce((prev, curr) => 
             Math.abs(curr.timestamp - current) < Math.abs(prev.timestamp - current) ? curr : prev
         );
         
-        // Avoid duplicates and ensure we don't jump back in time (though sorted data prevents that usually)
+        // 避免重复，且不允许时间倒退（数据已排序，通常不会发生）
         if (!generatedTicks.includes(closest.time)) {
              generatedTicks.push(closest.time);
         }
         current += intervalMs;
     }
 
-    // Ensure we have at least a few ticks if alignment skipped too many
+    // 确保至少有几个刻度，避免对齐后跳过太多
     if (generatedTicks.length < 2) {
         generatedTicks.push(data[0].time);
         generatedTicks.push(data[data.length-1].time);
@@ -162,14 +162,14 @@ export function SystemTrends({ className }: { className?: string }) {
     return generatedTicks;
   }, [data, minutes]);
 
-  // Smart Formatter
+  // 智能格式化函数
   const formatXAxis = (isoTime: string, index: number) => {
-    // Hide the first tick to prevent overlap with Y-axis
+    // 隐藏第一个刻度，避免与 Y 轴重叠
     if (index === 0) return '';
     
     try {
       const date = parseISO(isoTime);
-      if (minutes > 1440) { // > 24 Hours
+      if (minutes > 1440) { // 超过 24 小时
         return format(date, 'MM-dd');
       }
       return format(date, 'HH:mm');
@@ -186,8 +186,8 @@ export function SystemTrends({ className }: { className?: string }) {
     }
   };
 
-  // Loading State for UX: only show Skeleton if NO data.
-  // If we have data but are reloading (e.g. changing range), we show chart with opacity.
+  // UX 加载状态：仅在无数据时显示骨架屏。
+  // 有数据但正在重新加载时（如切换时间范围），以半透明方式保留图表显示。
   const showSkeleton = loading && data.length === 0;
 
   if (showSkeleton) {
@@ -210,10 +210,10 @@ export function SystemTrends({ className }: { className?: string }) {
 
   return (
     <div className={cn("p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] transition-all duration-300 flex flex-col", className)}>
-      {/* Unified Header & Controls */}
+      {/* 统一的头部与控制栏 */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-6 gap-4 shrink-0">
         
-        {/* Left: Title & Status */}
+        {/* 左侧：标题与状态 */}
         <div className="flex items-center gap-3">
           <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)]">系统负载</h3>
           {loading && data.length > 0 && <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />}
@@ -225,10 +225,10 @@ export function SystemTrends({ className }: { className?: string }) {
           )}
         </div>
 
-        {/* Right: Toolbar (Legend + Controls) */}
+        {/* 右侧：工具栏（图例 + 控制项） */}
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           
-          {/* Legend Group */}
+          {/* 图例组 */}
           <div className="flex items-center gap-2">
                {/* CPU */}
                <button 
@@ -243,7 +243,7 @@ export function SystemTrends({ className }: { className?: string }) {
                  <div className={cn("w-1.5 h-1.5 rounded-full", visibleMetrics.cpu ? "bg-primary" : "bg-[var(--text-muted)]")} />
                  CPU
                </button>
-               {/* RAM */}
+               {/* 内存 */}
                <button 
                  onClick={() => toggleMetric('memory')}
                  className={cn(
@@ -273,7 +273,7 @@ export function SystemTrends({ className }: { className?: string }) {
 
           <div className="w-px h-4 bg-[var(--border-subtle)] hidden sm:block" />
 
-          {/* Controls Group */}
+          {/* 控制组 */}
           <div className="flex items-center bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-subtle)] p-0.5 h-7">
              <select
                  value={minutes}
@@ -330,7 +330,7 @@ export function SystemTrends({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* Chart - Responsive Height and Opacity Transition */}
+      {/* 图表 - 响应式高度与透明度过渡 */}
       <div className={cn(
         "flex-1 w-full transition-opacity duration-300 min-h-[250px]",
         loading && data.length > 0 ? "opacity-90" : "opacity-100"

@@ -181,11 +181,11 @@ const MobileMenu = memo(function MobileMenu() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            // view-transition-name isolates this overlay as its own VT layer
-            // so it is NOT included in the root clip-path ripple animation.
-            // Without this, backdrop-blur flickers when theme is toggled while open.
-            // NOTE: viewTransitionName moved to CSS class so globals.css can override
-            // it to 'none' during theme transition (html[data-theme-transition]).
+            // view-transition-name 将此遮罩层隔离为独立的 VT 层，
+            // 使其不参与根节点的 clip-path 涟漪动画。
+            // 若不隔离，主题切换时 backdrop-blur 会在菜单打开状态下闪烁。
+            // 注意：viewTransitionName 已移至 CSS 类，以便 globals.css 在
+            // 主题切换期间（html[data-theme-transition]）将其覆盖为 'none'。
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] mobile-menu-backdrop"
             onClick={() => setIsOpen(false)}
           />
@@ -201,9 +201,9 @@ const MobileMenu = memo(function MobileMenu() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            // Give the drawer its own VT layer so its blur doesn't bleed into root
-            // NOTE: viewTransitionName moved to CSS class so globals.css can override
-            // it to 'none' during theme transition (html[data-theme-transition]).
+            // 为抽屉分配独立的 VT 层，防止其模糊效果渗透至根节点
+            // 注意：viewTransitionName 已移至 CSS 类，以便 globals.css 在
+            // 主题切换期间（html[data-theme-transition]）将其覆盖为 'none'。
             className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform mobile-menu-drawer"
           >
             {/* 1. 顶部区域：个人资料 (去除了强分割线) */}

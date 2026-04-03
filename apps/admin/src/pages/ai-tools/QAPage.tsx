@@ -25,7 +25,7 @@ export function QAPage() {
     setInput('');
     setIsLoading(true);
 
-    // Simulate AI response
+    // 模拟 AI 响应
     setTimeout(() => {
       const aiMessage: Message = {
         id: Date.now() + 1,
@@ -44,7 +44,7 @@ export function QAPage() {
         <p className="text-[var(--text-muted)] mt-1">基于您的博客内容进行 RAG 智能问答</p>
       </div>
 
-      {/* Chat Area */}
+      {/* 聊天区域 */}
       <div className="flex-1 bg-white/5 border border-white/10 rounded-xl overflow-hidden flex flex-col">
         <div className="flex-1 p-6 overflow-auto space-y-4">
           {messages.length === 0 ? (
@@ -93,7 +93,7 @@ export function QAPage() {
           )}
         </div>
 
-        {/* Input */}
+        {/* 输入框 */}
         <div className="p-4 border-t border-white/10">
           <div className="flex gap-3">
             <input

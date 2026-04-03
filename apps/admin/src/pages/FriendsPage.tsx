@@ -52,17 +52,7 @@ export default function FriendsPage() {
     queryFn: () => friendService.getAll(),
   });
 
-  // 乐观排序的本地状态
-  const [items, setItems] = useState<FriendLink[]>([]);
-  // 当友链数据更新时同步项
-  if (friends.length > 0 && items.length === 0 && !isLoading) {
-      // 如果小心处理循环，可以在渲染期间使用 useEffect 或简单检查
-      // 最好使用 useEffect，但在渲染中简单赋值有风险。
-      // 在完整实现中让我们使用 useEffect。
-      // 目前更简单的方法：DndContext 中的派生状态通过 friends 数组处理，
-      // 但重新排序需要本地状态才能平滑。
-  }
-  // 目前直接使用查询数据，并通过突变乐观地处理重新排序
+  // 当前直接使用查询数据，并通过 mutation 乐观处理重新排序
   
   // 表单设置
   const form = useForm<FriendFormData>({
@@ -142,10 +132,10 @@ export default function FriendsPage() {
       
       const newOrder = arrayMove(friends, oldIndex, newIndex);
       
-      // 如果使用本地状态则进行 UI 乐观更新，但此处我们触发 API
-      // 在实际应用中，我们应该先更新本地状态。
-      // 由于依赖 RQ 缓存，我们直接触发突变。
-      // 理想情况下 queryClient.setQueryData(['friends'], newOrder);
+      // 若使用本地状态则进行 UI 乐观更新，但此处直接触发 API
+      // 实际应用中应先更新本地状态。
+      // 由于依赖 React Query 缓存，直接触发 mutation。
+      // 理想情况下应先调用 queryClient.setQueryData(['friends'], newOrder);
       queryClient.setQueryData(['friends'], newOrder); 
 
       reorderMutation.mutate(newOrder.map(f => f.id));

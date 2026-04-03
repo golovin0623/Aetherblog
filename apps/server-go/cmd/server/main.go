@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	// Docker 健康检查模式（scratch 镜像没有 curl/wget，因此通过此参数执行）
+	// Docker 健康检查模式（scratch 镜像中没有 curl/wget）
 	if len(os.Args) > 1 && os.Args[1] == "-health" {
 		resp, err := http.Get("http://localhost:8080/api/actuator/health")
 		if err != nil || resp.StatusCode != 200 {
@@ -26,13 +26,13 @@ func main() {
 
 	start := time.Now()
 
-	// 配置 zerolog — 写入 stdout（彩色）+ 日志文件（原始 JSON）
+	// 初始化 zerolog —— 同时写入 stdout（彩色）和日志文件（原始 JSON）
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 
-	// 控制台输出（彩色）
+	// 控制台输出（彩色），写入 stdout
 	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}
 
-	// 原始 JSON 输出到文件（zerolog 写入普通的 io.Writer 时的默认格式就是 JSON）
+	// 写入文件的原始 JSON 输出（zerolog 写入普通 io.Writer 时默认输出 JSON 格式）
 	writers := []io.Writer{consoleWriter}
 	logDir := os.Getenv("AETHERBLOG_LOG_PATH")
 	if logDir == "" {

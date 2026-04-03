@@ -34,7 +34,7 @@ interface MediaViewerProps {
   onDownload: (url: string, filename: string) => void;
 }
 
-/** Render a single media slide (shared between mobile carousel and desktop view) */
+/** 渲染单个媒体幻灯片（移动端轮播与桌面端视图共用） */
 const MediaSlide: React.FC<{
   item: MediaItem;
   rotation: number;
@@ -109,7 +109,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const currentItem = items[currentIndex];
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  // ====== Mobile carousel swipe state (Apple Photos style) ======
+  // ====== 移动端轮播滑动状态（仿 Apple Photos 风格）======
   const trackRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0); // px offset during drag
@@ -122,7 +122,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     setMobileMenuOpen(false);
   }, [currentIndex]);
 
-  // Auto-scroll thumbnail strip to center the active thumbnail
+  // 自动滚动缩略图条，使当前激活的缩略图居中显示
   useEffect(() => {
     const timer = setTimeout(() => {
       const thumb = thumbnailRefs.current[currentIndex];
@@ -151,7 +151,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onNext, onPrev]);
 
-  // Close mobile menu on outside tap
+  // 点击外部区域时关闭移动端菜单
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const handleTap = () => setMobileMenuOpen(false);
@@ -170,7 +170,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     }
   }, [currentItem, onDownload]);
 
-  // ====== Touch handlers: Apple Photos continuous carousel ======
+  // ====== 触摸事件处理：仿 Apple Photos 连续轮播 ======
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (!isMobile || isZoomed || isAnimating) return;
     const touch = e.touches[0];
@@ -185,7 +185,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     const dx = touch.clientX - touchStartRef.current.x;
     const dy = touch.clientY - touchStartRef.current.y;
 
-    // Lock direction after 8px movement
+    // 移动超过 8px 后锁定滑动方向
     if (!directionLocked.current) {
       if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
         directionLocked.current = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
@@ -195,14 +195,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
     if (directionLocked.current !== 'h') return;
 
-    // Prevent vertical scroll while swiping horizontally
+    // 水平滑动时阻止页面纵向滚动
     e.preventDefault();
 
-    // Rubber-band resistance at edges (iOS-style)
+    // 到达边缘时的橡皮筋阻力效果（iOS 风格）
     const atStart = currentIndex === 0 && dx > 0;
     const atEnd = currentIndex === items.length - 1 && dx < 0;
     if (atStart || atEnd) {
-      // Logarithmic resistance like iOS
+      // 对数阻尼，模仿 iOS 边缘弹性
       const sign = dx > 0 ? 1 : -1;
       const dampened = sign * Math.log2(1 + Math.abs(dx) * 0.15) * 20;
       setSwipeOffset(dampened);
@@ -220,10 +220,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
     const dx = swipeOffset;
     const elapsed = Date.now() - touchStartRef.current.time;
-    // Velocity in px/ms
+    // 速度（px/ms）
     const velocity = Math.abs(dx) / Math.max(elapsed, 1);
 
-    // Threshold: quick flick (high velocity) or dragged past 30% of container width
+    // 判断阈值：快速轻弹（高速度）或拖动超过容器宽度的 30%
     const containerWidth = trackRef.current?.parentElement?.clientWidth || 300;
     const isQuickFlick = velocity > 0.4 && Math.abs(dx) > 30;
     const isDraggedFar = Math.abs(dx) > containerWidth * 0.3;
@@ -237,7 +237,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       }
     }
 
-    // Animate snap-back (spring physics via CSS transition)
+    // 执行回弹动画（通过 CSS transition 模拟弹簧物理）
     setIsAnimating(true);
     setSwipeOffset(0);
 
@@ -245,14 +245,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       onSelectIndex(targetIndex);
     }
 
-    // Wait for spring animation to finish
+    // 等待弹簧动画完成
     setTimeout(() => setIsAnimating(false), 350);
 
     touchStartRef.current = null;
     directionLocked.current = null;
   }, [isMobile, swipeOffset, currentIndex, items.length, onSelectIndex]);
 
-  // Reset swipe offset when index changes externally (e.g. thumbnail tap)
+  // 当外部更改索引时（如点击缩略图）重置滑动偏移量
   useEffect(() => {
     setSwipeOffset(0);
   }, [currentIndex]);
@@ -261,7 +261,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   const fullUrl = getMediaUrl(currentItem.fileUrl);
 
-  // Visible slides for mobile carousel: only render [prev, current, next] for performance
+  // 移动端轮播可见幻灯片：仅渲染 [前一张、当前、后一张] 以优化性能
   const visibleIndices = isMobile
     ? [currentIndex - 1, currentIndex, currentIndex + 1].filter(i => i >= 0 && i < items.length)
     : [currentIndex];
@@ -461,15 +461,15 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 ref={trackRef}
                 className="flex h-full will-change-transform"
                 style={{
-                  // Each slide is 100% width; translate by currentIndex + drag offset
+                  // 每张幻灯片宽度为 100%；根据 currentIndex 加拖动偏移量平移
                   transform: `translateX(calc(-${currentIndex * 100}% + ${swipeOffset}px))`,
                   transition: swipeOffset !== 0
-                    ? 'none'  // Instant tracking while dragging
-                    : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)', // Spring-like snap
+                    ? 'none'  // 拖动时即时跟随手指
+                    : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)', // 弹性回吸效果
                 }}
               >
                 {items.map((item, index) => {
-                  // Only render content for visible slides (perf optimization)
+                  // 仅渲染可见幻灯片的内容（性能优化）
                   const isVisible = visibleIndices.includes(index);
                   return (
                     <div
@@ -581,7 +581,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                         )
                   )}
                 >
-                  {/* Active glow underlay */}
+                  {/* 激活状态的辉光底层 */}
                   {isActive && (
                     <div className="absolute -inset-1 bg-primary/20 rounded-xl blur-md -z-10" />
                   )}
@@ -610,7 +610,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                       )}
                     </div>
                   )}
-                  {/* Subtle inner border for depth */}
+                  {/* 细微内描边，增强层次感 */}
                   <div className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 pointer-events-none" />
                 </button>
               );

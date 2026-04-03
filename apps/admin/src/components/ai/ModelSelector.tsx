@@ -105,8 +105,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
   const [isMobile, setIsMobile] = useState(false);
-  // Cache the last selected model/provider so the trigger always shows
-  // the selection even if query data is momentarily unavailable
+  // 缓存最近一次选中的模型/供应商，确保即使查询数据暂时不可用，触发器也能始终显示选中状态
   const selectedCacheRef = useRef<{ model: AiModel; provider: AiProvider } | null>(null);
 
   useEffect(() => {
@@ -119,7 +118,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   // 获取提供商
   const { data: providersResponse } = useQuery({
     queryKey: ['ai-providers'],
-    queryFn: () => aiProviderService.listProviders(true), // only enabled
+    queryFn: () => aiProviderService.listProviders(true), // 仅获取已启用的供应商
     staleTime: 30_000,
   });
 
@@ -160,8 +159,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       }
     });
 
-    // 如果提供商列表未包含筛选出的提供商（例如已禁用），
-    // 仍将模型分组在占位符下返回。
+    // 若供应商列表中不包含筛选出的供应商（例如已被禁用），
+    // 仍将模型归入占位符分组后返回。
     if (groups.length === 0 && filteredModels.length > 0 && providerCode) {
       const fallbackProvider = providers.find((p) => p.code === providerCode);
       if (fallbackProvider) {
@@ -215,7 +214,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     return providers.find((p) => p.code === selectedModel.provider_code) || null;
   }, [providers, selectedModel]);
 
-  // Resilient display: fall back to cached selection when query lookup fails
+  // 健壮性显示：当查询结果查找失败时，回退到缓存的选中状态
   const displayModel = selectedModel ?? (
     value && selectedCacheRef.current?.model.model_id === value
       ? selectedCacheRef.current.model
@@ -231,7 +230,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      // 检查点击是否在触发器内或在 Portal 内容内
+      // 检查点击是否在触发器内或在 Portal 内容中
       const isInsideTrigger = triggerRef.current?.contains(target);
       const isInsidePortal = (target as HTMLElement).closest('.model-selector-portal');
 
