@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Type, Clock, RotateCcw } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { getFontOption, type FontOption } from './FontPickerModal';
+import { getFontOption } from './FontPickerModal';
 
 const PREVIEW_DURATION = 2 * 60 * 1000; // 2 分钟
 
@@ -21,7 +20,6 @@ interface FontPreviewFloatProps {
 
 export default function FontPreviewFloat({
   previewFontId,
-  savedFontId,
   onClose,
   onApply,
   onSwitchPreview,
