@@ -144,7 +144,7 @@ function ContainerCard({
               {container.displayName}
             </span>
             <span className="text-[10px] text-[var(--text-muted)] font-mono ml-2">
-              CPU {container.cpuPercent.toFixed(1)}%
+              CPU {container.cpuPercent < 0.1 && container.cpuPercent > 0 ? container.cpuPercent.toFixed(2) : container.cpuPercent.toFixed(1)}%
             </span>
           </div>
           
