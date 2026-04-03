@@ -110,13 +110,13 @@ class AlertTitleWidget extends WidgetType {
       user-select: none;
     `;
 
-    // Icon
+    // 图标
     const iconSpan = document.createElement('span');
     iconSpan.style.cssText = `display: inline-flex; align-items: center; color: ${cfg.color};`;
     iconSpan.innerHTML = cfg.svg;
     wrapper.appendChild(iconSpan);
 
-    // Title text
+    // 标题文本
     const titleSpan = document.createElement('span');
     titleSpan.textContent = this.title;
     wrapper.appendChild(titleSpan);
@@ -405,7 +405,7 @@ function buildLineDecorations(view: EditorView): DecorationSet {
     }
   }
 
-  // Line decorations 按行号升序添加
+  // 行装饰器按行号升序添加
   const sorted = Array.from(lineClasses.entries()).sort((a, b) => a[0] - b[0]);
   for (const [lineNum, cls] of sorted) {
     const line = doc.line(lineNum);
@@ -421,7 +421,7 @@ function buildLineDecorations(view: EditorView): DecorationSet {
  */
 export function createBearDecorations(theme: string) {
   return [
-    // Range decorations（隐藏标记 + 行内代码背景 + 分割线 Widget + Alert WYSIWYG）
+    // 范围装饰器（隐藏标记 + 行内代码背景 + 分割线 Widget + Alert WYSIWYG）
     ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;
@@ -439,7 +439,7 @@ export function createBearDecorations(theme: string) {
       { decorations: (v) => v.decorations },
     ),
 
-    // Line decorations（代码块背景 + 引用块边框 + Alert 背景）
+    // 行装饰器（代码块背景 + 引用块边框 + Alert 背景）
     ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;
@@ -477,7 +477,7 @@ export function createBearDecorations(theme: string) {
         fontSize: '0.9em',
         color: theme === 'light' ? '#c2410c' : '#fb923c',
       },
-      // Alert block line decorations
+      // 警示块行装饰器
       '.cm-bear-alert-info': {
         borderLeft: `3px solid ${theme === 'light' ? '#3b82f6' : '#60a5fa'}`,
         paddingLeft: '12px !important',

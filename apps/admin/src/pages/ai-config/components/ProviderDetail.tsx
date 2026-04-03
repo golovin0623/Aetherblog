@@ -48,15 +48,15 @@ export default function ProviderDetail({
   const [showKey, setShowKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
-  // Reset state when provider changes
+  // 当提供商变更时重置状态
   useEffect(() => {
     setShowKey(false);
     setRevealedKey(null);
   }, [provider.code]);
 
-  // Computed
+  // 计算属性
   const preset = propPreset || getPresetProvider(provider.code);
-  // Allow user override from DB to take precedence over preset defaults
+  // 允许数据库中的用户覆盖优先于预设的默认值
   const rawDocUrl = provider.doc_url || preset?.docUrl || undefined;
   
   // 安全验证：只允许 http:// 或 https:// 协议，防止 javascript: XSS 攻击
