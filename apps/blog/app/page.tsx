@@ -13,9 +13,14 @@ export default async function HomePage() {
     getSiteSettings()
   ]);
 
+  // show_banner 控制欢迎页显示，关闭则直接展示文章列表
+  const showBanner = settings.show_banner !== 'false' && settings.show_banner !== false
+    && settings.welcome_enabled !== 'false' && settings.welcome_enabled !== false;
+
   return (
     <div className="min-h-screen">
-      {/* 顶部展示区 */}
+      {/* 顶部展示区 - 受 show_banner 控制 */}
+      {showBanner && (
       <section className="relative flex flex-col items-center justify-center min-h-screen px-4 text-center">
         {/* 背景效果 */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -87,17 +92,20 @@ export default async function HomePage() {
           )}
         </HeroParallaxContent>
       </section>
+      )}
 
       {/* 叠层书页效果容器 */}
-      <div className="relative z-20 -mt-[100px] pt-[100px] pb-8 bg-[var(--bg-primary)] dark:bg-[#101018] rounded-t-[46px] shadow-[0_-4px_12px_rgba(0,0,0,0.03),0_-12px_32px_rgba(0,0,0,0.05),0_-32px_80px_rgba(0,0,0,0.08)] dark:shadow-[0_-2px_8px_rgba(255,255,255,0.04),0_-8px_24px_rgba(255,255,255,0.03),0_-24px_64px_rgba(255,255,255,0.02)] border-t border-[var(--border-subtle)]/50 dark:border-white/10">
+      <div className={`relative z-20 pb-8 bg-[var(--bg-primary)] dark:bg-[#101018] ${showBanner ? '-mt-[100px] pt-[100px] rounded-t-[46px] shadow-[0_-4px_12px_rgba(0,0,0,0.03),0_-12px_32px_rgba(0,0,0,0.05),0_-32px_80px_rgba(0,0,0,0.08)] dark:shadow-[0_-2px_8px_rgba(255,255,255,0.04),0_-8px_24px_rgba(255,255,255,0.03),0_-24px_64px_rgba(255,255,255,0.02)] border-t border-[var(--border-subtle)]/50 dark:border-white/10' : ''}`}>
         
         {/* 隐藏的可点击热区，覆盖顶部的圆角书页区域，实现点击空白区域自动下滑 */}
-        <a 
+        {showBanner && (
+        <a
           href="#latest-posts"
           className="absolute top-0 left-0 w-full h-[100px] z-30 rounded-t-[46px] cursor-pointer"
           title="点击即可阅读最新内容"
           aria-label="点击下滑查看最新内容"
         />
+        )}
 
       {/* 叠层视差容器：滑动时消耗顶部 pt-100 的巨大空隙 */}
       <StackedParallax>

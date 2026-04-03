@@ -340,8 +340,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   
   // 应用主题到 DOM (Color Scheme & Class)
   // 注意：themeInitScript 已经处理了初始化，这里主要是响应后续变化
+  // 当 data-force-dark 存在时（后台强制暗黑模式），跳过应用以避免覆盖
   useEffect(() => {
     if (mounted) {
+      if (typeof document !== 'undefined' && document.documentElement.dataset.forceDark === 'true') {
+        return; // 强制暗黑模式下不覆盖
+      }
       applyTheme(resolvedTheme);
     }
   }, [resolvedTheme, mounted]);

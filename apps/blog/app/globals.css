@@ -5,6 +5,21 @@
 /* Note: Code syntax highlighting is now handled by Shiki in MarkdownRenderer */
 
 /* ========================================
+   Font Override System
+   当后台设置了非系统默认字体时，通过 CSS 变量
+   覆盖全局字体。FontProvider 会动态添加
+   .font-override 类和 --font-sans-override 变量。
+   ======================================== */
+html.font-override body {
+  font-family: var(--font-sans-override, var(--font-inter, system-ui, sans-serif));
+}
+
+/* 字体覆盖时，同步更新 prose 区域（文章正文） */
+html.font-override .prose {
+  font-family: var(--font-sans-override, inherit);
+}
+
+/* ========================================
    Theme CSS Variables (Light/Dark)
    ======================================== */
 

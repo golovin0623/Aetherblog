@@ -4,6 +4,8 @@ import './globals.css';
 import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
+import FontProvider from './components/FontProvider';
+import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 import { themeInitScript } from '@aetherblog/hooks';
@@ -47,23 +49,53 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const settings = await getSiteSettings();
+  const fontFamily = (settings.font_family as string) || 'system';
+  // 服务端预计算字体覆盖类和样式，避免 FOUC（字体闪烁）
+  const isCustomFont = fontFamily !== 'system';
+  const fontCssMap: Record<string, string> = {
+    'serif-elegant': "'Playfair Display', 'Noto Serif SC', Georgia, serif",
+    'lora': "'Lora', 'Noto Serif SC', Georgia, serif",
+    'merriweather': "'Merriweather', 'Noto Serif SC', Georgia, serif",
+  };
+  const fontOverrideStyle = isCustomFont && fontCssMap[fontFamily]
+    ? { '--font-sans-override': fontCssMap[fontFamily] } as React.CSSProperties
+    : undefined;
+
   return (
-    <html lang="zh-CN" suppressHydrationWarning data-scroll-behavior="smooth">
+    <html
+      lang="zh-CN"
+      suppressHydrationWarning
+      data-scroll-behavior="smooth"
+      className={isCustomFont ? 'font-override' : undefined}
+      style={fontOverrideStyle}
+    >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* 主题初始化脚本 - 防止 FOUC */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* 非系统字体预加载 Google Fonts 样式表 */}
+        {isCustomFont && fontFamily === 'lora' && (
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap" />
+        )}
+        {isCustomFont && fontFamily === 'merriweather' && (
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap" />
+        )}
       </head>
       <body className={`${inter.variable} ${playfair.variable} ${notoSerifSC.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
         <Providers>
-          <BlogHeader />
-          <ClientLayout>
-            {children}
-          </ClientLayout>
-          {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
-          <FloatingThemeToggle />
+          <SiteSettingsProvider settings={settings}>
+            <FontProvider initialFont={fontFamily}>
+              <BlogHeader />
+              <ClientLayout>
+                {children}
+              </ClientLayout>
+              {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
+              <FloatingThemeToggle />
+            </FontProvider>
+          </SiteSettingsProvider>
         </Providers>
       </body>
     </html>
