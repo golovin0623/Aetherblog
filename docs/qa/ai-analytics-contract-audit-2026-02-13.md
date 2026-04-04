@@ -1,5 +1,7 @@
 # AI 统计与日志三端契约审计（2026-02-13）
 
+> ⚠️ 本文档中的 Java 文件路径已过时，后端已迁移至 Go (`apps/server-go/internal/`)。
+
 ## 1. 审计范围
 - Admin（调用方）：`analyticsService`、`systemService`、Dashboard/RealtimeLogViewer。
 - Server（聚合方）：`StatsController`、`SystemMonitorController`、`StatsService`。

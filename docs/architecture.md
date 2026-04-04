@@ -68,16 +68,18 @@ AetherBlog/
 │   ├── ai-service/              # 🤖 AI 服务 (FastAPI + LiteLLM)
 │   └── server-go/               # 🔧 后端服务 (Go + Echo)
 │       ├── cmd/server/           #    应用启动入口 (main.go)
-│       ├── internal/api/         #    API 接口 / Handler / DTO
-│       ├── internal/common/      #    公共模块
-│       │   ├── core/             #    核心工具类
-│       │   ├── security/         #    JWT 认证、RBAC
-│       │   ├── redis/            #    Redis 缓存
-│       │   └── log/              #    日志管理
-│       ├── internal/service/     #    业务服务
-│       │   └── blog/             #    博客核心逻辑
-│       └── internal/ai/          #    AI 客户端
-│           └── client/           #    AI 服务 HTTP 客户端
+│       ├── cmd/migrate/          #    数据库迁移工具
+│       ├── internal/
+│       │   ├── config/           #    配置加载与管理
+│       │   ├── handler/          #    HTTP 请求处理器（控制层）
+│       │   ├── service/          #    业务逻辑层
+│       │   ├── repository/       #    数据访问层（数据库操作）
+│       │   ├── model/            #    数据模型定义
+│       │   ├── dto/              #    请求/响应 DTO
+│       │   ├── middleware/       #    中间件（JWT、CORS、限流）
+│       │   ├── server/           #    HTTP 服务器初始化与路由
+│       │   └── pkg/              #    内部公共工具包
+│       └── migrations/           #    SQL 迁移文件
 ├── packages/
 │   ├── ui/                      # 🎨 共享 UI 组件
 │   ├── hooks/                   # 🪝 共享 React Hooks
@@ -99,26 +101,37 @@ AetherBlog/
 ```
 cmd/server/main.go（Go 可执行入口）
     │
-    ├── internal/service/blog（业务逻辑层）
+    ├── internal/server（路由注册、服务器初始化）
     │       │
-    │       ├── internal/common/*（基础设施层）
+    │       ├── internal/handler（HTTP 请求处理器）
     │       │       │
-    │       │       └── internal/api（接口 / Handler / DTO 层）
+    │       │       ├── internal/service（业务逻辑层）
+    │       │       │       │
+    │       │       │       ├── internal/repository（数据访问层）
+    │       │       │       │       │
+    │       │       │       │       └── internal/model（数据模型）
+    │       │       │       │
+    │       │       │       └── internal/pkg/*（工具函数）
+    │       │       │
+    │       │       └── internal/dto（请求/响应 DTO）
     │       │
-    │       └── internal/ai/client（AI 服务客户端）
+    │       └── internal/middleware（JWT、CORS、限流等）
     │
-    └── [Go 显式初始化 (Wire/手动注入)]
+    └── internal/config（配置加载）
 ```
 
 ### 分层职责
 
 | 层级 | 模块 | 职责 |
 |------|------|------|
-| **入口层** | `cmd/server` | main.go 启动入口、配置加载、Go main entry |
-| **接口层** | `internal/api` | Handler、Request/Response DTO、枚举 |
-| **业务层** | `internal/service/blog` | Handler、Service、Repository、实体 |
-| **基础层** | `internal/common/*` | 安全、缓存、日志、通用工具 |
-| **集成层** | `internal/ai/client` | 调用外部 AI 服务的 HTTP 客户端 |
+| **入口层** | `cmd/server` | main.go 启动入口、配置加载 |
+| **服务器层** | `internal/server` | HTTP 服务器初始化、路由注册 |
+| **接口层** | `internal/handler` + `internal/dto` | HTTP 请求处理、请求/响应 DTO |
+| **业务层** | `internal/service` | 核心业务逻辑 |
+| **数据层** | `internal/repository` + `internal/model` | 数据库访问、数据模型 |
+| **中间件层** | `internal/middleware` | JWT 认证、CORS、限流 |
+| **基础层** | `internal/pkg/*` | 分页、响应格式、JWT 工具、图片处理、存储 |
+| **配置层** | `internal/config` | 配置管理（koanf） |
 
 ### 核心 Handler
 

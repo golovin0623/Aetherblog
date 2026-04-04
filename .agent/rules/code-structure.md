@@ -185,15 +185,13 @@ Backend API
 
 ### 5.2 后端数据流
 ```
-Controller
+Handler (HTTP 入口, Echo context)
     ↓ 调用
-Service (接口)
-    ↓ 实现
-ServiceImpl
+Service (业务逻辑)
     ↓ 调用
-Repository (JPA)
+Repository (sqlx 数据访问)
     ↓ 操作
-Database
+Database (PostgreSQL / Redis)
 ```
 
 ---
