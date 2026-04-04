@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **AetherBlog** is an intelligent blog system combining AI capabilities with modern web technologies. It follows a "Cognitive Elegance" design philosophy inspired by high-end SaaS products (Linear, Raycast) and atmospheric web design (Vercel).
 
 **Tech Stack:**
-- Frontend: React 19, Next.js 15 (blog), Vite (admin)
-- Backend: Go 1.24, Echo framework
+- Frontend: React 19.0.0, Next.js 15.1.3 (blog), Vite 6.0.6 (admin), TypeScript 5.7.2
+- Backend: Go 1.24.1, Echo v4.15.1
 - AI: 独立 AI 服务 (FastAPI + LiteLLM)
 - Database: PostgreSQL 17 with pgvector
 - Cache: Redis 7
@@ -105,7 +105,6 @@ docker compose down
 AetherBlog/
 ├── .agent/rules/      # AI agent behavior rules and design docs
 ├── .github/workflows/ # CI/CD pipelines (ci-cd.yml, quick-build.yml)
-├── .jules/            # External bot configurations (bolt, sentinel)
 ├── apps/
 │   ├── blog/          # Next.js 15 blog frontend
 │   ├── admin/         # Vite + React 19 admin dashboard
@@ -148,11 +147,11 @@ apps/server-go/
 ### Frontend Package System
 
 **Workspace packages** (use `workspace:*` protocol):
-- `@aetherblog/ui` - All UI components (Button, Card, Modal, Toast, etc.)
-- `@aetherblog/hooks` - Shared hooks (useDebounce, useApi, etc.)
-- `@aetherblog/types` - TypeScript types (Post, User, Category, etc.)
-- `@aetherblog/utils` - Utilities (cn, formatDate, etc.)
-- `@aetherblog/editor` - Markdown editor
+- `@aetherblog/ui` - All UI components (14 exported): `Button`, `Card`, `Input`, `Modal`, `ConfirmModal`, `Toast`, `Avatar`, `Badge`, `Tag`, `Skeleton`, `Dropdown`, `Tooltip`, `Textarea` + layout helpers
+- `@aetherblog/hooks` - Shared hooks (16 exported): `useDebounce`, `useThrottle`, `useCopyToClipboard`, `useLocalStorage`, `useSessionStorage`, `useAsync`, `useMediaQuery`, `useClickOutside`, `useScrollLock`, `useIntersectionObserver`, `useKeyPress`, `useWindowSize`, `usePrevious`, `useToggle`, `useScrollPosition`, `useTheme` + `ThemeToggle` component
+- `@aetherblog/types` - TypeScript types (Post, User, Category, etc.) organized under `api/`, `models/`, `ai/`
+- `@aetherblog/utils` - Utilities organized under: `format/` (date, number, string formatters), `url/` (URL builders), `storage/` (local/session storage helpers), `helpers/` (`cn`, `clsx`, and other utilities)
+- `@aetherblog/editor` - Markdown editor (CodeMirror-based)
 
 **Import pattern:**
 ```typescript
@@ -189,24 +188,73 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 
 | Dependency | Version | Notes |
 |-----------|---------|-------|
-| Go | 1.24 | Language version |
-| Echo | v4 | HTTP framework |
-| sqlx | latest | Database driver |
-| go-redis | v9 | Redis client |
-| golang-jwt | v5 | JWT handling |
-| golang-migrate | v4 | DB migrations |
+| Go | 1.24.1 | Language version |
+| Echo | v4.15.1 | HTTP framework |
+| lib/pq | v1.12.0 | PostgreSQL driver |
+| sqlx | v1.4.0 | Database helper |
+| go-redis/v9 | v9.18.0 | Redis client |
+| golang-jwt/jwt/v5 | v5.3.1 | JWT handling |
+| golang-migrate/v4 | v4.19.1 | DB migrations |
+| zerolog | v1.35.0 | Structured logging |
+| validator/v10 | v10.30.1 | Input validation |
+| golang.org/x/crypto | v0.46.0 | Cryptography |
+| imaging | v1.6.2 | Image processing |
+| koanf/v2 | v2.3.4 | Configuration |
+| aws-sdk-go-v2/service/s3 | v1.97.3 | S3-compatible storage |
+
+**Frontend Key Versions:**
+
+| Package | Admin | Blog |
+|---------|-------|------|
+| react | 19.0.0 | 19.0.0 |
+| next | - | 15.1.3 |
+| vite | 6.0.6 | - |
+| typescript | 5.7.2 | - |
+| tailwindcss | 3.4.17 | - |
+| @tanstack/react-query | 5.62.8 | - |
+| react-router-dom | 7.1.1 | - |
+| zustand | 5.0.2 | - |
+| framer-motion | 11.15.0 | - |
+| recharts | 2.15.0 | - |
+| zod | 4.3.5 | - |
+| @lobehub/icons | 4.1.0 | - |
+| shiki | - | 1.1.0 |
+| mermaid | - | 11.12.2 |
+| katex | - | 0.16.27 |
 
 ## API Structure
 
-### Backend API Endpoints
+### Backend API Endpoints (23 Handler Modules)
 
-| Module | Prefix | Example |
-|--------|--------|---------|
-| Auth | `/v1/auth/*` | `/v1/auth/login` |
-| Public | `/v1/public/*` | `/v1/public/posts` |
-| Admin | `/v1/admin/*` | `/v1/admin/posts` |
-| AI | `/api/v1/ai/*` | `/api/v1/ai/summary` |
-| Stats | `/v1/admin/stats/*` | `/v1/admin/stats/dashboard` |
+| Handler | Prefix | Key Endpoints |
+|---------|--------|---------------|
+| auth_handler | `/v1/auth/*` | POST /login, /register, /refresh, /logout; GET /me; POST /change-password; PUT /profile, /avatar |
+| post_handler | `/v1/admin/posts/*` + `/v1/public/posts/*` | Admin CRUD + publish + auto-save; 5 public routes |
+| comment_handler | `/v1/admin/comments/*` + `/v1/public/*` | 12 admin routes + 1 public route |
+| media_handler | `/v1/admin/media/*` | 18 routes: upload, list, recycle bin, versions |
+| folder_handler | `/v1/admin/folders/*` | 7 routes: tree, CRUD, move |
+| permission_handler | `/v1/admin/folders/*/permissions` | 4 routes: folder permission management |
+| category_handler | `/v1/admin/categories/*` + `/v1/public/*` | 6 routes |
+| tag_handler | `/v1/admin/tags/*` + `/v1/public/*` | 5 routes |
+| ai_handler | `/v1/admin/ai/*` | 9 business endpoints + 7 config endpoints + provider proxy |
+| stats_handler | `/v1/admin/stats/*` | 5 endpoints: dashboard, posts, views, comments, trends |
+| system_monitor_handler | `/v1/admin/monitor/*` | 15 system monitoring endpoints |
+| site_handler | `/v1/admin/site/*` | 3 endpoints |
+| site_setting_handler | `/v1/admin/settings/*` | 5 endpoints |
+| friend_link_handler | `/v1/admin/friends/*` + `/v1/public/*` | 10 endpoints |
+| activity_handler | `/v1/admin/activities/*` | 3 endpoints |
+| storage_provider_handler | `/v1/admin/storage/*` | 8 endpoints |
+| archive_handler | `/v1/public/archives/*` | 2 endpoints |
+| migration_handler | `/v1/admin/migration/*` | 1 endpoint (Vanblog import) |
+| media_tag_handler | `/v1/admin/media-tags/*` | Media tag management |
+| system_handler | `/v1/system/*` | GET /system/time |
+| visitor_handler | `/v1/admin/visitors/*` | Visitor recording |
+| version_handler | `/v1/admin/versions/*` | File version management |
+| ai_config_handler | `/v1/admin/ai/config/*` | providers/models/credentials/prompts/tasks CRUD |
+
+**Database Migrations:** 28 total, latest `000028` (allow_preserve_updated_at).
+Key tables added in 000020-000028: `ai_credentials`, `ai_task_types`, `ai_task_routing`, `activity_events`.
+Vanblog migration fields on `posts`: `is_hidden`, `source_key`, `legacy_author_name`, `legacy_visited_count`, `legacy_copyright`.
 
 ### Frontend Service Layer
 
@@ -217,6 +265,16 @@ Services use axios and follow naming: `{module}Service.ts`
 - `tagService.ts` - Tags
 - `mediaService.ts` - Media uploads
 - `analyticsService.ts` - Statistics
+
+### Admin Frontend Pages (`apps/admin/src/pages/`)
+
+Main pages (14+): Dashboard, Posts, CreatePost, EditPost, AiWritingWorkspace, Categories, Comments, Friends, Media, Settings, Migration, Monitor, Analytics, AiConfig, AiTools
+
+Sub-modules: `ai-config/` (16 components), `ai-tools/` (7 tool pages), `media/` (13+ components), `posts/components/` (8+ components), `auth/` (2 pages)
+
+### Blog Frontend Pages (`apps/blog/app/`)
+
+6 main pages + 15+ components: ArticleCard, FeaturedPost, CommentSection, SearchPanel, TimelineTree, etc.
 
 ## Design System ("Cognitive Elegance")
 
@@ -337,6 +395,29 @@ Go backend → HTTP client → FastAPI ai-service (Python)
 - **`apps/server-go/`** - Go backend with HTTP client that calls the external AI service
 - **Test coverage requirement:** 80% (configured in `pyproject.toml`)
 
+#### AI Service Capabilities
+
+**Supported Providers:** OpenAI, Anthropic, Google, Azure, LiteLLM, Custom
+
+**Supported Model Types:** `chat`, `embedding`, `image`, `audio`, `reasoning`, `tts`, `stt`, `realtime`, `text2video`, `text2music`, `code`, `completion`
+
+**Business Endpoints** (all support streaming via `/stream` suffix):
+- `POST /api/v1/ai/summary[/stream]` - Article summarization
+- `POST /api/v1/ai/tags[/stream]` - Auto tag generation
+- `POST /api/v1/ai/titles[/stream]` - Title suggestions
+- `POST /api/v1/ai/polish[/stream]` - Text polishing
+- `POST /api/v1/ai/outline[/stream]` - Outline generation
+- `POST /api/v1/ai/translate[/stream]` - Translation
+
+**Configuration Endpoints** (CRUD for AI system configuration):
+- Providers: `/api/v1/ai/config/providers`
+- Models: `/api/v1/ai/config/models`
+- Credentials: `/api/v1/ai/config/credentials`
+- Prompts: `/api/v1/ai/config/prompts`
+- Tasks: `/api/v1/ai/config/tasks`
+
+**Nginx routing for AI:** `/api/v1/ai/*` proxied to FastAPI:8000 with 600s timeout and SSE support (`X-Accel-Buffering: no`)
+
 ### CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:
@@ -387,7 +468,12 @@ docker-compose -f docker-compose.prod.yml logs -f
 ## Nginx Gateway
 
 Gateway configurations in `nginx/`:
-- **`nginx.conf`** - Production: routes `/` to blog, `/admin/` to admin, `/api` to backend
+- **`nginx.conf`** - Production routing rules:
+  - `/api/v1/ai/*` → ai_service (FastAPI:8000), timeout 600s, SSE support (`X-Accel-Buffering: no`)
+  - `/admin/` → admin (Vite:5173 / compiled:80)
+  - `/api/` → backend (Go:8080)
+  - `/` → blog (Next.js:3000)
+  - `client_max_body_size: 10GB` (for media uploads)
 - **`nginx.dev.conf`** - Development: same routing with hot reload proxying
 
 Used by `./start.sh --gateway` (dev) and `./start.sh --prod` (production) modes.
@@ -481,3 +567,42 @@ cd apps/admin && npm run dev -- --host 0.0.0.0   # 管理后台 http://<Mac IP>:
 | 触控目标 | 按钮最小触控区域 44×44px |
 | 编辑器默认模式 | 移动端默认 `'edit'`（源码模式），桌面端默认 `'split'`（分屏模式） |
 | 响应式修改 | 仅调整移动端样式，不影响桌面端布局 |
+
+## 📄 文档维护规范
+
+### 强制同步触发器（Mandatory Sync Triggers）
+以下操作发生时，**必须**同步更新对应文档，否则视为未完成交付：
+
+| 操作类型 | 必须更新的文档 |
+|---------|--------------|
+| 新增 API endpoint（handler 函数） | `docs/architecture.md` API节 + `CLAUDE.md` API表格 |
+| 修改数据库 Schema（新建migration） | `docs/architecture.md` 数据库节 + 更新迁移版本号 |
+| 新增/修改共享 UI 组件（packages/ui） | `CLAUDE.md` 组件列表 + `.agent/rules/ui_rules.md` |
+| 新增 React Hook（packages/hooks） | `CLAUDE.md` hooks列表 + `.agent/rules/code-structure.md` |
+| 修改 Docker 配置 | `docs/deployment.md` |
+| 修改 Nginx 配置 | `.agent/rules/nginx-guide.md` + `CLAUDE.md` Nginx章节 |
+| 完成功能里程碑 | `CHANGELOG.md` + `系统需求企划书及详细设计.md` §1.6 Gap Analysis |
+| 新增 npm 依赖（packages级别） | `CLAUDE.md` 依赖管理节 |
+| 新增 AI 供应商或模型 | `CLAUDE.md` AI服务能力节 + `docs/AI_MODULE_PLAN_V2.md` |
+
+### 周期性文档健康检查
+每完成一个完整功能模块后执行：
+1. 运行 `/doc` 命令触发文档校准流程
+2. 确认 `CHANGELOG.md` 已录入本次变更（不得落后超过1个功能模块）
+3. 确认 `系统需求企划书及详细设计.md` §1.6 Gap Analysis 已更新
+4. 执行 `git diff --stat HEAD~1` 检查是否有代码变更但无对应文档变更
+
+### 文档质量红线（Doc Quality Redlines）
+- ❌ **禁止**：提交"修改了代码但未更新对应文档"的 commit
+- ❌ **禁止**：CHANGELOG.md 落后当前 HEAD 超过 1 个功能模块
+- ❌ **禁止**：新增 API endpoint 但不在 `docs/architecture.md` 中记录
+- ✅ **要求**：每个 PR 描述中必须包含：`📄 文档影响: [已更新 X.md] 或 [无需更新，原因: ...]`
+- ✅ **要求**：新功能开发前先查阅 `系统需求企划书及详细设计.md` 对应 §X.X，并在代码注释中引用
+
+### 文档版本对齐检查表
+每次 release 前必须完成：
+- [ ] CLAUDE.md API 端点表与实际 handler 文件一致
+- [ ] CLAUDE.md 依赖版本表与 go.mod / package.json 一致
+- [ ] docs/architecture.md 数据库节与最新 migration 一致
+- [ ] CHANGELOG.md 包含本次 release 所有变更
+- [ ] .agent/rules/ 规则与实际代码模式一致

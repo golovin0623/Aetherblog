@@ -11,15 +11,17 @@ AetherBlog/
 ├── apps/                          # 📱 应用层
 │   ├── blog/                      #    └─ 博客前台 (Next.js 15)
 │   ├── admin/                     #    └─ 管理后台 (Vite + React 19)
-│   └── server-go/                 #    └─ 后端服务 (Go 1.24 + Echo)
+│   ├── ai-service/                #    └─ AI 服务 (Python FastAPI + LiteLLM) :8000
+│   └── server-go/                 #    └─ 后端服务 (Go 1.24 + Echo) :8080
 │
 ├── packages/                      # 📦 共享包 (Monorepo)
-│   ├── ui/                        #    └─ 通用 UI 组件
-│   ├── hooks/                     #    └─ 共享 React Hooks
+│   ├── ui/                        #    └─ 通用 UI 组件 (13个)
+│   ├── hooks/                     #    └─ 共享 React Hooks (16个)
 │   ├── types/                     #    └─ TypeScript 类型定义
 │   ├── utils/                     #    └─ 工具函数
 │   └── editor/                    #    └─ Markdown 编辑器
 │
+├── nginx/                         # 🔀 网关配置 (nginx.conf, nginx.dev.conf)
 ├── docker-compose.yml             # 🐳 中间件编排
 ├── pnpm-workspace.yaml            # 📋 pnpm 工作区
 └── 系统需求企划书及详细设计.md     # 📚 设计文档
@@ -33,8 +35,8 @@ AetherBlog/
 
 | 包名 | 用途 | 引用方式 |
 |:-----|:-----|:---------|
-| `@aetherblog/ui` | Button, Card, Modal, Toast 等 UI 组件 | `import { Button } from '@aetherblog/ui'` |
-| `@aetherblog/hooks` | useDebounce, useApi 等 Hooks | `import { useDebounce } from '@aetherblog/hooks'` |
+| `@aetherblog/ui` | Button, Card, Input, Modal, ConfirmModal, Toast, Avatar, Badge, Tag, Skeleton, Dropdown, Tooltip, Textarea（13个组件） | `import { Button } from '@aetherblog/ui'` |
+| `@aetherblog/hooks` | useDebounce, useThrottle, useCopyToClipboard, useLocalStorage, useSessionStorage, useAsync, useMediaQuery, useClickOutside, useScrollLock, useIntersectionObserver, useKeyPress, useWindowSize, usePrevious, useToggle, useScrollPosition, useTheme, ThemeToggle（16 hooks + 1组件） | `import { useDebounce } from '@aetherblog/hooks'` |
 | `@aetherblog/types` | Post, User, Category 等类型 | `import type { Post } from '@aetherblog/types'` |
 | `@aetherblog/utils` | cn, formatDate 等工具函数 | `import { cn } from '@aetherblog/utils'` |
 | `@aetherblog/editor` | Markdown 编辑器组件 | `import { Editor } from '@aetherblog/editor'` |
@@ -49,17 +51,71 @@ src/
 ├── pages/                         # 页面组件
 │   ├── DashboardPage.tsx          # 仪表盘
 │   ├── PostsPage.tsx              # 文章管理
+│   ├── CreatePostPage.tsx         # 创建文章
+│   ├── EditPostPage.tsx           # 编辑文章
+│   ├── AiWritingWorkspacePage.tsx # AI 写作工作台
 │   ├── CategoriesPage.tsx         # 分类标签
-│   ├── MediaPage.tsx              # 媒体库
 │   ├── CommentsPage.tsx           # 评论管理
+│   ├── FriendsPage.tsx            # 友链管理
+│   ├── MediaPage.tsx              # 媒体库
 │   ├── SettingsPage.tsx           # 系统设置
+│   ├── MigrationPage.tsx          # 数据迁移
+│   ├── MonitorPage.tsx            # 系统监控
+│   ├── AnalyticsPage.tsx          # 统计分析
 │   ├── auth/                      # 认证页面
-│   ├── posts/                     # 文章子模块
-│   │   ├── CreatePostPage.tsx     # 创建文章
-│   │   └── EditPostPage.tsx       # 编辑文章
-│   └── ai-config/                 # 🤖 AI 配置中心
-│       ├── AiConfigPage.tsx       # 主页面 (三栏布局)
-│       └── components/            # 独有组件 (ProviderSidebar 等)
+│   ├── posts/                     # 文章编辑子模块
+│   │   └── components/            # 编辑器相关组件
+│   │       ├── PostEditor.tsx
+│   │       ├── AiAssistant.tsx
+│   │       ├── AiSidePanel.tsx
+│   │       ├── AiToolbar.tsx
+│   │       ├── SelectionAiToolbar.tsx
+│   │       ├── SlashCommandMenu.tsx
+│   │       ├── EditorSettingsPanel.tsx
+│   │       └── AlertBlockDropdownButton.tsx
+│   ├── ai-config/                 # AI 配置中心 (三栏布局)
+│   │   ├── AiConfigPage.tsx       # 主页面
+│   │   ├── components/            # 独有组件
+│   │   │   ├── ProviderSidebar.tsx
+│   │   │   ├── ProviderDetail.tsx
+│   │   │   ├── ModelList.tsx
+│   │   │   ├── ModelCard.tsx
+│   │   │   ├── ProviderIcon.tsx
+│   │   │   ├── ProviderIconPickerDialog.tsx
+│   │   │   ├── ModelConfigDialog.tsx
+│   │   │   ├── ModelSortDialog.tsx
+│   │   │   ├── ConnectionTest.tsx
+│   │   │   ├── CredentialForm.tsx
+│   │   │   └── SortDialog.tsx
+│   │   └── hooks/                 # AI 配置专用 Hooks
+│   │       ├── useProviders.ts
+│   │       ├── useModels.ts
+│   │       └── useCredentials.ts
+│   ├── ai-tools/                  # AI 工具页面
+│   │   ├── AIToolsPage.tsx        # 工具集主页
+│   │   ├── ContentRewriter.tsx    # 内容改写
+│   │   ├── QA.tsx                 # 问答
+│   │   ├── SeoOptimizer.tsx       # SEO 优化
+│   │   ├── Summary.tsx            # 摘要生成
+│   │   ├── Tagger.tsx             # 智能标签
+│   │   └── TextCleaner.tsx        # 文本清洗
+│   └── media/                     # 媒体库子模块
+│       └── components/            # 媒体库组件
+│           ├── MediaGrid.tsx
+│           ├── MediaList.tsx
+│           ├── VirtualMediaGrid.tsx
+│           ├── MediaDetail.tsx
+│           ├── FolderTree.tsx
+│           ├── FolderDialog.tsx
+│           ├── UploadProgress.tsx
+│           ├── ShareDialog.tsx
+│           ├── TrashDialog.tsx
+│           ├── VersionHistory.tsx
+│           ├── ImageEditor.tsx
+│           ├── KeyboardShortcutsPanel.tsx
+│           ├── TagManager.tsx
+│           ├── TagFilterBar.tsx
+│           └── MoveDialog.tsx
 ├── components/                    # 业务组件
 │   ├── layout/                    # 布局组件
 │   │   ├── AdminLayout.tsx        # 后台布局
@@ -72,7 +128,9 @@ src/
 │   ├── authService.ts             # 认证服务
 │   ├── postService.ts             # 文章服务
 │   ├── categoryService.ts         # 分类服务
-│   └── tagService.ts              # 标签服务
+│   ├── tagService.ts              # 标签服务
+│   ├── mediaService.ts            # 媒体服务
+│   └── analyticsService.ts        # 统计服务
 ├── stores/                        # 状态管理 (Zustand)
 │   ├── authStore.ts               # 认证状态
 │   └── settingsStore.ts           # 设置状态
@@ -94,9 +152,38 @@ app/
 ├── friends/page.tsx               # 友链页
 ├── timeline/page.tsx              # 时间轴页
 ├── components/                    # 博客前台业务组件
+│   ├── ArticleCard.tsx
+│   ├── FeaturedPost.tsx
+│   ├── CommentSection.tsx
+│   ├── PostNavigation.tsx
+│   ├── TableOfContents.tsx
+│   ├── MarkdownRenderer.tsx
+│   ├── SearchPanel.tsx
+│   ├── TimelineTree.tsx
+│   ├── AuthorProfileCard.tsx
+│   ├── FriendCard.tsx
+│   ├── AlertBlock.tsx
+│   ├── ScrollToTop.tsx
+│   ├── VisitTracker.tsx
+│   ├── ViewModeToggle.tsx
+│   ├── FloatingThemeToggle.tsx
 │   └── __tests__/                 # 组件测试
 └── lib/                           # 前台工具与 API 适配层
 ```
+
+#### apps/ai-service/ (AI 服务 - Python/FastAPI)
+```
+apps/ai-service/
+├── app/
+│   ├── main.py                    # FastAPI 入口
+│   ├── api/routes/                # 路由 (providers, models, chat 等)
+│   └── core/                      # 配置、中间件
+├── pyproject.toml                 # 依赖与配置
+└── requirements.txt               # 运行时依赖
+```
+- 端口: 8000
+- 支持供应商: OpenAI, Anthropic, Google, Azure, LiteLLM, Custom
+- 模型类型: chat, embedding, image, audio, reasoning, tts, stt, realtime, text2video, text2music, code, completion
 
 ---
 
@@ -125,7 +212,34 @@ apps/server-go/
     └── ...
 ```
 
-### 3.2 层次依赖规则
+### 3.2 已实现模块（23个 Handler）
+
+| 模块 | Handler | 说明 |
+|:-----|:--------|:-----|
+| auth | AuthHandler | 认证（登录/注册/Token刷新）|
+| post | PostHandler | 文章 CRUD |
+| comment | CommentHandler | 评论管理 |
+| media | MediaHandler | 媒体文件管理 |
+| folder | FolderHandler | 媒体文件夹管理 |
+| permission | PermissionHandler | 权限管理 |
+| category | CategoryHandler | 分类管理 |
+| tag | TagHandler | 标签管理 |
+| ai | AiHandler | AI 功能代理（转发至 ai-service）|
+| stats | StatsHandler | 统计数据 |
+| system_monitor | SystemMonitorHandler | 系统监控 |
+| site | SiteHandler | 站点信息 |
+| site_setting | SiteSettingHandler | 站点设置 |
+| friend_link | FriendLinkHandler | 友链管理 |
+| activity | ActivityHandler | 活动记录 |
+| storage_provider | StorageProviderHandler | 存储提供商配置 |
+| archive | ArchiveHandler | 文章归档 |
+| migration | MigrationHandler | 数据迁移 |
+| media_tag | MediaTagHandler | 媒体标签 |
+| system | SystemHandler | 系统管理 |
+| visitor | VisitorHandler | 访客统计 |
+| version | VersionHandler | 版本信息 |
+
+### 3.4 层次依赖规则
 
 ```
 handler (HTTP 入口)
@@ -377,3 +491,23 @@ src/
 ### 11.3 CHANGELOG
 - Changed: Blog 结构树与 alias 规则同步到仓库现状。
 - Fixed: 消除文章详情页 `../../../` 深层相对导入偏差。
+
+---
+
+## 12. 2026-04-04 结构同步记录 (v1.2.3)
+
+### 12.1 本次更新内容
+- 新增 `apps/ai-service/` 至项目总体架构树（Python FastAPI + LiteLLM，端口 8000）。
+- 新增 `nginx/` 目录至项目总体架构树。
+- 共享包导出清单精确化：`@aetherblog/ui` 13个组件，`@aetherblog/hooks` 16个hook+1组件。
+- Admin `pages/` 目录树扩充：新增 `ai-tools/`（6个工具页）、`posts/components/`（8个编辑器组件）、`media/components/`（15个组件）的完整列表。
+- Blog `components/` 目录：补充15+个实际组件文件名。
+- 后端模块补充：新增 §3.2 已实现模块列表（23个 Handler）。
+- 修正 §5.2 后端数据流：移除 Java/JPA 残留描述，改为 Go/sqlx 正确表述。
+
+### 12.2 CHANGELOG
+- Added: `apps/ai-service/` 结构说明。
+- Added: 后端 23 个 Handler 模块列表。
+- Changed: 共享包导出精确列举（UI 13个，Hooks 16个）。
+- Changed: Admin `pages/` 目录树精确化（ai-tools, posts/components, media/components）。
+- Fixed: 后端数据流描述移除 Java/JPA 遗留，改为 Go/sqlx。

@@ -4,50 +4,44 @@ trigger: always_on
 
 ## 📦 依赖管理清单
 
-### 前端依赖 (packages.json)
+### 前端依赖 (精确版本 — 以实际 package.json 为准)
 
 ```json
 {
   "核心框架": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next": "^15.0.0"
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "next": "^15.0.0",
+    "react-router-dom": "7.1.1"
   },
   "构建工具": {
-    "vite": "^5.4.0",
-    "typescript": "^5.4.0",
-    "turbo": "^2.0.0"
+    "vite": "6.0.6",
+    "typescript": "5.7.2"
   },
   "UI与样式": {
-    "tailwindcss": "^4.0.0",
-    "@radix-ui/react-*": "latest",
-    "class-variance-authority": "^0.7.0",
+    "tailwindcss": "3.4.17",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0"
   },
   "动画": {
-    "framer-motion": "^11.0.0"
+    "framer-motion": "11.15.0"
   },
   "状态管理": {
-    "zustand": "^4.5.0",
-    "@tanstack/react-query": "^5.28.0"
+    "zustand": "5.0.2",
+    "@tanstack/react-query": "5.62.8"
   },
-  "编辑器": {
-    "@uiw/react-md-editor": "^4.0.0",
-    "shiki": "^1.1.0",
-    "katex": "^0.16.0",
-    "mermaid": "^10.8.0"
+  "图标": {
+    "lucide-react": "^0.469.0",
+    "@lobehub/icons": "4.1.0"
   },
   "工具": {
     "date-fns": "^3.3.0",
-    "lucide-react": "^0.344.0",
-    "sonner": "^1.4.0"
-  },
-  "HTTP": {
     "axios": "^1.6.0"
   }
 }
 ```
+
+> ⚠️ **注意**: `tailwindcss` 实际版本为 **3.4.x**，非 v4。`zustand` 为 **5.x** (API 与 4.x 有差异)。`@lobehub/icons` 用于 AI 品牌图标，**非可选依赖**。
 
 ### AI 服务依赖 (requirements.txt)
 
@@ -110,7 +104,7 @@ github.com/rs/zerolog                // 结构化日志 (零分配、高性能)
 │                                                                         │
 │  必需软件:                                                               │
 │  ├─ Node.js          >= 20.0.0 (LTS)                                    │
-│  ├─ pnpm             >= 9.0.0                                           │
+│  ├─ pnpm             >= 9.0.0 (推荐 pnpm@9.15.0)                        │
 │  ├─ Go               >= 1.24                                            │
 │  ├─ Python           >= 3.12 (AI Service)                               │
 │  ├─ Docker           >= 24.0.0                                          │
@@ -278,6 +272,13 @@ func (s *PostService) GetPostDetail(ctx context.Context, idOrSlug string) (*dto.
 // - 包名: lowercase (service, handler, repository)
 ```
 
+> **命名规范**:
+> - Handler: `PascalCase + Handler` (PostHandler)
+> - Service: `PascalCase + Service` (PostService)
+> - Repo: `PascalCase + Repo` (PostRepo)
+> - 方法: camelCase (getPostDetail)
+> - 常量: UPPER_SNAKE_CASE (MAX_PAGE_SIZE)
+
 ---
 ## 🌐 API URL 配置规范 (重要!)
 
@@ -316,3 +317,13 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';  // 默认相对路
 const API = 'http://backend:8080/api';  // 浏览器无法解析
 const API = 'http://localhost:8080/api'; // 生产环境无法访问
 ```
+
+---
+
+## 2026-04-04 依赖校准记录 (v1.0.2)
+
+### 变更内容
+- **Fixed**: 前端依赖版本精确化 — `vite` 6.0.6、`tailwindcss` 3.4.17、`zustand` 5.0.2、`@tanstack/react-query` 5.62.8、`framer-motion` 11.15.0
+- **Added**: `react-router-dom@7.1.1`、`@lobehub/icons@4.1.0` 补充到依赖清单（原清单遗漏）
+- **Fixed**: 移除 Java/Spring 代码规范模板，替换为 Go 规范（后端已完全为 Go 1.24）
+- **Removed**: `turbo`（项目实际未使用 Turborepo）、`@uiw/react-md-editor`（已替换为自定义 CodeMirror 编辑器）

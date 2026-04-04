@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Blog (Next.js :3000)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:blog"],
+      "port": 3000
+    },
+    {
+      "name": "Admin (Vite :5173)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:admin"],
+      "port": 5173
+    },
+    {
+      "name": "Backend (Go :8080)",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "./cmd/server"],
+      "port": 8080
+    },
+    {
+      "name": "AI Service (FastAPI :8000)",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["app.main:app", "--reload", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

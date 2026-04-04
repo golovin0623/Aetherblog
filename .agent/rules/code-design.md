@@ -350,6 +350,7 @@ pnpm add xxx  # 说明用途
 
 后端:
 - go@1.24 (echo/v4, sqlx, golang-migrate/v4, golang-jwt/v5, koanf/v2, zerolog)
+- python@3.12 (fastapi, litellm, uvicorn)
 - ...
 
 【遗留问题】
@@ -406,9 +407,9 @@ pnpm add xxx  # 说明用途
 
 ## [v2.0.0] - 2026-01-14
 ### Changed
-- §2: 升级技术栈至 Spring Boot 4.0 + JDK 25
-- §2.4: 升级 Spring AI 至 2.0.0-M1
-- §Global: 迁移 JSON 库至 Jackson 3.x (tools.jackson)
+- §2: 技术栈已完全迁移至 Go 1.24 (Echo v4) + Python 3.12 (FastAPI + LiteLLM)，Java/Spring Boot 不再适用
+- §2.4: 移除 Spring AI，采用独立 Python AI 服务 (FastAPI + LiteLLM)
+- §Global: 后端 JSON 处理由 Go 标准库 encoding/json 完成
 
 > ⚠️ 注意: v2.0.0 描述的 Spring Boot 4.0 + JDK 25 架构已在 2026-03 被全面替换为 Go 1.24 + Echo v4。
 > 当前后端技术栈: Go 1.24, Echo v4, sqlx, go-redis v9, golang-jwt v5, koanf v2, zerolog

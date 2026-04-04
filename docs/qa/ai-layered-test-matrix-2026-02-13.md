@@ -15,8 +15,8 @@
 ## 建议执行命令
 ```bash
 # 后端
-cd apps/server
-mvn -pl aetherblog-service/blog-service -Dtest=StatsServiceTest,LogViewerServiceTest test
+cd apps/server-go
+go test ./internal/service/... -run "TestStatsService|TestLogViewerService" -v
 
 # AI Service
 cd apps/ai-service
@@ -26,3 +26,5 @@ python3 -m pytest -o addopts='' tests/test_usage_logger_metrics.py tests/test_me
 # 前端契约回归（当前仓库默认门禁）
 pnpm --filter @aetherblog/admin build
 ```
+
+> 注：后端引用已由 Java/Maven → Go 1.24.1/Echo v4 更新（2026-04-04）

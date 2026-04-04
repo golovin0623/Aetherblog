@@ -42,7 +42,12 @@ AetherBlog 项目文档导航。
 | 文档 | 说明 |
 |------|------|
 | [Docker 清理指南](./DOCKER_CLEANUP_GUIDE.md) | Docker 镜像 / 容器清理操作 |
-| [QA 检查清单](./qa/) | 质量保障检查矩阵与发布守卫 |
+| [QA 文档索引](./qa/README.md) | QA 文档总览、有效性状态与使用指引 |
+| [日志预览验收矩阵](./qa/admin-log-preview-acceptance-matrix.md) | Dashboard/Monitor 双入口日志预览六类能力 |
+| [编辑器/目录/保存基线](./qa/editor-toc-sync-autosave-baseline.md) | TOC 同步与自动保存体验基线（ETSA-000） |
+| [AI配置中心验收矩阵](./qa/ai-config-center-acceptance-matrix-2026-04-04.md) | 供应商/模型/凭证三栏界面验收（2026-04-04） |
+| [VanBlog迁移验收矩阵](./qa/vanblog-migration-acceptance-matrix-2026-04-04.md) | VanBlog数据迁移 dry-run/execute 两阶段验收（2026-04-04） |
+| [媒体版本管理验收矩阵](./qa/media-version-history-acceptance-matrix-2026-04-04.md) | 媒体文件版本查看/恢复/删除验收（2026-04-04） |
 | [运维脚本](./ops/) | 发布观察与回滚模板 |
 
 ## 📝 实现报告

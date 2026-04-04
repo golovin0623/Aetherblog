@@ -170,3 +170,27 @@ import { Button } from '@/components/ui/Button';  // 禁止！
 - Added: AI 图标来源与禁止项规则。
 - Added: 供应商卡片主题 token 约束。
 - Added: 交互反馈规范，禁止使用原生浏览器弹窗。
+
+---
+
+## 9. 复杂模块 UI 规范（2026-04-04）
+
+### 9.1 AI 工具页（ai-tools/）
+
+- 6个工具页（ContentRewriter, QA, SeoOptimizer, Summary, Tagger, TextCleaner）共享统一的双栏布局：左侧输入区、右侧结果区。
+- 流式响应结果必须使用增量渲染（逐字显示），禁止等待完成后一次性显示。
+- 工具栏图标使用 `lucide-react`，AI 供应商选择器使用 `@lobehub/icons`。
+
+### 9.2 媒体库（media/components/）
+
+- 媒体库支持 Grid/List 两种视图模式（`ViewModeToggle`），切换时使用 `AnimatePresence` 过渡动画。
+- 大量媒体时使用 `VirtualMediaGrid`（虚拟滚动），禁止直接渲染全量列表。
+- 文件夹树 (`FolderTree`) 使用折叠/展开动画，层级缩进 `pl-4` per level。
+- 图片编辑器 (`ImageEditor`) 以全屏模态框呈现，遮罩层使用 `bg-black/80 backdrop-blur-sm`。
+- 键盘快捷键面板 (`KeyboardShortcutsPanel`) 以 Bottom Sheet 模式呈现（移动端）或右侧浮层（桌面端）。
+
+### 9.3 文章编辑器（posts/components/）
+
+- `AiAssistant` / `AiSidePanel` 默认折叠，展开时使用 `AnimatePresence` + `motion.div` width 动画。
+- `SelectionAiToolbar` 和 `SlashCommandMenu` 为浮动面板，使用 `position: absolute` 跟随光标定位，`z-index: 50`。
+- 移动端编辑器默认 `'edit'` 模式（源码），桌面端默认 `'split'` 分屏模式。
