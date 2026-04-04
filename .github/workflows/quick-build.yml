@@ -62,8 +62,12 @@ jobs:
           tags: |
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:${{ github.event.inputs.version }}
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:latest
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache,mode=max
+          cache-from: |
+            type=gha,scope=${{ matrix.service }}
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache
+          cache-to: |
+            type=gha,scope=${{ matrix.service }},mode=max
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ matrix.service }}:buildcache,mode=max
 
   build-single:
     if: ${{ github.event.inputs.service != 'all' }}
@@ -92,8 +96,12 @@ jobs:
           tags: |
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:${{ github.event.inputs.version }}
             ${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:latest
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:buildcache,mode=max
+          cache-from: |
+            type=gha,scope=${{ github.event.inputs.service }}
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:buildcache
+          cache-to: |
+            type=gha,scope=${{ github.event.inputs.service }},mode=max
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-${{ github.event.inputs.service }}:buildcache,mode=max
 
       - name: Success notification
         run: |

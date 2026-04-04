@@ -273,8 +273,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-backend:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-backend:buildcache,mode=max
+          cache-from: |
+            type=gha,scope=backend
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-backend:buildcache
+          cache-to: |
+            type=gha,scope=backend,mode=max
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-backend:buildcache,mode=max
           platforms: linux/amd64
 
   build-ai-service:
@@ -318,8 +322,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service:buildcache,mode=max
+          cache-from: |
+            type=gha,scope=ai-service
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service:buildcache
+          cache-to: |
+            type=gha,scope=ai-service,mode=max
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service:buildcache,mode=max
           platforms: linux/amd64
 
   build-blog:
@@ -413,8 +421,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-admin:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-admin:buildcache,mode=max
+          cache-from: |
+            type=gha,scope=admin
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-admin:buildcache
+          cache-to: |
+            type=gha,scope=admin,mode=max
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/aetherblog-admin:buildcache,mode=max
           platforms: linux/amd64
 
   # ===========================================================================
