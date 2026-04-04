@@ -88,8 +88,8 @@ return response.FailWith(c, response.BadRequest, "invalid path encoding")
 return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
 	targetPath := "/api/v1/admin/providers"
-	if subPath != "" {
-		targetPath += "/" + subPath
+	if unescapedPath != "" {
+		targetPath += "/" + unescapedPath
 	}
 
 	method := c.Request().Method
