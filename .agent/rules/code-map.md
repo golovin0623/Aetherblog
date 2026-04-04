@@ -9,9 +9,9 @@ trigger: always_on
 
 阶段1: 项目基础架构搭建 (预计3天)
 ├─ 任务1.1: 前端 Monorepo 初始化 → §3.1
-│   └─ 创建 pnpm workspace, 配置 Turborepo, TypeScript, ESLint
+│   └─ 创建 pnpm workspace, 配置 TypeScript, ESLint
 ├─ 任务1.2: 后端 Go 模块初始化 → §4.1
-│   └─ 创建 Go module, 项目结构, 基础配置
+│   └─ 创建 go.mod, internal/ 结构, 基础配置
 ├─ 任务1.3: 数据库初始化 → §6.1, §6.2
 │   └─ PostgreSQL 表结构, pgvector 扩展, 初始数据
 ├─ 任务1.4: Docker 开发环境 → §9
@@ -157,6 +157,71 @@ trigger: always_on
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+---
+
+---
+
+## 🗂️ 后端 Handler → 前端页面 映射表 (v1.1.0, 2026-04-04)
+
+### 后端 Handler 全量列表（23个）
+
+| Handler | 路由前缀 | 对应前端页面 |
+|:--------|:---------|:------------|
+| AuthHandler | `/v1/auth/*` | 登录页 |
+| PostHandler | `/v1/admin/posts`, `/v1/public/posts` | PostsPage, CreatePostPage, EditPostPage |
+| CommentHandler | `/v1/admin/comments`, `/v1/public/comments` | CommentsPage |
+| MediaHandler | `/v1/admin/media` | MediaPage + media/components/* |
+| FolderHandler | `/v1/admin/folders` | MediaPage (FolderTree) |
+| PermissionHandler | `/v1/admin/permissions` | SettingsPage |
+| CategoryHandler | `/v1/admin/categories`, `/v1/public/categories` | CategoriesPage |
+| TagHandler | `/v1/admin/tags`, `/v1/public/tags` | CategoriesPage |
+| AiHandler | `/v1/admin/ai/*` | AiWritingWorkspacePage, ai-tools/* |
+| StatsHandler | `/v1/admin/stats/*` | DashboardPage, AnalyticsPage |
+| SystemMonitorHandler | `/v1/admin/monitor/*` | MonitorPage |
+| SiteHandler | `/v1/public/site` | Blog 前台（站点信息） |
+| SiteSettingHandler | `/v1/admin/site-settings` | SettingsPage |
+| FriendLinkHandler | `/v1/admin/friend-links`, `/v1/public/friend-links` | FriendsPage |
+| ActivityHandler | `/v1/admin/activities` | DashboardPage（活动流） |
+| StorageProviderHandler | `/v1/admin/storage-providers` | SettingsPage（存储配置）|
+| ArchiveHandler | `/v1/public/archive` | Blog timeline/archive 页 |
+| MigrationHandler | `/v1/admin/migration` | MigrationPage |
+| MediaTagHandler | `/v1/admin/media-tags` | MediaPage (TagManager) |
+| SystemHandler | `/v1/admin/system` | SettingsPage |
+| VisitorHandler | `/v1/admin/visitors` | AnalyticsPage |
+| VersionHandler | `/v1/version` | 系统信息 |
+
+### Admin 前端页面 → 后端模块 映射
+
+| 前端页面/模块 | 使用的后端 Handler | 说明 |
+|:------------|:-----------------|:-----|
+| DashboardPage | StatsHandler, ActivityHandler | 仪表盘统计 |
+| PostsPage | PostHandler | 文章列表 |
+| CreatePostPage / EditPostPage | PostHandler, AiHandler | 文章编辑 + AI 辅助 |
+| AiWritingWorkspacePage | AiHandler | AI 写作工作台 |
+| ai-config/AiConfigPage | 直连 ai-service:8000 | AI 供应商与模型配置 |
+| ai-tools/* | AiHandler | 6个工具页（改写/QA/SEO/摘要/标签/清洗）|
+| CategoriesPage | CategoryHandler, TagHandler | 分类+标签管理 |
+| CommentsPage | CommentHandler | 评论管理 |
+| FriendsPage | FriendLinkHandler | 友链管理 |
+| MediaPage | MediaHandler, FolderHandler, MediaTagHandler | 媒体库完整功能 |
+| SettingsPage | SiteSettingHandler, StorageProviderHandler, PermissionHandler, SystemHandler | 多类型设置 |
+| MigrationPage | MigrationHandler | 数据迁移 |
+| MonitorPage | SystemMonitorHandler | 系统监控 |
+| AnalyticsPage | StatsHandler, VisitorHandler | 统计分析 |
+
+### AI 服务路由（Nginx → ai-service:8000）
+
+```
+/api/v1/ai/*  → ai-service:8000（600s 超时，SSE 支持，关闭 proxy_buffering）
+/api/*        → backend:8080（Go 后端）
+```
+
+### CHANGELOG v1.1.0
+- Added: 后端 23 个 Handler 全量列表及路由前缀。
+- Added: Admin 前端页面 → 后端模块映射表。
+- Added: ai-tools/ 页面列表（ContentRewriter, QA, SeoOptimizer, Summary, Tagger, TextCleaner）。
+- Fixed: 任务1.2 描述从 Maven 改为 Go 模块初始化。
 
 ---
 

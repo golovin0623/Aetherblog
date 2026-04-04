@@ -133,20 +133,33 @@ cmd/server/main.go（Go 可执行入口）
 | **基础层** | `internal/pkg/*` | 分页、响应格式、JWT 工具、图片处理、存储 |
 | **配置层** | `internal/config` | 配置管理（koanf） |
 
-### 核心 Handler
+### 核心 Handler（23 个）
 
-| Handler | 路径前缀 | 功能 |
-|-----------|----------|------|
-| `AuthHandler` | `/v1/auth` | 登录 / JWT 认证 |
-| `PostHandler` | `/v1/admin/posts` | 文章管理 |
-| `PublicPostHandler` | `/v1/public/posts` | 公开文章 API |
-| `CategoryHandler` | `/v1/admin/categories` | 分类管理 |
-| `TagHandler` | `/v1/admin/tags` | 标签管理 |
-| `CommentHandler` | `/v1/admin/comments` | 评论管理 |
-| `MediaHandler` | `/v1/admin/media` | 媒体库管理 |
-| `StatsHandler` | `/v1/admin/stats` | 统计分析 |
-| `AiHandler` | `/v1/admin/ai` | AI 配置 |
-| `SystemMonitorHandler` | `/v1/admin/system` | 系统监控 |
+| Handler | 路径前缀 | 功能 | 路由示例 |
+|-----------|----------|------|---------|
+| `AuthHandler` | `/v1/auth` | 登录 / JWT 认证 / 个人设置 | POST /v1/auth/login, GET /v1/auth/me, PUT /v1/auth/profile |
+| `PostHandler` | `/v1/admin/posts` | 文章 CRUD / 自动保存 / 发布 | PATCH /v1/admin/posts/:id/publish |
+| `PublicPostHandler` | `/v1/public/posts` | 公开文章 API / 相邻导航 | GET /v1/public/posts/:slug/adjacent |
+| `CategoryHandler` | `/v1/admin/categories` + `/v1/public/categories` | 分类管理 | GET/POST/PUT/DELETE |
+| `TagHandler` | `/v1/admin/tags` | 标签管理 | GET/POST/PUT/DELETE |
+| `CommentHandler` | `/v1/admin/comments` + `/v1/public/posts/:postId/comments` | 评论审核 / 垃圾标记 | PATCH .../approve, PATCH .../spam |
+| `MediaHandler` | `/v1/admin/media` | 媒体库 / 批量上传 / 回收站 | POST /v1/admin/media/batch-upload |
+| `FolderHandler` | `/v1/admin/folders` | 文件夹层级 / 移动 | GET /v1/admin/folders/tree |
+| `PermissionHandler` | `/v1/admin/permissions` | 文件夹权限 ACL | GET/POST/PUT/DELETE |
+| `StatsHandler` | `/v1/admin/stats` | 统计仪表盘 / 访客趋势 | GET /v1/admin/stats/dashboard |
+| `AiHandler` | `/v1/admin/ai` | AI 写作辅助 / 流式输出 / 配置代理 | POST /v1/admin/ai/summary/stream |
+| `SystemMonitorHandler` | `/v1/admin/monitor` | 系统指标 / 容器 / 告警 | GET /v1/admin/monitor/overview |
+| `SiteHandler` | `/v1/public/site` | 站点信息 / 作者 | GET /v1/public/site/info |
+| `SiteSettingHandler` | `/v1/admin/site-settings` | 站点设置 CRUD / 分组查询 | GET /v1/admin/site-settings/group/:group |
+| `FriendLinkHandler` | `/v1/admin/friend-links` + `/v1/public/friend-links` | 友链 CRUD / 排序 / 开关 | PATCH .../toggle |
+| `ActivityHandler` | `/v1/admin/activities` | 操作活动事件流 | GET /v1/admin/activities/recent |
+| `StorageProviderHandler` | `/v1/admin/storage-providers` | 存储提供商 / 连接测试 | POST .../test |
+| `ArchiveHandler` | `/v1/public/archives` | 归档列表 / 统计 | GET /v1/public/archives/stats |
+| `MigrationHandler` | `/v1/admin/vanblog` | Vanblog 数据导入 | POST /v1/admin/vanblog/import |
+| `MediaTagHandler` | `/v1/admin/media/tags` | 媒体文件标签 CRUD | GET/POST/PUT/DELETE |
+| `SystemHandler` | `/v1/public/system` | 系统时间 | GET /v1/public/system/time |
+| `VisitorHandler` | `/v1/public/visitors` | 访客记录 / 今日统计 | POST /v1/public/visitors |
+| `VersionHandler` | `/v1/admin/files/:fileId/versions` | 文件版本历史 / 回滚 | POST .../versions/:num/restore |
 
 ---
 
@@ -183,17 +196,41 @@ AI 服务作为独立微服务运行，通过 HTTP API 与后端通信：
 
 ### AI 能力
 
-| 能力 | 端点 | 说明 |
-|------|------|------|
-| 内容摘要 | `/api/v1/ai/summary` | 自动生成文章摘要 |
-| 标题建议 | `/api/v1/ai/titles` | 智能标题推荐 |
-| 标签提取 | `/api/v1/ai/tags` | 关键词 / 标签生成 |
-| 内容润色 | `/api/v1/ai/polish` | AI 文本优化 |
-| 大纲生成 | `/api/v1/ai/outline` | 文章结构规划 |
-| 翻译 | `/api/v1/ai/translate` | 多语言翻译 |
-| 语义搜索 | `/api/v1/search/semantic` | 基于向量的内容检索 |
+| 能力 | 端点 | 流式版本 | 说明 |
+|------|------|---------|------|
+| 内容摘要 | `POST /api/v1/ai/summary` | `/summary/stream` | 自动生成文章摘要 |
+| 标题建议 | `POST /api/v1/ai/titles` | `/titles/stream` | 智能标题推荐 |
+| 标签提取 | `POST /api/v1/ai/tags` | `/tags/stream` | 关键词 / 标签生成 |
+| 内容润色 | `POST /api/v1/ai/polish` | `/polish/stream` | AI 文本优化 |
+| 大纲生成 | `POST /api/v1/ai/outline` | `/outline/stream` | 文章结构规划 |
+| 翻译 | `POST /api/v1/ai/translate` | `/translate/stream` | 多语言翻译 |
+| 语义搜索 | `GET /api/v1/search/semantic` | — | 基于 pgvector 的内容检索 |
+| 索引构建 | `POST /api/v1/admin/search/index` | — | 主动触发向量索引 |
+| 全量重建 | `POST /api/v1/admin/search/reindex` | — | 全量重建向量索引 |
+| 健康检查 | `GET /api/v1/health` | — | 服务状态 + 供应商连通性 |
+| 使用指标 | `GET /api/v1/admin/metrics/ai` | — | 用量 / 成本统计（管理员） |
+| Prompt 管理 | `CRUD /api/v1/admin/prompts` | — | Prompt 模板版本管理 |
+| 任务配置 | `CRUD /api/v1/admin/tasks` | — | AI 任务路由配置 |
+| 供应商代理 | `ANY /v1/admin/ai/providers/*` | — | Go 后端代理到 FastAPI |
 
-所有写作类端点同时支持普通响应和 SSE 流式响应（`/stream` 后缀），实现打字机效果。
+所有写作类端点同时支持普通响应和 NDJSON 流式响应（`/stream` 后缀），前端使用 `fetch` + `ReadableStream` 解析。
+
+### 支持的 LLM 供应商
+
+| 供应商 | 接入方式 | 说明 |
+|--------|---------|------|
+| OpenAI | 原生 API | GPT 系列，内容润色 |
+| Anthropic | 原生 API | Claude 系列，长文改写 |
+| Google | 原生 API | Gemini 系列，大纲 / 长文摘要 |
+| Azure OpenAI | LiteLLM 路由 | 企业级部署 |
+| LiteLLM | 统一代理 | 多供应商兼容路由 |
+| Custom | OpenAI 协议兼容 | 可插拔私有模型 |
+
+### 速率限制策略
+
+- 用户级：10 次 / 分钟 / 操作
+- 全局级：100 次 / 分钟
+- 缓存：summary/tags 缓存 24h，titles 缓存 1h（Redis）
 
 ---
 
@@ -215,13 +252,34 @@ AI 服务作为独立微服务运行，通过 HTTP API 与后端通信：
 - **CodeMirror** — Markdown 编辑器核心
 - **Framer Motion** — 动画交互
 
+#### 主要页面模块（14+ 主页面）
+
+| 页面 | 路径 | 说明 |
+|------|------|------|
+| `DashboardPage` | `/dashboard` | 数据概览 / 近期活动 |
+| `PostsPage` | `/posts` | 文章列表 |
+| `CreatePostPage` | `/posts/create` | 新建文章（AI 写作工作台） |
+| `EditPostPage` | `/posts/:id/edit` | 编辑文章 |
+| `CategoriesPage` | `/categories` | 分类管理 |
+| `CommentsPage` | `/comments` | 评论审核（pending/spam） |
+| `MediaPage` | `/media` | 媒体库 + 文件夹树 |
+| `FriendsPage` | `/friends` | 友链管理 |
+| `MonitorPage` | `/monitor` | 系统监控 |
+| `SettingsPage` | `/settings` | 站点设置（分组） |
+| `AIToolsPage` | `/ai-tools` | AI 写作工具集入口 |
+| `AiConfigPage` | `/ai-config` | AI 配置中心（供应商 / Prompt / 任务） |
+| `MigrationPage` | `/migration` | Vanblog 数据导入 |
+| `AiTestPage` | `/ai-test` | AI 接口调试 |
+
+AI 工具子页面：`SummaryPage`, `TaggerPage`, `ContentRewriterPage`, `SeoOptimizerPage`, `QAPage`, `TextCleanerPage`
+
 ### 共享包
 
 ```
 packages/
 ├── ui/       →  Button, Card, Modal, Toast, Input, ...
 ├── hooks/    →  useDebounce, useApi, useMediaQuery, useTheme, ...
-├── types/    →  Post, User, Category, Tag, Comment, ...
+├── types/    →  Post, User, Category, Tag, Comment, MediaFile, ...
 ├── utils/    →  cn(), formatDate(), ...
 └── editor/   →  MarkdownEditor, MarkdownPreview, EditorWithPreview
 ```
@@ -285,19 +343,72 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 
 ---
 
+## 数据库表结构
+
+数据库共 28 个迁移（000001–000028），创建以下主要表：
+
+### 核心业务表
+
+| 表名 | 说明 |
+|------|------|
+| `posts` | 文章（含 is_hidden / source_key / legacy_* / preserve_updated_at） |
+| `users` | 用户账户 |
+| `comments` | 评论 |
+| `categories` | 分类 |
+| `tags` | 标签 |
+| `post_categories` | 文章-分类多对多 |
+| `post_tags` | 文章-标签多对多 |
+| `visit_records` | 访问记录 |
+
+### 媒体表
+
+| 表名 | 说明 |
+|------|------|
+| `media_files` | 媒体文件（含文件夹 / 存储提供商关联） |
+| `media_folders` | 文件夹层级（物化路径） |
+| `media_tags` | 媒体标签定义 |
+| `media_file_tags` | 文件-标签多对多（含来源：MANUAL/AI_AUTO） |
+| `media_variants` | 图像变体（缩略图 / WEBP 等） |
+
+### AI 表
+
+| 表名 | 说明 |
+|------|------|
+| `ai_providers` | AI 供应商注册 |
+| `ai_models` | 模型清单（含类型 / 能力） |
+| `ai_credentials` | 供应商凭证（加密存储） |
+| `ai_task_types` | AI 任务类型定义（摘要 / 标签等） |
+| `ai_task_routing` | 任务到模型的路由映射 |
+| `ai_usage_logs` | 使用日志（tokens / latency / cached） |
+| `ai_vector_store` | 向量检索存储（pgvector） |
+
+### 其他表
+
+| 表名 | 说明 |
+|------|------|
+| `site_settings` | 站点设置（分组键值对） |
+| `social_links` | 社交链接 |
+| `friend_links` | 友链（含排序 / 状态） |
+| `storage_providers` | 云存储提供商配置 |
+| `permissions` | 文件夹 ACL 权限记录 |
+| `shared_items` | 分享链接（含令牌 / 过期时间） |
+| `activity_events` | 操作活动事件流 |
+
+---
+
 ## 技术选型
 
-| 领域 | 技术 | 选型理由 |
-|------|------|---------|
-| 博客前台 | Next.js 15 | SSR/SSG 支持，SEO 友好，App Router |
-| 管理后台 | Vite + React 19 | 极速 HMR，SPA 架构适合后台 |
-| 后端 | Go 1.24 + Echo | 高性能，编译型，并发原生支持 |
-| AI 服务 | FastAPI + LiteLLM | 异步高性能，多模型路由，流式输出 |
-| 数据库 | PostgreSQL 17 + pgvector | 关系型 + 向量检索一体化 |
-| 缓存 | Redis 7 | 高性能缓存，会话管理 |
-| 搜索 | Elasticsearch 8 | 全文搜索（可选） |
-| 序列化 | encoding/json | Go 标准库内置支持 |
-| 网关 | Nginx | 轻量高效，反向代理 |
-| 容器 | Docker Compose | 一键部署，环境一致性 |
-| CI/CD | GitHub Actions | 原生集成，自动构建部署 |
-| Monorepo | pnpm workspace + Go module | 共享依赖，统一版本管理 |
+| 领域 | 技术 | 版本 | 选型理由 |
+|------|------|------|---------|
+| 博客前台 | Next.js + React | 15.1.3 / 19 | SSR/SSG 支持，SEO 友好，App Router |
+| 管理后台 | Vite + React | 6.x / 19 | 极速 HMR，SPA 架构适合后台 |
+| 后端 | Go + Echo | 1.24.1 / v4.15.1 | 高性能，编译型，并发原生支持 |
+| AI 服务 | FastAPI + LiteLLM | 最新 / Python 3.12 | 异步高性能，多模型路由，流式输出 |
+| 数据库 | PostgreSQL + pgvector | 17 | 关系型 + 向量检索一体化 |
+| 缓存 | Redis | 7 | 高性能缓存，会话管理，AI 限流 |
+| 搜索 | Elasticsearch | 8.15.0 | 全文搜索（可选） |
+| 序列化 | encoding/json | — | Go 标准库内置支持 |
+| 网关 | Nginx | 最新稳定版 | 轻量高效，反向代理 |
+| 容器 | Docker Compose | — | 一键部署，环境一致性 |
+| CI/CD | GitHub Actions | — | 原生集成，自动构建部署 |
+| Monorepo | pnpm workspace + Go module | pnpm 9.15.0 | 共享依赖，统一版本管理 |

@@ -21,7 +21,7 @@
 - 兼容路径：`level+lines` 老调用可继续返回可解析结构。
 - 扩展路径：`keyword/limit/cursor` 生效，分页游标与边界行为可预期。
 - 语义一致：`no_data` 与 `error` 分类清晰，`errorCategory` 不缺失。
-- 回归命令：`mvn -pl aetherblog-service/blog-service -am -Dtest=LogViewerServiceTest -Dsurefire.failIfNoSpecifiedTests=false test`。
+- 回归命令：`cd apps/server-go && go test ./internal/service/... -run TestLogViewerService -v`。
 
 ### 3) 性能基线（2000 行日志）
 
@@ -49,10 +49,12 @@
    - `git revert --no-edit 8eecf63 c135757 3ccc1ad 0bceeb4 9b6876a e412220 cfe4ca3`
 3. 回退后重新执行：
    - `pnpm --filter @aetherblog/admin build`
-   - `mvn -pl aetherblog-service/blog-service -am -Dtest=LogViewerServiceTest -Dsurefire.failIfNoSpecifiedTests=false test`
+   - `cd apps/server-go && go test ./internal/service/... -run TestLogViewerService -v`
 
 ## 发布后观察（24h）
 
 - `/v1/admin/system/logs` 请求失败率与 `errorCategory` 分布。
 - Dashboard/Monitor 的日志面板异常反馈量（导出失败、空数据误报、暂停失效）。
 - 高负载日志场景下的浏览器卡顿反馈与性能波动。
+
+> 注：后端引用已由 Java/Maven → Go 1.24.1/Echo v4 更新（2026-04-04）

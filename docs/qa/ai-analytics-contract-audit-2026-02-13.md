@@ -4,7 +4,7 @@
 
 ## 1. 审计范围
 - Admin（调用方）：`analyticsService`、`systemService`、Dashboard/RealtimeLogViewer。
-- Server（聚合方）：`StatsController`、`SystemMonitorController`、`StatsService`。
+- Server（聚合方）：`stats_handler.go`、`system_monitor_handler.go`、`stats_service.go`。
 - AI Service（提供方）：`/api/v1/ai/*`、`/api/v1/admin/metrics/ai`。
 
 ## 2. 契约清单（覆盖 100% AI 统计与日志相关接口）
@@ -51,9 +51,11 @@
 - `apps/admin/src/services/analyticsService.ts:156`
 - `apps/admin/src/services/systemService.ts:238`
 - `apps/admin/src/pages/dashboard/components/RealtimeLogViewer.tsx:60`
-- `apps/server/aetherblog-service/blog-service/src/main/java/com/aetherblog/blog/controller/StatsController.java:87`
-- `apps/server/aetherblog-service/blog-service/src/main/java/com/aetherblog/blog/controller/SystemMonitorController.java:105`
-- `apps/server/aetherblog-service/blog-service/src/main/java/com/aetherblog/blog/service/StatsService.java:89`
-- `apps/server/aetherblog-ai/ai-client/src/main/java/com/aetherblog/ai/client/client/AiServiceHttpClient.java:40`
+- `apps/server-go/internal/handler/stats_handler.go:87`
+- `apps/server-go/internal/handler/system_monitor_handler.go:105`
+- `apps/server-go/internal/service/stats_service.go:89`
+- `apps/server-go/internal/pkg/ai/client.go:40`
 - `apps/ai-service/app/api/routes/ai.py:134`
 - `apps/ai-service/app/api/routes/metrics.py:12`
+
+> 注：后端引用已由 Java/Maven → Go 1.24.1/Echo v4 更新（2026-04-04）

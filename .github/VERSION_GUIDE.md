@@ -15,10 +15,13 @@ VERSION=main-${GITHUB_SHA::7}
 # 例如: main-a1b2c3d (commit SHA 的前 7 位)
 ```
 
-**生成的镜像标签:**
+**生成的镜像标签（按变更检测，仅构建已变更模块）:**
 ```
 golovin0623/aetherblog-backend:main-a1b2c3d
 golovin0623/aetherblog-backend:latest
+
+golovin0623/aetherblog-ai-service:main-a1b2c3d
+golovin0623/aetherblog-ai-service:latest
 
 golovin0623/aetherblog-blog:main-a1b2c3d
 golovin0623/aetherblog-blog:latest
@@ -33,8 +36,8 @@ golovin0623/aetherblog-admin:latest
 git push origin main
 
 # 生成的版本号: main-a1b2c3d
-# 镜像标签:
-#   - golovin0623/aetherblog-backend:main-a1b2c3d
+# 只有变更的模块才会被构建并推送镜像
+#   - golovin0623/aetherblog-backend:main-a1b2c3d  (若 apps/server-go/** 有变更)
 #   - golovin0623/aetherblog-backend:latest
 ```
 
@@ -54,10 +57,13 @@ VERSION=${GITHUB_REF#refs/tags/}
 # 例如: v1.0.0 (使用 tag 名称)
 ```
 
-**生成的镜像标签:**
+**生成的镜像标签（标签触发时全量构建所有模块）:**
 ```
 golovin0623/aetherblog-backend:v1.0.0
 golovin0623/aetherblog-backend:latest
+
+golovin0623/aetherblog-ai-service:v1.0.0
+golovin0623/aetherblog-ai-service:latest
 
 golovin0623/aetherblog-blog:v1.0.0
 golovin0623/aetherblog-blog:latest
@@ -75,25 +81,20 @@ golovin0623/aetherblog-admin:latest
 
 ---
 
-### 规则 3: 手动触发 (自定义版本)
+### 规则 3: 推送到 develop 分支
 
 **触发方式:**
-1. 进入 GitHub Actions 页面
-2. 选择 "Build and Push Docker Images" 工作流
-3. 点击 "Run workflow"
-4. 输入自定义版本号 (例如: `hotfix-login`)
+```bash
+git push origin develop
+```
 
 **版本号逻辑:**
 ```bash
-VERSION=${{ github.event.inputs.version }}
-# 使用用户输入的版本号
+VERSION=main-${GITHUB_SHA::7}
+# 与 main 分支一致，使用 commit SHA 前 7 位
 ```
 
-**生成的镜像标签:**
-```
-golovin0623/aetherblog-backend:hotfix-login
-golovin0623/aetherblog-backend:latest
-```
+**说明:** `develop` 分支触发增量构建，与 `main` 分支行为相同（变更检测 + 增量部署）。适合在合入 `main` 前进行集成测试。
 
 ---
 
@@ -104,26 +105,30 @@ golovin0623/aetherblog-backend:latest
   │
   ├─ 是否是 tag 触发? (refs/tags/*)
   │   ├─ 是 → VERSION = tag 名称 (例如: v1.0.0)
+  │   │       全量构建所有模块（忽略变更检测）
   │   └─ 否 ↓
   │
-  ├─ 是否是手动触发且有输入版本?
-  │   ├─ 是 → VERSION = 用户输入 (例如: hotfix-login)
+  ├─ 是否是 PR 到 main?
+  │   ├─ 是 → 仅测试 + lint，不构建镜像，无版本号
   │   └─ 否 ↓
   │
-  └─ 默认 → VERSION = main-{commit-sha} (例如: main-a1b2c3d)
+  └─ Push 到 main 或 develop
+      → VERSION = main-{commit-sha} (例如: main-a1b2c3d)
+        增量构建（只构建变更模块）
 ```
 
 ---
 
 ## 📊 版本号对照表
 
-| 触发方式 | Git 操作 | 版本号示例 | 镜像标签示例 |
-|---------|---------|-----------|-------------|
-| **推送到 main** | `git push origin main` | `main-a1b2c3d` | `backend:main-a1b2c3d`<br>`backend:latest` |
-| **创建 tag** | `git tag v1.0.0`<br>`git push origin v1.0.0` | `v1.0.0` | `backend:v1.0.0`<br>`backend:latest` |
-| **预发布 tag** | `git tag v1.0.0-beta.1`<br>`git push origin v1.0.0-beta.1` | `v1.0.0-beta.1` | `backend:v1.0.0-beta.1`<br>`backend:latest` |
-| **热修复 tag** | `git tag hotfix-login`<br>`git push origin hotfix-login` | `hotfix-login` | `backend:hotfix-login`<br>`backend:latest` |
-| **手动触发** | GitHub Actions 页面输入 | `custom-version` | `backend:custom-version`<br>`backend:latest` |
+| 触发方式 | Git 操作 | 版本号示例 | 构建策略 | 镜像标签示例 |
+|---------|---------|-----------|----------|-------------|
+| **推送到 main** | `git push origin main` | `main-a1b2c3d` | 增量（变更模块） | `backend:main-a1b2c3d`<br>`backend:latest` |
+| **推送到 develop** | `git push origin develop` | `main-a1b2c3d` | 增量（变更模块） | `backend:main-a1b2c3d`<br>`backend:latest` |
+| **创建 tag** | `git tag v1.0.0`<br>`git push origin v1.0.0` | `v1.0.0` | 全量（所有模块） | `backend:v1.0.0`<br>`backend:latest` |
+| **预发布 tag** | `git tag v1.0.0-beta.1`<br>`git push origin v1.0.0-beta.1` | `v1.0.0-beta.1` | 全量（所有模块） | `backend:v1.0.0-beta.1`<br>`backend:latest` |
+| **热修复 tag** | `git tag v1.0.1`<br>`git push origin v1.0.1` | `v1.0.1` | 全量（所有模块） | `backend:v1.0.1`<br>`backend:latest` |
+| **PR 到 main** | 提交 PR | — | 不构建镜像，仅测试 | — |
 
 ---
 
@@ -137,16 +142,16 @@ git add .
 git commit -m "feat: add new feature"
 git push origin main
 
-# GitHub Actions 自动构建
+# GitHub Actions 自动构建（增量：仅构建变更的模块）
 # Commit SHA: e79b555a1b2c3d4e5f6g7h8i9j0
 
-# 生成的镜像:
+# 生成的镜像（假设本次只改了 backend 和 blog）:
 # ✅ golovin0623/aetherblog-backend:main-e79b555
 # ✅ golovin0623/aetherblog-backend:latest
 # ✅ golovin0623/aetherblog-blog:main-e79b555
 # ✅ golovin0623/aetherblog-blog:latest
-# ✅ golovin0623/aetherblog-admin:main-e79b555
-# ✅ golovin0623/aetherblog-admin:latest
+# ⏭️ golovin0623/aetherblog-admin（未变更，跳过）
+# ⏭️ golovin0623/aetherblog-ai-service（未变更，跳过）
 ```
 
 ### 示例 2: 正式版本发布
@@ -162,9 +167,11 @@ git push origin v1.0.0
 
 # GitHub Actions 自动构建
 
-# 生成的镜像:
+# 生成的镜像（tag 触发：全量构建所有模块）:
 # ✅ golovin0623/aetherblog-backend:v1.0.0
 # ✅ golovin0623/aetherblog-backend:latest
+# ✅ golovin0623/aetherblog-ai-service:v1.0.0
+# ✅ golovin0623/aetherblog-ai-service:latest
 # ✅ golovin0623/aetherblog-blog:v1.0.0
 # ✅ golovin0623/aetherblog-blog:latest
 # ✅ golovin0623/aetherblog-admin:v1.0.0
