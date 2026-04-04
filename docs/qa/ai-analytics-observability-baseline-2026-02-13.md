@@ -14,7 +14,7 @@
 | AIOB-F001 | 请求失败 | `analyticsService.getAiDashboard` 请求 rejected（网络/5xx） | 控制台 error，前端 toast 提示失败，数据回退空看板 | `apps/admin/src/pages/dashboard/DashboardPage.tsx:165` |
 | AIOB-F002 | 空数据 | AI 看板返回 `code=200` 且记录为空（低流量或回填缺失） | 看板呈现“看似正常但数值为 0”，易与失败态混淆 | `apps/admin/src/services/analyticsService.ts:156` |
 | AIOB-F003 | 静默降级 | AI 看板接口返回非 200 | 前端直接使用 `MOCK_AI_DASHBOARD`，仅 warning，不具备显式故障分层 | `apps/admin/src/pages/dashboard/DashboardPage.tsx:162` |
-| AIOB-F004 | 配置错误 | Server/AI service 路由前缀或地址错误（如 base-url/profile 不一致） | 管理端链路可调用但指标不可达或长期为 0 | `apps/server/aetherblog-service/blog-service/src/main/java/com/aetherblog/blog/controller/StatsController.java:85`; `apps/ai-service/app/api/routes/metrics.py:9` |
+| AIOB-F004 | 配置错误 | Server/AI service 路由前缀或地址错误（如 base-url/profile 不一致） | 管理端链路可调用但指标不可达或长期为 0 | `apps/server-go/internal/handler/stats_handler.go:85`; `apps/ai-service/app/api/routes/metrics.py:9` |
 
 ## 3. 指标口径定义（统一验收）
 
@@ -77,3 +77,5 @@
 - AIOB-010（契约审计）基于本基线核对“请求参数/响应语义/错误分类”。
 - AIOB-040、AIOB-050 需消解 F003/F002 的“静默降级 + 语义混淆”。
 - AIOB-070 回归测试须覆盖 F001~F004 全部样本。
+
+> 注：后端引用已由 Java/Maven → Go 1.24.1/Echo v4 更新（2026-04-04）

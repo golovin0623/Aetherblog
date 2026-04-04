@@ -153,7 +153,7 @@ apps/server-go/
 │   └── migrate/             # 🗃 数据库迁移工具
 ├── internal/
 │   ├── config/              # ⚙️ 配置加载与管理
-│   ├── handler/             # 🌐 HTTP 请求处理器（控制层）
+│   ├── handler/             # 🌐 HTTP 请求处理器（23 个模块）
 │   ├── service/             # 💼 业务逻辑层
 │   ├── repository/          # 🗄 数据访问层（数据库操作）
 │   ├── model/               # 📦 数据模型定义
@@ -167,7 +167,7 @@ apps/server-go/
 │       ├── imgproc/         #    图片处理
 │       ├── storage/         #    文件存储
 │       └── jwtutil/         #    JWT 工具
-├── migrations/              # 📄 SQL 迁移文件
+├── migrations/              # 📄 SQL 迁移文件（000001–000028）
 ├── go.mod                   #    Go 模块依赖管理
 └── go.sum
 ```
@@ -175,17 +175,17 @@ apps/server-go/
 | 目录 | 说明 |
 |------|------|
 | `cmd/server` | 应用启动入口，包含 main 函数 |
-| `cmd/migrate` | 数据库迁移工具 |
+| `cmd/migrate` | 独立的数据库迁移工具 |
 | `internal/config` | 配置管理（koanf） |
-| `internal/handler` | HTTP 请求处理器，对应控制层 |
-| `internal/service` | 业务逻辑层 |
+| `internal/handler` | HTTP 请求处理器，每个业务模块一个文件（23 个） |
+| `internal/service` | 业务逻辑层，调用 repository |
 | `internal/repository` | 数据访问层（sqlx） |
-| `internal/model` | 数据模型定义 |
+| `internal/model` | 数据库实体模型 |
 | `internal/dto` | 请求/响应数据传输对象 |
 | `internal/middleware` | HTTP 中间件（JWT 认证、CORS、限流等） |
 | `internal/server` | HTTP 服务器初始化与路由注册 |
-| `internal/pkg` | 内部公共工具（分页、响应格式、JWT 等） |
-| `migrations` | SQL 数据库迁移文件 |
+| `internal/pkg` | 内部公共工具（分页、响应格式、JWT、日志、Redis） |
+| `migrations/` | 顺序编号 SQL 迁移文件（000001–000028） |
 
 > ⚠️ **注意**: `internal/` 下的所有包仅限项目内部使用（Go 语言访问控制）。
 

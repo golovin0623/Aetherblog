@@ -98,12 +98,19 @@ POSTGRES_PASSWORD=aetherblog123
 
 # Redis（使用现有服务）
 REDIS_HOST=host.docker.internal
-REDIS_PORT=6999
+REDIS_PORT=6379
+
+# JWT 认证
+JWT_SECRET=换成随机长字符串
 
 # AI 功能
 OPENAI_API_KEY=你的API_KEY
+OPENAI_BASE_URL=https://api.openai.com/v1
+AI_MOCK_MODE=false
 
-# 数据库迁移（golang-migrate，生产环境自动执行）
+# Docker 镜像（CI/CD 或手动部署时使用）
+DOCKER_REGISTRY=golovin0623
+VERSION=latest
 EOF
 ```
 
@@ -150,27 +157,39 @@ docker compose -f docker-compose.prod.yml up -d
 | PostgreSQL | 7895 | `POSTGRES_PORT` | pgvector 数据库 |
 | 后端 API | 内部 | — | 仅容器间通信 |
 
+### 容器资源限制
+
+生产环境各服务的内存限制（`docker-compose.prod.yml` 中配置）：
+
+| 服务 | 内存限制 | 说明 |
+|------|----------|------|
+| gateway | 64M | Nginx 网关，轻量 |
+| backend | 128M | Go 后端，静态编译低内存 |
+| ai-service | 768M | Python AI 服务，依赖较重 |
+| blog | 512M | Next.js SSR 前台 |
+| admin | 128M | Vite + Nginx 静态管理后台 |
+
 ### 部署架构
 
 ```
-                        ┌─────────────────────────────────────┐
-                        │         统一网关 (:7899)             │
-                        │         Nginx Gateway               │
-                        └────────────┬────────────────────────┘
-                                     │
-           ┌─────────────────────────┼─────────────────────────┐
-           │                         │                         │
-           ▼                         ▼                         ▼
-   ┌───────────────┐        ┌───────────────┐        ┌───────────────┐
-   │   /           │        │   /admin      │        │   /api        │
-   │   blog:3000   │        │   admin:80    │        │   backend:8080│
-   │   (Next.js)   │        │   (Nginx)     │        │   (Go)    │
-   └───────────────┘        └───────────────┘        └───────┬───────┘
-                                                              │
-                                                    ┌─────────┴─────────┐
-                                                    ▼                   ▼
-                                              postgres:5432       redis:6999
-                                              (容器内)            (宿主机)
+                     ┌──────────────────────────────────────────────┐
+                     │           统一网关 (:7899)                    │
+                     │           Nginx Gateway                      │
+                     └──┬──────────┬──────────┬──────────┬──────────┘
+                        │          │          │          │
+           /            │  /admin/ │  /api/   │/api/v1/  │
+                        │          │  (Go)    │  ai/*    │
+           ▼            │          ▼          ▼          ▼
+   ┌───────────────┐    │  ┌────────────┐ ┌──────────┐ ┌──────────────┐
+   │  blog:3000    │    │  │ admin:80   │ │backend   │ │ ai-service   │
+   │  (Next.js)    │◄───┘  │ (SPA)      │ │ :8080    │ │   :8000      │
+   └───────────────┘       └────────────┘ │ (Go)     │ │ (FastAPI)    │
+                                          └────┬─────┘ └──────────────┘
+                                               │
+                                    ┌──────────┴──────────┐
+                                    ▼                     ▼
+                              postgres:5432          redis:6379
+                              (pgvector)             (容器内)
 ```
 
 ### 使用现有 Redis

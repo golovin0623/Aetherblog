@@ -20,16 +20,16 @@ trigger: always_on
 └─ 总任务数: 50 个任务 / 10 个阶段
 
 【技术栈确认】
-├─ 前端: React 19 + Next.js 15 + Tailwind CSS 4 + Framer Motion 11
+├─ 前端: React 19 + Next.js 15 + Tailwind CSS 3.4 + Framer Motion 11
 ├─ 后端: Go 1.24 + Echo v4 + sqlx + golang-migrate
 ├─ AI服务: Python 3.12 + FastAPI + LiteLLM
-├─ 数据库: PostgreSQL 17 + Redis 7.2 + pgvector
-└─ AI模型: OpenAI GPT-4o / Claude 3.5 Sonnet
+├─ 数据库: PostgreSQL 17 + Redis 7 + pgvector
+└─ AI模型: OpenAI GPT-4o / Claude 3.5 Sonnet / 多供应商支持
 
 【开发环境检查】
 请确认以下环境已就绪：
 □ Node.js >= 20.0.0
-□ pnpm >= 8.15.0
+□ pnpm >= 9.0.0 (packageManager: pnpm@9.15.0)
 □ Go >= 1.24
 □ Docker & Docker Compose
 □ 设计文档已准备
