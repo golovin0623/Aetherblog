@@ -106,7 +106,8 @@ AetherBlog/
 ├── nginx/                 # 🌐 Nginx 配置
 ├── .github/workflows/     # 🔄 CI/CD 工作流
 ├── start.sh               # 一键启动
-└── stop.sh                # 一键停止
+├── stop.sh                # 一键停止
+└── restart.sh             # 一键重启
 ```
 
 > 详细的模块依赖与分层说明请参考 [系统架构文档](./docs/architecture.md)。

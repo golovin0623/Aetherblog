@@ -6,17 +6,17 @@
 
 ## 目标
 - AI 作为独立服务，负责模型调用、RAG、Prompt 管理与流式输出。
-- 主后端不引入 Spring AI。
+- 主后端（Go/Echo）通过 HTTP Client 调用 AI 服务，不引入任何 AI SDK。
 - 尽量保持与设计文档一致的对外 API 契约。
-- 可快速切换/扩展模型供应商，不影响主后端。
+- 可快速切换/扩展模型供应商，不影响 Go 主后端。
 
 ## 非目标
 - 重写现有博客业务服务。
 - 替换现有认证与授权逻辑。
 
 ## 关键约束
-- AI 服务必须独立于 Spring Boot。
-- 主后端不得引入 Spring AI。
+- AI 服务必须独立于 Go 主后端。
+- 主后端不得引入任何 AI/LLM SDK。
 - API 路径需与设计文档对齐。
 - 流式接口需支持鉴权，不依赖 EventSource 头部能力。
 
@@ -64,7 +64,7 @@
   |            \
   |             \--> AI 服务（FastAPI + LiteLLM）
   |
-  \--> Spring Boot（blog-service）
+  \--> Go Backend（server-go）
 
 网关路由（Nginx）：
 - `/api/v1/ai/*`、`/api/v1/search/semantic`、`/api/v1/admin/search/*` -> AI 服务
@@ -111,11 +111,11 @@ Phase 5：生产级容量与韧性
 
 ## 后端对接接口层（简要）
 
-Spring Boot 新增 `AiServiceClient`（接口）+ `AiServiceHttpClient`（实现），统一封装 AI 服务调用。  
+Go Backend 新增 AI HTTP Client（`internal/pkg/aiclient/`），统一封装 AI 服务调用。  
 接口层契约保持与 AI 服务一致，DTO 与错误码统一定义。
 
-- 鉴权：前端携带 Spring Boot 签发的 JWT 直连 AI 服务  
-- 业务调用：后端 WebClient 调用 AI 服务 API  
+- 鉴权：前端携带 Go Backend 签发的 JWT 直连 AI 服务  
+- 业务调用：后端 HTTP Client 调用 AI 服务 API  
 - 错误码：`AI_RATE_LIMITED` / `AI_PROVIDER_UNAVAILABLE` / `AI_TIMEOUT` / `AI_VALIDATION_FAILED`  
 - 流式：`application/x-ndjson`，事件 `delta/done/error`  
 - 索引触发：`POST /api/v1/admin/search/index`（主动）/ `POST /api/v1/admin/search/reindex`（被动）  
@@ -181,7 +181,7 @@ AI 服务负责：
 - 向量索引构建与检索
 - 流式响应
 
-Spring Boot 负责：
+Go Backend (Echo middleware) 负责：
 - JWT 认证来源与权限
 - 博客业务逻辑
 - 管理后台与数据管理
@@ -209,7 +209,7 @@ AI 内容接口（需鉴权）：
 - GET /api/v1/admin/metrics/ai（管理员）
 
 ## 认证方案
-- AI 服务验证 Spring Boot 签发的 JWT。
+- AI 服务验证 Go Backend 签发的 JWT。
 - 方案：
   - 共享 HMAC 密钥（短期）
   - JWKS/公钥验证（长期推荐）

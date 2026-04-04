@@ -139,36 +139,36 @@
 
 **执行类任务示例**：
 ```
-🎯 任务：修复用户登录接口的 NPE 异常
+🎯 任务：修复用户登录接口的 nil pointer 异常
 
 📋 执行计划：
 - ✅ Phase 1: 定位异常堆栈
-- 🔄 Phase 2: 修复 UserService.java 空指针
+- 🔄 Phase 2: 修复 user_service.go nil pointer
 - ⏸ Phase 3: 添加单元测试
 - ⏸ Phase 4: 验证修复效果
 
 🛠️ 当前进度：
-正在修改 UserService.java:156，添加空值检查...
+正在修改 internal/service/user_service.go:156，添加 nil 检查...
 ```
 
 **分析类任务示例**：
 ```
-✅ 结论：NPE 是因为未检查 Redis 返回值为 null
+✅ 结论：panic 是因为未检查 Redis 返回值的 error
 
 🧠 关键分析：
-1. UserService.login() 直接使用了 redisTemplate.get() 返回值
-2. 当缓存未命中时返回 null，导致后续 .getId() 触发 NPE
+1. UserService.Login() 直接使用了 cache.Get(ctx, key) 返回值，未检查 error
+2. 当缓存未命中时返回 redis.Nil error，导致后续对空值解引用触发 panic
 3. 缺少降级逻辑，应从数据库加载用户
 
 🛠️ 实施建议：
-1. 添加 null 检查：if (user == null) { loadFromDB(); }
+1. 添加 error 检查：if errors.Is(err, redis.Nil) { loadFromDB() }
 2. 补充单元测试覆盖缓存未命中场景
 
 ⚠️ 风险与权衡：
 - 需要考虑缓存穿透问题
 - 建议加布隆过滤器或空值缓存
 
-📎 参考：UserService.java:156
+📎 参考：internal/service/user_service.go:156
 ```
 
 ### 状态标记
@@ -405,7 +405,7 @@
   - <风险或注意点 2>
   
   📎 参考
-  - `<文件路径:行号>`（例如 `src/main/java/App.java:42`）
+  - `<文件路径:行号>`（例如 `internal/service/user_service.go:42`）
   - 其他有用的链接或说明
   ```
 

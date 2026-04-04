@@ -7,11 +7,11 @@
 ```
 .github/
 ├── workflows/
-│   ├── docker-build-push.yml  # 自动构建 Docker 镜像 (main 分支触发)
-│   ├── ci-cd.yml              # 完整 CI/CD 流程 (测试+构建+部署)
+│   ├── ci-cd.yml              # 完整 CI/CD 流程 (测试+构建+部署+镜像推送)
 │   ├── quick-build.yml        # 快速构建 (手动触发)
 │   └── README.md              # 工作流使用说明
 ├── CICD_GUIDE.md              # 详细配置指南 ⭐
+├── CICD_README.md             # 本文件 - CI/CD 快速上手
 ├── QUICK_REFERENCE.txt        # 快速参考卡片
 └── setup-secrets.sh           # Secrets 配置助手脚本
 ```
@@ -74,8 +74,7 @@ golovin0623/aetherblog-admin:v1.0.0
 
 | 工作流 | 触发方式 | 用途 |
 |--------|---------|------|
-| docker-build-push.yml | 推送到 main / 创建 tag / 手动 | 自动构建镜像 |
-| ci-cd.yml | 推送到 main/develop / PR | 完整 CI/CD |
+| ci-cd.yml | 推送到 main/develop / PR / 创建 tag | 完整 CI/CD (测试+构建+镜像推送) |
 | quick-build.yml | 仅手动触发 | 快速构建单个服务 |
 
 ## 📚 详细文档
