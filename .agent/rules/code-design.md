@@ -29,7 +29,7 @@ trigger: always_on
 |:-----|:-----|:---------|:---------|
 | **§1** | **产品愿景与战略** | 背景、愿景、用户画像、竞品分析、商业模式 | 全局 |
 | **§2** | **系统架构设计** | 技术选型、架构全景图、技术决策矩阵 | 全局 |
-| §2.1 | 技术选型决策 | JDK25虚拟线程、Python AI Service、pgvector | 后端/AI |
+| §2.1 | 技术选型决策 | Go 协程模型、Python AI Service、pgvector | 后端/AI |
 | §2.2 | 前端技术栈 | React 19、Vite、Tailwind、Framer Motion | 前端 |
 | §2.3 | 后端技术栈 | Go 1.24、Echo v4、sqlx、golang-migrate | 后端 |
 | §2.4 | AI技术栈 | FastAPI、LiteLLM、LlamaIndex、OpenTelemetry | AI层 |
@@ -349,8 +349,7 @@ pnpm add xxx  # 说明用途
 - ...
 
 后端:
-- go@1.24 (echo/v4, sqlx, golang-migrate/v4, golang-jwt/v5)
-- spring-ai@1.0.x
+- go@1.24 (echo/v4, sqlx, golang-migrate/v4, golang-jwt/v5, koanf/v2, zerolog)
 - ...
 
 【遗留问题】
@@ -410,6 +409,9 @@ pnpm add xxx  # 说明用途
 - §2: 升级技术栈至 Spring Boot 4.0 + JDK 25
 - §2.4: 升级 Spring AI 至 2.0.0-M1
 - §Global: 迁移 JSON 库至 Jackson 3.x (tools.jackson)
+
+> ⚠️ 注意: v2.0.0 描述的 Spring Boot 4.0 + JDK 25 架构已在 2026-03 被全面替换为 Go 1.24 + Echo v4。
+> 当前后端技术栈: Go 1.24, Echo v4, sqlx, go-redis v9, golang-jwt v5, koanf v2, zerolog
 
 
 ## [v1.1.0] - YYYY-MM-DD

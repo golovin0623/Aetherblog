@@ -1,5 +1,7 @@
 # 🛠 升级问题记录 (Issue Log)
 
+> **注意：** 本文件为历史迁移日志。项目后端已从 Java/Spring Boot 迁移至 Go/Echo，以下记录的 Java 相关问题已不再适用于当前代码库。保留此文件仅供历史参考。
+
 ## [2026-01-14] JDK 25 & Spring Boot 4.0 升级适配
 
 ### 1. 核心技术栈变更
@@ -32,7 +34,7 @@
 
 #### 2.3 编译与构建
 - **问题**: `ai-agent` 模块报错 `ChatService cannot be resolved`，即时 `ai-core` 代码已更新。
-- **解决**: 对 `ai-core` 执行 `mvn clean install` 强制更新本地仓库，确保 `ai-agent` 能读取到最新的类定义。
+- **解决**: 对 `ai-core` 执行 `go build ./...` 强制重新编译，确保依赖模块能读取到最新的定义。
 
 #### 2.4 JDK 25 警告
 - **现象**: 启动时 `Unsafe` 类调用警告 (JEP 471)。

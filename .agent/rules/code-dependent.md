@@ -83,21 +83,20 @@ tenacity>=8.2.0
 
 ```go
 // 核心框架
-github.com/labstack/echo/v4          // HTTP 框架
-github.com/jmoiern/sqlx              // 数据库扩展
-github.com/golang-migrate/migrate/v4 // 数据库迁移
+github.com/labstack/echo/v4          // HTTP 框架 (Echo v4)
+github.com/jmoiron/sqlx              // 数据库扩展 (对 database/sql 的封装)
+github.com/golang-migrate/migrate/v4 // 数据库迁移 (SQL 文件驱动)
 
 // 数据库驱动
 github.com/lib/pq                    // PostgreSQL 驱动
-github.com/redis/go-redis/v9         // Redis 客户端
+github.com/redis/go-redis/v9         // Redis 客户端 (支持集群/哨兵)
 
 // 认证
-github.com/golang-jwt/jwt/v5         // JWT 处理
+github.com/golang-jwt/jwt/v5         // JWT 签发与验证
 
 // 工具
-github.com/spf13/viper               // 配置管理
-go.uber.org/zap                      // 日志
-github.com/go-playground/validator/v10 // 参数校验
+github.com/knadh/koanf/v2            // 配置管理 (支持多源、热加载)
+github.com/rs/zerolog                // 结构化日志 (零分配、高性能)
 ```
 
 ---
@@ -245,44 +244,38 @@ export const PostCard: React.FC<PostCardProps> = ({
 // - 类型/接口: PascalCase + 后缀 (PostProps, UserState)
 ```
 
-### Java/Spring 规范
+### Go/Echo 规范
 
-```java
-/**
- * 文章服务实现类
- *
- * @author AI Assistant
- * @since 1.0.0
- * @see §4.3 - 业务服务实现
- */
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class PostServiceImpl implements PostService {
+```go
+// ✅ 文件头注释 (必须)
+// Package service 实现业务逻辑层
+// ref: §4.3 - 业务服务实现
 
-    private final PostRepository postRepository;
-    private final CacheService cacheService;
-    
-    /**
-     * 获取文章详情
-     *
-     * @param idOrSlug 文章ID或Slug
-     * @return 文章详情
-     * @throws BusinessException 当文章不存在时
-     * @ref §7.2 - 文章详情接口
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public PostDetailResponse getPostDetail(String idOrSlug) {
-        // 实现...
-    }
+// ✅ Service 定义
+// PostService 文章业务逻辑
+type PostService struct {
+    repo      *repository.PostRepo
+    cache     *redis.Client
+    logger    zerolog.Logger
+}
+
+// NewPostService 创建文章服务实例
+func NewPostService(repo *repository.PostRepo, cache *redis.Client, logger zerolog.Logger) *PostService {
+    return &PostService{repo: repo, cache: cache, logger: logger}
+}
+
+// GetPostDetail 获取文章详情
+// ref: §7.2 - 文章详情接口
+func (s *PostService) GetPostDetail(ctx context.Context, idOrSlug string) (*dto.PostDetailResponse, error) {
+    // 实现...
 }
 
 // ✅ 命名规范
-// - 类: PascalCase (PostService, UserController)
-// - 方法: camelCase (getPostDetail, createUser)
-// - 常量: UPPER_SNAKE_CASE (MAX_PAGE_SIZE)
-// - 包: lowercase (com.aetherblog.blog.service)
+// - 结构体: PascalCase (PostService, PostHandler)
+// - 方法: PascalCase (GetPostDetail, CreatePost)
+// - 私有函数: camelCase (validatePost, buildQuery)
+// - 常量: PascalCase 或 UPPER_SNAKE_CASE (MaxPageSize, DefaultTimeout)
+// - 包名: lowercase (service, handler, repository)
 ```
 
 ---

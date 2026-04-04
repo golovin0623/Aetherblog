@@ -1,5 +1,7 @@
 # AI 统计与日志可观测性故障基线（2026-02-13）
 
+> ⚠️ 本文档中的 Java 文件路径已过时，后端已迁移至 Go (`apps/server-go/internal/`)。
+
 ## 1. 目标与范围
 - 目标：为 AI 统计链路建立统一故障样本与验收口径，作为后续修复/回归/发布准入唯一判据。
 - 链路范围：`Admin Dashboard -> Server Stats API -> AI Service Metrics/Usage`。
