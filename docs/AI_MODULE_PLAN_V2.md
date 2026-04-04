@@ -376,3 +376,64 @@ Phase 4：优化
 ## 与设计文档差异说明
 - 设计文档已同步为独立 AI 服务，旧内嵌方案标记为历史/弃用。
 - 该调整用于提升 AI 生态适配与长期可维护性。
+
+---
+
+## 实现状态更新（2026-04-04）
+
+### 已实现功能
+
+| 功能模块 | 状态 | 说明 |
+|---------|------|------|
+| LLM 路由引擎（LiteLLM） | 已实现 | 统一多供应商路由，支持按任务类型分流 |
+| 供应商适配层 | 已实现 | `app/services/` + `app/api/routes/providers.py` |
+| 凭证管理 | 已实现 | 数据库表 `ai_credentials`，Go 后端代理 CRUD |
+| 速率限制（用户级 + 全局） | 已实现 | Redis 滑动窗口，10 次/分钟/用户，100 次/分钟全局 |
+| 使用日志 | 已实现 | `ai_usage_logs` 表，记录 tokens / latency / cached |
+| 向量存储（pgvector） | 已实现 | `ai_vector_store` 表，支持 HNSW 索引语义检索 |
+| 流式传输（NDJSON） | 已实现 | `fetch` + `ReadableStream`，所有写作接口均有 `/stream` 版本 |
+| Redis 缓存 | 已实现 | summary/tags 缓存 24h，titles 缓存 1h，缓存键含模型 + Prompt 版本 |
+| Prompt 模板管理 | 已实现 | `app/api/routes/prompts.py`，支持版本兼容参数 |
+| 任务路由配置 | 已实现 | `app/api/routes/tasks.py`，`ai_task_types` + `ai_task_routing` 表 |
+| 使用指标接口 | 已实现 | `GET /api/v1/admin/metrics/ai` |
+| 健康检查 | 已实现 | `GET /api/v1/health` 含供应商连通性检测 |
+| 语义索引 | 已实现 | `POST /api/v1/admin/search/index` + `/reindex` |
+| 水平扩展（多副本） | 已实现 | docker-compose.prod.yml `--scale ai-service=N` + Nginx DNS 解析 |
+
+### FastAPI 路由文件（`app/api/routes/`）
+
+| 文件 | 端点前缀 | 端点数量 |
+|------|---------|---------|
+| `ai.py` | `/api/v1/ai/*` | 12+（6 种操作 × 普通 + 流式） |
+| `health.py` | `/api/v1/health` | 1 |
+| `metrics.py` | `/api/v1/admin/metrics/ai` | 1 |
+| `prompts.py` | `/api/v1/admin/prompts` | 4（CRUD） |
+| `providers.py` | `/api/v1/admin/providers` | 4+（CRUD / 测试） |
+| `search.py` | `/api/v1/search/semantic`, `/api/v1/admin/search/*` | 3 |
+| `tasks.py` | `/api/v1/admin/tasks` | 4（CRUD） |
+
+FastAPI 端点总计：**22+ 个**
+
+### 实际支持的 LLM 供应商（6 种）
+
+| 供应商 | 接入方式 | 典型用途 |
+|--------|---------|---------|
+| OpenAI | 原生 API | 内容润色（gpt-5.2）、Embedding |
+| Anthropic | 原生 API | 长文改写（claude-sonnet/haiku） |
+| Google | 原生 API | 大纲 / 长文摘要（gemini-3-flash/pro） |
+| Azure OpenAI | LiteLLM 路由 | 企业私有部署 |
+| LiteLLM | 统一代理层 | 多供应商兼容 / 成本调度 |
+| Custom | OpenAI 协议兼容 | 私有模型 / 国内可插拔供应商 |
+
+### 实际支持的模型类型（12 种）
+
+按能力维度：文本生成、流式文本生成、内容摘要、关键词提取、标题建议、内容润色、大纲生成、多语言翻译、语义嵌入（Embedding）、语义检索、使用统计、健康监控
+
+### 尚未实现 / 规划中
+
+| 功能 | 说明 |
+|------|------|
+| LlamaIndex RAG 完整集成 | 向量检索已就绪，Agent 编排层待补充 |
+| OpenTelemetry 可观测性 | 计划中，当前使用结构化日志替代 |
+| JWKS 公钥验证 | 当前使用共享 HMAC 密钥，长期建议切换 |
+| 自动扩缩容（HPA/KEDA） | 当前通过 docker-compose `--scale` 手动扩展 |

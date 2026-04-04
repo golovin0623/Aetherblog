@@ -2,6 +2,9 @@
 description: 执行不计成本的深度代码审查与全方位文档维护 (Strict Doc Maintenance)
 ---
 
+> 最后全量校准：2026-04-04（由 Claude Agent 执行，共校准79个文档文件）
+> 详细规则参见：`.agent/rules/doc-sync-rules.md`
+
 此工作流用于在任务交付前，执行**最严苛的质量控制与文档同步**。必须严格遵循以下阶段，确保"代码-文档-设计"的绝对一致性。
 
 # 阶段一：零容忍代码审计 (Zero-Tolerance Code Audit)
@@ -76,3 +79,24 @@ description: 执行不计成本的深度代码审查与全方位文档维护 (St
 # 阶段五：提交前通知
 只在所有检查通过后，通知用户：
 "已执行深度文档维护，设计文档、架构文档、路线图均已同步。代码通过严苛审计。"
+
+---
+
+## 文档校准快速 Checklist（2026-04-04更新）
+
+### 每次新增API端点后
+- [ ] docs/architecture.md API节已更新
+- [ ] CLAUDE.md API表格已更新
+
+### 每次新建数据库迁移后
+- [ ] 迁移版本号已更新（当前: 000028）
+- [ ] docs/architecture.md 数据库节已补充新表说明
+
+### 每次完成功能模块后
+- [ ] CHANGELOG.md 已录入
+- [ ] 系统设计书 §1.6 Gap Analysis 已更新
+- [ ] QA矩阵已更新（docs/qa/）
+
+### 每次修改基础设施配置后
+- [ ] nginx-guide.md 已更新
+- [ ] docs/deployment.md 已更新

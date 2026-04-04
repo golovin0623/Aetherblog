@@ -580,3 +580,99 @@ curl http://localhost:8080/api/v1/admin/storage/providers
 
 **报告生成**: 2026-01-18 03:25
 **下次更新**: 完成Phase 5后端服务后
+
+---
+
+## 后续实现记录（2026-04-04）
+
+> 说明：原报告基于早期 Java/Spring Boot 架构。项目已完成技术栈迁移，后端重写为 **Go 1.24 + Echo v4**，数据库迁移方案从 Flyway 切换为顺序编号 SQL 文件（000001–000028）。以下记录 Go 版本后续实现的功能模块。
+
+### AI 配置中心（凭证管理 + 任务路由）
+
+**数据库表**：`ai_providers`, `ai_models`, `ai_credentials`, `ai_task_types`, `ai_task_routing`
+
+**后端实现**：
+- `ai_handler.go` — 统一的 AI Handler，覆盖写作辅助（summary/tags/titles/polish/outline/translate）及其流式版本
+- AI 配置代理：`ANY /v1/admin/ai/providers/*` 将请求透明代理到 FastAPI AI 服务
+- Prompt 模板 CRUD：`/v1/admin/ai/prompts`
+- 任务路由 CRUD：`/v1/admin/ai/tasks`
+- 供应商健康检查：`GET /v1/admin/ai/health`
+
+**前端实现**：
+- `apps/admin/src/pages/ai-config/AiConfigPage.tsx` — AI 配置中心（供应商 / 凭证 / Prompt / 任务路由）
+
+### 文件版本管理（media_variants + 版本历史）
+
+**数据库表**：`media_variants`（图像变体）、版本相关字段在 `media_files` 中
+
+**后端实现**：
+- `version_handler.go` — 独立版本 Handler
+  - `GET /v1/admin/files/:fileId/versions` — 查询文件版本历史
+  - `POST /v1/admin/files/:fileId/versions/:num/restore` — 回滚到指定版本
+  - `DELETE /v1/admin/versions/:versionId` — 删除版本记录
+- `media_handler.go` — 媒体 Handler 覆盖 18 个路由，包含回收站、批量操作、变体查询
+
+### 活动事件系统（activity_events）
+
+**数据库表**：`activity_events`
+
+**后端实现**：
+- `activity_handler.go`
+  - `GET /v1/admin/activities/recent` — 最近活动（Dashboard 展示）
+  - `GET /v1/admin/activities` — 活动列表（分页）
+  - `GET /v1/admin/activities/user/:userId` — 指定用户活动
+
+### Vanblog 数据迁移功能
+
+**后端实现**：
+- `migration_handler.go`
+  - `POST /v1/admin/vanblog/import` — 接收 Vanblog 导出的 JSON 数据，解析并导入文章、分类、标签等核心内容
+- `posts` 表新增字段支持迁移场景：`source_key`（来源标识）、`legacy_*`（遗留字段）、`preserve_updated_at`（保留原始更新时间）、`is_hidden`（隐藏状态）
+
+**前端实现**：
+- `apps/admin/src/pages/MigrationPage.tsx` — Vanblog 导入向导页面
+
+### 系统监控模块
+
+**后端实现**：
+- `system_monitor_handler.go` — 15 个路由
+  - `GET /v1/admin/monitor/metrics` — 系统指标（CPU / 内存 / 磁盘）
+  - `GET /v1/admin/monitor/storage` — 存储用量
+  - `GET /v1/admin/monitor/health` — 服务健康
+  - `GET /v1/admin/monitor/overview` — 综合概览
+  - `GET /v1/admin/monitor/containers` — 容器状态
+  - `GET /v1/admin/monitor/logs` — 日志查询
+  - `GET /v1/admin/monitor/network` — 网络统计
+  - 以及告警配置 (`/alerts`, `/config`) 和历史数据 (`/history`)
+
+**前端实现**：
+- `apps/admin/src/pages/MonitorPage.tsx` — 系统监控仪表盘
+
+### 完整 Handler 模块清单（Go 版本，23 个）
+
+| Handler 文件 | 路由数量 | 主要功能 |
+|-------------|---------|---------|
+| `auth_handler.go` | 8 | 认证 / 个人设置 |
+| `post_handler.go` | 14 | 文章 CRUD / Admin + Public |
+| `comment_handler.go` | 13 | 评论审核 / 垃圾标记 |
+| `media_handler.go` | 18 | 媒体库完整操作 |
+| `folder_handler.go` | 7 | 文件夹层级 |
+| `permission_handler.go` | 4 | 文件夹 ACL |
+| `category_handler.go` | 6 | 分类管理 |
+| `tag_handler.go` | 5 | 标签管理 |
+| `ai_handler.go` | 20+ | AI 写作辅助 + 配置 |
+| `stats_handler.go` | 5 | 统计分析 |
+| `system_monitor_handler.go` | 15 | 系统监控 |
+| `site_handler.go` | 3 | 站点公开信息 |
+| `site_setting_handler.go` | 5 | 站点设置 |
+| `friend_link_handler.go` | 11 | 友链管理 |
+| `activity_handler.go` | 3 | 活动事件 |
+| `storage_provider_handler.go` | 8 | 存储提供商 |
+| `archive_handler.go` | 2 | 归档 |
+| `migration_handler.go` | 1 | Vanblog 导入 |
+| `media_tag_handler.go` | 4+ | 媒体标签 |
+| `system_handler.go` | 1 | 系统时间 |
+| `visitor_handler.go` | 2 | 访客记录 |
+| `version_handler.go` | 3 | 文件版本 |
+
+**更新时间**: 2026-04-04
