@@ -117,6 +117,7 @@ const MonthSection = React.memo(({
     <div>
       {/* 月份节点 */}
       <button
+        type="button"
         onClick={() => toggleMonth(yearMonth)}
         aria-expanded={isExpanded}
         aria-controls={`timeline-month-${yearMonth}`}
@@ -177,9 +178,12 @@ const MonthSection = React.memo(({
                   transition={{ delay: 0.2 }}
                 >
                   <button
+                    type="button"
+                    aria-expanded={showAllPosts}
                     onClick={() => toggleShowAllPosts(yearMonth)}
                     className="group p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                     title={showAllPosts ? '收起' : `还有 ${hiddenCount} 篇`}
+                    aria-label={showAllPosts ? "收起 " + MONTH_NAMES[monthData.month - 1] + " 的额外文章" : "展开 " + MONTH_NAMES[monthData.month - 1] + " 剩余 " + hiddenCount + " 篇"}
                   >
                     <motion.div
                       animate={{ rotate: showAllPosts ? 180 : 0 }}
@@ -231,6 +235,7 @@ const YearSection = React.memo(({
     >
       {/* 年份节点 */}
       <button
+        type="button"
         onClick={() => toggleYear(yearData.year)}
         aria-expanded={isExpanded}
         aria-controls={`timeline-year-${yearData.year}`}
