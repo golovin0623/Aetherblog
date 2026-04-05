@@ -25,6 +25,43 @@ func (h *StatsHandler) Mount(g *echo.Group) {
 	g.GET("/visitor-trend", h.VisitorTrend)
 	g.GET("/archives", h.Archives)
 	g.GET("/ai-dashboard", h.AIDashboard)
+	g.GET("/ai-pricing-gaps", h.AIPricingGaps)
+	g.POST("/ai-cost-archive", h.ArchiveAICosts)
+}
+
+type aiCostArchiveRequest struct {
+	Days     int    `json:"days"`
+	TaskType string `json:"taskType"`
+	ModelID  string `json:"modelId"`
+	Success  *bool  `json:"success"`
+	Keyword  string `json:"keyword"`
+}
+
+func parseAIDashboardFilter(c echo.Context) repository.AIDashboardFilter {
+	var filter repository.AIDashboardFilter
+	if v := c.QueryParam("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			filter.Days = n
+		}
+	}
+	if v := c.QueryParam("pageNum"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			filter.PageNum = n
+		}
+	}
+	if v := c.QueryParam("pageSize"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			filter.PageSize = n
+		}
+	}
+	filter.TaskType = c.QueryParam("taskType")
+	filter.ModelID = c.QueryParam("modelId")
+	filter.Keyword = c.QueryParam("keyword")
+	if v := c.QueryParam("success"); v != "" {
+		b := v == "true"
+		filter.Success = &b
+	}
+	return filter
 }
 
 // Dashboard 处理 GET /api/v1/admin/stats/dashboard 请求。
@@ -163,40 +200,46 @@ func (h *StatsHandler) Archives(c echo.Context) error {
 // taskType（任务类型）、modelId（模型 ID）、success（是否成功）、keyword（关键词）。
 func (h *StatsHandler) AIDashboard(c echo.Context) error {
 	ctx := c.Request().Context()
-
-	var filter repository.AIDashboardFilter
-
-	// 解析时间范围过滤参数
-	if v := c.QueryParam("days"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			filter.Days = n
-		}
-	}
-	// 解析分页参数
-	if v := c.QueryParam("pageNum"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			filter.PageNum = n
-		}
-	}
-	if v := c.QueryParam("pageSize"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			filter.PageSize = n
-		}
-	}
-	// 解析字符串类型过滤参数
-	filter.TaskType = c.QueryParam("taskType")
-	filter.ModelID = c.QueryParam("modelId")
-	filter.Keyword = c.QueryParam("keyword")
-
-	// 解析是否成功的布尔过滤参数
-	if v := c.QueryParam("success"); v != "" {
-		b := v == "true"
-		filter.Success = &b
-	}
+	filter := parseAIDashboardFilter(c)
 
 	vo, err := h.svc.GetAIDashboardFiltered(ctx, filter)
 	if err != nil {
 		return response.Error(c, err)
 	}
 	return response.OK(c, vo)
+}
+
+// AIPricingGaps 处理 GET /api/v1/admin/stats/ai-pricing-gaps 请求。
+// 返回当前过滤范围内缺失价格配置的模型列表。
+func (h *StatsHandler) AIPricingGaps(c echo.Context) error {
+	filter := parseAIDashboardFilter(c)
+	gaps, err := h.svc.GetAIPricingGaps(c.Request().Context(), filter)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, gaps)
+}
+
+// ArchiveAICosts 处理 POST /api/v1/admin/stats/ai-cost-archive 请求。
+// 将当前筛选条件下的未归档或归档失败日志按现价执行归档。
+func (h *StatsHandler) ArchiveAICosts(c echo.Context) error {
+	var req aiCostArchiveRequest
+	if c.Request().ContentLength > 0 || c.Request().Header.Get(echo.HeaderContentType) == echo.MIMEApplicationJSON {
+		if err := c.Bind(&req); err != nil && err != echo.ErrUnsupportedMediaType {
+			return response.FailWith(c, response.BadRequest, "无效的归档请求参数")
+		}
+	}
+
+	filter := repository.AIDashboardFilter{
+		Days:     req.Days,
+		TaskType: req.TaskType,
+		ModelID:  req.ModelID,
+		Success:  req.Success,
+		Keyword:  req.Keyword,
+	}
+	result, err := h.svc.ArchiveAICosts(c.Request().Context(), filter)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, result)
 }

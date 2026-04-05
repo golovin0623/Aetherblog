@@ -70,19 +70,22 @@ type AiTaskDistributionVO struct {
 
 // AiCallRecordVO 表示单条 AI 调用明细。
 type AiCallRecordVO struct {
-	ID           int64   `json:"id"`
-	TaskType     string  `json:"taskType"`
-	ProviderCode string  `json:"providerCode"`
-	Model        string  `json:"model"`
-	TokensIn     int64   `json:"tokensIn"`
-	TokensOut    int64   `json:"tokensOut"`
-	TotalTokens  int64   `json:"totalTokens"`
-	Cost         float64 `json:"cost"`
-	LatencyMs    int64   `json:"latencyMs"`
-	Success      bool    `json:"success"`
-	Cached       bool    `json:"cached"`
-	ErrorCode    *string `json:"errorCode"`
-	CreatedAt    string  `json:"createdAt"`
+	ID             int64   `json:"id"`
+	TaskType       string  `json:"taskType"`
+	ProviderCode   string  `json:"providerCode"`
+	Model          string  `json:"model"`
+	TokensIn       int64   `json:"tokensIn"`
+	TokensOut      int64   `json:"tokensOut"`
+	TotalTokens    int64   `json:"totalTokens"`
+	Cost           float64 `json:"cost"`
+	CostStatus     string  `json:"costStatus"`
+	PricingMissing bool    `json:"pricingMissing"`
+	LatencyMs      int64   `json:"latencyMs"`
+	Success        bool    `json:"success"`
+	Cached         bool    `json:"cached"`
+	ErrorCode      *string `json:"errorCode"`
+	ArchiveError   *string `json:"archiveError"`
+	CreatedAt      string  `json:"createdAt"`
 }
 
 // AiRecordsPageVO 表示 AI 调用明细分页结果。
@@ -102,6 +105,24 @@ type AIDashboardVO struct {
 	ModelDistribution []AiModelDistributionVO `json:"modelDistribution"` // 模型分布
 	TaskDistribution  []AiTaskDistributionVO  `json:"taskDistribution"`  // 按任务类型分布
 	Records           AiRecordsPageVO         `json:"records"`           // 详细记录
+}
+
+// AIPricingGapVO 表示存在调用记录但价格配置缺失的模型聚合信息。
+type AIPricingGapVO struct {
+	ProviderCode  string   `json:"providerCode"`
+	ModelID       string   `json:"modelId"`
+	ModelDBID     *int64   `json:"modelDbId"`
+	DisplayName   string   `json:"displayName"`
+	MissingFields []string `json:"missingFields"`
+	Calls         int64    `json:"calls"`
+	LatestUsedAt  string   `json:"latestUsedAt"`
+}
+
+// AICostArchiveResultVO 表示一次费用归档请求的处理结果。
+type AICostArchiveResultVO struct {
+	Total    int64 `json:"total"`
+	Archived int64 `json:"archived"`
+	Failed   int64 `json:"failed"`
 }
 
 // AiOverviewVO 汇总 AI 服务的调用成功率、Token 用量、费用及延迟等核心指标。
@@ -202,19 +223,22 @@ func mapAiRecords(page repository.AICallRecordPage) AiRecordsPageVO {
 	vos := make([]AiCallRecordVO, len(page.List))
 	for i, row := range page.List {
 		vos[i] = AiCallRecordVO{
-			ID:           row.ID,
-			TaskType:     row.TaskType,
-			ProviderCode: row.ProviderCode,
-			Model:        row.Model,
-			TokensIn:     row.TokensIn,
-			TokensOut:    row.TokensOut,
-			TotalTokens:  row.TotalTokens,
-			Cost:         row.Cost,
-			LatencyMs:    row.LatencyMs,
-			Success:      row.Success,
-			Cached:       row.Cached,
-			ErrorCode:    row.ErrorCode,
-			CreatedAt:    row.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ID:             row.ID,
+			TaskType:       row.TaskType,
+			ProviderCode:   row.ProviderCode,
+			Model:          row.Model,
+			TokensIn:       row.TokensIn,
+			TokensOut:      row.TokensOut,
+			TotalTokens:    row.TotalTokens,
+			Cost:           row.Cost,
+			CostStatus:     row.CostStatus,
+			PricingMissing: row.PricingMissing,
+			LatencyMs:      row.LatencyMs,
+			Success:        row.Success,
+			Cached:         row.Cached,
+			ErrorCode:      row.ErrorCode,
+			ArchiveError:   row.ArchiveError,
+			CreatedAt:      row.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		}
 	}
 
@@ -235,6 +259,58 @@ func buildAIDashboardVO(d *repository.AIDashboard, rangeDays int) *AIDashboardVO
 		ModelDistribution: mapAiModelDistribution(d.ModelDistribution, d.TotalCalls),
 		TaskDistribution:  mapAiTaskDistribution(d.TaskDistribution, d.TotalCalls),
 		Records:           mapAiRecords(d.Records),
+	}
+}
+
+func mapAIPricingGaps(rows []repository.AIPricingGap) []AIPricingGapVO {
+	vos := make([]AIPricingGapVO, len(rows))
+	for i, row := range rows {
+		latestUsedAt := ""
+		if row.LatestUsedAt != nil {
+			latestUsedAt = row.LatestUsedAt.Format("2006-01-02T15:04:05Z07:00")
+		}
+		vos[i] = AIPricingGapVO{
+			ProviderCode:  row.ProviderCode,
+			ModelID:       row.ModelID,
+			ModelDBID:     row.ModelDBID,
+			DisplayName:   row.DisplayName,
+			MissingFields: splitCSVFields(row.MissingFields),
+			Calls:         row.Calls,
+			LatestUsedAt:  latestUsedAt,
+		}
+	}
+	return vos
+}
+
+func splitCSVFields(value string) []string {
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	return result
+}
+
+func mapAICostArchiveResult(result *repository.AICostArchiveResult) *AICostArchiveResultVO {
+	if result == nil {
+		return &AICostArchiveResultVO{}
+	}
+	return &AICostArchiveResultVO{
+		Total:    result.Total,
+		Archived: result.Archived,
+		Failed:   result.Failed,
 	}
 }
 
@@ -495,6 +571,24 @@ func (s *AnalyticsService) GetAIDashboardFiltered(ctx context.Context, f reposit
 		return nil, err
 	}
 	return buildAIDashboardVO(d, f.Days), nil
+}
+
+// GetAIPricingGaps 返回当前过滤范围内缺失价格配置的模型聚合结果。
+func (s *AnalyticsService) GetAIPricingGaps(ctx context.Context, f repository.AIDashboardFilter) ([]AIPricingGapVO, error) {
+	rows, err := s.repo.GetAIPricingGaps(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	return mapAIPricingGaps(rows), nil
+}
+
+// ArchiveAICosts 根据当前价格配置归档指定过滤范围内的 AI 调用成本。
+func (s *AnalyticsService) ArchiveAICosts(ctx context.Context, f repository.AIDashboardFilter) (*AICostArchiveResultVO, error) {
+	result, err := s.repo.ArchiveAICosts(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	return mapAICostArchiveResult(result), nil
 }
 
 // GetTodayCount 返回今日的页面访问总次数（PV）。

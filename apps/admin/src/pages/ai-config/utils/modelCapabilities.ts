@@ -75,7 +75,17 @@ export function resolveModelConfig(model: AiModel): ModelConfig {
 
 export function resolveModelPricing(model: AiModel): ModelPricing {
   const caps = getModelExtra(model);
-  return caps.pricing || {};
+  const pricing = { ...(caps.pricing || {}) } as ModelPricing;
+  if (pricing.input === undefined && model.input_cost_per_1m != null) {
+    pricing.input = model.input_cost_per_1m;
+  }
+  if (pricing.output === undefined && model.output_cost_per_1m != null) {
+    pricing.output = model.output_cost_per_1m;
+  }
+  if (pricing.cachedInput === undefined && model.cached_input_cost_per_1m != null) {
+    pricing.cachedInput = model.cached_input_cost_per_1m;
+  }
+  return pricing;
 }
 
 export function resolveModelContextWindow(model: AiModel): number | null {

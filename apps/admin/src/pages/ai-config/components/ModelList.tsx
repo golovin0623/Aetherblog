@@ -1,7 +1,7 @@
 // 模型列表组件
 // ref: §5.1 - AI Service 架构
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -35,6 +35,7 @@ interface ModelListProps {
   credentialId?: number | null;
   isLoading?: boolean;
   showDeployName?: boolean;
+  initialSearch?: string;
   variant?: 'default' | 'simple';
 }
 
@@ -46,6 +47,7 @@ export default function ModelList({
   credentialId,
   isLoading,
   showDeployName,
+  initialSearch,
   variant: _variant = 'default',
 }: ModelListProps) {
   const [activeTab, setActiveTab] = useState<ModelType | 'all'>('all');
@@ -58,6 +60,12 @@ export default function ModelList({
   const syncRemoteModels = useSyncRemoteModels();
   const clearProviderModels = useClearProviderModels();
   const batchToggleModels = useBatchToggleModels();
+
+  useEffect(() => {
+    if (initialSearch) {
+      setSearch(initialSearch);
+    }
+  }, [initialSearch]);
 
   // 统计各类型数量
   const typeCounts = useMemo(() => countModelsByType(models), [models]);

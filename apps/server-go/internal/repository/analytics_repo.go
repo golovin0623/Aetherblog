@@ -80,19 +80,22 @@ type AIModelDistribution struct {
 
 // AICallRecord 表示单条 AI 调用明细。
 type AICallRecord struct {
-	ID           int64     `db:"id"`
-	TaskType     string    `db:"task_type"`
-	ProviderCode string    `db:"provider_code"`
-	Model        string    `db:"model"`
-	TokensIn     int64     `db:"tokens_in"`
-	TokensOut    int64     `db:"tokens_out"`
-	TotalTokens  int64     `db:"total_tokens"`
-	Cost         float64   `db:"cost"`
-	LatencyMs    int64     `db:"latency_ms"`
-	Success      bool      `db:"success"`
-	Cached       bool      `db:"cached"`
-	ErrorCode    *string   `db:"error_code"`
-	CreatedAt    time.Time `db:"created_at"`
+	ID             int64     `db:"id"`
+	TaskType       string    `db:"task_type"`
+	ProviderCode   string    `db:"provider_code"`
+	Model          string    `db:"model"`
+	TokensIn       int64     `db:"tokens_in"`
+	TokensOut      int64     `db:"tokens_out"`
+	TotalTokens    int64     `db:"total_tokens"`
+	Cost           float64   `db:"cost"`
+	CostStatus     string    `db:"cost_status"`
+	PricingMissing bool      `db:"pricing_missing"`
+	LatencyMs      int64     `db:"latency_ms"`
+	Success        bool      `db:"success"`
+	Cached         bool      `db:"cached"`
+	ErrorCode      *string   `db:"error_code"`
+	ArchiveError   *string   `db:"archive_error"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 // AICallRecordPage 表示 AI 调用明细分页结果。
@@ -221,37 +224,11 @@ func (r *AnalyticsRepo) GetTodayVisitCount(ctx context.Context) (int64, error) {
 // GetAIDashboard 从 ai_usage_logs 表查询聚合的 AI 使用统计数据，包括总调用次数、成功次数、
 // Token 消耗量、估算费用，以及按任务类型细分的统计。
 func (r *AnalyticsRepo) GetAIDashboard(ctx context.Context) (*AIDashboard, error) {
-	var d AIDashboard
-
-	// 查询 AI 整体聚合指标
-	if err := r.db.GetContext(ctx, &d,
-		`SELECT
-		    COUNT(*)                           AS total_calls,
-		    COUNT(*) FILTER (WHERE success)    AS success_calls,
-		    COUNT(*) FILTER (WHERE cached)     AS cached_calls,
-		    COALESCE(SUM(total_tokens), 0)     AS total_tokens,
-		    COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost,
-		    COALESCE(AVG(latency_ms), 0.0)     AS avg_latency_ms
-		 FROM ai_usage_logs`); err != nil {
-		return nil, err
-	}
-
-	// 按任务类型分组统计调用次数、Token 消耗和费用，按调用量降序排列
-	var stats []AITaskDistribution
-	if err := r.db.SelectContext(ctx, &stats,
-		`SELECT
-		    COALESCE(NULLIF(task_type, ''), 'unknown') AS task,
-		    COUNT(*)                                   AS calls,
-		    COALESCE(SUM(total_tokens), 0)             AS tokens,
-		    COALESCE(SUM(estimated_cost), 0.0)         AS cost
-		 FROM ai_usage_logs
-		 GROUP BY COALESCE(NULLIF(task_type, ''), 'unknown')
-		 ORDER BY calls DESC, task ASC`); err != nil {
-		return nil, err
-	}
-	d.TaskDistribution = stats
-
-	return &d, nil
+	return r.GetAIDashboardFiltered(ctx, AIDashboardFilter{
+		Days:     30,
+		PageNum:  1,
+		PageSize: 20,
+	})
 }
 
 // ArchiveMonthStat 持有某年月的文章发布数量统计，用于博客归档展示。
@@ -401,42 +378,7 @@ type AIDashboardFilter struct {
 }
 
 func buildAIDashboardWhere(f AIDashboardFilter) (string, []any) {
-	where := "WHERE 1=1"
-	args := make([]any, 0, 4)
-	argIdx := 1
-
-	if f.Days > 0 {
-		where += fmt.Sprintf(" AND created_at >= NOW() - INTERVAL '%d days'", f.Days)
-	}
-	if f.TaskType != "" {
-		where += fmt.Sprintf(" AND COALESCE(NULLIF(task_type, ''), 'unknown') = $%d", argIdx)
-		args = append(args, f.TaskType)
-		argIdx++
-	}
-	if f.ModelID != "" {
-		where += fmt.Sprintf(" AND COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown') = $%d", argIdx)
-		args = append(args, f.ModelID)
-		argIdx++
-	}
-	if f.Success != nil {
-		where += fmt.Sprintf(" AND success = $%d", argIdx)
-		args = append(args, *f.Success)
-		argIdx++
-	}
-	if f.Keyword != "" {
-		where += fmt.Sprintf(
-			" AND ("+
-				"COALESCE(task_type, '') ILIKE $%d OR "+
-				"COALESCE(model_id, '') ILIKE $%d OR "+
-				"COALESCE(model, '') ILIKE $%d OR "+
-				"COALESCE(provider_code, '') ILIKE $%d OR "+
-				"COALESCE(error_code, '') ILIKE $%d)",
-			argIdx, argIdx, argIdx, argIdx, argIdx,
-		)
-		args = append(args, "%"+f.Keyword+"%")
-	}
-
-	return where, args
+	return buildAIDashboardWhereWithAlias(f, "")
 }
 
 func calcPages(total int64, pageSize int) int {
@@ -450,7 +392,7 @@ func calcPages(total int64, pageSize int) int {
 // 返回过滤后的 AI 使用聚合统计数据及按任务类型细分的统计。
 func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboardFilter) (*AIDashboard, error) {
 	var d AIDashboard
-	where, args := buildAIDashboardWhere(f)
+	where, args := buildAIDashboardWhereWithAlias(f, "l")
 	pageNum := f.PageNum
 	if pageNum <= 0 {
 		pageNum = 1
@@ -461,31 +403,31 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 	}
 	offset := (pageNum - 1) * pageSize
 
-	// 查询聚合指标（总调用次数、成功次数、缓存命中、Token 量、费用、平均耗时）
-	aggQuery := fmt.Sprintf(
-		`SELECT
-		    COUNT(*)                           AS total_calls,
-		    COUNT(*) FILTER (WHERE success)    AS success_calls,
-		    COUNT(*) FILTER (WHERE cached)     AS cached_calls,
-		    COALESCE(SUM(total_tokens), 0)     AS total_tokens,
-		    COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost,
-		    COALESCE(AVG(latency_ms), 0.0)     AS avg_latency_ms
-		 FROM ai_usage_logs %s`, where)
+	cte := buildPricedLogsCTE(where)
+
+	aggQuery := cte + `
+SELECT
+    COUNT(*) AS total_calls,
+    COUNT(*) FILTER (WHERE success) AS success_calls,
+    COUNT(*) FILTER (WHERE cached) AS cached_calls,
+    COALESCE(SUM(total_tokens), 0) AS total_tokens,
+    COALESCE(SUM(COALESCE(cost, 0)), 0.0) AS estimated_cost,
+    COALESCE(AVG(latency_ms), 0.0) AS avg_latency_ms
+FROM priced_logs`
 
 	if err := r.db.GetContext(ctx, &d, aggQuery, args...); err != nil {
 		return nil, err
 	}
 
-	// 按任务类型分组统计，按调用量降序排列
-	taskQuery := fmt.Sprintf(
-		`SELECT
-		    COALESCE(NULLIF(task_type, ''), 'unknown') AS task,
-		    COUNT(*)                                   AS calls,
-		    COALESCE(SUM(total_tokens), 0)             AS tokens,
-		    COALESCE(SUM(estimated_cost), 0.0)         AS cost
-		 FROM ai_usage_logs %s
-		 GROUP BY COALESCE(NULLIF(task_type, ''), 'unknown')
-		 ORDER BY calls DESC, task ASC`, where)
+	taskQuery := cte + `
+SELECT
+    task_type AS task,
+    COUNT(*) AS calls,
+    COALESCE(SUM(total_tokens), 0) AS tokens,
+    COALESCE(SUM(COALESCE(cost, 0)), 0.0) AS cost
+FROM priced_logs
+GROUP BY task_type
+ORDER BY calls DESC, task ASC`
 
 	var taskStats []AITaskDistribution
 	if err := r.db.SelectContext(ctx, &taskStats, taskQuery, args...); err != nil {
@@ -493,23 +435,23 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 	}
 	d.TaskDistribution = taskStats
 
-	trendQuery := fmt.Sprintf(
-		`WITH daily AS (
-		    SELECT
-		        DATE(created_at)::text             AS date,
-		        COUNT(*)                           AS calls,
-		        COALESCE(SUM(total_tokens), 0)     AS tokens,
-		        COALESCE(SUM(estimated_cost), 0.0) AS cost
-		    FROM ai_usage_logs %s
-		    GROUP BY DATE(created_at)::text
-		)
-		SELECT
-		    date,
-		    calls,
-		    tokens,
-		    cost
-		FROM daily
-		ORDER BY date ASC`, where)
+	trendQuery := cte + `,
+daily AS (
+    SELECT
+        DATE(created_at)::text AS date,
+        COUNT(*) AS calls,
+        COALESCE(SUM(total_tokens), 0) AS tokens,
+        COALESCE(SUM(COALESCE(cost, 0)), 0.0) AS cost
+    FROM priced_logs
+    GROUP BY DATE(created_at)::text
+)
+SELECT
+    date,
+    calls,
+    tokens,
+    cost
+FROM daily
+ORDER BY date ASC`
 
 	var trend []AITrendPoint
 	if err := r.db.SelectContext(ctx, &trend, trendQuery, args...); err != nil {
@@ -517,18 +459,17 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 	}
 	d.Trend = trend
 
-	modelQuery := fmt.Sprintf(
-		`SELECT
-		    COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown') AS model,
-		    COALESCE(NULLIF(provider_code, ''), 'unknown')               AS provider_code,
-		    COUNT(*)                                                     AS calls,
-		    COALESCE(SUM(total_tokens), 0)                               AS tokens,
-		    COALESCE(SUM(estimated_cost), 0.0)                           AS cost
-		FROM ai_usage_logs %s
-		GROUP BY COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown'),
-		         COALESCE(NULLIF(provider_code, ''), 'unknown')
-		ORDER BY calls DESC, model ASC
-		LIMIT 8`, where)
+	modelQuery := cte + `
+SELECT
+    model,
+    provider_code,
+    COUNT(*) AS calls,
+    COALESCE(SUM(total_tokens), 0) AS tokens,
+    COALESCE(SUM(COALESCE(cost, 0)), 0.0) AS cost
+FROM priced_logs
+GROUP BY model, provider_code
+ORDER BY calls DESC, model ASC
+LIMIT 8`
 
 	var modelStats []AIModelDistribution
 	if err := r.db.SelectContext(ctx, &modelStats, modelQuery, args...); err != nil {
@@ -536,29 +477,32 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 	}
 	d.ModelDistribution = modelStats
 
-	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM ai_usage_logs %s`, where)
+	countQuery := cte + ` SELECT COUNT(*) FROM priced_logs`
 	if err := r.db.GetContext(ctx, &d.Records.Total, countQuery, args...); err != nil {
 		return nil, err
 	}
 
-	recordQuery := fmt.Sprintf(
-		`SELECT
-		    id,
-		    COALESCE(NULLIF(task_type, ''), 'unknown')                  AS task_type,
-		    COALESCE(NULLIF(provider_code, ''), 'unknown')              AS provider_code,
-		    COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown') AS model,
-		    COALESCE(tokens_in, 0)                                      AS tokens_in,
-		    COALESCE(tokens_out, 0)                                     AS tokens_out,
-		    COALESCE(total_tokens, 0)                                   AS total_tokens,
-		    COALESCE(estimated_cost, 0.0)                               AS cost,
-		    COALESCE(latency_ms, 0)                                     AS latency_ms,
-		    COALESCE(success, false)                                    AS success,
-		    COALESCE(cached, false)                                     AS cached,
-		    error_code,
-		    created_at
-		FROM ai_usage_logs %s
-		ORDER BY created_at DESC
-		LIMIT %d OFFSET %d`, where, pageSize, offset)
+	recordQuery := cte + fmt.Sprintf(`
+SELECT
+    id,
+    task_type,
+    provider_code,
+    model,
+    tokens_in,
+    tokens_out,
+    total_tokens,
+    COALESCE(cost, 0.0) AS cost,
+    cost_status,
+    pricing_missing,
+    latency_ms,
+    success,
+    cached,
+    error_code,
+    archive_error,
+    created_at
+FROM priced_logs
+ORDER BY created_at DESC
+LIMIT %d OFFSET %d`, pageSize, offset)
 
 	var records []AICallRecord
 	if err := r.db.SelectContext(ctx, &records, recordQuery, args...); err != nil {

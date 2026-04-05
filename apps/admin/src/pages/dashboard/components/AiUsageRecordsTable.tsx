@@ -98,9 +98,34 @@ export function AiUsageRecordsTable({
       key: 'cost',
       title: '费用',
       render: (item: AiCallRecord) => (
-        <span className="text-sm text-status-success">${item.cost.toFixed(6)}</span>
+        <div className="flex flex-col gap-1">
+          {item.pricingMissing ? (
+            <span className="text-sm text-status-warning">待配置</span>
+          ) : (
+            <span className="text-sm text-status-success">${item.cost.toFixed(6)}</span>
+          )}
+          <div className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'inline-flex rounded px-1.5 py-0.5 text-[10px]',
+                item.costStatus === 'archived'
+                  ? 'bg-emerald-500/10 text-emerald-500'
+                  : item.costStatus === 'missing'
+                    ? 'bg-amber-500/10 text-amber-500'
+                    : 'bg-sky-500/10 text-sky-500',
+              )}
+            >
+              {item.costStatus === 'archived' ? '已归档' : item.costStatus === 'missing' ? '缺价格' : '实时'}
+            </span>
+            {item.archiveError && (
+              <span className="truncate text-[10px] text-[var(--text-muted)]" title={item.archiveError}>
+                {item.archiveError}
+              </span>
+            )}
+          </div>
+        </div>
       ),
-      width: '110px',
+      width: '170px',
     },
     {
       key: 'latencyMs',

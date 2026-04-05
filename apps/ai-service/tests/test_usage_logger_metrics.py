@@ -65,6 +65,28 @@ def test_metrics_store_usage_log_failure_alert_and_sampling():
     assert usage_logging["samples"][1]["request_id"] == "req-3"
 
 
+def test_usage_logger_estimate_cost_uses_million_token_pricing_and_cached_input():
+    regular = UsageLogger._estimate_cost(
+        tokens_in=250000,
+        tokens_out=500000,
+        input_cost_per_1m=1.0,
+        output_cost_per_1m=2.0,
+        cached_input_cost_per_1m=0.25,
+        cached=False,
+    )
+    cached = UsageLogger._estimate_cost(
+        tokens_in=250000,
+        tokens_out=500000,
+        input_cost_per_1m=1.0,
+        output_cost_per_1m=2.0,
+        cached_input_cost_per_1m=0.25,
+        cached=True,
+    )
+
+    assert float(regular) == 1.25
+    assert float(cached) == 1.0625
+
+
 @pytest.mark.asyncio
 async def test_usage_logger_failure_records_metrics_without_blocking_business():
     metrics = MetricsStore(usage_log_alert_threshold=1, usage_log_sample_limit=5)

@@ -101,10 +101,13 @@ export interface AiCallRecord {
   tokensOut: number;
   totalTokens: number;
   cost: number;
+  costStatus: 'archived' | 'realtime' | 'missing';
+  pricingMissing: boolean;
   latencyMs: number;
   success: boolean;
   cached: boolean;
   errorCode?: string | null;
+  archiveError?: string | null;
   createdAt: string;
 }
 
@@ -133,6 +136,22 @@ export interface AiDashboardQuery {
   modelId?: string;
   success?: boolean;
   keyword?: string;
+}
+
+export interface AiPricingGap {
+  providerCode: string;
+  modelId: string;
+  modelDbId?: number | null;
+  displayName: string;
+  missingFields: string[];
+  calls: number;
+  latestUsedAt?: string;
+}
+
+export interface AiCostArchiveResult {
+  total: number;
+  archived: number;
+  failed: number;
 }
 
 class AnalyticsService {
@@ -169,6 +188,24 @@ class AnalyticsService {
       : '/v1/admin/stats/ai-dashboard';
 
     return api.get<R<AiDashboardData>>(url);
+  }
+
+  async getAiPricingGaps(query: AiDashboardQuery = {}): Promise<R<AiPricingGap[]>> {
+    const params = new URLSearchParams();
+    if (query.days) params.set('days', String(query.days));
+    if (query.taskType) params.set('taskType', query.taskType);
+    if (query.modelId) params.set('modelId', query.modelId);
+    if (typeof query.success === 'boolean') params.set('success', String(query.success));
+    if (query.keyword) params.set('keyword', query.keyword);
+    const queryString = params.toString();
+    const url = queryString
+      ? `/v1/admin/stats/ai-pricing-gaps?${queryString}`
+      : '/v1/admin/stats/ai-pricing-gaps';
+    return api.get<R<AiPricingGap[]>>(url);
+  }
+
+  async archiveAiCosts(payload: Partial<AiDashboardQuery> = {}): Promise<R<AiCostArchiveResult>> {
+    return api.post<R<AiCostArchiveResult>>('/v1/admin/stats/ai-cost-archive', payload);
   }
 }
 

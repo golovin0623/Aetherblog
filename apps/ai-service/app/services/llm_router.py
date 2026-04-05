@@ -99,8 +99,9 @@ class LlmRouter:
         model: str
         provider_code: str | None
         model_id: str | None
-        input_cost_per_1k: float | None
-        output_cost_per_1k: float | None
+        input_cost_per_1m: float | None
+        output_cost_per_1m: float | None
+        cached_input_cost_per_1m: float | None
         api_key: str | None
         api_base: str | None
         temperature: float
@@ -146,8 +147,9 @@ class LlmRouter:
             model=prefixed_model,
             provider_code=model.provider_code,
             model_id=model.model_id,
-            input_cost_per_1k=model.input_cost_per_1k,
-            output_cost_per_1k=model.output_cost_per_1k,
+            input_cost_per_1m=model.input_cost_per_1m,
+            output_cost_per_1m=model.output_cost_per_1m,
+            cached_input_cost_per_1m=model.cached_input_cost_per_1m,
             api_key=credential.api_key,
             api_base=credential.base_url,
             temperature=0.7,
@@ -177,8 +179,9 @@ class LlmRouter:
                 model=prefixed_model,
                 provider_code=routing.model.provider_code,
                 model_id=routing.model.model_id,
-                input_cost_per_1k=routing.model.input_cost_per_1k,
-                output_cost_per_1k=routing.model.output_cost_per_1k,
+                input_cost_per_1m=routing.model.input_cost_per_1m,
+                output_cost_per_1m=routing.model.output_cost_per_1m,
+                cached_input_cost_per_1m=routing.model.cached_input_cost_per_1m,
                 api_key=routing.credential.api_key,
                 api_base=routing.credential.base_url,
                 temperature=routing.config.get("temperature", 0.7),
@@ -192,8 +195,9 @@ class LlmRouter:
             model=self.resolve_model(model_alias),
             provider_code=provider_code,
             model_id=model_id,
-            input_cost_per_1k=None,
-            output_cost_per_1k=None,
+            input_cost_per_1m=None,
+            output_cost_per_1m=None,
+            cached_input_cost_per_1m=None,
             api_key=self.settings.openai_api_key,
             api_base=self.settings.openai_base_url,
             temperature=0.7,
@@ -222,8 +226,9 @@ class LlmRouter:
             "model": resolved.model,
             "provider_code": effective_provider,
             "model_id": effective_model_id,
-            "input_cost_per_1k": resolved.input_cost_per_1k,
-            "output_cost_per_1k": resolved.output_cost_per_1k,
+            "input_cost_per_1m": resolved.input_cost_per_1m,
+            "output_cost_per_1m": resolved.output_cost_per_1m,
+            "cached_input_cost_per_1m": resolved.cached_input_cost_per_1m,
         }
 
     async def resolve_effective_model(

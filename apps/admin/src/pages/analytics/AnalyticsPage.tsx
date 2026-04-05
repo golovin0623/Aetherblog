@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Cpu, DollarSign, Clock, Loader2, Repeat2, AlertTriangle } from 'lucide-react';
 import { StatsCard } from '../dashboard/components/StatsCard';
 import {
@@ -10,6 +11,7 @@ import {
   analyticsService,
   type AiDashboardData,
   type AiCallRecord,
+  type AiPricingGap,
 } from '@/services/analyticsService';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -54,14 +56,16 @@ export function AnalyticsPage() {
   const [successFilter, setSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [data, setData] = useState<AiDashboardData>(EMPTY_DATA);
+  const [pricingGaps, setPricingGaps] = useState<AiPricingGap[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         const success = successFilter === 'all' ? undefined : successFilter === 'success';
-        const response = await analyticsService.getAiDashboard({
+        const query = {
           days,
           pageNum: page,
           pageSize: PAGE_SIZE,
@@ -69,17 +73,28 @@ export function AnalyticsPage() {
           modelId: modelId || undefined,
           success,
           keyword: keyword.trim() || undefined,
-        });
+        };
+        const [response, gapResponse] = await Promise.all([
+          analyticsService.getAiDashboard(query),
+          analyticsService.getAiPricingGaps(query),
+        ]);
 
         if (response.code === 200 && response.data) {
           setData(response.data);
         } else {
           setData(EMPTY_DATA);
         }
+
+        if (gapResponse.code === 200 && gapResponse.data) {
+          setPricingGaps(gapResponse.data);
+        } else {
+          setPricingGaps([]);
+        }
       } catch (error) {
         logger.error('Failed to fetch AI analytics:', error);
         toast.error('加载 AI 统计数据失败');
         setData(EMPTY_DATA);
+        setPricingGaps([]);
       } finally {
         setLoading(false);
       }
@@ -98,6 +113,50 @@ export function AnalyticsPage() {
     [data.taskDistribution],
   );
   const records: AiCallRecord[] = data.records?.list || [];
+
+  const handleArchive = async () => {
+    try {
+      setArchiving(true);
+      const success = successFilter === 'all' ? undefined : successFilter === 'success';
+      const response = await analyticsService.archiveAiCosts({
+        days,
+        taskType: taskType || undefined,
+        modelId: modelId || undefined,
+        success,
+        keyword: keyword.trim() || undefined,
+      });
+      if (response.code !== 200 || !response.data) {
+        throw new Error('归档失败');
+      }
+      toast.success(`归档完成：成功 ${response.data.archived} 条，失败 ${response.data.failed} 条`);
+      setPage(1);
+      const refreshed = await analyticsService.getAiDashboard({
+        days,
+        pageNum: 1,
+        pageSize: PAGE_SIZE,
+        taskType: taskType || undefined,
+        modelId: modelId || undefined,
+        success,
+        keyword: keyword.trim() || undefined,
+      });
+      if (refreshed.code === 200 && refreshed.data) {
+        setData(refreshed.data);
+      }
+      const refreshedGaps = await analyticsService.getAiPricingGaps({
+        days,
+        taskType: taskType || undefined,
+        modelId: modelId || undefined,
+        success,
+        keyword: keyword.trim() || undefined,
+      });
+      setPricingGaps(refreshedGaps.data || []);
+    } catch (error) {
+      logger.error('Failed to archive AI costs:', error);
+      toast.error('归档 AI 费用失败');
+    } finally {
+      setArchiving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -125,7 +184,65 @@ export function AnalyticsPage() {
             </button>
           ))}
         </div>
+        <button
+          onClick={handleArchive}
+          disabled={loading || archiving}
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] disabled:opacity-50"
+        >
+          {(loading || archiving) ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
+          归档当前筛选费用
+        </button>
       </div>
+
+      {pricingGaps.length > 0 && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-amber-600">存在未配置价格的模型</div>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                当前筛选范围内有 {pricingGaps.length} 个模型无法完整计算实时费用，卡片和列表会标记为待配置。
+              </p>
+            </div>
+            <Link
+              to="/ai-config"
+              className="rounded-lg border border-amber-500/20 px-3 py-2 text-xs font-medium text-amber-600"
+            >
+              打开 AI 配置
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {pricingGaps.slice(0, 6).map((gap) => (
+              <Link
+                key={`${gap.providerCode}:${gap.modelId}`}
+                to={`/ai-config?provider=${encodeURIComponent(gap.providerCode)}&model=${encodeURIComponent(gap.modelId)}`}
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 transition-colors hover:border-amber-500/30"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-[var(--text-primary)]">
+                      {gap.displayName || gap.modelId}
+                    </div>
+                    <div className="truncate text-xs text-[var(--text-muted)]">
+                      {gap.providerCode} / {gap.modelId}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-semibold text-amber-600">{gap.calls}</div>
+                    <div className="text-[10px] text-[var(--text-muted)]">调用</div>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {gap.missingFields.map((field) => (
+                    <span key={field} className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600">
+                      {field}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4 [&>:last-child]:col-span-2 lg:[&>:last-child]:col-span-1">
         <StatsCard
