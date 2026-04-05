@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 
@@ -79,17 +80,19 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
 	subPath := c.Param("*")
 
-	// 对路径进行 URL 解码以防御编码后的路径穿越攻击（如 %2e%2e）
+	// 对路径进行 URL 解码以防御编码后的路径穿越攻击（如 %2e%2e、%252e%252e）
 	unescapedPath, err := url.PathUnescape(subPath)
 	if err != nil {
-return response.FailWith(c, response.BadRequest, "invalid path encoding")
+		return response.FailWith(c, response.BadRequest, "invalid path encoding")
 	}
 	if strings.Contains(unescapedPath, "..") {
-return response.FailWith(c, response.BadRequest, "invalid path traversal")
+		return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
+
+	// 使用原始编码路径构建目标 URL，避免解码后的特殊字符破坏 URL 结构
 	targetPath := "/api/v1/admin/providers"
 	if subPath != "" {
-		targetPath += "/" + subPath
+		targetPath += "/" + path.Clean(subPath)
 	}
 
 	method := c.Request().Method
