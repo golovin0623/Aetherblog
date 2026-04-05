@@ -37,7 +37,7 @@ def _model_row():
         "max_output_tokens": 2048,
         "input_cost_per_1k": 0.001,
         "output_cost_per_1k": 0.002,
-        "capabilities": '{"source":"builtin"}',
+        "capabilities": '{"source":"builtin","pricing":{"currency":"USD","units":[{"name":"textInput","rate":1,"unit":"millionTokens"},{"name":"textOutput","rate":2,"unit":"millionTokens"},{"name":"textInput_cacheRead","rate":0.25,"unit":"millionTokens"}]}}',
         "is_enabled": True,
     }
 
@@ -73,10 +73,16 @@ async def test_list_and_get_models():
     registry = ProviderRegistry(FakePool(FakeConn(fetch=fetch, fetchrow=fetchrow)))
     models = await registry.list_models(provider_code="openai", enabled_only=False)
     assert models[0].model_id == "gpt-test"
+    assert models[0].input_cost_per_1m == 1.0
+    assert models[0].output_cost_per_1m == 2.0
+    assert models[0].cached_input_cost_per_1m == 0.25
 
     model = await registry.get_model("gpt-test", "openai")
     assert model is not None
     assert model.input_cost_per_1k == 0.001
+    assert model.input_cost_per_1m == 1.0
+    assert model.output_cost_per_1m == 2.0
+    assert model.cached_input_cost_per_1m == 0.25
 
 
 @pytest.mark.asyncio
@@ -133,8 +139,9 @@ async def test_model_mutations_and_bulk_ops():
         model_type="chat",
         context_window=1000,
         max_output_tokens=100,
-        input_cost_per_1k=0.0,
-        output_cost_per_1k=0.0,
+        input_cost_per_1m=1.0,
+        output_cost_per_1m=2.0,
+        cached_input_cost_per_1m=0.25,
         capabilities={},
         is_enabled=True,
     )

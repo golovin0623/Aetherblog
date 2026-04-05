@@ -21,6 +21,9 @@ class RemoteModelInfo:
     max_output_tokens: int | None
     input_cost_per_1k: float | None
     output_cost_per_1k: float | None
+    input_cost_per_1m: float | None
+    output_cost_per_1m: float | None
+    cached_input_cost_per_1m: float | None
     capabilities: dict[str, Any]
     is_enabled: bool
 
@@ -114,6 +117,9 @@ class RemoteModelFetcher:
                     max_output_tokens=None,
                     input_cost_per_1k=None,
                     output_cost_per_1k=None,
+                    input_cost_per_1m=None,
+                    output_cost_per_1m=None,
+                    cached_input_cost_per_1m=None,
                     capabilities=capabilities,
                     is_enabled=False,
                 )
@@ -163,6 +169,9 @@ class RemoteModelFetcher:
                     max_output_tokens=None,
                     input_cost_per_1k=None,
                     output_cost_per_1k=None,
+                    input_cost_per_1m=None,
+                    output_cost_per_1m=None,
+                    cached_input_cost_per_1m=None,
                     capabilities=capabilities,
                     is_enabled=False,
                 )

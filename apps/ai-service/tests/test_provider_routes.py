@@ -50,6 +50,9 @@ class FakeRegistry:
             max_output_tokens=2048,
             input_cost_per_1k=None,
             output_cost_per_1k=None,
+            input_cost_per_1m=1.0,
+            output_cost_per_1m=2.0,
+            cached_input_cost_per_1m=0.25,
             capabilities={},
             is_enabled=True,
         )
@@ -185,6 +188,9 @@ class FakeRemoteFetcher:
                 max_output_tokens=None,
                 input_cost_per_1k=None,
                 output_cost_per_1k=None,
+                input_cost_per_1m=None,
+                output_cost_per_1m=None,
+                cached_input_cost_per_1m=None,
                 capabilities={"source": "remote"},
                 is_enabled=False,
             )
@@ -216,17 +222,33 @@ async def test_provider_and_model_endpoints(monkeypatch):
 
     model_created = await providers_module.create_model(
         "openai",
-        ModelCreate(model_id="gpt-test"),
+        ModelCreate(
+            model_id="gpt-test",
+            input_cost_per_1m=1.0,
+            output_cost_per_1m=2.0,
+            cached_input_cost_per_1m=0.25,
+        ),
         registry=registry,
     )
     assert model_created.data.model_id == "gpt-test"
+    assert model_created.data.input_cost_per_1m == 1.0
+    assert model_created.data.output_cost_per_1m == 2.0
+    assert model_created.data.cached_input_cost_per_1m == 0.25
 
     model_updated = await providers_module.update_model(
         model_id=10,
-        req=ModelUpdate(display_name="Updated"),
+        req=ModelUpdate(
+            display_name="Updated",
+            input_cost_per_1m=1.5,
+            output_cost_per_1m=2.5,
+            cached_input_cost_per_1m=0.5,
+        ),
         registry=registry,
     )
     assert model_updated.data.display_name == "GPT Test"
+    assert model_updated.data.input_cost_per_1m == 1.0
+    assert model_updated.data.output_cost_per_1m == 2.0
+    assert model_updated.data.cached_input_cost_per_1m == 0.25
 
     deleted = await providers_module.delete_model(model_id=10, registry=registry)
     assert deleted.data is True

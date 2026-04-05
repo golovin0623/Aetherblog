@@ -51,9 +51,17 @@ class UsageLogger:
         return provider_code, model_id
 
     @staticmethod
-    def _estimate_cost(tokens_in: int, tokens_out: int, input_cost_per_1k: float | None, output_cost_per_1k: float | None) -> Decimal:
-        in_cost = Decimal(str(input_cost_per_1k or 0)) * (Decimal(tokens_in) / Decimal(1000))
-        out_cost = Decimal(str(output_cost_per_1k or 0)) * (Decimal(tokens_out) / Decimal(1000))
+    def _estimate_cost(
+        tokens_in: int,
+        tokens_out: int,
+        input_cost_per_1m: float | None,
+        output_cost_per_1m: float | None,
+        cached_input_cost_per_1m: float | None,
+        cached: bool,
+    ) -> Decimal:
+        effective_input_cost = cached_input_cost_per_1m if cached else input_cost_per_1m
+        in_cost = Decimal(str(effective_input_cost or 0)) * (Decimal(tokens_in) / Decimal(1000000))
+        out_cost = Decimal(str(output_cost_per_1m or 0)) * (Decimal(tokens_out) / Decimal(1000000))
         return (in_cost + out_cost).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
 
     @staticmethod
@@ -103,8 +111,9 @@ class UsageLogger:
         provider_code: str | None = None,
         model_id: str | None = None,
         estimated_cost: float | None = None,
-        input_cost_per_1k: float | None = None,
-        output_cost_per_1k: float | None = None,
+        input_cost_per_1m: float | None = None,
+        output_cost_per_1m: float | None = None,
+        cached_input_cost_per_1m: float | None = None,
     ) -> None:
         normalized_provider, normalized_model_id = self._normalize_model(model)
         effective_provider = provider_code or normalized_provider
@@ -115,7 +124,14 @@ class UsageLogger:
         if estimated_cost is not None:
             effective_cost = Decimal(str(estimated_cost)).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
         else:
-            effective_cost = self._estimate_cost(tokens_in, tokens_out, input_cost_per_1k, output_cost_per_1k)
+            effective_cost = self._estimate_cost(
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                input_cost_per_1m=input_cost_per_1m,
+                output_cost_per_1m=output_cost_per_1m,
+                cached_input_cost_per_1m=cached_input_cost_per_1m,
+                cached=cached,
+            )
 
         try:
             async with self.pool.acquire() as conn:

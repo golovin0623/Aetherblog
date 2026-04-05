@@ -33,6 +33,7 @@ interface ProviderDetailProps {
   preset?: PresetProvider;
   activeTab: "config" | "models";
   onActiveTabChange: (tab: "config" | "models") => void;
+  initialModelSearch?: string;
 }
 
 const DUMMY_API_KEY_MASK = 'sk-****************************************';
@@ -44,6 +45,7 @@ export default function ProviderDetail({
   preset: propPreset,
   activeTab,
   onActiveTabChange: setActiveTab,
+  initialModelSearch,
 }: ProviderDetailProps) {
   const [showKey, setShowKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
@@ -428,6 +430,7 @@ export default function ProviderDetail({
                   credentialId={defaultCredential?.id ?? null}
                   isLoading={modelsLoading}
                   showDeployName={showDeployName}
+                  initialSearch={initialModelSearch}
                   variant="simple"
                 />
               </motion.div>
@@ -539,6 +542,7 @@ export default function ProviderDetail({
               credentialId={defaultCredential?.id ?? null}
               isLoading={modelsLoading}
               showDeployName={showDeployName}
+              initialSearch={initialModelSearch}
               variant="simple"
             />
           </div>

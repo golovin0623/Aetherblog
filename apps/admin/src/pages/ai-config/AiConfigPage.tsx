@@ -1,10 +1,11 @@
 // AI 配置中心主页面 (重构版)
 // ref: §5.1 - AI Service 架构 (LobeChat 风格)
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RefreshCw, Plus, PanelLeft, PowerOff } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import type { AiProvider } from '@/services/aiProviderService';
 import {
   useProviders,
@@ -27,6 +28,7 @@ type ViewMode = 'grid' | 'detail';
 
 export default function AiConfigPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
 
   // 状态
   const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export default function AiConfigPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeDetailTab, setActiveDetailTab] = useState<"config" | "models">("config");
   const [showBatchDisableConfirm, setShowBatchDisableConfirm] = useState(false);
+  const [initialModelSearch, setInitialModelSearch] = useState('');
 
   // 数据
   const { data: providers = [], isLoading } = useProviders();
@@ -58,6 +61,19 @@ export default function AiConfigPage() {
         : null,
     [providers, normalizedSelectedCode]
   );
+
+  useEffect(() => {
+    const provider = searchParams.get('provider');
+    const model = searchParams.get('model');
+    if (model) {
+      setInitialModelSearch(model);
+    }
+    if (provider && providers.some((item) => item.code.toLowerCase() === provider.toLowerCase())) {
+      setSelectedProviderCode(provider);
+      setViewMode('detail');
+      setActiveDetailTab('models');
+    }
+  }, [providers, searchParams]);
 
   // 进入详情视图
   const handleSelectProvider = useCallback((code: string | null | undefined) => {
@@ -282,6 +298,7 @@ export default function AiConfigPage() {
                   key={selectedProvider.code}
                   activeTab={activeDetailTab}
                   onActiveTabChange={setActiveDetailTab}
+                  initialModelSearch={initialModelSearch}
                   provider={selectedProvider}
                   onBack={handleBackToGrid}
                   onEdit={() => {

@@ -29,6 +29,9 @@ export interface AiModel {
   max_output_tokens?: number | null;
   input_cost_per_1k?: number | null;
   output_cost_per_1k?: number | null;
+  input_cost_per_1m?: number | null;
+  output_cost_per_1m?: number | null;
+  cached_input_cost_per_1m?: number | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   capabilities: Record<string, any>;
   is_enabled: boolean;
@@ -103,6 +106,9 @@ export interface CreateModelRequest {
   max_output_tokens?: number | null;
   input_cost_per_1k?: number | null;
   output_cost_per_1k?: number | null;
+  input_cost_per_1m?: number | null;
+  output_cost_per_1m?: number | null;
+  cached_input_cost_per_1m?: number | null;
   capabilities?: Record<string, any>;
   is_enabled?: boolean;
 }
@@ -114,6 +120,9 @@ export interface UpdateModelRequest {
   max_output_tokens?: number | null;
   input_cost_per_1k?: number | null;
   output_cost_per_1k?: number | null;
+  input_cost_per_1m?: number | null;
+  output_cost_per_1m?: number | null;
+  cached_input_cost_per_1m?: number | null;
   capabilities?: Record<string, any> | null;
   is_enabled?: boolean;
 }

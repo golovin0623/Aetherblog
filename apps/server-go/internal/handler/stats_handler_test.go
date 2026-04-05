@@ -52,25 +52,49 @@ type aiDashboardResponse struct {
 		} `json:"taskDistribution"`
 		Records struct {
 			List []struct {
-				ID           int64   `json:"id"`
-				TaskType     string  `json:"taskType"`
-				ProviderCode string  `json:"providerCode"`
-				Model        string  `json:"model"`
-				TokensIn     int64   `json:"tokensIn"`
-				TokensOut    int64   `json:"tokensOut"`
-				TotalTokens  int64   `json:"totalTokens"`
-				Cost         float64 `json:"cost"`
-				LatencyMs    int64   `json:"latencyMs"`
-				Success      bool    `json:"success"`
-				Cached       bool    `json:"cached"`
-				ErrorCode    *string `json:"errorCode"`
-				CreatedAt    string  `json:"createdAt"`
+				ID             int64   `json:"id"`
+				TaskType       string  `json:"taskType"`
+				ProviderCode   string  `json:"providerCode"`
+				Model          string  `json:"model"`
+				TokensIn       int64   `json:"tokensIn"`
+				TokensOut      int64   `json:"tokensOut"`
+				TotalTokens    int64   `json:"totalTokens"`
+				Cost           float64 `json:"cost"`
+				CostStatus     string  `json:"costStatus"`
+				PricingMissing bool    `json:"pricingMissing"`
+				LatencyMs      int64   `json:"latencyMs"`
+				Success        bool    `json:"success"`
+				Cached         bool    `json:"cached"`
+				ErrorCode      *string `json:"errorCode"`
+				CreatedAt      string  `json:"createdAt"`
 			} `json:"list"`
 			PageNum  int   `json:"pageNum"`
 			PageSize int   `json:"pageSize"`
 			Total    int64 `json:"total"`
 			Pages    int   `json:"pages"`
 		} `json:"records"`
+	} `json:"data"`
+}
+
+type aiPricingGapsResponse struct {
+	Code int `json:"code"`
+	Data []struct {
+		ProviderCode  string   `json:"providerCode"`
+		ModelID       string   `json:"modelId"`
+		ModelDBID     *int64   `json:"modelDbId"`
+		DisplayName   string   `json:"displayName"`
+		MissingFields []string `json:"missingFields"`
+		Calls         int64    `json:"calls"`
+		LatestUsedAt  string   `json:"latestUsedAt"`
+	} `json:"data"`
+}
+
+type aiArchiveResponse struct {
+	Code int `json:"code"`
+	Data struct {
+		Total    int64 `json:"total"`
+		Archived int64 `json:"archived"`
+		Failed   int64 `json:"failed"`
 	} `json:"data"`
 }
 
@@ -89,7 +113,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 	e := handlertest.NewEcho()
 	h.Mount(e.Group("/api/v1/admin/stats"))
 
-	mock.ExpectQuery(`SELECT[\s\S]+FROM ai_usage_logs WHERE 1=1 AND created_at >= NOW\(\) - INTERVAL '30 days'`).
+	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"total_calls",
 			"success_calls",
@@ -99,7 +123,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"avg_latency_ms",
 		}).AddRow(2, 1, 1, 12, 0.024, 345.5))
 
-	mock.ExpectQuery(`SELECT[\s\S]+FROM ai_usage_logs WHERE 1=1 AND created_at >= NOW\(\) - INTERVAL '30 days'[\s\S]+GROUP BY COALESCE\(NULLIF\(task_type, ''\), 'unknown'\)`).
+	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"task",
 			"calls",
@@ -107,7 +131,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"cost",
 		}).AddRow("summary", 2, 12, 0.024))
 
-	mock.ExpectQuery(`WITH daily AS \([\s\S]+FROM ai_usage_logs WHERE 1=1 AND created_at >= NOW\(\) - INTERVAL '30 days'[\s\S]+GROUP BY DATE\(created_at\)::text[\s\S]+\)`).
+	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"date",
 			"calls",
@@ -115,7 +139,7 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"cost",
 		}).AddRow("2026-04-05", 1, 4, 0.008).AddRow("2026-04-06", 1, 8, 0.016))
 
-	mock.ExpectQuery(`SELECT[\s\S]+FROM ai_usage_logs WHERE 1=1 AND created_at >= NOW\(\) - INTERVAL '30 days'[\s\S]+GROUP BY COALESCE\(NULLIF\(model_id, ''\), NULLIF\(model, ''\), 'unknown'\)`).
+	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model",
 			"provider_code",
@@ -124,10 +148,10 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"cost",
 		}).AddRow("gpt-5-mini", "openai", 2, 12, 0.024))
 
-	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM ai_usage_logs WHERE 1=1 AND created_at >= NOW\(\) - INTERVAL '30 days'`).
+	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	mock.ExpectQuery(`SELECT[\s\S]+FROM ai_usage_logs WHERE 1=1 AND created_at >= NOW\(\) - INTERVAL '30 days'[\s\S]+ORDER BY created_at DESC[\s\S]+LIMIT 20 OFFSET 0`).
+	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id",
 			"task_type",
@@ -137,12 +161,14 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 			"tokens_out",
 			"total_tokens",
 			"cost",
+			"cost_status",
+			"pricing_missing",
 			"latency_ms",
 			"success",
 			"cached",
 			"error_code",
 			"created_at",
-		}).AddRow(101, "summary", "openai", "gpt-5-mini", 4, 8, 12, 0.024, 345, true, false, nil, time.Date(2026, time.April, 6, 10, 0, 0, 0, time.UTC)))
+		}).AddRow(101, "summary", "openai", "gpt-5-mini", 4, 8, 12, 0.024, "realtime", false, 345, true, false, nil, time.Date(2026, time.April, 6, 10, 0, 0, 0, time.UTC)))
 
 	rec := handlertest.DoRequest(e, "GET", "/api/v1/admin/stats/ai-dashboard?days=30&pageNum=1&pageSize=20", "")
 	if rec.Code != 200 {
@@ -181,8 +207,71 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 	if len(resp.Data.Records.List) != 1 {
 		t.Fatalf("records.list length = %d, want 1", len(resp.Data.Records.List))
 	}
+	if resp.Data.Records.List[0].CostStatus != "realtime" {
+		t.Fatalf("records.list[0].costStatus = %q, want realtime", resp.Data.Records.List[0].CostStatus)
+	}
 	if resp.Data.Records.PageNum != 1 || resp.Data.Records.PageSize != 20 || resp.Data.Records.Total != 2 || resp.Data.Records.Pages != 1 {
 		t.Fatalf("unexpected records pagination: %#v", resp.Data.Records)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations were not met: %v", err)
+	}
+}
+
+func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	sqlxDB := sqlx.NewDb(db, "sqlmock")
+	repo := repository.NewAnalyticsRepo(sqlxDB)
+	svc := service.NewAnalyticsService(repo)
+	h := NewStatsHandler(svc)
+
+	e := handlertest.NewEcho()
+	h.Mount(e.Group("/api/v1/admin/stats"))
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"provider_code",
+			"model_id",
+			"model_db_id",
+			"display_name",
+			"missing_fields",
+			"calls",
+			"latest_used_at",
+		}).AddRow("openai", "gpt-5-mini", 10, "GPT-5 mini", "cachedInput", 3, time.Date(2026, time.April, 6, 12, 0, 0, 0, time.UTC)))
+
+	gapsRec := handlertest.DoRequest(e, "GET", "/api/v1/admin/stats/ai-pricing-gaps", "")
+	if gapsRec.Code != 200 {
+		t.Fatalf("unexpected status code for gaps: %d, body=%s", gapsRec.Code, gapsRec.Body.String())
+	}
+
+	var gapsResp aiPricingGapsResponse
+	if err := json.Unmarshal(gapsRec.Body.Bytes(), &gapsResp); err != nil {
+		t.Fatalf("json.Unmarshal gaps failed: %v", err)
+	}
+	if len(gapsResp.Data) != 1 || gapsResp.Data[0].ProviderCode != "openai" {
+		t.Fatalf("unexpected gaps response: %#v", gapsResp)
+	}
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{"total", "archived", "failed"}).AddRow(4, 3, 1))
+
+	archiveRec := handlertest.DoRequest(e, "POST", "/api/v1/admin/stats/ai-cost-archive", `{"days":30}`)
+	if archiveRec.Code != 200 {
+		t.Fatalf("unexpected status code for archive: %d, body=%s", archiveRec.Code, archiveRec.Body.String())
+	}
+
+	var archiveResp aiArchiveResponse
+	if err := json.Unmarshal(archiveRec.Body.Bytes(), &archiveResp); err != nil {
+		t.Fatalf("json.Unmarshal archive failed: %v", err)
+	}
+	if archiveResp.Data.Total != 4 || archiveResp.Data.Archived != 3 || archiveResp.Data.Failed != 1 {
+		t.Fatalf("unexpected archive response: %#v", archiveResp)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

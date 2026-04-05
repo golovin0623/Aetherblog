@@ -67,8 +67,9 @@ export default function ModelConfigDialog({
     model_type: 'chat',
     context_window: 128000,
     max_output_tokens: 4096,
-    input_cost_per_1k: 0,
-    output_cost_per_1k: 0,
+    input_cost_per_1m: 0,
+    output_cost_per_1m: 0,
+    cached_input_cost_per_1m: 0,
     pricing_currency: 'USD' as ModelPricing['currency'],
     description: '',
     legacy: false,
@@ -122,8 +123,9 @@ export default function ModelConfigDialog({
       model_type: initial.model_type || 'chat',
       context_window: contextWindow || 128000,
       max_output_tokens: maxOutputTokens || 4096,
-      input_cost_per_1k: initial.input_cost_per_1k || 0,
-      output_cost_per_1k: initial.output_cost_per_1k || 0,
+      input_cost_per_1m: initial.input_cost_per_1m || pricing.input || 0,
+      output_cost_per_1m: initial.output_cost_per_1m || pricing.output || 0,
+      cached_input_cost_per_1m: initial.cached_input_cost_per_1m || pricing.cachedInput || 0,
       pricing_currency: pricing.currency || 'USD',
       description: extra.description ? String(extra.description) : '',
       legacy: !!extra.legacy,
@@ -184,8 +186,9 @@ export default function ModelConfigDialog({
 
     const pricing: ModelPricing = {
       currency: form.pricing_currency || 'USD',
-      input: form.input_cost_per_1k || undefined,
-      output: form.output_cost_per_1k || undefined,
+      input: form.input_cost_per_1m || undefined,
+      output: form.output_cost_per_1m || undefined,
+      cachedInput: form.cached_input_cost_per_1m || undefined,
       ...pricingExtra,
     };
 
@@ -213,7 +216,10 @@ export default function ModelConfigDialog({
         deploymentName: showDeployName && form.config.deploymentName ? form.config.deploymentName : undefined,
         enabledSearch: form.config.enabledSearch,
       },
-      pricing: pricingExtra || form.input_cost_per_1k || form.output_cost_per_1k ? pricing : undefined,
+      pricing:
+        pricingExtra || form.input_cost_per_1m || form.output_cost_per_1m || form.cached_input_cost_per_1m
+          ? pricing
+          : undefined,
       parameters,
       released_at: form.released_at || null,
       source,
@@ -234,8 +240,9 @@ export default function ModelConfigDialog({
         model_type: form.model_type,
         context_window: form.context_window,
         max_output_tokens: form.max_output_tokens,
-        input_cost_per_1k: form.input_cost_per_1k || null,
-        output_cost_per_1k: form.output_cost_per_1k || null,
+        input_cost_per_1m: form.input_cost_per_1m || null,
+        output_cost_per_1m: form.output_cost_per_1m || null,
+        cached_input_cost_per_1m: form.cached_input_cost_per_1m || null,
         capabilities,
         is_enabled: true,
       };
@@ -246,8 +253,9 @@ export default function ModelConfigDialog({
         model_type: form.model_type,
         context_window: form.context_window,
         max_output_tokens: form.max_output_tokens,
-        input_cost_per_1k: form.input_cost_per_1k || null,
-        output_cost_per_1k: form.output_cost_per_1k || null,
+        input_cost_per_1m: form.input_cost_per_1m || null,
+        output_cost_per_1m: form.output_cost_per_1m || null,
+        cached_input_cost_per_1m: form.cached_input_cost_per_1m || null,
         capabilities,
       };
       updateMutation.mutate({ id: initial.id, data: payload }, { onSuccess: onClose });
@@ -683,7 +691,7 @@ export default function ModelConfigDialog({
           {/* 价格 */}
           <div className="space-y-4">
             <div className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">价格</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <label className="text-sm text-[var(--text-muted)]">币种</label>
                 <select
@@ -701,28 +709,42 @@ export default function ModelConfigDialog({
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">输入成本 / 1K</label>
+                <label className="text-sm text-[var(--text-muted)]">输入成本 / 1M Tokens</label>
                 <input
                   type="number"
-                  value={form.input_cost_per_1k}
+                  value={form.input_cost_per_1m}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      input_cost_per_1k: parseFloat(e.target.value) || 0,
+                      input_cost_per_1m: parseFloat(e.target.value) || 0,
                     }))
                   }
                   className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm text-[var(--text-muted)]">输出成本 / 1K</label>
+                <label className="text-sm text-[var(--text-muted)]">输出成本 / 1M Tokens</label>
                 <input
                   type="number"
-                  value={form.output_cost_per_1k}
+                  value={form.output_cost_per_1m}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      output_cost_per_1k: parseFloat(e.target.value) || 0,
+                      output_cost_per_1m: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-[var(--text-muted)]">缓存输入读取 / 1M Tokens</label>
+                <input
+                  type="number"
+                  value={form.cached_input_cost_per_1m}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      cached_input_cost_per_1m: parseFloat(e.target.value) || 0,
                     }))
                   }
                   className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/40"

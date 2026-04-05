@@ -68,6 +68,26 @@ def format_remote_fetch_error(exc: Exception) -> str:
     return f"Remote API error: {exc}".strip()
 
 
+def build_model_response(model) -> ModelResponse:
+    return ModelResponse(
+        id=model.id,
+        provider_id=model.provider_id,
+        provider_code=model.provider_code,
+        model_id=model.model_id,
+        display_name=model.display_name,
+        model_type=model.model_type,
+        context_window=model.context_window,
+        max_output_tokens=model.max_output_tokens,
+        input_cost_per_1k=model.input_cost_per_1k,
+        output_cost_per_1k=model.output_cost_per_1k,
+        input_cost_per_1m=model.input_cost_per_1m,
+        output_cost_per_1m=model.output_cost_per_1m,
+        cached_input_cost_per_1m=model.cached_input_cost_per_1m,
+        capabilities=model.capabilities,
+        is_enabled=model.is_enabled,
+    )
+
+
 # ============================================================
 # Provider Endpoints
 # ============================================================
@@ -227,23 +247,7 @@ async def list_provider_models(
     """List models for a provider."""
     models = await registry.list_models(provider_code=provider_code, enabled_only=enabled_only)
     return ApiResponse(
-        data=[
-            ModelResponse(
-                id=m.id,
-                provider_id=m.provider_id,
-                provider_code=m.provider_code,
-                model_id=m.model_id,
-                display_name=m.display_name,
-                model_type=m.model_type,
-                context_window=m.context_window,
-                max_output_tokens=m.max_output_tokens,
-                input_cost_per_1k=m.input_cost_per_1k,
-                output_cost_per_1k=m.output_cost_per_1k,
-                capabilities=m.capabilities,
-                is_enabled=m.is_enabled,
-            )
-            for m in models
-        ],
+        data=[build_model_response(m) for m in models],
     )
 
 
@@ -262,8 +266,9 @@ async def create_model(
             model_type=req.model_type,
             context_window=req.context_window,
             max_output_tokens=req.max_output_tokens,
-            input_cost_per_1k=req.input_cost_per_1k,
-            output_cost_per_1k=req.output_cost_per_1k,
+            input_cost_per_1m=req.input_cost_per_1m,
+            output_cost_per_1m=req.output_cost_per_1m,
+            cached_input_cost_per_1m=req.cached_input_cost_per_1m,
             capabilities=req.capabilities,
             is_enabled=req.is_enabled,
         )
@@ -272,20 +277,7 @@ async def create_model(
         return ApiResponse(
             code=200,
             message="success",
-            data=ModelResponse(
-                id=model.id,
-                provider_id=model.provider_id,
-                provider_code=model.provider_code,
-                model_id=model.model_id,
-                display_name=model.display_name,
-                model_type=model.model_type,
-                context_window=model.context_window,
-                max_output_tokens=model.max_output_tokens,
-                input_cost_per_1k=model.input_cost_per_1k,
-                output_cost_per_1k=model.output_cost_per_1k,
-                capabilities=model.capabilities,
-                is_enabled=model.is_enabled,
-            ),
+            data=build_model_response(model),
         )
     except HTTPException:
         raise
@@ -307,23 +299,7 @@ async def list_all_models(
     """List all models across providers."""
     models = await registry.list_models(model_type=model_type, enabled_only=enabled_only)
     return ApiResponse(
-        data=[
-            ModelResponse(
-                id=m.id,
-                provider_id=m.provider_id,
-                provider_code=m.provider_code,
-                model_id=m.model_id,
-                display_name=m.display_name,
-                model_type=m.model_type,
-                context_window=m.context_window,
-                max_output_tokens=m.max_output_tokens,
-                input_cost_per_1k=m.input_cost_per_1k,
-                output_cost_per_1k=m.output_cost_per_1k,
-                capabilities=m.capabilities,
-                is_enabled=m.is_enabled,
-            )
-            for m in models
-        ],
+        data=[build_model_response(m) for m in models],
     )
 
 
@@ -348,6 +324,12 @@ async def update_model(
         updates["input_cost_per_1k"] = req.input_cost_per_1k
     if "output_cost_per_1k" in fields_set:
         updates["output_cost_per_1k"] = req.output_cost_per_1k
+    if "input_cost_per_1m" in fields_set:
+        updates["input_cost_per_1m"] = req.input_cost_per_1m
+    if "output_cost_per_1m" in fields_set:
+        updates["output_cost_per_1m"] = req.output_cost_per_1m
+    if "cached_input_cost_per_1m" in fields_set:
+        updates["cached_input_cost_per_1m"] = req.cached_input_cost_per_1m
     if "capabilities" in fields_set:
         updates["capabilities"] = req.capabilities
     if "is_enabled" in fields_set:
@@ -359,20 +341,7 @@ async def update_model(
     return ApiResponse(
         code=200,
         message="success",
-        data=ModelResponse(
-            id=model.id,
-            provider_id=model.provider_id,
-            provider_code=model.provider_code,
-            model_id=model.model_id,
-            display_name=model.display_name,
-            model_type=model.model_type,
-            context_window=model.context_window,
-            max_output_tokens=model.max_output_tokens,
-            input_cost_per_1k=model.input_cost_per_1k,
-            output_cost_per_1k=model.output_cost_per_1k,
-            capabilities=model.capabilities,
-            is_enabled=model.is_enabled,
-        ),
+        data=build_model_response(model),
     )
 
 
@@ -712,6 +681,9 @@ async def get_routing(
         max_output_tokens=routing.model.max_output_tokens,
         input_cost_per_1k=routing.model.input_cost_per_1k,
         output_cost_per_1k=routing.model.output_cost_per_1k,
+        input_cost_per_1m=routing.model.input_cost_per_1m,
+        output_cost_per_1m=routing.model.output_cost_per_1m,
+        cached_input_cost_per_1m=routing.model.cached_input_cost_per_1m,
         capabilities=routing.model.capabilities,
         is_enabled=routing.model.is_enabled,
     )
@@ -729,6 +701,9 @@ async def get_routing(
             max_output_tokens=routing.fallback_model.max_output_tokens,
             input_cost_per_1k=routing.fallback_model.input_cost_per_1k,
             output_cost_per_1k=routing.fallback_model.output_cost_per_1k,
+            input_cost_per_1m=routing.fallback_model.input_cost_per_1m,
+            output_cost_per_1m=routing.fallback_model.output_cost_per_1m,
+            cached_input_cost_per_1m=routing.fallback_model.cached_input_cost_per_1m,
             capabilities=routing.fallback_model.capabilities,
             is_enabled=routing.fallback_model.is_enabled,
         )

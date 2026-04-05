@@ -221,17 +221,23 @@ function formatPricing(pricing: Record<string, unknown>, model: AiModel): string
   const currency = (pricing?.currency as string) || 'USD';
   const input = pricing?.input as number | undefined;
   const output = pricing?.output as number | undefined;
+  const cachedInput = pricing?.cachedInput as number | undefined;
 
   const tags: string[] = [];
   if (typeof input === 'number') {
-    tags.push(`${currency} ${input}/1K 入`);
-  } else if (model.input_cost_per_1k !== null && model.input_cost_per_1k !== undefined) {
-    tags.push(`${currency} ${model.input_cost_per_1k}/1K 入`);
+    tags.push(`${currency} ${input}/1M 入`);
+  } else if (model.input_cost_per_1m !== null && model.input_cost_per_1m !== undefined) {
+    tags.push(`${currency} ${model.input_cost_per_1m}/1M 入`);
   }
   if (typeof output === 'number') {
-    tags.push(`${currency} ${output}/1K 出`);
-  } else if (model.output_cost_per_1k !== null && model.output_cost_per_1k !== undefined) {
-    tags.push(`${currency} ${model.output_cost_per_1k}/1K 出`);
+    tags.push(`${currency} ${output}/1M 出`);
+  } else if (model.output_cost_per_1m !== null && model.output_cost_per_1m !== undefined) {
+    tags.push(`${currency} ${model.output_cost_per_1m}/1M 出`);
+  }
+  if (typeof cachedInput === 'number') {
+    tags.push(`${currency} ${cachedInput}/1M 缓存入`);
+  } else if (model.cached_input_cost_per_1m !== null && model.cached_input_cost_per_1m !== undefined) {
+    tags.push(`${currency} ${model.cached_input_cost_per_1m}/1M 缓存入`);
   }
 
   return tags;
