@@ -1,0 +1,3 @@
+## 2025-02-12 - Pagination Focus Accessibility
+**Learning:** Pagination controls (like previous/next buttons and page numbers) often rely entirely on hover states or `transition-colors` for interaction feedback, completely neglecting keyboard users who need clear `focus-visible` indicators.
+**Action:** When implementing or reviewing pagination components, always ensure every interactive element includes comprehensive `focus-visible` utility classes (e.g., `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`). Additionally, explicitly use theme-aware background offset variables (like `var(--bg-primary)`) to ensure the focus ring contrasts correctly against dark and light modes.
