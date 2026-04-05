@@ -14,7 +14,7 @@ import (
 type DashboardData struct {
 	PostCount      int64 `db:"post_count"`      // 已发布文章数
 	CommentCount   int64 `db:"comment_count"`   // 已审核评论数
-	ViewTotal      int64 `db:"view_total"`       // 所有文章总浏览量
+	ViewTotal      int64 `db:"view_total"`      // 所有文章总浏览量
 	TodayVisits    int64 `db:"today_visits"`    // 今日访客数（排除机器人）
 	MediaCount     int64 `db:"media_count"`     // 媒体文件数（未删除）
 	MediaSize      int64 `db:"media_size"`      // 媒体文件总大小（字节）
@@ -41,18 +41,67 @@ type DailyVisit struct {
 
 // AIDashboard 汇总 AI 功能使用统计数据。
 type AIDashboard struct {
-	TotalCalls    int64          `db:"total_calls"`     // AI 接口总调用次数
-	SuccessCalls  int64          `db:"success_calls"`   // 成功调用次数
-	TotalTokens   int64          `db:"total_tokens"`    // 消耗 Token 总量
-	EstimatedCost float64        `db:"estimated_cost"`  // 估算费用（美元）
-	ByTaskType    []TaskTypeStat // 按任务类型细分的统计
+	TotalCalls        int64                 `db:"total_calls"`    // AI 接口总调用次数
+	SuccessCalls      int64                 `db:"success_calls"`  // 成功调用次数
+	CachedCalls       int64                 `db:"cached_calls"`   // 缓存命中次数
+	TotalTokens       int64                 `db:"total_tokens"`   // 消耗 Token 总量
+	EstimatedCost     float64               `db:"estimated_cost"` // 估算费用（美元）
+	AvgLatencyMs      float64               `db:"avg_latency_ms"` // 平均耗时（毫秒）
+	TaskDistribution  []AITaskDistribution  // 按任务类型细分的统计
+	Trend             []AITrendPoint        // 按日聚合趋势
+	ModelDistribution []AIModelDistribution // 按模型聚合统计
+	Records           AICallRecordPage      // 分页明细记录
 }
 
-// TaskTypeStat 持有 ai_usage_logs 表中按任务类型聚合的统计数据。
-type TaskTypeStat struct {
-	TaskType string `db:"task_type"` // 任务类型名称
-	Count    int64  `db:"cnt"`       // 调用次数
-	Tokens   int64  `db:"tokens"`    // 消耗 Token 量
+// AITaskDistribution 持有 ai_usage_logs 表中按任务类型聚合的统计数据。
+type AITaskDistribution struct {
+	Task   string  `db:"task"`   // 任务类型名称
+	Calls  int64   `db:"calls"`  // 调用次数
+	Tokens int64   `db:"tokens"` // 消耗 Token 量
+	Cost   float64 `db:"cost"`   // 估算费用
+}
+
+// AITrendPoint 表示单日 AI 调用趋势点。
+type AITrendPoint struct {
+	Date   string  `db:"date"`   // 日期，格式 YYYY-MM-DD
+	Calls  int64   `db:"calls"`  // 调用次数
+	Tokens int64   `db:"tokens"` // Token 总量
+	Cost   float64 `db:"cost"`   // 费用
+}
+
+// AIModelDistribution 表示按模型维度聚合的统计数据。
+type AIModelDistribution struct {
+	Model        string  `db:"model"`         // 展示给前端的模型名
+	ProviderCode string  `db:"provider_code"` // 供应商编码
+	Calls        int64   `db:"calls"`         // 调用次数
+	Tokens       int64   `db:"tokens"`        // Token 总量
+	Cost         float64 `db:"cost"`          // 费用
+}
+
+// AICallRecord 表示单条 AI 调用明细。
+type AICallRecord struct {
+	ID           int64     `db:"id"`
+	TaskType     string    `db:"task_type"`
+	ProviderCode string    `db:"provider_code"`
+	Model        string    `db:"model"`
+	TokensIn     int64     `db:"tokens_in"`
+	TokensOut    int64     `db:"tokens_out"`
+	TotalTokens  int64     `db:"total_tokens"`
+	Cost         float64   `db:"cost"`
+	LatencyMs    int64     `db:"latency_ms"`
+	Success      bool      `db:"success"`
+	Cached       bool      `db:"cached"`
+	ErrorCode    *string   `db:"error_code"`
+	CreatedAt    time.Time `db:"created_at"`
+}
+
+// AICallRecordPage 表示 AI 调用明细分页结果。
+type AICallRecordPage struct {
+	List     []AICallRecord
+	PageNum  int
+	PageSize int
+	Total    int64
+	Pages    int
 }
 
 // AnalyticsRepo 负责所有与统计分析相关的数据库查询操作。
@@ -179,25 +228,28 @@ func (r *AnalyticsRepo) GetAIDashboard(ctx context.Context) (*AIDashboard, error
 		`SELECT
 		    COUNT(*)                           AS total_calls,
 		    COUNT(*) FILTER (WHERE success)    AS success_calls,
+		    COUNT(*) FILTER (WHERE cached)     AS cached_calls,
 		    COALESCE(SUM(total_tokens), 0)     AS total_tokens,
-		    COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost
+		    COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost,
+		    COALESCE(AVG(latency_ms), 0.0)     AS avg_latency_ms
 		 FROM ai_usage_logs`); err != nil {
 		return nil, err
 	}
 
-	// 按任务类型分组统计调用次数和 Token 消耗，按调用量降序排列
-	var stats []TaskTypeStat
+	// 按任务类型分组统计调用次数、Token 消耗和费用，按调用量降序排列
+	var stats []AITaskDistribution
 	if err := r.db.SelectContext(ctx, &stats,
 		`SELECT
-		    COALESCE(task_type, 'unknown') AS task_type,
-		    COUNT(*)                       AS cnt,
-		    COALESCE(SUM(total_tokens), 0) AS tokens
+		    COALESCE(NULLIF(task_type, ''), 'unknown') AS task,
+		    COUNT(*)                                   AS calls,
+		    COALESCE(SUM(total_tokens), 0)             AS tokens,
+		    COALESCE(SUM(estimated_cost), 0.0)         AS cost
 		 FROM ai_usage_logs
-		 GROUP BY task_type
-		 ORDER BY cnt DESC`); err != nil {
+		 GROUP BY COALESCE(NULLIF(task_type, ''), 'unknown')
+		 ORDER BY calls DESC, task ASC`); err != nil {
 		return nil, err
 	}
-	d.ByTaskType = stats
+	d.TaskDistribution = stats
 
 	return &d, nil
 }
@@ -348,27 +400,21 @@ type AIDashboardFilter struct {
 	PageSize int    // 每页大小
 }
 
-// GetAIDashboardFiltered 根据 AIDashboardFilter 中的条件，从 ai_usage_logs 表动态拼接 WHERE 子句，
-// 返回过滤后的 AI 使用聚合统计数据及按任务类型细分的统计。
-func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboardFilter) (*AIDashboard, error) {
-	var d AIDashboard
-
-	// 动态构建 WHERE 子句
+func buildAIDashboardWhere(f AIDashboardFilter) (string, []any) {
 	where := "WHERE 1=1"
-	args := []any{}
+	args := make([]any, 0, 4)
 	argIdx := 1
 
 	if f.Days > 0 {
-		// 限制时间范围为最近 N 天
 		where += fmt.Sprintf(" AND created_at >= NOW() - INTERVAL '%d days'", f.Days)
 	}
 	if f.TaskType != "" {
-		where += fmt.Sprintf(" AND task_type = $%d", argIdx)
+		where += fmt.Sprintf(" AND COALESCE(NULLIF(task_type, ''), 'unknown') = $%d", argIdx)
 		args = append(args, f.TaskType)
 		argIdx++
 	}
 	if f.ModelID != "" {
-		where += fmt.Sprintf(" AND model_id = $%d", argIdx)
+		where += fmt.Sprintf(" AND COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown') = $%d", argIdx)
 		args = append(args, f.ModelID)
 		argIdx++
 	}
@@ -378,19 +424,52 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 		argIdx++
 	}
 	if f.Keyword != "" {
-		// 关键字同时模糊匹配 task_type 和 model_id（不区分大小写）
-		where += fmt.Sprintf(" AND (task_type ILIKE $%d OR model_id ILIKE $%d)", argIdx, argIdx)
+		where += fmt.Sprintf(
+			" AND ("+
+				"COALESCE(task_type, '') ILIKE $%d OR "+
+				"COALESCE(model_id, '') ILIKE $%d OR "+
+				"COALESCE(model, '') ILIKE $%d OR "+
+				"COALESCE(provider_code, '') ILIKE $%d OR "+
+				"COALESCE(error_code, '') ILIKE $%d)",
+			argIdx, argIdx, argIdx, argIdx, argIdx,
+		)
 		args = append(args, "%"+f.Keyword+"%")
-		argIdx++
 	}
 
-	// 查询聚合指标（总调用次数、成功次数、Token 量、费用）
+	return where, args
+}
+
+func calcPages(total int64, pageSize int) int {
+	if total <= 0 || pageSize <= 0 {
+		return 0
+	}
+	return int((total + int64(pageSize) - 1) / int64(pageSize))
+}
+
+// GetAIDashboardFiltered 根据 AIDashboardFilter 中的条件，从 ai_usage_logs 表动态拼接 WHERE 子句，
+// 返回过滤后的 AI 使用聚合统计数据及按任务类型细分的统计。
+func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboardFilter) (*AIDashboard, error) {
+	var d AIDashboard
+	where, args := buildAIDashboardWhere(f)
+	pageNum := f.PageNum
+	if pageNum <= 0 {
+		pageNum = 1
+	}
+	pageSize := f.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	offset := (pageNum - 1) * pageSize
+
+	// 查询聚合指标（总调用次数、成功次数、缓存命中、Token 量、费用、平均耗时）
 	aggQuery := fmt.Sprintf(
 		`SELECT
 		    COUNT(*)                           AS total_calls,
 		    COUNT(*) FILTER (WHERE success)    AS success_calls,
+		    COUNT(*) FILTER (WHERE cached)     AS cached_calls,
 		    COALESCE(SUM(total_tokens), 0)     AS total_tokens,
-		    COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost
+		    COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost,
+		    COALESCE(AVG(latency_ms), 0.0)     AS avg_latency_ms
 		 FROM ai_usage_logs %s`, where)
 
 	if err := r.db.GetContext(ctx, &d, aggQuery, args...); err != nil {
@@ -398,20 +477,101 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 	}
 
 	// 按任务类型分组统计，按调用量降序排列
-	statsQuery := fmt.Sprintf(
+	taskQuery := fmt.Sprintf(
 		`SELECT
-		    COALESCE(task_type, 'unknown') AS task_type,
-		    COUNT(*)                       AS cnt,
-		    COALESCE(SUM(total_tokens), 0) AS tokens
+		    COALESCE(NULLIF(task_type, ''), 'unknown') AS task,
+		    COUNT(*)                                   AS calls,
+		    COALESCE(SUM(total_tokens), 0)             AS tokens,
+		    COALESCE(SUM(estimated_cost), 0.0)         AS cost
 		 FROM ai_usage_logs %s
-		 GROUP BY task_type
-		 ORDER BY cnt DESC`, where)
+		 GROUP BY COALESCE(NULLIF(task_type, ''), 'unknown')
+		 ORDER BY calls DESC, task ASC`, where)
 
-	var stats []TaskTypeStat
-	if err := r.db.SelectContext(ctx, &stats, statsQuery, args...); err != nil {
+	var taskStats []AITaskDistribution
+	if err := r.db.SelectContext(ctx, &taskStats, taskQuery, args...); err != nil {
 		return nil, err
 	}
-	d.ByTaskType = stats
+	d.TaskDistribution = taskStats
+
+	trendQuery := fmt.Sprintf(
+		`WITH daily AS (
+		    SELECT
+		        DATE(created_at)::text             AS date,
+		        COUNT(*)                           AS calls,
+		        COALESCE(SUM(total_tokens), 0)     AS tokens,
+		        COALESCE(SUM(estimated_cost), 0.0) AS cost
+		    FROM ai_usage_logs %s
+		    GROUP BY DATE(created_at)::text
+		)
+		SELECT
+		    date,
+		    calls,
+		    tokens,
+		    cost
+		FROM daily
+		ORDER BY date ASC`, where)
+
+	var trend []AITrendPoint
+	if err := r.db.SelectContext(ctx, &trend, trendQuery, args...); err != nil {
+		return nil, err
+	}
+	d.Trend = trend
+
+	modelQuery := fmt.Sprintf(
+		`SELECT
+		    COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown') AS model,
+		    COALESCE(NULLIF(provider_code, ''), 'unknown')               AS provider_code,
+		    COUNT(*)                                                     AS calls,
+		    COALESCE(SUM(total_tokens), 0)                               AS tokens,
+		    COALESCE(SUM(estimated_cost), 0.0)                           AS cost
+		FROM ai_usage_logs %s
+		GROUP BY COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown'),
+		         COALESCE(NULLIF(provider_code, ''), 'unknown')
+		ORDER BY calls DESC, model ASC
+		LIMIT 8`, where)
+
+	var modelStats []AIModelDistribution
+	if err := r.db.SelectContext(ctx, &modelStats, modelQuery, args...); err != nil {
+		return nil, err
+	}
+	d.ModelDistribution = modelStats
+
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM ai_usage_logs %s`, where)
+	if err := r.db.GetContext(ctx, &d.Records.Total, countQuery, args...); err != nil {
+		return nil, err
+	}
+
+	recordQuery := fmt.Sprintf(
+		`SELECT
+		    id,
+		    COALESCE(NULLIF(task_type, ''), 'unknown')                  AS task_type,
+		    COALESCE(NULLIF(provider_code, ''), 'unknown')              AS provider_code,
+		    COALESCE(NULLIF(model_id, ''), NULLIF(model, ''), 'unknown') AS model,
+		    COALESCE(tokens_in, 0)                                      AS tokens_in,
+		    COALESCE(tokens_out, 0)                                     AS tokens_out,
+		    COALESCE(total_tokens, 0)                                   AS total_tokens,
+		    COALESCE(estimated_cost, 0.0)                               AS cost,
+		    COALESCE(latency_ms, 0)                                     AS latency_ms,
+		    COALESCE(success, false)                                    AS success,
+		    COALESCE(cached, false)                                     AS cached,
+		    error_code,
+		    created_at
+		FROM ai_usage_logs %s
+		ORDER BY created_at DESC
+		LIMIT %d OFFSET %d`, where, pageSize, offset)
+
+	var records []AICallRecord
+	if err := r.db.SelectContext(ctx, &records, recordQuery, args...); err != nil {
+		return nil, err
+	}
+
+	d.Records = AICallRecordPage{
+		List:     records,
+		PageNum:  pageNum,
+		PageSize: pageSize,
+		Total:    d.Records.Total,
+		Pages:    calcPages(d.Records.Total, pageSize),
+	}
 
 	return &d, nil
 }

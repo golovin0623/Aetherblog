@@ -41,21 +41,67 @@ type DailyVisitVO struct {
 	UV   int64  `json:"uv"`   // 独立访客数
 }
 
-// TaskTypeStatVO 表示按 AI 任务类型聚合的调用次数与 Token 用量统计。
-type TaskTypeStatVO struct {
-	TaskType string `json:"taskType"` // AI 任务类型（如 summary、translate 等）
-	Count    int64  `json:"count"`    // 调用次数
-	Tokens   int64  `json:"tokens"`   // 消耗的 Token 总数
+// AiTrendPointVO 表示单日 AI 调用趋势点。
+type AiTrendPointVO struct {
+	Date   string  `json:"date"`
+	Calls  int64   `json:"calls"`
+	Tokens int64   `json:"tokens"`
+	Cost   float64 `json:"cost"`
+}
+
+// AiModelDistributionVO 表示按模型聚合的调用占比数据。
+type AiModelDistributionVO struct {
+	Model        string  `json:"model"`
+	ProviderCode string  `json:"providerCode"`
+	Calls        int64   `json:"calls"`
+	Percentage   float64 `json:"percentage"`
+	Tokens       int64   `json:"tokens"`
+	Cost         float64 `json:"cost"`
+}
+
+// AiTaskDistributionVO 表示按任务类型聚合的调用占比数据。
+type AiTaskDistributionVO struct {
+	Task       string  `json:"task"`
+	Calls      int64   `json:"calls"`
+	Percentage float64 `json:"percentage"`
+	Tokens     int64   `json:"tokens"`
+	Cost       float64 `json:"cost"`
+}
+
+// AiCallRecordVO 表示单条 AI 调用明细。
+type AiCallRecordVO struct {
+	ID           int64   `json:"id"`
+	TaskType     string  `json:"taskType"`
+	ProviderCode string  `json:"providerCode"`
+	Model        string  `json:"model"`
+	TokensIn     int64   `json:"tokensIn"`
+	TokensOut    int64   `json:"tokensOut"`
+	TotalTokens  int64   `json:"totalTokens"`
+	Cost         float64 `json:"cost"`
+	LatencyMs    int64   `json:"latencyMs"`
+	Success      bool    `json:"success"`
+	Cached       bool    `json:"cached"`
+	ErrorCode    *string `json:"errorCode"`
+	CreatedAt    string  `json:"createdAt"`
+}
+
+// AiRecordsPageVO 表示 AI 调用明细分页结果。
+type AiRecordsPageVO struct {
+	List     []AiCallRecordVO `json:"list"`
+	PageNum  int              `json:"pageNum"`
+	PageSize int              `json:"pageSize"`
+	Total    int64            `json:"total"`
+	Pages    int              `json:"pages"`
 }
 
 // AIDashboardVO 是 AI 使用统计面板的综合 DTO。
 type AIDashboardVO struct {
-	RangeDays         int              `json:"rangeDays"`         // 统计时间范围（天数）
-	Overview          AiOverviewVO     `json:"overview"`          // 整体汇总指标
-	Trend             []any            `json:"trend"`             // 趋势数据（预留）
-	ModelDistribution []any            `json:"modelDistribution"` // 模型分布（预留）
-	TaskDistribution  []TaskTypeStatVO `json:"taskDistribution"`  // 按任务类型分布
-	Records           any              `json:"records"`           // 详细记录（预留）
+	RangeDays         int                     `json:"rangeDays"`         // 统计时间范围（天数）
+	Overview          AiOverviewVO            `json:"overview"`          // 整体汇总指标
+	Trend             []AiTrendPointVO        `json:"trend"`             // 趋势数据
+	ModelDistribution []AiModelDistributionVO `json:"modelDistribution"` // 模型分布
+	TaskDistribution  []AiTaskDistributionVO  `json:"taskDistribution"`  // 按任务类型分布
+	Records           AiRecordsPageVO         `json:"records"`           // 详细记录
 }
 
 // AiOverviewVO 汇总 AI 服务的调用成功率、Token 用量、费用及延迟等核心指标。
@@ -82,6 +128,116 @@ func NewAnalyticsService(repo *repository.AnalyticsRepo) *AnalyticsService {
 	return &AnalyticsService{repo: repo}
 }
 
+func ratio(part, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(part) / float64(total) * 100
+}
+
+func mapAiOverview(d *repository.AIDashboard) AiOverviewVO {
+	var avgTokensPerCall, avgCostPerCall float64
+	if d.TotalCalls > 0 {
+		avgTokensPerCall = float64(d.TotalTokens) / float64(d.TotalCalls)
+		avgCostPerCall = d.EstimatedCost / float64(d.TotalCalls)
+	}
+
+	return AiOverviewVO{
+		TotalCalls:       d.TotalCalls,
+		SuccessCalls:     d.SuccessCalls,
+		ErrorCalls:       d.TotalCalls - d.SuccessCalls,
+		SuccessRate:      ratio(d.SuccessCalls, d.TotalCalls),
+		CacheHitRate:     ratio(d.CachedCalls, d.TotalCalls),
+		TotalTokens:      d.TotalTokens,
+		TotalCost:        d.EstimatedCost,
+		AvgLatencyMs:     d.AvgLatencyMs,
+		AvgTokensPerCall: avgTokensPerCall,
+		AvgCostPerCall:   avgCostPerCall,
+	}
+}
+
+func mapAiTrend(rows []repository.AITrendPoint) []AiTrendPointVO {
+	vos := make([]AiTrendPointVO, len(rows))
+	for i, row := range rows {
+		vos[i] = AiTrendPointVO{
+			Date:   row.Date,
+			Calls:  row.Calls,
+			Tokens: row.Tokens,
+			Cost:   row.Cost,
+		}
+	}
+	return vos
+}
+
+func mapAiModelDistribution(rows []repository.AIModelDistribution, totalCalls int64) []AiModelDistributionVO {
+	vos := make([]AiModelDistributionVO, len(rows))
+	for i, row := range rows {
+		vos[i] = AiModelDistributionVO{
+			Model:        row.Model,
+			ProviderCode: row.ProviderCode,
+			Calls:        row.Calls,
+			Percentage:   ratio(row.Calls, totalCalls),
+			Tokens:       row.Tokens,
+			Cost:         row.Cost,
+		}
+	}
+	return vos
+}
+
+func mapAiTaskDistribution(rows []repository.AITaskDistribution, totalCalls int64) []AiTaskDistributionVO {
+	vos := make([]AiTaskDistributionVO, len(rows))
+	for i, row := range rows {
+		vos[i] = AiTaskDistributionVO{
+			Task:       row.Task,
+			Calls:      row.Calls,
+			Percentage: ratio(row.Calls, totalCalls),
+			Tokens:     row.Tokens,
+			Cost:       row.Cost,
+		}
+	}
+	return vos
+}
+
+func mapAiRecords(page repository.AICallRecordPage) AiRecordsPageVO {
+	vos := make([]AiCallRecordVO, len(page.List))
+	for i, row := range page.List {
+		vos[i] = AiCallRecordVO{
+			ID:           row.ID,
+			TaskType:     row.TaskType,
+			ProviderCode: row.ProviderCode,
+			Model:        row.Model,
+			TokensIn:     row.TokensIn,
+			TokensOut:    row.TokensOut,
+			TotalTokens:  row.TotalTokens,
+			Cost:         row.Cost,
+			LatencyMs:    row.LatencyMs,
+			Success:      row.Success,
+			Cached:       row.Cached,
+			ErrorCode:    row.ErrorCode,
+			CreatedAt:    row.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
+	return AiRecordsPageVO{
+		List:     vos,
+		PageNum:  page.PageNum,
+		PageSize: page.PageSize,
+		Total:    page.Total,
+		Pages:    page.Pages,
+	}
+}
+
+func buildAIDashboardVO(d *repository.AIDashboard, rangeDays int) *AIDashboardVO {
+	return &AIDashboardVO{
+		RangeDays:         rangeDays,
+		Overview:          mapAiOverview(d),
+		Trend:             mapAiTrend(d.Trend),
+		ModelDistribution: mapAiModelDistribution(d.ModelDistribution, d.TotalCalls),
+		TaskDistribution:  mapAiTaskDistribution(d.TaskDistribution, d.TotalCalls),
+		Records:           mapAiRecords(d.Records),
+	}
+}
+
 // GetDashboard 返回站点核心统计汇总数据，包括文章数、评论数、浏览量、媒体文件等。
 func (s *AnalyticsService) GetDashboard(ctx context.Context) (*DashboardVO, error) {
 	d, err := s.repo.GetDashboard(ctx)
@@ -89,12 +245,12 @@ func (s *AnalyticsService) GetDashboard(ctx context.Context) (*DashboardVO, erro
 		return nil, err
 	}
 	return &DashboardVO{
-		PostCount:     d.PostCount,
-		CommentCount:  d.CommentCount,
-		ViewTotal:     d.ViewTotal,
-		TodayVisits:   d.TodayVisits,
-		MediaCount:    d.MediaCount,
-		MediaSize:     d.MediaSize,
+		PostCount:      d.PostCount,
+		CommentCount:   d.CommentCount,
+		ViewTotal:      d.ViewTotal,
+		TodayVisits:    d.TodayVisits,
+		MediaCount:     d.MediaCount,
+		MediaSize:      d.MediaSize,
 		CategoryCount:  d.CategoryCount,
 		TagCount:       d.TagCount,
 		TotalWords:     d.TotalWords,
@@ -139,43 +295,7 @@ func (s *AnalyticsService) GetAIDashboard(ctx context.Context) (*AIDashboardVO, 
 	if err != nil {
 		return nil, err
 	}
-	stats := make([]TaskTypeStatVO, len(d.ByTaskType))
-	for i, t := range d.ByTaskType {
-		stats[i] = TaskTypeStatVO{TaskType: t.TaskType, Count: t.Count, Tokens: t.Tokens}
-	}
-
-	// 计算失败次数与成功率
-	errorCalls := d.TotalCalls - d.SuccessCalls
-	var successRate float64
-	if d.TotalCalls > 0 {
-		successRate = float64(d.SuccessCalls) / float64(d.TotalCalls) * 100
-	}
-	// 计算每次调用平均 Token 数与费用
-	var avgTokensPerCall, avgCostPerCall float64
-	if d.TotalCalls > 0 {
-		avgTokensPerCall = float64(d.TotalTokens) / float64(d.TotalCalls)
-		avgCostPerCall = d.EstimatedCost / float64(d.TotalCalls)
-	}
-
-	return &AIDashboardVO{
-		RangeDays: 30,
-		Overview: AiOverviewVO{
-			TotalCalls:       d.TotalCalls,
-			SuccessCalls:     d.SuccessCalls,
-			ErrorCalls:       errorCalls,
-			SuccessRate:      successRate,
-			CacheHitRate:     0,
-			TotalTokens:      d.TotalTokens,
-			TotalCost:        d.EstimatedCost,
-			AvgLatencyMs:     0,
-			AvgTokensPerCall: avgTokensPerCall,
-			AvgCostPerCall:   avgCostPerCall,
-		},
-		Trend:             []any{},
-		ModelDistribution: []any{},
-		TaskDistribution:  stats,
-		Records:           nil,
-	}, nil
+	return buildAIDashboardVO(d, 30), nil
 }
 
 // RecordVisit 以"即发即忘"的方式在后台 goroutine 中异步记录一次页面访问。
@@ -360,52 +480,21 @@ func (s *AnalyticsService) GetDeviceStats(ctx context.Context) ([]DeviceStatVO, 
 // GetAIDashboardFiltered 返回按指定过滤条件（时间范围、任务类型等）筛选的 AI 使用统计数据。
 // 当 f.Days <= 0 时，默认使用 30 天。
 func (s *AnalyticsService) GetAIDashboardFiltered(ctx context.Context, f repository.AIDashboardFilter) (*AIDashboardVO, error) {
+	if f.Days <= 0 {
+		f.Days = 30
+	}
+	if f.PageNum <= 0 {
+		f.PageNum = 1
+	}
+	if f.PageSize <= 0 {
+		f.PageSize = 20
+	}
+
 	d, err := s.repo.GetAIDashboardFiltered(ctx, f)
 	if err != nil {
 		return nil, err
 	}
-	stats := make([]TaskTypeStatVO, len(d.ByTaskType))
-	for i, t := range d.ByTaskType {
-		stats[i] = TaskTypeStatVO{TaskType: t.TaskType, Count: t.Count, Tokens: t.Tokens}
-	}
-
-	// 计算失败次数与成功率
-	errorCalls := d.TotalCalls - d.SuccessCalls
-	var successRate float64
-	if d.TotalCalls > 0 {
-		successRate = float64(d.SuccessCalls) / float64(d.TotalCalls) * 100
-	}
-	// 计算每次调用平均 Token 数与费用
-	var avgTokensPerCall, avgCostPerCall float64
-	if d.TotalCalls > 0 {
-		avgTokensPerCall = float64(d.TotalTokens) / float64(d.TotalCalls)
-		avgCostPerCall = d.EstimatedCost / float64(d.TotalCalls)
-	}
-
-	rangeDays := f.Days
-	if rangeDays <= 0 {
-		rangeDays = 30
-	}
-
-	return &AIDashboardVO{
-		RangeDays: rangeDays,
-		Overview: AiOverviewVO{
-			TotalCalls:       d.TotalCalls,
-			SuccessCalls:     d.SuccessCalls,
-			ErrorCalls:       errorCalls,
-			SuccessRate:      successRate,
-			CacheHitRate:     0,
-			TotalTokens:      d.TotalTokens,
-			TotalCost:        d.EstimatedCost,
-			AvgLatencyMs:     0,
-			AvgTokensPerCall: avgTokensPerCall,
-			AvgCostPerCall:   avgCostPerCall,
-		},
-		Trend:             []any{},
-		ModelDistribution: []any{},
-		TaskDistribution:  stats,
-		Records:           nil,
-	}, nil
+	return buildAIDashboardVO(d, f.Days), nil
 }
 
 // GetTodayCount 返回今日的页面访问总次数（PV）。
