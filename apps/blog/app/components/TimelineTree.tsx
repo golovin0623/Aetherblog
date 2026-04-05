@@ -179,6 +179,7 @@ const MonthSection = React.memo(({
                 >
                   <button
                     type="button"
+                    aria-expanded={showAllPosts}
                     onClick={() => toggleShowAllPosts(yearMonth)}
                     className="group p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
                     title={showAllPosts ? '收起' : `还有 ${hiddenCount} 篇`}
