@@ -261,7 +261,7 @@ export default function PostsPage() {
                   <button
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage <= 1 || isPlaceholderData}
-                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${
                       currentPage <= 1
                         ? 'text-gray-600 cursor-not-allowed'
                         : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
@@ -280,7 +280,7 @@ export default function PostsPage() {
                         key={page}
                         data-page={page}
                         onClick={() => handlePageChange(page)}
-                        className={`flex-shrink-0 w-10 h-10 rounded-lg transition-colors ${
+                        className={`flex-shrink-0 w-10 h-10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${
                           page === currentPage
                             ? 'bg-primary text-white'
                             : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
@@ -294,7 +294,7 @@ export default function PostsPage() {
                   <button
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage >= pages || isPlaceholderData}
-                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+                    className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${
                       currentPage >= pages
                         ? 'text-gray-600 cursor-not-allowed'
                         : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
