@@ -1232,21 +1232,32 @@ export function CreatePostPage() {
     // 检查内容更改
     const interval = setInterval(checkTable, 100);
 
+    let rafId: number | null = null;
+    const handleScroll = () => {
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          checkTable();
+          rafId = null;
+        });
+      }
+    };
+
     // 滚动时也更新
     const editorContainer = editorContainerRef.current;
     if (editorContainer) {
       const scroller = editorContainer.querySelector('.cm-scroller');
       if (scroller) {
-        scroller.addEventListener('scroll', checkTable);
+        scroller.addEventListener('scroll', handleScroll, { passive: true });
       }
     }
 
     return () => {
       clearInterval(interval);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       if (editorContainer) {
         const scroller = editorContainer.querySelector('.cm-scroller');
         if (scroller) {
-          scroller.removeEventListener('scroll', checkTable);
+          scroller.removeEventListener('scroll', handleScroll);
         }
       }
     };
