@@ -393,6 +393,10 @@ func calcPages(total int64, pageSize int) int {
 func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboardFilter) (*AIDashboard, error) {
 	var d AIDashboard
 	where, args := buildAIDashboardWhereWithAlias(f, "l")
+	supportsCostArchive, err := r.hasAICostArchiveColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 	pageNum := f.PageNum
 	if pageNum <= 0 {
 		pageNum = 1
@@ -403,7 +407,7 @@ func (r *AnalyticsRepo) GetAIDashboardFiltered(ctx context.Context, f AIDashboar
 	}
 	offset := (pageNum - 1) * pageSize
 
-	cte := buildPricedLogsCTE(where)
+	cte := buildPricedLogsCTE(where, supportsCostArchive)
 
 	aggQuery := cte + `
 SELECT
