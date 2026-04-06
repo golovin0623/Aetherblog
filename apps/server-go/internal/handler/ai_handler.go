@@ -80,10 +80,17 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
 	subPath := c.Param("*")
 
-	// 对路径进行 URL 解码以防御编码后的路径穿越攻击（如 %2e%2e、%252e%252e）
-	unescapedPath, err := url.PathUnescape(subPath)
-	if err != nil {
-		return response.FailWith(c, response.BadRequest, "invalid path encoding")
+	// 循环进行 URL 解码，彻底防御多重编码的路径穿越攻击（如 %2e%2e、%252e%252e）
+	unescapedPath := subPath
+	for {
+		decoded, err := url.PathUnescape(unescapedPath)
+		if err != nil {
+			return response.FailWith(c, response.BadRequest, "invalid path encoding")
+		}
+		if decoded == unescapedPath {
+			break
+		}
+		unescapedPath = decoded
 	}
 	if strings.Contains(unescapedPath, "..") {
 		return response.FailWith(c, response.BadRequest, "invalid path traversal")

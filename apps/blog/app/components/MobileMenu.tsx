@@ -215,7 +215,7 @@ const MobileMenu = memo(function MobileMenu() {
                   <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-white/60 dark:border-white/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none">
                     <Image
                       src={authorAvatar}
-                      alt={authorName}
+                      alt=""
                       fill
                       sizes="56px"
                       className="object-cover"
