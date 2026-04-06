@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -36,6 +37,7 @@ from app.services.usage_logger import UsageLogger, estimate_tokens
 
 # ref: §5.4
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
+logger = logging.getLogger("ai-service")
 
 SUMMARY_TTL = 60 * 60 * 24
 TAGS_TTL = 60 * 60 * 24
@@ -59,6 +61,47 @@ def _enforce_content_limit(content: str) -> None:
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Content too large",
         )
+
+
+def _truncate_error_message(value: str, limit: int = 200) -> str:
+    text = " ".join((value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "..."
+
+
+def _normalize_generation_error(exc: Exception) -> tuple[int, str]:
+    message = _truncate_error_message(str(exc) or exc.__class__.__name__)
+    lower = message.lower()
+
+    if any(keyword in lower for keyword in ("rate limit", "too many requests", "429")):
+        return status.HTTP_429_TOO_MANY_REQUESTS, "AI provider rate limit exceeded"
+
+    if any(keyword in lower for keyword in ("timeout", "timed out", "deadline exceeded")):
+        return status.HTTP_504_GATEWAY_TIMEOUT, "AI provider request timed out"
+
+    if any(keyword in lower for keyword in ("unauthorized", "authentication", "invalid api key", "api key", "401", "403")):
+        return status.HTTP_502_BAD_GATEWAY, "AI provider authentication failed"
+
+    if any(keyword in lower for keyword in ("context length", "max tokens", "prompt is too long", "invalid request", "unsupported parameter", "model_not_found")):
+        return status.HTTP_400_BAD_REQUEST, f"AI request rejected: {message}"
+
+    return status.HTTP_502_BAD_GATEWAY, f"AI generation failed: {message}"
+
+
+async def _safe_cache_get_json(cache, key: str):
+    try:
+        return await cache.get_json(key)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("ai.cache_read_failed", extra={"key": key, "error": str(exc)})
+        return None
+
+
+async def _safe_cache_set_json(cache, key: str, value, ttl_seconds: int) -> None:
+    try:
+        await cache.set_json(key, value, ttl_seconds)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("ai.cache_write_failed", extra={"key": key, "error": str(exc)})
 
 
 async def _log_usage(
@@ -166,24 +209,29 @@ async def summary(
             f"ai:summary:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
             f"{_prompt_version(req.promptVersion)}:{req.maxLength}"
         )
-        cached_data = await cache.get_json(cache_key)
+        cached_data = await _safe_cache_get_json(cache, cache_key)
         if cached_data:
-            cached = True
-            response_text = cached_data.get("summary", "")
-            # Prefer cached metadata, fallback to current context
-            latency_ms = cached_data.get("latencyMs") or int((time.perf_counter() - start_time) * 1000)
-            tokens_used = cached_data.get("tokensUsed") or (estimate_tokens(req.content) + estimate_tokens(response_text))
-            cached_model = cached_data.get("model") or model
-            
-            return ApiResponse(
-                data=SummaryData(
-                    summary=response_text,
-                    characterCount=len(response_text),
-                    model=cached_model,
-                    tokensUsed=tokens_used,
-                    latencyMs=latency_ms,
+            try:
+                cached = True
+                response_text = cached_data.get("summary", "")
+                # Prefer cached metadata, fallback to current context
+                latency_ms = cached_data.get("latencyMs") or int((time.perf_counter() - start_time) * 1000)
+                tokens_used = cached_data.get("tokensUsed") or (estimate_tokens(req.content) + estimate_tokens(response_text))
+                cached_model = cached_data.get("model") or model
+
+                return ApiResponse(
+                    data=SummaryData(
+                        summary=response_text,
+                        characterCount=len(response_text),
+                        model=cached_model,
+                        tokensUsed=tokens_used,
+                        latencyMs=latency_ms,
+                    )
                 )
-            )
+            except Exception as exc:  # pragma: no cover - defensive
+                cached = False
+                response_text = ""
+                logger.warning("ai.cache_payload_invalid", extra={"key": cache_key, "error": str(exc)})
 
         prompt_variables = {
             "content": req.content,
@@ -206,7 +254,8 @@ async def summary(
             tokensUsed=tokens_used,
             latencyMs=latency_ms,
         )
-        await cache.set_json(
+        await _safe_cache_set_json(
+            cache,
             cache_key,
             data.model_dump(),
             SUMMARY_TTL,
@@ -216,8 +265,9 @@ async def summary(
         error_code = str(exc.detail)
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
         await _log_usage(
             request=request,
@@ -316,18 +366,22 @@ async def tags(
             f"ai:tags:{hash_content(req.content)}:{model}:"
             f"{_prompt_version(req.promptVersion)}:{req.maxTags}"
         )
-        cached_data = await cache.get_json(cache_key)
+        cached_data = await _safe_cache_get_json(cache, cache_key)
         if cached_data:
-            cached = True
-            # Backfill missing metadata for old cache entries
-            data = TagsData(**cached_data)
-            if not data.model:
-                data.model = model
-            if data.tokensUsed is None:
-                data.tokensUsed = estimate_tokens(req.content) + estimate_tokens(",".join(data.tags))
-            if data.latencyMs is None:
-                data.latencyMs = int((time.perf_counter() - start_time) * 1000)
-            return ApiResponse(data=data)
+            try:
+                cached = True
+                # Backfill missing metadata for old cache entries
+                data = TagsData(**cached_data)
+                if not data.model:
+                    data.model = model
+                if data.tokensUsed is None:
+                    data.tokensUsed = estimate_tokens(req.content) + estimate_tokens(",".join(data.tags))
+                if data.latencyMs is None:
+                    data.latencyMs = int((time.perf_counter() - start_time) * 1000)
+                return ApiResponse(data=data)
+            except Exception as exc:  # pragma: no cover - defensive
+                cached = False
+                logger.warning("ai.cache_payload_invalid", extra={"key": cache_key, "error": str(exc)})
 
         prompt_variables = {
             "content": req.content,
@@ -349,14 +403,15 @@ async def tags(
             tokensUsed=tokens_used,
             latencyMs=latency_ms
         )
-        await cache.set_json(cache_key, data.model_dump(), TAGS_TTL)
+        await _safe_cache_set_json(cache, cache_key, data.model_dump(), TAGS_TTL)
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
         await _log_usage(
             request=request,
@@ -412,18 +467,22 @@ async def titles(
             f"ai:titles:{hash_content(req.content)}:{model}:"
             f"{_prompt_version(req.promptVersion)}:{req.maxTitles}"
         )
-        cached_data = await cache.get_json(cache_key)
+        cached_data = await _safe_cache_get_json(cache, cache_key)
         if cached_data:
-            cached = True
-            # Backfill missing metadata for old cache entries
-            data = TitlesData(**cached_data)
-            if not data.model:
-                data.model = model
-            if data.tokensUsed is None:
-                data.tokensUsed = estimate_tokens(req.content) + estimate_tokens(",".join(data.titles))
-            if data.latencyMs is None:
-                data.latencyMs = int((time.perf_counter() - start_time) * 1000)
-            return ApiResponse(data=data)
+            try:
+                cached = True
+                # Backfill missing metadata for old cache entries
+                data = TitlesData(**cached_data)
+                if not data.model:
+                    data.model = model
+                if data.tokensUsed is None:
+                    data.tokensUsed = estimate_tokens(req.content) + estimate_tokens(",".join(data.titles))
+                if data.latencyMs is None:
+                    data.latencyMs = int((time.perf_counter() - start_time) * 1000)
+                return ApiResponse(data=data)
+            except Exception as exc:  # pragma: no cover - defensive
+                cached = False
+                logger.warning("ai.cache_payload_invalid", extra={"key": cache_key, "error": str(exc)})
 
         prompt_variables = {
             "content": req.content,
@@ -445,14 +504,15 @@ async def titles(
             tokensUsed=tokens_used,
             latencyMs=latency_ms
         )
-        await cache.set_json(cache_key, data.model_dump(), TITLES_TTL)
+        await _safe_cache_set_json(cache, cache_key, data.model_dump(), TITLES_TTL)
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
         await _log_usage(
             request=request,
@@ -527,8 +587,9 @@ async def polish(
         error_code = str(exc.detail)
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
         await _log_usage(
             request=request,
@@ -605,8 +666,9 @@ async def outline(
         error_code = str(exc.detail)
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
         await _log_usage(
             request=request,
@@ -665,22 +727,27 @@ async def translate(
             f"ai:translate:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
             f"{_prompt_version(req.promptVersion)}:{req.targetLanguage}:{req.sourceLanguage or 'auto'}"
         )
-        cached_data = await cache.get_json(cache_key)
+        cached_data = await _safe_cache_get_json(cache, cache_key)
         if cached_data:
-            cached = True
-            response_text = cached_data.get("translatedContent", "")
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
-            return ApiResponse(
-                data=TranslateData(
-                    translatedContent=response_text,
-                    sourceLanguage=req.sourceLanguage,
-                    targetLanguage=req.targetLanguage,
-                    model=model,
-                    tokensUsed=tokens_used,
-                    latencyMs=latency_ms,
+            try:
+                cached = True
+                response_text = cached_data.get("translatedContent", "")
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+                return ApiResponse(
+                    data=TranslateData(
+                        translatedContent=response_text,
+                        sourceLanguage=req.sourceLanguage,
+                        targetLanguage=req.targetLanguage,
+                        model=model,
+                        tokensUsed=tokens_used,
+                        latencyMs=latency_ms,
+                    )
                 )
-            )
+            except Exception as exc:  # pragma: no cover - defensive
+                cached = False
+                response_text = ""
+                logger.warning("ai.cache_payload_invalid", extra={"key": cache_key, "error": str(exc)})
 
         prompt_variables = {
             "content": req.content,
@@ -705,7 +772,8 @@ async def translate(
             tokensUsed=tokens_used,
             latencyMs=latency_ms,
         )
-        await cache.set_json(
+        await _safe_cache_set_json(
+            cache,
             cache_key,
             {"translatedContent": response_text, "targetLanguage": req.targetLanguage},
             TRANSLATE_TTL,
@@ -715,8 +783,9 @@ async def translate(
         error_code = str(exc.detail)
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     finally:
         await _log_usage(
             request=request,
@@ -782,8 +851,9 @@ async def _stream_with_think_detection(
             # Force async yield
             await asyncio.sleep(0)
     except Exception as exc:
-        error_code = str(exc)
-        error_event = {"type": "error", "code": "AI_STREAM_ERROR", "message": str(exc)}
+        _status_code, detail = _normalize_generation_error(exc)
+        error_code = detail
+        error_event = {"type": "error", "code": "AI_STREAM_ERROR", "message": detail}
         yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n".encode("utf-8")
     finally:
         await _log_usage(

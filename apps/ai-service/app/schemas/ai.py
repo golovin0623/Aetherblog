@@ -2,7 +2,26 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+LEGACY_POLISH_TONES = {
+    "professional": "专业",
+    "casual": "轻松自然",
+    "technical": "技术严谨",
+    "grammar": "严谨准确",
+    "clarity": "清晰易懂",
+    "style": "自然流畅",
+    "all": "专业",
+}
+
+
+def _normalize_tone(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return LEGACY_POLISH_TONES.get(text.lower(), text)
 
 
 class SummaryRequest(BaseModel):
@@ -30,6 +49,17 @@ class TitlesRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_fields(cls, values):
+        if not isinstance(values, dict):
+            return values
+        normalized = dict(values)
+        if normalized.get("maxTitles") in (None, "") and normalized.get("count") not in (None, ""):
+            normalized["maxTitles"] = normalized["count"]
+        return normalized
 
 
 class PolishRequest(BaseModel):
@@ -39,6 +69,22 @@ class PolishRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_fields(cls, values):
+        if not isinstance(values, dict):
+            return values
+        normalized = dict(values)
+        tone = _normalize_tone(normalized.get("tone"))
+        if tone is None:
+            tone = _normalize_tone(normalized.get("style"))
+        if tone is None:
+            tone = _normalize_tone(normalized.get("polishType"))
+        if tone is not None:
+            normalized["tone"] = tone
+        return normalized
 
 
 class OutlineRequest(BaseModel):

@@ -6,12 +6,57 @@ import { R } from '@/types';
  * 对接后端 AI 功能
  */
 
+type LegacySummaryStyle = 'professional' | 'casual' | 'technical';
+type LegacyTitleStyle = 'professional' | 'creative' | 'seo';
+type LegacyPolishType = 'grammar' | 'clarity' | 'style' | 'all';
+type LegacyPolishStyle = 'professional' | 'casual' | 'technical';
+
+const LEGACY_POLISH_TONE_MAP: Record<string, string> = {
+  professional: '专业',
+  casual: '轻松自然',
+  technical: '技术严谨',
+  grammar: '严谨准确',
+  clarity: '清晰易懂',
+  style: '自然流畅',
+  all: '专业',
+};
+
+function normalizeToneCandidate(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return LEGACY_POLISH_TONE_MAP[trimmed.toLowerCase()] || trimmed;
+}
+
+function normalizeTitlesRequest(request: TitlesRequest) {
+  const { count, style: _legacyStyle, ...rest } = request;
+  const maxTitles = request.maxTitles ?? count;
+  return {
+    ...rest,
+    ...(maxTitles !== undefined ? { maxTitles } : {}),
+  };
+}
+
+function normalizePolishRequest(request: PolishRequest) {
+  const { polishType, style, ...rest } = request;
+  const tone =
+    normalizeToneCandidate(request.tone) ??
+    normalizeToneCandidate(style) ??
+    normalizeToneCandidate(polishType);
+
+  return {
+    ...rest,
+    ...(tone ? { tone } : {}),
+  };
+}
+
 // ==================== 请求类型 ====================
 
 export interface SummaryRequest {
   content: string;
   maxLength?: number;
-  style?: 'professional' | 'casual' | 'technical';
+  promptTemplate?: string;
+  style?: LegacySummaryStyle;
   model?: string;
   promptVersion?: string;
   modelId?: string;
@@ -21,6 +66,7 @@ export interface SummaryRequest {
 export interface TagsRequest {
   content: string;
   maxTags?: number;
+  promptTemplate?: string;
   model?: string;
   promptVersion?: string;
   modelId?: string;
@@ -29,8 +75,10 @@ export interface TagsRequest {
 
 export interface TitlesRequest {
   content: string;
+  maxTitles?: number;
+  promptTemplate?: string;
   count?: number;
-  style?: 'professional' | 'creative' | 'seo';
+  style?: LegacyTitleStyle;
   model?: string;
   promptVersion?: string;
   modelId?: string;
@@ -39,8 +87,10 @@ export interface TitlesRequest {
 
 export interface PolishRequest {
   content: string;
-  polishType?: 'grammar' | 'clarity' | 'style' | 'all';
-  style?: 'professional' | 'casual' | 'technical';
+  tone?: string;
+  promptTemplate?: string;
+  polishType?: LegacyPolishType;
+  style?: LegacyPolishStyle;
   model?: string;
   promptVersion?: string;
   modelId?: string;
@@ -48,10 +98,12 @@ export interface PolishRequest {
 }
 
 export interface OutlineRequest {
-  topic: string;
+  topic?: string;
+  content?: string;
   existingContent?: string;
   depth?: number;
   style?: 'professional' | 'casual' | 'technical';
+  promptTemplate?: string;
   model?: string;
   promptVersion?: string;
   modelId?: string;
@@ -62,6 +114,7 @@ export interface TranslateRequest {
   content: string;
   targetLanguage: string;
   sourceLanguage?: string;
+  promptTemplate?: string;
   model?: string;
   promptVersion?: string;
   modelId?: string;
@@ -154,8 +207,7 @@ export const aiService = {
     const baseUrl = import.meta.env.VITE_API_URL || '/api';
     const params = new URLSearchParams({
       content: request.content,
-      ...(request.maxLength && { maxLength: request.maxLength.toString() }),  
-      ...(request.style && { style: request.style }),
+      ...(request.maxLength && { maxLength: request.maxLength.toString() }),
     });
     // 注意：流式接口需要使用 EventSource 或 fetch，这里返回 URL
     return `${baseUrl}/v1/admin/ai/summary/stream?${params}`;
@@ -172,14 +224,14 @@ export const aiService = {
    * 生成标题建议
    */
   suggestTitles: async (request: TitlesRequest): Promise<R<TitlesResponse>> => {
-    return api.post<R<TitlesResponse>>('/v1/admin/ai/titles', request);
+    return api.post<R<TitlesResponse>>('/v1/admin/ai/titles', normalizeTitlesRequest(request));
   },
 
   /**
    * 内容润色
    */
   polishContent: async (request: PolishRequest): Promise<R<PolishResponse>> => {
-    return api.post<R<PolishResponse>>('/v1/admin/ai/polish', request);
+    return api.post<R<PolishResponse>>('/v1/admin/ai/polish', normalizePolishRequest(request));
   },
 
   /**

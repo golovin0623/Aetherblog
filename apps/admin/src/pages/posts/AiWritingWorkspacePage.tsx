@@ -185,8 +185,7 @@ export function AiWritingWorkspacePage() {
         if (toolId === 'polish') {
           const res = await aiService.polishContent({
             content: selectedText,
-            polishType: 'all',
-            style: 'professional',
+            tone: '专业',
           });
           if (res.code === 200 && res.data) {
             result = res.data.polishedContent;

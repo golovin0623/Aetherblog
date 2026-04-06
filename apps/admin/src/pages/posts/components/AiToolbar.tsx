@@ -78,7 +78,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
 
     setLoading('titles');
     try {
-      const res = await aiService.suggestTitles({ content, count: 5 });
+      const res = await aiService.suggestTitles({ content, maxTitles: 5 });
       if (res.code === 200 && res.data) {
         setTitles(res.data.titles);
         setShowTitles(true);
@@ -104,8 +104,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
     try {
       const res = await aiService.polishContent({ 
         content, 
-        polishType: 'all',
-        style: 'professional'
+        tone: '专业'
       });
       if (res.code === 200 && res.data) {
         onInsertText(res.data.polishedContent);
@@ -138,7 +137,8 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
       const res = await aiService.generateOutline({ 
         topic,
         existingContent: content,
-        depth: 2
+        depth: 2,
+        style: 'professional',
       });
       if (res.code === 200 && res.data) {
         onInsertText(`\n\n${res.data.outline}\n\n`);
