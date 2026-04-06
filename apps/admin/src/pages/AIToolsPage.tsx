@@ -24,12 +24,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 const SYSTEM_TOOLS = [
-  { code: 'summary', name: '智能摘要', description: '自动生成文章摘要', icon: BrainCircuit },
+  { code: 'summary', name: '生成摘要', description: '提炼文章核心要点', icon: BrainCircuit },
   { code: 'tags', name: '智能标签', description: '推荐相关标签', icon: Wand2 },
-  { code: 'titles', name: '标题优化', description: '优化文章标题', icon: FileEdit },
-  { code: 'outline', name: '大纲生成', description: '生成文章大纲', icon: ListTree },
-  { code: 'polish', name: '内容润色', description: '润色文章内容', icon: PenLine },
-  { code: 'translate', name: '智能翻译', description: '多语言翻译', icon: Languages },
+  { code: 'titles', name: '标题建议', description: '基于正文生成多个标题建议', icon: FileEdit },
+  { code: 'outline', name: '生成大纲', description: '生成结构化文章提纲', icon: ListTree },
+  { code: 'polish', name: '全文润色', description: '优化表达、语气与可读性', icon: PenLine },
+  { code: 'translate', name: '全文翻译', description: '将正文翻译为指定语言', icon: Languages },
 ];
 
 const SYSTEM_ORDER_KEY = 'ai-tools-system-order';

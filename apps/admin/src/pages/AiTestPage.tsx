@@ -84,7 +84,7 @@ export function AiTestPage() {
 
     setLoading('titles');
     try {
-      const res = await aiService.suggestTitles({ content, count: 5 });
+      const res = await aiService.suggestTitles({ content, maxTitles: 5 });
       if (res.code === 200 && res.data) {
         setResults(prev => ({ ...prev, titles: res.data!.titles }));
         toast.success(`生成了 ${res.data.titles.length} 个标题建议`);
@@ -110,8 +110,7 @@ export function AiTestPage() {
     try {
       const res = await aiService.polishContent({
         content,
-        polishType: 'all',
-        style: 'professional',
+        tone: '专业',
       });
       if (res.code === 200 && res.data) {
         setResults(prev => ({ ...prev, polished: res.data!.polishedContent }));
@@ -141,6 +140,7 @@ export function AiTestPage() {
         topic: topicText,
         existingContent: content,
         depth: 2,
+        style: 'professional',
       });
       if (res.code === 200 && res.data) {
         setResults(prev => ({ ...prev, outline: res.data!.outline }));

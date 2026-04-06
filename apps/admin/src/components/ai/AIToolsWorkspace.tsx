@@ -98,7 +98,21 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
     if (selectedTool.id === 'outline') {
       reqData.topic = input;
+      reqData.depth = 2;
+      reqData.style = 'professional';
       delete reqData.content;
+    }
+
+    if (selectedTool.id === 'tags') {
+      reqData.maxTags = 5;
+    }
+
+    if (selectedTool.id === 'titles') {
+      reqData.maxTitles = 5;
+    }
+
+    if (selectedTool.id === 'polish') {
+      reqData.tone = '专业';
     }
 
     if (selectedTool.id === 'translate') {

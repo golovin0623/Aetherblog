@@ -485,18 +485,27 @@ func (h *AiHandler) handleUpstreamError(c echo.Context, body io.ReadCloser, stat
 
 // mapStatusToError 将 HTTP 状态码映射为对应的业务错误响应。
 func (h *AiHandler) mapStatusToError(c echo.Context, statusCode int, message string) error {
+	msg := strings.TrimSpace(message)
 	switch {
 	case statusCode == http.StatusTooManyRequests:
 		return response.FailCodeMsg(c, response.TooManyRequests.Code, "AI 服务请求过于频繁，请稍后重试")
 	case statusCode == http.StatusGatewayTimeout || statusCode == http.StatusRequestTimeout:
 		return response.FailCodeMsg(c, response.InternalError.Code, "AI 服务请求超时")
+	case statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable:
+		if msg == "" {
+			msg = "AI 上游模型服务不可用"
+		}
+		return response.Fail(c, msg)
 	case statusCode == http.StatusUnauthorized:
 		return response.FailCode(c, response.Unauthorized)
 	case statusCode == http.StatusNotFound:
 		return response.FailCode(c, response.NotFound)
 	case statusCode >= 500:
+		if msg != "" && !strings.EqualFold(msg, "Internal server error") && msg != "AI 服务内部错误" {
+			return response.Fail(c, msg)
+		}
 		return response.Fail(c, "AI 服务内部错误")
 	default:
-		return response.Fail(c, message)
+		return response.Fail(c, msg)
 	}
 }

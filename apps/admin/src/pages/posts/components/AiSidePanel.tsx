@@ -133,7 +133,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'titles') {
-          const res = await aiService.suggestTitles({ content, count: 6, style: 'seo', ...modelPayload });
+          const res = await aiService.suggestTitles({ content, maxTitles: 6, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'titles', titles: res.data.titles });
           } else {
@@ -142,7 +142,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'polish') {
-          const res = await aiService.polishContent({ content, polishType: 'all', style: 'professional', ...modelPayload });
+          const res = await aiService.polishContent({ content, tone: '专业', ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.polishedContent });
           } else {
@@ -152,7 +152,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
 
         if (action === 'outline') {
           const topic = title.trim() || content.trim().slice(0, 100);
-          const res = await aiService.generateOutline({ topic, existingContent: content, depth: 2, ...modelPayload });
+          const res = await aiService.generateOutline({ topic, existingContent: content, depth: 2, style: 'professional', ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.outline });
           } else {

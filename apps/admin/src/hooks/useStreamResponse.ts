@@ -101,7 +101,32 @@ export function useStreamResponse(): UseStreamResponseReturn {
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+        try {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const payload = await response.json() as {
+              message?: string;
+              detail?: string | { message?: string };
+              errorMessage?: string;
+            };
+            const detail =
+              typeof payload.detail === 'string'
+                ? payload.detail
+                : payload.detail?.message;
+            errorMessage = payload.message || detail || payload.errorMessage || errorMessage;
+          } else {
+            const text = (await response.text()).trim();
+            if (text) {
+              errorMessage = text;
+            }
+          }
+        } catch {
+          // 保持默认 HTTP 错误信息
+        }
+
+        throw new Error(errorMessage);
       }
 
       const reader = response.body?.getReader();

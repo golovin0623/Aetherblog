@@ -233,8 +233,7 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
         if (action === 'polish') {
           const res = await aiService.polishContent({
             content: current.text,
-            polishType: 'all',
-            style: 'professional',
+            tone: '专业',
             ...modelPayload,
           });
           if (res.code === 200 && res.data) {
