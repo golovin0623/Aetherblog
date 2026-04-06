@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign, RefreshCw, Coins } from 'lucide-react';
+import { FileText, Users, Eye, MessageSquare, Clock, FolderTree, FileType, Cpu, DollarSign, RefreshCw, Coins, CheckCircle2 } from 'lucide-react';
 import {
   StatsCard,
   VisitorChart,
@@ -21,6 +21,7 @@ import {
   type AiDashboardData,
   type AiCallRecord,
 } from '@/services/analyticsService';
+import { getAiResponseRateSummary } from '@/lib/aiMetrics';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -391,6 +392,11 @@ export default function DashboardPage() {
   const aiTaskOptions = uniqueBy(aiData.taskDistribution, item => item.task);
   const aiRecords: AiCallRecord[] = aiData.records?.list || [];
   const aiTrendData = aiData.trend || [];
+  const aiResponseRateSummary = getAiResponseRateSummary(
+    aiOverview.totalCalls,
+    aiOverview.successCalls,
+    aiOverview.errorCalls,
+  );
 
   return (
     <motion.div
@@ -573,12 +579,16 @@ export default function DashboardPage() {
             loading={aiLoading}
           />
           <StatsCard
-            title="失败调用"
-            value={aiOverview.errorCalls}
-            change={0}
-            changeLabel={`成功 ${aiOverview.successCalls}`}
-            icon={<MessageSquare className="w-5 h-5" />}
-            color="orange"
+            title="响应成功率"
+            value={aiResponseRateSummary.successRateValue}
+            changeLabel={(
+              <div className="space-y-0.5 leading-5">
+                <div>{aiResponseRateSummary.countLine}</div>
+                <div>{aiResponseRateSummary.rateLine}</div>
+              </div>
+            )}
+            icon={<CheckCircle2 className="w-5 h-5" />}
+            color="green"
             loading={aiLoading}
           />
         </div>

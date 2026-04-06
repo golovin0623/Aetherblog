@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Cpu, DollarSign, Clock, Loader2, Repeat2, AlertTriangle } from 'lucide-react';
+import { Cpu, DollarSign, Clock, Loader2, Repeat2, CheckCircle2 } from 'lucide-react';
 import { StatsCard } from '../dashboard/components/StatsCard';
 import {
   AiModelDistributionChart,
@@ -15,6 +15,7 @@ import {
 } from '@/services/analyticsService';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
+import { getAiResponseRateSummary } from '@/lib/aiMetrics';
 
 const PAGE_SIZE = 20;
 
@@ -113,6 +114,11 @@ export function AnalyticsPage() {
     [data.taskDistribution],
   );
   const records: AiCallRecord[] = data.records?.list || [];
+  const responseRateSummary = getAiResponseRateSummary(
+    overview.totalCalls,
+    overview.successCalls,
+    overview.errorCalls,
+  );
 
   const handleArchive = async () => {
     try {
@@ -282,12 +288,16 @@ export function AnalyticsPage() {
           loading={loading}
         />
         <StatsCard
-          title="失败请求"
-          value={overview.errorCalls}
-          change={0}
-          changeLabel={`成功 ${overview.successCalls}`}
-          icon={<AlertTriangle className="w-5 h-5" />}
-          color="orange"
+          title="响应成功率"
+          value={responseRateSummary.successRateValue}
+          changeLabel={(
+            <div className="space-y-0.5 leading-5">
+              <div>{responseRateSummary.countLine}</div>
+              <div>{responseRateSummary.rateLine}</div>
+            </div>
+          )}
+          icon={<CheckCircle2 className="w-5 h-5" />}
+          color="green"
           loading={loading}
         />
       </div>
