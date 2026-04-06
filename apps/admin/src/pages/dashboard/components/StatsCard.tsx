@@ -9,7 +9,7 @@ interface StatsCardProps {
   prefix?: string;
   suffix?: string;
   change?: number;
-  changeLabel?: string;
+  changeLabel?: React.ReactNode;
   icon: React.ReactNode;
   color?: 'primary' | 'green' | 'blue' | 'orange' | 'pink' | 'purple' | 'cyan' | 'indigo' | 'emerald';
   loading?: boolean;
@@ -133,7 +133,7 @@ export function StatsCard({
           </p>
 
           {(change !== undefined || changeLabel) && (
-            <div className="flex items-center gap-2 mt-3 text-sm overflow-hidden">
+            <div className="mt-3 flex items-start gap-2 text-sm overflow-hidden">
               {change !== undefined && (
                 <div className={cn(
                   "flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0",
@@ -147,7 +147,13 @@ export function StatsCard({
                   <span>{Math.abs(change).toFixed(1)}%</span>
                 </div>
               )}
-              {changeLabel && <span className="text-[var(--text-muted)] text-xs truncate">{changeLabel}</span>}
+              {changeLabel && (
+                typeof changeLabel === 'string' ? (
+                  <span className="min-w-0 truncate text-xs text-[var(--text-muted)]">{changeLabel}</span>
+                ) : (
+                  <div className="min-w-0 text-xs text-[var(--text-muted)]">{changeLabel}</div>
+                )
+              )}
             </div>
           )}
         </div>
