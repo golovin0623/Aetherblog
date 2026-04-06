@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -11,8 +12,25 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
+func resolveDefaultMigrationDir() string {
+	candidates := []string{
+		"./migrations",
+		"../migrations",
+		"../../migrations",
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			if abs, err := filepath.Abs(candidate); err == nil {
+				return abs
+			}
+			return candidate
+		}
+	}
+	return "./migrations"
+}
+
 func main() {
-	dir := flag.String("dir", "../../migrations", "path to migration files")
+	dir := flag.String("dir", resolveDefaultMigrationDir(), "path to migration files")
 	dsn := flag.String("dsn", "", "database DSN (postgres://user:pass@host:port/db?sslmode=disable)")
 	flag.Parse()
 

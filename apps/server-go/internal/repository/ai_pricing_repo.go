@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+var ErrAICostArchiveSchemaMissing = errors.New("ai_usage_logs cost archive columns missing")
 
 // AIPricingGap 表示存在调用记录但价格配置缺失的模型聚合结果。
 type AIPricingGap struct {
@@ -79,7 +82,77 @@ func buildAIDashboardWhereWithAlias(f AIDashboardFilter, alias string) (string, 
 	return where, args
 }
 
-func buildPricedLogsCTE(where string) string {
+func (r *AnalyticsRepo) hasAICostArchiveColumns(ctx context.Context) (bool, error) {
+	var count int
+	if err := r.db.GetContext(ctx, &count, `
+SELECT COUNT(*)
+FROM information_schema.columns
+WHERE table_name = 'ai_usage_logs'
+  AND table_schema = ANY(current_schemas(false))
+  AND column_name IN (
+      'cost_archive_status',
+      'cost_archive_amount',
+      'cost_archived_at',
+      'cost_archive_error'
+  )`); err != nil {
+		return false, err
+	}
+	return count == 4, nil
+}
+
+func buildPricedLogsCTE(where string, supportsCostArchive bool) string {
+	costExpr := `CASE
+            WHEN pricing.pricing_missing THEN NULL
+            ELSE ROUND(
+                (
+                    (
+                        CASE
+                            WHEN COALESCE(l.cached, false) THEN matched.cached_input_cost_per_1m
+                            ELSE matched.input_cost_per_1m
+                        END
+                    ) * COALESCE(l.tokens_in, 0)::numeric
+                    + COALESCE(matched.output_cost_per_1m, 0) * COALESCE(l.tokens_out, 0)::numeric
+                ) / 1000000.0,
+                8
+            )
+        END AS cost`
+	costStatusExpr := `CASE
+            WHEN pricing.pricing_missing THEN 'missing'
+            ELSE 'realtime'
+        END AS cost_status`
+	archiveErrorExpr := `CASE
+            WHEN pricing.pricing_missing THEN pricing.missing_fields
+            ELSE NULL
+        END AS archive_error`
+	if supportsCostArchive {
+		costExpr = `CASE
+            WHEN l.cost_archive_status = 'archived' AND l.cost_archive_amount IS NOT NULL THEN ROUND(l.cost_archive_amount::numeric, 8)
+            WHEN pricing.pricing_missing THEN NULL
+            ELSE ROUND(
+                (
+                    (
+                        CASE
+                            WHEN COALESCE(l.cached, false) THEN matched.cached_input_cost_per_1m
+                            ELSE matched.input_cost_per_1m
+                        END
+                    ) * COALESCE(l.tokens_in, 0)::numeric
+                    + COALESCE(matched.output_cost_per_1m, 0) * COALESCE(l.tokens_out, 0)::numeric
+                ) / 1000000.0,
+                8
+            )
+        END AS cost`
+		costStatusExpr = `CASE
+            WHEN l.cost_archive_status = 'archived' AND l.cost_archive_amount IS NOT NULL THEN 'archived'
+            WHEN pricing.pricing_missing THEN 'missing'
+            ELSE 'realtime'
+        END AS cost_status`
+		archiveErrorExpr = `CASE
+            WHEN l.cost_archive_status = 'failed' AND l.cost_archive_error IS NOT NULL THEN l.cost_archive_error
+            WHEN pricing.pricing_missing THEN pricing.missing_fields
+            ELSE NULL
+        END AS archive_error`
+	}
+
 	return fmt.Sprintf(`
 WITH priced_logs AS (
     SELECT
@@ -105,33 +178,10 @@ WITH priced_logs AS (
         matched.model_db_id,
         COALESCE(matched.display_name, COALESCE(NULLIF(l.model_id, ''), NULLIF(l.model, ''), 'unknown')) AS display_name,
         pricing.missing_fields,
-        CASE
-            WHEN l.cost_archive_status = 'archived' AND l.cost_archive_amount IS NOT NULL THEN ROUND(l.cost_archive_amount::numeric, 8)
-            WHEN pricing.pricing_missing THEN NULL
-            ELSE ROUND(
-                (
-                    (
-                        CASE
-                            WHEN COALESCE(l.cached, false) THEN matched.cached_input_cost_per_1m
-                            ELSE matched.input_cost_per_1m
-                        END
-                    ) * COALESCE(l.tokens_in, 0)::numeric
-                    + COALESCE(matched.output_cost_per_1m, 0) * COALESCE(l.tokens_out, 0)::numeric
-                ) / 1000000.0,
-                8
-            )
-        END AS cost,
-        CASE
-            WHEN l.cost_archive_status = 'archived' AND l.cost_archive_amount IS NOT NULL THEN 'archived'
-            WHEN pricing.pricing_missing THEN 'missing'
-            ELSE 'realtime'
-        END AS cost_status,
+        %s,
+        %s,
         pricing.pricing_missing,
-        CASE
-            WHEN l.cost_archive_status = 'failed' AND l.cost_archive_error IS NOT NULL THEN l.cost_archive_error
-            WHEN pricing.pricing_missing THEN pricing.missing_fields
-            ELSE NULL
-        END AS archive_error
+        %s
     FROM ai_usage_logs l
     LEFT JOIN LATERAL (
         SELECT
@@ -212,7 +262,7 @@ WITH priced_logs AS (
         ) AS strings
     ) AS pricing
     %s
-)`, where)
+)`, costExpr, costStatusExpr, archiveErrorExpr, where)
 }
 
 func splitCSVFields(value string) []string {
@@ -239,7 +289,11 @@ func splitCSVFields(value string) []string {
 // GetAIPricingGaps 查询当前过滤范围内缺失价格配置的模型聚合结果。
 func (r *AnalyticsRepo) GetAIPricingGaps(ctx context.Context, f AIDashboardFilter) ([]AIPricingGap, error) {
 	where, args := buildAIDashboardWhereWithAlias(f, "l")
-	query := buildPricedLogsCTE(where) + `
+	supportsCostArchive, err := r.hasAICostArchiveColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
+	query := buildPricedLogsCTE(where, supportsCostArchive) + `
 SELECT
     provider_code,
     model AS model_id,
@@ -262,13 +316,21 @@ ORDER BY calls DESC, latest_used_at DESC NULLS LAST, provider_code ASC, model AS
 
 // ArchiveAICosts 将当前筛选范围内未归档或归档失败的日志按当前价格配置归档。
 func (r *AnalyticsRepo) ArchiveAICosts(ctx context.Context, f AIDashboardFilter) (*AICostArchiveResult, error) {
+	supportsCostArchive, err := r.hasAICostArchiveColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !supportsCostArchive {
+		return nil, ErrAICostArchiveSchemaMissing
+	}
+
 	where, args := buildAIDashboardWhereWithAlias(f, "l")
 	if where == "" {
 		where = "WHERE 1=1"
 	}
 	where += " AND COALESCE(l.cost_archive_status, 'pending') <> 'archived'"
 
-	query := buildPricedLogsCTE(where) + `
+	query := buildPricedLogsCTE(where, supportsCostArchive) + `
 , updated AS (
     UPDATE ai_usage_logs AS target
     SET cost_archive_status = CASE WHEN priced_logs.pricing_missing THEN 'failed' ELSE 'archived' END,

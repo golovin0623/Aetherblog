@@ -13,6 +13,11 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+func expectAICostArchiveSchemaCheck(mock sqlmock.Sqlmock, columnCount int) {
+	mock.ExpectQuery(`(?s).*information_schema\.columns.*ai_usage_logs.*cost_archive_status.*cost_archive_error.*`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(columnCount))
+}
+
 type aiDashboardResponse struct {
 	Code int `json:"code"`
 	Data struct {
@@ -90,8 +95,9 @@ type aiPricingGapsResponse struct {
 }
 
 type aiArchiveResponse struct {
-	Code int `json:"code"`
-	Data struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    struct {
 		Total    int64 `json:"total"`
 		Archived int64 `json:"archived"`
 		Failed   int64 `json:"failed"`
@@ -112,6 +118,8 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 
 	e := handlertest.NewEcho()
 	h.Mount(e.Group("/api/v1/admin/stats"))
+
+	expectAICostArchiveSchemaCheck(mock, 4)
 
 	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -219,6 +227,106 @@ func TestStatsHandler_AIDashboardReturnsFullAnalyticsPayload(t *testing.T) {
 	}
 }
 
+func TestStatsHandler_AIDashboardFallsBackWithoutArchiveColumns(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	sqlxDB := sqlx.NewDb(db, "sqlmock")
+	repo := repository.NewAnalyticsRepo(sqlxDB)
+	svc := service.NewAnalyticsService(repo)
+	h := NewStatsHandler(svc)
+
+	e := handlertest.NewEcho()
+	h.Mount(e.Group("/api/v1/admin/stats"))
+
+	expectAICostArchiveSchemaCheck(mock, 0)
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"total_calls",
+			"success_calls",
+			"cached_calls",
+			"total_tokens",
+			"estimated_cost",
+			"avg_latency_ms",
+		}).AddRow(1, 1, 0, 24, 0.048, 220.0))
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"task",
+			"calls",
+			"tokens",
+			"cost",
+		}).AddRow("chat", 1, 24, 0.048))
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"date",
+			"calls",
+			"tokens",
+			"cost",
+		}).AddRow("2026-04-06", 1, 24, 0.048))
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"model",
+			"provider_code",
+			"calls",
+			"tokens",
+			"cost",
+		}).AddRow("gpt-5-mini", "openai", 1, 24, 0.048))
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectQuery(`(?s).*`).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id",
+			"task_type",
+			"provider_code",
+			"model",
+			"tokens_in",
+			"tokens_out",
+			"total_tokens",
+			"cost",
+			"cost_status",
+			"pricing_missing",
+			"latency_ms",
+			"success",
+			"cached",
+			"error_code",
+			"archive_error",
+			"created_at",
+		}).AddRow(102, "chat", "openai", "gpt-5-mini", 12, 12, 24, 0.048, "realtime", false, 220, true, false, nil, nil, time.Date(2026, time.April, 6, 11, 0, 0, 0, time.UTC)))
+
+	rec := handlertest.DoRequest(e, "GET", "/api/v1/admin/stats/ai-dashboard?days=30&pageNum=1&pageSize=20", "")
+	if rec.Code != 200 {
+		t.Fatalf("unexpected status code: %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp aiDashboardResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+
+	if resp.Code != 200 {
+		t.Fatalf("unexpected business code: %d, body=%s", resp.Code, rec.Body.String())
+	}
+	if len(resp.Data.Records.List) != 1 {
+		t.Fatalf("records.list length = %d, want 1", len(resp.Data.Records.List))
+	}
+	if resp.Data.Records.List[0].CostStatus != "realtime" {
+		t.Fatalf("records.list[0].costStatus = %q, want realtime", resp.Data.Records.List[0].CostStatus)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations were not met: %v", err)
+	}
+}
+
 func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -233,6 +341,8 @@ func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
 
 	e := handlertest.NewEcho()
 	h.Mount(e.Group("/api/v1/admin/stats"))
+
+	expectAICostArchiveSchemaCheck(mock, 4)
 
 	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -258,6 +368,8 @@ func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
 		t.Fatalf("unexpected gaps response: %#v", gapsResp)
 	}
 
+	expectAICostArchiveSchemaCheck(mock, 4)
+
 	mock.ExpectQuery(`(?s).*`).
 		WillReturnRows(sqlmock.NewRows([]string{"total", "archived", "failed"}).AddRow(4, 3, 1))
 
@@ -272,6 +384,44 @@ func TestStatsHandler_AIPricingGapsAndArchiveEndpoints(t *testing.T) {
 	}
 	if archiveResp.Data.Total != 4 || archiveResp.Data.Archived != 3 || archiveResp.Data.Failed != 1 {
 		t.Fatalf("unexpected archive response: %#v", archiveResp)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations were not met: %v", err)
+	}
+}
+
+func TestStatsHandler_ArchiveAICostsReturnsBadRequestWhenSchemaMissing(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	sqlxDB := sqlx.NewDb(db, "sqlmock")
+	repo := repository.NewAnalyticsRepo(sqlxDB)
+	svc := service.NewAnalyticsService(repo)
+	h := NewStatsHandler(svc)
+
+	e := handlertest.NewEcho()
+	h.Mount(e.Group("/api/v1/admin/stats"))
+
+	expectAICostArchiveSchemaCheck(mock, 0)
+
+	rec := handlertest.DoRequest(e, "POST", "/api/v1/admin/stats/ai-cost-archive", `{"days":30}`)
+	if rec.Code != 400 {
+		t.Fatalf("unexpected status code: %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp aiArchiveResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal failed: %v", err)
+	}
+	if resp.Code != 400 {
+		t.Fatalf("unexpected business code: %d, body=%s", resp.Code, rec.Body.String())
+	}
+	if resp.Message != "AI 费用归档依赖最新数据库迁移，请先执行迁移" {
+		t.Fatalf("unexpected message: %q", resp.Message)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

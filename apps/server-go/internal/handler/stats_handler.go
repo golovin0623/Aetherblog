@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -239,6 +240,9 @@ func (h *StatsHandler) ArchiveAICosts(c echo.Context) error {
 	}
 	result, err := h.svc.ArchiveAICosts(c.Request().Context(), filter)
 	if err != nil {
+		if errors.Is(err, repository.ErrAICostArchiveSchemaMissing) {
+			return response.FailWith(c, response.BadRequest, "AI 费用归档依赖最新数据库迁移，请先执行迁移")
+		}
 		return response.Error(c, err)
 	}
 	return response.OK(c, result)

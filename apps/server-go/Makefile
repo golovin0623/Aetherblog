@@ -2,7 +2,7 @@
 
 BINARY=server
 MAIN=./cmd/server
-MIGRATIONS_DIR=../../migrations
+MIGRATIONS_DIR=./migrations
 
 # Default DSN for local development
 DATABASE_DSN ?= postgres://aetherblog:aetherblog123@localhost:5432/aetherblog?sslmode=disable
