@@ -72,9 +72,10 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
       <div className="flex items-center justify-center gap-3">
         {totalPages > 1 && (
           <button
+            type="button"
             onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
             disabled={currentPage === 0}
-            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
+            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -109,9 +110,10 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
 
         {totalPages > 1 && (
           <button
+            type="button"
             onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
             disabled={currentPage === totalPages - 1}
-            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
+            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
             aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
@@ -125,8 +127,9 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
           {Array.from({ length: totalPages }).map((_, index) => (
             <button
               key={index}
+              type="button"
               onClick={() => setCurrentPage(index)}
-              className={`transition-all duration-300 rounded-full ${index === currentPage
+              className={`transition-all duration-300 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] ${index === currentPage
                 ? 'bg-primary w-3 h-1'
                 : 'bg-[var(--text-muted)]/10 hover:bg-[var(--text-muted)]/30 w-1 h-1'
                 }`}
