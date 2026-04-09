@@ -74,8 +74,9 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
           <button
             onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
             disabled={currentPage === 0}
-            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
-            aria-label="Previous page"
+            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-card)]"
+            aria-label="上一页"
+            title={currentPage === 0 ? '已经是第一页' : '上一页'}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -96,7 +97,7 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm"
+                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-primary hover:text-white hover:border-primary hover:-translate-y-1 transition-all duration-300 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
                   title={link.platform}
                   aria-label={link.platform}
                 >
@@ -111,8 +112,9 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
             disabled={currentPage === totalPages - 1}
-            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)]"
-            aria-label="Next page"
+            className="p-1 rounded-full hover:bg-[var(--bg-secondary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-[var(--text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-card)]"
+            aria-label="下一页"
+            title={currentPage === totalPages - 1 ? '已经是最后一页' : '下一页'}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -126,11 +128,12 @@ const SocialLinksCarouselBase: React.FC<{ socialLinks: { platform: string; url: 
             <button
               key={index}
               onClick={() => setCurrentPage(index)}
-              className={`transition-all duration-300 rounded-full ${index === currentPage
+              className={`transition-all duration-300 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-card)] ${index === currentPage
                 ? 'bg-primary w-3 h-1'
                 : 'bg-[var(--text-muted)]/10 hover:bg-[var(--text-muted)]/30 w-1 h-1'
                 }`}
-              aria-label={`Go to page ${index + 1}`}
+              aria-label={`前往第 ${index + 1} 页`}
+              title={`前往第 ${index + 1} 页`}
             />
           ))}
         </div>
@@ -266,24 +269,24 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
         <div className="w-full mb-3">
           <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20">
-            <Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer" aria-label={`View timeline with ${stats?.posts || 0} posts`}>
+            <Link href="/timeline" className="flex flex-col items-center group/stat cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg" aria-label={`查看时间线，共 ${stats?.posts || 0} 篇文章`}>
               <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.posts || 0}
               </span>
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 antialiased">文章</span>
             </Link>
-            <div className="flex flex-col items-center border-x border-[var(--border-subtle)]">
-              <span className="text-lg font-bold text-[var(--text-primary)] transition-colors duration-200 antialiased">
+            <Link href="/archives" className="flex flex-col items-center group/stat cursor-pointer border-x border-[var(--border-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg" aria-label={`查看分类，共 ${stats?.categories || 0} 个分类`}>
+              <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.categories || 0}
               </span>
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 antialiased">分类</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-lg font-bold text-[var(--text-primary)] transition-colors duration-200 antialiased">
+            </Link>
+            <Link href="/archives" className="flex flex-col items-center group/stat cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg" aria-label={`查看标签，共 ${stats?.tags || 0} 个标签`}>
+              <span className="text-lg font-bold text-[var(--text-primary)] group-hover/stat:text-primary transition-colors duration-200 antialiased">
                 {stats?.tags || 0}
               </span>
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 antialiased">标签</span>
-            </div>
+            </Link>
           </div>
         </div>
 
