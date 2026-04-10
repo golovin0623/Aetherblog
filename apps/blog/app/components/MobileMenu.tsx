@@ -149,14 +149,14 @@ const MobileMenu = memo(function MobileMenu() {
   }, [isOpen]);
 
   // 禁止背景滚动
+  // 注意：仅在菜单打开时设置 overflow: hidden，关闭时清除内联样式（置空）
+  // 让 CSS 规则（如 body { overflow-x: hidden }）正常生效。
+  // 不要使用 overflow: 'unset'，否则会覆盖 CSS 中的 overflow-x: hidden。
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    if (!isOpen) return;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen]);
 

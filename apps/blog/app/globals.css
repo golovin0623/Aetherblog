@@ -401,7 +401,9 @@ html.font-override blockquote, html.font-override a, html.font-override td, html
 }
 
 html {
-  scroll-behavior: smooth;
+  /* 不使用 CSS scroll-behavior: smooth，改由 JS 对锚点链接单独添加 behavior:'smooth'。
+     原因：CSS 全局 smooth 会使 Next.js 页面导航时 scrollTo(0,0) 变成动画，
+     导致首页 Hero 视差组件读取到非零 scrollY、产生闪现。 */
   /* 防止滚动条出现/消失时页面布局偏移 */
   scrollbar-gutter: stable;
   /* iOS PWA: 禁止过度滚动导致的白色/黑色橡皮筋空白 */
@@ -433,9 +435,12 @@ body {
   }
 }
 
-/* 移动端禁止横向滚动 - 防止内容撑开页面 */
+/* 移动端禁止横向滚动 - 防止内容撑开页面
+   注意：仅对 body 设置 overflow-x: hidden，不要对 html 设置。
+   在 iOS Safari 上，html 设置 overflow-x: hidden 会干扰原生纵向滚动，
+   导致部分场景下页面无法向下滑动。 */
 @media (max-width: 767px) {
-  html, body {
+  body {
     overflow-x: hidden;
     max-width: 100vw;
   }
