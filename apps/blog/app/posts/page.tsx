@@ -259,6 +259,7 @@ export default function PostsPage() {
               {pages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-10">
                   <button
+                    type="button"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage <= 1 || isPlaceholderData}
                     className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${
@@ -278,8 +279,11 @@ export default function PostsPage() {
                     {Array.from({ length: pages }, (_, i) => i + 1).map((page) => (
                       <button
                         key={page}
+                        type="button"
                         data-page={page}
                         onClick={() => handlePageChange(page)}
+                        aria-label={`第 ${page} 页`}
+                        aria-current={page === currentPage ? 'page' : undefined}
                         className={`flex-shrink-0 w-10 h-10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${
                           page === currentPage
                             ? 'bg-primary text-white'
@@ -292,6 +296,7 @@ export default function PostsPage() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage >= pages || isPlaceholderData}
                     className={`flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${
