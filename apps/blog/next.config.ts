@@ -44,6 +44,38 @@ const nextConfig: NextConfig = {
     ];
   },
   serverExternalPackages: ['katex'],
+  // iOS PWA (standalone) 模式下 WKWebView 会激进缓存 HTML，
+  // 导致发版后样式/字体更新延迟。对页面路由设置 no-cache，
+  // 让客户端每次导航都向服务器验证缓存是否过期（304 复用仍然生效）。
+  // _next/static 等静态资源不受影响，保持 Next.js 默认的不可变缓存。
+  async headers() {
+    return [
+      {
+        source: '/',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+      {
+        source: '/posts/:path*',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+      {
+        source: '/timeline',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+      {
+        source: '/archives',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+      {
+        source: '/friends',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+      {
+        source: '/about',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

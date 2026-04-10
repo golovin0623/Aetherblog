@@ -71,6 +71,9 @@ export default function FontProvider({ children, initialFont = 'system' }: FontP
   const [fontFamily, setFontFamily] = useState(initialFont);
 
   // 应用字体到 document
+  // 注意：不在 cleanup 中移除字体样式，因为 layout.tsx 已在 SSR 阶段通过
+  // html.className="font-override" 和 html.style 注入了正确的字体。
+  // 如果 cleanup 移除这些样式，在 iOS PWA 或页面过渡时会出现字体闪现。
   useEffect(() => {
     const config = FONT_MAP[fontFamily] || FONT_MAP.system;
 
@@ -90,11 +93,6 @@ export default function FontProvider({ children, initialFont = 'system' }: FontP
       document.documentElement.style.removeProperty('--font-sans-override');
       document.documentElement.classList.remove('font-override');
     }
-
-    return () => {
-      document.documentElement.style.removeProperty('--font-sans-override');
-      document.documentElement.classList.remove('font-override');
-    };
   }, [fontFamily]);
 
   return (
