@@ -32,7 +32,8 @@ export default function PostNavigation({ prevPost, nextPost }: PostNavigationPro
       {prevPost ? (
         <Link
           href={`/posts/${prevPost.slug}`}
-          className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)]"
+          className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:border-[var(--border-hover)] focus-visible:shadow-[var(--shadow-md)] focus-visible:bg-[var(--bg-card)]"
+          aria-label={`上一篇: ${prevPost.title}`}
         >
           <ChevronLeft className="w-5 h-5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--color-primary)] transition-all duration-300 group-hover:-translate-x-0.5" />
           <div className="min-w-0 flex-1">
@@ -53,7 +54,8 @@ export default function PostNavigation({ prevPost, nextPost }: PostNavigationPro
       {nextPost && (
         <Link
           href={`/posts/${nextPost.slug}`}
-          className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)]"
+          className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:border-[var(--border-hover)] focus-visible:shadow-[var(--shadow-md)] focus-visible:bg-[var(--bg-card)]"
+          aria-label={`下一篇: ${nextPost.title}`}
         >
           <div className="min-w-0 flex-1 text-right">
             <span className="text-[10px] sm:text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
