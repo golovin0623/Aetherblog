@@ -35,8 +35,9 @@ export default function NotFound() {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-sm mx-auto">
           <button
+            type="button"
             onClick={() => router.back()}
-            className="px-6 py-3 rounded-xl border border-border text-foreground-secondary bg-background-card hover:bg-[var(--bg-card-hover)] hover:text-foreground hover:border-border-hover transition-all flex items-center justify-center gap-2 font-medium group"
+            className="px-6 py-3 rounded-xl border border-border text-foreground-secondary bg-background-card hover:bg-[var(--bg-card-hover)] hover:text-foreground hover:border-border-hover transition-all flex items-center justify-center gap-2 font-medium group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             返回上一页
