@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { postService, Post, PostListItem } from '@/services/postService';
+import { postService, Post, PostListItem, CreatePostRequest } from '@/services/postService';
 import { tagService } from '@/services/tagService';
 import { toast } from 'sonner';
 
@@ -8,10 +8,17 @@ import { toast } from 'sonner';
  *
  * 设计要点：
  * - targetPostId 通过 localStorage 持久化，避免重载时丢失。
- * - 所有 applyX 动作在没有 target 时降级为复制到剪贴板 + toast 提示。
- * - tag 追加时会按名称解析为 ID（不存在则自动创建），保持与现有 tagIds 合并。
- * - 内容级替换（polish / translate / outline）为破坏性操作，由调用方先用
+ * - `applySummary / applyTitle / applyTags` 使用 PATCH
+ *   (`postService.updateProperties`) 语义做局部字段更新。
+ * - `applyContent` 使用 PUT (`postService.update`) 语义做正文写入，但
+ *   **必须**从缓存的 `targetPost` 重建一个完整的 `CreatePostRequest`
+ *   负载（Go 端 `PostService.Update` 会把请求之外的字段置空并重置
+ *   tags/category——这是一个历史陷阱，详见 `service/post_service.go:186`）。
+ *   正文级操作（polish / translate / outline）均为破坏性，由调用方先用
  *   ConfirmModal 确认，本 hook 只做"执行"。
+ * - 无 target 时，apply 动作会 toast 错误并返回 `false`；调用方在无
+ *   target 情况下应改用 `copyToClipboard` 作为 fallback（见 ToolResultRenderer）。
+ * - tag 追加：名称统一 lowercase 去重，缺失的批量并行创建，与现有 tagIds 合并。
  */
 
 export type ContentApplyMode = 'replace' | 'append';
@@ -31,7 +38,11 @@ export interface AiToolTargetApi {
   applyContent: (text: string, mode: ContentApplyMode) => Promise<boolean>;
 
   copyToClipboard: (text: string, label?: string) => Promise<void>;
-  loadPostIntoClipboard: (id: number) => Promise<string | null>;
+  /**
+   * 按 ID 获取目标文章的正文字符串，不做任何额外处理（不写剪贴板）。
+   * 命名上避免和 `copyToClipboard` 混淆。
+   */
+  loadPostContent: (id: number) => Promise<string | null>;
 }
 
 const TARGET_KEY = 'ai-tools:target-post-id';
@@ -60,6 +71,32 @@ const persistTarget = (id: number | null) => {
     /* ignore quota / privacy errors */
   }
 };
+
+/**
+ * 将缓存的 `Post` 重建为 `CreatePostRequest` 负载，供 `postService.update`
+ * 使用。关键：必须覆盖全部字段——否则 Go 端 PostService.Update 会把遗漏的
+ * 字段置空（title/summary 变 ""，tags 被 `SetTags([])` 清空）。
+ */
+function rebuildFullUpdatePayload(
+  post: Post,
+  overrides: Partial<CreatePostRequest>,
+): Partial<CreatePostRequest> {
+  // PUBLISHED / DRAFT 都允许直接透传；ARCHIVED 不在 CreatePostRequest 枚举
+  // 内，此种情况下不改动 status（让后端保留 existing.Status）。
+  const status =
+    post.status === 'PUBLISHED' || post.status === 'DRAFT' ? post.status : undefined;
+
+  const base: Partial<CreatePostRequest> = {
+    title: post.title,
+    content: post.content || '',
+    summary: post.summary || '',
+    coverImage: post.coverImage || undefined,
+    categoryId: post.categoryId ?? undefined,
+    tagIds: (post.tags || []).map((t) => t.id),
+    status,
+  };
+  return { ...base, ...overrides };
+}
 
 export function useAiToolTarget(): AiToolTargetApi {
   const [targetPostId, setTargetPostIdState] = useState<number | null>(() => readStoredTarget());
@@ -170,17 +207,24 @@ export function useAiToolTarget(): AiToolTargetApi {
       toast.error('目标文章尚未加载完成，请稍后重试');
       return false;
     }
-    const normalized = Array.from(
-      new Set(
-        tagNames
-          .map((name) => name.trim())
-          .filter((name) => name.length > 0 && name.length <= 50),
-      ),
-    );
+
+    // Case-insensitive dedupe with original casing preserved (first occurrence wins).
+    // 防止 ["AI", "ai"] 被当作两个不同的标签导致重复创建。
+    const seenLower = new Set<string>();
+    const normalized: string[] = [];
+    for (const raw of tagNames) {
+      const trimmed = raw.trim();
+      if (!trimmed || trimmed.length > 50) continue;
+      const key = trimmed.toLowerCase();
+      if (seenLower.has(key)) continue;
+      seenLower.add(key);
+      normalized.push(trimmed);
+    }
     if (normalized.length === 0) {
       toast.error('没有可应用的标签');
       return false;
     }
+
     try {
       const listRes = await tagService.getList();
       if (listRes.code !== 200) {
@@ -190,22 +234,43 @@ export function useAiToolTarget(): AiToolTargetApi {
       const byName = new Map(
         (listRes.data || []).map((t) => [t.name.trim().toLowerCase(), t]),
       );
+
+      // 先一次性分出"已存在 / 需新建"两组，避免 N 次串行 create。
       const resolvedIds: number[] = [];
+      const missingNames: string[] = [];
       for (const name of normalized) {
         const existing = byName.get(name.toLowerCase());
         if (existing) {
           resolvedIds.push(existing.id);
-          continue;
-        }
-        const createRes = await tagService.create({ name });
-        if (createRes.code === 200 && createRes.data) {
-          resolvedIds.push(createRes.data.id);
+        } else {
+          missingNames.push(name);
         }
       }
+
+      // 批量并行创建缺失的标签；网络较慢时比串行快 N 倍。
+      if (missingNames.length > 0) {
+        const createResults = await Promise.all(
+          missingNames.map((name) =>
+            tagService
+              .create({ name })
+              .catch((err): { code: number; message?: string; data?: undefined } => ({
+                code: -1,
+                message: err?.message,
+              })),
+          ),
+        );
+        for (const createRes of createResults) {
+          if (createRes.code === 200 && createRes.data) {
+            resolvedIds.push(createRes.data.id);
+          }
+        }
+      }
+
       if (resolvedIds.length === 0) {
         toast.error('标签解析失败');
         return false;
       }
+
       const existingIds = (targetPost.tags || []).map((t) => t.id);
       const merged = Array.from(new Set([...existingIds, ...resolvedIds]));
       const res = await postService.updateProperties(id, { tagIds: merged });
@@ -234,12 +299,24 @@ export function useAiToolTarget(): AiToolTargetApi {
       toast.error('目标文章尚未加载完成，请稍后重试');
       return false;
     }
-    const nextContent =
-      mode === 'replace'
-        ? text
-        : `${(targetPost.content || '').replace(/\s+$/, '')}\n\n${text}`;
+
+    const existingContent = targetPost.content || '';
+    // Empty-post edge case: 对空文章不添加前导 \n\n，避免新文档一上来就两个空行。
+    let nextContent: string;
+    if (mode === 'replace') {
+      nextContent = text;
+    } else if (existingContent.trim().length === 0) {
+      nextContent = text;
+    } else {
+      nextContent = `${existingContent.replace(/\s+$/, '')}\n\n${text}`;
+    }
+
     try {
-      const res = await postService.update(id, { content: nextContent });
+      // 必须重建完整负载——Go PostService.Update 用 req 构建 model.Post 并
+      // 无条件覆盖全部列（见 apps/server-go/internal/service/post_service.go:186）。
+      // 仅传 `{content: ...}` 会把 title / summary / tagIds / category 等全部置空。
+      const fullPayload = rebuildFullUpdatePayload(targetPost, { content: nextContent });
+      const res = await postService.update(id, fullPayload);
       if (res.code === 200) {
         toast.success(mode === 'replace' ? '已替换文章正文' : '已追加到文章末尾');
         await refreshTarget();
@@ -266,7 +343,7 @@ export function useAiToolTarget(): AiToolTargetApi {
     }
   }, []);
 
-  const loadPostIntoClipboard = useCallback(async (id: number): Promise<string | null> => {
+  const loadPostContent = useCallback(async (id: number): Promise<string | null> => {
     try {
       const res = await postService.getById(id);
       if (res.code === 200 && res.data) {
@@ -291,6 +368,6 @@ export function useAiToolTarget(): AiToolTargetApi {
     applyTags,
     applyContent,
     copyToClipboard,
-    loadPostIntoClipboard,
+    loadPostContent,
   };
 }
