@@ -274,7 +274,7 @@ export default function BlogHeader() {
       )}
 
       <header
-        className={`fixed left-0 w-screen z-50 py-4 transition-all duration-300 ease-out will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
+        className={`fixed left-0 w-screen z-50 py-4 will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
           }`}
         style={{
           top: 'env(safe-area-inset-top, 0px)',
@@ -282,7 +282,15 @@ export default function BlogHeader() {
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid var(--border-subtle)',
           boxShadow: 'var(--header-shadow)',
-          transition: 'background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease',
+          // 显式列出所有需要过渡的属性。之前内联的 transition 只写了
+          // background / border-color / box-shadow，把 className 里的
+          // transition-all 覆盖掉，导致 translate-y / opacity 实际是
+          // 瞬时跳变而非平滑过渡 —— 这是 iOS PWA 标题栏"抖一下"的元凶之一。
+          transition:
+            'transform 0.3s ease-out, opacity 0.3s ease-out, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease',
+          // contain: layout style 把 header 的布局/样式影响与文档其余部分隔离，
+          // 降低 WKWebView 在路由切换时重建合成层的概率。
+          contain: 'layout style',
         }}
         onMouseMove={wrappedUpdateMousePosition}
         onMouseEnter={() => isArticleDetail && setIsHovering(true)}
