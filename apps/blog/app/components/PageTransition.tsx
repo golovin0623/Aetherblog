@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
-import { createContext, useContext, useRef, ReactNode } from 'react';
+import { createContext, useContext, useRef, useEffect, ReactNode } from 'react';
 
 // 页面顺序映射 - 仅这两个路径之间有滑动动画
 const PAGE_ORDER: Record<string, number> = {
@@ -35,6 +35,11 @@ function isArticleDetailPath(path: string): boolean {
   return path.startsWith('/posts/') && path !== '/posts';
 }
 
+// 模块级 ref：popstate 监听和路由变化处理分别发生在两个不同的调用栈，
+// 使用模块级变量可以让 popstate 标记跨越 React 重新渲染传递到 TransitionProvider 渲染逻辑中。
+// 这是一次性消费的标记，不需要做成 context 或 state。
+let popNavPending = false;
+
 /**
  * 页面过渡状态提供者
  * 放在 layout.tsx 中，跨路由持久化
@@ -45,37 +50,83 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
   const directionRef = useRef(0);
   const shouldAnimateRef = useRef(false);
   const transitionTypeRef = useRef<'slide' | 'fade' | 'none'>('none');
+  const navTypeClearRafRef = useRef<{ raf1: number | null; raf2: number | null }>({
+    raf1: null,
+    raf2: null,
+  });
+
+  // popstate 监听：浏览器前进/返回按钮会触发 popstate，Next.js router.push 不会。
+  // 检测到 popstate 时设置模块级标记，下一次 pathname 变化（本次导航）时消费一次。
+  // 同时在 <html> 上加 data-nav-type="pop"，让 CSS 禁用 FadeIn / animate-in 的入场动画。
+  useEffect(() => {
+    const handlePopState = () => {
+      popNavPending = true;
+      if (typeof document !== 'undefined') {
+        document.documentElement.dataset.navType = 'pop';
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // 计算滑动方向 - 仅在 /posts <-> /timeline 之间触发
   const prevPath = previousPathRef.current;
-  
-  if (prevPath !== pathname) {
-    const currentOrder = PAGE_ORDER[pathname] ?? -1;
-    const prevOrder = PAGE_ORDER[prevPath] ?? -1;
-    const fromArticle = isArticleDetailPath(prevPath);
-    const toArticle = isArticleDetailPath(pathname);
 
-    // 情况1: /posts <-> /timeline 滑动动画
-    if (currentOrder !== -1 && prevOrder !== -1) {
-      directionRef.current = currentOrder > prevOrder ? 1 : -1;
-      shouldAnimateRef.current = true;
-      transitionTypeRef.current = 'slide';
-    } 
-    // 情况2: 进入或离开文章详情页 - 淡入淡出
-    else if (fromArticle || toArticle) {
-      directionRef.current = 0;
-      shouldAnimateRef.current = true;
-      transitionTypeRef.current = 'fade';
-    }
-    // 其他情况：无动画
-    else {
+  if (prevPath !== pathname) {
+    // 优先级最高：返回/前进导航（popstate）跳过所有入场动画，
+    // 匹配浏览器原生返回的瞬时体验，避免和 Router Cache / bfcache 冲突产生"立即出现再闪一下"的错觉。
+    if (popNavPending) {
+      popNavPending = false;
       directionRef.current = 0;
       shouldAnimateRef.current = false;
       transitionTypeRef.current = 'none';
+    } else {
+      const currentOrder = PAGE_ORDER[pathname] ?? -1;
+      const prevOrder = PAGE_ORDER[prevPath] ?? -1;
+      const fromArticle = isArticleDetailPath(prevPath);
+      const toArticle = isArticleDetailPath(pathname);
+
+      // 情况1: /posts <-> /timeline 滑动动画
+      if (currentOrder !== -1 && prevOrder !== -1) {
+        directionRef.current = currentOrder > prevOrder ? 1 : -1;
+        shouldAnimateRef.current = true;
+        transitionTypeRef.current = 'slide';
+      }
+      // 情况2: 进入或离开文章详情页 - 淡入淡出
+      else if (fromArticle || toArticle) {
+        directionRef.current = 0;
+        shouldAnimateRef.current = true;
+        transitionTypeRef.current = 'fade';
+      }
+      // 其他情况：无动画
+      else {
+        directionRef.current = 0;
+        shouldAnimateRef.current = false;
+        transitionTypeRef.current = 'none';
+      }
     }
 
     previousPathRef.current = pathname;
   }
+
+  // 路由变化处理结束后（2 帧内）清除 data-nav-type，避免影响后续前进导航的 CSS 入场动画。
+  // 2 帧足以让本次返回要挂载的组件全部完成首帧渲染。
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (document.documentElement.dataset.navType !== 'pop') return;
+    const rafs = navTypeClearRafRef.current;
+    rafs.raf1 = requestAnimationFrame(() => {
+      rafs.raf2 = requestAnimationFrame(() => {
+        delete document.documentElement.dataset.navType;
+      });
+    });
+    return () => {
+      if (rafs.raf1 !== null) cancelAnimationFrame(rafs.raf1);
+      if (rafs.raf2 !== null) cancelAnimationFrame(rafs.raf2);
+      rafs.raf1 = null;
+      rafs.raf2 = null;
+    };
+  }, [pathname]);
 
   const value = {
     direction: directionRef.current,
