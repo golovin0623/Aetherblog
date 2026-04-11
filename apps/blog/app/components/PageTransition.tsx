@@ -35,11 +35,6 @@ function isArticleDetailPath(path: string): boolean {
   return path.startsWith('/posts/') && path !== '/posts';
 }
 
-// 模块级 ref：popstate 监听和路由变化处理分别发生在两个不同的调用栈，
-// 使用模块级变量可以让 popstate 标记跨越 React 重新渲染传递到 TransitionProvider 渲染逻辑中。
-// 这是一次性消费的标记，不需要做成 context 或 state。
-let popNavPending = false;
-
 /**
  * 页面过渡状态提供者
  * 放在 layout.tsx 中，跨路由持久化
@@ -50,9 +45,13 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
   const directionRef = useRef(0);
   const shouldAnimateRef = useRef(false);
   const transitionTypeRef = useRef<'slide' | 'fade' | 'none'>('none');
+  // 用实例级 ref 而不是模块级变量存储 popstate 标记，避免 Fast Refresh /
+  // 嵌套挂载 / 并行测试等场景下的跨实例状态泄漏。popstate 事件监听器通过闭包
+  // 持有同一个 ref 对象，渲染函数也读取同一个 ref，两边天然共享。
+  const popNavPendingRef = useRef(false);
 
   // popstate 监听：浏览器前进/返回按钮会触发 popstate，Next.js router.push 不会。
-  // 检测到 popstate 时设置模块级标记，下一次 pathname 变化（本次导航）时消费一次。
+  // 检测到 popstate 时设置 ref 标记，下一次 pathname 变化（本次导航）时消费一次。
   // 同时在 <html> 上加 data-nav-type="pop"，让 CSS 禁用 FadeIn / animate-in 的入场动画。
   //
   // 清理逻辑直接放在 popstate handler 内部（而不是依赖 pathname 变化的 useEffect），
@@ -71,7 +70,7 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
     };
 
     const handlePopState = () => {
-      popNavPending = true;
+      popNavPendingRef.current = true;
       if (typeof document !== 'undefined') {
         document.documentElement.dataset.navType = 'pop';
       }
@@ -85,9 +84,9 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
           if (typeof document !== 'undefined') {
             delete document.documentElement.dataset.navType;
           }
-          // 同步清理 popNavPending：如果是 hash/query popstate，pathname 不变导致
-          // 渲染时的消费分支不会跑，标记会残留并污染下一次真正的前进导航。
-          popNavPending = false;
+          // 同步清理 popNavPendingRef：如果是 hash/query popstate，pathname 不变
+          // 导致渲染时的消费分支不会跑，标记会残留并污染下一次真正的前进导航。
+          popNavPendingRef.current = false;
           cleanupRaf1 = null;
           cleanupRaf2 = null;
         });
@@ -98,6 +97,11 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
     return () => {
       window.removeEventListener('popstate', handlePopState);
       cancelPending();
+      // 组件卸载时兜底清理：防止 data-nav-type 残留影响下一次挂载的实例
+      if (typeof document !== 'undefined') {
+        delete document.documentElement.dataset.navType;
+      }
+      popNavPendingRef.current = false;
     };
   }, []);
 
@@ -107,8 +111,8 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
   if (prevPath !== pathname) {
     // 优先级最高：返回/前进导航（popstate）跳过所有入场动画，
     // 匹配浏览器原生返回的瞬时体验，避免和 Router Cache / bfcache 冲突产生"立即出现再闪一下"的错觉。
-    if (popNavPending) {
-      popNavPending = false;
+    if (popNavPendingRef.current) {
+      popNavPendingRef.current = false;
       directionRef.current = 0;
       shouldAnimateRef.current = false;
       transitionTypeRef.current = 'none';
