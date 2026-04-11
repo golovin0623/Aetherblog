@@ -1285,19 +1285,22 @@ html[data-theme-transition] .theme-transition-glow {
 .hero-primary-btn {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #121217 0%, #1c1c24 100%);
+  /* 基底跟随主题主色：和左上角 A logo (bg-gradient-to-br from-primary to-accent)
+     使用完全相同的 --color-primary / --color-accent，保证换主色时按钮和 logo、
+     其他强调色元素视觉一致。默认 zinc 主题下仍是近黑色渐变，观感不变。 */
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.08),
-    0 4px 12px rgba(18, 18, 23, 0.12),
-    0 8px 24px rgba(18, 18, 23, 0.08),
+    0 4px 12px color-mix(in srgb, var(--color-primary) 18%, transparent),
+    0 8px 24px color-mix(in srgb, var(--color-primary) 12%, transparent),
     0 12px 36px color-mix(in srgb, var(--color-primary) 10%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
   transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* 顶部高光弧线 */
+/* 顶部高光弧线 - 白色高光，和基底色无关，保留原样 */
 .hero-primary-btn::before {
   content: '';
   position: absolute;
@@ -1305,20 +1308,20 @@ html[data-theme-transition] .theme-transition-glow {
   left: 10%;
   right: 10%;
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.28) 50%, transparent 100%);
   transition: opacity 0.35s;
 }
 
-/* 悬浮光晕：角落引入一丝主色，整体仍以白色高光为主 */
+/* 悬浮光晕：角落用 accent 色叠一层色泽，hover 时淡入 */
 .hero-primary-btn::after {
   content: '';
   position: absolute;
   inset: 0;
   background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.06) 0%,
-    transparent 40%,
-    transparent 60%,
-    color-mix(in srgb, var(--color-primary) 5%, transparent) 100%);
+    rgba(255, 255, 255, 0.12) 0%,
+    transparent 45%,
+    transparent 55%,
+    color-mix(in srgb, var(--color-accent) 22%, transparent) 100%);
   opacity: 0;
   transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -1327,10 +1330,10 @@ html[data-theme-transition] .theme-transition-glow {
   transform: translateY(-2px);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.12),
-    0 8px 24px rgba(18, 18, 23, 0.2),
-    0 16px 48px rgba(18, 18, 23, 0.1),
-    0 20px 56px color-mix(in srgb, var(--color-primary) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 8px 24px color-mix(in srgb, var(--color-primary) 28%, transparent),
+    0 16px 48px color-mix(in srgb, var(--color-primary) 18%, transparent),
+    0 20px 56px color-mix(in srgb, var(--color-primary) 22%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .hero-primary-btn:hover::before {
@@ -1345,43 +1348,44 @@ html[data-theme-transition] .theme-transition-glow {
   transform: translateY(0);
 }
 
-/* 暗色主题：玻璃质感 */
+/* 暗色主题：沿用主色渐变基底（和亮色统一），同时加 blur + 更强的主色外发光 */
 :root.dark .hero-primary-btn {
-  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.3),
-    0 4px 16px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 4px 16px color-mix(in srgb, var(--color-primary) 25%, transparent),
+    0 0 32px color-mix(in srgb, var(--color-primary) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
-/* 暗色主题顶部高光弧线 */
+/* 暗色主题顶部高光弧线 - 比亮色更亮一点 */
 :root.dark .hero-primary-btn::before {
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
 }
 
-/* 暗色主题悬浮光晕：角落用主色取代原硬编码的 indigo */
+/* 暗色主题悬浮光晕：角落依然用 accent */
 :root.dark .hero-primary-btn::after {
   background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.06) 0%,
-    transparent 40%,
-    transparent 60%,
-    color-mix(in srgb, var(--color-primary) 8%, transparent) 100%);
+    rgba(255, 255, 255, 0.14) 0%,
+    transparent 45%,
+    transparent 55%,
+    color-mix(in srgb, var(--color-accent) 28%, transparent) 100%);
 }
 
-/* 暗色主题 hover：色膜、边框、0 0 40px 外发光均跟随主色 */
+/* 暗色主题 hover：略微提亮基底 + 更大的主色外发光 */
 :root.dark .hero-primary-btn:hover {
   background: linear-gradient(135deg,
-    color-mix(in srgb, var(--color-primary) 15%, transparent) 0%,
-    color-mix(in srgb, var(--color-accent) 10%, transparent) 100%);
-  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+    color-mix(in srgb, var(--color-primary) 88%, white 12%) 0%,
+    color-mix(in srgb, var(--color-accent) 88%, white 12%) 100%);
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
-    0 8px 24px rgba(0, 0, 0, 0.2),
-    0 0 40px color-mix(in srgb, var(--color-primary) 10%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    0 8px 24px color-mix(in srgb, var(--color-primary) 35%, transparent),
+    0 0 48px color-mix(in srgb, var(--color-primary) 28%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 /* 移动光效（shimmer） */
