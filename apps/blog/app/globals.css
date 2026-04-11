@@ -1278,19 +1278,23 @@ html[data-theme-transition] .theme-transition-glow {
    Hero Primary Button (浏览文章)
    ======================================== */
 
-/* 亮色主题
-   注：按钮的"暗色玻璃基底 + 白色高光 + shimmer 扫光"是刻意保留的视觉身份，
-   主色调适配只作用于"点缀层"：外晕 box-shadow、::after 角落色泽、hover 外发光。
-   这样切换主色时按钮基底质感不变，只在光晕/色调上感知到主色。 */
+/* Hero 主按钮：基底 linear-gradient 跟随 --color-primary / --color-accent，
+   和左上角 A logo 使用同一套 CSS 变量，保证后台换主色时按钮与 logo、其他
+   强调色元素视觉一致。白色顶部高光和 shimmer 扫光保留以维持"光泽感"。
+   默认 zinc 主题下 primary=#18181b、accent=#3f3f46，观感与之前几乎无差异。 */
 .hero-primary-btn {
   position: relative;
   overflow: hidden;
-  /* 基底跟随主题主色：和左上角 A logo (bg-gradient-to-br from-primary to-accent)
-     使用完全相同的 --color-primary / --color-accent，保证换主色时按钮和 logo、
-     其他强调色元素视觉一致。默认 zinc 主题下仍是近黑色渐变，观感不变。 */
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
-  color: #ffffff;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  /* 用 --text-inverse 而不是硬编码 #ffffff：
+     亮色模式下 var resolve 为 #ffffff（白字），暗色模式下解析为 #0f172a（深字）。
+     默认 zinc 和 indigo 主色下对比度都通过 WCAG AA；极端浅主色下仍有局限性，
+     但那种 case 下整站 headings/accents 也会一起崩，应由主题选择器兜底而非按钮。 */
+  color: var(--text-inverse);
+  /* 白色半透明边框维持"玻璃感"边缘高光。如果用 color-mix(primary, transparent)
+     会和 primary 基底完全同色而失去定义边缘的作用——这是 gemini-code-assist
+     在 PR #432 指出的问题。 */
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.08),
     0 4px 12px color-mix(in srgb, var(--color-primary) 18%, transparent),
@@ -1348,12 +1352,17 @@ html[data-theme-transition] .theme-transition-glow {
   transform: translateY(0);
 }
 
-/* 暗色主题：沿用主色渐变基底（和亮色统一），同时加 blur + 更强的主色外发光 */
+/* 暗色主题：主色渐变基底 + 轻微透明度让 backdrop-filter blur 仍能生效（保留
+   原来的毛玻璃质感）。如果用完全不透明的基底，blur 没有任何可见效果还会
+   白白消耗 GPU —— 这是 gemini-code-assist / Copilot 在 PR #432 指出的问题。
+   边框同样改回白色半透明以避免和 primary 基底同色融合。 */
 :root.dark .hero-primary-btn {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary) 78%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent) 72%, transparent) 100%);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.3),
     0 4px 16px color-mix(in srgb, var(--color-primary) 25%, transparent),
@@ -1375,12 +1384,14 @@ html[data-theme-transition] .theme-transition-glow {
     color-mix(in srgb, var(--color-accent) 28%, transparent) 100%);
 }
 
-/* 暗色主题 hover：略微提亮基底 + 更大的主色外发光 */
+/* 暗色主题 hover：略微提升透明度 + 更大的主色外发光。
+   hover 时不能换成完全不透明，否则 backdrop-filter blur 效果会在 hover 时
+   突然消失导致视觉跳变，和 rest 状态保持同一渲染方式。 */
 :root.dark .hero-primary-btn:hover {
   background: linear-gradient(135deg,
-    color-mix(in srgb, var(--color-primary) 88%, white 12%) 0%,
-    color-mix(in srgb, var(--color-accent) 88%, white 12%) 100%);
-  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+    color-mix(in srgb, var(--color-primary) 88%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent) 82%, transparent) 100%);
+  border-color: rgba(255, 255, 255, 0.28);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
     0 8px 24px color-mix(in srgb, var(--color-primary) 35%, transparent),
