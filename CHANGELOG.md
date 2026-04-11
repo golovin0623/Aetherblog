@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — AI 工具箱输出承接链路修复
+
+### 🐛 修复 (Fixes)
+
+#### AI 工具箱「输出 → 承接」断链
+- **问题背景**：此前 `AIToolsPage` 的所有工具（summary / tags / titles / outline / polish / translate）无论输出形态都以 `<MarkdownPreview>` 渲染，tags / titles 的数组结构被抹平成字符串；结果区只有「复制到剪贴板」一个按钮，无法直接应用到文章；翻译的 targetLanguage / 润色的 tone / 大纲的 depth 等参数均硬编码在 `AIToolsWorkspace.tsx` 中无法调节。
+- **修复方案**：
+  - **Python (`apps/ai-service/app/api/routes/ai.py`)**：在 `_stream_with_think_detection` 中累积非 `isThink` 文本，在收到 `done` 事件之前追加一个结构化 `{"type":"result","data":{...}}` SSE 事件，payload 与对应的非 stream 响应 DTO 完全同形（`SummaryData` / `TagsData` / `TitlesData` / `PolishData` / `OutlineData` / `TranslateData`）。
+  - 新增鲁棒的 `_parse_tags()` / `_parse_titles()` 解析器，支持 JSON 数组、编号列表、多种分隔符与 Unicode 引号。
+  - **`apps/admin/src/hooks/useStreamResponse.ts`**：扩展 `StreamEvent` 支持 `result` 分支，新增 `result: StreamResult` 返回字段，前端优先消费结构化 payload、失败才回落到原始 `streamContent`。
+  - **`apps/admin/src/hooks/useAiToolTarget.ts`** (新增)：封装"目标文章"概念，localStorage 持久化 targetPostId，提供 `applySummary` / `applyTitle` / `applyTags` (含标签解析/自动创建/合并) / `applyContent` (append / replace 两种模式) 等 action。
+  - **`apps/admin/src/components/ai/results/ToolResultRenderer.tsx`** (新增)：分发式渲染——tags 渲染为多选 chips + 「追加到文章标签」按钮；titles 渲染为单选列表 + 「设为文章标题」按钮；summary 渲染 Markdown + 「设为文章摘要」按钮；polish / translate 渲染 Markdown + ConfirmModal 护栏下的「替换正文」按钮；outline 渲染 Markdown + 「追加到末尾 / 替换正文」双操作。所有工具保留「复制」作为无 target 时的 fallback。
+  - **`apps/admin/src/components/ai/ToolParamsPanel.tsx`** (新增) + `useToolParams` hook：每个工具独立参数面板（translate 目标语言下拉、polish tone 选项、outline depth/style、tags maxTags、titles maxTitles、summary maxLength），localStorage 按工具 key 持久化。
+  - **`apps/admin/src/components/ai/AIToolsWorkspace.tsx`**：移除所有硬编码参数，使用 `useToolParams(selectedTool.id)`；结果渲染切换为 `<ToolResultRenderer>`（preview 模式）+ 原始文本（code 模式）；头部新增「参数」折叠按钮、「导入正文」按钮（从目标文章读取 content 填入 textarea）、目标文章下拉选择器。
+  - **`apps/admin/src/pages/AIToolsPage.tsx`**：顶层调用 `useAiToolTarget()`，`target` 作为 prop 下传；支持 `?tool=<code>&postId=<id>` URL 参数深链（CreatePostPage 日后可携带当前文章 ID 跳转）。
+- **Python Prompt 渲染健壮性 (`apps/ai-service/app/services/llm_router.py`)**：替换 `str.format(**kwargs)` 为基于 token 的 `_safe_format` 函数，只替换已知键的 `{name}` 占位符，用户内容中的 `{}` / JSON / 代码块将原样保留，不再因为代码片段出现 `KeyError`。
+
+### 📄 架构 / 数据流变更
+
+- SSE 协议新增终稿事件：`data: {"type":"result","data":<StructuredPayload>}\n\n`，在 `done` 事件之前发送。旧的消费者无感知——前端忽略未知类型事件。
+- Go 代理层 (`apps/server-go/internal/handler/ai_handler.go`) 无需改动：`/stream` 端点只做逐行 SSE 透传，结构化事件随着原字节流直接到达前端。
+
+### 🧹 清理与完整化（同批次补丢）
+
+- **AiWritingWorkspacePage**（`apps/admin/src/pages/posts/AiWritingWorkspacePage.tsx`）：
+  - 移除 mock 的 `expand` 工具（代码里直接返回 `selectedText + '[AI 扩写的内容...]'`，前端给出"完成"提示但后端根本没有对应端点）。
+  - 移除 `tone: '专业'` 与 `aiModel: 'gpt-4'` 硬编码；polish 调用现在从 `loadToolParams('polish')` 读取 ToolParamsPanel 共享的 localStorage，summary 同理读取 `maxLength`。
+  - 未知工具分支返回明确的 toast 错误，避免静默失败覆盖原文。
+- **CreatePostPage**（`apps/admin/src/pages/posts/CreatePostPage.tsx`）：顶部工具栏新增「工具箱」按钮，携带当前 postId 深链到 `/ai-tools?tool=summary&postId=<id>`，打开 AIToolsPage 后目标文章会自动锁定，配合「导入正文」即可把当前正文带入测试区。新文章（postId === null）隐藏按钮避免混淆。
+- **Go DTO 幽灵字段清理**（`apps/server-go/internal/dto/ai.go`）：删除 `SummaryRequest.Model / Style`、`TagsRequest.Model`、`TitlesRequest.Count / Style / Model`、`PolishRequest.PolishType / Style / Model`、`OutlineRequest.Model` 等 Python Pydantic schema 从未存在的兼容别名；保留 `ModelID` + `ProviderCode`。文件头部新增注释说明 Go 侧 DTO 只作声明文档用途、handler 通过 `proxySyncPost` 透传字节流。
+- **PolishData.changes 字段删除**（`apps/ai-service/app/schemas/ai.py`、`apps/admin/src/services/aiService.ts`、`apps/admin/src/pages/posts/components/AiToolbar.tsx`）：历史上声明但从未写入的"变更说明"字段彻底移除；`AiToolbar.handlePolishContent` 不再读取 `res.data.changes`。新增代码注释说明"若未来需要 diff/变更说明，请通过独立端点 `/api/v1/ai/polish/diff` 提供"。
+- **Embedding 等非文本生成类任务自动过滤**（`apps/admin/src/pages/AIToolsPage.tsx`）：`fetchAllData` 对 `aiProviderService.listTasks()` 的结果按 `model_type` 过滤——只保留 `chat / reasoning / completion / code`，把 `embedding / tts / stt` 等类型挡在 AI 工具箱外（这些任务产生的是向量/音频，没有"应用到文章"语义，误导用户）。日后这些应由「索引管理 / RAG 配置」模块单独呈现。
+- **新增 `apps/ai-service/tests/test_ai_routes.py`**：41 个单元测试覆盖：
+  - `_parse_tags` / `_parse_titles` / `_split_list` 的所有解析分支（JSON 数组、编号列表、Unicode 智能引号、中文分隔符、`#hashtag` 前缀）。
+  - `_build_stream_result_payload` 对 6 种 task_type 的输出形状（含 empty fallback 与未知 task_type 的 `None` 返回）。
+  - 6 个非 stream 业务端点（`summary / tags / titles / polish / outline / translate`）的端到端 shape 契约，包括「PolishData 不再暴露 `changes` 属性」的回归测试。
+  - `_stream_with_think_detection` 的三个关键行为：`result` 事件在 `done` 之前发送、`isThink` 内容不污染 result、缺少显式 `done` 时仍自动补齐 result+done。
+  - `LlmRouter._safe_format` 的七个 Phase 4.1 回归：用户内容含 `{}` 代码块、未知占位符原样保留、缺少闭合大括号、`None` 值替换、等等。
+- **Token 解析器鲁棒性加强**（`apps/ai-service/app/api/routes/ai.py`）：新增 `_strip_token` 辅助函数，`_OUTER_STRIP` 扩展为 `_QUOTE_STRIP + "[]【】《》"`，即使 LLM 返回用智能引号包裹的伪 JSON（`[\u201ctag1\u201d, \u201ctag2\u201d]`）也能被 fallback 路径正确清洗。
+
+### 🔧 代码评审反馈采纳（PR #435）
+
+针对 gemini-code-assist 与 copilot-pull-request-reviewer 的 11 条评论：
+
+- **[GEMINI HIGH]** `applyContent` 不再直接传 `{content}` 给 `postService.update` ——
+  Go 端 `PostService.Update`（`apps/server-go/internal/service/post_service.go:186`）
+  会构建全量 `model.Post` 结构，请求之外的字段一律清空（包括 `SetTags` 会清掉
+  所有标签）。现在 hook 内新增 `rebuildFullUpdatePayload` 辅助，从缓存的
+  `targetPost` 重建完整 `CreatePostRequest` 再覆盖 `content`，避免破坏性写入。
+- **[GEMINI + COPILOT 共识]** `applyTags` 先按 lower-case 去重并分出"已存在 /
+  需新建"两组，再用 `Promise.all` 批量并行创建缺失标签。原本 N 次串行
+  `await tagService.create()` 在网络较慢时用户感知明显。
+- **[COPILOT]** `applyTags` 去重逻辑改为大小写无关（`["AI","ai"]` 不会重复创建）。
+- **[GEMINI]** `applyContent` append 模式下对空正文文章不再添加前导 `\n\n`，
+  避免新建文档开头两个空行。
+- **[GEMINI]** `AIToolsWorkspace` 目标文章下拉增加 fallback：当 URL 深链
+  `?postId=X` 指向的文章不在最近 20 条列表中时，把当前 `targetPost` 作为
+  附加选项显示，避免选择器显示空值或与锁定目标不同步。
+- **[COPILOT]** `ContentApplyBlock.confirmMessage` 支持函数形式
+  `(mode) => string`，`OutlineResult` 为 append / replace 两种模式提供不同
+  的确认文案。
+- **[COPILOT]** `useStreamResponse` 文件头注释从 "解析 NDJSON 流格式" 改为
+  "解析 SSE 流格式（按 `\n\n` 分隔事件块）" 以匹配实际实现。
+- **[COPILOT]** `_stream_with_think_detection` 用 `list[str] + "".join()`
+  代替 `full_text += content`，避免 CPython 下 O(n²) 的字符串拼接代价。
+- **[COPILOT]** `loadPostIntoClipboard` 重命名为 `loadPostContent`——函数
+  只拉取并返回 content，没有写剪贴板，名字必须一致。
+- **[COPILOT]** `useAiToolTarget.ts` 文件头注释校准：删除不存在的"无 target
+  自动复制"fallback 描述，改为准确说明"无 target 时 apply 动作 toast 错误
+  返回 false，调用方应改用 copyToClipboard"。
+
+### 📄 文档
+
+- `docs/architecture.md` 更新 AI SSE 协议节，记录 `result` 事件格式。
+- `CLAUDE.md` AI 服务能力节补充「stream 端点的结构化终稿」说明。
+
+---
+
 ## [v0.0.3] — 2026-04-04
 
 > 持续开发阶段，包含 AI 能力全面升级、媒体库深度优化（Phase 1–6）、博客前台功能增强及多项基础设施改进。

@@ -213,7 +213,20 @@ AI 服务作为独立微服务运行，通过 HTTP API 与后端通信：
 | 任务配置 | `CRUD /api/v1/admin/tasks` | — | AI 任务路由配置 |
 | 供应商代理 | `ANY /v1/admin/ai/providers/*` | — | Go 后端代理到 FastAPI |
 
-所有写作类端点同时支持普通响应和 NDJSON 流式响应（`/stream` 后缀），前端使用 `fetch` + `ReadableStream` 解析。
+所有写作类端点同时支持普通响应和 SSE 流式响应（`/stream` 后缀），前端使用 `fetch` + `ReadableStream` 解析。
+
+#### 流式事件协议（SSE）
+
+每个 `data: {...}\n\n` 行的 JSON 载荷遵循下列四种类型：
+
+| 类型 | 形状 | 说明 |
+|------|------|------|
+| `delta` | `{type:"delta", content:string, isThink?:boolean}` | 增量文本片段。`isThink=true` 表示处于 `<think>` 块内。 |
+| `result` | `{type:"result", data:<TaskData>}` | **结构化终稿**（在 `done` 之前发送一次）。`data` 形状与对应的非 stream 响应 DTO 一致：summary→`SummaryData`、tags→`TagsData`、titles→`TitlesData`、polish→`PolishData`、outline→`OutlineData`、translate→`TranslateData`。前端应优先消费此字段而非重新解析 `delta` 文本。 |
+| `done` | `{type:"done"}` | 流结束标记。 |
+| `error` | `{type:"error", code:string, message:string}` | 流中途失败。 |
+
+前端 hook `useStreamResponse` 已内置对这四种事件的处理；tags/titles 等结构化工具的"应用到文章"按钮完全基于 `result` payload 工作，无需客户端做正则/分隔符解析。
 
 ### 支持的 LLM 供应商
 

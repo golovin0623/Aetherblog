@@ -4,12 +4,24 @@ import { useAuthStore } from '@/stores';
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface StreamEvent {
-  type: 'delta' | 'done' | 'error';
+  type: 'delta' | 'done' | 'error' | 'result';
   content?: string;
   isThink?: boolean;
   code?: string;
   message?: string;
+  data?: unknown;
 }
+
+/**
+ * 结构化的流式终稿数据。各工具具体形状：
+ * - summary:    { summary: string; characterCount: number; model?: string }
+ * - tags:       { tags: string[]; model?: string }
+ * - titles:     { titles: string[]; model?: string }
+ * - polish:     { polishedContent: string; model?: string }
+ * - outline:    { outline: string; characterCount: number; model?: string }
+ * - translate:  { translatedContent: string; targetLanguage: string; sourceLanguage?: string | null; model?: string }
+ */
+export type StreamResult = Record<string, unknown> | null;
 
 interface UseStreamResponseReturn {
   content: string;
@@ -18,6 +30,11 @@ interface UseStreamResponseReturn {
   isLoading: boolean;
   isDone: boolean;
   error: string | null;
+  /**
+   * 结构化终稿。仅在 stream 尾部收到 `{type:"result"}` 事件时被填充。
+   * 前端应优先消费此字段而非 `content`。
+   */
+  result: StreamResult;
   stream: (url: string, body: unknown) => Promise<void>;
   reset: () => void;
   abort: () => void;
@@ -25,12 +42,14 @@ interface UseStreamResponseReturn {
 
 /**
  * 用于处理带有思考块检测的 AI 流式响应的 Hook。
- * 
- * 解析 NDJSON 流格式：
- * - {"type": "delta", "content": "...", "isThink": false}
- * - {"type": "delta", "content": "...", "isThink": true}
- * - {"type": "done"}
- * - {"type": "error", "code": "...", "message": "..."}
+ *
+ * 解析 SSE (Server-Sent Events) 流格式：按 `\n\n` 分隔事件块，每块包含
+ * 一行 `data: <json>` 形式的 JSON 载荷。支持的事件类型：
+ * - data: {"type": "delta", "content": "...", "isThink": false}
+ * - data: {"type": "delta", "content": "...", "isThink": true}
+ * - data: {"type": "result", "data": {...}}  ← 结构化终稿（由后端 ai.py 末尾发送）
+ * - data: {"type": "done"}
+ * - data: {"type": "error", "code": "...", "message": "..."}
  */
 export function useStreamResponse(): UseStreamResponseReturn {
   const [content, setContent] = useState('');
@@ -39,6 +58,7 @@ export function useStreamResponse(): UseStreamResponseReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<StreamResult>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef(0);
 
@@ -49,6 +69,7 @@ export function useStreamResponse(): UseStreamResponseReturn {
     setIsLoading(false);
     setIsDone(false);
     setError(null);
+    setResult(null);
   }, []);
 
   const abort = useCallback(() => {
@@ -202,6 +223,13 @@ export function useStreamResponse(): UseStreamResponseReturn {
                   isThinkingLocal = false;
                   contentBuffer += (event.content || '');
                 }
+              } else if (event.type === 'result') {
+                // 结构化终稿：提前 flush 流式内容，并写入 result state。
+                flushUpdates();
+                if (streamId === streamIdRef.current) {
+                  const payload = (event.data ?? null) as StreamResult;
+                  setResult(payload);
+                }
               } else if (event.type === 'done') {
                 flushUpdates(); // 完成前刷新
                 if (streamId === streamIdRef.current) {
@@ -250,6 +278,7 @@ export function useStreamResponse(): UseStreamResponseReturn {
     isLoading,
     isDone,
     error,
+    result,
     stream,
     reset,
     abort,

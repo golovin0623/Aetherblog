@@ -409,6 +409,15 @@ Go backend → HTTP client → FastAPI ai-service (Python)
 - `POST /api/v1/ai/outline[/stream]` - Outline generation
 - `POST /api/v1/ai/translate[/stream]` - Translation
 
+**SSE stream protocol** (emitted by `/stream` variants):
+Each line is `data: <json>\n\n`. Four event types:
+- `{type:"delta", content, isThink?}` — incremental text. `isThink=true` when inside a `<think>` block.
+- `{type:"result", data:<TaskData>}` — **structured final payload**, emitted once right before `done`. `data` shape matches the non-stream response DTO (e.g. `{tags: string[]}` for tags). Front-end consumes this directly to render structured UI and power "apply to post" actions — no client-side regex parsing.
+- `{type:"done"}` — terminal marker.
+- `{type:"error", code, message}` — mid-stream failure.
+
+The admin `useStreamResponse` hook exposes `{content, result, isDone, error, ...}`. AI 工具箱 (`AIToolsPage` → `AIToolsWorkspace` → `ToolResultRenderer`) 按工具分发渲染结构化结果并提供"应用到文章"动作；目标文章通过 `useAiToolTarget` hook 管理，支持 `?tool=<code>&postId=<id>` URL 深链。
+
 **Configuration Endpoints** (CRUD for AI system configuration):
 - Providers: `/api/v1/ai/config/providers`
 - Models: `/api/v1/ai/config/models`
