@@ -50,23 +50,55 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
   const directionRef = useRef(0);
   const shouldAnimateRef = useRef(false);
   const transitionTypeRef = useRef<'slide' | 'fade' | 'none'>('none');
-  const navTypeClearRafRef = useRef<{ raf1: number | null; raf2: number | null }>({
-    raf1: null,
-    raf2: null,
-  });
 
   // popstate 监听：浏览器前进/返回按钮会触发 popstate，Next.js router.push 不会。
   // 检测到 popstate 时设置模块级标记，下一次 pathname 变化（本次导航）时消费一次。
   // 同时在 <html> 上加 data-nav-type="pop"，让 CSS 禁用 FadeIn / animate-in 的入场动画。
+  //
+  // 清理逻辑直接放在 popstate handler 内部（而不是依赖 pathname 变化的 useEffect），
+  // 因为 popstate 也可能由 hash / 仅 query 参数变化触发——这种情况下 usePathname()
+  // 返回值不变，依赖 [pathname] 的 useEffect 不会触发，data-nav-type 就会"卡"在
+  // <html> 上，导致后续所有正常导航都丢失入场动画。用 2 帧内直接清理来规避这个问题。
   useEffect(() => {
+    let cleanupRaf1: number | null = null;
+    let cleanupRaf2: number | null = null;
+
+    const cancelPending = () => {
+      if (cleanupRaf1 !== null) cancelAnimationFrame(cleanupRaf1);
+      if (cleanupRaf2 !== null) cancelAnimationFrame(cleanupRaf2);
+      cleanupRaf1 = null;
+      cleanupRaf2 = null;
+    };
+
     const handlePopState = () => {
       popNavPending = true;
       if (typeof document !== 'undefined') {
         document.documentElement.dataset.navType = 'pop';
       }
+
+      // 取消任何未完成的旧清理，然后重新排 2 帧的清理。
+      // 2 帧足以让本次 popstate 触发的组件挂载完成首帧渲染；
+      // 同时覆盖 hash/query-only popstate 场景（pathname 不变也会正确清理）。
+      cancelPending();
+      cleanupRaf1 = requestAnimationFrame(() => {
+        cleanupRaf2 = requestAnimationFrame(() => {
+          if (typeof document !== 'undefined') {
+            delete document.documentElement.dataset.navType;
+          }
+          // 同步清理 popNavPending：如果是 hash/query popstate，pathname 不变导致
+          // 渲染时的消费分支不会跑，标记会残留并污染下一次真正的前进导航。
+          popNavPending = false;
+          cleanupRaf1 = null;
+          cleanupRaf2 = null;
+        });
+      });
     };
+
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      cancelPending();
+    };
   }, []);
 
   // 计算滑动方向 - 仅在 /posts <-> /timeline 之间触发
@@ -108,25 +140,6 @@ export function TransitionProvider({ children }: TransitionProviderProps) {
 
     previousPathRef.current = pathname;
   }
-
-  // 路由变化处理结束后（2 帧内）清除 data-nav-type，避免影响后续前进导航的 CSS 入场动画。
-  // 2 帧足以让本次返回要挂载的组件全部完成首帧渲染。
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    if (document.documentElement.dataset.navType !== 'pop') return;
-    const rafs = navTypeClearRafRef.current;
-    rafs.raf1 = requestAnimationFrame(() => {
-      rafs.raf2 = requestAnimationFrame(() => {
-        delete document.documentElement.dataset.navType;
-      });
-    });
-    return () => {
-      if (rafs.raf1 !== null) cancelAnimationFrame(rafs.raf1);
-      if (rafs.raf2 !== null) cancelAnimationFrame(rafs.raf2);
-      rafs.raf1 = null;
-      rafs.raf2 = null;
-    };
-  }, [pathname]);
 
   const value = {
     direction: directionRef.current,
