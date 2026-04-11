@@ -96,11 +96,14 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     }
 
     // 根据工具准备请求数据 — 使用可配置参数（ToolParamsPanel）而非硬编码。
+    // providerCode 只在真正非空时才发送：后端 ProviderRegistry 会把空字符串
+    // 当作"code = ''"的精确过滤，从而让模型路由查不到任何候选。PR #435 C12。
+    const trimmedProviderCode = selectedProviderCode.trim();
     const reqData: Record<string, unknown> = {
       content: input,
       promptTemplate: promptConfig?.custom_prompt || undefined,
       modelId: selectedModelId,
-      providerCode: selectedProviderCode,
+      ...(trimmedProviderCode ? { providerCode: trimmedProviderCode } : {}),
     };
 
     switch (selectedTool.id) {
