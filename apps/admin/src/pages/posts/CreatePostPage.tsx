@@ -1961,6 +1961,21 @@ export function CreatePostPage() {
                 >
                   <Sparkles className="w-3.5 h-3.5" /> AI
                 </button>
+                {/*
+                  深链到 AI 工具箱：携带当前文章 ID，进入 AIToolsPage 后
+                  目标文章会自动锁定，用户点击「导入正文」即可把当前正文
+                  带入测试区，工具结果的「应用到文章」按钮会写回本文章。
+                  未保存的新文章（无 postId）隐藏此按钮以避免混淆。
+                */}
+                {postId !== null && (
+                  <button
+                    onClick={() => navigate(`/ai-tools?tool=summary&postId=${postId}`)}
+                    className="flex h-8 items-center gap-1.5 px-3 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] text-sm"
+                    title="在 AI 工具箱中打开本文章"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" /> 工具箱
+                  </button>
+                )}
                 <button
                   onClick={() => setShowSettings(true)}
                   className="flex h-8 items-center gap-1.5 px-3 rounded-lg bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] text-sm"

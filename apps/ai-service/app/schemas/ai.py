@@ -129,7 +129,10 @@ class TitlesData(BaseModel):
 
 class PolishData(BaseModel):
     polishedContent: str = Field(alias="polishedContent")
-    changes: Optional[str] = None
+    # Note: 历史上曾设计过 `changes: Optional[str]` 用于返回"变更说明"，但端点
+    # 从未写入该字段，前端也无法区分"LLM 真返回了空" vs "该字段被放弃"，
+    # 长期停留在接口文档中反而误导消费者。2026-04 的 AI 工具修复已将其移除。
+    # 若未来需要 diff/变更说明，请通过独立的 `/api/v1/ai/polish/diff` 端点提供。
     model: Optional[str] = None
     tokensUsed: Optional[int] = None
     latencyMs: Optional[int] = None

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 import time
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -53,6 +56,154 @@ def _prompt_version(version: str | None) -> str:
 def _split_list(text: str) -> list[str]:
     parts = [p.strip() for p in text.replace("\n", ",").split(",") if p.strip()]
     return parts or [text]
+
+
+_LIST_PREFIX_RE = re.compile(r"^(?:\d+[\.\)、]|[-•*])\s*")
+_QUOTE_STRIP = "\"'`“”‘’「」『』"
+# Characters stripped from the outer edge of each parsed token. Includes
+# Unicode quotes + JSON-style brackets so that malformed JSON output from LLMs
+# (e.g. `[“tag1”, “tag2”]` with smart quotes — which `json.loads` rejects) is
+# still cleanly extractable via the delimiter-split fallback path.
+_OUTER_STRIP = _QUOTE_STRIP + "[]【】《》"
+
+
+def _strip_token(value: str) -> str:
+    """Normalize a parsed token: strip whitespace + outer quotes/brackets + `#` prefix."""
+    result = value.strip().strip(_OUTER_STRIP).strip()
+    if result.startswith("#"):
+        result = result.lstrip("#").strip()
+    return result
+
+
+def _parse_tags(text: str) -> list[str]:
+    """Robust tag parser: JSON array / comma / newline / numbered list."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    # Try JSON array first
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                items = [_strip_token(str(item)) for item in parsed]
+                items = [it for it in items if it]
+                if items:
+                    return items
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # Line/delimiter split with numbered-list stripping
+    collected: list[str] = []
+    for raw_line in text.splitlines():
+        line = _LIST_PREFIX_RE.sub("", raw_line.strip())
+        if not line:
+            continue
+        for piece in re.split(r"[,，、;；]", line):
+            cleaned = _strip_token(piece)
+            if cleaned:
+                collected.append(cleaned)
+    return collected or _split_list(text)
+
+
+def _parse_titles(text: str) -> list[str]:
+    """Robust title parser: handles numbered/bulleted lists and JSON arrays."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                items = [_strip_token(str(item)) for item in parsed]
+                items = [it for it in items if it]
+                if items:
+                    return items
+        except (json.JSONDecodeError, ValueError):
+            pass
+    collected: list[str] = []
+    for raw_line in text.splitlines():
+        line = _LIST_PREFIX_RE.sub("", raw_line.strip())
+        cleaned = _strip_token(line)
+        if cleaned:
+            collected.append(cleaned)
+    return collected or _split_list(text)
+
+
+def _build_stream_result_payload(
+    task_type: str,
+    full_text: str,
+    prompt_variables: dict[str, Any],
+    model: str,
+    extras: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Construct the structured terminal payload emitted on stream completion.
+
+    Mirrors the non-stream endpoints so the front-end receives the exact same
+    shape regardless of transport.
+    """
+    text = (full_text or "").strip()
+    if not text:
+        return None
+
+    extras = extras or {}
+
+    try:
+        if task_type == "summary":
+            data = SummaryData(
+                summary=text,
+                characterCount=len(text),
+                model=model or None,
+            )
+            return data.model_dump()
+
+        if task_type == "tags":
+            try:
+                max_tags = int(prompt_variables.get("max_tags", 5) or 5)
+            except (TypeError, ValueError):
+                max_tags = 5
+            tags = _parse_tags(text)[:max_tags]
+            data = TagsData(tags=tags, model=model or None)
+            return data.model_dump()
+
+        if task_type == "titles":
+            try:
+                max_titles = int(prompt_variables.get("max_titles", 5) or 5)
+            except (TypeError, ValueError):
+                max_titles = 5
+            titles = _parse_titles(text)[:max_titles]
+            data = TitlesData(titles=titles, model=model or None)
+            return data.model_dump()
+
+        if task_type == "polish":
+            data = PolishData(polishedContent=text, model=model or None)
+            return data.model_dump()
+
+        if task_type == "outline":
+            data = OutlineData(
+                outline=text,
+                characterCount=len(text),
+                model=model or None,
+            )
+            return data.model_dump()
+
+        if task_type == "translate":
+            source_raw = prompt_variables.get("source_language")
+            source = source_raw if source_raw and source_raw != "自动检测" else None
+            target = str(prompt_variables.get("target_language") or extras.get("target_language") or "en")
+            data = TranslateData(
+                translatedContent=text,
+                sourceLanguage=source,
+                targetLanguage=target,
+                model=model or None,
+            )
+            return data.model_dump()
+    except Exception as exc:  # pragma: no cover - defensive, never break the stream
+        logger.warning(
+            "ai.stream_result_build_failed",
+            extra={"task_type": task_type, "error": str(exc)},
+        )
+        return None
+
+    return None
 
 
 def _enforce_content_limit(content: str) -> None:
@@ -828,12 +979,45 @@ async def _stream_with_think_detection(
     usage_logger,
     start_time: float,
     request_text: str,
+    result_extras: dict[str, Any] | None = None,
 ):
-    """Generic stream generator with think block detection - SSE format."""
-    import json
+    """Generic stream generator with think block detection - SSE format.
+
+    In addition to the raw ``delta`` / ``done`` / ``error`` events emitted by
+    the underlying LLM router, this wrapper accumulates the non-think text and
+    emits a final ``result`` event containing the structured payload that
+    matches the corresponding non-stream endpoint. This lets the front-end
+    apply the output directly to articles without re-parsing the text.
+    """
     response_chars = 0
     error_code = None
-    
+    # Accumulate non-think text via a list + final join instead of repeated
+    # ``+=`` concatenation. The naive ``full_text += content`` form is O(n²)
+    # in CPython since each `+=` on a str allocates a fresh object; for long
+    # generations (e.g. polish / outline producing thousands of tokens) this
+    # adds noticeable latency (PR #435 review C6).
+    full_text_chunks: list[str] = []
+    result_emitted = False
+
+    def _make_sse(event: dict) -> bytes:
+        return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+
+    async def _maybe_emit_result():
+        nonlocal result_emitted
+        if result_emitted:
+            return None
+        payload = _build_stream_result_payload(
+            task_type=model_alias,
+            full_text="".join(full_text_chunks),
+            prompt_variables=prompt_variables,
+            model=model,
+            extras=result_extras,
+        )
+        if payload is None:
+            return None
+        result_emitted = True
+        return _make_sse({"type": "result", "data": payload})
+
     try:
         async for event in llm.stream_chat_with_think_detection(
             prompt_variables=prompt_variables,
@@ -843,18 +1027,39 @@ async def _stream_with_think_detection(
             model_id=model_id,
             provider_code=provider_code,
         ):
-            if event["type"] == "delta":
-                response_chars += len(event.get("content", ""))
-            # SSE format: data: {json}\n\n (double newline is critical for flush)
-            sse_line = f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            yield sse_line.encode("utf-8")
-            # Force async yield
+            event_type = event.get("type")
+
+            if event_type == "delta":
+                content = event.get("content", "") or ""
+                response_chars += len(content)
+                if not event.get("isThink"):
+                    full_text_chunks.append(content)
+                yield _make_sse(event)
+            elif event_type == "done":
+                # Emit structured result right before the done marker so the
+                # front-end can commit the final shape in a single pass.
+                result_line = await _maybe_emit_result()
+                if result_line is not None:
+                    yield result_line
+                yield _make_sse(event)
+            else:
+                # Pass-through unknown / error events
+                yield _make_sse(event)
+
             await asyncio.sleep(0)
+
+        # Some providers close the stream without sending an explicit ``done``
+        # event. Make sure the result is still delivered in that case.
+        if not result_emitted:
+            result_line = await _maybe_emit_result()
+            if result_line is not None:
+                yield result_line
+            yield _make_sse({"type": "done"})
     except Exception as exc:
         _status_code, detail = _normalize_generation_error(exc)
         error_code = detail
         error_event = {"type": "error", "code": "AI_STREAM_ERROR", "message": detail}
-        yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n".encode("utf-8")
+        yield _make_sse(error_event)
     finally:
         await _log_usage(
             request=request,

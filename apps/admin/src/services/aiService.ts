@@ -146,7 +146,6 @@ export interface TitlesResponse {
 
 export interface PolishResponse {
   polishedContent: string;
-  changes?: string;
   model?: string;
   tokensUsed?: number;
   latencyMs?: number;
