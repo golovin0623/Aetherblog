@@ -1278,7 +1278,10 @@ html[data-theme-transition] .theme-transition-glow {
    Hero Primary Button (浏览文章)
    ======================================== */
 
-/* 亮色主题 */
+/* 亮色主题
+   注：按钮的"暗色玻璃基底 + 白色高光 + shimmer 扫光"是刻意保留的视觉身份，
+   主色调适配只作用于"点缀层"：外晕 box-shadow、::after 角落色泽、hover 外发光。
+   这样切换主色时按钮基底质感不变，只在光晕/色调上感知到主色。 */
 .hero-primary-btn {
   position: relative;
   overflow: hidden;
@@ -1289,6 +1292,7 @@ html[data-theme-transition] .theme-transition-glow {
     0 1px 2px rgba(0, 0, 0, 0.08),
     0 4px 12px rgba(18, 18, 23, 0.12),
     0 8px 24px rgba(18, 18, 23, 0.08),
+    0 12px 36px color-mix(in srgb, var(--color-primary) 10%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
   transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -1305,12 +1309,16 @@ html[data-theme-transition] .theme-transition-glow {
   transition: opacity 0.35s;
 }
 
-/* 悬浮光晕 */
+/* 悬浮光晕：角落引入一丝主色，整体仍以白色高光为主 */
 .hero-primary-btn::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 40%, transparent 60%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    transparent 40%,
+    transparent 60%,
+    color-mix(in srgb, var(--color-primary) 5%, transparent) 100%);
   opacity: 0;
   transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -1321,6 +1329,7 @@ html[data-theme-transition] .theme-transition-glow {
     0 2px 4px rgba(0, 0, 0, 0.12),
     0 8px 24px rgba(18, 18, 23, 0.2),
     0 16px 48px rgba(18, 18, 23, 0.1),
+    0 20px 56px color-mix(in srgb, var(--color-primary) 18%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
@@ -1353,18 +1362,25 @@ html[data-theme-transition] .theme-transition-glow {
   background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
 }
 
-/* 暗色主题悬浮光晕 */
+/* 暗色主题悬浮光晕：角落用主色取代原硬编码的 indigo */
 :root.dark .hero-primary-btn::after {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 40%, transparent 60%, rgba(129, 140, 248, 0.06) 100%);
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    transparent 40%,
+    transparent 60%,
+    color-mix(in srgb, var(--color-primary) 8%, transparent) 100%);
 }
 
+/* 暗色主题 hover：色膜、边框、0 0 40px 外发光均跟随主色 */
 :root.dark .hero-primary-btn:hover {
-  background: linear-gradient(135deg, rgba(129,140,248,0.15) 0%, rgba(167,139,250,0.1) 100%);
-  border-color: rgba(129, 140, 248, 0.3);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary) 15%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent) 10%, transparent) 100%);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
     0 8px 24px rgba(0, 0, 0, 0.2),
-    0 0 40px rgba(129, 140, 248, 0.08),
+    0 0 40px color-mix(in srgb, var(--color-primary) 10%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
@@ -1547,4 +1563,19 @@ html[data-theme-transition] .theme-transition-glow {
       transform: translateY(0);
     }
   }
+}
+
+/* ========================================
+   返回/前进导航（popstate）时跳过所有挂载入场动画
+   ========================================
+   Router Cache / bfcache 恢复的页面内容已经是最终形态，
+   如果再叠加 FadeIn / animate-in 的入场动画就会产生
+   "立即出现再闪一下"的错觉。该规则由 TransitionProvider
+   在检测到 popstate 后往 <html> 上加 data-nav-type="pop"
+   触发，两帧后自动清除，不影响后续前进导航的动画。 */
+html[data-nav-type="pop"] [data-fade-in],
+html[data-nav-type="pop"] .animate-in {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
