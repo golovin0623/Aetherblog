@@ -247,14 +247,65 @@ class LlmRouter:
         return resolved.model
 
     def _render_prompt(self, template: str | None, default_template: str, **kwargs) -> str:
-        """Render prompt template with provided variables."""
+        """Render prompt template with provided variables.
+
+        The legacy implementation used :pymeth:`str.format` directly, which is
+        fragile: any literal ``{`` / ``}`` in user content (code snippets, JSON,
+        LaTeX, etc.) would raise ``KeyError`` / ``IndexError`` and the call
+        would fall through to a lossy concatenation fallback. This safe
+        renderer instead substitutes only the known placeholder keys and leaves
+        every other brace untouched, so user content passes through verbatim.
+        """
         tpl = template or default_template
         try:
-            return tpl.format(**kwargs)
-        except Exception as e:
-            logger.error(f"Failed to render prompt: {e}")
-            # Fallback to a simple concatenation if formatting fails
+            return self._safe_format(tpl, kwargs)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error(
+                "llm_router.prompt_render_failed",
+                extra={"error": str(exc), "template": tpl[:120] if tpl else ""},
+            )
             return f"{tpl}\n\nContext: {kwargs}"
+
+    @staticmethod
+    def _safe_format(template: str, variables: dict[str, Any]) -> str:
+        """Token-based template substitution.
+
+        Only replaces ``{name}`` tokens whose ``name`` is a known key in
+        ``variables``. All other braces (including code blocks containing
+        ``{}``, f-string-style literals, JSON payloads, etc.) are preserved.
+        """
+        if not template:
+            return ""
+        if not variables:
+            return template
+
+        result: list[str] = []
+        i = 0
+        length = len(template)
+        while i < length:
+            ch = template[i]
+            if ch == "{":
+                # Find matching closing brace, bail out if missing
+                end = template.find("}", i + 1)
+                if end == -1:
+                    result.append(template[i:])
+                    break
+                token = template[i + 1 : end]
+                # Only substitute single identifier tokens we know about.
+                # Everything else (format specs, nested dicts, literal content
+                # that happens to contain braces) is left as-is.
+                if token and token.isidentifier() and token in variables:
+                    value = variables.get(token)
+                    result.append("" if value is None else str(value))
+                    i = end + 1
+                    continue
+                # Unknown token — keep the literal text verbatim
+                result.append(template[i : end + 1])
+                i = end + 1
+            else:
+                result.append(ch)
+                i += 1
+        return "".join(result)
 
     def _normalize_prompt_variables(self, prompt_variables: dict[str, Any] | str) -> dict[str, Any]:
         if isinstance(prompt_variables, str):

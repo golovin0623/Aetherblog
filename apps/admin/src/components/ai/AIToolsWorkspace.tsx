@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Eye } from 'lucide-react';
+import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Sliders, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PromptEditor } from './PromptEditor';
+import { ToolParamsPanel, useToolParams } from './ToolParamsPanel';
+import { ToolResultRenderer } from './results/ToolResultRenderer';
 import { apiClient as api } from '@/services/api';
 import { toast } from 'sonner';
 import ModelSelector from '@/components/ai/ModelSelector';
 import { useStreamResponse } from '@/hooks/useStreamResponse';
+import type { AiToolTargetApi } from '@/hooks/useAiToolTarget';
 import { useTheme } from '@/hooks';
 import { ThinkingBlock } from './ThinkingBlock';
-import { MarkdownPreview, markdownPreviewStyles } from '@aetherblog/editor';
+import { markdownPreviewStyles } from '@aetherblog/editor';
 
 interface Tool {
   id: string;
@@ -28,24 +31,30 @@ interface AIToolsWorkspaceProps {
   onConfigUpdated: () => void;
   isGlobalLoading: boolean;
   isMobileSidebarOpen?: boolean;
+  target: AiToolTargetApi;
 }
 
 // AI 服务直连地址 (通过 Nginx 代理)
 const AI_SERVICE_URL = '/api/v1/ai';
 
-export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({ 
-  selectedTool, 
-  allConfigs, 
+export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
+  selectedTool,
+  allConfigs,
   onConfigUpdated,
   isGlobalLoading,
-  isMobileSidebarOpen = false
+  isMobileSidebarOpen = false,
+  target,
 }) => {
   const [input, setInput] = useState('');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [selectedProviderCode, setSelectedProviderCode] = useState<string>('');
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
   const [showConfig, setShowConfig] = useState(false);
+  const [showParams, setShowParams] = useState(false);
   const { resolvedTheme } = useTheme();
+
+  // Per-tool params (persisted to localStorage)
+  const [toolParams, setToolParams] = useToolParams(selectedTool.id);
 
   // 流式状态
   const {
@@ -55,6 +64,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     isLoading: isStreaming,
     isDone,
     error: streamError,
+    result: streamResult,
     stream,
     reset: resetStream,
     abort
@@ -85,49 +95,67 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
       return;
     }
 
-    // 根据工具准备请求数据
+    // 根据工具准备请求数据 — 使用可配置参数（ToolParamsPanel）而非硬编码。
     const reqData: Record<string, unknown> = {
       content: input,
       promptTemplate: promptConfig?.custom_prompt || undefined,
+      modelId: selectedModelId,
+      providerCode: selectedProviderCode,
     };
 
-    if (selectedModelId) {
-      reqData.modelId = selectedModelId;
-      reqData.providerCode = selectedProviderCode;
-    }
-
-    if (selectedTool.id === 'outline') {
-      reqData.topic = input;
-      reqData.depth = 2;
-      reqData.style = 'professional';
-      delete reqData.content;
-    }
-
-    if (selectedTool.id === 'tags') {
-      reqData.maxTags = 5;
-    }
-
-    if (selectedTool.id === 'titles') {
-      reqData.maxTitles = 5;
-    }
-
-    if (selectedTool.id === 'polish') {
-      reqData.tone = '专业';
-    }
-
-    if (selectedTool.id === 'translate') {
-      reqData.targetLanguage = 'en'; // 默认为英语
+    switch (selectedTool.id) {
+      case 'summary':
+        reqData.maxLength = Number(toolParams.maxLength ?? 200);
+        break;
+      case 'tags':
+        reqData.maxTags = Number(toolParams.maxTags ?? 5);
+        break;
+      case 'titles':
+        reqData.maxTitles = Number(toolParams.maxTitles ?? 5);
+        break;
+      case 'polish':
+        reqData.tone = String(toolParams.tone ?? '专业');
+        break;
+      case 'outline':
+        reqData.topic = input;
+        reqData.depth = Number(toolParams.depth ?? 2);
+        reqData.style = String(toolParams.style ?? 'professional');
+        delete reqData.content;
+        break;
+      case 'translate': {
+        reqData.targetLanguage = String(toolParams.targetLanguage ?? 'en');
+        const source = String(toolParams.sourceLanguage ?? '').trim();
+        if (source) reqData.sourceLanguage = source;
+        break;
+      }
+      default:
+        break;
     }
 
     // 使用流式端点
     const streamUrl = `${AI_SERVICE_URL}/${selectedTool.id}/stream`;
-    
+
     try {
       await stream(streamUrl, reqData);
     } catch {
       toast.error('流式请求失败');
     }
-  }, [input, selectedModelId, selectedProviderCode, selectedTool.id, promptConfig?.custom_prompt, stream]);
+  }, [input, selectedModelId, selectedProviderCode, selectedTool.id, promptConfig?.custom_prompt, stream, toolParams]);
+
+  // 从目标文章导入正文到输入框
+  const handleImportFromTarget = useCallback(() => {
+    if (!target.targetPost) {
+      toast.error('请先在右上角选择目标文章');
+      return;
+    }
+    const content = target.targetPost.content || '';
+    if (!content.trim()) {
+      toast.error('目标文章没有正文可导入');
+      return;
+    }
+    setInput(content);
+    toast.success(`已导入《${target.targetPost.title || '无标题'}》的正文`);
+  }, [target.targetPost]);
 
   // 是否禁用运行按钮
   const isRunDisabled = !input.trim() || isGlobalLoading;
@@ -197,6 +225,39 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               <p className="text-xs text-[var(--text-muted)]">输入原始文本以验证效果</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            {/* 从目标文章导入正文 */}
+            <button
+              onClick={handleImportFromTarget}
+              disabled={!target.targetPost}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border',
+                target.targetPost
+                  ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
+                  : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)] opacity-50 cursor-not-allowed',
+              )}
+              title={target.targetPost ? `导入《${target.targetPost.title || '无标题'}》正文` : '请先选择目标文章'}
+            >
+              <Download className="w-3.5 h-3.5" />
+              导入正文
+            </button>
+            {/* 工具参数入口 */}
+            <button
+              onClick={() => setShowParams((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border',
+                showParams
+                  ? 'bg-primary/10 text-primary border-primary/30'
+                  : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
+              )}
+              title="工具参数"
+              aria-expanded={showParams}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              参数
+              {showParams ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
         {/* 头部 - 移动端：仅显示标题 */}
@@ -204,8 +265,46 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
           <div className="p-1.5 rounded-lg bg-primary/10">
             <FileText className="w-4 h-4 text-primary" />
           </div>
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">测试内容</h2>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)] flex-1">测试内容</h2>
+          <button
+            onClick={handleImportFromTarget}
+            disabled={!target.targetPost}
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border',
+              target.targetPost
+                ? 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]'
+                : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)] opacity-50',
+            )}
+            aria-label="从目标文章导入"
+          >
+            <Download className="w-3 h-3" />
+            导入
+          </button>
+          <button
+            onClick={() => setShowParams((v) => !v)}
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border',
+              showParams
+                ? 'bg-primary/10 text-primary border-primary/30'
+                : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]',
+            )}
+            aria-label="工具参数"
+          >
+            <Sliders className="w-3 h-3" />
+            参数
+          </button>
         </div>
+
+        {/* 可折叠参数面板 */}
+        {showParams && (
+          <div className="px-4 md:px-5 py-3 md:py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/30 animate-in fade-in slide-in-from-top-2 duration-200 z-10 flex-shrink-0">
+            <ToolParamsPanel
+              toolId={selectedTool.id}
+              value={toolParams}
+              onChange={setToolParams}
+            />
+          </div>
+        )}
 
         <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
           {/* 主内容区：堆叠或可切换 */}
@@ -349,23 +448,45 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-700 -z-10 pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-status-success/5 rounded-full blur-3xl group-hover:bg-status-success-light transition-colors duration-700 -z-10 pointer-events-none" />
 
-        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 md:p-2 rounded-lg bg-black text-white dark:bg-white dark:text-black transition-colors">
+        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1.5 md:p-2 rounded-lg bg-black text-white dark:bg-white dark:text-black transition-colors flex-shrink-0">
               <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
             </div>
-            <div>
-              <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">生成结果</h2>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="w-1 h-1 rounded-full bg-status-success animate-pulse" />
-                <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium tracking-tighter">AI Generator v2</span>
+            <div className="min-w-0">
+              <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent truncate">生成结果</h2>
+              <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                <span className="w-1 h-1 rounded-full bg-status-success animate-pulse flex-shrink-0" />
+                <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium tracking-tighter truncate">
+                  {target.targetPost
+                    ? `目标：${target.targetPost.title || `#${target.targetPost.id}`}`
+                    : '未选择目标文章'}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+             {/* 目标文章选择器 */}
+             <select
+               className="max-w-[160px] md:max-w-[220px] text-xs px-2 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30"
+               value={target.targetPostId ?? ''}
+               onChange={(e) => {
+                 const v = e.target.value;
+                 target.setTargetPostId(v === '' ? null : Number(v));
+               }}
+               title="选择应用目标文章"
+             >
+               <option value="">— 无目标文章 —</option>
+               {target.recentPosts.map((p) => (
+                 <option key={p.id} value={p.id}>
+                   {p.title || `#${p.id}`}
+                 </option>
+               ))}
+             </select>
+
              <div className={cn(
-               "px-2 py-1 rounded-md text-[10px] font-mono border transition-all",
+               "px-2 py-1 rounded-md text-[10px] font-mono border transition-all flex-shrink-0",
                isDone ? "bg-status-success-light text-status-success border-status-success-border" :
                isStreaming ? "bg-status-info-light text-status-info border-status-info-border animate-pulse" :
                "bg-[var(--bg-secondary)] text-[var(--text-muted)] border-[var(--border-subtle)]"
@@ -375,14 +496,10 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
              <button
                onClick={() => setViewMode(prev => prev === 'preview' ? 'code' : 'preview')}
-               className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-all active:scale-95"
-               title={viewMode === 'preview' ? "查看源码" : "查看预览"}
+               className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-primary transition-all active:scale-95 flex-shrink-0"
+               title={viewMode === 'preview' ? "查看源码" : "查看结构化视图"}
              >
-               {viewMode === 'preview' ? (
-                 <Code className="w-4 h-4" />
-               ) : (
-                 <Eye className="w-4 h-4" />
-               )}
+               <Code className="w-4 h-4" />
              </button>
           </div>
         </div>
@@ -412,31 +529,48 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             <div className="space-y-4 animate-in fade-in duration-300 relative">
               {/* 思考块 */}
               {(thinkContent || isThinking) && (
-                <ThinkingBlock 
-                  content={thinkContent} 
+                <ThinkingBlock
+                  content={thinkContent}
                   isActive={isThinking && isStreaming}
                 />
               )}
-              
-              {/* 流式内容 */}
+
+              {/* 流式/结构化内容 */}
               <div className="relative min-h-[200px]">
                 {viewMode === 'preview' ? (
-                  <MarkdownPreview 
-                    content={streamContent || (isStreaming && !isThinking ? '...' : '')} 
-                    className="bg-transparent border-none p-0"
-                    theme={previewTheme}
-                    style={{ fontSize: '15px', color: 'var(--text-primary)' }}
-                  />
+                  isStreaming && !streamResult ? (
+                    // 正在流式：显示原始增量文本，加打字机光标
+                    <div className="text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed text-[15px]">
+                      {streamContent || (
+                        <span className="text-[var(--text-muted)] italic">正在生成...</span>
+                      )}
+                      {streamContent && (
+                        <span className="inline-block w-0.5 h-4 bg-status-success ml-0.5 animate-pulse" />
+                      )}
+                    </div>
+                  ) : (
+                    // 流式完成或已有结构化 result：使用分发式渲染（提供"应用"按钮）
+                    <ToolResultRenderer
+                      toolId={selectedTool.id}
+                      streamContent={streamContent}
+                      result={streamResult}
+                      target={target}
+                      previewTheme={previewTheme}
+                    />
+                  )
                 ) : (
                   <div className="relative rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 p-4">
-                  <div className="absolute left-0 top-4 bottom-4 w-1 bg-gradient-to-b from-transparent via-status-success to-transparent rounded-full" />
-                    <div className={cn(
-                      "pl-4 text-[var(--text-primary)] leading-relaxed font-mono whitespace-pre-wrap text-[13px]"
-                    )}>
+                    <div className="absolute left-0 top-4 bottom-4 w-1 bg-gradient-to-b from-transparent via-status-success to-transparent rounded-full" />
+                    <div className="pl-4 text-[var(--text-primary)] leading-relaxed font-mono whitespace-pre-wrap text-[13px]">
                       {streamContent || (isStreaming && !isThinking && (
                         <span className="text-[var(--text-muted)] italic">正在生成...</span>
                       ))}
-                      {/* 打字机光标 */}
+                      {streamResult && (
+                        <>
+                          {'\n\n// ─── structured result ───\n'}
+                          {JSON.stringify(streamResult, null, 2)}
+                        </>
+                      )}
                       {isStreaming && !isThinking && streamContent && (
                         <span className="inline-block w-0.5 h-4 bg-status-success ml-0.5 animate-pulse" />
                       )}
@@ -447,25 +581,19 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           )}
         </div>
-        
+
         {isDone && hasContent && (
           <div className="p-3 mx-4 mb-4 border border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-secondary)] z-10 rounded-2xl backdrop-blur-sm shadow-sm animate-in slide-in-from-bottom-2 duration-500">
-             <div className="flex gap-4 text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
-               <span className="flex items-center gap-1.5">
-                 <span className="w-1.5 h-1.5 rounded-full bg-status-success shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> 
-                 {streamContent.length} 字符
-               </span>
-               <span className="hidden sm:inline opacity-60">类型: {selectedTool.label}工具</span>
-             </div>
-             <button 
-               className="px-4 py-1.5 rounded-xl text-[11px] font-bold bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-all shadow-sm active:scale-95"
-               onClick={() => {
-                 navigator.clipboard.writeText(streamContent);
-                 toast.success('已复制到剪贴板');
-               }}
-             >
-               复制结果
-             </button>
+            <div className="flex gap-4 text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-status-success shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                {streamContent.length} 字符
+              </span>
+              <span className="hidden sm:inline opacity-60">类型: {selectedTool.label}工具</span>
+            </div>
+            <span className="text-[10px] text-[var(--text-muted)] opacity-60">
+              使用上方按钮将结果应用到文章
+            </span>
           </div>
         )}
       </div>
