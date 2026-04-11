@@ -274,7 +274,7 @@ export default function BlogHeader() {
       )}
 
       <header
-        className={`fixed left-0 w-screen z-50 py-4 ease-out will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
+        className={`fixed left-0 w-screen z-50 py-4 will-change-transform group ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-[110%] opacity-0'
           }`}
         style={{
           top: 'env(safe-area-inset-top, 0px)',
