@@ -22,6 +22,21 @@ interface ToolResultRendererProps {
 
 const _LIST_PREFIX_RE = /^(?:\d+[.)、]|[-•*])\s*/;
 const _QUOTE_STRIP_RE = /[\u201c\u201d\u2018\u2019"'`]/g;
+// Characters stripped from the outer edge of each parsed token. Mirrors the
+// Python `_OUTER_STRIP` set in `apps/ai-service/app/api/routes/ai.py` so that
+// malformed LLM output like `[“tag1”, “tag2”]`（smart quotes → json.loads
+// fails → delimiter split path）仍然能得到干净的 `["tag1", "tag2"]` 而不是
+// `["[tag1", "tag2]"]`（PR #435 review C13）。
+// 正则字符类中只有 `]` 需要转义；`[` 在字符类内部是字面量。
+const _OUTER_STRIP_RE = /^[\s\u201c\u201d\u2018\u2019"'`[\]【】《》]+|[\s\u201c\u201d\u2018\u2019"'`[\]【】《》]+$/g;
+
+function _stripToken(value: string): string {
+  let result = value.replace(_OUTER_STRIP_RE, '').trim();
+  if (result.startsWith('#')) {
+    result = result.replace(/^#+/, '').trim();
+  }
+  return result;
+}
 
 // 与 Python 端 `_parse_tags` / `_parse_titles` 对齐的客户端 fallback。
 function fallbackParseList(text: string): string[] {
@@ -31,12 +46,11 @@ function fallbackParseList(text: string): string[] {
     try {
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
-        return parsed
-          .map((v) => String(v).replace(_QUOTE_STRIP_RE, '').trim())
-          .filter((v) => v.length > 0);
+        const items = parsed.map((v) => _stripToken(String(v))).filter((v) => v.length > 0);
+        if (items.length > 0) return items;
       }
     } catch {
-      /* not JSON */
+      /* not JSON — fall through to delimiter split (handles smart-quoted fake-JSON) */
     }
   }
   const parts: string[] = [];
@@ -44,7 +58,7 @@ function fallbackParseList(text: string): string[] {
     const line = rawLine.replace(_LIST_PREFIX_RE, '').trim();
     if (!line) return;
     line.split(/[,，、;；]/).forEach((piece) => {
-      const cleaned = piece.replace(_QUOTE_STRIP_RE, '').replace(/^#/, '').trim();
+      const cleaned = _stripToken(piece.replace(_QUOTE_STRIP_RE, ''));
       if (cleaned) parts.push(cleaned);
     });
   });
@@ -58,17 +72,16 @@ function fallbackParseTitles(text: string): string[] {
     try {
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
-        return parsed
-          .map((v) => String(v).replace(_QUOTE_STRIP_RE, '').trim())
-          .filter((v) => v.length > 0);
+        const items = parsed.map((v) => _stripToken(String(v))).filter((v) => v.length > 0);
+        if (items.length > 0) return items;
       }
     } catch {
-      /* not JSON */
+      /* not JSON — fall through to line-split */
     }
   }
   return trimmed
     .split(/\r?\n/)
-    .map((line) => line.replace(_LIST_PREFIX_RE, '').replace(_QUOTE_STRIP_RE, '').trim())
+    .map((line) => _stripToken(line.replace(_LIST_PREFIX_RE, '').replace(_QUOTE_STRIP_RE, '')))
     .filter((line) => line.length > 0);
 }
 
