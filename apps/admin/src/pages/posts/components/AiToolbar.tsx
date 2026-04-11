@@ -108,11 +108,7 @@ export function AiToolbar({ content, onInsertText, onReplaceTags }: AiToolbarPro
       });
       if (res.code === 200 && res.data) {
         onInsertText(res.data.polishedContent);
-        if (res.data.changes) {
-          toast.success(`润色完成：${res.data.changes}`);
-        } else {
-          toast.success('内容润色完成');
-        }
+        toast.success('内容润色完成');
       } else {
         toast.error(res.message || '内容润色失败');
       }

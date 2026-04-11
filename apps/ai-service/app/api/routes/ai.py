@@ -60,6 +60,19 @@ def _split_list(text: str) -> list[str]:
 
 _LIST_PREFIX_RE = re.compile(r"^(?:\d+[\.\)、]|[-•*])\s*")
 _QUOTE_STRIP = "\"'`“”‘’「」『』"
+# Characters stripped from the outer edge of each parsed token. Includes
+# Unicode quotes + JSON-style brackets so that malformed JSON output from LLMs
+# (e.g. `[“tag1”, “tag2”]` with smart quotes — which `json.loads` rejects) is
+# still cleanly extractable via the delimiter-split fallback path.
+_OUTER_STRIP = _QUOTE_STRIP + "[]【】《》"
+
+
+def _strip_token(value: str) -> str:
+    """Normalize a parsed token: strip whitespace + outer quotes/brackets + `#` prefix."""
+    result = value.strip().strip(_OUTER_STRIP).strip()
+    if result.startswith("#"):
+        result = result.lstrip("#").strip()
+    return result
 
 
 def _parse_tags(text: str) -> list[str]:
@@ -72,8 +85,7 @@ def _parse_tags(text: str) -> list[str]:
         try:
             parsed = json.loads(text)
             if isinstance(parsed, list):
-                items = [str(item).strip().strip(_QUOTE_STRIP).lstrip("#")
-                         for item in parsed]
+                items = [_strip_token(str(item)) for item in parsed]
                 items = [it for it in items if it]
                 if items:
                     return items
@@ -86,7 +98,7 @@ def _parse_tags(text: str) -> list[str]:
         if not line:
             continue
         for piece in re.split(r"[,，、;；]", line):
-            cleaned = piece.strip().strip(_QUOTE_STRIP).lstrip("#").strip()
+            cleaned = _strip_token(piece)
             if cleaned:
                 collected.append(cleaned)
     return collected or _split_list(text)
@@ -101,7 +113,7 @@ def _parse_titles(text: str) -> list[str]:
         try:
             parsed = json.loads(text)
             if isinstance(parsed, list):
-                items = [str(item).strip().strip(_QUOTE_STRIP) for item in parsed]
+                items = [_strip_token(str(item)) for item in parsed]
                 items = [it for it in items if it]
                 if items:
                     return items
@@ -110,7 +122,7 @@ def _parse_titles(text: str) -> list[str]:
     collected: list[str] = []
     for raw_line in text.splitlines():
         line = _LIST_PREFIX_RE.sub("", raw_line.strip())
-        cleaned = line.strip().strip(_QUOTE_STRIP).strip()
+        cleaned = _strip_token(line)
         if cleaned:
             collected.append(cleaned)
     return collected or _split_list(text)

@@ -51,9 +51,15 @@ import type { ContentSnapshot } from '@/types/content-history';
 // 编辑器扩展
 import { createGhostTextExtension } from '@/lib/ghost-text-extension';
 import { aiService } from '@/services/aiService';
+import { loadToolParams } from '@/components/ai/ToolParamsPanel';
 import { toast } from 'sonner';
 
 // AI 工具能力定义
+//
+// 注：此处只登记**已有真实后端支持**的能力。之前存在的 `expand` 工具是
+// 前端 mock（直接返回 selectedText + 占位符），没有对应的 /api/v1/ai/expand
+// 端点，因此已从列表中移除——避免给用户提供看似可用但实际无效的按钮。
+// 如未来 AI 服务上线扩写端点，可在此处重新加入。
 const AI_CAPABILITIES: AiCapability[] = [
   {
     id: 'polish',
@@ -65,17 +71,6 @@ const AI_CAPABILITIES: AiCapability[] = [
     requiresSelection: true,
     cost: 'low',
     hotkey: '⌘⇧P',
-  },
-  {
-    id: 'expand',
-    label: '扩写',
-    description: '扩展选中内容',
-    type: 'floating',
-    icon: 'wand',
-    applicableStages: ['draft-generation', 'refinement', 'free-writing'],
-    requiresSelection: true,
-    cost: 'medium',
-    hotkey: '⌘⇧E',
   },
   {
     id: 'summarize',
@@ -181,32 +176,41 @@ export function AiWritingWorkspacePage() {
       try {
         let result: string = '';
 
-        // 调用实际 AI API
+        // 调用实际 AI API —— tone / maxLength 等参数从 ToolParamsPanel 统一
+        // 的 localStorage 持久化里读取，与 AIToolsPage 共享同一套配置。
         if (toolId === 'polish') {
+          const polishParams = loadToolParams('polish');
           const res = await aiService.polishContent({
             content: selectedText,
-            tone: '专业',
+            tone: String(polishParams.tone ?? '专业'),
           });
           if (res.code === 200 && res.data) {
             result = res.data.polishedContent;
           }
-        } else if (toolId === 'expand') {
-          // 扩写功能可以复用润色API或创建新endpoint
-          result = selectedText + '\n\n[AI 扩写的内容...]';
         } else if (toolId === 'summarize') {
+          const summaryParams = loadToolParams('summary');
           const res = await aiService.generateSummary({
             content: selectedText,
+            maxLength: Number(summaryParams.maxLength ?? 200),
           });
           if (res.code === 200 && res.data) {
             result = res.data.summary;
           }
+        } else {
+          toast.error(`未知的 AI 工具：${toolId}`);
+          return;
+        }
+
+        if (!result.trim()) {
+          toast.error('AI 未返回有效内容');
+          return;
         }
 
         // 替换选中文本
         const newContent = content.replace(selectedText, result);
         setContent(newContent);
 
-        // 创建 AI 修改快照
+        // 创建 AI 修改快照（不再硬编码 model name；具体模型由后端路由决定）
         if (postId) {
           await historyManager.createSnapshot({
             title,
@@ -214,7 +218,6 @@ export function AiWritingWorkspacePage() {
             summary,
             source: 'ai-suggestion',
             sourceName: `AI ${toolId}`,
-            aiModel: 'gpt-4',
           });
         }
 

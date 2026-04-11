@@ -148,9 +148,22 @@ export default function AIToolsPage() {
 
       if (promptsRes.code === 200) setPromptConfigs(promptsRes.data || []);
       if (tasksRes.code === 200) {
-        // 过滤掉任务列表中的系统工具，避免与数据库中已有的系统工具重复
+        // 过滤：
+        // 1) 系统工具已在 SYSTEM_TOOLS 中硬编码，数据库里可能存在同名副本，去重。
+        // 2) 非 chat 类任务（embedding / tts / stt 等）不适合"生成→应用到文章"
+        //    的工具箱范式——embedding 产生的是向量，没有可插入的文本。这些
+        //    任务应该在「索引管理 / RAG 配置」模块里单独呈现，而不是混入此处
+        //    给用户制造"工具可用"的错觉。
         const systemCodes = SYSTEM_TOOLS.map(t => t.code);
-        const filtered = (tasksRes.data || []).filter(t => !systemCodes.includes(t.code));
+        const filtered = (tasksRes.data || []).filter((t) => {
+          if (systemCodes.includes(t.code)) return false;
+          const mt = (t.model_type || '').toLowerCase();
+          // 仅保留 chat / reasoning / completion / code 等文本生成类任务
+          if (mt && !['chat', 'reasoning', 'completion', 'code'].includes(mt)) {
+            return false;
+          }
+          return true;
+        });
         setCustomTools(filtered);
       }
     } catch (err) {
