@@ -43,12 +43,13 @@ interface UseStreamResponseReturn {
 /**
  * 用于处理带有思考块检测的 AI 流式响应的 Hook。
  *
- * 解析 NDJSON 流格式：
- * - {"type": "delta", "content": "...", "isThink": false}
- * - {"type": "delta", "content": "...", "isThink": true}
- * - {"type": "result", "data": {...}}  ← 结构化终稿（由后端 ai.py 末尾发送）
- * - {"type": "done"}
- * - {"type": "error", "code": "...", "message": "..."}
+ * 解析 SSE (Server-Sent Events) 流格式：按 `\n\n` 分隔事件块，每块包含
+ * 一行 `data: <json>` 形式的 JSON 载荷。支持的事件类型：
+ * - data: {"type": "delta", "content": "...", "isThink": false}
+ * - data: {"type": "delta", "content": "...", "isThink": true}
+ * - data: {"type": "result", "data": {...}}  ← 结构化终稿（由后端 ai.py 末尾发送）
+ * - data: {"type": "done"}
+ * - data: {"type": "error", "code": "...", "message": "..."}
  */
 export function useStreamResponse(): UseStreamResponseReturn {
   const [content, setContent] = useState('');

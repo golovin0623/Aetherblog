@@ -991,7 +991,12 @@ async def _stream_with_think_detection(
     """
     response_chars = 0
     error_code = None
-    full_text = ""
+    # Accumulate non-think text via a list + final join instead of repeated
+    # ``+=`` concatenation. The naive ``full_text += content`` form is O(n²)
+    # in CPython since each `+=` on a str allocates a fresh object; for long
+    # generations (e.g. polish / outline producing thousands of tokens) this
+    # adds noticeable latency (PR #435 review C6).
+    full_text_chunks: list[str] = []
     result_emitted = False
 
     def _make_sse(event: dict) -> bytes:
@@ -1003,7 +1008,7 @@ async def _stream_with_think_detection(
             return None
         payload = _build_stream_result_payload(
             task_type=model_alias,
-            full_text=full_text,
+            full_text="".join(full_text_chunks),
             prompt_variables=prompt_variables,
             model=model,
             extras=result_extras,
@@ -1028,7 +1033,7 @@ async def _stream_with_think_detection(
                 content = event.get("content", "") or ""
                 response_chars += len(content)
                 if not event.get("isThink"):
-                    full_text += content
+                    full_text_chunks.append(content)
                 yield _make_sse(event)
             elif event_type == "done":
                 # Emit structured result right before the done marker so the

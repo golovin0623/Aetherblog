@@ -483,6 +483,17 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                    {p.title || `#${p.id}`}
                  </option>
                ))}
+               {/*
+                 Deep-link fallback: URL 参数 `?postId=X` 可能指向一篇不在最近
+                 20 条列表里的文章；此时用当前 targetPost 追加一条选项，避免
+                 选择器显示空值或与实际锁定目标不同步（PR #435 review G4）。
+               */}
+               {target.targetPost &&
+                 !target.recentPosts.some((p) => p.id === target.targetPost?.id) && (
+                   <option key={`fallback-${target.targetPost.id}`} value={target.targetPost.id}>
+                     {target.targetPost.title || `#${target.targetPost.id}`}
+                   </option>
+                 )}
              </select>
 
              <div className={cn(

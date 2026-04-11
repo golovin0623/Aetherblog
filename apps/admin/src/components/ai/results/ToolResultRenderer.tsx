@@ -307,7 +307,12 @@ interface ContentResultProps {
   primaryLabel: string;
   primaryMode: ContentApplyMode;
   primaryIcon: React.ReactNode;
-  confirmMessage: string;
+  /**
+   * Confirm message resolver. 允许 append / replace 两种模式展示不同的警告文案，
+   * 避免「大纲 outline 的次要按钮点进来看到的还是追加说明」这类错配
+   * （PR #435 review C11）。
+   */
+  confirmMessage: string | ((mode: ContentApplyMode) => string);
   secondaryLabel?: string;
   secondaryMode?: ContentApplyMode;
   copyLabel: string;
@@ -346,6 +351,13 @@ function ContentApplyBlock({
     }
   };
 
+  const resolvedConfirmMessage =
+    typeof confirmMessage === 'function'
+      ? pendingMode
+        ? confirmMessage(pendingMode)
+        : ''
+      : confirmMessage;
+
   return (
     <div className="space-y-4">
       {headerBadge}
@@ -382,7 +394,7 @@ function ContentApplyBlock({
       <ConfirmModal
         isOpen={pendingMode !== null}
         title={pendingMode === 'replace' ? '替换文章正文' : '追加到文章末尾'}
-        message={confirmMessage}
+        message={resolvedConfirmMessage}
         confirmText={pendingMode === 'replace' ? '替换' : '追加'}
         cancelText="取消"
         variant={pendingMode === 'replace' ? 'danger' : 'warning'}
@@ -448,7 +460,11 @@ function OutlineResult(props: { text: string; target: AiToolTargetApi; previewTh
       primaryIcon={<ListPlus className="w-3.5 h-3.5" />}
       secondaryLabel="替换正文"
       secondaryMode="replace"
-      confirmMessage="将把大纲内容追加到目标文章末尾，请确认。"
+      confirmMessage={(mode) =>
+        mode === 'replace'
+          ? '将使用生成的大纲完全替换目标文章的当前正文，此操作不可撤销，请确认。'
+          : '将把大纲内容追加到目标文章末尾，请确认。'
+      }
       copyLabel="大纲"
     />
   );

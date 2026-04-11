@@ -47,6 +47,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `LlmRouter._safe_format` 的七个 Phase 4.1 回归：用户内容含 `{}` 代码块、未知占位符原样保留、缺少闭合大括号、`None` 值替换、等等。
 - **Token 解析器鲁棒性加强**（`apps/ai-service/app/api/routes/ai.py`）：新增 `_strip_token` 辅助函数，`_OUTER_STRIP` 扩展为 `_QUOTE_STRIP + "[]【】《》"`，即使 LLM 返回用智能引号包裹的伪 JSON（`[\u201ctag1\u201d, \u201ctag2\u201d]`）也能被 fallback 路径正确清洗。
 
+### 🔧 代码评审反馈采纳（PR #435）
+
+针对 gemini-code-assist 与 copilot-pull-request-reviewer 的 11 条评论：
+
+- **[GEMINI HIGH]** `applyContent` 不再直接传 `{content}` 给 `postService.update` ——
+  Go 端 `PostService.Update`（`apps/server-go/internal/service/post_service.go:186`）
+  会构建全量 `model.Post` 结构，请求之外的字段一律清空（包括 `SetTags` 会清掉
+  所有标签）。现在 hook 内新增 `rebuildFullUpdatePayload` 辅助，从缓存的
+  `targetPost` 重建完整 `CreatePostRequest` 再覆盖 `content`，避免破坏性写入。
+- **[GEMINI + COPILOT 共识]** `applyTags` 先按 lower-case 去重并分出"已存在 /
+  需新建"两组，再用 `Promise.all` 批量并行创建缺失标签。原本 N 次串行
+  `await tagService.create()` 在网络较慢时用户感知明显。
+- **[COPILOT]** `applyTags` 去重逻辑改为大小写无关（`["AI","ai"]` 不会重复创建）。
+- **[GEMINI]** `applyContent` append 模式下对空正文文章不再添加前导 `\n\n`，
+  避免新建文档开头两个空行。
+- **[GEMINI]** `AIToolsWorkspace` 目标文章下拉增加 fallback：当 URL 深链
+  `?postId=X` 指向的文章不在最近 20 条列表中时，把当前 `targetPost` 作为
+  附加选项显示，避免选择器显示空值或与锁定目标不同步。
+- **[COPILOT]** `ContentApplyBlock.confirmMessage` 支持函数形式
+  `(mode) => string`，`OutlineResult` 为 append / replace 两种模式提供不同
+  的确认文案。
+- **[COPILOT]** `useStreamResponse` 文件头注释从 "解析 NDJSON 流格式" 改为
+  "解析 SSE 流格式（按 `\n\n` 分隔事件块）" 以匹配实际实现。
+- **[COPILOT]** `_stream_with_think_detection` 用 `list[str] + "".join()`
+  代替 `full_text += content`，避免 CPython 下 O(n²) 的字符串拼接代价。
+- **[COPILOT]** `loadPostIntoClipboard` 重命名为 `loadPostContent`——函数
+  只拉取并返回 content，没有写剪贴板，名字必须一致。
+- **[COPILOT]** `useAiToolTarget.ts` 文件头注释校准：删除不存在的"无 target
+  自动复制"fallback 描述，改为准确说明"无 target 时 apply 动作 toast 错误
+  返回 false，调用方应改用 copyToClipboard"。
+
 ### 📄 文档
 
 - `docs/architecture.md` 更新 AI SSE 协议节，记录 `result` 事件格式。
