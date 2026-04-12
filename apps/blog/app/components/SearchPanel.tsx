@@ -30,6 +30,14 @@ interface SearchPanelProps {
 
 const TRENDING_SEARCHES = ['Spring Boot', 'React', 'Docker', 'Kubernetes', 'TypeScript'];
 
+/** Format ISO timestamp to YYYY-MM-DD */
+function formatDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const SearchResultItem = React.memo(({
   result,
   isActive,
@@ -64,16 +72,16 @@ const SearchResultItem = React.memo(({
         {result.highlight && (
           <p className="text-sm text-[var(--text-muted)] line-clamp-2 mb-2">{result.highlight}</p>
         )}
-        <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
+        <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] overflow-hidden">
           {result.category && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 shrink-0">
               <Folder className="h-3 w-3" />
-              {result.category}
+              <span className="truncate max-w-[6rem]">{result.category}</span>
             </span>
           )}
-          <span>{result.publishedAt}</span>
+          <span className="shrink-0">{formatDate(result.publishedAt)}</span>
           {result.score != null && result.score > 0 && (
-            <span className="px-1.5 py-0.5 rounded text-primary border border-primary/30 text-xs">
+            <span className="shrink-0 px-1.5 py-0.5 rounded text-primary border border-primary/30 text-xs whitespace-nowrap">
               {result.source === 'semantic'
                 ? `匹配度 ${Math.round(result.score * 100)}%`
                 : result.source === 'keyword'
@@ -104,7 +112,20 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(true);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [semanticEnabled, setSemanticEnabled] = useState(false);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 获取搜索功能开关状态
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/v1/public/search/features')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.data?.semanticEnabled) setSemanticEnabled(true);
+        else setSemanticEnabled(false);
+      })
+      .catch(() => setSemanticEnabled(false));
+  }, [isOpen]);
 
   // 卸载时清理定时器
   useEffect(() => {
@@ -568,10 +589,12 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                 关闭
               </span>
             </div>
-            <div className="flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-primary" />
-              <span>AI 语义搜索已启用</span>
-            </div>
+            {semanticEnabled && (
+              <div className="flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-primary" />
+                <span>AI 语义搜索已启用</span>
+              </div>
+            )}
           </div>
         </div>
       </motion.div>
