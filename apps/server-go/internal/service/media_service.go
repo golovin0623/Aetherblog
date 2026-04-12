@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -41,10 +42,26 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	}
 	defer f.Close()
 
-	// 确定 MIME 类型：优先使用请求头，其次根据文件扩展名猜测
-	mimeType := fh.Header.Get("Content-Type")
-	if mimeType == "" || mimeType == "application/octet-stream" {
-		mimeType = guessMimeType(fh.Filename)
+	// 确定 MIME 类型：通过文件内容嗅探（magic bytes）验证，防止扩展名欺骗
+	sniffBuf := make([]byte, 512)
+	n, _ := io.ReadAtLeast(f, sniffBuf, 1)
+	detectedMime := http.DetectContentType(sniffBuf[:n])
+	// 重置读取位置
+	if seeker, ok := f.(io.Seeker); ok {
+		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+			return nil, fmt.Errorf("failed to reset file reader: %w", err)
+		}
+	}
+
+	// 优先使用内容嗅探结果；仅当嗅探为通用类型时回退到扩展名猜测
+	mimeType := detectedMime
+	if mimeType == "application/octet-stream" {
+		headerMime := fh.Header.Get("Content-Type")
+		if headerMime != "" && headerMime != "application/octet-stream" {
+			mimeType = headerMime
+		} else {
+			mimeType = guessMimeType(fh.Filename)
+		}
 	}
 	fileType := classifyFileType(mimeType)
 
