@@ -191,6 +191,8 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
       if (!res.ok) {
         setResults([]);
         setIsLoading(false);
+        setIsAiLoading(false);
+        setAiAnswer(null);
         return;
       }
       const data = await res.json();

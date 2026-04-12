@@ -146,7 +146,8 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 
 	settingSvc := service.NewSiteSettingService(siteSettingRepo)
 	aiClient := service.NewAIClient(s.Config.AI)
-	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc)
+	internalToken := s.Config.AI.InternalServiceToken
+	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc, internalToken)
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))
@@ -190,9 +191,13 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	commentPublic.POST("/post/:postId", commentHandler.Submit, middleware.RateLimitByIP(s.Redis, "rate:comment", 5, time.Minute))
 
 	// --- 公开搜索 API ---
-	searchSvc := service.NewSearchService(postRepo, aiClient, settingSvc, s.Redis)
+	searchSvc := service.NewSearchService(postRepo, aiClient, settingSvc, s.Redis, internalToken)
 	searchHandler := handler.NewSearchHandler(searchSvc)
 	searchPublic := public.Group("/search")
+	// TODO: These rate limits (30/min for search, 5/min for QA) are hardcoded because
+	// rate limit middleware is initialized at startup before config values from the database
+	// are available. Consider implementing dynamic rate limiting that reads from search config
+	// (search.anon_search_rate_per_min, search.anon_qa_rate_per_min) at request time.
 	searchPublic.GET("", searchHandler.Search, middleware.RateLimitByIP(s.Redis, "rate:search", 30, time.Minute))
 	searchPublic.GET("/qa", searchHandler.QA, middleware.RateLimitByIP(s.Redis, "rate:qa", 5, time.Minute))
 
