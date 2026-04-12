@@ -323,6 +323,9 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
             {!isFormExpanded && (
               <motion.button
                 type="button"
+                aria-expanded="false"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
                 ref={formTriggerRef}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
