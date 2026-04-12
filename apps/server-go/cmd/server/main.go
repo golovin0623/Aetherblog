@@ -60,7 +60,7 @@ func main() {
 
 	// 安全校验：JWT 密钥不得为空
 	if cfg.JWT.Secret == "" {
-		log.Fatal().Msg("JWT secret must be configured — set AETHERBLOG_JWT_SECRET or jwt.secret in config.yaml")
+		log.Fatal().Msg("JWT secret must be configured — set AETHERBLOG_JWT_SECRET, JWT_SECRET, or jwt.secret in config.yaml")
 	}
 
 	// 安全警告：Cookie.Secure 未启用
