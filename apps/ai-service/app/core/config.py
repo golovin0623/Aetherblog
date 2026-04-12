@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     jwt_jwks_url: str | None = Field(default=None, validation_alias="AI_JWT_JWKS_URL")
     jwt_issuer: str | None = Field(default=None, validation_alias="AI_JWT_ISSUER")
     jwt_audience: str | None = Field(default=None, validation_alias="AI_JWT_AUDIENCE")
+    internal_service_token: str = Field(default="aetherblog-internal-2024", alias="AI_INTERNAL_SERVICE_TOKEN")
 
     rate_limit_user_per_min: int = Field(default=10, alias="AI_RATE_LIMIT_USER_PER_MIN")
     rate_limit_global_per_min: int = Field(default=100, alias="AI_RATE_LIMIT_GLOBAL_PER_MIN")
