@@ -1,7 +1,7 @@
 // 连通性测试组件
 // ref: §5.1 - AI Service 架构
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Loader2, CheckCircle2, XCircle, Zap, ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { AiModel } from '@/services/aiProviderService';
@@ -36,7 +36,10 @@ export default function ConnectionTest({
   const embeddingTestMutation = useTestEmbeddingCredential();
   const activeMutation = testMode === 'chat' ? chatTestMutation : embeddingTestMutation;
 
-  const filteredModels = models.filter((m) => m.model_type === testMode && m.is_enabled);
+  const filteredModels = useMemo(
+    () => models.filter((m) => m.model_type === testMode && m.is_enabled),
+    [models, testMode]
+  );
 
   // 点击外部时关闭下拉框
   useEffect(() => {
@@ -55,11 +58,15 @@ export default function ConnectionTest({
       setSelectedModelId(defaultModelId);
       return;
     }
+    // 当前选中的模型仍在列表中，无需切换
     if (selectedModelId && filteredModels.some((m) => m.model_id === selectedModelId)) {
       return;
     }
+    // 选择列表中第一个可用模型，或清空
     setSelectedModelId(filteredModels[0]?.model_id || '');
-  }, [testMode, defaultModelId, filteredModels, selectedModelId]);
+    // 切换供应商时清除上次测试结果
+    setResult(null);
+  }, [testMode, defaultModelId, filteredModels]); // 移除 selectedModelId 避免循环依赖
 
   // 切换模式时清除上次结果
   const handleModeChange = (mode: TestMode) => {
