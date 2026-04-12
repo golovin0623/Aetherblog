@@ -54,6 +54,9 @@ export default function ConnectionTest({
 
   // 切换模式或模型列表变化时，重选默认模型
   useEffect(() => {
+    // 切换供应商/模式时清除上次测试结果
+    setResult(null);
+
     if (testMode === 'chat' && defaultModelId) {
       setSelectedModelId(defaultModelId);
       return;
@@ -64,8 +67,6 @@ export default function ConnectionTest({
     }
     // 选择列表中第一个可用模型，或清空
     setSelectedModelId(filteredModels[0]?.model_id || '');
-    // 切换供应商时清除上次测试结果
-    setResult(null);
   }, [testMode, defaultModelId, filteredModels, selectedModelId]);
 
   // 切换模式时清除上次结果
