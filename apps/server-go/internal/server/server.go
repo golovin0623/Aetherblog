@@ -144,12 +144,14 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	adminJWT := middleware.JWTAuth(s.Config.JWT.Secret)
 	admin := api.Group("/v1/admin", adminJWT)
 
-	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis)
+	settingSvc := service.NewSiteSettingService(siteSettingRepo)
+	aiClient := service.NewAIClient(s.Config.AI)
+	postSvc := service.NewPostService(postRepo, catRepo, tagRepo, s.Redis, aiClient, settingSvc)
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))
 	handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo)).MountAdmin(admin.Group("/friend-links"))
-	handler.NewSiteSettingHandler(service.NewSiteSettingService(siteSettingRepo)).Mount(admin.Group("/settings"))
+	handler.NewSiteSettingHandler(settingSvc).Mount(admin.Group("/settings"))
 
 	// --- 系统监控模块 ---
 	systemGroup := admin.Group("/system")
@@ -170,7 +172,6 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 
 	// --- 公开路由 ---
 	public := api.Group("/v1/public")
-	settingSvc := service.NewSiteSettingService(siteSettingRepo)
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountPublic(public.Group("/categories"))
 	handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo)).MountPublic(public.Group("/friend-links"))
 	handler.NewSiteHandler(settingSvc, userRepo, catRepo, tagRepo, postRepo).Mount(public.Group("/site"))
@@ -187,6 +188,13 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	commentHandler.MountPublic(commentPublic)
 	// 公开评论提交速率限制：每 IP 每分钟最多 5 次
 	commentPublic.POST("/post/:postId", commentHandler.Submit, middleware.RateLimitByIP(s.Redis, "rate:comment", 5, time.Minute))
+
+	// --- 公开搜索 API ---
+	searchSvc := service.NewSearchService(postRepo, aiClient, settingSvc, s.Redis)
+	searchHandler := handler.NewSearchHandler(searchSvc)
+	searchPublic := public.Group("/search")
+	searchPublic.GET("", searchHandler.Search, middleware.RateLimitByIP(s.Redis, "rate:search", 30, time.Minute))
+	searchPublic.GET("/qa", searchHandler.QA, middleware.RateLimitByIP(s.Redis, "rate:qa", 5, time.Minute))
 
 	// --- 媒体系统 ---
 	localStore := storage.NewLocalStorage(s.Config.Upload.Path, "/api/uploads")
@@ -226,6 +234,15 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	aiHandler := handler.NewAiHandler(s.Config)
 	aiHandler.Mount(admin.Group("/ai"))
 	aiHandler.MountProviders(admin.Group("/providers"))
+
+	// --- 搜索管理 ---
+	searchAdmin := admin.Group("/search")
+	searchAdmin.GET("/config", searchHandler.GetConfig)
+	searchAdmin.PATCH("/config", searchHandler.UpdateConfig)
+	searchAdmin.GET("/stats", searchHandler.GetStats)
+	searchAdmin.POST("/reindex", searchHandler.Reindex)
+	searchAdmin.POST("/retry-failed", searchHandler.RetryFailed)
+	searchAdmin.GET("/embedding-status", searchHandler.EmbeddingStatus)
 }
 
 // healthHandler 处理健康检查请求，依次检测数据库和 Redis 连通性并返回状态。

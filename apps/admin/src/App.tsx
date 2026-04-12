@@ -22,6 +22,7 @@ const MonitorPage = lazy(() => import('./pages/MonitorPage'));
 const FolderPermissionsPage = lazy(() => import('./pages/media/FolderPermissionsPage'));
 const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
 const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
+const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 
 // 命名导出需要特殊处理
@@ -86,6 +87,7 @@ function App() {
               <Route path="ai-tools" element={<AIToolsPage />} />
               <Route path="ai-test" element={<AiTestPage />} />
               <Route path="ai-config" element={<AiConfigPage />} />
+              <Route path="search-config" element={<SearchConfigPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="monitor" element={<MonitorPage />} />
               <Route path="activities" element={<ActivitiesPage />} />

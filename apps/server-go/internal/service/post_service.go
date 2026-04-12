@@ -28,21 +28,26 @@ const draftTTL = 7 * 24 * time.Hour
 
 // PostService 管理博客文章的增删改查及相关业务规则。
 type PostService struct {
-	repo    *repository.PostRepo
-	catRepo *repository.CategoryRepo
-	tagRepo *repository.TagRepo
-	rdb     *redis.Client
+	repo       *repository.PostRepo
+	catRepo    *repository.CategoryRepo
+	tagRepo    *repository.TagRepo
+	rdb        *redis.Client
+	aiClient   *AIClient
+	settingSvc *SiteSettingService
 }
 
 // NewPostService 创建一个 PostService，依赖给定的仓储和 Redis 客户端。
 // rdb 可为 nil；Redis 不可用时，草稿自动保存功能会静默禁用。
+// aiClient 和 settingSvc 可为 nil；不可用时，索引触发功能静默禁用。
 func NewPostService(
 	repo *repository.PostRepo,
 	catRepo *repository.CategoryRepo,
 	tagRepo *repository.TagRepo,
 	rdb *redis.Client,
+	aiClient *AIClient,
+	settingSvc *SiteSettingService,
 ) *PostService {
-	return &PostService{repo: repo, catRepo: catRepo, tagRepo: tagRepo, rdb: rdb}
+	return &PostService{repo: repo, catRepo: catRepo, tagRepo: tagRepo, rdb: rdb, aiClient: aiClient, settingSvc: settingSvc}
 }
 
 // --- 管理后台接口 ---
@@ -158,6 +163,11 @@ func (s *PostService) Create(ctx context.Context, req dto.CreatePostRequest, aut
 		s.repo.SetTags(ctx, out.ID, req.TagIDs)
 	}
 
+	// 发布时触发索引
+	if out.Status == "PUBLISHED" {
+		s.triggerIndexing(out.ID, "upsert")
+	}
+
 	return s.enrichDetail(ctx, out, true)
 }
 
@@ -214,6 +224,12 @@ func (s *PostService) Update(ctx context.Context, id int64, req dto.CreatePostRe
 
 	// 清除 Redis 草稿缓存
 	s.deleteDraft(ctx, id)
+
+	// 已发布文章更新时触发索引
+	if out.Status == "PUBLISHED" {
+		s.triggerIndexing(out.ID, "upsert")
+	}
+
 	return s.enrichDetail(ctx, out, true)
 }
 
@@ -316,9 +332,10 @@ func (s *PostService) AutoSave(ctx context.Context, id int64, req dto.CreatePost
 	return s.rdb.Set(ctx, draftKeyPrefix+fmt.Sprintf("%d", id), data, draftTTL).Err()
 }
 
-// Delete 软删除指定文章，并清除对应的 Redis 草稿缓存。
+// Delete 软删除指定文章，并清除对应的 Redis 草稿缓存和搜索索引。
 func (s *PostService) Delete(ctx context.Context, id int64) error {
 	s.deleteDraft(ctx, id)
+	s.triggerIndexing(id, "delete")
 	return s.repo.SoftDelete(ctx, id)
 }
 
@@ -331,6 +348,9 @@ func (s *PostService) Publish(ctx context.Context, id int64) error {
 		fields["published_at"] = now
 	}
 	_, err := s.repo.UpdateProperties(ctx, id, fields)
+	if err == nil {
+		s.triggerIndexing(id, "upsert")
+	}
 	return err
 }
 
@@ -690,4 +710,74 @@ func intVal(p *int, def int) int {
 		return def
 	}
 	return *p
+}
+
+// --- 搜索索引触发 ---
+
+// triggerIndexing 异步通知 AI service 索引或删除文章向量。
+// 仅在 aiClient 可用且搜索配置开启自动索引时触发。
+// 使用独立 goroutine 和 context，不阻塞主流程。
+func (s *PostService) triggerIndexing(postID int64, action string) {
+	if s.aiClient == nil {
+		return
+	}
+
+	// 检查自动索引开关
+	if s.settingSvc != nil {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		val, _ := s.settingSvc.GetValue(bgCtx, "search.auto_index_on_publish")
+		if val == "false" {
+			return
+		}
+		// 检查语义搜索是否启用
+		val2, _ := s.settingSvc.GetValue(bgCtx, "search.semantic_enabled")
+		if val2 == "false" && action != "delete" {
+			return
+		}
+	}
+
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		headers := map[string]string{
+			"X-Internal-Service": "go-backend",
+		}
+
+		if action == "delete" {
+			payload := fmt.Sprintf(`{"postId":%d,"action":"delete"}`, postID)
+			body, _, err := s.aiClient.DoSync(bgCtx, "POST", "/api/v1/admin/search/index",
+				strings.NewReader(payload), headers)
+			if err != nil {
+				return
+			}
+			body.Close()
+			return
+		}
+
+		// 获取文章内容用于索引
+		post, err := s.repo.FindByID(bgCtx, postID)
+		if err != nil || post == nil {
+			return
+		}
+
+		content := ""
+		if post.ContentMarkdown != nil {
+			content = *post.ContentMarkdown
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"postId":  post.ID,
+			"title":   post.Title,
+			"slug":    post.Slug,
+			"content": content,
+			"action":  "upsert",
+		})
+		body, _, err := s.aiClient.DoSync(bgCtx, "POST", "/api/v1/admin/search/index",
+			strings.NewReader(string(payload)), headers)
+		if err != nil {
+			return
+		}
+		body.Close()
+	}()
 }

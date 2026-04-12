@@ -165,6 +165,27 @@ async def require_admin(user: UserClaims = Depends(require_user)) -> UserClaims:
     return user
 
 
+async def require_admin_or_internal(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE_NAME),
+) -> UserClaims | dict:
+    """Allow admin JWT or internal service token for Go backend calls."""
+    internal_token = request.headers.get("X-Internal-Service")
+    settings = get_settings()
+    if internal_token and internal_token == settings.internal_service_token:
+        # Internal service call from Go backend
+        return UserClaims(user_id="system", role="admin")
+
+    # Fall back to normal admin auth
+    return await require_admin(
+        user=await require_user(
+            authorization=authorization,
+            access_token_cookie=access_token_cookie,
+        )
+    )
+
+
 async def rate_limit(
     request: Request,
     user: UserClaims = Depends(require_user),
@@ -173,6 +194,23 @@ async def rate_limit(
     endpoint = request.url.path
     await limiter.enforce_global_limit(endpoint)
     await limiter.enforce_user_limit(user.user_id, endpoint)
+    return user
+
+
+async def anonymous_rate_limit(
+    request: Request,
+    user: dict | None = Depends(get_current_user),
+    limiter: RateLimiter = Depends(get_rate_limiter),
+) -> dict | None:
+    """Rate limit for anonymous users (IP-based) or authenticated users."""
+    endpoint = request.url.path
+    await limiter.enforce_global_limit(endpoint)
+    if user and user.get("sub"):
+        await limiter.enforce_user_limit(str(user["sub"]), endpoint)
+    else:
+        # For anonymous users, rate limit by IP
+        client_ip = request.client.host if request.client else "unknown"
+        await limiter.enforce_user_limit(f"anon:{client_ip}", endpoint)
     return user
 
 
