@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
@@ -120,7 +121,8 @@ func (h *SearchHandler) UpdateConfig(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无有效配置项")
 	}
 	if err := h.svc.UpdateSearchConfig(c.Request().Context(), filtered); err != nil {
-		return response.FailWith(c, response.Failure, fmt.Sprintf("保存配置失败: %v", err))
+		log.Error().Err(err).Msg("search config update failed")
+		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
 }

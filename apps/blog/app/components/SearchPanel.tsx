@@ -30,12 +30,12 @@ interface SearchPanelProps {
 
 const TRENDING_SEARCHES = ['Spring Boot', 'React', 'Docker', 'Kubernetes', 'TypeScript'];
 
-/** Format ISO timestamp to YYYY-MM-DD */
+/** Format ISO timestamp to YYYY-MM-DD (UTC to avoid timezone day shift) */
 function formatDate(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 const SearchResultItem = React.memo(({
@@ -118,13 +118,16 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   // 获取搜索功能开关状态
   useEffect(() => {
     if (!isOpen) return;
-    fetch('/api/v1/public/search/features')
+    const controller = new AbortController();
+    fetch('/api/v1/public/search/features', { signal: controller.signal })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (data?.data?.semanticEnabled) setSemanticEnabled(true);
-        else setSemanticEnabled(false);
+        setSemanticEnabled(!!data?.data?.semanticEnabled);
       })
-      .catch(() => setSemanticEnabled(false));
+      .catch(err => {
+        if (err.name !== 'AbortError') setSemanticEnabled(false);
+      });
+    return () => controller.abort();
   }, [isOpen]);
 
   // 卸载时清理定时器
