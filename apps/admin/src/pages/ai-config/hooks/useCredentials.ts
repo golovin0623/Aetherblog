@@ -138,6 +138,35 @@ export function useTestCredential() {
 }
 
 /**
+ * 测试向量化凭证连通性
+ */
+export function useTestEmbeddingCredential() {
+  return useMutation({
+    mutationFn: async ({
+      credentialId,
+      modelId,
+    }: {
+      credentialId: number;
+      modelId?: string;
+    }): Promise<ConnectionTestResult> => {
+      const res = await aiProviderService.testEmbeddingCredential(credentialId, modelId);
+      return res.data;
+    },
+    onSuccess: (result) => {
+      if (result.success) {
+        const latency = result.latency_ms ? ` (${result.latency_ms.toFixed(0)}ms)` : '';
+        toast.success(`向量化连接成功${latency}`);
+      } else {
+        toast.error(result.message || '向量化连接失败');
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(resolveAiServiceErrorMessage(error, '向量化测试失败'));
+    },
+  });
+}
+
+/**
  * 按供应商分组凭证
  */
 export function groupCredentialsByProvider(credentials: AiCredential[]) {

@@ -155,55 +155,123 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     }
   }, []);
 
+  // 跟踪当前 QA 流的 EventSource，便于清理
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  // 清理 EventSource
+  const closeEventSource = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  }, []);
+
+  // 组件卸载时清理 EventSource
+  useEffect(() => {
+    return () => closeEventSource();
+  }, [closeEventSource]);
+
   // 执行搜索
   const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults([]);
       setAiAnswer(null);
       setShowHistory(true);
+      closeEventSource();
       return;
     }
 
     setIsLoading(true);
     setShowHistory(false);
+    closeEventSource();
 
     try {
-      // 模拟API调用
-      await new Promise((r) => setTimeout(r, 300));
-
-      // 模拟无结果的情况
-      if (/empty|null/.test(searchQuery.toLowerCase())) {
+      // 调用搜索 API
+      const res = await fetch(`/api/v1/public/search?q=${encodeURIComponent(searchQuery)}&mode=hybrid&limit=10`);
+      if (!res.ok) {
         setResults([]);
+        setIsLoading(false);
+        return;
+      }
+      const data = await res.json();
+      const items = data?.data?.items;
+      if (Array.isArray(items) && items.length > 0) {
+        setResults(items.map((item: Record<string, unknown>) => ({
+          id: String(item.id ?? ''),
+          title: String(item.title ?? ''),
+          slug: String(item.slug ?? ''),
+          highlight: String(item.highlight || item.summary || ''),
+          category: item.category ? String(item.category) : undefined,
+          publishedAt: String(item.publishedAt ?? ''),
+          score: typeof item.score === 'number' ? item.score : undefined,
+        })));
       } else {
-        setResults([
-          {
-            id: '1',
-            title: `关于 ${searchQuery} 的技术实践`,
-            slug: 'example-post',
-            highlight: `这篇文章详细介绍了 ${searchQuery} 的最佳实践...`,
-            category: '技术分享',
-            tags: [searchQuery, 'Tutorial'],
-            publishedAt: '2026-01-01',
-            score: 0.95,
-          },
-        ]);
+        setResults([]);
       }
       setIsLoading(false);
 
-      // AI回答
+      // 启动 QA 流式回答
       setIsAiLoading(true);
-      await new Promise((r) => setTimeout(r, 500));
-      setAiAnswer({
-        answer: `根据博客内容，${searchQuery} 是一个非常重要的技术概念...`,
-        sources: [{ title: '相关文章', slug: 'example' }],
-      });
-      setIsAiLoading(false);
+      setAiAnswer(null);
+
+      const es = new EventSource(`/api/v1/public/search/qa?q=${encodeURIComponent(searchQuery)}`);
+      eventSourceRef.current = es;
+      let accumulatedAnswer = '';
+
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          switch (payload.type) {
+            case 'delta':
+              accumulatedAnswer += payload.content ?? '';
+              setAiAnswer(prev => ({
+                answer: accumulatedAnswer,
+                sources: prev?.sources,
+              }));
+              setIsAiLoading(false);
+              break;
+            case 'sources':
+              setAiAnswer(prev => ({
+                answer: prev?.answer ?? accumulatedAnswer,
+                sources: Array.isArray(payload.sources) ? payload.sources : undefined,
+              }));
+              break;
+            case 'done':
+              es.close();
+              eventSourceRef.current = null;
+              break;
+            case 'error':
+              logger.error('QA stream error:', payload);
+              es.close();
+              eventSourceRef.current = null;
+              setIsAiLoading(false);
+              // 出错时不显示 AI 回答区域
+              if (!accumulatedAnswer) {
+                setAiAnswer(null);
+              }
+              break;
+          }
+        } catch {
+          // 忽略无法解析的消息
+        }
+      };
+
+      es.onerror = () => {
+        es.close();
+        eventSourceRef.current = null;
+        setIsAiLoading(false);
+        // 连接失败且无已有内容时，隐藏 AI 回答
+        if (!accumulatedAnswer) {
+          setAiAnswer(null);
+        }
+      };
     } catch (error) {
       logger.error('Search error:', error);
+      setResults([]);
       setIsLoading(false);
       setIsAiLoading(false);
     }
-  }, []);
+  }, [closeEventSource]);
 
   // 防抖搜索
   useEffect(() => {

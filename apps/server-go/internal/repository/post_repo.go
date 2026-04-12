@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -470,4 +471,37 @@ func (r *PostRepo) CountPublished(ctx context.Context) (int64, error) {
 	err := r.db.GetContext(ctx, &n,
 		`SELECT COUNT(*) FROM posts WHERE deleted=false AND status='PUBLISHED'`)
 	return n, err
+}
+
+// --- 全文搜索 ---
+
+// SearchResultRow 是关键词搜索查询的投影类型。
+type SearchResultRow struct {
+	ID           int64      `db:"id"`
+	Title        string     `db:"title"`
+	Slug         string     `db:"slug"`
+	Summary      *string    `db:"summary"`
+	CategoryName *string    `db:"category_name"`
+	Rank         float64    `db:"rank"`
+	PublishedAt  *time.Time `db:"published_at"`
+}
+
+// SearchPublished 使用 PostgreSQL 全文搜索查找已发布文章，按相关性排序。
+func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
+	var rows []SearchResultRow
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
+			ts_rank(
+				to_tsvector('simple', COALESCE(p.title,'') || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
+				plainto_tsquery('simple', $1)
+			) AS rank
+		FROM posts p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
+			AND to_tsvector('simple', COALESCE(p.title,'') || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
+				@@ plainto_tsquery('simple', $1)
+		ORDER BY rank DESC
+		LIMIT $2 OFFSET $3`,
+		keyword, limit, offset)
+	return rows, err
 }
