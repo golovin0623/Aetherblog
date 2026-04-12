@@ -66,7 +66,7 @@ export default function ConnectionTest({
     setSelectedModelId(filteredModels[0]?.model_id || '');
     // 切换供应商时清除上次测试结果
     setResult(null);
-  }, [testMode, defaultModelId, filteredModels]); // 移除 selectedModelId 避免循环依赖
+  }, [testMode, defaultModelId, filteredModels, selectedModelId]);
 
   // 切换模式时清除上次结果
   const handleModeChange = (mode: TestMode) => {
