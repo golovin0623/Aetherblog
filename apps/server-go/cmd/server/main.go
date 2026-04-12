@@ -58,6 +58,16 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to load config")
 	}
 
+	// 安全校验：JWT 密钥不得为空
+	if cfg.JWT.Secret == "" {
+		log.Fatal().Msg("JWT secret must be configured — set AETHERBLOG_JWT_SECRET or jwt.secret in config.yaml")
+	}
+
+	// 安全警告：Cookie.Secure 未启用
+	if !cfg.Auth.Cookie.Secure {
+		log.Warn().Msg("Cookie.Secure is disabled — enable via AETHERBLOG_AUTH_COOKIE_SECURE=true for production (HTTPS)")
+	}
+
 	// 创建并启动服务器
 	srv, err := server.New(cfg)
 	if err != nil {

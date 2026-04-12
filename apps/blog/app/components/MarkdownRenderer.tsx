@@ -13,12 +13,22 @@ import type { PluggableList } from 'unified';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
 import type { BundledLanguage } from 'shiki';
+import DOMPurify from 'dompurify';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
 import { buildHeadingIdMap } from '../lib/headingId';
 import remarkDirective from 'remark-directive';
 import remarkAlertBlock from '../lib/remarkAlertBlock';
 import { AlertBlock } from './AlertBlock';
+
+// DOMPurify 配置 — 用于消毒 mermaid SVG 和 shiki HTML 输出
+const SVG_SANITIZE_CONFIG = {
+  USE_PROFILES: { svg: true, svgFilters: true },
+};
+const SHIKI_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  ADD_ATTR: ['class', 'style'],
+};
 
 // ============================================================================
 // rehype-sanitize 白名单 — 允许博客常用 HTML 属性，阻止 XSS
@@ -29,20 +39,19 @@ const sanitizeSchema: typeof defaultSchema = {
     ...(defaultSchema.tagNames || []),
     // 扩展多媒体与语意化标签
     'center', 'figure', 'figcaption', 'mark', 'u', 'abbr', 'details', 'summary',
-    'video', 'audio', 'source', 'track', 'picture', 'kbd', 'sup', 'sub', 'del', 'iframe'
+    'video', 'audio', 'source', 'track', 'picture', 'kbd', 'sup', 'sub', 'del'
   ],
   attributes: {
     ...defaultSchema.attributes,
-    // 全局放行核心排版属性
+    // 全局放行核心排版属性（移除 style 以防止 CSS 注入）
     '*': [
       ...(defaultSchema.attributes?.['*'] || []),
-      'className', 'style', 'id', 'align', 'valign', 'width', 'height'
+      'className', 'id', 'align', 'valign', 'width', 'height'
     ],
     // 专用属性支持
     video: ['src', 'controls', 'autoplay', 'loop', 'muted', 'poster', 'preload'],
     audio: ['src', 'controls', 'autoplay', 'loop', 'muted', 'preload'],
     source: ['src', 'type', 'srcSet', 'media'],
-    iframe: ['src', 'width', 'height', 'frameBorder', 'allowFullScreen', 'scrolling', 'title'],
     a: [
       ...(defaultSchema.attributes?.a || []),
       'target', 'rel', 'download'
@@ -473,7 +482,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
   return (
     <div
       className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG) }}
     />
   );
 };
@@ -626,7 +635,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
         {highlightedHtml ? (
           <div
             className="shiki-wrapper"
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightedHtml, SHIKI_SANITIZE_CONFIG) }}
           />
         ) : (
           <div className="shiki-wrapper">
