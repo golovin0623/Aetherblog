@@ -136,7 +136,7 @@ export default function SearchConfigPage() {
 
   // Mutation to update embedding routing
   const updateRoutingMutation = useMutation({
-    mutationFn: (modelId: number) =>
+    mutationFn: (modelId: number | null) =>
       aiProviderService.updateRouting('embedding', { primary_model_id: modelId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['embedding-routing'] });
@@ -351,8 +351,8 @@ export default function SearchConfigPage() {
                   <select
                     value={currentEmbeddingModelId ?? ''}
                     onChange={(e) => {
-                      const id = Number(e.target.value);
-                      if (id) updateRoutingMutation.mutate(id);
+                      const val = e.target.value;
+                      updateRoutingMutation.mutate(val ? Number(val) : null);
                     }}
                     disabled={updateRoutingMutation.isPending}
                     className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all disabled:opacity-50"
