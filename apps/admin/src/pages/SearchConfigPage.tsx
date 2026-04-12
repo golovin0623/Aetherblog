@@ -194,9 +194,23 @@ export default function SearchConfigPage() {
   });
 
   const handleSave = () => {
+    // Map camelCase form keys to search.* database keys
+    const fieldToSettingKey: Record<string, string> = {
+      keywordEnabled: 'search.keyword_enabled',
+      semanticEnabled: 'search.semantic_enabled',
+      aiQaEnabled: 'search.ai_qa_enabled',
+      anonSearchRatePerMin: 'search.anon_search_rate_per_min',
+      anonQaRatePerMin: 'search.anon_qa_rate_per_min',
+      autoIndexOnPublish: 'search.auto_index_on_publish',
+    };
+
     const payload: Record<string, string> = {};
     for (const [key, value] of Object.entries(formData)) {
-      payload[key] = String(value);
+      const settingKey = fieldToSettingKey[key];
+      if (settingKey) {
+        // Boolean values as "true"/"false" strings, numbers as string numbers
+        payload[settingKey] = String(value);
+      }
     }
     saveMutation.mutate(payload);
   };
@@ -425,7 +439,7 @@ export default function SearchConfigPage() {
                   关键词搜索
                 </p>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  基于 Elasticsearch 的全文检索
+                  基于 PostgreSQL tsvector 的全文检索
                 </p>
               </div>
               <Toggle

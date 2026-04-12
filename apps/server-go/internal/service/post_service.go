@@ -28,12 +28,13 @@ const draftTTL = 7 * 24 * time.Hour
 
 // PostService 管理博客文章的增删改查及相关业务规则。
 type PostService struct {
-	repo       *repository.PostRepo
-	catRepo    *repository.CategoryRepo
-	tagRepo    *repository.TagRepo
-	rdb        *redis.Client
-	aiClient   *AIClient
-	settingSvc *SiteSettingService
+	repo          *repository.PostRepo
+	catRepo       *repository.CategoryRepo
+	tagRepo       *repository.TagRepo
+	rdb           *redis.Client
+	aiClient      *AIClient
+	settingSvc    *SiteSettingService
+	internalToken string
 }
 
 // NewPostService 创建一个 PostService，依赖给定的仓储和 Redis 客户端。
@@ -46,8 +47,9 @@ func NewPostService(
 	rdb *redis.Client,
 	aiClient *AIClient,
 	settingSvc *SiteSettingService,
+	internalToken string,
 ) *PostService {
-	return &PostService{repo: repo, catRepo: catRepo, tagRepo: tagRepo, rdb: rdb, aiClient: aiClient, settingSvc: settingSvc}
+	return &PostService{repo: repo, catRepo: catRepo, tagRepo: tagRepo, rdb: rdb, aiClient: aiClient, settingSvc: settingSvc, internalToken: internalToken}
 }
 
 // --- 管理后台接口 ---
@@ -716,33 +718,31 @@ func intVal(p *int, def int) int {
 
 // triggerIndexing 异步通知 AI service 索引或删除文章向量。
 // 仅在 aiClient 可用且搜索配置开启自动索引时触发。
-// 使用独立 goroutine 和 context，不阻塞主流程。
+// 所有 DB 查询和配置检查都在 goroutine 内执行，不阻塞主流程。
 func (s *PostService) triggerIndexing(postID int64, action string) {
 	if s.aiClient == nil {
 		return
-	}
-
-	// 检查自动索引开关
-	if s.settingSvc != nil {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		val, _ := s.settingSvc.GetValue(bgCtx, "search.auto_index_on_publish")
-		if val == "false" {
-			return
-		}
-		// 检查语义搜索是否启用
-		val2, _ := s.settingSvc.GetValue(bgCtx, "search.semantic_enabled")
-		if val2 == "false" && action != "delete" {
-			return
-		}
 	}
 
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
+		// 检查自动索引开关（在 goroutine 内部执行，避免阻塞调用方）
+		if s.settingSvc != nil {
+			val, _ := s.settingSvc.GetValue(bgCtx, "search.auto_index_on_publish")
+			if val == "false" {
+				return
+			}
+			// 检查语义搜索是否启用
+			val2, _ := s.settingSvc.GetValue(bgCtx, "search.semantic_enabled")
+			if val2 == "false" && action != "delete" {
+				return
+			}
+		}
+
 		headers := map[string]string{
-			"X-Internal-Service": "go-backend",
+			"X-Internal-Service": s.internalToken,
 		}
 
 		if action == "delete" {

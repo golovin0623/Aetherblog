@@ -5,7 +5,6 @@ import time
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
 
 from app.api.deps import (
-    get_current_user,
     get_llm_router,
     get_metrics,
     get_pg_pool,
@@ -201,18 +200,20 @@ async def semantic_search_internal(
     request: Request,
     q: str = Query(min_length=1),
     limit: int = Query(default=10, ge=1, le=50),
-    user=Depends(get_current_user),
+    user=Depends(require_admin_or_internal),
     vector_store=Depends(get_vector_store),
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[SemanticSearchData]:
-    """Internal semantic search endpoint for Go backend proxy (no JWT required)."""
+    """Internal semantic search endpoint for Go backend proxy (requires admin or internal service token)."""
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
     model = settings.model_embedding
-    user_id = "anonymous"
-    if user and user.get("sub"):
+    user_id = "system"
+    if hasattr(user, "user_id"):
+        user_id = user.user_id
+    elif isinstance(user, dict) and user.get("sub"):
         user_id = str(user["sub"])
     try:
         results = await vector_store.semantic_search(q, limit)
@@ -240,11 +241,12 @@ async def semantic_search_internal(
 async def qa_search(
     request: Request,
     q: str = Query(min_length=1),
-    user=Depends(get_current_user),
+    user=Depends(require_admin_or_internal),
     vector_store=Depends(get_vector_store),
     llm_router=Depends(get_llm_router),
 ):
-    """RAG QA endpoint - searches for context then generates an answer via LLM streaming."""
+    """RAG QA endpoint - searches for context then generates an answer via LLM streaming.
+    Requires admin or internal service token since it is proxied from Go backend."""
     import json as _json
     from fastapi.responses import StreamingResponse
 
@@ -315,24 +317,32 @@ async def retry_failed_indexes(
     vector_store=Depends(get_vector_store),
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
-    """Retry embedding for posts with FAILED status."""
+    """Retry embedding for posts with FAILED status using limited concurrency."""
+    import asyncio
+
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, title, slug, content_markdown FROM posts "
             "WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'FAILED' "
             "ORDER BY id LIMIT 100"
         )
-    retried = 0
-    for row in rows:
-        try:
-            await vector_store.upsert_post_embedding(
-                post_id=row["id"],
-                title=row["title"],
-                slug=row["slug"],
-                content=row["content_markdown"] or "",
-                metadata={},
-            )
-            retried += 1
-        except Exception:
-            pass  # upsert_post_embedding already updates embedding_status
+
+    sem = asyncio.Semaphore(5)  # max 5 concurrent retry operations
+
+    async def process_one(row):
+        async with sem:
+            try:
+                await vector_store.upsert_post_embedding(
+                    post_id=row["id"],
+                    title=row["title"],
+                    slug=row["slug"],
+                    content=row["content_markdown"] or "",
+                    metadata={},
+                )
+                return True
+            except Exception:
+                return False  # upsert_post_embedding already updates embedding_status
+
+    results = await asyncio.gather(*[process_one(row) for row in rows])
+    retried = sum(1 for r in results if r)
     return ApiResponse(data={"retried": retried, "total_failed": len(rows)})

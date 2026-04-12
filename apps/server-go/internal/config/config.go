@@ -113,10 +113,11 @@ type LogConfig struct {
 
 // AIConfig 存储外部 FastAPI AI 服务的连接配置。
 type AIConfig struct {
-	BaseURL           string        `koanf:"base_url"`            // FastAPI AI 服务的基础 URL（默认："http://localhost:8000"）
-	ConnectTimeout    time.Duration `koanf:"connect_timeout"`     // AI 服务请求的 TCP 连接超时时间（默认：5s）
-	ReadTimeout       time.Duration `koanf:"read_timeout"`        // 非流式 AI 响应的读取超时时间（默认：30s）
-	StreamReadTimeout time.Duration `koanf:"stream_read_timeout"` // SSE 流式响应的读取超时时间（默认：5m）
+	BaseURL              string        `koanf:"base_url"`               // FastAPI AI 服务的基础 URL（默认："http://localhost:8000"）
+	ConnectTimeout       time.Duration `koanf:"connect_timeout"`        // AI 服务请求的 TCP 连接超时时间（默认：5s）
+	ReadTimeout          time.Duration `koanf:"read_timeout"`           // 非流式 AI 响应的读取超时时间（默认：30s）
+	StreamReadTimeout    time.Duration `koanf:"stream_read_timeout"`    // SSE 流式响应的读取超时时间（默认：5m）
+	InternalServiceToken string        `koanf:"internal_service_token"` // 内部服务间通信令牌（默认："aetherblog-internal-2024"）
 }
 
 // ESConfig 存储 Elasticsearch 集群连接配置。
@@ -263,10 +264,11 @@ func defaultConfig() *Config {
 			Level: "debug",
 		},
 		AI: AIConfig{
-			BaseURL:           "http://localhost:8000",
-			ConnectTimeout:    5 * time.Second,
-			ReadTimeout:       30 * time.Second,
-			StreamReadTimeout: 5 * time.Minute,
+			BaseURL:              "http://localhost:8000",
+			ConnectTimeout:       5 * time.Second,
+			ReadTimeout:          30 * time.Second,
+			StreamReadTimeout:    5 * time.Minute,
+			InternalServiceToken: "aetherblog-internal-2024",
 		},
 		ES: ESConfig{
 			URIs: []string{"http://localhost:9200"},
