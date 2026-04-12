@@ -15,14 +15,15 @@ import {
   Save,
   Zap,
   RotateCcw,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   searchConfigService,
   type SearchConfig,
   type IndexStats,
-  type EmbeddingStatus,
 } from '@/services/searchConfigService';
+import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 
 // --- Toggle switch (matches SettingsPage pattern) ---
 function Toggle({
@@ -119,17 +120,39 @@ export default function SearchConfigPage() {
     queryFn: () => searchConfigService.getStats(),
   });
 
-  const {
-    data: embeddingRes,
-    isLoading: embeddingLoading,
-  } = useQuery({
-    queryKey: ['search-embedding-status'],
-    queryFn: () => searchConfigService.getEmbeddingStatus(),
+  // Fetch all embedding models across all providers
+  const embeddingModelsQuery = useQuery({
+    queryKey: ['embedding-models'],
+    queryFn: () => aiProviderService.listModels(undefined, 'embedding'),
+    select: (res) => (res.data || []).filter((m: AiModel) => m.is_enabled),
   });
+
+  // Fetch current embedding routing
+  const embeddingRoutingQuery = useQuery({
+    queryKey: ['embedding-routing'],
+    queryFn: () => aiProviderService.getRouting('embedding'),
+    select: (res) => res.data,
+  });
+
+  // Mutation to update embedding routing
+  const updateRoutingMutation = useMutation({
+    mutationFn: (modelId: number) =>
+      aiProviderService.updateRouting('embedding', { primary_model_id: modelId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['embedding-routing'] });
+      queryClient.invalidateQueries({ queryKey: ['search-embedding-status'] });
+      toast.success('向量化模型已更新');
+    },
+    onError: () => toast.error('更新失败'),
+  });
+
+  const embeddingLoading = embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading;
+  const embeddingModels = embeddingModelsQuery.data || [];
+  const currentRouting = embeddingRoutingQuery.data;
+  const currentEmbeddingModelId = currentRouting?.primary_model?.id ?? null;
 
   const config = configRes?.data;
   const stats = statsRes?.data;
-  const embedding = embeddingRes?.data;
 
   // --- Local form state ---
   const [formData, setFormData] = useState<Partial<SearchConfig>>({});
@@ -231,7 +254,7 @@ export default function SearchConfigPage() {
   };
 
   // Derived state
-  const embeddingConfigured = embedding?.configured ?? false;
+  const embeddingConfigured = !!currentRouting?.primary_model;
   const semanticEnabled = formData.semanticEnabled ?? false;
 
   // --- Full page skeleton ---
@@ -315,37 +338,60 @@ export default function SearchConfigPage() {
             </h2>
           </div>
 
-          {/* Embedding model status */}
-          <div className="flex flex-wrap items-center gap-3">
-            {embeddingLoading ? (
-              <div className="h-8 w-48 bg-[var(--bg-card-hover)] rounded-lg animate-pulse" />
-            ) : embeddingConfigured ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span className="text-sm text-emerald-400 font-medium">
-                  Embedding 模型已配置
-                </span>
-                {embedding?.model_name && (
-                  <span className="text-xs text-emerald-400/70 ml-1">
-                    ({embedding.model_name})
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
-                  <span className="text-sm text-amber-400 font-medium">
-                    Embedding 模型未配置
-                  </span>
+          {/* Embedding model selector */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-[var(--text-secondary)] shrink-0">
+                向量化模型
+              </label>
+              {embeddingLoading ? (
+                <div className="h-9 flex-1 max-w-xs bg-[var(--bg-card-hover)] rounded-lg animate-pulse" />
+              ) : embeddingModels.length > 0 ? (
+                <div className="relative flex-1 max-w-xs">
+                  <select
+                    value={currentEmbeddingModelId ?? ''}
+                    onChange={(e) => {
+                      const id = Number(e.target.value);
+                      if (id) updateRoutingMutation.mutate(id);
+                    }}
+                    disabled={updateRoutingMutation.isPending}
+                    className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all disabled:opacity-50"
+                  >
+                    <option value="">未选择</option>
+                    {embeddingModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.display_name || m.model_id} ({m.provider_code})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
                 </div>
-                <button
-                  onClick={() => navigate('/ai-config')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors"
-                >
-                  前往 AI 配置
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <span className="text-sm text-amber-400 font-medium">
+                      尚未添加向量化模型
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => navigate('/ai-config')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    前往添加
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* Current model details */}
+            {!embeddingLoading && currentRouting?.primary_model && (
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-xs text-[var(--text-muted)]">
+                  当前使用: {currentRouting.primary_model.display_name || currentRouting.primary_model.model_id}
+                  {' '}({currentRouting.primary_model.provider_code})
+                </span>
               </div>
             )}
           </div>
