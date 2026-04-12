@@ -66,7 +66,7 @@ services:
     environment:
       POSTGRES_DB: aetherblog
       POSTGRES_USER: aetherblog
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
     ports:
       - "${POSTGRES_PORT:-7895}:5432"
     volumes:
@@ -91,6 +91,14 @@ services:
     image: redis:7.2-alpine
     container_name: aetherblog-redis
     restart: unless-stopped
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
+      else
+        redis-server --appendonly yes;
+      fi'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     profiles:
       - with-redis
     ports:
