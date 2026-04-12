@@ -197,23 +197,6 @@ async def rate_limit(
     return user
 
 
-async def anonymous_rate_limit(
-    request: Request,
-    user: dict | None = Depends(get_current_user),
-    limiter: RateLimiter = Depends(get_rate_limiter),
-) -> dict | None:
-    """Rate limit for anonymous users (IP-based) or authenticated users."""
-    endpoint = request.url.path
-    await limiter.enforce_global_limit(endpoint)
-    if user and user.get("sub"):
-        await limiter.enforce_user_limit(str(user["sub"]), endpoint)
-    else:
-        # For anonymous users, rate limit by IP
-        client_ip = request.client.host if request.client else "unknown"
-        await limiter.enforce_user_limit(f"anon:{client_ip}", endpoint)
-    return user
-
-
 async def get_current_user(
     authorization: str | None = Header(default=None),
     access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE_NAME),
@@ -232,3 +215,20 @@ async def get_current_user(
         return {"sub": user.user_id, "role": user.role}
     except Exception:
         return None
+
+
+async def anonymous_rate_limit(
+    request: Request,
+    user: dict | None = Depends(get_current_user),
+    limiter: RateLimiter = Depends(get_rate_limiter),
+) -> dict | None:
+    """Rate limit for anonymous users (IP-based) or authenticated users."""
+    endpoint = request.url.path
+    await limiter.enforce_global_limit(endpoint)
+    if user and user.get("sub"):
+        await limiter.enforce_user_limit(str(user["sub"]), endpoint)
+    else:
+        # For anonymous users, rate limit by IP
+        client_ip = request.client.host if request.client else "unknown"
+        await limiter.enforce_user_limit(f"anon:{client_ip}", endpoint)
+    return user
