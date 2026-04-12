@@ -66,7 +66,7 @@ services:
     environment:
       POSTGRES_DB: aetherblog
       POSTGRES_USER: aetherblog
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}  # ⚠️ 生产环境必须通过环境变量设置强密码
     ports:
       - "${POSTGRES_PORT:-7895}:5432"
     volumes:
