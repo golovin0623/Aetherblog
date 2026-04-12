@@ -50,8 +50,8 @@ func TestSearchConfigPATCH(t *testing.T) {
 	t.Run("PATCH /api/v1/admin/search/config no auth", func(t *testing.T) {
 		body := `{"search.keyword_enabled":"true"}`
 		rec := testutil.DoRequest(e, http.MethodPatch, "/api/v1/admin/search/config", body)
-		if rec.Code == http.StatusNotFound {
-			t.Errorf("PATCH without auth returned 404 (route not found), expected 401")
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("PATCH without auth: expected 401, got %d, body: %s", rec.Code, rec.Body.String())
 		}
 	})
 }
