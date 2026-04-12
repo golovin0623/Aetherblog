@@ -492,13 +492,13 @@ func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, o
 	err := r.db.SelectContext(ctx, &rows, `
 		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
 			ts_rank(
-				to_tsvector('simple', COALESCE(p.title,'') || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
+				to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
 				plainto_tsquery('simple', $1)
 			) AS rank
 		FROM posts p
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
-			AND to_tsvector('simple', COALESCE(p.title,'') || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
+			AND to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
 				@@ plainto_tsquery('simple', $1)
 		ORDER BY rank DESC
 		LIMIT $2 OFFSET $3`,

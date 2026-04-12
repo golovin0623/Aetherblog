@@ -20,10 +20,11 @@ import (
 
 // SearchService 编排关键词搜索和语义搜索，支持 RRF 融合和优雅降级。
 type SearchService struct {
-	postRepo   *repository.PostRepo
-	aiClient   *AIClient
-	settingSvc *SiteSettingService
-	rdb        *redis.Client
+	postRepo      *repository.PostRepo
+	aiClient      *AIClient
+	settingSvc    *SiteSettingService
+	rdb           *redis.Client
+	internalToken string
 }
 
 // NewSearchService 创建 SearchService 实例。
@@ -32,12 +33,14 @@ func NewSearchService(
 	aiClient *AIClient,
 	settingSvc *SiteSettingService,
 	rdb *redis.Client,
+	internalToken string,
 ) *SearchService {
 	return &SearchService{
-		postRepo:   postRepo,
-		aiClient:   aiClient,
-		settingSvc: settingSvc,
-		rdb:        rdb,
+		postRepo:      postRepo,
+		aiClient:      aiClient,
+		settingSvc:    settingSvc,
+		rdb:           rdb,
+		internalToken: internalToken,
 	}
 }
 
@@ -194,14 +197,15 @@ func (s *SearchService) keywordSearch(ctx context.Context, query string, limit i
 }
 
 // semanticSearchResult 是 AI service 语义搜索的响应结构。
+// AI service 的 PostRef schema 返回 id（字符串）, title, slug。
 type semanticSearchResult struct {
 	Code int `json:"code"`
 	Data struct {
 		Results []struct {
 			Post struct {
-				PostID int64  `json:"post_id"`
-				Title  string `json:"title"`
-				Slug   string `json:"slug"`
+				ID    string `json:"id"`
+				Title string `json:"title"`
+				Slug  string `json:"slug"`
 			} `json:"post"`
 			Similarity float64 `json:"similarity"`
 			Highlight  string  `json:"highlight"`
@@ -215,7 +219,7 @@ func (s *SearchService) semanticSearch(ctx context.Context, query string, limit 
 		url.QueryEscape(query), limit)
 
 	body, statusCode, err := s.aiClient.DoSync(ctx, http.MethodGet, path, nil,
-		map[string]string{"X-Internal-Service": "go-backend"})
+		map[string]string{"X-Internal-Service": s.internalToken})
 	if err != nil {
 		return nil, err
 	}
@@ -233,8 +237,9 @@ func (s *SearchService) semanticSearch(ctx context.Context, query string, limit 
 
 	items := make([]dto.SearchResultItem, 0, len(result.Data.Results))
 	for _, r := range result.Data.Results {
+		postID, _ := strconv.ParseInt(r.Post.ID, 10, 64)
 		items = append(items, dto.SearchResultItem{
-			ID:        r.Post.PostID,
+			ID:        postID,
 			Title:     r.Post.Title,
 			Slug:      r.Post.Slug,
 			Highlight: r.Highlight,
@@ -294,29 +299,47 @@ func fusionRRF(kwResults, semResults []dto.SearchResultItem, k, limit int) []dto
 	return items
 }
 
+// errAIClientNil 在 aiClient 未配置时返回给调用方的错误。
+var errAIClientNil = fmt.Errorf("AI service client is not configured")
+
 // ProxyQA 代理 QA 请求到 AI service 并返回 SSE 流。
 func (s *SearchService) ProxyQA(ctx context.Context, query string) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, errAIClientNil
+	}
 	path := fmt.Sprintf("/api/v1/search/qa?q=%s", url.QueryEscape(query))
 	return s.aiClient.DoStream(ctx, http.MethodGet, path, nil,
-		map[string]string{"X-Internal-Service": "go-backend"})
+		map[string]string{"X-Internal-Service": s.internalToken})
 }
 
 // ProxySearchStats 代理索引统计请求到 AI service。
 func (s *SearchService) ProxySearchStats(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, errAIClientNil
+	}
 	return s.aiClient.DoSync(ctx, http.MethodGet, "/api/v1/admin/search/stats", nil, headers)
 }
 
 // ProxyReindex 代理全量重建索引请求到 AI service。
 func (s *SearchService) ProxyReindex(ctx context.Context, body io.Reader, headers map[string]string) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, errAIClientNil
+	}
 	return s.aiClient.DoSync(ctx, http.MethodPost, "/api/v1/admin/search/reindex", body, headers)
 }
 
 // ProxyRetryFailed 代理重试失败索引请求到 AI service。
 func (s *SearchService) ProxyRetryFailed(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, errAIClientNil
+	}
 	return s.aiClient.DoSync(ctx, http.MethodPost, "/api/v1/admin/search/retry-failed", nil, headers)
 }
 
 // ProxyEmbeddingStatus 代理 embedding 路由状态查询到 AI service。
 func (s *SearchService) ProxyEmbeddingStatus(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, errAIClientNil
+	}
 	return s.aiClient.DoSync(ctx, http.MethodGet, "/api/v1/admin/providers/routing/embedding", nil, headers)
 }

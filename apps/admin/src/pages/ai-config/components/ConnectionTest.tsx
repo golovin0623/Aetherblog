@@ -195,9 +195,9 @@ export default function ConnectionTest({
         {/* 测试按钮 */}
         <button
           onClick={handleTest}
-          disabled={!credentialId || activeMutation.isPending}
+          disabled={!credentialId || !selectedModelId || activeMutation.isPending}
           className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium text-sm transition-all border ${
-            credentialId
+            credentialId && selectedModelId
               ? 'bg-[var(--bg-primary)] border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/30'
               : 'bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-muted)] cursor-not-allowed'
           }`}
