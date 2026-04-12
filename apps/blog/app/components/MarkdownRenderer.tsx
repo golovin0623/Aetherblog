@@ -13,7 +13,6 @@ import type { PluggableList } from 'unified';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
 import type { BundledLanguage } from 'shiki';
-import DOMPurify from 'dompurify';
 import { useTheme } from '@aetherblog/hooks';
 import { logger } from '../lib/logger';
 import { buildHeadingIdMap } from '../lib/headingId';
@@ -24,11 +23,24 @@ import { AlertBlock } from './AlertBlock';
 // DOMPurify 配置 — 用于消毒 mermaid SVG 和 shiki HTML 输出
 const SVG_SANITIZE_CONFIG = {
   USE_PROFILES: { svg: true, svgFilters: true },
-};
+} as const;
 const SHIKI_SANITIZE_CONFIG = {
   USE_PROFILES: { html: true },
   ADD_ATTR: ['class', 'style'],
-};
+} as const;
+
+/**
+ * SSR-safe DOMPurify 消毒封装：仅在浏览器环境中执行消毒，
+ * 服务端渲染时直接返回空字符串（组件在 SSR 阶段不会到达此路径，
+ * 但该防护可避免 hydration 不一致和 Node.js 无 DOM 时的异常）。
+ */
+function sanitizeHtml(dirty: string, config: Record<string, unknown>): string {
+  if (typeof window === 'undefined') return '';
+  // 延迟加载 DOMPurify，确保仅在浏览器环境初始化
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const DOMPurify = require('dompurify') as typeof import('dompurify').default;
+  return DOMPurify.sanitize(dirty, config);
+}
 
 // ============================================================================
 // rehype-sanitize 白名单 — 允许博客常用 HTML 属性，阻止 XSS
@@ -482,7 +494,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
   return (
     <div
       className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG) }}
+      dangerouslySetInnerHTML={{ __html: sanitizeHtml(svg, SVG_SANITIZE_CONFIG) }}
     />
   );
 };
@@ -635,7 +647,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
         {highlightedHtml ? (
           <div
             className="shiki-wrapper"
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightedHtml, SHIKI_SANITIZE_CONFIG) }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(highlightedHtml, SHIKI_SANITIZE_CONFIG) }}
           />
         ) : (
           <div className="shiki-wrapper">

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"html"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -198,10 +197,10 @@ func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.Creat
 	c := &model.Comment{
 		PostID:    postID,
 		ParentID:  req.ParentID,
-		Nickname:  html.EscapeString(req.Nickname),
+		Nickname:  req.Nickname,
 		Email:     email,
 		Website:   website,
-		Content:   html.EscapeString(req.Content),
+		Content:   req.Content,
 		Status:    "PENDING", // 新评论初始状态为待审核
 		IP:        ipPtr,
 		UserAgent: uaPtr,

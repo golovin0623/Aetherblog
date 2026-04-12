@@ -44,24 +44,26 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 
 	// 确定 MIME 类型：通过文件内容嗅探（magic bytes）验证，防止扩展名欺骗
 	sniffBuf := make([]byte, 512)
-	n, _ := io.ReadAtLeast(f, sniffBuf, 1)
+	n, err := io.ReadAtLeast(f, sniffBuf, 1)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, fmt.Errorf("failed to read file header for MIME detection: %w", err)
+	}
 	detectedMime := http.DetectContentType(sniffBuf[:n])
-	// 重置读取位置
-	if seeker, ok := f.(io.Seeker); ok {
-		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-			return nil, fmt.Errorf("failed to reset file reader: %w", err)
-		}
+
+	// 重置读取位置；multipart.File 应当支持 seek，若不支持则返回错误
+	seeker, ok := f.(io.Seeker)
+	if !ok {
+		return nil, fmt.Errorf("failed to reset file reader: multipart file is not seekable")
+	}
+	if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to reset file reader: %w", err)
 	}
 
-	// 优先使用内容嗅探结果；仅当嗅探为通用类型时回退到扩展名猜测
+	// 优先使用内容嗅探结果；仅当嗅探为通用类型时回退到扩展名猜测，
+	// 不信任客户端提供的 Content-Type 请求头，避免可伪造的 MIME 分类。
 	mimeType := detectedMime
-	if mimeType == "application/octet-stream" {
-		headerMime := fh.Header.Get("Content-Type")
-		if headerMime != "" && headerMime != "application/octet-stream" {
-			mimeType = headerMime
-		} else {
-			mimeType = guessMimeType(fh.Filename)
-		}
+	if mimeType == "application/octet-stream" || strings.HasPrefix(mimeType, "text/plain") {
+		mimeType = guessMimeType(fh.Filename)
 	}
 	fileType := classifyFileType(mimeType)
 
