@@ -140,7 +140,6 @@ export default function SearchConfigPage() {
       aiProviderService.updateRouting('embedding', { primary_model_id: modelId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['embedding-routing'] });
-      queryClient.invalidateQueries({ queryKey: ['search-embedding-status'] });
       toast.success('向量化模型已更新');
     },
     onError: () => toast.error('更新失败'),
