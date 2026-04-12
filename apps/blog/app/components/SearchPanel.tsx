@@ -15,6 +15,7 @@ interface SearchResult {
   tags?: string[];
   publishedAt: string;
   score?: number;
+  source?: string; // "keyword" | "semantic" | "hybrid"
 }
 
 interface AiAnswer {
@@ -71,9 +72,13 @@ const SearchResultItem = React.memo(({
             </span>
           )}
           <span>{result.publishedAt}</span>
-          {result.score && (
+          {result.score != null && result.score > 0 && (
             <span className="px-1.5 py-0.5 rounded text-primary border border-primary/30 text-xs">
-              匹配度 {Math.round(result.score * 100)}%
+              {result.source === 'semantic'
+                ? `匹配度 ${Math.round(result.score * 100)}%`
+                : result.source === 'keyword'
+                  ? '关键词匹配'
+                  : `匹配度 ${Math.round(result.score * 100)}%`}
             </span>
           )}
         </div>
@@ -206,6 +211,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
           category: item.category ? String(item.category) : undefined,
           publishedAt: String(item.publishedAt ?? ''),
           score: typeof item.score === 'number' ? item.score : undefined,
+          source: typeof item.source === 'string' ? item.source : undefined,
         })));
       } else {
         setResults([]);
