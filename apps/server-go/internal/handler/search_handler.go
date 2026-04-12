@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -85,6 +86,16 @@ func (h *SearchHandler) QA(c echo.Context) error {
 	return nil
 }
 
+// Features 处理 GET /v1/public/search/features 请求，返回搜索功能开关状态（公开接口）。
+func (h *SearchHandler) Features(c echo.Context) error {
+	cfg := h.svc.GetSearchConfig(c.Request().Context())
+	return response.OK(c, map[string]bool{
+		"keywordEnabled":  cfg.KeywordEnabled,
+		"semanticEnabled": cfg.SemanticEnabled,
+		"aiQaEnabled":     cfg.AiQAEnabled,
+	})
+}
+
 // GetConfig 处理 GET /v1/admin/search/config 请求，返回搜索配置。
 func (h *SearchHandler) GetConfig(c echo.Context) error {
 	cfg := h.svc.GetSearchConfig(c.Request().Context())
@@ -93,9 +104,10 @@ func (h *SearchHandler) GetConfig(c echo.Context) error {
 
 // UpdateConfig 处理 PATCH /v1/admin/search/config 请求，更新搜索配置。
 func (h *SearchHandler) UpdateConfig(c echo.Context) error {
+	// 直接使用 json.Decoder 解析，避免 Echo Bind 对 map 类型的兼容性问题
 	var kv map[string]string
-	if err := c.Bind(&kv); err != nil {
-		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	if err := json.NewDecoder(c.Request().Body).Decode(&kv); err != nil {
+		return response.FailWith(c, response.BadRequest, fmt.Sprintf("请求格式错误: %v", err))
 	}
 	// 过滤：只允许 search.* 键
 	filtered := make(map[string]string)
@@ -108,7 +120,7 @@ func (h *SearchHandler) UpdateConfig(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无有效配置项")
 	}
 	if err := h.svc.UpdateSearchConfig(c.Request().Context(), filtered); err != nil {
-		return response.Error(c, err)
+		return response.FailWith(c, response.Failure, fmt.Sprintf("保存配置失败: %v", err))
 	}
 	return response.OKEmpty(c)
 }

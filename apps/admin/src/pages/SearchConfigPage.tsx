@@ -188,8 +188,9 @@ export default function SearchConfigPage() {
       setHasChanges(false);
       toast.success('配置已保存');
     },
-    onError: () => {
-      toast.error('保存失败');
+    onError: (err: unknown) => {
+      const msg = (err as { message?: string })?.message || '未知错误';
+      toast.error(`保存失败: ${msg}`);
     },
   });
 

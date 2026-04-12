@@ -199,6 +199,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// are available. Consider implementing dynamic rate limiting that reads from search config
 	// (search.anon_search_rate_per_min, search.anon_qa_rate_per_min) at request time.
 	searchPublic.GET("", searchHandler.Search, middleware.RateLimitByIP(s.Redis, "rate:search", 30, time.Minute))
+	searchPublic.GET("/features", searchHandler.Features)
 	searchPublic.GET("/qa", searchHandler.QA, middleware.RateLimitByIP(s.Redis, "rate:qa", 5, time.Minute))
 
 	// --- 媒体系统 ---
