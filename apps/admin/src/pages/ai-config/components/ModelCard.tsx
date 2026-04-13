@@ -17,6 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Toggle } from '@aetherblog/ui';
 import type { AiModel } from '@/services/aiProviderService';
 import { useToggleModel } from '../hooks/useModels';
 import {
@@ -196,22 +197,12 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
         >
           <Settings className="w-4 h-4" />
         </button>
-        <button
-          onClick={handleToggle}
+        <Toggle
+          checked={model.is_enabled}
+          onChange={() => handleToggle()}
           disabled={toggleMutation.isPending || readOnly}
-          className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-out flex-shrink-0 focus:outline-none flex items-center ${model.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-[var(--bg-secondary)]'
-            } ${toggleMutation.isPending || readOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <motion.div
-            className={`w-4 h-4 rounded-full shadow-sm z-10 ${model.is_enabled ? 'bg-white dark:bg-black' : 'bg-white'
-              }`}
-            initial={false}
-            animate={{
-              x: model.is_enabled ? 20 : 0
-            }}
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          />
-        </button>
+          size="sm"
+        />
       </div>
     </motion.div>
   );

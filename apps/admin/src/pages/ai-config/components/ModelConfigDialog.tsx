@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, AlertTriangle } from 'lucide-react';
+import { Toggle } from '@aetherblog/ui';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { aiProviderService, type AiModel, type CreateModelRequest, type UpdateModelRequest } from '@/services/aiProviderService';
 import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing } from '../types';
@@ -875,19 +876,7 @@ function CapabilityToggle({
 }) {
   return (
     <label className="flex items-start gap-3 cursor-pointer group">
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`relative w-10 h-5 rounded-full transition-all flex-shrink-0 mt-0.5 ${
-          checked ? 'bg-black dark:bg-white' : 'bg-[var(--bg-card)] group-hover:bg-[var(--bg-card-hover)]'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
-            checked ? 'left-5 bg-white' : 'left-0.5 bg-[var(--text-muted)]/70'
-          }`}
-        />
-      </button>
+      <Toggle checked={checked} onChange={onChange} size="sm" className="mt-0.5" />
       <div className="flex-1 min-w-0">
         <div className="text-sm text-[var(--text-primary)]">{label}</div>
         <div className="text-xs text-[var(--text-muted)] mt-0.5">{description}</div>

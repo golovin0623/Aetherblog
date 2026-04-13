@@ -3,6 +3,7 @@
 
 import { motion } from 'framer-motion';
 import { Power } from 'lucide-react';
+import { Toggle } from '@aetherblog/ui';
 import type { AiProvider } from '@/services/aiProviderService';
 import { getPresetProvider } from '../types';
 import ProviderIcon from './ProviderIcon';
@@ -135,26 +136,13 @@ export default function ProviderCard({
         </div>
       </div>
 
-      {/* 启用开关 - 移至右下方单独一行 */}
-      <div className="relative z-10 flex justify-end mt-4">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle(!provider.is_enabled);
-          }}
+      {/* 启用开关 */}
+      <div className="relative z-10 flex justify-end mt-4" onClick={(e) => e.stopPropagation()}>
+        <Toggle
+          checked={provider.is_enabled}
+          onChange={(en) => onToggle(en)}
           disabled={isToggling}
-          className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ease-in-out focus:outline-none shadow-inner border border-transparent flex items-center ${isToggling ? 'opacity-50 cursor-not-allowed' : ''
-            } ${provider.is_enabled ? 'bg-[var(--text-secondary)]' : 'bg-[var(--bg-card-hover)] border-[var(--border-subtle)]'}`}
-        >
-          <motion.div
-            className="w-4 h-4 rounded-full shadow-lg z-10 relative top-0 bg-[var(--bg-primary)]"
-            initial={false}
-            animate={{
-              x: provider.is_enabled ? 24 : 0
-            }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          />
-        </button>
+        />
       </div>
 
 

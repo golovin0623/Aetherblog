@@ -83,13 +83,13 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
   return (
     <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[360px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">模型调用占比</h3>
-      <div className="flex-1 min-h-0 flex flex-row items-center gap-4">
-        {/* Left: enhanced donut chart */}
-        <div className="relative shrink-0 w-[150px] h-[150px]">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row items-center gap-4">
+        {/* Left: enhanced donut chart — 50% width on desktop, full width on mobile */}
+        <div className="relative shrink-0 w-[200px] h-[200px] md:w-1/2 md:h-full md:max-h-[260px] aspect-square">
           {hasData ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
                   <defs>
                     {chartData.map((entry, index) => (
                       <linearGradient
@@ -126,8 +126,8 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={42}
-                    outerRadius={64}
+                    innerRadius="50%"
+                    outerRadius="80%"
                     dataKey="value"
                     nameKey="name"
                     paddingAngle={3}
@@ -149,7 +149,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
                   </Pie>
                   <Tooltip
                     cursor={false}
-                    wrapperStyle={{ outline: 'none' }}
+                    wrapperStyle={{ outline: 'none', zIndex: 20 }}
                     formatter={(value: number, _name: string, payload: any) => {
                       const item = payload?.payload;
                       return [
@@ -170,12 +170,12 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
                   />
                 </PieChart>
               </ResponsiveContainer>
-              {/* Center overlay: total calls */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              {/* Center overlay: total calls — z-index lower than tooltip */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
                 <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
                   总调用
                 </div>
-                <div className="text-xl font-semibold text-[var(--text-primary)] leading-tight">
+                <div className="text-2xl font-semibold text-[var(--text-primary)] leading-tight">
                   {totalCalls.toLocaleString()}
                 </div>
                 <div className="text-[10px] text-[var(--text-tertiary)]">
@@ -190,8 +190,8 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
           )}
         </div>
 
-        {/* Right: paginated model list */}
-        <div className="flex-1 min-w-0 flex flex-col h-full py-1">
+        {/* Right: paginated model list — 50% width on desktop */}
+        <div className="w-full md:w-1/2 min-w-0 flex flex-col h-full py-1">
           <div className="flex-1 min-h-0 flex flex-col justify-center gap-2.5">
             {visibleModels.length === 0 ? (
               <div className="text-xs text-[var(--text-tertiary)] text-center">暂无模型</div>

@@ -18,13 +18,15 @@ class VectorStoreService:
 
     async def semantic_search(self, query: str, limit: int) -> list[dict[str, Any]]:
         embedding = await self.llm.embed(query)
+        model = self.settings.model_embedding
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT post_id, title, slug, content, similarity "
-                "FROM search_similar_posts($1, $2, $3)",
+                "FROM search_similar_posts($1, $2, $3, $4)",
                 embedding,
                 self.settings.search_threshold,
                 limit,
+                model,
             )
         return [self._row_to_result(row, query) for row in rows]
 
@@ -66,6 +68,29 @@ class VectorStoreService:
         return {"status": "deleted"}
 
     async def reindex(self) -> dict[str, Any]:
+        current_model = self.settings.model_embedding
+
+        # Invalidate vectors from a different model — they are incompatible
+        async with self.pool.acquire() as conn:
+            stale = await conn.fetchval(
+                "SELECT count(*) FROM post_vectors WHERE model IS DISTINCT FROM $1",
+                current_model,
+            )
+            if stale:
+                logger.info(
+                    "reindex.model_changed",
+                    extra={"current_model": current_model, "stale_vectors": stale},
+                )
+                await conn.execute(
+                    "DELETE FROM post_vectors WHERE model IS DISTINCT FROM $1",
+                    current_model,
+                )
+                await conn.execute(
+                    "UPDATE posts SET embedding_status = 'PENDING' "
+                    "WHERE deleted = FALSE AND status = 'PUBLISHED' "
+                    "AND embedding_status = 'INDEXED'",
+                )
+
         batch_size = self.settings.reindex_batch_size
         total = 0
         failed = 0

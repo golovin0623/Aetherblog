@@ -80,13 +80,13 @@ const SearchResultItem = React.memo(({
             </span>
           )}
           <span className="shrink-0">{formatDate(result.publishedAt)}</span>
-          {result.score != null && result.score > 0 && (
+          {result.source && (
             <span className="shrink-0 px-1.5 py-0.5 rounded text-primary border border-primary/30 text-xs whitespace-nowrap">
-              {result.source === 'semantic'
-                ? `匹配度 ${Math.round(result.score * 100)}%`
-                : result.source === 'keyword'
-                  ? '关键词匹配'
-                  : `匹配度 ${Math.round(result.score * 100)}%`}
+              {result.source === 'keyword'
+                ? '关键词匹配'
+                : result.source === 'semantic'
+                  ? '语义匹配'
+                  : '综合匹配'}
             </span>
           )}
         </div>
