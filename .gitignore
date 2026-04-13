@@ -2,6 +2,10 @@
 node_modules/
 .pnpm-store/
 
+# Jules
+.jules/
+.Jules/
+
 # Build outputs
 dist/
 build/
