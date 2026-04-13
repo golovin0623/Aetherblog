@@ -76,7 +76,7 @@ class RemoteModelFetcher:
         if not base_url:
             raise ValueError("Missing base_url for provider")
         if not validate_external_url(base_url):
-            raise ValueError(f"Blocked: base_url resolves to a private/internal network")
+            raise ValueError("Blocked: base_url resolves to a private/internal network")
 
         url = f"{base_url}/models"
         headers = {
@@ -137,7 +137,7 @@ class RemoteModelFetcher:
         if not base_url:
             raise ValueError("Missing base_url for provider")
         if not validate_external_url(base_url):
-            raise ValueError(f"Blocked: base_url resolves to a private/internal network")
+            raise ValueError("Blocked: base_url resolves to a private/internal network")
 
         url = f"{base_url}/models"
         version = credential.extra_config.get("anthropic_version", "2023-06-01")
