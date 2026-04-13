@@ -45,8 +45,8 @@ func NewSearchService(
 }
 
 // GetSearchConfig 从 site_settings 读取搜索配置。
-// 使用 GetValue 按 setting_key 逐个读取，不依赖 group_name 或 setting_type，
-// 兼容 migration 未执行或通过 settings/batch 写入的场景。
+// 使用 GetByKeyPrefix 单次查询 "search." 前缀的所有配置项，
+// 不依赖 group_name 或 setting_type，兼容各种写入场景。
 func (s *SearchService) GetSearchConfig(ctx context.Context) dto.SearchConfig {
 	cfg := dto.SearchConfig{
 		KeywordEnabled:       true,
@@ -57,35 +57,41 @@ func (s *SearchService) GetSearchConfig(ctx context.Context) dto.SearchConfig {
 		AutoIndexOnPublish:   true,
 	}
 
-	if v, err := s.settingSvc.GetValue(ctx, "search.keyword_enabled"); err == nil && v != "" {
+	m, err := s.settingSvc.GetByKeyPrefix(ctx, "search.")
+	if err != nil || len(m) == 0 {
+		return cfg
+	}
+
+	if v, ok := m["search.keyword_enabled"]; ok {
 		cfg.KeywordEnabled = parseBool(v)
 	}
-	if v, err := s.settingSvc.GetValue(ctx, "search.semantic_enabled"); err == nil && v != "" {
+	if v, ok := m["search.semantic_enabled"]; ok {
 		cfg.SemanticEnabled = parseBool(v)
 	}
-	if v, err := s.settingSvc.GetValue(ctx, "search.ai_qa_enabled"); err == nil && v != "" {
+	if v, ok := m["search.ai_qa_enabled"]; ok {
 		cfg.AiQAEnabled = parseBool(v)
 	}
-	if v, err := s.settingSvc.GetValue(ctx, "search.anon_search_rate_per_min"); err == nil && v != "" {
+	if v, ok := m["search.anon_search_rate_per_min"]; ok {
 		if n, e := strconv.Atoi(v); e == nil {
 			cfg.AnonSearchRatePerMin = n
 		}
 	}
-	if v, err := s.settingSvc.GetValue(ctx, "search.anon_qa_rate_per_min"); err == nil && v != "" {
+	if v, ok := m["search.anon_qa_rate_per_min"]; ok {
 		if n, e := strconv.Atoi(v); e == nil {
 			cfg.AnonQARatePerMin = n
 		}
 	}
-	if v, err := s.settingSvc.GetValue(ctx, "search.auto_index_on_publish"); err == nil && v != "" {
+	if v, ok := m["search.auto_index_on_publish"]; ok {
 		cfg.AutoIndexOnPublish = parseBool(v)
 	}
 
 	return cfg
 }
 
-// parseBool 将字符串解析为布尔值，兼容 setting_type 为 STRING 或 BOOLEAN 的场景。
+// parseBool 将字符串解析为布尔值，兼容各种大小写和格式。
 func parseBool(s string) bool {
-	return s == "true" || s == "1" || s == "yes"
+	b, _ := strconv.ParseBool(s)
+	return b || s == "yes"
 }
 
 // UpdateSearchConfig 批量更新搜索配置。

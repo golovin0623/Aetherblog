@@ -55,6 +55,22 @@ func (s *SiteSettingService) GetValue(ctx context.Context, key string) (string, 
 	return *ss.SettingValue, nil
 }
 
+// GetByKeyPrefix 返回所有以指定前缀开头的配置项，值以原始字符串形式返回。
+// 不依赖 group_name 或 setting_type，适用于跨组读取场景。
+func (s *SiteSettingService) GetByKeyPrefix(ctx context.Context, prefix string) (map[string]string, error) {
+	settings, err := s.repo.FindByKeyPrefix(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(settings))
+	for _, ss := range settings {
+		if ss.SettingValue != nil {
+			m[ss.SettingKey] = *ss.SettingValue
+		}
+	}
+	return m, nil
+}
+
 // SetValue 以 Upsert 方式设置单个配置键值对（不存在则插入，存在则更新）。
 func (s *SiteSettingService) SetValue(ctx context.Context, key, value string) error {
 	return s.repo.Upsert(ctx, key, value)
