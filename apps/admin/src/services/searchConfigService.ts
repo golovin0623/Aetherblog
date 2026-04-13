@@ -24,6 +24,27 @@ export interface EmbeddingStatus {
   provider?: string;
 }
 
+export interface EmbeddingPostItem {
+  id: number;
+  title: string;
+  slug: string;
+  status: string;
+  embeddingStatus: string;
+  publishedAt?: string;
+  updatedAt: string;
+}
+
+export interface EmbeddingPostListResponse {
+  items: EmbeddingPostItem[];
+  total: number;
+}
+
+export interface IndexBatchResult {
+  indexed: number;
+  failed: number;
+  total: number;
+}
+
 export const searchConfigService = {
   getConfig: (): Promise<R<SearchConfig>> =>
     api.get('/v1/admin/search/config'),
@@ -42,4 +63,20 @@ export const searchConfigService = {
 
   getEmbeddingStatus: (): Promise<R<EmbeddingStatus>> =>
     api.get('/v1/admin/search/embedding-status'),
+
+  listPosts: (params: {
+    embeddingStatus?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<R<EmbeddingPostListResponse>> => {
+    const query = new URLSearchParams();
+    if (params.embeddingStatus) query.set('embeddingStatus', params.embeddingStatus);
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.offset !== undefined) query.set('offset', String(params.offset));
+    const qs = query.toString();
+    return api.get(`/v1/admin/search/posts${qs ? `?${qs}` : ''}`);
+  },
+
+  indexBatch: (postIds: number[]): Promise<R<IndexBatchResult>> =>
+    api.post('/v1/admin/search/index-batch', { postIds }),
 };

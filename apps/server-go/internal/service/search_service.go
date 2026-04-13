@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/redis/go-redis/v9"
@@ -97,6 +98,59 @@ func parseBool(s string) bool {
 // UpdateSearchConfig 批量更新搜索配置。
 func (s *SearchService) UpdateSearchConfig(ctx context.Context, kv map[string]string) error {
 	return s.settingSvc.SetBatch(ctx, kv)
+}
+
+// ListPostsEmbedding 返回已发布文章的向量索引状态列表。
+func (s *SearchService) ListPostsEmbedding(ctx context.Context, statusFilter string, limit, offset int) (*dto.EmbeddingPostListResponse, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	items, total, err := s.postRepo.ListEmbeddingStatus(ctx, statusFilter, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.EmbeddingPostListResponse{Items: items, Total: total}, nil
+}
+
+// IndexBatchPosts 批量索引指定文章（同步执行，逐篇调用 AI service）。
+func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*dto.IndexBatchResult, error) {
+	if s.aiClient == nil {
+		return nil, errAIClientNil
+	}
+
+	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query posts: %w", err)
+	}
+
+	headers := map[string]string{
+		"X-Internal-Service": s.internalToken,
+	}
+
+	result := &dto.IndexBatchResult{Total: len(posts)}
+	for _, post := range posts {
+		content := ""
+		if post.ContentMarkdown != nil {
+			content = *post.ContentMarkdown
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"postId":  post.ID,
+			"title":   post.Title,
+			"slug":    post.Slug,
+			"content": content,
+			"action":  "upsert",
+		})
+		body, statusCode, err := s.aiClient.DoSync(ctx, http.MethodPost, "/api/v1/admin/search/index",
+			strings.NewReader(string(payload)), headers)
+		if err != nil || statusCode != http.StatusOK {
+			result.Failed++
+			log.Warn().Int64("postId", post.ID).Err(err).Int("status", statusCode).Msg("index post failed")
+			continue
+		}
+		body.Close()
+		result.Indexed++
+	}
+	return result, nil
 }
 
 // Search 执行搜索，支持 keyword / semantic / hybrid 三种模式。
