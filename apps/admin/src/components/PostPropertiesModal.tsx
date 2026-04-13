@@ -89,7 +89,7 @@ export function PostPropertiesModal({
         slug: post.slug,
         createdAt: post.createdAt,
         categoryId: effectiveCategoryId ?? undefined,
-        password: post.password || '',
+        password: '',
       });
       
       // Tags 已符合 Post 中的 {id, name} 格式

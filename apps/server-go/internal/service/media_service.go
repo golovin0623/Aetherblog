@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -41,10 +42,10 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	}
 	defer f.Close()
 
-	// 确定 MIME 类型：优先使用请求头，其次根据文件扩展名猜测
-	mimeType := fh.Header.Get("Content-Type")
-	if mimeType == "" || mimeType == "application/octet-stream" {
-		mimeType = guessMimeType(fh.Filename)
+	// 基于文件内容检测 MIME 类型，同时与扩展名交叉校验防止伪装上传
+	mimeType, err := detectMimeType(f, fh.Filename)
+	if err != nil {
+		return nil, fmt.Errorf("MIME type validation failed: %w", err)
 	}
 	fileType := classifyFileType(mimeType)
 
@@ -269,6 +270,34 @@ func guessMimeType(filename string) string {
 	}
 }
 
+// detectMimeType 读取文件前 512 字节，利用 http.DetectContentType 检测实际 MIME 类型，
+// 并与扩展名推断的类型交叉校验：若扩展名声称是图片但内容并非图片，则拒绝上传。
+// application/octet-stream 是 Go 内置检测器的兜底结果，不视为冲突（WebP/AVIF 等格式可能无法识别）。
+func detectMimeType(file multipart.File, filename string) (string, error) {
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+
+	detected := http.DetectContentType(buf[:n])
+	guessed := guessMimeType(filename)
+
+	// 交叉校验：扩展名声称是图片，但内容检测不是图片且不是兜底类型时，拒绝上传
+	if strings.HasPrefix(guessed, "image/") && !strings.HasPrefix(detected, "image/") && detected != "application/octet-stream" {
+		return "", fmt.Errorf("file content type (%s) does not match extension type (%s)", detected, guessed)
+	}
+
+	// 优先返回内容检测结果；若为兜底类型则使用扩展名推断
+	if detected == "application/octet-stream" && guessed != "application/octet-stream" {
+		return guessed, nil
+	}
+	return detected, nil
+}
+
 // sanitizeFilename 对文件名进行安全处理：取 Base 部分并将空格、斜杠替换为下划线。
 // 若处理结果为空，返回默认名 "file"。
 func sanitizeFilename(name string) string {
@@ -280,6 +309,3 @@ func sanitizeFilename(name string) string {
 	}
 	return safe
 }
-
-// 确保 io 包被引用（供未来扩展使用）
-var _ io.Reader

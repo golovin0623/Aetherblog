@@ -66,7 +66,7 @@ services:
     environment:
       POSTGRES_DB: aetherblog
       POSTGRES_USER: aetherblog
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     ports:
       - "${POSTGRES_PORT:-7895}:5432"
     volumes:
@@ -93,12 +93,13 @@ services:
     restart: unless-stopped
     profiles:
       - with-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD env var is required}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     networks:
       - aetherblog-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -132,7 +133,7 @@ services:
       AETHERBLOG_DATABASE_HOST: postgres
       AETHERBLOG_DATABASE_PORT: 5432
       AETHERBLOG_DATABASE_USER: aetherblog
-      AETHERBLOG_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
+      AETHERBLOG_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
       AETHERBLOG_DATABASE_DBNAME: aetherblog
       AETHERBLOG_DATABASE_SSLMODE: disable
       REDIS_HOST: ${REDIS_HOST:-redis}
@@ -148,7 +149,9 @@ services:
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # 容器监控 (只读)
+      # REMOVED for security: Docker socket mount provides root-equivalent access
+      # For container monitoring, use cAdvisor or Prometheus node_exporter instead
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -192,7 +195,7 @@ services:
       AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
       REDIS_URL: ${AI_REDIS_URL:-redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0}
-      POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:-aetherblog123}@postgres:5432/aetherblog
+      POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/aetherblog
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-}
@@ -282,6 +285,7 @@ services:
 volumes:
   aetherblog_postgres_data:
     name: aetherblog_postgres_data
+
   aetherblog_uploads:
     name: aetherblog_uploads
   aetherblog_logs:

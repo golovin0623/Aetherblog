@@ -10,14 +10,14 @@ type LoginRequest struct {
 type RegisterRequest struct {
 	Username string `json:"username" validate:"required,min=3,max=50"` // 用户名，长度 3~50 个字符（必填）
 	Email    string `json:"email"    validate:"required,email"`         // 电子邮箱地址（必填，需符合邮箱格式）
-	Password string `json:"password" validate:"required,min=8"`         // 密码，最少 8 个字符（必填）
+	Password string `json:"password" validate:"required,min=8,max=128"` // 密码，长度 8~128 个字符（必填）
 	Nickname string `json:"nickname" validate:"max=50"`                 // 昵称，最多 50 个字符（可选）
 }
 
 // ChangePasswordRequest 是 POST /api/v1/auth/change-password 接口的请求体 DTO。
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword" validate:"required"`      // 当前密码（必填）
-	NewPassword     string `json:"newPassword"     validate:"required,min=8"` // 新密码，最少 8 个字符（必填）
+	NewPassword     string `json:"newPassword"     validate:"required,min=8,max=128"` // 新密码，长度 8~128 个字符（必填）
 }
 
 // UpdateProfileRequest 是 PUT /api/v1/auth/profile 接口的请求体 DTO。

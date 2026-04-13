@@ -14,6 +14,7 @@ import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
 import type { BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
+import DOMPurify from 'dompurify';
 import { logger } from '../lib/logger';
 import { buildHeadingIdMap } from '../lib/headingId';
 import remarkDirective from 'remark-directive';
@@ -29,20 +30,20 @@ const sanitizeSchema: typeof defaultSchema = {
     ...(defaultSchema.tagNames || []),
     // 扩展多媒体与语意化标签
     'center', 'figure', 'figcaption', 'mark', 'u', 'abbr', 'details', 'summary',
-    'video', 'audio', 'source', 'track', 'picture', 'kbd', 'sup', 'sub', 'del', 'iframe'
+    'video', 'audio', 'source', 'track', 'picture', 'kbd', 'sup', 'sub', 'del'
+    // NOTE: iframe, object, embed, form are intentionally excluded for XSS prevention
   ],
   attributes: {
     ...defaultSchema.attributes,
-    // 全局放行核心排版属性
+    // 全局放行核心排版属性（style 已移除以防 XSS）
     '*': [
       ...(defaultSchema.attributes?.['*'] || []),
-      'className', 'style', 'id', 'align', 'valign', 'width', 'height'
+      'className', 'id', 'align', 'valign', 'width', 'height'
     ],
     // 专用属性支持
     video: ['src', 'controls', 'autoplay', 'loop', 'muted', 'poster', 'preload'],
     audio: ['src', 'controls', 'autoplay', 'loop', 'muted', 'preload'],
     source: ['src', 'type', 'srcSet', 'media'],
-    iframe: ['src', 'width', 'height', 'frameBorder', 'allowFullScreen', 'scrolling', 'title'],
     a: [
       ...(defaultSchema.attributes?.a || []),
       'target', 'rel', 'download'
@@ -50,6 +51,21 @@ const sanitizeSchema: typeof defaultSchema = {
     // alert-block 自定义元素
     'alert-block': ['data-type', 'data-title'],
   },
+};
+
+// ============================================================================
+// DOMPurify 配置 — 用于 dangerouslySetInnerHTML 的 XSS 防护
+// ============================================================================
+const SVG_SANITIZE_CONFIG = {
+  USE_PROFILES: { svg: true, svgFilters: true },
+  ADD_TAGS: ['foreignObject'],
+  FORBID_TAGS: ['script', 'style'],
+  FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
+};
+
+const CODE_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ['pre', 'code', 'span', 'div', 'br'],
+  ALLOWED_ATTR: ['class', 'style', 'data-language', 'data-theme', 'tabindex'],
 };
 
 const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath, remarkDirective, remarkAlertBlock];
@@ -66,7 +82,9 @@ function loadKatexCss() {
   if (katexCssLoaded || typeof document === 'undefined') return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
+  link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.css';
+  link.crossOrigin = 'anonymous';
+  // TODO: Add link.integrity = 'sha384-...' for Subresource Integrity (SRI)
   document.head.appendChild(link);
   katexCssLoaded = true;
   logger.info('[KaTeX] CSS 懒加载完成');
@@ -473,7 +491,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
   return (
     <div
       className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG) }}
     />
   );
 };
@@ -626,7 +644,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
         {highlightedHtml ? (
           <div
             className="shiki-wrapper"
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightedHtml, CODE_SANITIZE_CONFIG) }}
           />
         ) : (
           <div className="shiki-wrapper">

@@ -10,6 +10,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/golovin0623/aetherblog-server/internal/config"
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
@@ -68,6 +70,11 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	if user == nil || !h.auth.ValidatePassword(user, req.Password) {
 		// 记录失败次数以触发频率限制
 		h.auth.RecordFailedAttempt(ctx, req.Username, ip)
+		log.Warn().
+			Str("username", req.Username).
+			Str("ip", ip).
+			Str("user_agent", c.Request().UserAgent()).
+			Msg("login failed")
 		return response.FailWith(c, response.BadRequest, "用户名或密码错误")
 	}
 

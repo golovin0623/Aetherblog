@@ -25,6 +25,12 @@ COPY --from=builder /app/server /app/server
 COPY --from=builder /app/config.yaml /app/config.yaml
 COPY --from=builder /app/migrations /app/migrations
 
+# Create non-root user
+RUN addgroup -g 1001 appgroup && adduser -u 1001 -G appgroup -D appuser
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=5s \

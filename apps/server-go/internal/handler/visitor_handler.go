@@ -49,6 +49,16 @@ func (h *VisitorHandler) Record(c echo.Context) error {
 	if pageURL == "" {
 		return response.FailWith(c, response.BadRequest, "path 不能为空")
 	}
+	// 参数长度校验，防止超长输入写入数据库
+	if len(pageURL) > 2048 {
+		return response.FailWith(c, response.BadRequest, "URL 过长")
+	}
+	if len(req.PageTitle) > 256 {
+		req.PageTitle = req.PageTitle[:256]
+	}
+	if len(req.Referer) > 2048 {
+		req.Referer = req.Referer[:2048]
+	}
 
 	// 从请求上下文中提取真实 IP 和浏览器 UA
 	ip := c.RealIP()
