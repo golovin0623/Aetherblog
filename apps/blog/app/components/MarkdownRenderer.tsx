@@ -29,17 +29,18 @@ const SHIKI_SANITIZE_CONFIG = {
   ADD_ATTR: ['class', 'style'],
 } as const;
 
+// SSR-safe DOMPurify：仅在浏览器环境中加载，Node.js 端为 null
+const DOMPurifyModule = typeof window !== 'undefined'
+  ? (await import('dompurify')).default
+  : null;
+
 /**
- * SSR-safe DOMPurify 消毒封装：仅在浏览器环境中执行消毒，
- * 服务端渲染时直接返回空字符串（组件在 SSR 阶段不会到达此路径，
- * 但该防护可避免 hydration 不一致和 Node.js 无 DOM 时的异常）。
+ * SSR-safe DOMPurify 消毒封装：浏览器环境执行消毒，
+ * 服务端直接返回空字符串（SSR 时组件状态为初始值，不会到达此路径）。
  */
 function sanitizeHtml(dirty: string, config: Record<string, unknown>): string {
-  if (typeof window === 'undefined') return '';
-  // 延迟加载 DOMPurify，确保仅在浏览器环境初始化
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const DOMPurify = require('dompurify') as typeof import('dompurify').default;
-  return DOMPurify.sanitize(dirty, config);
+  if (!DOMPurifyModule) return '';
+  return DOMPurifyModule.sanitize(dirty, config);
 }
 
 // ============================================================================
