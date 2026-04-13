@@ -61,15 +61,10 @@ echo "[$(date -Iseconds)] Using DOCKER_REGISTRY=$DOCKER_REGISTRY VERSION=$VERSIO
 echo "[$(date -Iseconds)] Validating docker compose config"
 docker compose -f "$COMPOSE_FILE" config --quiet
 
+# Pre-deploy: only static checks (no runtime)
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
-  echo "[$(date -Iseconds)] Running preflight script: $PREFLIGHT_SCRIPT $PREFLIGHT_ARGS"
-  if [ "$PREFLIGHT_BLOCK" = "true" ]; then
-    # shellcheck disable=SC2086
-    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS
-  else
-    # shellcheck disable=SC2086
-    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS || echo "[$(date -Iseconds)] WARN: preflight failed but PREFLIGHT_BLOCK=false"
-  fi
+  echo "[$(date -Iseconds)] Running preflight (pre-deploy, no runtime checks)"
+  "$PREFLIGHT_SCRIPT" --no-runtime || echo "[$(date -Iseconds)] WARN: static preflight failed"
 else
   echo "[$(date -Iseconds)] WARN: preflight script not found or not executable: $PREFLIGHT_SCRIPT"
 fi
@@ -143,8 +138,48 @@ case "$DEPLOY_MODE" in
     ;;
 esac
 
+# ---------------------------------------------------------------------------
+# Post-deploy: run database migrations
+# ---------------------------------------------------------------------------
+run_migrations() {
+  echo "[$(date -Iseconds)] Waiting for backend to become healthy..."
+  local retries=0
+  while (( retries < 30 )); do
+    if docker compose -f "$COMPOSE_FILE" exec -T backend /app/server -health 2>/dev/null; then
+      break
+    fi
+    retries=$((retries + 1))
+    sleep 2
+  done
+
+  echo "[$(date -Iseconds)] Running database migrations via backend container"
+  local db_dsn="postgres://${AETHERBLOG_DATABASE_USER:-aetherblog}:${POSTGRES_PASSWORD}@postgres:5432/${AETHERBLOG_DATABASE_DBNAME:-aetherblog}?sslmode=disable"
+  if docker compose -f "$COMPOSE_FILE" exec -T backend /app/migrate -dir /app/migrations -dsn "$db_dsn" up; then
+    echo "[$(date -Iseconds)] Migrations applied successfully"
+  else
+    echo "[$(date -Iseconds)] ERROR: migration failed"
+    exit 1
+  fi
+}
+
+run_migrations
+
 echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
+
+# ---------------------------------------------------------------------------
+# Post-deploy: full preflight validation (runtime checks)
+# ---------------------------------------------------------------------------
+if [ -x "$PREFLIGHT_SCRIPT" ]; then
+  echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"
+  if [ "$PREFLIGHT_BLOCK" = "true" ]; then
+    # shellcheck disable=SC2086
+    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS
+  else
+    # shellcheck disable=SC2086
+    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS || echo "[$(date -Iseconds)] WARN: post-deploy preflight failed but PREFLIGHT_BLOCK=false"
+  fi
+fi
 
 echo "[$(date -Iseconds)] Running docker image prune -f"
 docker image prune -f
