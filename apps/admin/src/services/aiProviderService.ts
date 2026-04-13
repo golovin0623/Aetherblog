@@ -198,6 +198,9 @@ export const aiProviderService = {
   testCredential: (id: number, modelId?: string): Promise<AiServiceResponse<{ success: boolean; message: string; latency_ms?: number }>> =>
     api.post(`/v1/admin/providers/credentials/${id}/test`, { model_id: modelId || 'gpt-5-mini' }),
 
+  testEmbeddingCredential: (id: number, modelId?: string): Promise<AiServiceResponse<{ success: boolean; message: string; latency_ms?: number }>> =>
+    api.post(`/v1/admin/providers/credentials/${id}/test-embedding`, { model_id: modelId }),
+
   listTasks: (): Promise<AiServiceResponse<AiTaskType[]>> =>
     api.get('/v1/admin/ai/tasks'),
 

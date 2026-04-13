@@ -1,12 +1,14 @@
 // 连通性测试组件
 // ref: §5.1 - AI Service 架构
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Loader2, CheckCircle2, XCircle, Zap, ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { AiModel } from '@/services/aiProviderService';
-import { useTestCredential } from '../hooks/useCredentials';
+import { useTestCredential, useTestEmbeddingCredential } from '../hooks/useCredentials';
 import type { ConnectionTestResult } from '../types';
+
+type TestMode = 'chat' | 'embedding';
 
 interface ConnectionTestProps {
   credentialId: number | null;
@@ -22,6 +24,7 @@ export default function ConnectionTest({
   defaultModelId,
   simpleMode = false,
 }: ConnectionTestProps) {
+  const [testMode, setTestMode] = useState<TestMode>('chat');
   const [selectedModelId, setSelectedModelId] = useState(
     defaultModelId || models.find((m) => m.model_type === 'chat')?.model_id || ''
   );
@@ -29,8 +32,14 @@ export default function ConnectionTest({
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const testMutation = useTestCredential();
-  const chatModels = models.filter((m) => m.model_type === 'chat' && m.is_enabled);
+  const chatTestMutation = useTestCredential();
+  const embeddingTestMutation = useTestEmbeddingCredential();
+  const activeMutation = testMode === 'chat' ? chatTestMutation : embeddingTestMutation;
+
+  const filteredModels = useMemo(
+    () => models.filter((m) => m.model_type === testMode && m.is_enabled),
+    [models, testMode]
+  );
 
   // 点击外部时关闭下拉框
   useEffect(() => {
@@ -43,40 +52,109 @@ export default function ConnectionTest({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // 切换模式或模型列表变化时，重选默认模型
   useEffect(() => {
-    if (defaultModelId) {
+    // 切换供应商/模式时清除上次测试结果
+    setResult(null);
+
+    if (testMode === 'chat' && defaultModelId) {
       setSelectedModelId(defaultModelId);
       return;
     }
-    if (selectedModelId && chatModels.some((m) => m.model_id === selectedModelId)) {
+    // 当前选中的模型仍在列表中，无需切换
+    if (selectedModelId && filteredModels.some((m) => m.model_id === selectedModelId)) {
       return;
     }
-    setSelectedModelId(chatModels[0]?.model_id || '');
-  }, [defaultModelId, chatModels, selectedModelId]);
+    // 选择列表中第一个可用模型，或清空
+    setSelectedModelId(filteredModels[0]?.model_id || '');
+  }, [testMode, defaultModelId, filteredModels, selectedModelId]);
+
+  // 切换模式时清除上次结果
+  const handleModeChange = (mode: TestMode) => {
+    if (mode === testMode) return;
+    setTestMode(mode);
+    setResult(null);
+  };
 
   const handleTest = () => {
     if (!credentialId) return;
     setResult(null);
-    testMutation.mutate(
+    activeMutation.mutate(
       { credentialId, modelId: selectedModelId },
       {
         onSuccess: (res) => setResult(res),
       }
     );
   };
-  
-  const currentModel = chatModels.find(m => m.model_id === selectedModelId);
+
+  const currentModel = filteredModels.find(m => m.model_id === selectedModelId);
   const displayModelName = currentModel?.display_name || selectedModelId || '选择测试模型';
+  const emptyModelHint = testMode === 'chat' ? '无可用对话模型' : '无可用向量化模型';
 
   return (
     <div className="space-y-3">
       {!simpleMode && (
         <div className="flex items-center gap-3">
           <label className="text-sm text-[var(--text-muted)]">连通性检查</label>
+          {/* 模式切换 */}
+          <div className="inline-flex rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] p-0.5">
+            {([
+              { key: 'chat' as const, label: '对话' },
+              { key: 'embedding' as const, label: '向量化' },
+            ]).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => handleModeChange(key)}
+                className={`relative px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  testMode === key
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                {testMode === key && (
+                  <motion.span
+                    layoutId="test-mode-indicator"
+                    className="absolute inset-0 bg-[var(--bg-card-hover)] rounded-md"
+                    transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }}
+                  />
+                )}
+                <span className="relative z-10">{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       <div className="flex items-center gap-2">
+        {/* simpleMode 下内联模式切换 */}
+        {simpleMode && (
+          <div className="inline-flex rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] p-0.5 shrink-0">
+            {([
+              { key: 'chat' as const, label: '对话' },
+              { key: 'embedding' as const, label: '向量化' },
+            ]).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => handleModeChange(key)}
+                className={`relative px-2 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  testMode === key
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                {testMode === key && (
+                  <motion.span
+                    layoutId="test-mode-indicator-simple"
+                    className="absolute inset-0 bg-[var(--bg-card-hover)] rounded-md"
+                    transition={{ type: 'spring', duration: 0.3, bounce: 0.15 }}
+                  />
+                )}
+                <span className="relative z-10">{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* 自定义模型选择下拉框 */}
         <div className="relative flex-1" ref={dropdownRef}>
            <button
@@ -86,7 +164,7 @@ export default function ConnectionTest({
              <span className="truncate max-w-[180px]">{displayModelName}</span>
              <ChevronDown className={`w-4 h-4 text-[var(--text-muted)] opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
            </button>
-           
+
            <AnimatePresence>
              {isOpen && (
                <motion.div
@@ -96,8 +174,8 @@ export default function ConnectionTest({
                  transition={{ duration: 0.1 }}
                  className="absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-lg py-1"
                >
-                 {chatModels.length > 0 ? (
-                   chatModels.map((model) => (
+                 {filteredModels.length > 0 ? (
+                   filteredModels.map((model) => (
                      <button
                        key={model.id}
                        onClick={() => {
@@ -114,7 +192,7 @@ export default function ConnectionTest({
                    ))
                  ) : (
                    <div className="px-3 py-2 text-xs text-[var(--text-muted)] text-center">
-                     无可用聊天模型
+                     {emptyModelHint}
                    </div>
                  )}
                </motion.div>
@@ -125,19 +203,19 @@ export default function ConnectionTest({
         {/* 测试按钮 */}
         <button
           onClick={handleTest}
-          disabled={!credentialId || testMutation.isPending}
+          disabled={!credentialId || !selectedModelId || activeMutation.isPending}
           className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium text-sm transition-all border ${
-            credentialId
+            credentialId && selectedModelId
               ? 'bg-[var(--bg-primary)] border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/30'
               : 'bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-muted)] cursor-not-allowed'
           }`}
         >
-          {testMutation.isPending ? (
+          {activeMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <Zap className="w-4 h-4" />
           )}
-          检查
+          {testMode === 'chat' ? '检查' : '检查向量化'}
         </button>
       </div>
 

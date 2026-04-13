@@ -36,33 +36,6 @@ services:
     networks:
       - aetherblog-network
 
-  elasticsearch:
-    # 可通过环境变量覆盖镜像 (例如 Apple Silicon 遇到 SIGILL 可尝试降级版本):
-    #   ELASTICSEARCH_IMAGE=docker.elastic.co/elasticsearch/elasticsearch:8.14.3 docker compose up -d elasticsearch
-    image: ${ELASTICSEARCH_IMAGE:-docker.elastic.co/elasticsearch/elasticsearch:8.15.0}
-    container_name: aetherblog-elasticsearch
-    restart: unless-stopped
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false  # DEV ONLY — production MUST enable xpack security
-      - xpack.ml.enabled=false
-      # Apple Silicon / Docker Desktop: JDK 22 可能因 SVE 指令探测导致 SIGILL（非法指令）崩溃
-      # 通过禁用 SVE 可避免容器反复重启
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m -XX:UseSVE=0"
-      # ES 启动过程会先运行一些 CLI Java 进程（可能不会继承 ES_JAVA_OPTS），这里也禁用 SVE
-      - "CLI_JAVA_OPTS=-XX:UseSVE=0"
-    ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - aetherblog-network
-
 networks:
   aetherblog-network:
     name: aetherblog_aetherblog-network
@@ -70,4 +43,3 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  elasticsearch_data:

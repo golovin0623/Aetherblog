@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.core.config import get_settings
 from app.services.llm_router import LlmRouter
+
+logger = logging.getLogger("ai-service")
 
 
 # ref: §2.4.2.5, §4.4
@@ -65,6 +68,7 @@ class VectorStoreService:
     async def reindex(self) -> dict[str, Any]:
         batch_size = self.settings.reindex_batch_size
         total = 0
+        failed = 0
         offset = 0
         while True:
             async with self.pool.acquire() as conn:
@@ -80,16 +84,32 @@ class VectorStoreService:
             if not rows:
                 break
             for row in rows:
-                await self.upsert_post_embedding(
-                    post_id=row["id"],
-                    title=row["title"],
-                    slug=row["slug"],
-                    content=row["content_markdown"] or "",
-                    metadata={"status": "PUBLISHED"},
-                )
-                total += 1
+                try:
+                    await self.upsert_post_embedding(
+                        post_id=row["id"],
+                        title=row["title"],
+                        slug=row["slug"],
+                        content=row["content_markdown"] or "",
+                        metadata={"status": "PUBLISHED"},
+                    )
+                    total += 1
+                except Exception as exc:
+                    failed += 1
+                    logger.warning(
+                        "reindex.post_failed",
+                        extra={"post_id": row["id"], "error": str(exc)},
+                    )
+                    # Mark the post as FAILED so it shows in stats and can be retried
+                    try:
+                        async with self.pool.acquire() as conn:
+                            await conn.execute(
+                                "UPDATE posts SET embedding_status = 'FAILED' WHERE id = $1",
+                                row["id"],
+                            )
+                    except Exception:
+                        pass
             offset += batch_size
-        return {"status": "completed", "count": total}
+        return {"status": "completed", "indexed": total, "failed": failed}
 
     def _row_to_result(self, row: Any, query: str) -> dict[str, Any]:
         content = row["content"] or ""

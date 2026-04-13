@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - AI: 独立 AI 服务 (FastAPI + LiteLLM)
 - Database: PostgreSQL 17 with pgvector
 - Cache: Redis 7
-- Search: Elasticsearch 8
+- Search: PostgreSQL tsvector (keyword) + pgvector (semantic)
 
 ## Development Commands
 
@@ -180,7 +180,6 @@ import { cn } from '@aetherblog/utils';
 |---------|-------|-----------|------|
 | PostgreSQL | `pgvector/pgvector:pg17` | `aetherblog-postgres` | 5432 |
 | Redis | `redis:7-alpine` | `aetherblog-redis` | 6379 |
-| Elasticsearch | `elasticsearch:8.15.0` | `aetherblog-elasticsearch` | 9200 |
 
 Additional compose files: `docker-compose.dev.yml` (development), `docker-compose.prod.yml` (full production stack with gateway).
 
@@ -250,9 +249,11 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 | system_handler | `/v1/system/*` | GET /system/time |
 | visitor_handler | `/v1/admin/visitors/*` | Visitor recording |
 | version_handler | `/v1/admin/versions/*` | File version management |
+| search_handler | `/v1/public/search/*` + `/v1/admin/search/*` | GET search (hybrid/keyword/semantic), GET qa (SSE), config CRUD, stats, reindex, retry-failed, embedding-status |
 | ai_config_handler | `/v1/admin/ai/config/*` | providers/models/credentials/prompts/tasks CRUD |
 
-**Database Migrations:** 28 total, latest `000028` (allow_preserve_updated_at).
+**Database Migrations:** 31 total, latest `000031` (search_config).
+000029: add_font_family_setting, 000030: add_ai_cost_archives, 000031: search_config (site_settings seed for search feature).
 Key tables added in 000020-000028: `ai_credentials`, `ai_task_types`, `ai_task_routing`, `activity_events`.
 Vanblog migration fields on `posts`: `is_hidden`, `source_key`, `legacy_author_name`, `legacy_visited_count`, `legacy_copyright`.
 
@@ -268,7 +269,7 @@ Services use axios and follow naming: `{module}Service.ts`
 
 ### Admin Frontend Pages (`apps/admin/src/pages/`)
 
-Main pages (14+): Dashboard, Posts, CreatePost, EditPost, AiWritingWorkspace, Categories, Comments, Friends, Media, Settings, Migration, Monitor, Analytics, AiConfig, AiTools
+Main pages (15+): Dashboard, Posts, CreatePost, EditPost, AiWritingWorkspace, Categories, Comments, Friends, Media, Settings, Migration, Monitor, Analytics, AiConfig, AiTools, SearchConfig
 
 Sub-modules: `ai-config/` (16 components), `ai-tools/` (7 tool pages), `media/` (13+ components), `posts/components/` (8+ components), `auth/` (2 pages)
 

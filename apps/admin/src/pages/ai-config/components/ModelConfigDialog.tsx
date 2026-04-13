@@ -4,9 +4,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { X, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { X, Loader2, AlertTriangle } from 'lucide-react';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import type { AiModel, CreateModelRequest, UpdateModelRequest } from '@/services/aiProviderService';
+import { aiProviderService, type AiModel, type CreateModelRequest, type UpdateModelRequest } from '@/services/aiProviderService';
 import { MODEL_TYPES, type ModelAbility, type ModelSettings, type ModelPricing } from '../types';
 import { useCreateModel, useUpdateModel, useDeleteModel } from '../hooks/useModels';
 import {
@@ -104,6 +105,19 @@ export default function ModelConfigDialog({
   const createMutation = useCreateModel();
   const updateMutation = useUpdateModel();
   const deleteMutation = useDeleteModel();
+
+  // Check if this embedding model is used in search routing
+  const embeddingRoutingQuery = useQuery({
+    queryKey: ['embedding-routing'],
+    queryFn: () => aiProviderService.getRouting('embedding'),
+    select: (res) => res.data,
+    enabled: mode === 'edit' && initial?.model_type === 'embedding',
+  });
+
+  const isUsedBySearch = mode === 'edit' &&
+    initial?.model_type === 'embedding' &&
+    !!embeddingRoutingQuery.data?.primary_model &&
+    embeddingRoutingQuery.data.primary_model.id === initial?.id;
 
   // 初始化表单
   useEffect(() => {
@@ -785,6 +799,16 @@ export default function ModelConfigDialog({
           )}
         </div>
 
+        {/* Search routing warning */}
+        {isUsedBySearch && (
+          <div className="mx-5 mb-0 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span className="text-sm text-amber-400">
+              此模型已关联搜索功能的向量化配置，删除或禁用将导致语义搜索不可用
+            </span>
+          </div>
+        )}
+
         {/* 底部操作 */}
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 p-5 border-t border-[var(--border-default)]">
           {mode === 'edit' && initial && (
@@ -821,7 +845,11 @@ export default function ModelConfigDialog({
         <ConfirmDialog
           isOpen={showDeleteConfirm}
           title="删除模型"
-          message="确定删除该模型吗？此操作不可撤销。"
+          message={
+            isUsedBySearch
+              ? '此模型正在被搜索功能使用，删除后语义搜索将不可用。确定删除该模型吗？此操作不可撤销。'
+              : '确定删除该模型吗？此操作不可撤销。'
+          }
           confirmText="删除"
           variant="danger"
           onConfirm={() => { setShowDeleteConfirm(false); handleDelete(); }}
