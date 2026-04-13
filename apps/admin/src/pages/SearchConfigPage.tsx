@@ -21,6 +21,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Toggle } from '@aetherblog/ui';
 import {
   searchConfigService,
   type SearchConfig,
@@ -29,36 +30,7 @@ import {
 } from '@/services/searchConfigService';
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 
-// --- Toggle switch (matches SettingsPage pattern) ---
-function Toggle({
-  checked,
-  onChange,
-  disabled,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => !disabled && onChange(!checked)}
-      className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-200',
-        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-        checked ? 'bg-primary' : 'bg-[var(--bg-input)]'
-      )}
-    >
-      <motion.span
-        animate={{ x: checked ? 20 : 2 }}
-        className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
-      />
-    </button>
-  );
-}
+// Toggle imported from @aetherblog/ui
 
 // --- Skeleton loaders ---
 function StatSkeleton() {
@@ -278,7 +250,14 @@ export default function SearchConfigPage() {
     onSuccess: (res) => {
       const d = res?.data;
       if (d) {
-        toast.success(`索引完成: 成功 ${d.indexed} 篇, 失败 ${d.failed} 篇`);
+        const msg = `索引完成: 成功 ${d.indexed} 篇, 失败 ${d.failed} 篇`;
+        if (d.failed > 0 && d.indexed === 0) {
+          toast.error(msg);
+        } else if (d.failed > 0) {
+          toast.warning(msg);
+        } else {
+          toast.success(msg);
+        }
       } else {
         toast.success('索引任务已完成');
       }

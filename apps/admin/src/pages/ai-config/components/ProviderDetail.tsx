@@ -14,7 +14,7 @@ import {
   Brain,
   Loader2,
 } from 'lucide-react';
-import { Tooltip } from '@aetherblog/ui';
+import { Tooltip, Toggle } from '@aetherblog/ui';
 import type { AiProvider } from '@/services/aiProviderService';
 import { getPresetProvider, type PresetProvider } from '../types';
 import { useToggleProvider, useDeleteProvider, useUpdateProvider } from '../hooks/useProviders';
@@ -236,22 +236,11 @@ export default function ProviderDetail({
                   </button>
                 </Tooltip>
 
-                {/* 启用/禁用开关 (LobeChat 风格 - 绝对定位修复) */}
-                <button
-                  onClick={() => handleToggle(!provider.is_enabled)}
+                <Toggle
+                  checked={provider.is_enabled}
+                  onChange={(en) => handleToggle(en)}
                   disabled={toggleMutation.isPending}
-                  className={`relative w-10 h-6 rounded-full p-0.5 transition-colors duration-200 ease-out focus:outline-none ${provider.is_enabled ? 'bg-black dark:bg-white' : 'bg-black/10 dark:bg-[var(--bg-secondary)]'
-                    }`}
-                  title={provider.is_enabled ? "禁用服务商" : "启用服务商"}
-                >
-                  <motion.div
-                    initial={false}
-                    animate={{ x: provider.is_enabled ? 16 : 0 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    className={`w-5 h-5 rounded-full shadow-sm ${provider.is_enabled ? 'bg-white dark:bg-black' : 'bg-white'
-                      }`}
-                  />
-                </button>
+                />
               </div>
             </div>
           </div>

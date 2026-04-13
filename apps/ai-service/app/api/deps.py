@@ -175,7 +175,7 @@ async def require_admin_or_internal(
     settings = get_settings()
     if internal_token and internal_token == settings.internal_service_token:
         # Internal service call from Go backend
-        return UserClaims(user_id="system", role="admin")
+        return UserClaims(user_id="system", role="admin", scopes=None)
 
     # Fall back to normal admin auth
     return await require_admin(
