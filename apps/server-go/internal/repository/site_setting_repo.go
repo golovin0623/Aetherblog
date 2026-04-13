@@ -44,6 +44,15 @@ func (r *SiteSettingRepo) FindByKey(ctx context.Context, key string) (*model.Sit
 	return &s, err
 }
 
+// FindByKeyPrefix 返回所有 setting_key 以指定前缀开头的配置项。
+// 操作表：site_settings；参数 prefix 如 "search." 会匹配 "search.keyword_enabled" 等。
+func (r *SiteSettingRepo) FindByKeyPrefix(ctx context.Context, prefix string) ([]model.SiteSetting, error) {
+	var settings []model.SiteSetting
+	err := r.db.SelectContext(ctx, &settings,
+		`SELECT * FROM site_settings WHERE setting_key LIKE $1 ORDER BY setting_key`, prefix+"%")
+	return settings, err
+}
+
 // Upsert 按 setting_key 插入或更新单条配置项的值。
 // 冲突时（ON CONFLICT）更新 setting_value 和 updated_at，不改变其他字段。
 func (r *SiteSettingRepo) Upsert(ctx context.Context, key, value string) error {
