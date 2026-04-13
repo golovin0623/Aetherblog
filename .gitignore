@@ -83,3 +83,4 @@ scripts/vanblog-test/output/
 # Stale build/test artifacts
 *.class
 verify_mobile_menu*.py
+docs/qa/**
