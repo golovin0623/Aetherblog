@@ -104,7 +104,7 @@ type PostDetail struct {
 	IsHidden           bool               `json:"isHidden"`                  // 是否隐藏
 	AllowComment       bool               `json:"allowComment"`              // 是否允许评论
 	PasswordRequired   bool               `json:"passwordRequired"`          // 是否需要密码才能查看
-	Password           *string            `json:"password,omitempty"`        // 文章访问密码（仅管理员接口返回）
+	HasPassword        bool               `json:"hasPassword"`               // 文章是否设置了访问密码（管理端用于 UI 显示，不暴露密码值）
 	SEOTitle           *string            `json:"seoTitle"`                  // SEO 标题（可为空）
 	SEODescription     *string            `json:"seoDescription"`            // SEO 描述（可为空）
 	SEOKeywords        *string            `json:"seoKeywords"`               // SEO 关键词（可为空）

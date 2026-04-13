@@ -546,7 +546,16 @@ async def reveal_credential(
     
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
-    
+
+    logger.warning(
+        "Credential revealed",
+        extra={
+            "credential_id": credential_id,
+            "user_id": getattr(user, 'user_id', 'unknown'),
+            "action": "credential_reveal",
+        },
+    )
+
     return ApiResponse(data={
         "id": credential["id"],
         "api_key": credential["api_key"],

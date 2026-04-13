@@ -16,7 +16,7 @@ export interface Post {
   pinPriority?: number;
   isHidden?: boolean;
   allowComment?: boolean;
-  password?: string;
+  hasPassword?: boolean;
   passwordRequired?: boolean;
   legacyAuthorName?: string | null;
   legacyVisitedCount?: number;

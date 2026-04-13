@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Comment, createComment, getComments, SiteSettings } from '../lib/services';
 import { Button, Avatar } from '@aetherblog/ui';
 import { useIntersectionObserver } from '@aetherblog/hooks';
+import { sanitizeUrl } from '../lib/sanitizeUrl';
 import {
   MessageSquare,
   Send,
@@ -67,7 +68,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
                 </span>
 
                 {comment.website && (
-                  <a href={comment.website} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1">
+                  <a href={sanitizeUrl(comment.website)} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--text-secondary)] hover:text-[var(--color-primary)] transition-colors ml-1">
                     <Globe className="w-3 h-3" />
                   </a>
                 )}

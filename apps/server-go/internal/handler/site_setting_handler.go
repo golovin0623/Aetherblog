@@ -10,6 +10,39 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
+// allowedSettingKeys 定义允许通过 API 读写的站点配置键白名单。
+// 新增配置项时需在此处同步添加对应的键名。
+var allowedSettingKeys = map[string]bool{
+	// general
+	"site_name": true, "site_description": true, "site_url": true,
+	"site_logo": true, "site_favicon": true, "site_keywords": true,
+	"footer_text": true, "footer_signature": true,
+	"icp_number": true,
+	"welcome_enabled": true, "welcome_title": true, "welcome_subtitle": true,
+	// author
+	"author_name": true, "author_avatar": true, "author_bio": true,
+	"author_github": true, "author_twitter": true, "author_email": true,
+	"social_links": true,
+	// comment
+	"comment_enabled": true, "comment_audit": true,
+	// storage
+	"storage_type": true,
+	// ai
+	"ai_enabled": true, "ai_provider": true,
+	// appearance
+	"theme_primary_color": true, "enable_dark_mode": true,
+	"show_banner": true, "post_page_size": true, "custom_css": true,
+	"font_family": true, "theme_primary_color_light": true, "theme_primary_color_dark": true,
+	// seo
+	"seo_robots": true, "enable_sitemap": true,
+	"baidu_analytics_id": true, "google_analytics_id": true,
+	// social
+	"social_github": true, "social_twitter": true,
+	"social_linkedin": true, "social_weibo": true,
+	// advanced
+	"enable_registrations": true, "upload_max_size": true,
+}
+
 // SiteSettingHandler 处理站点设置的管理端 CRUD 接口。
 type SiteSettingHandler struct{ svc *service.SiteSettingService }
 
@@ -54,6 +87,9 @@ func (h *SiteSettingHandler) GetByGroup(c echo.Context) error {
 // 路径参数 key 为配置项的键名。
 func (h *SiteSettingHandler) GetByKey(c echo.Context) error {
 	key := c.Param("key")
+	if !allowedSettingKeys[key] {
+		return response.FailWith(c, response.BadRequest, "无效的设置键")
+	}
 	val, err := h.svc.GetValue(c.Request().Context(), key)
 	if err != nil {
 		return response.Error(c, err)
@@ -68,6 +104,9 @@ func (h *SiteSettingHandler) GetByKey(c echo.Context) error {
 //   - JSON 对象：       {"value": "some value"}
 func (h *SiteSettingHandler) UpdateByKey(c echo.Context) error {
 	key := c.Param("key")
+	if !allowedSettingKeys[key] {
+		return response.FailWith(c, response.BadRequest, "无效的设置键")
+	}
 
 	// 读取原始请求体以支持多种传参格式
 	body, err := io.ReadAll(c.Request().Body)
@@ -98,6 +137,12 @@ func (h *SiteSettingHandler) BatchUpdate(c echo.Context) error {
 	var kv map[string]string
 	if err := c.Bind(&kv); err != nil {
 		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	// 过滤掉不在白名单中的键
+	for k := range kv {
+		if !allowedSettingKeys[k] {
+			delete(kv, k)
+		}
 	}
 	if err := h.svc.SetBatch(c.Request().Context(), kv); err != nil {
 		return response.Error(c, err)

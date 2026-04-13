@@ -378,12 +378,8 @@ func (s *PostService) GetPublicBySlug(ctx context.Context, slug, password string
 			detail.PasswordRequired = true
 			return detail, nil
 		}
-		// 同时支持明文密码（遗留兼容）和 bcrypt 哈希密码校验
-		matched := *p.Password == password // 明文比较（遗留）
-		if !matched {
-			matched = bcrypt.CompareHashAndPassword([]byte(*p.Password), []byte(password)) == nil
-		}
-		if !matched {
+		// 仅支持 bcrypt 哈希密码校验（已移除明文比较）
+		if bcrypt.CompareHashAndPassword([]byte(*p.Password), []byte(password)) != nil {
 			// 密码错误，返回存根
 			detail.Content = nil
 			detail.PasswordRequired = true
@@ -539,9 +535,9 @@ func (s *PostService) enrichDetail(ctx context.Context, p *model.Post, includeAd
 		PublishedAt: p.PublishedAt, ScheduledAt: p.ScheduledAt,
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
-	// 管理端专用字段：密码哈希和草稿缓存
+	// 管理端专用字段：是否设置了密码（不暴露密码哈希）及草稿缓存
 	if includeAdminFields {
-		detail.Password = p.Password
+		detail.HasPassword = p.Password != nil && *p.Password != ""
 		detail.Draft = s.getDraft(ctx, p.ID)
 	}
 	return detail, nil

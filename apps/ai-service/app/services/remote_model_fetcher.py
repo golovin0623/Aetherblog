@@ -10,6 +10,7 @@ import httpx
 from app.services.provider_registry import ProviderInfo
 from app.services.credential_resolver import CredentialInfo
 from app.utils.provider_urls import normalize_api_base
+from app.utils.url_validator import validate_external_url
 
 
 @dataclass
@@ -74,6 +75,8 @@ class RemoteModelFetcher:
         base_url = normalize_api_base(credential.base_url, provider.api_type, credential.extra_config)
         if not base_url:
             raise ValueError("Missing base_url for provider")
+        if not validate_external_url(base_url):
+            raise ValueError(f"Blocked: base_url resolves to a private/internal network")
 
         url = f"{base_url}/models"
         headers = {
@@ -133,6 +136,8 @@ class RemoteModelFetcher:
         base_url = normalize_api_base(credential.base_url, provider.api_type, credential.extra_config)
         if not base_url:
             raise ValueError("Missing base_url for provider")
+        if not validate_external_url(base_url):
+            raise ValueError(f"Blocked: base_url resolves to a private/internal network")
 
         url = f"{base_url}/models"
         version = credential.extra_config.get("anthropic_version", "2023-06-01")

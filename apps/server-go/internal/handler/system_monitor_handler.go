@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -23,6 +24,9 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
+
+// containerIDRegex 校验容器 ID 格式：仅允许 12–64 位小写十六进制字符。
+var containerIDRegex = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 // SystemMonitorHandler 处理所有系统监控相关的 HTTP 接口。
 type SystemMonitorHandler struct {
@@ -125,6 +129,9 @@ func (h *SystemMonitorHandler) GetContainerLogs(c echo.Context) error {
 	id := c.Param("id")
 	if id == "" {
 		return response.FailCode(c, response.ParamMiss)
+	}
+	if !containerIDRegex.MatchString(id) {
+		return response.FailWith(c, response.BadRequest, "invalid container ID format")
 	}
 	// 解析 tail 参数，默认返回最新 200 行
 	tail, _ := strconv.Atoi(c.QueryParam("tail"))

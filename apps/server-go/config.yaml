@@ -1,3 +1,14 @@
+# =============================================================================
+# AetherBlog Development Configuration
+# =============================================================================
+# WARNING: This file contains DEVELOPMENT DEFAULTS only.
+# In production, ALL sensitive values must be set via environment variables:
+#   - JWT_SECRET (required, min 32 chars)
+#   - AETHERBLOG_DATABASE_PASSWORD
+#   - REDIS_PASSWORD
+# DO NOT use these values in production deployments.
+# =============================================================================
+
 server:
   port: 8080
   host: "0.0.0.0"
@@ -8,18 +19,18 @@ database:
   user: aetherblog
   password: aetherblog123
   dbname: aetherblog
-  sslmode: disable
+  sslmode: disable  # DEV ONLY — production should set AETHERBLOG_DATABASE_SSLMODE=require
   max_open_conns: 20
   max_idle_conns: 5
 
 redis:
   host: localhost
   port: 6379
+  password: "aetherblog_dev"
   db: 0
 
 jwt:
-  # Override via JWT_SECRET env var in production
-  secret: ""
+  # secret: ""  # REQUIRED: set JWT_SECRET env var (min 32 chars)
   expiration: 24h
   refresh_expiration: 168h  # 7 days
 

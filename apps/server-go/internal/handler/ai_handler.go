@@ -196,6 +196,9 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if !validateSSELine(line) {
+			continue
+		}
 		fmt.Fprintf(w, "%s\n", line)
 		flusher.Flush()
 	}
@@ -264,6 +267,9 @@ func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if !validateSSELine(line) {
+			continue
+		}
 		fmt.Fprintf(w, "%s\n", line)
 		flusher.Flush()
 	}
@@ -337,6 +343,62 @@ func (h *AiHandler) UpdateTask(c echo.Context) error {
 func (h *AiHandler) DeleteTask(c echo.Context) error {
 	code := c.Param("code")
 	return h.proxySyncRequest(c, http.MethodDelete, "/api/v1/admin/ai/tasks/"+code)
+}
+
+// --- SSE 事件验证 ---
+
+// allowedSSETypes 定义了允许转发的 SSE 事件类型白名单。
+var allowedSSETypes = map[string]bool{
+	"delta": true, "result": true, "done": true, "error": true,
+}
+
+// sseEvent 用于解析 SSE data 行中的 JSON 负载以提取 type 字段。
+type sseEvent struct {
+	Type string `json:"type"`
+}
+
+// validateSSELine 检查一行 SSE 数据是否合法。
+// 对于 "data: " 开头的行，解析 JSON 并验证 type 字段在白名单中。
+// 空行（SSE 事件分隔符）和非 data 行（如 "event:" "id:" "retry:"）直接放行。
+// 返回 true 表示该行应被转发，false 表示应被丢弃。
+func validateSSELine(line string) bool {
+	// 空行是 SSE 事件分隔符，必须放行
+	if line == "" {
+		return true
+	}
+
+	// 只验证 "data: " 开头的行；其它 SSE 字段（event/id/retry/注释）直接放行
+	if !strings.HasPrefix(line, "data: ") && !strings.HasPrefix(line, "data:") {
+		return true
+	}
+
+	// 提取 JSON 负载
+	payload := line
+	if strings.HasPrefix(line, "data: ") {
+		payload = strings.TrimPrefix(line, "data: ")
+	} else {
+		payload = strings.TrimPrefix(line, "data:")
+	}
+	payload = strings.TrimSpace(payload)
+
+	// 空 data 行放行（某些 SSE 实现用作心跳）
+	if payload == "" {
+		return true
+	}
+
+	var evt sseEvent
+	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
+		// JSON 解析失败：丢弃此事件
+		log.Warn().Str("line", line).Msg("SSE validation: malformed JSON, dropping event")
+		return false
+	}
+
+	if !allowedSSETypes[evt.Type] {
+		log.Warn().Str("type", evt.Type).Msg("SSE validation: unknown event type, dropping event")
+		return false
+	}
+
+	return true
 }
 
 // --- 内部代理辅助函数 ---

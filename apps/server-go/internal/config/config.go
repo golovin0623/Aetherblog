@@ -180,6 +180,14 @@ func Load(path string) (*Config, error) {
 	}
 	_ = k.Unmarshal("", cfg)
 
+	// 安全验证：JWT 密钥不能为空且长度不低于 32 字符
+	if cfg.JWT.Secret == "" {
+		return nil, fmt.Errorf("FATAL: jwt.secret must not be empty — set JWT_SECRET environment variable")
+	}
+	if len(cfg.JWT.Secret) < 32 {
+		return nil, fmt.Errorf("FATAL: jwt.secret must be at least 32 characters (got %d)", len(cfg.JWT.Secret))
+	}
+
 	return cfg, nil
 }
 
@@ -237,19 +245,12 @@ func defaultConfig() *Config {
 		},
 		Auth: AuthConfig{
 			Cookie: CookieConfig{
-				Secure:   false,
+				Secure:   true,
 				SameSite: "Strict",
 			},
 		},
 		CORS: CORSConfig{
-			AllowedOrigins: []string{
-				"http://localhost:5173",
-				"http://127.0.0.1:5173",
-				"http://localhost:7894",
-				"http://127.0.0.1:7894",
-				"http://localhost:7899",
-				"http://127.0.0.1:7899",
-			},
+			AllowedOrigins: []string{}, // Production must set via CORS_ALLOWED_ORIGINS env var
 		},
 		Upload: UploadConfig{
 			Path:      "./uploads",

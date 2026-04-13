@@ -5,12 +5,16 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
+
+// commentSanitizer 用于去除评论内容中的所有 HTML 标签（防御性 XSS 防护）。
+var commentSanitizer = bluemonday.StrictPolicy()
 
 // CommentHandler 负责处理评论审核和公开提交相关接口。
 type CommentHandler struct{ svc *service.CommentService }
@@ -194,6 +198,8 @@ func (h *CommentHandler) Submit(c echo.Context) error {
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
 	}
+	// 防御性 XSS：去除评论内容中的所有 HTML 标签
+	req.Content = commentSanitizer.Sanitize(req.Content)
 	ip := c.RealIP()
 	ua := c.Request().UserAgent()
 	vo, err := h.svc.Submit(c.Request().Context(), postID, req, ip, ua)

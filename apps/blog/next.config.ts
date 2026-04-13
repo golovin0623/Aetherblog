@@ -17,9 +17,11 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'cravatar.cn' },
       { protocol: 'https', hostname: 'data.golovin.cn' },
       { protocol: 'https', hostname: 'github.com' },
-      // 本地开发
-      { protocol: 'http', hostname: 'localhost' },
-      { protocol: 'http', hostname: '127.0.0.1' },
+      // 本地开发 — DEV ONLY: localhost entries are excluded in production builds
+      ...(process.env.NODE_ENV === 'development' ? [
+        { protocol: 'http' as const, hostname: 'localhost' },
+        { protocol: 'http' as const, hostname: '127.0.0.1' },
+      ] : []),
       // 生产环境: 通过环境变量添加额外可信域名 (不设置则仅允许上述白名单)
       ...(process.env.NEXT_PUBLIC_IMAGE_DOMAINS
         ? process.env.NEXT_PUBLIC_IMAGE_DOMAINS.split(',').map(h => ({

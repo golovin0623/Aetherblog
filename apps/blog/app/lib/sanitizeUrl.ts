@@ -42,3 +42,25 @@ export function sanitizeImageUrl(url: string | undefined | null, fallback: strin
 
   return fallback;
 }
+
+/**
+ * 验证并清理通用链接 URL，仅允许安全协议
+ * 防止通过 javascript: 等协议注入 XSS 攻击
+ *
+ * @param url 待验证的 URL
+ * @param fallback 验证失败时的回退 URL
+ * @returns 安全的 URL 或 fallback
+ */
+export function sanitizeUrl(url: string, fallback: string = '#'): string {
+  if (!url || typeof url !== 'string') return fallback;
+  const trimmed = url.trim();
+  // Only allow http and https protocols
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  // Also allow protocol-relative URLs
+  if (trimmed.startsWith('//')) {
+    return trimmed;
+  }
+  return fallback;
+}
