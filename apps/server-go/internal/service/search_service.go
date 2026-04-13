@@ -140,11 +140,17 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 			"content": content,
 			"action":  "upsert",
 		})
-		body, statusCode, err := s.aiClient.DoSync(ctx, http.MethodPost, "/api/v1/admin/search/index",
+		body, statusCode, err := s.aiClient.DoStream(ctx, http.MethodPost, "/api/v1/admin/search/index",
 			strings.NewReader(string(payload)), headers)
-		if err != nil || statusCode != http.StatusOK {
+		if err != nil {
 			result.Failed++
-			log.Warn().Int64("postId", post.ID).Err(err).Int("status", statusCode).Msg("index post failed")
+			log.Warn().Int64("postId", post.ID).Err(err).Msg("index post request failed")
+			continue
+		}
+		if statusCode != http.StatusOK {
+			result.Failed++
+			log.Warn().Int64("postId", post.ID).Int("status", statusCode).Msg("index post failed")
+			body.Close()
 			continue
 		}
 		body.Close()
