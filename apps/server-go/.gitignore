@@ -1,4 +1,5 @@
 /server
+/aetherblog-server
 *.exe
 *.test
 *.out
