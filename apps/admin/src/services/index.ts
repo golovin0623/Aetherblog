@@ -11,4 +11,5 @@ export { settingsService } from './settingsService';
 export { systemService } from './systemService';
 export { analyticsService } from './analyticsService';
 export { activityService } from './activityService';
+export { searchConfigService } from './searchConfigService';
 

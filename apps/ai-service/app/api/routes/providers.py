@@ -638,14 +638,87 @@ async def test_credential(
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
         error_msg = str(e)
-        
+
         # Update last error
         await resolver.update_last_used(credential_id, error=error_msg)
-        
+
         return ApiResponse(
             data=CredentialTestResponse(
                 success=False,
                 message=f"API test failed: {error_msg}",
+                latency_ms=latency_ms,
+            ),
+        )
+
+
+@router.post("/credentials/{credential_id}/test-embedding", response_model=ApiResponse[CredentialTestResponse])
+async def test_embedding_credential(
+    credential_id: int,
+    req: CredentialTestRequest,
+    user: UserClaims = Depends(require_admin),
+    resolver: CredentialResolver = Depends(get_credential_resolver),
+    registry: ProviderRegistry = Depends(get_provider_registry),
+):
+    """Test a credential by making an embedding API call."""
+    from litellm import aembedding
+
+    # Get credential
+    credential = await resolver.get_credential(
+        provider_code="",
+        credential_id=credential_id,
+        user_id=user.user_id,
+    )
+    if not credential:
+        raise HTTPException(status_code=404, detail="Credential not found")
+
+    # Get provider info
+    provider = await registry.get_provider(credential.provider_code)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # Determine model name with proper prefix
+    model_name = req.model_id
+    if provider.api_type in ("openai_compat", "custom"):
+        if not model_name.startswith("openai/"):
+            model_name = f"openai/{model_name}"
+    elif provider.api_type == "azure":
+        if not model_name.startswith("azure/"):
+            model_name = f"azure/{model_name}"
+
+    # Test with embedding
+    start = time.perf_counter()
+    try:
+        response = await aembedding(
+            model=model_name,
+            input=["Hello, this is a test for embedding model."],
+            api_key=credential.api_key,
+            api_base=credential.base_url,
+        )
+        latency_ms = (time.perf_counter() - start) * 1000
+
+        # Get vector dimension
+        dimension = len(response.data[0]["embedding"])
+
+        # Update last used
+        await resolver.update_last_used(credential_id, error=None)
+
+        return ApiResponse(
+            data=CredentialTestResponse(
+                success=True,
+                message=f"Embedding test OK, dimension: {dimension}",
+                latency_ms=latency_ms,
+            ),
+        )
+    except Exception as e:
+        latency_ms = (time.perf_counter() - start) * 1000
+        error_msg = str(e)
+
+        await resolver.update_last_used(credential_id, error=error_msg)
+
+        return ApiResponse(
+            data=CredentialTestResponse(
+                success=False,
+                message=f"Embedding test failed: {error_msg}",
                 latency_ms=latency_ms,
             ),
         )

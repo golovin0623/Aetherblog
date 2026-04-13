@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 )
 
@@ -470,4 +472,84 @@ func (r *PostRepo) CountPublished(ctx context.Context) (int64, error) {
 	err := r.db.GetContext(ctx, &n,
 		`SELECT COUNT(*) FROM posts WHERE deleted=false AND status='PUBLISHED'`)
 	return n, err
+}
+
+// --- 全文搜索 ---
+
+// SearchResultRow 是关键词搜索查询的投影类型。
+type SearchResultRow struct {
+	ID           int64      `db:"id"`
+	Title        string     `db:"title"`
+	Slug         string     `db:"slug"`
+	Summary      *string    `db:"summary"`
+	CategoryName *string    `db:"category_name"`
+	Rank         float64    `db:"rank"`
+	PublishedAt  *time.Time `db:"published_at"`
+}
+
+// SearchPublished 使用 PostgreSQL 全文搜索查找已发布文章，按相关性排序。
+func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
+	var rows []SearchResultRow
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
+			ts_rank(
+				to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
+				plainto_tsquery('simple', $1)
+			) AS rank
+		FROM posts p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
+			AND to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
+				@@ plainto_tsquery('simple', $1)
+		ORDER BY rank DESC
+		LIMIT $2 OFFSET $3`,
+		keyword, limit, offset)
+	return rows, err
+}
+
+// ListEmbeddingStatus 返回已发布文章的向量索引状态列表，支持按 embeddingStatus 过滤。
+// statusFilter 为空时返回所有已发布文章，否则只返回指定状态的文章。
+func (r *PostRepo) ListEmbeddingStatus(ctx context.Context, statusFilter string, limit, offset int) ([]dto.EmbeddingPostItem, int, error) {
+	args := []any{}
+	where := "WHERE p.deleted = false AND p.status = 'PUBLISHED'"
+	if statusFilter != "" {
+		where += " AND p.embedding_status = $1"
+		args = append(args, statusFilter)
+	}
+
+	// 统计总数
+	countQuery := "SELECT COUNT(*) FROM posts p " + where
+	var total int
+	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
+		return nil, 0, err
+	}
+
+	// 查询列表
+	selectQuery := fmt.Sprintf(`
+		SELECT p.id, p.title, p.slug, p.status, p.embedding_status, p.published_at, p.updated_at
+		FROM posts p %s
+		ORDER BY p.id DESC
+		LIMIT %d OFFSET %d`, where, limit, offset)
+
+	var items []dto.EmbeddingPostItem
+	if err := r.db.SelectContext(ctx, &items, selectQuery, args...); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+// FindByIDs 根据一组 ID 查询已发布文章（用于批量索引）。
+func (r *PostRepo) FindByIDs(ctx context.Context, ids []int64) ([]model.Post, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	query, args, err := sqlx.In(
+		`SELECT * FROM posts WHERE id IN (?) AND deleted = false AND status = 'PUBLISHED'`, ids)
+	if err != nil {
+		return nil, err
+	}
+	query = r.db.Rebind(query)
+	var posts []model.Post
+	err = r.db.SelectContext(ctx, &posts, query, args...)
+	return posts, err
 }

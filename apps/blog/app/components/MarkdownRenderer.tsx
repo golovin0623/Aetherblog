@@ -14,12 +14,34 @@ import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma';
 import type { BundledLanguage } from 'shiki';
 import { useTheme } from '@aetherblog/hooks';
-import DOMPurify from 'dompurify';
 import { logger } from '../lib/logger';
 import { buildHeadingIdMap } from '../lib/headingId';
 import remarkDirective from 'remark-directive';
 import remarkAlertBlock from '../lib/remarkAlertBlock';
 import { AlertBlock } from './AlertBlock';
+
+// DOMPurify 配置 — 用于消毒 mermaid SVG 和 shiki HTML 输出
+const SVG_SANITIZE_CONFIG = {
+  USE_PROFILES: { svg: true, svgFilters: true },
+} as const;
+const SHIKI_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  ADD_ATTR: ['class', 'style'],
+} as const;
+
+// SSR-safe DOMPurify：仅在浏览器环境中加载，Node.js 端为 null
+const DOMPurifyModule = typeof window !== 'undefined'
+  ? (await import('dompurify')).default
+  : null;
+
+/**
+ * SSR-safe DOMPurify 消毒封装：浏览器环境执行消毒，
+ * 服务端直接返回空字符串（SSR 时组件状态为初始值，不会到达此路径）。
+ */
+function sanitizeHtml(dirty: string, config: Record<string, unknown>): string {
+  if (!DOMPurifyModule) return '';
+  return DOMPurifyModule.sanitize(dirty, config);
+}
 
 // ============================================================================
 // rehype-sanitize 白名单 — 允许博客常用 HTML 属性，阻止 XSS
@@ -31,11 +53,10 @@ const sanitizeSchema: typeof defaultSchema = {
     // 扩展多媒体与语意化标签
     'center', 'figure', 'figcaption', 'mark', 'u', 'abbr', 'details', 'summary',
     'video', 'audio', 'source', 'track', 'picture', 'kbd', 'sup', 'sub', 'del'
-    // NOTE: iframe, object, embed, form are intentionally excluded for XSS prevention
   ],
   attributes: {
     ...defaultSchema.attributes,
-    // 全局放行核心排版属性（style 已移除以防 XSS）
+    // 全局放行核心排版属性（移除 style 以防止 CSS 注入）
     '*': [
       ...(defaultSchema.attributes?.['*'] || []),
       'className', 'id', 'align', 'valign', 'width', 'height'
@@ -51,21 +72,6 @@ const sanitizeSchema: typeof defaultSchema = {
     // alert-block 自定义元素
     'alert-block': ['data-type', 'data-title'],
   },
-};
-
-// ============================================================================
-// DOMPurify 配置 — 用于 dangerouslySetInnerHTML 的 XSS 防护
-// ============================================================================
-const SVG_SANITIZE_CONFIG = {
-  USE_PROFILES: { svg: true, svgFilters: true },
-  ADD_TAGS: ['foreignObject'],
-  FORBID_TAGS: ['script', 'style'],
-  FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
-};
-
-const CODE_SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ['pre', 'code', 'span', 'div', 'br'],
-  ALLOWED_ATTR: ['class', 'style', 'data-language', 'data-theme', 'tabindex'],
 };
 
 const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath, remarkDirective, remarkAlertBlock];
@@ -491,7 +497,7 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
   return (
     <div
       className="my-4 flex justify-center bg-[var(--markdown-bg-code)] rounded-lg p-4 overflow-x-auto border border-[var(--markdown-border-code)]"
-      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG) }}
+      dangerouslySetInnerHTML={{ __html: sanitizeHtml(svg, SVG_SANITIZE_CONFIG) }}
     />
   );
 };
@@ -644,7 +650,7 @@ const ShikiCodeBlock: React.FC<{ language: string; code: string; highlighter: Hi
         {highlightedHtml ? (
           <div
             className="shiki-wrapper"
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightedHtml, CODE_SANITIZE_CONFIG) }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(highlightedHtml, SHIKI_SANITIZE_CONFIG) }}
           />
         ) : (
           <div className="shiki-wrapper">

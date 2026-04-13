@@ -34,6 +34,10 @@ export const API_ENDPOINTS = {
 
   // 相邻文章（上一篇/下一篇）
   adjacentPosts: (slug: string) => `${API_BASE_URL}/api/v1/public/posts/${slug}/adjacent`,
+
+  // 搜索
+  search: `${API_BASE_URL}/api/v1/public/search`,
+  searchQA: `${API_BASE_URL}/api/v1/public/search/qa`,
 };
 
 // 提供两个版本的 URL，供需要明确指定的场景使用
