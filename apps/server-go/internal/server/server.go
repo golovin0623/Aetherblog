@@ -249,6 +249,8 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	searchAdmin.POST("/reindex", searchHandler.Reindex)
 	searchAdmin.POST("/retry-failed", searchHandler.RetryFailed)
 	searchAdmin.GET("/embedding-status", searchHandler.EmbeddingStatus)
+	searchAdmin.GET("/posts", searchHandler.ListPostsEmbedding)
+	searchAdmin.POST("/index-batch", searchHandler.IndexBatch)
 }
 
 // healthHandler 处理健康检查请求，依次检测数据库和 Redis 连通性并返回状态。
