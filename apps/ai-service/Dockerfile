@@ -12,9 +12,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY apps/ai-service/app ./app
 
-# Create non-root user
-RUN addgroup --gid 1001 appgroup && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" appuser
-RUN chown -R appuser:appgroup /app
+# Create non-root user (same UID/GID as backend so shared volumes are accessible)
+RUN mkdir -p /app/logs && \
+    addgroup --gid 1001 appgroup && \
+    adduser --uid 1001 --gid 1001 --disabled-password --gecos "" appuser && \
+    chown -R appuser:appgroup /app
 
 USER appuser
 

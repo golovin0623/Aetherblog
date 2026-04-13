@@ -46,10 +46,13 @@ def setup_logging(log_path: str = "./logs", level: str = "INFO"):
     stdout_handler.setFormatter(formatter)
     root.addHandler(stdout_handler)
 
-    # File handler
-    file_handler = logging.FileHandler(os.path.join(log_path, "ai-service.log"), encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    root.addHandler(file_handler)
+    # File handler (best-effort: skip if path is not writable, e.g. shared Docker volume)
+    try:
+        file_handler = logging.FileHandler(os.path.join(log_path, "ai-service.log"), encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
+    except (PermissionError, OSError) as exc:
+        root.warning("File logging disabled — %s. Falling back to stdout only.", exc)
 
     # Suppress noisy libraries
     for name in ("httpx", "httpcore", "uvicorn.access", "watchfiles"):
