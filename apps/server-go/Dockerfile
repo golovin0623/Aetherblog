@@ -13,6 +13,7 @@ RUN go mod download
 # Copy source and build
 COPY apps/server-go/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o migrate ./cmd/migrate
 
 # Production: alpine-based minimal image
 # Using alpine instead of scratch for: timezone data, /tmp, /app dirs, shell for healthcheck
@@ -22,6 +23,7 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 WORKDIR /app
 COPY --from=builder /app/server /app/server
+COPY --from=builder /app/migrate /app/migrate
 COPY --from=builder /app/config.yaml /app/config.yaml
 COPY --from=builder /app/migrations /app/migrations
 
