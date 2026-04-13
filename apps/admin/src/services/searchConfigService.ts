@@ -29,7 +29,7 @@ export const searchConfigService = {
     api.get('/v1/admin/search/config'),
 
   updateConfig: (data: Record<string, string>): Promise<R<void>> =>
-    api.patch('/v1/admin/settings/batch', data),
+    api.patch('/v1/admin/search/config', data),
 
   getStats: (): Promise<R<IndexStats>> =>
     api.get('/v1/admin/search/stats'),

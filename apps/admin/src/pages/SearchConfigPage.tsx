@@ -200,8 +200,13 @@ export default function SearchConfigPage() {
       queryClient.invalidateQueries({ queryKey: ['search-stats'] });
       toast.success('全量重建索引已启动');
     },
-    onError: () => {
-      toast.error('重建索引失败');
+    onError: (err: unknown) => {
+      const msg = (err as { message?: string })?.message || '';
+      if (msg.includes('not configured') || msg.includes('unavailable')) {
+        toast.error('AI 服务未配置或不可用，无法执行重建索引');
+      } else {
+        toast.error(`重建索引失败: ${msg || '请检查 AI 服务是否正常运行'}`);
+      }
     },
   });
 
@@ -211,8 +216,13 @@ export default function SearchConfigPage() {
       queryClient.invalidateQueries({ queryKey: ['search-stats'] });
       toast.success('重试失败任务已启动');
     },
-    onError: () => {
-      toast.error('重试失败');
+    onError: (err: unknown) => {
+      const msg = (err as { message?: string })?.message || '';
+      if (msg.includes('not configured') || msg.includes('unavailable')) {
+        toast.error('AI 服务未配置或不可用，无法重试');
+      } else {
+        toast.error(`重试失败: ${msg || '请检查 AI 服务是否正常运行'}`);
+      }
     },
   });
 
