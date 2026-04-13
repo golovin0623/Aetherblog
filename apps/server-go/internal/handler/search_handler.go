@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 
+	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
@@ -125,6 +127,50 @@ func (h *SearchHandler) UpdateConfig(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
+}
+
+// ListPostsEmbedding 处理 GET /v1/admin/search/posts 请求，返回文章向量索引状态列表。
+func (h *SearchHandler) ListPostsEmbedding(c echo.Context) error {
+	statusFilter := c.QueryParam("embeddingStatus") // PENDING | INDEXED | FAILED | ""(全部)
+	limit := 20
+	offset := 0
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if o := c.QueryParam("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+
+	result, err := h.svc.ListPostsEmbedding(c.Request().Context(), statusFilter, limit, offset)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.OK(c, result)
+}
+
+// IndexBatch 处理 POST /v1/admin/search/index-batch 请求，批量索引指定文章。
+func (h *SearchHandler) IndexBatch(c echo.Context) error {
+	var req dto.IndexBatchRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	if len(req.PostIDs) == 0 {
+		return response.FailWith(c, response.BadRequest, "请提供至少一个文章 ID")
+	}
+	if len(req.PostIDs) > 100 {
+		return response.FailWith(c, response.BadRequest, "单次最多索引 100 篇文章")
+	}
+
+	result, err := h.svc.IndexBatchPosts(c.Request().Context(), req.PostIDs)
+	if err != nil {
+		log.Error().Err(err).Msg("index batch failed")
+		return response.Error(c, err)
+	}
+	return response.OK(c, result)
 }
 
 // searchProxyHeaders 从请求中提取认证头，供搜索管理端点代理使用。

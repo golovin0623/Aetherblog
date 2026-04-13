@@ -16,12 +16,16 @@ import {
   Zap,
   RotateCcw,
   ChevronDown,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   searchConfigService,
   type SearchConfig,
   type IndexStats,
+  type EmbeddingPostItem,
 } from '@/services/searchConfigService';
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 
@@ -97,6 +101,30 @@ function StatCard({
     </div>
   );
 }
+
+// --- Status badge ---
+const statusConfig: Record<string, { label: string; className: string }> = {
+  INDEXED: { label: '已索引', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  PENDING: { label: '待处理', className: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+  FAILED: { label: '失败', className: 'bg-red-500/10 text-red-400 border-red-500/20' },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = statusConfig[status] || { label: status, className: 'bg-gray-500/10 text-gray-400 border-gray-500/20' };
+  return (
+    <span className={cn('px-2 py-0.5 rounded-md text-xs font-medium border', cfg.className)}>
+      {cfg.label}
+    </span>
+  );
+}
+
+// --- Filter tabs ---
+const filterTabs = [
+  { key: '', label: '全部' },
+  { key: 'PENDING', label: '待处理' },
+  { key: 'INDEXED', label: '已索引' },
+  { key: 'FAILED', label: '失败' },
+];
 
 // --- Main page ---
 export default function SearchConfigPage() {
@@ -225,6 +253,68 @@ export default function SearchConfigPage() {
       }
     },
   });
+
+  // --- Post list state ---
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const pageSize = 10;
+
+  const postsQuery = useQuery({
+    queryKey: ['search-posts', statusFilter, page],
+    queryFn: () =>
+      searchConfigService.listPosts({
+        embeddingStatus: statusFilter || undefined,
+        limit: pageSize,
+        offset: page * pageSize,
+      }),
+  });
+  const posts = postsQuery.data?.data?.items ?? [];
+  const postsTotal = postsQuery.data?.data?.total ?? 0;
+  const totalPages = Math.ceil(postsTotal / pageSize);
+
+  const indexBatchMutation = useMutation({
+    mutationFn: (postIds: number[]) => searchConfigService.indexBatch(postIds),
+    onSuccess: (res) => {
+      const d = res?.data;
+      if (d) {
+        toast.success(`索引完成: 成功 ${d.indexed} 篇, 失败 ${d.failed} 篇`);
+      } else {
+        toast.success('索引任务已完成');
+      }
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['search-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['search-stats'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { message?: string })?.message || '';
+      toast.error(`索引失败: ${msg || '请检查 AI 服务是否正常运行'}`);
+    },
+  });
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (posts.length > 0 && posts.every((p: EmbeddingPostItem) => selected.has(p.id))) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        posts.forEach((p: EmbeddingPostItem) => next.delete(p.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        posts.forEach((p: EmbeddingPostItem) => next.add(p.id));
+        return next;
+      });
+    }
+  };
 
   const handleSave = () => {
     // Map camelCase form keys to search.* database keys
@@ -470,6 +560,148 @@ export default function SearchConfigPage() {
               )}
               重试失败
             </button>
+          </div>
+
+          {/* Post list with per-article indexing */}
+          <div className="border-t border-[var(--border-subtle)] pt-5 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[var(--text-muted)]" />
+                <span className="text-sm font-bold text-[var(--text-primary)]">文章索引列表</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Filter tabs */}
+                <div className="flex rounded-lg border border-[var(--border-subtle)] overflow-hidden">
+                  {filterTabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => { setStatusFilter(tab.key); setPage(0); setSelected(new Set()); }}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-medium transition-colors',
+                        statusFilter === tab.key
+                          ? 'bg-primary text-white'
+                          : 'bg-[var(--bg-input)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Batch reindex */}
+                {selected.size > 0 && (
+                  <button
+                    onClick={() => indexBatchMutation.mutate(Array.from(selected))}
+                    disabled={indexBatchMutation.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    {indexBatchMutation.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                    重建选中 ({selected.size})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="rounded-lg border border-[var(--border-subtle)] overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[var(--bg-input)]">
+                    <th className="w-10 px-3 py-2.5 text-left">
+                      <input
+                        type="checkbox"
+                        checked={posts.length > 0 && posts.every((p: EmbeddingPostItem) => selected.has(p.id))}
+                        onChange={toggleSelectAll}
+                        className="rounded border-[var(--border-subtle)]"
+                      />
+                    </th>
+                    <th className="px-3 py-2.5 text-left font-medium text-[var(--text-muted)]">文章</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-[var(--text-muted)] hidden sm:table-cell">状态</th>
+                    <th className="px-3 py-2.5 text-right font-medium text-[var(--text-muted)]">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {postsQuery.isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i} className="border-t border-[var(--border-subtle)]">
+                        <td className="px-3 py-3"><div className="w-4 h-4 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
+                        <td className="px-3 py-3"><div className="h-4 w-48 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
+                        <td className="px-3 py-3 hidden sm:table-cell"><div className="h-5 w-14 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
+                        <td className="px-3 py-3"><div className="h-7 w-12 bg-[var(--bg-card-hover)] rounded animate-pulse ml-auto" /></td>
+                      </tr>
+                    ))
+                  ) : posts.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-8 text-center text-[var(--text-muted)] text-sm">
+                        暂无数据
+                      </td>
+                    </tr>
+                  ) : (
+                    posts.map((post: EmbeddingPostItem) => (
+                      <tr key={post.id} className="border-t border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors">
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(post.id)}
+                            onChange={() => toggleSelect(post.id)}
+                            className="rounded border-[var(--border-subtle)]"
+                          />
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-col">
+                            <span className="text-[var(--text-primary)] font-medium truncate max-w-xs">{post.title}</span>
+                            <span className="text-xs text-[var(--text-muted)] sm:hidden mt-0.5">
+                              <StatusBadge status={post.embeddingStatus} />
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 hidden sm:table-cell">
+                          <StatusBadge status={post.embeddingStatus} />
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <button
+                            onClick={() => indexBatchMutation.mutate([post.id])}
+                            disabled={indexBatchMutation.isPending}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            重建
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-[var(--text-muted)]">
+                  共 {postsTotal} 篇，第 {page + 1}/{totalPages} 页
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                    className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
 

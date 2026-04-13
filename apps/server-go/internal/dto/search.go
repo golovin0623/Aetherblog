@@ -39,3 +39,32 @@ type SearchConfig struct {
 	AnonQARatePerMin     int  `json:"anonQaRatePerMin"`
 	AutoIndexOnPublish   bool `json:"autoIndexOnPublish"`
 }
+
+// EmbeddingPostItem 是管理端文章向量索引列表中的单条记录。
+type EmbeddingPostItem struct {
+	ID              int64      `json:"id" db:"id"`
+	Title           string     `json:"title" db:"title"`
+	Slug            string     `json:"slug" db:"slug"`
+	Status          string     `json:"status" db:"status"`
+	EmbeddingStatus string     `json:"embeddingStatus" db:"embedding_status"`
+	PublishedAt     *time.Time `json:"publishedAt,omitempty" db:"published_at"`
+	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
+}
+
+// EmbeddingPostListResponse 是文章向量索引列表的分页响应。
+type EmbeddingPostListResponse struct {
+	Items []EmbeddingPostItem `json:"items"`
+	Total int                 `json:"total"`
+}
+
+// IndexBatchRequest 是批量索引请求体。
+type IndexBatchRequest struct {
+	PostIDs []int64 `json:"postIds" validate:"required,min=1"`
+}
+
+// IndexBatchResult 是批量索引操作的响应。
+type IndexBatchResult struct {
+	Indexed int `json:"indexed"`
+	Failed  int `json:"failed"`
+	Total   int `json:"total"`
+}
