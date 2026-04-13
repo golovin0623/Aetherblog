@@ -446,23 +446,26 @@ class LlmRouter:
     async def embed(self, text: str, user_id: int | None = None) -> list[float]:
         """Generate embedding for text."""
         routing = await self._get_routing("embedding", user_id)
-        
+
         if routing:
-            model = routing.model.model_id
+            # Apply provider prefix for correct LiteLLM routing (same as chat/stream_chat)
+            model = self._prefix_model_for_litellm(
+                routing.model.model_id, routing.credential.api_type
+            )
             api_key = routing.credential.api_key
             api_base = routing.credential.base_url
         else:
             model = self.resolve_model("embedding")
             api_key = self.settings.openai_api_key
             api_base = self.settings.openai_base_url
-        
+
         if self.settings.mock_mode:
             digest = hashlib.sha256(text.encode("utf-8")).digest()
             seed = [b / 255 for b in digest]
             dim = self.settings.vector_dim
             repeats = dim // len(seed) + 1
             return (seed * repeats)[:dim]
-        
+
         response = await aembedding(
             model=model,
             input=[text],
