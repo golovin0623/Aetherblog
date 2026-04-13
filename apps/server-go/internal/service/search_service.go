@@ -317,19 +317,21 @@ func (s *SearchService) ProxySearchStats(ctx context.Context, headers map[string
 }
 
 // ProxyReindex 代理全量重建索引请求到 AI service。
+// 使用 DoStream（长超时客户端）因为全量重建索引可能耗时数分钟。
 func (s *SearchService) ProxyReindex(ctx context.Context, body io.Reader, headers map[string]string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
 		return nil, http.StatusServiceUnavailable, errAIClientNil
 	}
-	return s.aiClient.DoSync(ctx, http.MethodPost, "/api/v1/admin/search/reindex", body, headers)
+	return s.aiClient.DoStream(ctx, http.MethodPost, "/api/v1/admin/search/reindex", body, headers)
 }
 
 // ProxyRetryFailed 代理重试失败索引请求到 AI service。
+// 使用 DoStream（长超时客户端）因为批量重试可能耗时数分钟。
 func (s *SearchService) ProxyRetryFailed(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
 		return nil, http.StatusServiceUnavailable, errAIClientNil
 	}
-	return s.aiClient.DoSync(ctx, http.MethodPost, "/api/v1/admin/search/retry-failed", nil, headers)
+	return s.aiClient.DoStream(ctx, http.MethodPost, "/api/v1/admin/search/retry-failed", nil, headers)
 }
 
 // ProxyEmbeddingStatus 代理 embedding 路由状态查询到 AI service。
