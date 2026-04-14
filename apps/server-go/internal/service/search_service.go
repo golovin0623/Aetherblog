@@ -115,7 +115,7 @@ func (s *SearchService) ListPostsEmbedding(ctx context.Context, statusFilter str
 // IndexBatchPosts 批量索引指定文章（同步执行，逐篇调用 AI service）。
 func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*dto.IndexBatchResult, error) {
 	if s.aiClient == nil {
-		return nil, errAIClientNil
+		return nil, ErrAIClientNil
 	}
 
 	posts, err := s.postRepo.FindByIDs(ctx, postIDs)
@@ -128,6 +128,7 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 	}
 
 	result := &dto.IndexBatchResult{Total: len(posts)}
+	var lastErr string
 	for _, post := range posts {
 		content := ""
 		if post.ContentMarkdown != nil {
@@ -144,17 +145,22 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 			strings.NewReader(string(payload)), headers)
 		if err != nil {
 			result.Failed++
+			lastErr = err.Error()
 			log.Warn().Int64("postId", post.ID).Err(err).Msg("index post request failed")
 			continue
 		}
 		if statusCode != http.StatusOK {
 			result.Failed++
+			lastErr = fmt.Sprintf("AI 服务返回状态码 %d", statusCode)
 			log.Warn().Int64("postId", post.ID).Int("status", statusCode).Msg("index post failed")
 			body.Close()
 			continue
 		}
 		body.Close()
 		result.Indexed++
+	}
+	if result.Failed > 0 && result.Indexed == 0 && lastErr != "" {
+		result.Reason = lastErr
 	}
 	return result, nil
 }
@@ -355,13 +361,13 @@ func fusionRRF(kwResults, semResults []dto.SearchResultItem, k, limit int) []dto
 	return items
 }
 
-// errAIClientNil 在 aiClient 未配置时返回给调用方的错误。
-var errAIClientNil = fmt.Errorf("AI service client is not configured")
+// ErrAIClientNil 在 aiClient 未配置时返回给调用方的错误。
+var ErrAIClientNil = fmt.Errorf("AI service client is not configured")
 
 // ProxyQA 代理 QA 请求到 AI service 并返回 SSE 流。
 func (s *SearchService) ProxyQA(ctx context.Context, query string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
-		return nil, http.StatusServiceUnavailable, errAIClientNil
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
 	}
 	path := fmt.Sprintf("/api/v1/search/qa?q=%s", url.QueryEscape(query))
 	return s.aiClient.DoStream(ctx, http.MethodGet, path, nil,
@@ -371,7 +377,7 @@ func (s *SearchService) ProxyQA(ctx context.Context, query string) (io.ReadClose
 // ProxySearchStats 代理索引统计请求到 AI service。
 func (s *SearchService) ProxySearchStats(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
-		return nil, http.StatusServiceUnavailable, errAIClientNil
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
 	}
 	return s.aiClient.DoSync(ctx, http.MethodGet, "/api/v1/admin/search/stats", nil, headers)
 }
@@ -380,7 +386,7 @@ func (s *SearchService) ProxySearchStats(ctx context.Context, headers map[string
 // 使用 DoStream（长超时客户端）因为全量重建索引可能耗时数分钟。
 func (s *SearchService) ProxyReindex(ctx context.Context, body io.Reader, headers map[string]string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
-		return nil, http.StatusServiceUnavailable, errAIClientNil
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
 	}
 	return s.aiClient.DoStream(ctx, http.MethodPost, "/api/v1/admin/search/reindex", body, headers)
 }
@@ -389,7 +395,7 @@ func (s *SearchService) ProxyReindex(ctx context.Context, body io.Reader, header
 // 使用 DoStream（长超时客户端）因为批量重试可能耗时数分钟。
 func (s *SearchService) ProxyRetryFailed(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
-		return nil, http.StatusServiceUnavailable, errAIClientNil
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
 	}
 	return s.aiClient.DoStream(ctx, http.MethodPost, "/api/v1/admin/search/retry-failed", nil, headers)
 }
@@ -397,7 +403,7 @@ func (s *SearchService) ProxyRetryFailed(ctx context.Context, headers map[string
 // ProxyEmbeddingStatus 代理 embedding 路由状态查询到 AI service。
 func (s *SearchService) ProxyEmbeddingStatus(ctx context.Context, headers map[string]string) (io.ReadCloser, int, error) {
 	if s.aiClient == nil {
-		return nil, http.StatusServiceUnavailable, errAIClientNil
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
 	}
 	return s.aiClient.DoSync(ctx, http.MethodGet, "/api/v1/admin/providers/routing/embedding", nil, headers)
 }
