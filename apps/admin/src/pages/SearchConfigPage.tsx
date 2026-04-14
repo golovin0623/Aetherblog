@@ -232,10 +232,39 @@ export default function SearchConfigPage() {
     select: (res) => res.data,
   });
 
+  // Fetch all credentials so we can bind the active one to the routing.
+  // 必须显式把 credential_id 存进 ai_task_routing，否则 ai-service 在内部服务
+  // 无登录态调用时会走 fallback → env openai，用上虚空捏造的 api.openai.com。
+  const credentialsQuery = useQuery({
+    queryKey: ['ai-credentials'],
+    queryFn: () => aiProviderService.listCredentials(),
+    select: (res) => (res.data || []).filter((c) => c.is_enabled),
+  });
+
   // Mutation to update embedding routing
   const updateRoutingMutation = useMutation({
-    mutationFn: (modelId: number | null) =>
-      aiProviderService.updateRouting('embedding', { primary_model_id: modelId }),
+    mutationFn: (modelId: number | null) => {
+      // 根据所选模型自动解析对应的 credential_id：
+      //   1. 优先匹配同 provider 的 is_default=true 凭证
+      //   2. 否则取同 provider 的第一条启用凭证
+      // 这样一次保存既写入 primary_model_id 又写入 credential_id，路由完整。
+      let credentialId: number | null = null;
+      if (modelId != null) {
+        const model = (embeddingModelsQuery.data || []).find((m) => m.id === modelId);
+        const providerCode = model?.provider_code;
+        const creds = credentialsQuery.data || [];
+        if (providerCode) {
+          const match =
+            creds.find((c) => c.provider_code === providerCode && c.is_default) ||
+            creds.find((c) => c.provider_code === providerCode);
+          credentialId = match?.id ?? null;
+        }
+      }
+      return aiProviderService.updateRouting('embedding', {
+        primary_model_id: modelId,
+        credential_id: credentialId,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['embedding-routing'] });
       toast.success('向量化模型已更新');
@@ -243,7 +272,8 @@ export default function SearchConfigPage() {
     onError: () => toast.error('更新失败'),
   });
 
-  const embeddingLoading = embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading;
+  const embeddingLoading =
+    embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading || credentialsQuery.isLoading;
   const embeddingModels = embeddingModelsQuery.data || [];
   const currentRouting = embeddingRoutingQuery.data;
   const currentEmbeddingModelId = currentRouting?.primary_model?.id ?? null;
