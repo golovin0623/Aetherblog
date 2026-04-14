@@ -553,3 +553,20 @@ func (r *PostRepo) FindByIDs(ctx context.Context, ids []int64) ([]model.Post, er
 	err = r.db.SelectContext(ctx, &posts, query, args...)
 	return posts, err
 }
+
+// MarkEmbeddingPending 将指定 ID 的文章 embedding_status 置为 'PENDING'。
+// 用于异步批量索引前先行登记状态，便于前端进度面板通过 stats 接口感知"待处理"数量。
+func (r *PostRepo) MarkEmbeddingPending(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	query, args, err := sqlx.In(
+		`UPDATE posts SET embedding_status = 'PENDING', updated_at = NOW()
+		 WHERE id IN (?) AND deleted = false AND status = 'PUBLISHED'`, ids)
+	if err != nil {
+		return err
+	}
+	query = r.db.Rebind(query)
+	_, err = r.db.ExecContext(ctx, query, args...)
+	return err
+}
