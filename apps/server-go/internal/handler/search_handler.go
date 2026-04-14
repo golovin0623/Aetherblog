@@ -2,12 +2,16 @@ package handler
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -19,7 +23,8 @@ import (
 
 // SearchHandler 处理博客搜索相关的 HTTP 请求。
 type SearchHandler struct {
-	svc *service.SearchService
+	svc        *service.SearchService
+	reindexing atomic.Bool // 防止并发重建索引
 }
 
 // NewSearchHandler 创建 SearchHandler 实例。
@@ -197,24 +202,60 @@ func (h *SearchHandler) GetStats(c echo.Context) error {
 	return searchProxyResponse(c, body, statusCode)
 }
 
-// Reindex 处理 POST /v1/admin/search/reindex 请求，代理到 AI service。
+// Reindex 处理 POST /v1/admin/search/reindex 请求，异步代理到 AI service。
+// 立即返回 "已启动" 响应，后台 goroutine 执行实际重建。前端通过轮询 stats 接口查看进度。
 func (h *SearchHandler) Reindex(c echo.Context) error {
-	body, statusCode, err := h.svc.ProxyReindex(c.Request().Context(), c.Request().Body, searchProxyHeaders(c))
-	if err != nil {
-		return handleSearchError(c, err)
+	if !h.reindexing.CompareAndSwap(false, true) {
+		return response.Fail(c, "重建索引正在进行中，请等待完成")
 	}
-	defer body.Close()
-	return searchProxyResponse(c, body, statusCode)
+
+	reqBody, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		h.reindexing.Store(false)
+		return response.FailWith(c, response.BadRequest, "读取请求失败")
+	}
+	headers := searchProxyHeaders(c)
+
+	go func() {
+		defer h.reindexing.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		body, _, err := h.svc.ProxyReindex(ctx, bytes.NewReader(reqBody), headers)
+		if err != nil {
+			log.Error().Err(err).Msg("async reindex failed")
+			return
+		}
+		defer body.Close()
+		io.ReadAll(body)
+		log.Info().Msg("async reindex completed")
+	}()
+
+	return response.OK(c, map[string]string{"status": "started", "message": "全量重建索引已在后台启动"})
 }
 
-// RetryFailed 处理 POST /v1/admin/search/retry-failed 请求，代理到 AI service。
+// RetryFailed 处理 POST /v1/admin/search/retry-failed 请求，异步代理到 AI service。
 func (h *SearchHandler) RetryFailed(c echo.Context) error {
-	body, statusCode, err := h.svc.ProxyRetryFailed(c.Request().Context(), searchProxyHeaders(c))
-	if err != nil {
-		return handleSearchError(c, err)
+	if !h.reindexing.CompareAndSwap(false, true) {
+		return response.Fail(c, "索引任务正在进行中，请等待完成")
 	}
-	defer body.Close()
-	return searchProxyResponse(c, body, statusCode)
+
+	headers := searchProxyHeaders(c)
+
+	go func() {
+		defer h.reindexing.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		body, _, err := h.svc.ProxyRetryFailed(ctx, headers)
+		if err != nil {
+			log.Error().Err(err).Msg("async retry-failed failed")
+			return
+		}
+		defer body.Close()
+		io.ReadAll(body)
+		log.Info().Msg("async retry-failed completed")
+	}()
+
+	return response.OK(c, map[string]string{"status": "started", "message": "重试失败任务已在后台启动"})
 }
 
 // EmbeddingStatus 处理 GET /v1/admin/search/embedding-status 请求。

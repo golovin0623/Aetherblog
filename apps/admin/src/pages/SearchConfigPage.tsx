@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -19,6 +19,8 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  Activity,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toggle } from '@aetherblog/ui';
@@ -98,10 +100,105 @@ const filterTabs = [
   { key: 'FAILED', label: '失败' },
 ];
 
+// --- Indexing progress panel ---
+function IndexingProgressPanel({
+  stats,
+  startTime,
+  onDone,
+}: {
+  stats: IndexStats;
+  startTime: number;
+  onDone: () => void;
+}) {
+  const total = stats.total_posts;
+  const done = stats.indexed_posts + stats.failed_posts;
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+
+  // Auto-dismiss when complete (pending_posts === 0)
+  const prevPending = useRef(stats.pending_posts);
+  useEffect(() => {
+    if (prevPending.current > 0 && stats.pending_posts === 0) {
+      const timer = setTimeout(() => {
+        toast.success(`索引完成: 成功 ${stats.indexed_posts} 篇, 失败 ${stats.failed_posts} 篇`);
+        onDone();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+    prevPending.current = stats.pending_posts;
+  }, [stats.pending_posts, stats.indexed_posts, stats.failed_posts, onDone]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      className="overflow-hidden"
+    >
+      <div className="rounded-xl bg-gradient-to-r from-indigo-500/5 to-purple-500/5 border border-indigo-500/20 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
+            <span className="text-sm font-medium text-[var(--text-primary)]">
+              索引进行中
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            <Clock className="w-3 h-3" />
+            {minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`}
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="space-y-1.5">
+          <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
+              initial={{ width: 0 }}
+              animate={{ width: `${percent}%` }}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+            <span>
+              已处理 {done} / {total} 篇
+              {stats.failed_posts > 0 && (
+                <span className="text-red-400 ml-1.5">({stats.failed_posts} 失败)</span>
+              )}
+            </span>
+            <span className="font-medium text-[var(--text-secondary)] tabular-nums">{percent}%</span>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 // --- Main page ---
 export default function SearchConfigPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // --- Indexing progress state ---
+  const [indexingActive, setIndexingActive] = useState(false);
+  const [indexingStartTime, setIndexingStartTime] = useState(0);
+
+  // Force re-render every second while indexing is active (for elapsed time)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!indexingActive) return;
+    const timer = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, [indexingActive]);
+
+  const stopIndexing = useCallback(() => {
+    setIndexingActive(false);
+    queryClient.invalidateQueries({ queryKey: ['search-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['search-posts'] });
+  }, [queryClient]);
 
   // --- Data fetching ---
   const {
@@ -118,6 +215,7 @@ export default function SearchConfigPage() {
   } = useQuery({
     queryKey: ['search-stats'],
     queryFn: () => searchConfigService.getStats(),
+    refetchInterval: indexingActive ? 2000 : false,
   });
 
   // Fetch all embedding models across all providers
@@ -194,16 +292,21 @@ export default function SearchConfigPage() {
     },
   });
 
+  const startProgress = useCallback(() => {
+    setIndexingActive(true);
+    setIndexingStartTime(Date.now());
+  }, []);
+
   const reindexMutation = useMutation({
     mutationFn: () => searchConfigService.reindex(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['search-stats'] });
-      toast.success('全量重建索引已启动');
+      startProgress();
+      toast.success('全量重建索引已在后台启动');
     },
     onError: (err: unknown) => {
       const msg = (err as { message?: string })?.message || '';
-      if (/not configured|unavailable/i.test(msg)) {
-        toast.error('AI 服务未配置或不可用，无法执行重建索引');
+      if (/未配置/.test(msg)) {
+        toast.error('AI 服务未配置，请前往设置页面配置 AI 服务');
       } else {
         toast.error(`重建索引失败: ${msg || '请检查 AI 服务是否正常运行'}`);
       }
@@ -213,13 +316,13 @@ export default function SearchConfigPage() {
   const retryMutation = useMutation({
     mutationFn: () => searchConfigService.retryFailed(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['search-stats'] });
-      toast.success('重试失败任务已启动');
+      startProgress();
+      toast.success('重试失败任务已在后台启动');
     },
     onError: (err: unknown) => {
       const msg = (err as { message?: string })?.message || '';
-      if (/not configured|unavailable/i.test(msg)) {
-        toast.error('AI 服务未配置或不可用，无法重试');
+      if (/未配置/.test(msg)) {
+        toast.error('AI 服务未配置，请前往设置页面配置 AI 服务');
       } else {
         toast.error(`重试失败: ${msg || '请检查 AI 服务是否正常运行'}`);
       }
@@ -241,6 +344,7 @@ export default function SearchConfigPage() {
         limit: pageSize,
         offset: page * pageSize,
       }),
+    refetchInterval: indexingActive ? 5000 : false,
   });
   const posts = postsQuery.data?.data?.items ?? [];
   const postsTotal = postsQuery.data?.data?.total ?? 0;
@@ -524,20 +628,20 @@ export default function SearchConfigPage() {
           <div className="flex flex-wrap gap-3 pt-1">
             <button
               onClick={() => reindexMutation.mutate()}
-              disabled={reindexMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors text-sm"
+              disabled={reindexMutation.isPending || indexingActive}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {reindexMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <RefreshCw className="w-4 h-4" />
               )}
-              全量重建索引
+              {indexingActive ? '索引进行中...' : '全量重建索引'}
             </button>
             <button
               onClick={() => retryMutation.mutate()}
               disabled={
-                retryMutation.isPending || (stats?.failed_posts ?? 0) === 0
+                retryMutation.isPending || indexingActive || (stats?.failed_posts ?? 0) === 0
               }
               className={cn(
                 'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors',
@@ -554,6 +658,17 @@ export default function SearchConfigPage() {
               重试失败
             </button>
           </div>
+
+          {/* Indexing progress panel */}
+          <AnimatePresence>
+            {indexingActive && stats && (
+              <IndexingProgressPanel
+                stats={stats}
+                startTime={indexingStartTime}
+                onDone={stopIndexing}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Post list with per-article indexing */}
           <div className="border-t border-[var(--border-subtle)] pt-5 space-y-3">
