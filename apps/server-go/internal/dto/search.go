@@ -64,7 +64,8 @@ type IndexBatchRequest struct {
 
 // IndexBatchResult 是批量索引操作的响应。
 type IndexBatchResult struct {
-	Indexed int `json:"indexed"`
-	Failed  int `json:"failed"`
-	Total   int `json:"total"`
+	Indexed int    `json:"indexed"`
+	Failed  int    `json:"failed"`
+	Total   int    `json:"total"`
+	Reason  string `json:"reason,omitempty"`
 }

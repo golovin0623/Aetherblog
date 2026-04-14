@@ -43,6 +43,7 @@ export interface IndexBatchResult {
   indexed: number;
   failed: number;
   total: number;
+  reason?: string;
 }
 
 export const searchConfigService = {

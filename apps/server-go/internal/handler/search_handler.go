@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -168,7 +169,7 @@ func (h *SearchHandler) IndexBatch(c echo.Context) error {
 	result, err := h.svc.IndexBatchPosts(c.Request().Context(), req.PostIDs)
 	if err != nil {
 		log.Error().Err(err).Msg("index batch failed")
-		return response.Error(c, err)
+		return handleSearchError(c, err)
 	}
 	return response.OK(c, result)
 }
@@ -190,7 +191,7 @@ func searchProxyHeaders(c echo.Context) map[string]string {
 func (h *SearchHandler) GetStats(c echo.Context) error {
 	body, statusCode, err := h.svc.ProxySearchStats(c.Request().Context(), searchProxyHeaders(c))
 	if err != nil {
-		return response.Error(c, err)
+		return handleSearchError(c, err)
 	}
 	defer body.Close()
 	return searchProxyResponse(c, body, statusCode)
@@ -200,7 +201,7 @@ func (h *SearchHandler) GetStats(c echo.Context) error {
 func (h *SearchHandler) Reindex(c echo.Context) error {
 	body, statusCode, err := h.svc.ProxyReindex(c.Request().Context(), c.Request().Body, searchProxyHeaders(c))
 	if err != nil {
-		return response.Error(c, err)
+		return handleSearchError(c, err)
 	}
 	defer body.Close()
 	return searchProxyResponse(c, body, statusCode)
@@ -210,7 +211,7 @@ func (h *SearchHandler) Reindex(c echo.Context) error {
 func (h *SearchHandler) RetryFailed(c echo.Context) error {
 	body, statusCode, err := h.svc.ProxyRetryFailed(c.Request().Context(), searchProxyHeaders(c))
 	if err != nil {
-		return response.Error(c, err)
+		return handleSearchError(c, err)
 	}
 	defer body.Close()
 	return searchProxyResponse(c, body, statusCode)
@@ -220,7 +221,7 @@ func (h *SearchHandler) RetryFailed(c echo.Context) error {
 func (h *SearchHandler) EmbeddingStatus(c echo.Context) error {
 	body, statusCode, err := h.svc.ProxyEmbeddingStatus(c.Request().Context(), searchProxyHeaders(c))
 	if err != nil {
-		return response.Error(c, err)
+		return handleSearchError(c, err)
 	}
 	defer body.Close()
 	return searchProxyResponse(c, body, statusCode)
@@ -233,4 +234,16 @@ func searchProxyResponse(c echo.Context, body io.ReadCloser, statusCode int) err
 		return response.Error(c, err)
 	}
 	return c.JSONBlob(statusCode, respBytes)
+}
+
+// handleSearchError 将搜索相关错误转换为用户友好的响应。
+// AIClientError 携带已安全的消息（"AI 服务不可用"/"AI 服务请求超时"），可直接暴露。
+func handleSearchError(c echo.Context, err error) error {
+	if errors.Is(err, service.ErrAIClientNil) {
+		return response.Fail(c, "AI 服务未配置，请检查服务端 AI 配置")
+	}
+	if clientErr, ok := err.(*service.AIClientError); ok {
+		return response.Fail(c, clientErr.Message)
+	}
+	return response.Error(c, err)
 }
