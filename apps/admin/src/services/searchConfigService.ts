@@ -40,9 +40,14 @@ export interface EmbeddingPostListResponse {
 }
 
 export interface IndexBatchResult {
-  indexed: number;
-  failed: number;
-  total: number;
+  // 异步启动后的响应字段
+  status?: 'started';
+  accepted?: number;
+  message?: string;
+  // 旧的同步响应字段（保留以兼容历史数据与潜在回退）
+  indexed?: number;
+  failed?: number;
+  total?: number;
   reason?: string;
 }
 
