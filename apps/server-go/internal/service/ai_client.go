@@ -97,6 +97,13 @@ func (c *AIClient) do(ctx context.Context, client *http.Client, method, path str
 
 	resp, err := client.Do(req)
 	if err != nil {
+		// 请求上下文被取消（如客户端断开连接导致的 HTTP 499）
+		if ctx.Err() == context.Canceled {
+			return nil, 0, &AIClientError{StatusCode: 499, Message: "请求已取消"}
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, 0, &AIClientError{StatusCode: http.StatusGatewayTimeout, Message: "AI 服务请求超时"}
+		}
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return nil, 0, &AIClientError{StatusCode: http.StatusGatewayTimeout, Message: "AI 服务请求超时"}
 		}

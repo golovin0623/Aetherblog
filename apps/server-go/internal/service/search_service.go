@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
@@ -123,6 +124,11 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		return nil, fmt.Errorf("query posts: %w", err)
 	}
 
+	// 使用独立上下文调用 AI 服务，避免客户端断开连接后取消索引操作。
+	// 索引是后台任务，不应因手机端断开（HTTP 499）而中断。
+	aiCtx, aiCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer aiCancel()
+
 	headers := map[string]string{
 		"X-Internal-Service": s.internalToken,
 	}
@@ -141,7 +147,7 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 			"content": content,
 			"action":  "upsert",
 		})
-		body, statusCode, err := s.aiClient.DoStream(ctx, http.MethodPost, "/api/v1/admin/search/index",
+		body, statusCode, err := s.aiClient.DoStream(aiCtx, http.MethodPost, "/api/v1/admin/search/index",
 			strings.NewReader(string(payload)), headers)
 		if err != nil {
 			result.Failed++
