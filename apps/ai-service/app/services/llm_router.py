@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, TYPE_CHECKING
 
@@ -454,10 +455,33 @@ class LlmRouter:
             )
             api_key = routing.credential.api_key
             api_base = routing.credential.base_url
+            source = "routing"
+            provider_code = getattr(routing.credential, "provider_code", None) or \
+                getattr(getattr(routing, "model", None), "provider_code", None)
         else:
             model = self.resolve_model("embedding")
             api_key = self.settings.openai_api_key
             api_base = self.settings.openai_base_url
+            source = "env_fallback"
+            provider_code = "env_openai"
+
+        # 观测点：记录这次 embed 调用实际指向哪个 model / api_base / 路由来源。
+        # 路由来源为 env_fallback 时直接 WARNING —— 说明 ai_task_routing 表里没有
+        # 配置 embedding 激活路由，这是生产环境索引卡死的首号嫌疑。
+        # 注意：项目 JSONFormatter 只识别 extra={"data": {...}}，裸字段会被丢弃。
+        log_ctx = {
+            "source": source,
+            "model": model,
+            "provider": provider_code,
+            "api_base": api_base,
+            "text_len": len(text or ""),
+            "has_api_key": bool(api_key),
+            "user_id": user_id,
+        }
+        if source == "env_fallback":
+            logger.warning("embed.start_env_fallback", extra={"data": log_ctx})
+        else:
+            logger.info("embed.start", extra={"data": log_ctx})
 
         if self.settings.mock_mode:
             digest = hashlib.sha256(text.encode("utf-8")).digest()
@@ -466,13 +490,37 @@ class LlmRouter:
             repeats = dim // len(seed) + 1
             return (seed * repeats)[:dim]
 
-        response = await aembedding(
-            model=model,
-            input=[text],
-            api_key=api_key,
-            api_base=api_base,
+        start = time.perf_counter()
+        try:
+            response = await aembedding(
+                model=model,
+                input=[text],
+                api_key=api_key,
+                api_base=api_base,
+            )
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            logger.error(
+                "embed.failed",
+                extra={"data": {
+                    **log_ctx,
+                    "elapsed_ms": round(elapsed_ms, 2),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }},
+            )
+            raise
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        embedding = response.data[0]["embedding"]
+        logger.info(
+            "embed.ok",
+            extra={"data": {
+                **log_ctx,
+                "elapsed_ms": round(elapsed_ms, 2),
+                "vector_dim": len(embedding) if embedding else 0,
+            }},
         )
-        return response.data[0]["embedding"]
+        return embedding
 
     async def stream_chat_with_think_detection(
         self,
