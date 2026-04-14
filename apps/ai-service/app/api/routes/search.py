@@ -170,6 +170,7 @@ async def index_post(
                 slug=req.slug or "",
                 content=req.content or "",
                 metadata=req.metadata or {},
+                timeout_sec=req.timeoutSec,
             )
             request_text = req.content or ""
         return ApiResponse(data=result)

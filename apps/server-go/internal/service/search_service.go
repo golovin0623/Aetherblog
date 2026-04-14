@@ -57,6 +57,7 @@ func (s *SearchService) GetSearchConfig(ctx context.Context) dto.SearchConfig {
 		AnonSearchRatePerMin: 10,
 		AnonQARatePerMin:     3,
 		AutoIndexOnPublish:   true,
+		IndexPostTimeoutSec:  180, // 默认单篇 3 分钟
 	}
 
 	m, err := s.settingSvc.GetByKeyPrefix(ctx, "search.")
@@ -86,6 +87,11 @@ func (s *SearchService) GetSearchConfig(ctx context.Context) dto.SearchConfig {
 	if v, ok := m["search.auto_index_on_publish"]; ok {
 		cfg.AutoIndexOnPublish = parseBool(v)
 	}
+	if v, ok := m["search.index_post_timeout_sec"]; ok {
+		if n, e := strconv.Atoi(v); e == nil && n >= 10 && n <= 600 {
+			cfg.IndexPostTimeoutSec = n
+		}
+	}
 
 	return cfg
 }
@@ -114,8 +120,9 @@ func (s *SearchService) ListPostsEmbedding(ctx context.Context, statusFilter str
 }
 
 // IndexBatchPosts 批量索引指定文章（逐篇调用 AI service）。
-// 每篇使用独立的 90 秒超时，避免单篇慢请求拖垮整批任务；
-// 调用方负责传入已与客户端请求解耦的 context，使任务可在后台完整执行。
+// 每篇使用独立的超时（默认 180 秒，可通过搜索配置 search.index_post_timeout_sec
+// 调整，每次批次开始时实时读取）；调用方负责传入已与客户端请求解耦的 context，
+// 使任务可在后台完整执行。
 func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*dto.IndexBatchResult, error) {
 	if s.aiClient == nil {
 		return nil, ErrAIClientNil
@@ -125,6 +132,14 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 	if err != nil {
 		return nil, fmt.Errorf("query posts: %w", err)
 	}
+
+	// 每次批次开始读取最新配置，保存生效立即反映到下一批任务，无需重启服务
+	cfg := s.GetSearchConfig(ctx)
+	postTimeoutSec := cfg.IndexPostTimeoutSec
+	if postTimeoutSec < 10 || postTimeoutSec > 600 {
+		postTimeoutSec = 180
+	}
+	postTimeout := time.Duration(postTimeoutSec) * time.Second
 
 	headers := map[string]string{
 		"X-Internal-Service": s.internalToken,
@@ -136,11 +151,12 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 	log.Info().
 		Int("total", len(posts)).
 		Int("requested", len(postIDs)).
+		Int("postTimeoutSec", postTimeoutSec).
 		Msg("index batch start")
 
 	for idx, post := range posts {
 		// 每篇独立超时，避免单篇 AI 服务卡死导致整批都失败
-		postCtx, postCancel := context.WithTimeout(ctx, 90*time.Second)
+		postCtx, postCancel := context.WithTimeout(ctx, postTimeout)
 		content := ""
 		if post.ContentMarkdown != nil {
 			content = *post.ContentMarkdown
@@ -148,12 +164,15 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		contentLen := len(content)
 		postStart := time.Now()
 
+		// 把 timeoutSec 透传给 ai-service，让 aembedding 端用同样的超时，
+		// 保证 Go / Python 两侧不会出现一边先放弃、另一边继续跑的浪费
 		payload, _ := json.Marshal(map[string]any{
-			"postId":  post.ID,
-			"title":   post.Title,
-			"slug":    post.Slug,
-			"content": content,
-			"action":  "upsert",
+			"postId":     post.ID,
+			"title":      post.Title,
+			"slug":       post.Slug,
+			"content":    content,
+			"action":     "upsert",
+			"timeoutSec": postTimeoutSec,
 		})
 		body, statusCode, err := s.aiClient.DoStream(postCtx, http.MethodPost, "/api/v1/admin/search/index",
 			strings.NewReader(string(payload)), headers)

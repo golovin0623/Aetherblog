@@ -38,6 +38,7 @@ class VectorStoreService:
         slug: str,
         content: str,
         metadata: dict[str, Any],
+        timeout_sec: int | None = None,
     ) -> dict[str, Any]:
         # 观测点：把一次索引切成 embed / db_write 两段计时，
         # 出问题时能从日志直接判断瓶颈在向量生成还是 pgvector 写入。
@@ -45,7 +46,7 @@ class VectorStoreService:
         content_len = len(content or "")
         embed_start = time.perf_counter()
         try:
-            embedding = await self.llm.embed(content)
+            embedding = await self.llm.embed(content, timeout_sec=timeout_sec)
         except Exception:
             embed_ms = (time.perf_counter() - embed_start) * 1000
             logger.warning(
