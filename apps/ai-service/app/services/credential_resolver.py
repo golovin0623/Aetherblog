@@ -170,14 +170,19 @@ class CredentialResolver:
                        c.extra_config, c.is_default
                 FROM ai_credentials c
                 JOIN ai_providers p ON c.provider_id = p.id
-                WHERE c.id = $1 
+                WHERE c.id = $1
                   AND c.is_enabled = TRUE
                   AND (c.user_id IS NOT DISTINCT FROM $2 OR c.user_id IS NULL)
             """
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow(query, credential_id, user_id)
-        else:
-            # Try user's credentials first
+        elif user_id is None:
+            # 内部服务（Go backend 通过 X-Internal-Service 调用）没有登录用户上下文。
+            # 此时 user_id 字段上原本的 "c.user_id = $2" 条件永远为 FALSE（SQL 里
+            # NULL 不等于自己），会把所有绑定了用户的凭证全部过滤掉，只剩 system
+            # 凭证；没有 system 凭证时又进一步 fallback 到 env，导致"后台索引用了
+            # 虚空捏造的 api.openai.com 官方地址"这种 bug。
+            # 对内部调用：直接在所有启用的凭证里按 is_default / id 取第一条。
             query = """
                 SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
                        c.api_key_encrypted,
@@ -185,7 +190,23 @@ class CredentialResolver:
                        c.extra_config, c.is_default
                 FROM ai_credentials c
                 JOIN ai_providers p ON c.provider_id = p.id
-                WHERE p.code = $1 
+                WHERE p.code = $1
+                  AND c.is_enabled = TRUE
+                ORDER BY c.is_default DESC, c.id ASC
+                LIMIT 1
+            """
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, provider_code)
+        else:
+            # Try user's credentials first, then system
+            query = """
+                SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
+                       c.api_key_encrypted,
+                       COALESCE(c.base_url_override, p.base_url) as base_url,
+                       c.extra_config, c.is_default
+                FROM ai_credentials c
+                JOIN ai_providers p ON c.provider_id = p.id
+                WHERE p.code = $1
                   AND (c.user_id = $2 OR c.user_id IS NULL)
                   AND c.is_enabled = TRUE
                 ORDER BY c.user_id NULLS LAST, c.is_default DESC
