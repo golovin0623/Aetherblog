@@ -32,3 +32,6 @@ class IndexRequest(BaseModel):
     slug: str | None = None
     content: str | None = None
     metadata: dict | None = None
+    # 由 Go backend 根据搜索配置 (search.index_post_timeout_sec) 透传，
+    # 保证两端超时一致；None 时使用 ai-service 默认值。
+    timeoutSec: int | None = Field(default=None, ge=10, le=600)
