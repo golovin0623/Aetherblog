@@ -38,6 +38,11 @@ type SearchConfig struct {
 	AnonSearchRatePerMin int  `json:"anonSearchRatePerMin"`
 	AnonQARatePerMin     int  `json:"anonQaRatePerMin"`
 	AutoIndexOnPublish   bool `json:"autoIndexOnPublish"`
+	// IndexPostTimeoutSec 单篇文章索引的超时时间（秒）。生产环境中转 + 大文章
+	// 的 embedding 请求偶尔超过 60s，保留充足的单篇超时空间避免误判失败。
+	// Go 侧会为每篇文章启动独立 context，AI service 的 aembedding timeout 也
+	// 会透传这个值，保证两端一致。
+	IndexPostTimeoutSec int `json:"indexPostTimeoutSec"`
 }
 
 // EmbeddingPostItem 是管理端文章向量索引列表中的单条记录。

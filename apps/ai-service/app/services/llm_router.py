@@ -444,7 +444,12 @@ class LlmRouter:
             if content:
                 yield content
 
-    async def embed(self, text: str, user_id: int | None = None) -> list[float]:
+    async def embed(
+        self,
+        text: str,
+        user_id: int | None = None,
+        timeout_sec: int | None = None,
+    ) -> list[float]:
         """Generate embedding for text."""
         routing = await self._get_routing("embedding", user_id)
 
@@ -492,15 +497,17 @@ class LlmRouter:
 
         start = time.perf_counter()
         try:
-            # 显式超时兜底：LiteLLM 默认不给 embedding 设 timeout；在国内直连 OpenAI
-            # 这种被 GFW 阻断场景下，TCP 会长时间挂住，白白占用 FastAPI worker。
-            # 30s 内没拿到响应就 fail-fast，让调用方（Go backend / 前端）更快拿到结果。
+            # 显式超时兜底：LiteLLM 默认不给 embedding 设 timeout。
+            # 使用调用方传入的 timeout_sec（通常来自 search.index_post_timeout_sec
+            # 搜索配置，默认 180s），保证和 Go backend 的 per-post context 对齐。
+            # num_retries=0：避免 LiteLLM 自己多次重试导致总耗时成倍放大。
+            effective_timeout = timeout_sec if (timeout_sec and timeout_sec > 0) else 180
             response = await aembedding(
                 model=model,
                 input=[text],
                 api_key=api_key,
                 api_base=api_base,
-                timeout=30,
+                timeout=effective_timeout,
                 num_retries=0,
             )
         except Exception as exc:

@@ -8,6 +8,8 @@ export interface SearchConfig {
   anonSearchRatePerMin: number;
   anonQaRatePerMin: number;
   autoIndexOnPublish: boolean;
+  /** 单篇索引超时（秒），默认 180。保存后下一次批次开始时实时生效。 */
+  indexPostTimeoutSec: number;
 }
 
 export interface IndexStats {

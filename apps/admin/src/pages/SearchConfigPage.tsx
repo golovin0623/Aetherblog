@@ -294,6 +294,7 @@ export default function SearchConfigPage() {
         anonSearchRatePerMin: config.anonSearchRatePerMin,
         anonQaRatePerMin: config.anonQaRatePerMin,
         autoIndexOnPublish: config.autoIndexOnPublish,
+        indexPostTimeoutSec: config.indexPostTimeoutSec,
       });
       setHasChanges(false);
     }
@@ -461,6 +462,7 @@ export default function SearchConfigPage() {
       anonSearchRatePerMin: 'search.anon_search_rate_per_min',
       anonQaRatePerMin: 'search.anon_qa_rate_per_min',
       autoIndexOnPublish: 'search.auto_index_on_publish',
+      indexPostTimeoutSec: 'search.index_post_timeout_sec',
     };
 
     const payload: Record<string, string> = {};
@@ -483,6 +485,7 @@ export default function SearchConfigPage() {
         anonSearchRatePerMin: config.anonSearchRatePerMin,
         anonQaRatePerMin: config.anonQaRatePerMin,
         autoIndexOnPublish: config.autoIndexOnPublish,
+        indexPostTimeoutSec: config.indexPostTimeoutSec,
       });
       setHasChanges(false);
       toast.success('已重置更改');
@@ -992,6 +995,30 @@ export default function SearchConfigPage() {
                 }
                 className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
               />
+            </div>
+
+            {/* 单篇索引超时 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-[var(--text-secondary)]">
+                单篇索引超时（秒）
+              </label>
+              <input
+                type="number"
+                min={10}
+                max={600}
+                value={formData.indexPostTimeoutSec ?? 180}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  updateField(
+                    'indexPostTimeoutSec',
+                    Number.isFinite(n) ? Math.min(600, Math.max(10, n)) : 180
+                  );
+                }}
+                className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all"
+              />
+              <p className="text-xs text-[var(--text-muted)]">
+                默认 180 秒。保存后下一批次实时生效；Go 后端与 AI service 两端同步使用该值。范围 10–600。
+              </p>
             </div>
           </div>
         </motion.div>
