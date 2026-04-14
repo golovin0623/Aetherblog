@@ -492,11 +492,16 @@ class LlmRouter:
 
         start = time.perf_counter()
         try:
+            # 显式超时兜底：LiteLLM 默认不给 embedding 设 timeout；在国内直连 OpenAI
+            # 这种被 GFW 阻断场景下，TCP 会长时间挂住，白白占用 FastAPI worker。
+            # 30s 内没拿到响应就 fail-fast，让调用方（Go backend / 前端）更快拿到结果。
             response = await aembedding(
                 model=model,
                 input=[text],
                 api_key=api_key,
                 api_base=api_base,
+                timeout=30,
+                num_retries=0,
             )
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - start) * 1000
