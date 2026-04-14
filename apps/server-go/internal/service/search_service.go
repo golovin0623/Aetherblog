@@ -113,7 +113,9 @@ func (s *SearchService) ListPostsEmbedding(ctx context.Context, statusFilter str
 	return &dto.EmbeddingPostListResponse{Items: items, Total: total}, nil
 }
 
-// IndexBatchPosts 批量索引指定文章（同步执行，逐篇调用 AI service）。
+// IndexBatchPosts 批量索引指定文章（逐篇调用 AI service）。
+// 每篇使用独立的 90 秒超时，避免单篇慢请求拖垮整批任务；
+// 调用方负责传入已与客户端请求解耦的 context，使任务可在后台完整执行。
 func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*dto.IndexBatchResult, error) {
 	if s.aiClient == nil {
 		return nil, ErrAIClientNil
@@ -124,11 +126,6 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		return nil, fmt.Errorf("query posts: %w", err)
 	}
 
-	// 使用独立上下文调用 AI 服务，避免客户端断开连接后取消索引操作。
-	// 索引是后台任务，不应因手机端断开（HTTP 499）而中断。
-	aiCtx, aiCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer aiCancel()
-
 	headers := map[string]string{
 		"X-Internal-Service": s.internalToken,
 	}
@@ -136,6 +133,8 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 	result := &dto.IndexBatchResult{Total: len(posts)}
 	var lastErr string
 	for _, post := range posts {
+		// 每篇独立超时，避免单篇 AI 服务卡死导致整批都失败
+		postCtx, postCancel := context.WithTimeout(ctx, 90*time.Second)
 		content := ""
 		if post.ContentMarkdown != nil {
 			content = *post.ContentMarkdown
@@ -147,9 +146,10 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 			"content": content,
 			"action":  "upsert",
 		})
-		body, statusCode, err := s.aiClient.DoStream(aiCtx, http.MethodPost, "/api/v1/admin/search/index",
+		body, statusCode, err := s.aiClient.DoStream(postCtx, http.MethodPost, "/api/v1/admin/search/index",
 			strings.NewReader(string(payload)), headers)
 		if err != nil {
+			postCancel()
 			result.Failed++
 			lastErr = err.Error()
 			log.Warn().Int64("postId", post.ID).Err(err).Msg("index post request failed")
@@ -160,15 +160,23 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 			lastErr = fmt.Sprintf("AI 服务返回状态码 %d", statusCode)
 			log.Warn().Int64("postId", post.ID).Int("status", statusCode).Msg("index post failed")
 			body.Close()
+			postCancel()
 			continue
 		}
 		body.Close()
+		postCancel()
 		result.Indexed++
 	}
 	if result.Failed > 0 && result.Indexed == 0 && lastErr != "" {
 		result.Reason = lastErr
 	}
 	return result, nil
+}
+
+// MarkPostsEmbeddingPending 将指定 ID 的文章 embedding_status 置为 'PENDING'，
+// 供异步批量索引启动前初始化进度状态。
+func (s *SearchService) MarkPostsEmbeddingPending(ctx context.Context, postIDs []int64) error {
+	return s.postRepo.MarkEmbeddingPending(ctx, postIDs)
 }
 
 // Search 执行搜索，支持 keyword / semantic / hybrid 三种模式。

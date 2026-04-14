@@ -354,7 +354,14 @@ export default function SearchConfigPage() {
     mutationFn: (postIds: number[]) => searchConfigService.indexBatch(postIds),
     onSuccess: (res) => {
       const d = res?.data;
-      if (d) {
+      // 新的异步响应：后端立即返回 {status:"started", accepted:N}，实际索引在后台进行
+      if (d?.status === 'started') {
+        startProgress();
+        toast.success(
+          d.accepted ? `已启动后台索引 ${d.accepted} 篇，进度请看上方面板` : '索引任务已在后台启动'
+        );
+      } else if (d && typeof d.indexed === 'number' && typeof d.failed === 'number') {
+        // 兼容旧版同步响应（老 backend 未升级时）
         const msg = `索引完成: 成功 ${d.indexed} 篇, 失败 ${d.failed} 篇`;
         if (d.failed > 0 && d.indexed === 0) {
           toast.error(d.reason || msg);
@@ -364,7 +371,7 @@ export default function SearchConfigPage() {
           toast.success(msg);
         }
       } else {
-        toast.success('索引任务已完成');
+        toast.success('索引任务已提交');
       }
       setRebuildingPostId(null);
       setSelected(new Set());
@@ -376,6 +383,8 @@ export default function SearchConfigPage() {
       const msg = (err as { message?: string })?.message || '';
       if (/未配置/.test(msg)) {
         toast.error('AI 服务未配置，请前往设置页面配置 AI 服务');
+      } else if (/进行中/.test(msg)) {
+        toast.warning(msg);
       } else if (/不可用|超时/.test(msg)) {
         toast.error(`AI 服务连接失败: ${msg}`);
       } else {

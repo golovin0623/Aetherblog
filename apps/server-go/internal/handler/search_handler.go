@@ -158,7 +158,13 @@ func (h *SearchHandler) ListPostsEmbedding(c echo.Context) error {
 	return response.OK(c, result)
 }
 
-// IndexBatch 处理 POST /v1/admin/search/index-batch 请求，批量索引指定文章。
+// IndexBatch 处理 POST /v1/admin/search/index-batch 请求，异步批量索引指定文章。
+// 立即返回 "已启动" 响应，后台 goroutine 执行实际索引。前端通过轮询 stats/posts 接口感知进度。
+//
+// 设计要点：
+//   - 同步先将目标文章置为 PENDING，保证前端进度条/计数能立即反映。
+//   - goroutine 使用 context.Background() 与客户端请求解耦，避免 nginx/浏览器超时中断任务。
+//   - 复用 reindexing 原子锁，防止与全量重建 / retry-failed 并发打架。
 func (h *SearchHandler) IndexBatch(c echo.Context) error {
 	var req dto.IndexBatchRequest
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
@@ -171,12 +177,40 @@ func (h *SearchHandler) IndexBatch(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "单次最多索引 100 篇文章")
 	}
 
-	result, err := h.svc.IndexBatchPosts(c.Request().Context(), req.PostIDs)
-	if err != nil {
-		log.Error().Err(err).Msg("index batch failed")
-		return handleSearchError(c, err)
+	if !h.reindexing.CompareAndSwap(false, true) {
+		return response.Fail(c, "索引任务正在进行中，请等待完成")
 	}
-	return response.OK(c, result)
+
+	// 同步标记为 PENDING，让前端进度面板能立即看到 pending 计数
+	if err := h.svc.MarkPostsEmbeddingPending(c.Request().Context(), req.PostIDs); err != nil {
+		h.reindexing.Store(false)
+		log.Error().Err(err).Msg("mark posts embedding pending failed")
+		return response.Error(c, err)
+	}
+
+	postIDs := append([]int64(nil), req.PostIDs...)
+	go func() {
+		defer h.reindexing.Store(false)
+		// 单批最多 100 篇，每篇 90s，预留 3 倍余量给重试/慢请求
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		result, err := h.svc.IndexBatchPosts(ctx, postIDs)
+		if err != nil {
+			log.Error().Err(err).Msg("async index-batch failed")
+			return
+		}
+		log.Info().
+			Int("total", result.Total).
+			Int("indexed", result.Indexed).
+			Int("failed", result.Failed).
+			Msg("async index-batch completed")
+	}()
+
+	return response.OK(c, map[string]any{
+		"status":   "started",
+		"accepted": len(postIDs),
+		"message":  "索引任务已在后台启动",
+	})
 }
 
 // searchProxyHeaders 从请求中提取认证头，供搜索管理端点代理使用。
