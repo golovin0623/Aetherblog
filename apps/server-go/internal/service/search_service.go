@@ -132,13 +132,22 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 
 	result := &dto.IndexBatchResult{Total: len(posts)}
 	var lastErr string
-	for _, post := range posts {
+	batchStart := time.Now()
+	log.Info().
+		Int("total", len(posts)).
+		Int("requested", len(postIDs)).
+		Msg("index batch start")
+
+	for idx, post := range posts {
 		// 每篇独立超时，避免单篇 AI 服务卡死导致整批都失败
 		postCtx, postCancel := context.WithTimeout(ctx, 90*time.Second)
 		content := ""
 		if post.ContentMarkdown != nil {
 			content = *post.ContentMarkdown
 		}
+		contentLen := len(content)
+		postStart := time.Now()
+
 		payload, _ := json.Marshal(map[string]any{
 			"postId":  post.ID,
 			"title":   post.Title,
@@ -148,17 +157,33 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		})
 		body, statusCode, err := s.aiClient.DoStream(postCtx, http.MethodPost, "/api/v1/admin/search/index",
 			strings.NewReader(string(payload)), headers)
+		elapsed := time.Since(postStart).Milliseconds()
+
 		if err != nil {
 			postCancel()
 			result.Failed++
 			lastErr = err.Error()
-			log.Warn().Int64("postId", post.ID).Err(err).Msg("index post request failed")
+			// 关键观测字段：elapsed_ms 接近 90000 → context 超时，应去 ai-service 日志排查 embed.*
+			// elapsed_ms 很小 → backend/ai-service 连通性问题（502）
+			log.Warn().
+				Int64("postId", post.ID).
+				Int("seq", idx+1).
+				Int("contentLen", contentLen).
+				Int64("elapsedMs", elapsed).
+				Err(err).
+				Msg("index post request failed")
 			continue
 		}
 		if statusCode != http.StatusOK {
 			result.Failed++
 			lastErr = fmt.Sprintf("AI 服务返回状态码 %d", statusCode)
-			log.Warn().Int64("postId", post.ID).Int("status", statusCode).Msg("index post failed")
+			log.Warn().
+				Int64("postId", post.ID).
+				Int("seq", idx+1).
+				Int("contentLen", contentLen).
+				Int64("elapsedMs", elapsed).
+				Int("status", statusCode).
+				Msg("index post returned non-200")
 			body.Close()
 			postCancel()
 			continue
@@ -166,7 +191,22 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		body.Close()
 		postCancel()
 		result.Indexed++
+		log.Info().
+			Int64("postId", post.ID).
+			Int("seq", idx+1).
+			Int("contentLen", contentLen).
+			Int64("elapsedMs", elapsed).
+			Msg("index post ok")
 	}
+
+	batchElapsed := time.Since(batchStart).Milliseconds()
+	log.Info().
+		Int("total", result.Total).
+		Int("indexed", result.Indexed).
+		Int("failed", result.Failed).
+		Int64("elapsedMs", batchElapsed).
+		Msg("index batch done")
+
 	if result.Failed > 0 && result.Indexed == 0 && lastErr != "" {
 		result.Reason = lastErr
 	}

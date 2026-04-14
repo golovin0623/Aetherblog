@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from app.core.config import get_settings
@@ -38,7 +39,27 @@ class VectorStoreService:
         content: str,
         metadata: dict[str, Any],
     ) -> dict[str, Any]:
-        embedding = await self.llm.embed(content)
+        # 观测点：把一次索引切成 embed / db_write 两段计时，
+        # 出问题时能从日志直接判断瓶颈在向量生成还是 pgvector 写入。
+        # 注意：项目的 JSONFormatter 只识别 extra={"data": {...}}，裸字段会被丢弃。
+        content_len = len(content or "")
+        embed_start = time.perf_counter()
+        try:
+            embedding = await self.llm.embed(content)
+        except Exception:
+            embed_ms = (time.perf_counter() - embed_start) * 1000
+            logger.warning(
+                "upsert.embed_failed",
+                extra={"data": {
+                    "post_id": post_id,
+                    "content_len": content_len,
+                    "embed_ms": round(embed_ms, 2),
+                }},
+            )
+            raise
+        embed_ms = (time.perf_counter() - embed_start) * 1000
+
+        db_start = time.perf_counter()
         model = self.settings.model_embedding
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -55,6 +76,19 @@ class VectorStoreService:
                     "UPDATE posts SET embedding_status = 'INDEXED' WHERE id = $1",
                     post_id,
                 )
+        db_ms = (time.perf_counter() - db_start) * 1000
+
+        logger.info(
+            "upsert.ok",
+            extra={"data": {
+                "post_id": post_id,
+                "content_len": content_len,
+                "embed_ms": round(embed_ms, 2),
+                "db_ms": round(db_ms, 2),
+                "vector_dim": len(embedding) if embedding else 0,
+                "model": model,
+            }},
+        )
         return {"status": "indexed"}
 
     async def delete_post_embedding(self, post_id: int) -> dict[str, Any]:
