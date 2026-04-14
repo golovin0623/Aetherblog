@@ -230,6 +230,7 @@ export default function SearchConfigPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [rebuildingPostId, setRebuildingPostId] = useState<number | null>(null);
   const pageSize = 10;
 
   const postsQuery = useQuery({
@@ -252,7 +253,7 @@ export default function SearchConfigPage() {
       if (d) {
         const msg = `索引完成: 成功 ${d.indexed} 篇, 失败 ${d.failed} 篇`;
         if (d.failed > 0 && d.indexed === 0) {
-          toast.error(msg);
+          toast.error(d.reason || msg);
         } else if (d.failed > 0) {
           toast.warning(msg);
         } else {
@@ -261,15 +262,28 @@ export default function SearchConfigPage() {
       } else {
         toast.success('索引任务已完成');
       }
+      setRebuildingPostId(null);
       setSelected(new Set());
       queryClient.invalidateQueries({ queryKey: ['search-posts'] });
       queryClient.invalidateQueries({ queryKey: ['search-stats'] });
     },
     onError: (err: unknown) => {
+      setRebuildingPostId(null);
       const msg = (err as { message?: string })?.message || '';
-      toast.error(`索引失败: ${msg || '请检查 AI 服务是否正常运行'}`);
+      if (/未配置/.test(msg)) {
+        toast.error('AI 服务未配置，请前往设置页面配置 AI 服务');
+      } else if (/不可用|超时/.test(msg)) {
+        toast.error(`AI 服务连接失败: ${msg}`);
+      } else {
+        toast.error(`索引失败: ${msg || '请检查 AI 服务是否正常运行'}`);
+      }
     },
   });
+
+  const handleSingleRebuild = useCallback((postId: number) => {
+    setRebuildingPostId(postId);
+    indexBatchMutation.mutate([postId]);
+  }, [indexBatchMutation]);
 
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
@@ -585,8 +599,8 @@ export default function SearchConfigPage() {
             </div>
 
             {/* Table */}
-            <div className="rounded-lg border border-[var(--border-subtle)] overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-lg border border-[var(--border-subtle)] overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px] sm:min-w-0">
                 <thead>
                   <tr className="bg-[var(--bg-input)]">
                     <th className="w-10 px-3 py-2.5 text-left">
@@ -597,9 +611,10 @@ export default function SearchConfigPage() {
                         className="rounded border-[var(--border-subtle)]"
                       />
                     </th>
+                    <th className="w-16 px-2 py-2.5 text-left font-medium text-[var(--text-muted)] sm:hidden">操作</th>
                     <th className="px-3 py-2.5 text-left font-medium text-[var(--text-muted)]">文章</th>
                     <th className="px-3 py-2.5 text-left font-medium text-[var(--text-muted)] hidden sm:table-cell">状态</th>
-                    <th className="px-3 py-2.5 text-right font-medium text-[var(--text-muted)]">操作</th>
+                    <th className="px-3 py-2.5 text-right font-medium text-[var(--text-muted)] hidden sm:table-cell">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -607,14 +622,15 @@ export default function SearchConfigPage() {
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="border-t border-[var(--border-subtle)]">
                         <td className="px-3 py-3"><div className="w-4 h-4 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
+                        <td className="px-2 py-3 sm:hidden"><div className="h-7 w-12 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
                         <td className="px-3 py-3"><div className="h-4 w-48 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
                         <td className="px-3 py-3 hidden sm:table-cell"><div className="h-5 w-14 bg-[var(--bg-card-hover)] rounded animate-pulse" /></td>
-                        <td className="px-3 py-3"><div className="h-7 w-12 bg-[var(--bg-card-hover)] rounded animate-pulse ml-auto" /></td>
+                        <td className="px-3 py-3 hidden sm:table-cell"><div className="h-7 w-12 bg-[var(--bg-card-hover)] rounded animate-pulse ml-auto" /></td>
                       </tr>
                     ))
                   ) : posts.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-8 text-center text-[var(--text-muted)] text-sm">
+                      <td colSpan={5} className="px-3 py-8 text-center text-[var(--text-muted)] text-sm">
                         暂无数据
                       </td>
                     </tr>
@@ -629,6 +645,16 @@ export default function SearchConfigPage() {
                             className="rounded border-[var(--border-subtle)]"
                           />
                         </td>
+                        <td className="px-2 py-2.5 sm:hidden">
+                          <button
+                            onClick={() => handleSingleRebuild(post.id)}
+                            disabled={indexBatchMutation.isPending}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] active:scale-95 transition-all"
+                          >
+                            <RefreshCw className={cn("w-3 h-3", rebuildingPostId === post.id && "animate-spin")} />
+                            {rebuildingPostId === post.id ? '索引中' : '重建'}
+                          </button>
+                        </td>
                         <td className="px-3 py-2.5">
                           <div className="flex flex-col">
                             <span className="text-[var(--text-primary)] font-medium truncate max-w-xs">{post.title}</span>
@@ -640,14 +666,14 @@ export default function SearchConfigPage() {
                         <td className="px-3 py-2.5 hidden sm:table-cell">
                           <StatusBadge status={post.embeddingStatus} />
                         </td>
-                        <td className="px-3 py-2.5 text-right">
+                        <td className="px-3 py-2.5 text-right hidden sm:table-cell">
                           <button
-                            onClick={() => indexBatchMutation.mutate([post.id])}
+                            onClick={() => handleSingleRebuild(post.id)}
                             disabled={indexBatchMutation.isPending}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] active:scale-95 transition-all"
                           >
-                            <RefreshCw className="w-3 h-3" />
-                            重建
+                            <RefreshCw className={cn("w-3 h-3", rebuildingPostId === post.id && "animate-spin")} />
+                            {rebuildingPostId === post.id ? '索引中...' : '重建'}
                           </button>
                         </td>
                       </tr>
