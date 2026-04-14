@@ -323,12 +323,16 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
             {/* 折叠表单触发器 */}
             {!isFormExpanded && (
               <motion.button
+                type="button"
+                aria-expanded="false"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
                 ref={formTriggerRef}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 onClick={() => setIsFormExpanded(true)}
-                className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-[var(--border-hover)] rounded-2xl p-4 flex items-center gap-4 transition-all group mb-12 shadow-lg"
+                className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-[var(--border-hover)] rounded-2xl p-4 flex items-center gap-4 transition-all group mb-12 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]"
               >
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card-hover)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] group-hover:text-[var(--color-primary)] group-hover:border-[var(--border-hover)] transition-colors">
                   <PenLine className="w-5 h-5" />
