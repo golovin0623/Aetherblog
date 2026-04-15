@@ -3,12 +3,21 @@
 package jwtutil
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// generateJTI generates a cryptographically random JWT ID.
+func generateJTI() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // Claims 是 JWT 的自定义载荷结构体。
 // Subject 字段存储用户 ID（字符串形式），并内嵌标准注册声明（RegisteredClaims）。
@@ -40,6 +49,9 @@ func GenerateToken(userID int64, username, role, secret string, expiration time.
 		RegisteredClaims: jwt.RegisteredClaims{
 			// Subject 存储用户 ID 的字符串表示
 			Subject:   fmt.Sprintf("%d", userID),
+			Issuer:    "aetherblog-api",
+			Audience:  jwt.ClaimStrings{"aetherblog-web"},
+			ID:        generateJTI(),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiration)),
 		},

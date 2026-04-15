@@ -16,6 +16,8 @@ import (
 const (
 	// refreshTokenKeyPrefix 是 Redis 中存储 Refresh Token 的键前缀。
 	refreshTokenKeyPrefix = "auth:refresh:"
+	// userSessionsKeyPrefix 是 Redis 中存储用户所有会话 key 的 Set 键前缀。
+	userSessionsKeyPrefix = "auth:user_sessions:"
 )
 
 // SessionService 管理 Refresh Token 的签发、轮换与撤销。
@@ -53,7 +55,14 @@ func (s *SessionService) IssueRefreshToken(ctx context.Context, userID int64) (s
 		return "", err
 	}
 	key := buildRefreshKey(token)
-	return token, s.redis.Set(ctx, key, userID, s.refreshTokenTTL).Err()
+	if err := s.redis.Set(ctx, key, userID, s.refreshTokenTTL).Err(); err != nil {
+		return "", err
+	}
+	// 将 refresh key 加入用户会话索引 Set，便于按用户批量撤销
+	userSetKey := userSessionsKeyPrefix + strconv.FormatInt(userID, 10)
+	s.redis.SAdd(ctx, userSetKey, key)
+	s.redis.Expire(ctx, userSetKey, s.refreshTokenTTL)
+	return token, nil
 }
 
 // RotateRefreshToken 验证旧 Token，撤销后签发新 Token（单次使用原则）。
@@ -93,6 +102,20 @@ func (s *SessionService) RevokeRefreshToken(ctx context.Context, refreshToken st
 		return
 	}
 	s.redis.Del(ctx, buildRefreshKey(refreshToken))
+}
+
+// RevokeAllUserSessions 撤销指定用户的所有 Refresh Token，用于密码修改后强制所有会话失效。
+func (s *SessionService) RevokeAllUserSessions(ctx context.Context, userID int64) error {
+	userSetKey := userSessionsKeyPrefix + strconv.FormatInt(userID, 10)
+	keys, err := s.redis.SMembers(ctx, userSetKey).Result()
+	if err != nil {
+		return err
+	}
+	if len(keys) > 0 {
+		s.redis.Del(ctx, keys...)
+	}
+	s.redis.Del(ctx, userSetKey)
+	return nil
 }
 
 // buildRefreshKey 对 Token 原始值进行 SHA-256 哈希后构造 Redis 键。

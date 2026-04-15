@@ -417,6 +417,12 @@ class ProviderRegistry:
             config_schema=_parse_json(row["config_schema"]),
         )
 
+    _ALLOWED_PROVIDER_COLUMNS = {
+        "name", "display_name", "base_url", "doc_url", "icon", "is_enabled",
+        "priority", "capabilities", "config_schema", "api_type", "description",
+        "code", "sort_order",
+    }
+
     async def update_provider(
         self, provider_id: int, updates: dict[str, Any]
     ) -> ProviderInfo | None:
@@ -425,6 +431,8 @@ class ProviderRegistry:
         set_clauses = []
         values: list[Any] = []
         for idx, (column, value) in enumerate(updates.items(), start=1):
+            if column not in self._ALLOWED_PROVIDER_COLUMNS:
+                raise ValueError(f"Invalid column: {column}")
             if column in {"capabilities", "config_schema"}:
                 value = _encode_json(value)
             set_clauses.append(f"{column} = ${idx}")
@@ -556,6 +564,13 @@ class ProviderRegistry:
         self.clear_cache()
         return self._build_model_info(row)
 
+    _ALLOWED_MODEL_COLUMNS = {
+        "model_id", "display_name", "model_type", "context_window",
+        "max_output_tokens", "input_cost_per_1k", "output_cost_per_1k",
+        "capabilities", "is_enabled", "input_cost_per_1m", "output_cost_per_1m",
+        "cached_input_cost_per_1m", "description", "sort_order",
+    }
+
     async def update_model(self, model_db_id: int, updates: dict[str, Any]) -> ModelInfo | None:
         if not updates:
             return await self.get_model_by_id(model_db_id)
@@ -600,6 +615,8 @@ class ProviderRegistry:
         set_clauses = []
         values: list[Any] = []
         for idx, (column, value) in enumerate(updates.items(), start=1):
+            if column not in self._ALLOWED_MODEL_COLUMNS:
+                raise ValueError(f"Invalid column: {column}")
             if column == "capabilities":
                 value = _encode_json(value)
             set_clauses.append(f"{column} = ${idx}")

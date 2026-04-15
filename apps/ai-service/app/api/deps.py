@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+import hmac
+
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from redis.asyncio import Redis
 import asyncpg
@@ -173,7 +175,7 @@ async def require_admin_or_internal(
     """Allow admin JWT or internal service token for Go backend calls."""
     internal_token = request.headers.get("X-Internal-Service")
     settings = get_settings()
-    if internal_token and internal_token == settings.internal_service_token:
+    if internal_token and hmac.compare_digest(internal_token, settings.internal_service_token):
         # Internal service call from Go backend
         return UserClaims(user_id="system", role="admin", scopes=None)
 

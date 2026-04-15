@@ -10,6 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.router import router
 from app.api import deps as deps_module
 from app.core.config import get_settings
@@ -32,7 +34,24 @@ async def lifespan(app: FastAPI):
         await deps_module._pg_pool.close()
 
 
-app = FastAPI(title="AetherBlog AI Service", version="0.1.0", lifespan=lifespan)
+_docs_url = "/docs" if settings.env == "dev" else None
+app = FastAPI(
+    title="AetherBlog AI Service",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=None,
+    openapi_url=f"/openapi.json" if _docs_url else None,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:7899"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router)
 
 
@@ -78,7 +97,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         success=False,
         errorMessage="Validation failed",
         errorCode="VALIDATION_ERROR",
-        data={"errors": exc.errors()},
+        data={"errors": [{"field": ".".join(str(loc) for loc in e.get("loc", [])), "message": e.get("msg", "Validation error")} for e in exc.errors()]},
         requestId=getattr(request.state, "request_id", None)
     )
     return JSONResponse(status_code=400, content=payload.model_dump())
