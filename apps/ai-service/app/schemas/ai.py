@@ -25,7 +25,7 @@ def _normalize_tone(value: object | None) -> str | None:
 
 
 class SummaryRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=100000)
     maxLength: int = Field(default=200, ge=10, le=2000)
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
@@ -34,7 +34,7 @@ class SummaryRequest(BaseModel):
 
 
 class TagsRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=100000)
     maxTags: int = Field(default=5, ge=1, le=20)
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
@@ -43,7 +43,7 @@ class TagsRequest(BaseModel):
 
 
 class TitlesRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=100000)
     maxTitles: int = Field(default=5, ge=1, le=10)
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
@@ -63,7 +63,7 @@ class TitlesRequest(BaseModel):
 
 
 class PolishRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=100000)
     tone: Optional[str] = None
     promptVersion: Optional[str] = None
     promptTemplate: Optional[str] = None
@@ -150,7 +150,7 @@ class OutlineData(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=100000)
     targetLanguage: str = Field(default="en")
     sourceLanguage: Optional[str] = None
     promptVersion: Optional[str] = None
