@@ -117,7 +117,7 @@ type AIConfig struct {
 	ConnectTimeout       time.Duration `koanf:"connect_timeout"`        // AI 服务请求的 TCP 连接超时时间（默认：5s）
 	ReadTimeout          time.Duration `koanf:"read_timeout"`           // 非流式 AI 响应的读取超时时间（默认：30s）
 	StreamReadTimeout    time.Duration `koanf:"stream_read_timeout"`    // SSE 流式响应的读取超时时间（默认：5m）
-	InternalServiceToken string        `koanf:"internal_service_token"` // 内部服务间通信令牌（默认："aetherblog-internal-2024"）
+	InternalServiceToken string        `koanf:"internal_service_token"` // 内部服务间通信令牌（必须通过环境变量设置，至少 32 字符）
 }
 
 // ESConfig 存储 Elasticsearch 集群连接配置。
@@ -187,6 +187,19 @@ func Load(path string) (*Config, error) {
 	}
 	if len(cfg.JWT.Secret) < 32 {
 		return nil, fmt.Errorf("FATAL: jwt.secret must be at least 32 characters (got %d)", len(cfg.JWT.Secret))
+	}
+
+	// CORS 安全默认值：若未配置允许来源，使用开发环境默认值
+	if len(cfg.CORS.AllowedOrigins) == 0 {
+		cfg.CORS.AllowedOrigins = []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:7899"}
+	}
+
+	// 安全验证：内部服务令牌必须设置且长度不低于 32 字符
+	if cfg.AI.InternalServiceToken == "" {
+		return nil, fmt.Errorf("FATAL: ai.internal_service_token must not be empty — set AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN environment variable")
+	}
+	if len(cfg.AI.InternalServiceToken) < 32 {
+		return nil, fmt.Errorf("FATAL: ai.internal_service_token must be at least 32 characters (got %d)", len(cfg.AI.InternalServiceToken))
 	}
 
 	return cfg, nil
@@ -269,7 +282,7 @@ func defaultConfig() *Config {
 			ConnectTimeout:       5 * time.Second,
 			ReadTimeout:          30 * time.Second,
 			StreamReadTimeout:    5 * time.Minute,
-			InternalServiceToken: "aetherblog-internal-2024",
+			InternalServiceToken: "", // Must be set via AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN env var
 		},
 		ES: ESConfig{
 			URIs: []string{"http://localhost:9200"},

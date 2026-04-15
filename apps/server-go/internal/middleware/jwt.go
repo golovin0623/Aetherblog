@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -8,6 +9,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 )
+
 
 const (
 	// AccessTokenCookie 是存储访问令牌的 HttpOnly Cookie 名称。
@@ -68,6 +70,26 @@ func JWTOptional(secret string) echo.MiddlewareFunc {
 	}
 }
 
+// RequireRole 返回一个中间件，检查已认证用户是否具有指定角色之一。
+// 必须在 JWTAuth 之后使用，确保 LoginUser 已存入上下文。
+func RequireRole(roles ...string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			lu := GetLoginUser(c)
+			if lu == nil {
+				return response.FailWith(c, response.Unauthorized, "未登录")
+			}
+			userRole := strings.ToLower(lu.Role)
+			for _, r := range roles {
+				if strings.ToLower(r) == userRole {
+					return next(c)
+				}
+			}
+			return response.FailWith(c, response.Forbidden, "权限不足")
+		}
+	}
+}
+
 // GetLoginUser 从 Echo 上下文中获取已认证的用户信息。若未认证则返回 nil。
 func GetLoginUser(c echo.Context) *jwtutil.LoginUser {
 	u, _ := c.Get(ContextKeyLoginUser).(*jwtutil.LoginUser)
@@ -91,14 +113,11 @@ func extractToken(c echo.Context) string {
 }
 
 // mustParseID 将字符串安全解析为 int64 用户 ID。
-// 若包含非数字字符则返回 0，表示无效 ID。
+// 若包含非数字字符或溢出则返回 0，表示无效 ID。
 func mustParseID(s string) int64 {
-	var id int64
-	for _, ch := range s {
-		if ch < '0' || ch > '9' {
-			return 0
-		}
-		id = id*10 + int64(ch-'0')
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
 	}
 	return id
 }

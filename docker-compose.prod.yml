@@ -148,6 +148,7 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AETHERBLOG_AI_BASE_URL: http://ai-service:8000
+      AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
       JWT_SECRET: ${JWT_SECRET}
       AETHERBLOG_AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AETHERBLOG_AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Strict}
@@ -204,7 +205,7 @@ services:
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
       REDIS_URL: ${AI_REDIS_URL:-redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0}
       POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/aetherblog
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-proj-mock-key-for-testing}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY environment variable is required}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-}
       OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:-}
