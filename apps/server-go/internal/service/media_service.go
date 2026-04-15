@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +19,26 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
+
+// allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
+var allowedMimeTypes = map[string]bool{
+	"image/jpeg":              true,
+	"image/png":               true,
+	"image/gif":               true,
+	"image/webp":              true,
+	"image/bmp":               true,
+	"image/tiff":              true,
+	"image/avif":              true,
+	"video/mp4":               true,
+	"video/webm":              true,
+	"video/quicktime":         true,
+	"audio/mpeg":              true,
+	"audio/wav":               true,
+	"audio/ogg":               true,
+	"audio/mp4":               true,
+	"application/pdf":         true,
+	"application/octet-stream": true,
+}
 
 // MediaService 管理媒体文件上传和生命周期（软删除/恢复/彻底删除）的业务逻辑。
 type MediaService struct {
@@ -65,6 +86,11 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	if mimeType == "application/octet-stream" || strings.HasPrefix(mimeType, "text/plain") {
 		mimeType = guessMimeType(fh.Filename)
 	}
+	// 检查 MIME 类型是否在允许上传的白名单中
+	if !allowedMimeTypes[mimeType] {
+		return nil, fmt.Errorf("不允许上传该文件类型: %s", mimeType)
+	}
+
 	fileType := classifyFileType(mimeType)
 
 	// 构建存储键：{年}/{月}/{毫秒时间戳}_{安全文件名}
@@ -316,13 +342,21 @@ func detectMimeType(file multipart.File, filename string) (string, error) {
 	return detected, nil
 }
 
-// sanitizeFilename 对文件名进行安全处理：取 Base 部分并将空格、斜杠替换为下划线。
-// 若处理结果为空，返回默认名 "file"。
+// sanitizeFilename 对文件名进行安全处理：取 Base 部分，移除危险字符，仅保留安全字符集。
+// 若处理结果为空或为 "." / ".."，返回默认名 "file"。
 func sanitizeFilename(name string) string {
 	base := filepath.Base(name)
-	// 替换可能引起路径问题的特殊字符
-	safe := strings.NewReplacer(" ", "_", "/", "_", "\\", "_").Replace(base)
-	if safe == "" {
+	// Remove null bytes and Unicode control characters
+	base = strings.Map(func(r rune) rune {
+		if r == 0 || r == 0x202E || r == 0x200F || r == 0x200E { // null, RTL override, RLM, LRM
+			return -1
+		}
+		return r
+	}, base)
+	// Replace all non-safe characters
+	reg := regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+	safe := reg.ReplaceAllString(base, "_")
+	if safe == "" || safe == "." || safe == ".." {
 		safe = "file"
 	}
 	return safe
