@@ -531,6 +531,15 @@ start_backend() {
                 export JWT_SECRET="default-secret-for-dev-only-change-in-prod"
             fi
 
+            # 确保提供内部服务令牌 (开发模式自动生成，与 AI 服务共享)
+            if [ -z "${AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN:-}" ] && [ -z "${AI_INTERNAL_SERVICE_TOKEN:-}" ]; then
+                local _token=$(openssl rand -base64 48)
+                export AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN="$_token"
+                export AI_INTERNAL_SERVICE_TOKEN="$_token"
+            elif [ -n "${AI_INTERNAL_SERVICE_TOKEN:-}" ] && [ -z "${AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN:-}" ]; then
+                export AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN="$AI_INTERNAL_SERVICE_TOKEN"
+            fi
+
             # 编译并启动
             echo -e "${BLUE}   编译 Go 后端...${NC}"
             go build -o "$BACKEND_DIR/bin/server" ./cmd/server
@@ -626,6 +635,11 @@ start_ai_service() {
         fi
 
         export AI_LOG_PATH="$LOG_DIR"
+
+        # 确保 AI 服务继承内部服务令牌（由 start_backend 或 .env 提供）
+        if [ -n "${AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN:-}" ] && [ -z "${AI_INTERNAL_SERVICE_TOKEN:-}" ]; then
+            export AI_INTERNAL_SERVICE_TOKEN="$AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN"
+        fi
 
         nohup .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > "$LOG_DIR/ai-service.log" 2>&1 &
         local ai_pid=$!

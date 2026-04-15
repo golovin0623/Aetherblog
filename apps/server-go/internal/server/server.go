@@ -31,6 +31,28 @@ type echoValidator struct{ v *validator.Validate }
 // Validate 对传入的结构体执行字段校验。
 func (ev *echoValidator) Validate(i any) error { return ev.v.Struct(i) }
 
+// newValidator 创建并注册自定义校验规则的 validator 实例。
+func newValidator() *validator.Validate {
+	v := validator.New()
+	// password_complexity: 至少包含一个大写字母、一个小写字母和一个数字
+	v.RegisterValidation("password_complexity", func(fl validator.FieldLevel) bool {
+		password := fl.Field().String()
+		var hasUpper, hasLower, hasDigit bool
+		for _, ch := range password {
+			switch {
+			case ch >= 'A' && ch <= 'Z':
+				hasUpper = true
+			case ch >= 'a' && ch <= 'z':
+				hasLower = true
+			case ch >= '0' && ch <= '9':
+				hasDigit = true
+			}
+		}
+		return hasUpper && hasLower && hasDigit
+	})
+	return v
+}
+
 // Server 持有 HTTP 服务器的所有依赖项。
 type Server struct {
 	Echo     *echo.Echo         // Echo 框架实例
@@ -81,7 +103,7 @@ func New(cfg *config.Config) (*Server, error) {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
-	e.Validator = &echoValidator{v: validator.New()}
+	e.Validator = &echoValidator{v: newValidator()}
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 
@@ -132,7 +154,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config)
 	// 按路由挂载速率限制
 	authGroup.POST("/login", authHandler.Login, middleware.RateLimitByIP(s.Redis, "rate:login", 10, time.Minute))
-	authGroup.POST("/register", authHandler.RegisterUser, middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
+	authGroup.POST("/register", authHandler.RegisterUser, middleware.JWTAuth(s.Config.JWT.Secret), middleware.RequireRole("admin"), middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.POST("/logout", authHandler.Logout)
 	authGroup.GET("/me", authHandler.Me, middleware.JWTAuth(s.Config.JWT.Secret))

@@ -393,11 +393,18 @@ async def fetch_remote_models(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
-    credential = await resolver.get_credential(
-        provider_code=provider_code,
-        user_id=user.user_id,
-        credential_id=req.credential_id,
-    )
+    try:
+        credential = await resolver.get_credential(
+            provider_code=provider_code,
+            user_id=user.user_id,
+            credential_id=req.credential_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to decrypt credential for provider %s: %s", provider_code, e)
+        raise HTTPException(
+            status_code=400,
+            detail="无法解密 API Key（可能密钥配置已变更）。请删除并重新添加凭证。",
+        )
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 
@@ -407,10 +414,9 @@ async def fetch_remote_models(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.warning(
-            "remote_model_fetch_failed provider=%s api_type=%s base_url=%s error=%s",
+            "remote_model_fetch_failed provider=%s api_type=%s error=%s",
             provider.code,
             provider.api_type,
-            credential.base_url,
             exc,
         )
         raise HTTPException(status_code=502, detail=format_remote_fetch_error(exc))
@@ -586,11 +592,18 @@ async def test_credential(
 ):
     """Test a credential by making a simple API call."""
     # Get credential
-    credential = await resolver.get_credential(
-        provider_code="",  # Will be resolved by credential_id
-        credential_id=credential_id,
-        user_id=user.user_id,
-    )
+    try:
+        credential = await resolver.get_credential(
+            provider_code="",  # Will be resolved by credential_id
+            credential_id=credential_id,
+            user_id=user.user_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to decrypt credential %s: %s", credential_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail="无法解密 API Key（可能密钥配置已变更）。请删除并重新添加凭证。",
+        )
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
     
@@ -663,11 +676,18 @@ async def test_embedding_credential(
     from litellm import aembedding
 
     # Get credential
-    credential = await resolver.get_credential(
-        provider_code="",
-        credential_id=credential_id,
-        user_id=user.user_id,
-    )
+    try:
+        credential = await resolver.get_credential(
+            provider_code="",
+            credential_id=credential_id,
+            user_id=user.user_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to decrypt credential %s: %s", credential_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail="无法解密 API Key（可能密钥配置已变更）。请删除并重新添加凭证。",
+        )
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 

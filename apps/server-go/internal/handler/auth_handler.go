@@ -36,7 +36,7 @@ func NewAuthHandler(auth *service.AuthService, session *service.SessionService, 
 // Mount 将所有认证相关路由挂载到指定的 echo.Group。
 func (h *AuthHandler) Mount(g *echo.Group) {
 	g.POST("/login", h.Login)
-	g.POST("/register", h.RegisterUser)
+	g.POST("/register", h.RegisterUser, middleware.JWTAuth(h.cfg.JWT.Secret), middleware.RequireRole("admin"))
 	g.POST("/refresh", h.Refresh)
 	g.POST("/logout", h.Logout)
 	g.GET("/me", h.Me, middleware.JWTAuth(h.cfg.JWT.Secret))
@@ -71,7 +71,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		// 记录失败次数以触发频率限制
 		h.auth.RecordFailedAttempt(ctx, req.Username, ip)
 		log.Warn().
-			Str("username", req.Username).
+			Str("username", truncateForLog(req.Username)).
 			Str("ip", ip).
 			Str("user_agent", c.Request().UserAgent()).
 			Msg("login failed")
@@ -213,9 +213,8 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 		return response.Error(c, err)
 	}
 
-	// 修改密码后吊销当前会话并清除 Cookie
-	refreshToken := getCookieValue(c, middleware.RefreshTokenCookie)
-	h.session.RevokeRefreshToken(ctx, refreshToken)
+	// 修改密码后吊销所有会话并清除 Cookie
+	h.session.RevokeAllUserSessions(ctx, lu.UserID)
 	h.clearAuthCookies(c)
 	return response.OKEmpty(c)
 }
@@ -257,6 +256,14 @@ func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.OK(c, req.AvatarURL)
+}
+
+// truncateForLog 截断字符串用于日志记录，避免泄露完整的用户名等敏感信息。
+func truncateForLog(s string) string {
+	if len(s) <= 3 {
+		return "***"
+	}
+	return s[:3] + "***"
 }
 
 // --- 内部辅助函数 ---

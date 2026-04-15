@@ -22,9 +22,10 @@ const (
 	loginFailKeyPrefix = "auth:login:fail:" // Redis 失败计数键前缀
 	loginLockKeyPrefix = "auth:login:lock:" // Redis 锁定键前缀
 
-	maxFailedAttempts = 5              // 触发账号锁定所需的连续失败次数
-	lockDuration      = 15 * time.Minute // 账号被锁定的持续时间
-	windowDuration    = 15 * time.Minute // 失败计数的时间窗口
+	maxFailedAttempts     = 5              // 触发账号锁定所需的连续失败次数（单 IP）
+	maxFailedAttemptsAll = 20             // 触发账号锁定所需的连续失败次数（全 IP 汇总）
+	lockDuration         = 15 * time.Minute // 账号被锁定的持续时间
+	windowDuration       = 15 * time.Minute // 失败计数的时间窗口
 )
 
 // AuthService 处理用户认证相关的业务逻辑，包括登录安全防护。
@@ -115,7 +116,8 @@ func (s *AuthService) UpdateLoginInfo(ctx context.Context, id int64, ip string) 
 // 已锁定时返回错误提示；当 Redis 不可用时允许登录通过（降级策略）。
 func (s *AuthService) AssertLoginAllowed(ctx context.Context, identifier, ip string) error {
 	lockKey := loginLockKeyPrefix + buildSecurityKey(identifier, ip)
-	exists, err := s.redis.Exists(ctx, lockKey).Result()
+	userLockKey := loginLockKeyPrefix + "user:" + strings.ToLower(strings.TrimSpace(identifier))
+	exists, err := s.redis.Exists(ctx, lockKey, userLockKey).Result()
 	if err != nil {
 		return nil // Redis 不可用时降级放行，避免影响正常登录
 	}
@@ -144,12 +146,29 @@ func (s *AuthService) RecordFailedAttempt(ctx context.Context, identifier, ip st
 		lockKey := loginLockKeyPrefix + suffix
 		s.redis.Set(ctx, lockKey, "1", lockDuration)
 	}
+
+	// 按用户名汇总的全 IP 失败计数
+	userSuffix := "user:" + strings.ToLower(strings.TrimSpace(identifier))
+	userFailKey := loginFailKeyPrefix + userSuffix
+	userCount, err := s.redis.Incr(ctx, userFailKey).Result()
+	if err != nil {
+		return
+	}
+	if userCount == 1 {
+		s.redis.Expire(ctx, userFailKey, windowDuration)
+	}
+	if userCount >= maxFailedAttemptsAll {
+		userLockKey := loginLockKeyPrefix + userSuffix
+		s.redis.Set(ctx, userLockKey, "1", lockDuration)
+	}
 }
 
 // ClearFailedAttempts 在用户成功登录后清除 identifier+IP 对应的失败计数键和锁定键。
 func (s *AuthService) ClearFailedAttempts(ctx context.Context, identifier, ip string) {
 	suffix := buildSecurityKey(identifier, ip)
-	s.redis.Del(ctx, loginFailKeyPrefix+suffix, loginLockKeyPrefix+suffix)
+	userSuffix := "user:" + strings.ToLower(strings.TrimSpace(identifier))
+	s.redis.Del(ctx, loginFailKeyPrefix+suffix, loginLockKeyPrefix+suffix,
+		loginFailKeyPrefix+userSuffix, loginLockKeyPrefix+userSuffix)
 }
 
 // buildSecurityKey 构建登录安全 Redis 键的唯一后缀，格式为 "小写标识符:小写IP"。
