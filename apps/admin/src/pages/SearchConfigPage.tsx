@@ -599,7 +599,14 @@ export default function SearchConfigPage() {
                     <option value="">未选择</option>
                     {embeddingModels.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.display_name || m.model_id} ({m.provider_code})
+                        {/* 同时显示 display_name 和技术 model_id —— 这是真正发给
+                            provider 的字符串；display_name 只是标签。两者不一致
+                            是 "我以为选了 large，其实发出去是 small" 这类事故
+                            的根因，在这里暴露出来省去日志排查。 */}
+                        {m.display_name && m.display_name !== m.model_id
+                          ? `${m.display_name} · ${m.model_id}`
+                          : m.model_id}
+                        {' '}({m.provider_code})
                       </option>
                     ))}
                   </select>
@@ -634,6 +641,20 @@ export default function SearchConfigPage() {
                 creds.find((c) => c.provider_code === m.provider_code && c.is_default) ||
                 creds.find((c) => c.provider_code === m.provider_code);
               const effectiveBase = matched?.base_url_override || '(provider 默认)';
+              // 启发式 mismatch 检测：display_name 说 "large" 但 model_id 里有 "small"
+              // （或反过来）是最常见的配置事故，直接发 warning 让用户一眼看到
+              const displayLower = (m.display_name || '').toLowerCase();
+              const modelLower = (m.model_id || '').toLowerCase();
+              const sizeTokens: [string, string[]][] = [
+                ['large', ['small', 'mini', 'base']],
+                ['small', ['large', 'xl']],
+                ['3-large', ['3-small']],
+                ['3-small', ['3-large']],
+              ];
+              const mismatched = sizeTokens.some(
+                ([inName, conflictInId]) =>
+                  displayLower.includes(inName) && conflictInId.some((c) => modelLower.includes(c))
+              );
               return (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
@@ -645,6 +666,17 @@ export default function SearchConfigPage() {
                       {' '}({m.provider_code})
                     </span>
                   </div>
+                  {mismatched && (
+                    <div className="flex items-start gap-2 pl-5 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                      <span className="text-xs text-amber-300">
+                        标签名（<span className="font-medium">{m.display_name}</span>）和技术
+                        model_id（<span className="font-mono">{m.model_id}</span>
+                        ）看起来不一致。真正发给 provider 的是 model_id，
+                        如果这不是你想要的模型，请到「AI 配置」页编辑这条模型的 model_id 字段。
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 pl-5">
                     <span className="text-xs text-[var(--text-muted)] font-mono break-all">
                       api_base: {effectiveBase}

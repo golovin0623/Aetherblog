@@ -808,12 +808,29 @@ async def update_routing(
     model_router: ModelRouter = Depends(get_model_router),
 ):
     """Update routing configuration for a task type."""
+    import logging as _logging
+
+    _logger = _logging.getLogger("ai-service")
+
     user_id = user.user_id
     fields_set = req.model_fields_set
     update_primary = "primary_model_id" in fields_set
     update_fallback = "fallback_model_id" in fields_set
     update_credential = "credential_id" in fields_set
     update_config = "config_override" in fields_set
+
+    # 写入前记录请求语义 —— "我 PUT 了什么" 和 "UI 以为选了什么" 出入时，
+    # 从日志直接能回溯前端实际发送的 id，不用在浏览器 devtools 里复现。
+    _logger.info(
+        "routing.update_requested",
+        extra={"data": {
+            "task_type": task_type,
+            "user_id": user_id,
+            "primary_model_id": req.primary_model_id if update_primary else "(not set)",
+            "credential_id": req.credential_id if update_credential else "(not set)",
+            "fields_set": list(fields_set),
+        }},
+    )
 
     await model_router.update_routing(
         task_type=task_type,
@@ -827,5 +844,32 @@ async def update_routing(
         update_config=update_config,
         user_id=user_id,
     )
-    
+
+    # 写入后读回一次，记录"数据库里现在到底是什么"，让以后排查时不再凭猜想
+    try:
+        resolved = await model_router.resolve_routing(task_type, user_id)
+        if resolved and resolved.model:
+            _logger.info(
+                "routing.update_effective",
+                extra={"data": {
+                    "task_type": task_type,
+                    "effective_model_id": resolved.model.model_id,
+                    "effective_model_db_id": getattr(resolved.model, "id", None),
+                    "display_name": getattr(resolved.model, "display_name", None),
+                    "provider": getattr(resolved.model, "provider_code", None),
+                    "credential_id": getattr(resolved.credential, "id", None) if resolved.credential else None,
+                    "api_base": getattr(resolved.credential, "base_url", None) if resolved.credential else None,
+                }},
+            )
+        else:
+            _logger.warning(
+                "routing.update_effective_empty",
+                extra={"data": {"task_type": task_type}},
+            )
+    except Exception as exc:  # don't fail the write on logging errors
+        _logger.warning(
+            "routing.update_effective_failed",
+            extra={"data": {"task_type": task_type, "error": str(exc)[:120]}},
+        )
+
     return ApiResponse(data=True)
