@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -77,8 +76,25 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 
 // ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
-	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
-	subPath := c.Param("*")
+	// 使用原始编码路径构建目标 URL，避免 Echo 自动解码导致的双重解码绕过和 URL 结构破坏
+	rawPath := c.Request().URL.RawPath
+	if rawPath == "" {
+		rawPath = c.Request().URL.Path
+	}
+
+	// 提取子路径：由于 Echo 的路由匹配，已知解码后的子路径是 c.Param("*")。
+	// 但为了保留原始 URL 编码（如 %2F），我们需要从 rawPath 中截取对应部分。
+	// 通过寻找原始路径中与解码后参数匹配的起始点，或者简单地去掉固定的挂载前缀。
+	prefix := "/api/v1/admin/providers"
+	var subPath string
+	if strings.HasPrefix(rawPath, prefix) {
+		subPath = strings.TrimPrefix(rawPath, prefix)
+	} else {
+		// 兜底方案：如果因为某种原因（例如路径被部分编码）没有严格的 prefix 前缀，
+		// 直接提取 c.Param("*")（虽可能丢失部分编码，但可以避免路由失效）
+		subPath = c.Param("*")
+	}
+	subPath = strings.TrimPrefix(subPath, "/")
 
 	// 循环进行 URL 解码，彻底防御多重编码的路径穿越攻击（如 %2e%2e、%252e%252e）
 	unescapedPath := subPath
@@ -96,10 +112,10 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
 
-	// 使用原始编码路径构建目标 URL，避免解码后的特殊字符破坏 URL 结构
-	targetPath := "/api/v1/admin/providers"
+	// 使用提取的原始子路径构建目标 URL
+	targetPath := prefix
 	if subPath != "" {
-		targetPath += "/" + path.Clean(subPath)
+		targetPath += "/" + subPath
 	}
 
 	method := c.Request().Method
