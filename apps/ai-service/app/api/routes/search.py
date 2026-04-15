@@ -89,7 +89,9 @@ async def semantic_search(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    model = settings.model_embedding
+    # Resolve to the actual routed model (not the stale env default) so usage
+    # logs / metrics reflect what really ran.
+    model = await vector_store.llm.resolve_embedding_model_id()
     try:
         results = await vector_store.semantic_search(q, limit)
         return ApiResponse(data=SemanticSearchData(results=results))
@@ -123,7 +125,7 @@ async def reindex(
 ) -> ApiResponse[dict]:
     start_time = time.perf_counter()
     error_code = None
-    model = settings.model_embedding
+    model = await vector_store.llm.resolve_embedding_model_id()
     try:
         result = await vector_store.reindex()
         return ApiResponse(data=result)
@@ -170,7 +172,7 @@ async def index_post(
     _logger = _logging.getLogger("ai-service")
     start_time = time.perf_counter()
     error_code: str | None = None
-    model = settings.model_embedding
+    model = await vector_store.llm.resolve_embedding_model_id()
     try:
         if req.action == "delete":
             result = await vector_store.delete_post_embedding(req.postId)
@@ -260,7 +262,7 @@ async def semantic_search_internal(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    model = settings.model_embedding
+    model = await vector_store.llm.resolve_embedding_model_id()
     user_id = "system"
     if hasattr(user, "user_id"):
         user_id = user.user_id

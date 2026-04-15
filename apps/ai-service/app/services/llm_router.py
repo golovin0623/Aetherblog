@@ -444,6 +444,22 @@ class LlmRouter:
             if content:
                 yield content
 
+    async def resolve_embedding_model_id(self, user_id: int | None = None) -> str:
+        """Return the bare ``model_id`` that will be used for ``embed()``.
+
+        Used by callers (vector_store, search routes) that need to **persist**
+        or **log** the model name actually routed to — e.g. ``post_vectors.model``
+        and the ``reindex()`` "model changed → drop stale vectors" check. Those
+        sites used to hardcode ``settings.model_embedding`` (the env default),
+        which silently diverged from the real model whenever the admin changed
+        the embedding routing in the Search Config UI.
+        """
+        routing = await self._get_routing("embedding", user_id)
+        if routing and routing.model and routing.model.model_id:
+            return routing.model.model_id
+        _, fallback_model_id = _normalize_model_parts(self.resolve_model("embedding"))
+        return fallback_model_id or self.resolve_model("embedding")
+
     async def embed(
         self,
         text: str,
