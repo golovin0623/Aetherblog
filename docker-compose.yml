@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: aetherblog
       POSTGRES_PASSWORD: aetherblog123
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,12 +24,12 @@ services:
     container_name: aetherblog-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-aetherblog_dev}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "aetherblog_dev", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-aetherblog_dev} ping"]
       interval: 10s
       timeout: 5s
       retries: 5
