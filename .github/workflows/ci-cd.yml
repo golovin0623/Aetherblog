@@ -229,6 +229,7 @@ jobs:
           AI_ENV: test
           AI_MOCK_MODE: "true"
           JWT_SECRET: "ci-test-secret"
+          AI_INTERNAL_SERVICE_TOKEN: "ci-test-token-minimum-32-characters-long"
           POSTGRES_DSN: "postgresql://test:test@localhost:5432/test_db"
         run: |
           python -c "from app.main import app; print('✅ App imports successfully')"
