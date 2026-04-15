@@ -57,6 +57,20 @@ class VectorStoreService:
                     "embed_ms": round(embed_ms, 2),
                 }},
             )
+            # 把 post 标记为 FAILED，让前端 stats / "重试失败"按钮能感知；
+            # 之前只有 reindex() 路径做了这件事，单篇 upsert 失败时状态会卡在
+            # PENDING，导致用户重试机制失效。最佳努力：标记失败本身再失败也吞掉。
+            try:
+                async with self.pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE posts SET embedding_status = 'FAILED' WHERE id = $1",
+                        post_id,
+                    )
+            except Exception as mark_exc:
+                logger.warning(
+                    "upsert.mark_failed_failed",
+                    extra={"data": {"post_id": post_id, "error": str(mark_exc)}},
+                )
             raise
         embed_ms = (time.perf_counter() - embed_start) * 1000
 

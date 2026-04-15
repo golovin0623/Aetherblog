@@ -623,16 +623,36 @@ export default function SearchConfigPage() {
                 </div>
               )}
             </div>
-            {/* Current model details */}
-            {!embeddingLoading && currentRouting?.primary_model && (
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-xs text-[var(--text-muted)]">
-                  当前使用: {currentRouting.primary_model.display_name || currentRouting.primary_model.model_id}
-                  {' '}({currentRouting.primary_model.provider_code})
-                </span>
-              </div>
-            )}
+            {/* Current model details — 显示真正生效的 model_id 和 base_url，
+                 避免 UI 标签和后端实际调用不一致时出现"我明明选了 large 怎么
+                 还是 small"的迷惑场面。base_url 来自 provider 下匹配凭证的
+                 base_url_override（与 ai-service 的 credential resolver 同一逻辑）。 */}
+            {!embeddingLoading && currentRouting?.primary_model && (() => {
+              const m = currentRouting.primary_model!;
+              const creds = credentialsQuery.data || [];
+              const matched =
+                creds.find((c) => c.provider_code === m.provider_code && c.is_default) ||
+                creds.find((c) => c.provider_code === m.provider_code);
+              const effectiveBase = matched?.base_url_override || '(provider 默认)';
+              return (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-xs text-[var(--text-muted)]">
+                      当前使用: <span className="text-[var(--text-secondary)] font-medium">{m.display_name || m.model_id}</span>
+                      {' '}<span className="text-[var(--text-muted)]">·</span>{' '}
+                      <span className="font-mono text-[var(--text-secondary)]">{m.model_id}</span>
+                      {' '}({m.provider_code})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 pl-5">
+                    <span className="text-xs text-[var(--text-muted)] font-mono break-all">
+                      api_base: {effectiveBase}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Index stats */}
