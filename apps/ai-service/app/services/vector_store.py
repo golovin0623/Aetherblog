@@ -19,7 +19,11 @@ class VectorStoreService:
 
     async def semantic_search(self, query: str, limit: int) -> list[dict[str, Any]]:
         embedding = await self.llm.embed(query)
-        model = self.settings.model_embedding
+        # Match the filter against the model actually used by embed() above.
+        # search_similar_posts() filters post_vectors by model, so using the
+        # stale env default here would silently return zero results whenever
+        # the admin switched the embedding model in Search Config.
+        model = await self.llm.resolve_embedding_model_id()
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT post_id, title, slug, content, similarity "
@@ -75,7 +79,11 @@ class VectorStoreService:
         embed_ms = (time.perf_counter() - embed_start) * 1000
 
         db_start = time.perf_counter()
-        model = self.settings.model_embedding
+        # Record the model that embed() actually routed to, not the env default.
+        # Reindex()'s "model changed" detection compares against this column to
+        # decide which vectors are stale; storing the env default would leave
+        # old vectors undetectable after a routing change.
+        model = await self.llm.resolve_embedding_model_id()
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -117,7 +125,10 @@ class VectorStoreService:
         return {"status": "deleted"}
 
     async def reindex(self) -> dict[str, Any]:
-        current_model = self.settings.model_embedding
+        # Use the model routing actually resolves to — same source of truth as
+        # upsert_post_embedding — so "model changed → drop stale vectors"
+        # triggers correctly when the admin switches embedding provider.
+        current_model = await self.llm.resolve_embedding_model_id()
 
         # Invalidate vectors from a different model — they are incompatible
         async with self.pool.acquire() as conn:

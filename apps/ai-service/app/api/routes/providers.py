@@ -745,9 +745,18 @@ async def get_routing(
     user: UserClaims = Depends(require_admin),
     model_router: ModelRouter = Depends(get_model_router),
 ):
-    """Get routing configuration for a task type."""
-    user_id = user.user_id
-    routing = await model_router.resolve_routing(task_type, user_id=user_id)
+    """Get routing configuration for a task type.
+
+    Admin UI (SearchConfig / AI Config) manages *system-default* routing
+    (``user_id IS NULL``), not per-admin overrides. Background workers such as
+    the embedding index job invoke ``llm_router.embed()`` without a user_id,
+    which matches only system-default rows — so the admin UI must read/write
+    the same row to stay in sync with runtime. Previously we resolved with
+    ``user_id=user.user_id``, which silently created an admin-scoped row that
+    runtime never consulted, producing a "UI shows Embedding-3-Large but
+    indexing uses Embedding-3-Small" mismatch.
+    """
+    routing = await model_router.resolve_routing(task_type, user_id=None)
     
     if not routing:
         return ApiResponse(data=None)
@@ -807,8 +816,13 @@ async def update_routing(
     user: UserClaims = Depends(require_admin),
     model_router: ModelRouter = Depends(get_model_router),
 ):
-    """Update routing configuration for a task type."""
-    user_id = user.user_id
+    """Update routing configuration for a task type.
+
+    Writes to the system-default row (``user_id IS NULL``); see ``get_routing``
+    for rationale. AetherBlog is a single-admin blog where all AI routing is
+    site-wide, so admin-scoped routing rows only cause drift between UI and
+    runtime (which calls ``embed()`` without a user_id).
+    """
     fields_set = req.model_fields_set
     update_primary = "primary_model_id" in fields_set
     update_fallback = "fallback_model_id" in fields_set
@@ -825,7 +839,7 @@ async def update_routing(
         update_fallback=update_fallback,
         update_credential=update_credential,
         update_config=update_config,
-        user_id=user_id,
+        user_id=None,
     )
-    
+
     return ApiResponse(data=True)
