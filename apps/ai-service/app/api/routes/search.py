@@ -155,8 +155,21 @@ async def index_post(
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[dict]:
+    """
+    Index a single post (called by Go backend per post in a batch).
+
+    Important: LiteLLM exceptions (provider 5xx, auth, rate limit) MUST be
+    caught and converted into a structured ApiResponse here. Letting them
+    propagate triggers FastAPI's unhandled_exception path which spits a
+    full ASGI traceback into the logs and returns 500 to Go backend ——
+    which is uglier and harder to diagnose than a clean 502/503/401 with
+    a short error message.
+    """
+    import logging as _logging
+
+    _logger = _logging.getLogger("ai-service")
     start_time = time.perf_counter()
-    error_code = None
+    error_code: str | None = None
     model = settings.model_embedding
     try:
         if req.action == "delete":
@@ -175,11 +188,48 @@ async def index_post(
             request_text = req.content or ""
         return ApiResponse(data=result)
     except HTTPException as exc:
-        error_code = str(exc.detail)
+        # Preserve original FastAPI exceptions (input validation 4xx, etc.)
+        error_code = str(exc.detail)[:120]
         raise
     except Exception as exc:
-        error_code = str(exc)
-        raise
+        # Map LiteLLM / network / DB failures to a stable HTTPException.
+        # 用 HTTPException 而不是 return ApiResponse —— FastAPI 会自动序列化为
+        # 干净的 {detail: "..."} JSON，**HTTP 状态码就是真正的非 200**，Go backend
+        # 的 statusCode != http.StatusOK 检查直接对得上，也不会再触发
+        # unhandled_exception 那套满屏 traceback。
+        exc_name = type(exc).__name__
+        error_msg = str(exc)
+        error_code = f"{exc_name}: {error_msg}"[:120]
+
+        if "ServiceUnavailableError" in exc_name or "503" in error_msg:
+            http_code = 503
+            user_msg = "Embedding 提供商不可用（503），请检查 oneapi/中转的 channel 配置或稍后重试"
+        elif "RateLimitError" in exc_name or "429" in error_msg:
+            http_code = 429
+            user_msg = "Embedding 提供商触发限流（429）"
+        elif "AuthenticationError" in exc_name or "401" in error_msg or "403" in error_msg:
+            http_code = 401
+            user_msg = "Embedding 提供商认证失败，请检查 API Key"
+        elif "Timeout" in exc_name or "TimeoutError" in error_msg:
+            http_code = 504
+            user_msg = "Embedding 请求超时，可在搜索配置中增大单篇超时"
+        elif "NotFoundError" in exc_name or "model_not_found" in error_msg or "404" in error_msg:
+            http_code = 404
+            user_msg = "Embedding 模型不存在或中转未配置该 channel"
+        else:
+            http_code = 502
+            user_msg = "Embedding 调用失败"
+
+        _logger.warning(
+            "index_post.failed",
+            extra={"data": {
+                "post_id": req.postId,
+                "exception": exc_name,
+                "http_code": http_code,
+                "error": error_msg[:200],
+            }},
+        )
+        raise HTTPException(status_code=http_code, detail=f"{user_msg}: {error_msg[:200]}")
     finally:
         await _log_usage(
             request=request,

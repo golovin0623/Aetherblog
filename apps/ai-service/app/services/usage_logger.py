@@ -133,6 +133,13 @@ class UsageLogger:
                 cached=cached,
             )
 
+        # ai_usage_logs.error_code is varchar(128); LiteLLM 异常的 str() 经常
+        # 远超这个长度（带 traceback 风格的 ServiceUnavailableError 等），写入会
+        # 触发 PostgreSQL "value too long for type character varying(128)"，
+        # 整条 usage 记录被丢掉。在写入前本地截断，DB schema 保持兼容。
+        safe_error_code = error_code[:120] if error_code else error_code
+        safe_request_id = request_id[:120] if request_id else request_id
+
         try:
             async with self.pool.acquire() as conn:
                 await conn.execute(
@@ -155,8 +162,8 @@ class UsageLogger:
                     effective_cost,
                     success,
                     cached,
-                    error_code,
-                    request_id,
+                    safe_error_code,
+                    safe_request_id,
                 )
         except Exception as exc:  # pragma: no cover - don't fail request
             error_category = self._classify_error(exc)
