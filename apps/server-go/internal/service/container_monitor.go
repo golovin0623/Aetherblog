@@ -16,7 +16,7 @@ import (
 )
 
 // validContainerID 匹配合法的 Docker 容器 ID 或名称，防止路径注入攻击。
-var validContainerID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
+var validContainerID = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 // ContainerOverview 汇总所有 Docker 容器的状态概览信息。
 type ContainerOverview struct {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -69,6 +70,10 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 	fh, err := c.FormFile("file")
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "未找到文件")
+	}
+	const maxUploadSize = 100 * 1024 * 1024 // 100 MB
+	if fh.Size > maxUploadSize {
+		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)))
 	}
 	lu := middleware.GetLoginUser(c)
 	var uploaderID *int64
@@ -395,6 +400,10 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "未找到文件")
 	}
+	const maxUploadSize = 100 * 1024 * 1024 // 100 MB
+	if fh.Size > maxUploadSize {
+		return response.FailWith(c, response.BadRequest, fmt.Sprintf("文件大小超过限制 (最大 %d MB)", maxUploadSize/(1024*1024)))
+	}
 
 	ctx := c.Request().Context()
 
@@ -425,6 +434,19 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	}
 	defer f.Close()
 
+	// Sniff MIME type to prevent uploading dangerous file types
+	sniffBuf := make([]byte, 512)
+	n, sniffErr := io.ReadAtLeast(f, sniffBuf, 1)
+	if sniffErr != nil && sniffErr != io.ErrUnexpectedEOF {
+		return response.Error(c, sniffErr)
+	}
+	detectedMime := http.DetectContentType(sniffBuf[:n])
+	if seeker, ok := f.(io.Seeker); ok {
+		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+			return response.Error(c, fmt.Errorf("failed to reset file reader after MIME detection: %w", err))
+		}
+	}
+
 	now := time.Now()
 	ext := filepath.Ext(fh.Filename)
 	if ext == "" {
@@ -433,7 +455,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	}
 	key := fmt.Sprintf("%d/%02d/%d_edited%s", now.Year(), now.Month(), now.UnixMilli(), ext)
 
-	url, err := h.store.Upload(ctx, key, f, fh.Size, fh.Header.Get("Content-Type"))
+	url, err := h.store.Upload(ctx, key, f, fh.Size, detectedMime)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "文件上传失败: "+err.Error())
 	}
