@@ -203,9 +203,10 @@ services:
       AI_JWT_JWKS_URL: ${AI_JWT_JWKS_URL:-}
       AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
+      AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
       REDIS_URL: ${AI_REDIS_URL:-redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0}
       POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/aetherblog
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY environment variable is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
       OPENAI_COMPAT_BASE_URL: ${OPENAI_COMPAT_BASE_URL:-}
       OPENAI_COMPAT_API_KEY: ${OPENAI_COMPAT_API_KEY:-}
