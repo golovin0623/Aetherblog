@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -72,17 +71,12 @@ func NewS3Storage(configJSON string) (*S3Storage, error) {
 // 由于 PutObject 需要完整数据，会先将 reader 内容读入内存缓冲区。
 // 成功时返回文件的公开访问 URL。
 func (s *S3Storage) Upload(ctx context.Context, key string, r io.Reader, size int64, mimeType string) (string, error) {
-	// 将 reader 内容读入内存（S3 PutObject 需要可寻址的 io.ReadSeeker）
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return "", fmt.Errorf("read upload data: %w", err)
-	}
-
 	input := &s3.PutObjectInput{
-		Bucket:      aws.String(s.cfg.Bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(data),
-		ContentType: aws.String(mimeType),
+		Bucket:        aws.String(s.cfg.Bucket),
+		Key:           aws.String(key),
+		Body:          r,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String(mimeType),
 	}
 
 	if _, err := s.client.PutObject(ctx, input); err != nil {
