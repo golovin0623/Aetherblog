@@ -90,30 +90,64 @@ class ModelRouter:
             RoutingConfig with model, credential, and parameters
         """
         user_id = _normalize_user_id(user_id)
-        # Query routing config (user-level first, then system default)
-        query = """
-            SELECT r.id, r.config_override, r.credential_id, 
-                   COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt,
-                   tt.code as task_code, tt.default_temperature, tt.default_max_tokens,
-                   tt.prompt_template as default_prompt,
-                   pm.id as primary_model_id, pm.model_id as primary_model,
-                   pp.code as primary_provider_code, pp.base_url as primary_base_url,
-                   fm.id as fallback_model_id, fm.model_id as fallback_model,
-                   fp.code as fallback_provider_code
-            FROM ai_task_routing r
-            JOIN ai_task_types tt ON r.task_type_id = tt.id
-            LEFT JOIN ai_models pm ON r.primary_model_id = pm.id
-            LEFT JOIN ai_providers pp ON pm.provider_id = pp.id
-            LEFT JOIN ai_models fm ON r.fallback_model_id = fm.id
-            LEFT JOIN ai_providers fp ON fm.provider_id = fp.id
-            WHERE tt.code = $1
-              AND (r.user_id = $2 OR r.user_id IS NULL)
-              AND r.is_enabled = TRUE
-            ORDER BY r.user_id NULLS LAST
-            LIMIT 1
-        """
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(query, task_type, user_id)
+        # Query routing config (user-level first, then system default).
+        # 同一个 bug pattern 已在 credential_resolver.get_credential 修过：
+        #   当内部服务（Go backend via X-Internal-Service）没有登录上下文时
+        #   user_id=None，SQL 里 "r.user_id = $2" 变成 "r.user_id = NULL"，
+        #   在 SQL 语义里永远为假，整条 WHERE 退化成仅匹配 r.user_id IS NULL，
+        #   于是 UI 里存在 user-scoped 的那条路由被静默忽略，最终生效的是
+        #   migration 000019 seed 的 system 默认（text-embedding-3-small），
+        #   表现就是"UI 选了 large 后端还是跑 small"。
+        # 单管理员博客里内部调用应当采用 UI 里显式配置的那条用户路由，所以
+        # user_id=None 时放宽为匹配任意用户/系统路由，按 user_id 非空优先。
+        if user_id is None:
+            query = """
+                SELECT r.id, r.config_override, r.credential_id,
+                       COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt,
+                       tt.code as task_code, tt.default_temperature, tt.default_max_tokens,
+                       tt.prompt_template as default_prompt,
+                       pm.id as primary_model_id, pm.model_id as primary_model,
+                       pp.code as primary_provider_code, pp.base_url as primary_base_url,
+                       fm.id as fallback_model_id, fm.model_id as fallback_model,
+                       fp.code as fallback_provider_code
+                FROM ai_task_routing r
+                JOIN ai_task_types tt ON r.task_type_id = tt.id
+                LEFT JOIN ai_models pm ON r.primary_model_id = pm.id
+                LEFT JOIN ai_providers pp ON pm.provider_id = pp.id
+                LEFT JOIN ai_models fm ON r.fallback_model_id = fm.id
+                LEFT JOIN ai_providers fp ON fm.provider_id = fp.id
+                WHERE tt.code = $1
+                  AND r.is_enabled = TRUE
+                  AND r.primary_model_id IS NOT NULL
+                ORDER BY r.user_id NULLS LAST, r.id DESC
+                LIMIT 1
+            """
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, task_type)
+        else:
+            query = """
+                SELECT r.id, r.config_override, r.credential_id,
+                       COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt,
+                       tt.code as task_code, tt.default_temperature, tt.default_max_tokens,
+                       tt.prompt_template as default_prompt,
+                       pm.id as primary_model_id, pm.model_id as primary_model,
+                       pp.code as primary_provider_code, pp.base_url as primary_base_url,
+                       fm.id as fallback_model_id, fm.model_id as fallback_model,
+                       fp.code as fallback_provider_code
+                FROM ai_task_routing r
+                JOIN ai_task_types tt ON r.task_type_id = tt.id
+                LEFT JOIN ai_models pm ON r.primary_model_id = pm.id
+                LEFT JOIN ai_providers pp ON pm.provider_id = pp.id
+                LEFT JOIN ai_models fm ON r.fallback_model_id = fm.id
+                LEFT JOIN ai_providers fp ON fm.provider_id = fp.id
+                WHERE tt.code = $1
+                  AND (r.user_id = $2 OR r.user_id IS NULL)
+                  AND r.is_enabled = TRUE
+                ORDER BY r.user_id NULLS LAST
+                LIMIT 1
+            """
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, task_type, user_id)
         
         if not row or not row["primary_model"]:
             logger.warning(f"No routing found for task: {task_type}")
