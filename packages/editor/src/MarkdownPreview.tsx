@@ -254,6 +254,7 @@ function preprocessMarkdown(content: string): string {
 const MARKDOWN_SANITIZE_CONFIG = {
   USE_PROFILES: { html: true, svg: true },
   FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'style'],
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
   ADD_ATTR: ['data-source-line', 'data-mermaid-id', 'data-copy-code', 'aria-label', 'data-title'],
 };
 

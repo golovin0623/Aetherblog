@@ -266,7 +266,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       className={cn(
         "relative flex flex-col overflow-hidden",
         isMobile ? "h-[70vh] rounded-t-[2.5rem]" : "rounded-2xl max-h-[520px]",
-        "bg-white",
+        "bg-[var(--bg-primary)]",
         !isMobile && "border border-[var(--border-default)]/60 shadow-xl shadow-[var(--shadow-sm)] dark:shadow-black/30"
       )}
     >
@@ -295,7 +295,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 搜索头部 */}
       <div className={cn(
-        "px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80/80 backdrop-blur-sm sticky top-0 z-10",
+        "px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 backdrop-blur-sm sticky top-0 z-10",
         isMobile && "pt-0"
       )}>
         <div className="relative">
@@ -332,7 +332,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           filteredGroups.map((group) => (
             <div key={group.provider.code} className="mb-2">
               {/* 提供商头部 */}
-              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] sticky top-0 bg-white/90/90 backdrop-blur-sm z-0">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] sticky top-0 bg-[var(--bg-primary)]/90 backdrop-blur-sm z-0">
                 <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
                 <span className="uppercase tracking-wider">
                   {group.provider.display_name || group.provider.name}
@@ -424,7 +424,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 底部 */}
       <div className={cn(
-        "p-2 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50/50",
+        "p-2 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50",
         isMobile && "pb-8 px-4"
       )}>
         <a 
@@ -540,7 +540,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)]/60 bg-white overflow-hidden",
+                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)]/60 bg-[var(--bg-primary)] overflow-hidden",
                       menuClassName
                     )}
                   >

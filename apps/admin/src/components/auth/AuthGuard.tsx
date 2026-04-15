@@ -6,7 +6,7 @@
  * 如果令牌无效或过期，用户将立即重定向到登录页面，而不会看到受保护的内容。
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
@@ -19,9 +19,11 @@ interface AuthGuardProps {
 export function AuthGuard({ children }: AuthGuardProps) {
   const location = useLocation();
   const { isAuthenticated, logout } = useAuthStore();
+  const [isValidating, setIsValidating] = useState(true);
 
   useEffect(() => {
     if (!isAuthenticated) {
+      setIsValidating(false);
       return;
     }
 
@@ -34,11 +36,17 @@ export function AuthGuard({ children }: AuthGuardProps) {
       } catch (error) {
         logger.error('[AuthGuard] Session validation error:', error);
         logout();
+      } finally {
+        setIsValidating(false);
       }
     };
 
     validateSession();
   }, [isAuthenticated, logout]);
+
+  if (isValidating) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;

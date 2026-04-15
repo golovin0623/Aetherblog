@@ -218,11 +218,25 @@ export default function SearchConfigPage() {
     refetchInterval: indexingActive ? 2000 : false,
   });
 
-  // Fetch all embedding models across all providers
+  // Fetch enabled providers
+  const providersQuery = useQuery({
+    queryKey: ['ai-providers'],
+    queryFn: () => aiProviderService.listProviders(true),
+    select: (res) => new Set((res.data || []).map((p) => p.code)),
+    staleTime: 30_000,
+  });
+
+  // Fetch embedding models — only from enabled providers
+  const enabledProviderCodes = providersQuery.data;
   const embeddingModelsQuery = useQuery({
-    queryKey: ['embedding-models'],
+    queryKey: ['embedding-models', enabledProviderCodes ? Array.from(enabledProviderCodes).sort().join(',') : ''],
     queryFn: () => aiProviderService.listModels(undefined, 'embedding'),
-    select: (res) => (res.data || []).filter((m: AiModel) => m.is_enabled),
+    select: (res) => {
+      return (res.data || []).filter(
+        (m: AiModel) => m.is_enabled && (!enabledProviderCodes || enabledProviderCodes.has(m.provider_code))
+      );
+    },
+    enabled: providersQuery.isSuccess,
   });
 
   // Fetch current embedding routing
@@ -273,7 +287,7 @@ export default function SearchConfigPage() {
   });
 
   const embeddingLoading =
-    embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading || credentialsQuery.isLoading;
+    providersQuery.isLoading || embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading || credentialsQuery.isLoading;
   const embeddingModels = embeddingModelsQuery.data || [];
   const currentRouting = embeddingRoutingQuery.data;
   const currentEmbeddingModelId = currentRouting?.primary_model?.id ?? null;
