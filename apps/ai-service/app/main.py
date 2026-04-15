@@ -41,7 +41,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url=_docs_url,
     redoc_url=None,
-    openapi_url=f"/openapi.json" if _docs_url else None,
+    openapi_url="/openapi.json" if _docs_url else None,
 )
 
 app.add_middleware(
