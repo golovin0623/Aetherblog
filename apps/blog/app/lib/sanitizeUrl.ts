@@ -26,7 +26,10 @@ export function sanitizeImageUrl(url: string | undefined | null, fallback: strin
 
   try {
     const parsed = new URL(url);
-    if (['http:', 'https:', 'data:'].includes(parsed.protocol)) {
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+      return url;
+    }
+    if (parsed.protocol === 'data:' && url.startsWith('data:image/')) {
       return url;
     }
   } catch {
@@ -54,13 +57,19 @@ export function sanitizeImageUrl(url: string | undefined | null, fallback: strin
 export function sanitizeUrl(url: string, fallback: string = '#'): string {
   if (!url || typeof url !== 'string') return fallback;
   const trimmed = url.trim();
-  // Only allow http and https protocols
+  if (!trimmed) return fallback;
+  // Allow http and https protocols
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;
   }
-  // Also allow protocol-relative URLs
+  // Allow protocol-relative URLs
   if (trimmed.startsWith('//')) {
     return trimmed;
+  }
+  // Normalize bare domains (e.g. "example.com") — prepend https://
+  // but block dangerous protocols like javascript:, data:, vbscript:
+  if (/^[a-zA-Z0-9]/.test(trimmed) && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(trimmed)) {
+    return 'https://' + trimmed;
   }
   return fallback;
 }
