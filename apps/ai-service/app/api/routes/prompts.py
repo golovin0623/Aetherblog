@@ -38,7 +38,7 @@ async def get_all_prompts(
     async with llm.model_router.pool.acquire() as conn:
         rows = await conn.fetch(query)
     
-    logger.info(f"Retrieved {len(rows)} prompt configurations")
+    logger.debug(f"Retrieved {len(rows)} prompt configurations")
     data = [
         PromptConfigResponse(
             task_type=row["task_type"],
@@ -47,7 +47,7 @@ async def get_all_prompts(
         )
         for row in rows
     ]
-    logger.info(f"Returning data: {data}")
+    logger.debug(f"Returning prompt config count: {len(data)}")
     return ApiResponse(data=data)
 
 

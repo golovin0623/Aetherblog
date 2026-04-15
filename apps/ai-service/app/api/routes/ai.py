@@ -356,11 +356,14 @@ async def summary(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        cache_key = (
-            f"ai:summary:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
-            f"{_prompt_version(req.promptVersion)}:{req.maxLength}"
-        )
-        cached_data = await _safe_cache_get_json(cache, cache_key)
+        if req.promptTemplate:
+            cache_key = None
+        else:
+            cache_key = (
+                f"ai:summary:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
+                f"{_prompt_version(req.promptVersion)}:{req.maxLength}:{user.user_id}"
+            )
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
         if cached_data:
             try:
                 cached = True
@@ -405,12 +408,13 @@ async def summary(
             tokensUsed=tokens_used,
             latencyMs=latency_ms,
         )
-        await _safe_cache_set_json(
-            cache,
-            cache_key,
-            data.model_dump(),
-            SUMMARY_TTL,
-        )
+        if cache_key:
+            await _safe_cache_set_json(
+                cache,
+                cache_key,
+                data.model_dump(),
+                SUMMARY_TTL,
+            )
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
@@ -513,11 +517,14 @@ async def tags(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        cache_key = (
-            f"ai:tags:{hash_content(req.content)}:{model}:"
-            f"{_prompt_version(req.promptVersion)}:{req.maxTags}"
-        )
-        cached_data = await _safe_cache_get_json(cache, cache_key)
+        if req.promptTemplate:
+            cache_key = None
+        else:
+            cache_key = (
+                f"ai:tags:{hash_content(req.content)}:{model}:"
+                f"{_prompt_version(req.promptVersion)}:{req.maxTags}:{user.user_id}"
+            )
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
         if cached_data:
             try:
                 cached = True
@@ -554,7 +561,8 @@ async def tags(
             tokensUsed=tokens_used,
             latencyMs=latency_ms
         )
-        await _safe_cache_set_json(cache, cache_key, data.model_dump(), TAGS_TTL)
+        if cache_key:
+            await _safe_cache_set_json(cache, cache_key, data.model_dump(), TAGS_TTL)
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
@@ -614,11 +622,14 @@ async def titles(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        cache_key = (
-            f"ai:titles:{hash_content(req.content)}:{model}:"
-            f"{_prompt_version(req.promptVersion)}:{req.maxTitles}"
-        )
-        cached_data = await _safe_cache_get_json(cache, cache_key)
+        if req.promptTemplate:
+            cache_key = None
+        else:
+            cache_key = (
+                f"ai:titles:{hash_content(req.content)}:{model}:"
+                f"{_prompt_version(req.promptVersion)}:{req.maxTitles}:{user.user_id}"
+            )
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
         if cached_data:
             try:
                 cached = True
@@ -655,7 +666,8 @@ async def titles(
             tokensUsed=tokens_used,
             latencyMs=latency_ms
         )
-        await _safe_cache_set_json(cache, cache_key, data.model_dump(), TITLES_TTL)
+        if cache_key:
+            await _safe_cache_set_json(cache, cache_key, data.model_dump(), TITLES_TTL)
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
@@ -874,11 +886,14 @@ async def translate(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        cache_key = (
-            f"ai:translate:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
-            f"{_prompt_version(req.promptVersion)}:{req.targetLanguage}:{req.sourceLanguage or 'auto'}"
-        )
-        cached_data = await _safe_cache_get_json(cache, cache_key)
+        if req.promptTemplate:
+            cache_key = None
+        else:
+            cache_key = (
+                f"ai:translate:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
+                f"{_prompt_version(req.promptVersion)}:{req.targetLanguage}:{req.sourceLanguage or 'auto'}:{user.user_id}"
+            )
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
         if cached_data:
             try:
                 cached = True
@@ -923,12 +938,13 @@ async def translate(
             tokensUsed=tokens_used,
             latencyMs=latency_ms,
         )
-        await _safe_cache_set_json(
-            cache,
-            cache_key,
-            {"translatedContent": response_text, "targetLanguage": req.targetLanguage},
-            TRANSLATE_TTL,
-        )
+        if cache_key:
+            await _safe_cache_set_json(
+                cache,
+                cache_key,
+                {"translatedContent": response_text, "targetLanguage": req.targetLanguage},
+                TRANSLATE_TTL,
+            )
         return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)

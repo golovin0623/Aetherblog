@@ -341,10 +341,23 @@ class LlmRouter:
         if self.settings.mock_mode and not resolved.override:
             return f"[mock:{resolved.model}]"
         
+        # Separate system prompt from user content to mitigate prompt injection.
+        # Render the template with all variables *except* content for the system
+        # message, so placeholders like {max_length} are substituted correctly.
+        if prompt_template and "content" in normalized_variables:
+            system_vars = {k: v for k, v in normalized_variables.items() if k != "content"}
+            rendered_system = self._safe_format(prompt_template, system_vars)
+            messages = [
+                {"role": "system", "content": rendered_system},
+                {"role": "user", "content": normalized_variables.get("content", "")},
+            ]
+        else:
+            messages = [{"role": "user", "content": prompt}]
+
         try:
             response = await acompletion(
                 model=resolved.model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 api_key=resolved.api_key,
                 api_base=resolved.api_base,
                 temperature=resolved.temperature,
@@ -368,7 +381,7 @@ class LlmRouter:
                     )
                     response = await acompletion(
                         model=fallback_model,
-                        messages=[{"role": "user", "content": prompt}],
+                        messages=messages,
                         api_key=fallback_routing.credential.api_key,
                         api_base=fallback_routing.credential.base_url,
                         temperature=resolved.temperature,
@@ -423,15 +436,26 @@ class LlmRouter:
             **normalized_variables
         )
 
+        # Separate system prompt from user content to mitigate prompt injection.
+        if prompt_template and "content" in normalized_variables:
+            system_vars = {k: v for k, v in normalized_variables.items() if k != "content"}
+            rendered_system = self._safe_format(prompt_template, system_vars)
+            messages = [
+                {"role": "system", "content": rendered_system},
+                {"role": "user", "content": normalized_variables.get("content", "")},
+            ]
+        else:
+            messages = [{"role": "user", "content": prompt}]
+
         if self.settings.mock_mode and not resolved.override:
             for chunk in ["[", "mock", f":{resolved.model}", "]"]:
                 yield chunk
                 await asyncio.sleep(0)
             return
-        
+
         stream = await acompletion(
             model=resolved.model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             api_key=resolved.api_key,
             api_base=resolved.api_base,
             temperature=resolved.temperature,
