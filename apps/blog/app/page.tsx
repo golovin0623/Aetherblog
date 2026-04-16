@@ -50,17 +50,20 @@ export default async function HomePage() {
             </div>
 
             <h1
-              className="text-5xl md:text-7xl font-bold mb-6 pb-2 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-[1.15] tracking-tight"
-              style={{ animation: 'breath-soft 7.2s ease-in-out infinite' }}
+              className="font-display text-[clamp(3rem,7vw,5.5rem)] font-semibold mb-6 pb-2 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-[1.05] tracking-[-0.02em]"
+              style={{
+                animation: 'breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite',
+                textWrap: 'balance' as unknown as 'inherit',
+              }}
             >
               {settings?.welcome_title || 'AetherBlog'}
             </h1>
 
-            <div className="text-xl text-[var(--text-secondary)] mb-8 max-w-2xl mx-auto leading-relaxed space-y-2">
-              <p className="font-medium text-[var(--text-primary)]">
+            <div className="mb-8 max-w-2xl mx-auto space-y-2">
+              <p className="font-editorial italic text-[var(--text-primary)] text-xl md:text-2xl leading-relaxed" style={{ textWrap: 'balance' as unknown as 'inherit' }}>
                 {settings?.welcome_subtitle || '融合 AI 与现代 Web 技术的下一代博客系统'}
               </p>
-              <p className="text-lg text-[var(--text-muted)]">
+              <p className="text-base md:text-lg text-[var(--text-muted)] leading-relaxed">
                 {settings?.welcome_description || '智能写作、语义搜索、优雅呈现'}
               </p>
             </div>
@@ -126,10 +129,12 @@ export default async function HomePage() {
                   <LayoutGrid className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-3xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-secondary)] bg-clip-text text-transparent">
+                  <h2 className="font-display text-h3 md:text-h2 bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-secondary)] bg-clip-text text-transparent">
                     最新发布
                   </h2>
-                  <p className="text-sm text-[var(--text-muted)] mt-1">共 {posts.length} 篇文章</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)] mt-2 tabular-nums">
+                    {posts.length} posts
+                  </p>
                 </div>
               </div>
               <Link
