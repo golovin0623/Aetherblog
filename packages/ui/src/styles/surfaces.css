@@ -125,19 +125,32 @@
   cursor: pointer;
   overflow: hidden;
 }
+/* 左侧光带:上下端用 linear-gradient 渐变到透明,避免硬切断;
+   border-*-left-radius: inherit 让光带顺圆角包裹,不再跳出 */
 [data-interactive].surface-leaf::after,
 [data-interactive].surface-raised::after {
   content: '';
   position: absolute;
   left: 0;
-  top: 12px;
-  bottom: 12px;
+  top: 0;
+  bottom: 0;
   width: 2px;
-  background: var(--aurora-1);
+  /* 顶/底 12% 透明过渡 → 中段 aurora 实色 → 再淡出 */
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 0%, transparent) 6%,
+    var(--aurora-1) 18%,
+    var(--aurora-1) 82%,
+    color-mix(in oklch, var(--aurora-1) 0%, transparent) 94%,
+    transparent 100%
+  );
+  /* 让 2px 光带顺着卡片左上/左下圆角收束,视觉上"被包裹" */
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
   opacity: 0;
-  border-radius: 2px;
   transition: opacity var(--dur-quick) var(--ease-out),
-              box-shadow var(--dur-quick) var(--ease-out);
+              filter var(--dur-quick) var(--ease-out);
   pointer-events: none;
 }
 [data-interactive].surface-leaf:hover,
@@ -147,7 +160,9 @@
 [data-interactive].surface-leaf:hover::after,
 [data-interactive].surface-raised:hover::after {
   opacity: 1;
-  box-shadow: 0 0 8px var(--aurora-1);
+  /* 用 drop-shadow 代替 box-shadow —— 因为 ::after 本身带透明渐变,
+     box-shadow 会在光带上下端画出硬边阴影,drop-shadow 跟随 alpha 轮廓 */
+  filter: drop-shadow(0 0 6px color-mix(in oklch, var(--aurora-1) 70%, transparent));
 }
 
 /* -----------------------------------------------------------
