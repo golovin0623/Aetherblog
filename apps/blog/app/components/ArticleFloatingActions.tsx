@@ -165,7 +165,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   aria-expanded={isTocOpen}
                   aria-controls="mobile-toc-drawer"
                   onClick={() => setIsTocOpen(true)}
-                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-primary)]/70 dark:bg-white/[0.06] border border-[var(--border-default)]/60 dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl transition-all duration-300 hover:scale-110 hover:bg-[var(--bg-card)] hover:border-[var(--border-hover)]/30 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
+                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
                   aria-label="打开目录"
                 >
                   <List className="w-5 h-5 text-[var(--text-secondary)]" />
@@ -175,7 +175,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                 <button
                   type="button"
                   onClick={scrollToTop}
-                  className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-[var(--bg-primary)]/70 dark:bg-white/[0.06] border border-[var(--border-default)]/60 dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl transition-all duration-300 group hover:scale-110 hover:bg-[var(--bg-card)] hover:border-[var(--border-hover)]/30 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
+                  className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
                   aria-label="返回顶部"
                 >
                   <div className="relative flex items-center justify-center w-8 h-8">
@@ -289,7 +289,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setIsTocOpen((prev) => !prev)}
-              className="fixed bottom-24 right-8 z-50 p-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
+              className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
               aria-label="打开目录"
             >
               <div className="relative flex items-center justify-center w-10 h-10">
@@ -323,7 +323,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 12, scale: 0.96 }}
                 transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                className="fixed bottom-40 right-8 z-[100] w-[320px] max-h-[60vh] bg-[var(--bg-card)]/95 backdrop-blur-2xl border border-[var(--border-subtle)] rounded-2xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col hidden md:flex"
+                className="surface-overlay fixed bottom-40 right-8 z-[100] w-[320px] max-h-[60vh] overflow-hidden flex flex-col hidden md:flex"
               >
                 {/* 头部 */}
                 <div className="flex items-center justify-between px-5 pt-5 pb-3">
@@ -395,7 +395,7 @@ const TocList = memo(function TocList({
   return (
   <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
     {headings.length === 0 ? (
-      <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]/50 px-3 py-6 text-center text-sm text-[var(--text-muted)]">
+      <div className="surface-leaf border-dashed px-3 py-6 text-center text-sm text-[var(--ink-muted,var(--text-muted))]">
         暂无目录项
       </div>
     ) : (
