@@ -208,7 +208,45 @@ rg -n 'text-white\b' apps packages
 
 ---
 
-## 推荐下一轮(Round 4)方向
+## Round 4 · 设计系统落地到全博客 (2026-04-17)
+
+Round 3 重精度,Round 4 重**覆盖度** —— 由用户"你是做了个花架子么"之问催生,四阶段扫过博客所有用户可触达的页面。
+
+### Phase 1 · 标题体系 + 卡片基座
+- [x] Hero h1 呼吸周期 7.2s → 4.8s cubic-bezier(0.5, 0, 0.25, 1) 非对称
+- [x] Hero h1 + 首页 section h2 + 文章页 h1 接入 font-display (Fraunces) + text-wrap: balance + CJK 字距反转
+- [x] ArticleCard → surface-leaf + data-interactive
+- [x] FeaturedPost → surface-raised + data-interactive
+
+### Phase 2 · 高曝光组件
+- [x] PostNavigation (prev/next) → surface-leaf + data-interactive + font-editorial
+- [x] CommentSection (评论卡/触发器/展开表单) → surface-leaf / surface-raised
+- [x] TableOfContents (空态/浮动触发) → surface-leaf / surface-raised
+- [x] SearchPanel (模态框) → surface-overlay
+
+### Phase 3 · 浮动交互 + 环境态
+- [x] ScrollToTop / FloatingThemeToggle / ArticleFloatingActions(5 处) → surface-raised !rounded-full
+- [x] TimelineTree 月/年按钮 → surface-leaf / surface-raised + data-interactive
+- [x] /posts 空态 → surface-leaf
+
+### Phase 4 · 导航 + /about + FriendCard
+- [x] BlogHeader 4 处 active 指示器(归档/友链/关于/设计)→ aurora-1 / ink-secondary token
+- [x] MobileMenu 抽屉 → surface-overlay !rounded-none !rounded-l-2xl + 激活项 aurora-1
+- [x] /about HeroSection 呼吸周期对齐 4.8s + text-wrap: balance
+- [x] FriendCard 混合:surface-leaf + data-interactive + `--aurora-1` 本地覆写为 themeColor
+
+### 设计系统增强
+- [x] `@property --aurora-angle` 实现 `.aurora-text` hover 角度补间
+- [x] Aurora hover stripe 边缘软化(0/6/18/82/94/100% + radius inherit + drop-shadow)
+- [x] View Transitions 规则 scoped 到命名组,避免与主题切换冲突
+
+### 相关 Bug 修复
+- [x] `UpdateAvatarRequest.AvatarURL` 验证器 url → uri 放宽
+- [x] `useCopyToClipboard` 三层降级 + 返回类型 void → boolean
+
+---
+
+## 推荐下一轮(Round 5)方向
 
 尚未落地但被评审识别的前沿特性,供 Round 4 计划参考:
 
