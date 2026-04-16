@@ -133,32 +133,33 @@ apps/server-go/
 ├── cmd/server/          # Entry point (main.go)
 ├── cmd/migrate/         # Database migration tool
 ├── internal/
-│   ├── config/          # Configuration
-│   ├── handler/         # HTTP handlers (controllers)
+│   ├── config/          # Configuration (koanf)
+│   ├── server/          # HTTP server init & route registration
+│   ├── handler/         # HTTP handlers (24 handler modules)
 │   ├── service/         # Business logic
 │   ├── repository/      # Database access
 │   ├── model/           # Data models
 │   ├── dto/             # Request/Response DTOs
 │   ├── middleware/       # JWT, CORS, rate limit
-│   └── pkg/             # Shared utilities
-└── migrations/          # SQL migration files
+│   └── pkg/             # Shared utilities (pagination, response, JWT, image, storage)
+└── migrations/          # SQL migration files (32 migrations)
 ```
 
 ### Frontend Package System
 
 **Workspace packages** (use `workspace:*` protocol):
-- `@aetherblog/ui` - All UI components (14 exported): `Button`, `Card`, `Input`, `Modal`, `ConfirmModal`, `Toast`, `Avatar`, `Badge`, `Tag`, `Skeleton`, `Dropdown`, `Tooltip`, `Textarea` + layout helpers
+- `@aetherblog/ui` - UI components (15 exported): `Button`, `Card`, `Input`, `Modal`, `ConfirmModal`, `Toast`, `Avatar`, `Badge`, `Tag`, `Skeleton`, `Dropdown`, `Tooltip`, `Textarea`, `Toggle` + `cn` utility (clsx + tailwind-merge)
 - `@aetherblog/hooks` - Shared hooks (16 exported): `useDebounce`, `useThrottle`, `useCopyToClipboard`, `useLocalStorage`, `useSessionStorage`, `useAsync`, `useMediaQuery`, `useClickOutside`, `useScrollLock`, `useIntersectionObserver`, `useKeyPress`, `useWindowSize`, `usePrevious`, `useToggle`, `useScrollPosition`, `useTheme` + `ThemeToggle` component
-- `@aetherblog/types` - TypeScript types (Post, User, Category, etc.) organized under `api/`, `models/`, `ai/`
-- `@aetherblog/utils` - Utilities organized under: `format/` (date, number, string formatters), `url/` (URL builders), `storage/` (local/session storage helpers), `helpers/` (`cn`, `clsx`, and other utilities)
-- `@aetherblog/editor` - Markdown editor (CodeMirror-based)
+- `@aetherblog/types` - TypeScript types organized under `api/` (request, response, error), `models/` (post, user, comment, media, friendLink), `ai/` (prompt, completion)
+- `@aetherblog/utils` - Utilities organized under: `format/` (date, number, string, duration formatters), `url/` (query string, slug, UrlBuilder), `storage/` (IndexedDB wrapper), `helpers/` (deepClone, retry, omit, pick, uuid, nanoid, sleep), `validation/` (email, URL, password), `color.ts` (hex/rgb/hsl conversion, theme CSS variable generation)
+- `@aetherblog/editor` - Markdown editor (CodeMirror-based): `MarkdownEditor`, `MarkdownPreview`, `EditorWithPreview`, `UploadProgress`, `ImageSizePopover` + hooks (`useEditorCommands`, `useTableCommands`, `useImageUpload`)
 
 **Import pattern:**
 ```typescript
-import { Button, Card } from '@aetherblog/ui';
+import { Button, Card, cn } from '@aetherblog/ui';
 import { useDebounce } from '@aetherblog/hooks';
 import type { Post } from '@aetherblog/types';
-import { cn } from '@aetherblog/utils';
+import { formatDate, slugify } from '@aetherblog/utils';
 ```
 
 **CRITICAL: Dependency Management**
@@ -197,8 +198,10 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 | zerolog | v1.35.0 | Structured logging |
 | validator/v10 | v10.30.1 | Input validation |
 | golang.org/x/crypto | v0.46.0 | Cryptography |
+| golang.org/x/sync | v0.19.0 | Concurrency utilities |
 | imaging | v1.6.2 | Image processing |
 | koanf/v2 | v2.3.4 | Configuration |
+| aws-sdk-go-v2 | v1.41.5 | AWS SDK core |
 | aws-sdk-go-v2/service/s3 | v1.97.3 | S3-compatible storage |
 
 **Frontend Key Versions:**
@@ -208,74 +211,94 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 | react | 19.0.0 | 19.0.0 |
 | next | - | 15.1.3 |
 | vite | 6.0.6 | - |
-| typescript | 5.7.2 | - |
-| tailwindcss | 3.4.17 | - |
-| @tanstack/react-query | 5.62.8 | - |
+| typescript | 5.7.2 | 5.7.2 |
+| tailwindcss | 3.4.17 | 3.4.17 |
+| @tanstack/react-query | 5.62.8 | 5.62.8 |
 | react-router-dom | 7.1.1 | - |
 | zustand | 5.0.2 | - |
-| framer-motion | 11.15.0 | - |
+| framer-motion | 11.15.0 | 11.15.0 |
 | recharts | 2.15.0 | - |
 | zod | 4.3.5 | - |
 | @lobehub/icons | 4.1.0 | - |
+| react-hook-form | 7.70.0 | - |
+| sonner | 2.0.7 | - |
 | shiki | - | 1.1.0 |
 | mermaid | - | 11.12.2 |
 | katex | - | 0.16.27 |
+| react-markdown | - | 10.1.0 |
 
 ## API Structure
 
-### Backend API Endpoints (23 Handler Modules)
+### Backend API Endpoints (24 Handler Modules)
 
 | Handler | Prefix | Key Endpoints |
 |---------|--------|---------------|
 | auth_handler | `/v1/auth/*` | POST /login, /register, /refresh, /logout; GET /me; POST /change-password; PUT /profile, /avatar |
-| post_handler | `/v1/admin/posts/*` + `/v1/public/posts/*` | Admin CRUD + publish + auto-save; 5 public routes |
-| comment_handler | `/v1/admin/comments/*` + `/v1/public/*` | 12 admin routes + 1 public route |
-| media_handler | `/v1/admin/media/*` | 18 routes: upload, list, recycle bin, versions |
-| folder_handler | `/v1/admin/folders/*` | 7 routes: tree, CRUD, move |
+| post_handler | `/v1/admin/posts/*` + `/v1/public/posts/*` | Admin CRUD + publish + auto-save + properties patch; 5 public routes + password verify |
+| comment_handler | `/v1/admin/comments/*` + `/v1/public/*` | 12 admin routes (incl. batch approve/delete) + 2 public routes (list + submit with rate limit) |
+| media_handler | `/v1/admin/media/*` | 18 routes: upload (single + batch), list, stats, batch-move, trash management, CRUD, content update |
+| folder_handler | `/v1/admin/folders/*` | 7 routes: tree, CRUD, children, move |
 | permission_handler | `/v1/admin/folders/*/permissions` | 4 routes: folder permission management |
 | category_handler | `/v1/admin/categories/*` + `/v1/public/*` | 6 routes |
 | tag_handler | `/v1/admin/tags/*` + `/v1/public/*` | 5 routes |
-| ai_handler | `/v1/admin/ai/*` | 9 business endpoints + 7 config endpoints + provider proxy |
-| stats_handler | `/v1/admin/stats/*` | 5 endpoints: dashboard, posts, views, comments, trends |
-| system_monitor_handler | `/v1/admin/monitor/*` | 15 system monitoring endpoints |
-| site_handler | `/v1/admin/site/*` | 3 endpoints |
-| site_setting_handler | `/v1/admin/settings/*` | 5 endpoints |
-| friend_link_handler | `/v1/admin/friends/*` + `/v1/public/*` | 10 endpoints |
-| activity_handler | `/v1/admin/activities/*` | 3 endpoints |
-| storage_provider_handler | `/v1/admin/storage/*` | 8 endpoints |
-| archive_handler | `/v1/public/archives/*` | 2 endpoints |
+| ai_handler | `/v1/admin/ai/*` | 9 business endpoints (summary/tags/titles/polish/outline/translate + stream variants + health) + 7 config endpoints (prompts + tasks CRUD) + provider proxy (Any /*) |
+| stats_handler | `/v1/admin/stats/*` | 7 endpoints: dashboard, top-posts, visitor-trend, archives, ai-dashboard, ai-pricing-gaps, ai-cost-archive |
+| system_monitor_handler | `/v1/admin/monitor/*` | 14 endpoints: metrics, storage, health, overview, containers, container logs, logs, log files, log download, network test, history, history stats, history delete, alerts, config |
+| site_handler | `/v1/admin/site/*` | 3 endpoints: info, stats, author |
+| site_setting_handler | `/v1/admin/settings/*` | 5 endpoints: list, group, batch-update, get-by-key, update-by-key |
+| friend_link_handler | `/v1/admin/friends/*` + `/v1/public/*` | 10 endpoints: admin CRUD + batch-delete + toggle-visible + reorder + page; 1 public |
+| activity_handler | `/v1/admin/activities/*` | 3 endpoints: recent, list, by-user |
+| storage_provider_handler | `/v1/admin/storage/*` | 8 endpoints: list, default, CRUD, set-default, test |
+| archive_handler | `/v1/public/archives/*` | 2 endpoints: list, stats |
 | migration_handler | `/v1/admin/migration/*` | 1 endpoint (Vanblog import) |
-| media_tag_handler | `/v1/admin/media-tags/*` | Media tag management |
+| media_tag_handler | `/v1/admin/media-tags/*` | 9 endpoints: tags CRUD + popular + search + batch; file-tag association (list, add, remove) |
 | system_handler | `/v1/system/*` | GET /system/time |
-| visitor_handler | `/v1/admin/visitors/*` | Visitor recording |
-| version_handler | `/v1/admin/versions/*` | File version management |
+| visitor_handler | `/v1/admin/visitors/*` | 2 endpoints: create, today |
+| version_handler | `/v1/admin/versions/*` | 3 endpoints: list by file, restore, delete |
 | search_handler | `/v1/public/search/*` + `/v1/admin/search/*` | GET search (hybrid/keyword/semantic), GET qa (SSE), config CRUD, stats, reindex, retry-failed, embedding-status |
-| ai_config_handler | `/v1/admin/ai/config/*` | providers/models/credentials/prompts/tasks CRUD |
+| share_handler | `/v1/admin/shares/*` | 5 endpoints: create file share, create folder share, get file shares, update share, delete share |
 
-**Database Migrations:** 31 total, latest `000031` (search_config).
-000029: add_font_family_setting, 000030: add_ai_cost_archives, 000031: search_config (site_settings seed for search feature).
+**Database Migrations:** 32 total, latest `000032` (search_index_timeout).
+000029: add_font_family_setting, 000030: add_ai_cost_archives, 000031: search_config (site_settings seed for search feature), 000032: search_index_timeout.
 Key tables added in 000020-000028: `ai_credentials`, `ai_task_types`, `ai_task_routing`, `activity_events`.
 Vanblog migration fields on `posts`: `is_hidden`, `source_key`, `legacy_author_name`, `legacy_visited_count`, `legacy_copyright`.
 
 ### Frontend Service Layer
 
-Services use axios and follow naming: `{module}Service.ts`
-- `authService.ts` - Authentication
-- `postService.ts` - Posts
-- `categoryService.ts` - Categories
-- `tagService.ts` - Tags
-- `mediaService.ts` - Media uploads
-- `analyticsService.ts` - Statistics
+Services use axios (`api.ts` base client) and follow naming: `{module}Service.ts` (22 service files):
+- `authService.ts` - Authentication (login, register, refresh, profile)
+- `postService.ts` - Posts CRUD + auto-save + publish
+- `categoryService.ts` - Categories CRUD
+- `tagService.ts` - Tags CRUD
+- `commentService.ts` - Comment moderation (approve, reject, spam, batch)
+- `mediaService.ts` - Media upload + CRUD + trash management
+- `mediaTagService.ts` - Media file tagging
+- `folderService.ts` - Folder tree + CRUD + move
+- `permissionService.ts` - Folder permissions ACL
+- `shareService.ts` - File/folder sharing
+- `versionService.ts` - File version history
+- `storageProviderService.ts` - Storage provider CRUD + test
+- `analyticsService.ts` - Dashboard statistics + AI analytics
+- `aiService.ts` - AI writing tools (summary, tags, titles, polish, outline, translate)
+- `aiProviderService.ts` - AI provider/model/credential/prompt/task config
+- `aiPredictionService.ts` - AI prediction utilities
+- `friendService.ts` - Friend links CRUD + reorder
+- `settingsService.ts` - Site settings (group, batch update)
+- `systemService.ts` - System monitor (metrics, containers, logs, alerts)
+- `activityService.ts` - Activity event feed
+- `searchConfigService.ts` - Search configuration
 
 ### Admin Frontend Pages (`apps/admin/src/pages/`)
 
-Main pages (15+): Dashboard, Posts, CreatePost, EditPost, AiWritingWorkspace, Categories, Comments, Friends, Media, Settings, Migration, Monitor, Analytics, AiConfig, AiTools, SearchConfig
+Main pages (16+): Dashboard, Posts, CreatePost, EditPost, AiWritingWorkspace, Categories, Comments, Friends, Media, Settings, Migration, Monitor, Analytics, AiConfig, AiTools, SearchConfig, Activities
 
-Sub-modules: `ai-config/` (16 components), `ai-tools/` (7 tool pages), `media/` (13+ components), `posts/components/` (8+ components), `auth/` (2 pages)
+Sub-modules: `ai-config/` (16 components + hooks + utils), `ai-tools/` (7 tool pages: Summary, Tagger, ContentRewriter, SeoOptimizer, QA, TextCleaner + workspace), `media/` (13+ components), `posts/components/` (8+ components incl. SlashCommandMenu, SelectionAiToolbar, AiSidePanel), `auth/` (Login, ChangePassword), `dashboard/` (12 components incl. AiUsageTrendChart, ContainerStatus, RealtimeLogViewer), `settings/` (StorageProviderSettings)
 
 ### Blog Frontend Pages (`apps/blog/app/`)
 
-6 main pages + 15+ components: ArticleCard, FeaturedPost, CommentSection, SearchPanel, TimelineTree, etc.
+4 route groups (home, posts/[slug], timeline, friends) + 35+ components: ArticleCard, FeaturedPost, CommentSection, SearchPanel, TimelineTree, MarkdownRenderer, TableOfContents, HeroParallaxContent, StackedParallax, ProtectedPostContent, FloatingThemeToggle, MobileBottomPullNav, FriendCard, VisitTracker, etc.
+
+Libs: `api.ts` (API client), `services.ts` (data fetching), `sanitizeUrl.ts`, `remarkAlertBlock.ts` (custom markdown plugin), `socialLinks.ts`, `headingId.ts`, `logger.ts`
 
 ## Design System ("Cognitive Elegance")
 
@@ -419,12 +442,11 @@ Each line is `data: <json>\n\n`. Four event types:
 
 The admin `useStreamResponse` hook exposes `{content, result, isDone, error, ...}`. AI 工具箱 (`AIToolsPage` → `AIToolsWorkspace` → `ToolResultRenderer`) 按工具分发渲染结构化结果并提供"应用到文章"动作；目标文章通过 `useAiToolTarget` hook 管理，支持 `?tool=<code>&postId=<id>` URL 深链。
 
-**Configuration Endpoints** (CRUD for AI system configuration):
-- Providers: `/api/v1/ai/config/providers`
-- Models: `/api/v1/ai/config/models`
-- Credentials: `/api/v1/ai/config/credentials`
-- Prompts: `/api/v1/ai/config/prompts`
-- Tasks: `/api/v1/ai/config/tasks`
+**Configuration Endpoints** (managed by Go backend AiHandler + proxied to FastAPI):
+- Prompts: `GET/PUT /v1/admin/ai/prompts[/:taskType]` (Go handler)
+- Tasks: `CRUD /v1/admin/ai/tasks[/:code]` (Go handler)
+- Providers/Models/Credentials: `ANY /v1/admin/ai/providers/*` (Go proxy → FastAPI)
+- Health: `GET /v1/admin/ai/health`
 
 **Nginx routing for AI:** `/api/v1/ai/*` proxied to FastAPI:8000 with 600s timeout and SSE support (`X-Accel-Buffering: no`)
 

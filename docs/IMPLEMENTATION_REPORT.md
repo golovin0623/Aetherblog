@@ -648,31 +648,33 @@ curl http://localhost:8080/api/v1/admin/storage/providers
 **前端实现**：
 - `apps/admin/src/pages/MonitorPage.tsx` — 系统监控仪表盘
 
-### 完整 Handler 模块清单（Go 版本，23 个）
+### 完整 Handler 模块清单（Go 版本，24 个）
 
 | Handler 文件 | 路由数量 | 主要功能 |
 |-------------|---------|---------|
 | `auth_handler.go` | 8 | 认证 / 个人设置 |
-| `post_handler.go` | 14 | 文章 CRUD / Admin + Public |
-| `comment_handler.go` | 13 | 评论审核 / 垃圾标记 |
-| `media_handler.go` | 18 | 媒体库完整操作 |
+| `post_handler.go` | 14 | 文章 CRUD / Admin + Public + 密码验证 |
+| `comment_handler.go` | 14 | 评论审核 / 批量操作 / 垃圾标记 |
+| `media_handler.go` | 18 | 媒体库完整操作（上传/回收站/内容更新） |
 | `folder_handler.go` | 7 | 文件夹层级 |
 | `permission_handler.go` | 4 | 文件夹 ACL |
+| `share_handler.go` | 5 | 文件/文件夹分享链接 |
 | `category_handler.go` | 6 | 分类管理 |
 | `tag_handler.go` | 5 | 标签管理 |
-| `ai_handler.go` | 20+ | AI 写作辅助 + 配置 |
-| `stats_handler.go` | 5 | 统计分析 |
-| `system_monitor_handler.go` | 15 | 系统监控 |
+| `ai_handler.go` | 20+ | AI 写作辅助 + Prompt/任务配置 + 供应商代理 |
+| `search_handler.go` | 8+ | 混合搜索 / 语义搜索 / QA / 索引管理 |
+| `stats_handler.go` | 7 | 统计分析 + AI 分析仪表盘 |
+| `system_monitor_handler.go` | 14 | 系统监控（指标/容器/日志/告警/历史） |
 | `site_handler.go` | 3 | 站点公开信息 |
 | `site_setting_handler.go` | 5 | 站点设置 |
-| `friend_link_handler.go` | 11 | 友链管理 |
+| `friend_link_handler.go` | 10 | 友链管理 |
 | `activity_handler.go` | 3 | 活动事件 |
 | `storage_provider_handler.go` | 8 | 存储提供商 |
 | `archive_handler.go` | 2 | 归档 |
 | `migration_handler.go` | 1 | Vanblog 导入 |
-| `media_tag_handler.go` | 4+ | 媒体标签 |
+| `media_tag_handler.go` | 9 | 媒体标签 CRUD + 文件标签关联 |
 | `system_handler.go` | 1 | 系统时间 |
 | `visitor_handler.go` | 2 | 访客记录 |
 | `version_handler.go` | 3 | 文件版本 |
 
-**更新时间**: 2026-04-04
+**更新时间**: 2026-04-16
