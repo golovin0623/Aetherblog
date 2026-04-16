@@ -192,3 +192,33 @@ rg -n 'text-white\b' apps packages
 此时可 PR 删除旧令牌(`.glass`、`--color-primary` 等),并升级 CHANGELOG 到 v2.0。
 
 **在此之前绝不删除旧令牌。**
+
+---
+
+## Round 3 · 前沿精度升级进度 (2026-04-17)
+
+本轮基于第三轮深度评审,一次性交付五件顶尖级改造:
+
+- [x] **Item 0 · 字体变量桥接** —— `--font-fraunces` / `--font-instrument-serif` / `--font-geist` / `--font-geist-mono` 别名到当前加载的 Playfair/Noto Serif SC/Inter/系统 mono。修复设计系统字体角色变量从未定义的根因。位置:`packages/ui/src/styles/tokens.css` 尾部。
+- [x] **Item 1 · Drop Cap 精度重构** —— Butterick + Frere-Jones 工艺:3.6em / roman / weight 400 / 纯墨色 + 极细金色 text-shadow / `initial-letter: 3 drop 2` / 中文走 editorial + 取消描金。双处同步:`apps/blog/app/globals.css` 与 `packages/ui/src/styles/typography.css`。
+- [x] **Item 2 · ReadingProgress scroll-timeline** —— `animation-timeline: scroll()` 纯 CSS 120fps;`CSS.supports` 检测失败时退到 rAF 子组件。零 React re-render。
+- [x] **Item 3 · ::selection + caret-color** —— `color-mix(in oklch, var(--aurora-1) 32%, transparent)` 全站统一(亮主题 18%);所有 input/textarea/contenteditable 的 `caret-color: var(--aurora-1)`。blog + admin 双端覆盖。
+- [x] **Item 4 · View Transitions** —— `experimental.viewTransition: true` + 三端对称 `viewTransitionName` + Apple Material standard ease。Chrome 111+/Safari 18+ 原生 morph,不支持浏览器回退普通导航。
+- [x] **Item 5 · /design 路由** —— 设计系统作品集入口:8 节 + 14 新建文件 + OKLCH hue slider + ease 曲线可视化 + 五个签名时刻 live demo + 八问八答推理长文。
+
+---
+
+## 推荐下一轮(Round 4)方向
+
+尚未落地但被评审识别的前沿特性,供 Round 4 计划参考:
+
+- [ ] `@property` 声明 aurora 角度变量,让 `.aurora-text` 在 hover 时真做角度/hue-shift 补间
+- [ ] CSS Anchor Positioning —— marginalia 精确锚定到对应段落
+- [ ] `content-visibility: auto` —— 长文章首屏性能弹药
+- [ ] `text-wrap: balance` 替换 h1/h2 的 pretty
+- [ ] `--space-*` 垂直韵律 token(8px baseline 9 级)
+- [ ] Spring mass 参数化(`bouncy` mass 降到 0.6)
+- [ ] 呼吸周期 4.8s + 非对称关键帧(吸 40% / 呼 60%)
+- [ ] 签名预算 —— 每路由 ≤2 签名元素,`data-aurora-budget` 运行时校验
+- [ ] `deprecations.json` + codemod + CI gate(为旧 `.glass` / `bg-white/5` / `text-white` 设下线日期)
+- [ ] Lighthouse CI 性能门禁(LCP < 1.2s / CLS < 0.02 硬要求)

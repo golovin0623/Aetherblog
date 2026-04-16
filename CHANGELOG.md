@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### ✦ Round 3 · 前沿精度升级 (2026-04-17)
+
+**Added**
+- `/design` 路由:设计系统推理链长文 + Live 交互展厅 (8 sections,14 新建文件)
+  - S1 Manifesto · S2 Color (OKLCH hue slider + 四色派生实时演示) · S3 Typography (9 级阶梯 + 四角色)
+  - S4 Surface (4 层玻璃并排) · S5 Motion (ease 曲线 SVG 可视化 + 真实动画触发) · S6 Signature (五个签名时刻 live)
+  - S7 Reasoning (八问八答推理长文) · S8 CTA
+  - 新组件:`HueSlider` / `AuroraSwatch` / `TypeScaleRow` / `EaseCurveViz` / `CodeSample`
+- **View Transitions** 文章卡片 ↔ 文章页 morph 切换 (Chrome/Edge 111+ · Safari 18+;降级为普通导航)
+  - `experimental.viewTransition: true` in `next.config.ts`
+  - `viewTransitionName: post-${slug}` + `post-${slug}-title` 在 ArticleCard、FeaturedPost、文章页三端对称
+  - CSS 采用 Apple Material standard ease `cubic-bezier(0.32, 0.72, 0, 1)` + enter ease `cubic-bezier(0.22, 0.61, 0.36, 1)`
+- **`::selection` + `caret-color`** 全站极光色统一 (blog + admin 双端,通过 tokens.css)
+- **字体变量桥接**:`--font-fraunces` / `--font-instrument-serif` / `--font-geist` / `--font-geist-mono` 别名到当前加载的 Playfair Display / Noto Serif SC / Inter / 系统 mono。修复了设计系统字体角色变量从未定义、全站静默走系统字体的**根因**。
+
+**Changed**
+- **`ReadingProgress`** 迁移到 `animation-timeline: scroll()` —— 现代浏览器零 JS / 零 React re-render / 120fps 合成器线程。Safari < 26 自动走 rAF 降级路径。
+- **Drop Cap 精度重构** (按 Butterick《Practical Typography》与 Frere-Jones 工艺):
+  - 3.6em (= 3 × line-height,精确基线锁定,取代 4.2em 伸进第 4 行)
+  - Book/Regular 400 (取消 600/700 "堵" 段落)
+  - Roman 正体 (取消 italic,drop cap 应为"锚"不应为"飘")
+  - 纯墨色 + 极细金色 text-shadow (取消 aurora 渐变,衬线 ink trap 不适合采样)
+  - `initial-letter: 3 drop 2` 在支持的浏览器上做真 hanging cap
+  - 中文首字走 `var(--font-editorial)` + 取消描金防毛刺
+  - 同步修改 `apps/blog/app/globals.css` 与 `packages/ui/src/styles/typography.css` 两处定义
+
+---
+
 ### ✨ 新增 (Features)
 
 #### 全站 UI 升级 —— "Aether Codex · 漂浮在夜空中的发光典籍"

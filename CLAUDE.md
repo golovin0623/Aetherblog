@@ -329,6 +329,15 @@ A second design layer (**Aether Codex — 漂浮在夜空中的发光典籍**) s
 
 **Accessibility baseline** (in `tokens.css`): `prefers-reduced-motion` disables aurora/ink-cursor animation; `(hover: none) and (pointer: coarse)` enforces 44×44 touch targets; `prefers-contrast: more` strengthens borders.
 
+### Round 3 · 前沿精度升级 (2026-04-17)
+
+- **Font role bridge** (tokens.css tail): `--font-fraunces` / `--font-instrument-serif` / `--font-geist` / `--font-geist-mono` aliased to currently-loaded `--font-playfair` / `--font-noto-serif-sc` / `--font-inter` / system mono. Without this, all typography classes referencing `var(--font-display)` / `var(--font-editorial)` silently fell through to system fonts. **Any future font swap only needs these four lines edited.**
+- **Global selection & caret** (tokens.css tail): `::selection` / `::-moz-selection` use `color-mix(in oklch, var(--aurora-1) 32%, transparent)` (18% in light mode); `input/textarea/[contenteditable]` set `caret-color: var(--aurora-1)`. Applies to blog + admin via shared import.
+- **Drop cap spec** (globals.css `.markdown-body > p:first-of-type::first-letter` + typography.css `.drop-cap::first-letter`): 3.6em / weight 400 / normal roman / `var(--font-editorial)` / pure `var(--ink-primary)` + `text-shadow: 0 1px 0 color-mix(in oklch, var(--aurora-1) 22%, transparent)`. `@supports (initial-letter: 3)` enables hanging cap.
+- **ReadingProgress dual-path**: modern browsers (`CSS.supports('animation-timeline', 'scroll()')` truthy) render `.reading-progress--css` —— pure CSS `animation-timeline: scroll(root block)` driving `transform: scaleX(0→1)`, zero JS / zero React re-render. Safari < 26 and older Chrome/Firefox fall back to rAF subcomponent. Detection runs inside first `useEffect`.
+- **View Transitions** (blog only): `experimental.viewTransition: true` in `next.config.ts`; element opt-in via `style={{ viewTransitionName: \`post-${slug}\` }}` / `post-${slug}-title` on ArticleCard `<article>`, FeaturedPost outer `<div>`, article page `<article>` + `<h1>`. `globals.css` defines `::view-transition-old/new/group` with Apple Material standard ease `cubic-bezier(0.32, 0.72, 0, 1)` (crossfade 420ms) and enter ease `cubic-bezier(0.22, 0.61, 0.36, 1)` (group morph 560ms). Reduce-motion collapses group to 1ms.
+- **`/design` route** (Aether Codex 作品集入口): `apps/blog/app/design/{page.tsx, DesignClient.tsx, loading.tsx, sections/S1–S8.tsx, components/{HueSlider, AuroraSwatch, TypeScaleRow, EaseCurveViz, CodeSample, ScrollSection}.tsx}`. Mirrors `/about` server+client pattern with 10-min ISR. S2 hosts an OKLCH hue slider that derives aurora-1..4 in real time; S5 lets the visitor trigger each ease curve; S7 is the 八问八答 reasoning essay.
+
 ## Design System ("Cognitive Elegance")
 
 ### UI Philosophy
