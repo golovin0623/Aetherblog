@@ -191,9 +191,21 @@
 /* -----------------------------------------------------------
  * Aurora Gradient Text —— 极光渐变文字
  * 用法:<span class="aurora-text">...</span>
+ *
+ * Round 4:使用 @property 注册 --aurora-angle 为 <angle> 类型,
+ * 让 CSS 变量本身可以被 transition 补间 —— hover 时极光会"真旋转",
+ * 不是僵死的 135deg 静态渐变。Chrome 85+/Safari 16.4+/Firefox 128+
+ * 支持 @property。不支持的浏览器会看到 135deg 静止渐变,不报错。
  * ----------------------------------------------------------- */
+@property --aurora-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 135deg;
+}
+
 .aurora-text {
-  background: linear-gradient(135deg,
+  --aurora-angle: 135deg;
+  background: linear-gradient(var(--aurora-angle),
     var(--aurora-1) 0%,
     var(--aurora-2) 50%,
     var(--aurora-4) 100%);
@@ -201,6 +213,22 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+  /* 只在父容器支持 hover 时补间,移动端不触发 */
+  transition: --aurora-angle var(--dur-ambient, 1800ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  will-change: --aurora-angle;
+}
+
+/* hover 在父容器上(group 关系或自身)触发极光旋转 */
+@media (hover: hover) {
+  .aurora-text:hover,
+  *:hover > .aurora-text,
+  .group:hover .aurora-text {
+    --aurora-angle: 315deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-text { transition: none; }
 }
 
 /* -----------------------------------------------------------
