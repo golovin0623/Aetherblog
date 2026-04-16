@@ -307,3 +307,54 @@ html {
     --border-subtle: color-mix(in oklch, var(--ink-primary) 28%, transparent);
   }
 }
+
+/* =============================================================
+ * 字体角色桥接 —— 把设计系统命名(fraunces/instrument-serif/geist/
+ * geist-mono)别名到当前实际加载的 next/font 变量
+ * (Playfair Display / Noto Serif SC / Inter / 系统 mono)。
+ *
+ * 原因:.claude/design-system 规范以 Fraunces 等字体名命名字体角色,
+ * 但 apps/blog/app/layout.tsx 当前加载的是 Inter + Playfair + Noto Serif SC。
+ * 不桥接,var(--font-fraunces) 会 unset,导致 --font-display / --font-editorial
+ * 全部 fallback 到系统字体,整个字号阶梯和 drop-cap/marginalia 无字体质感。
+ *
+ * 未来切换到真正的 Fraunces/Instrument Serif/Geist 只需改这四行。
+ * ============================================================= */
+:root {
+  --font-fraunces: var(--font-playfair);
+  --font-instrument-serif: var(--font-noto-serif-sc);
+  --font-geist: var(--font-inter);
+  --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
+}
+
+/* =============================================================
+ * 全局光标与选中色 —— 品牌一致性
+ * 在 blog + admin 双端生效(两处均 @import tokens.css)
+ * ============================================================= */
+
+::selection {
+  background: color-mix(in oklch, var(--aurora-1) 32%, transparent);
+  color: var(--ink-primary);
+  text-shadow: none;
+}
+/* Firefox 需要独立前缀 */
+::-moz-selection {
+  background: color-mix(in oklch, var(--aurora-1) 32%, transparent);
+  color: var(--ink-primary);
+  text-shadow: none;
+}
+
+/* 亮主题下选中更淡,避免把深色文字盖糊 */
+:root.light ::selection,
+:root.light ::-moz-selection {
+  background: color-mix(in oklch, var(--aurora-1) 18%, transparent);
+  color: var(--ink-primary);
+}
+
+/* 输入光标统一极光色 —— 每次输入都是一次品牌瞬间 */
+input,
+textarea,
+[contenteditable],
+[contenteditable="true"] {
+  caret-color: var(--aurora-1);
+}
