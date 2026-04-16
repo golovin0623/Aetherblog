@@ -50,14 +50,9 @@ export default function FloatingThemeToggle() {
           toggleThemeWithAnimation(x, y);
         }
       }}
-      className="md:hidden fixed right-6 bottom-8 z-[60] w-[44px] h-[44px] rounded-full 
-        bg-[var(--bg-primary)]/70 dark:bg-white/[0.06]
-        border border-[var(--border-default)]/60 dark:border-white/[0.08]
-        shadow-[0_2px_12px_rgba(0,0,0,0.06)] 
-        dark:shadow-[0_2px_12px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.04)]
-        backdrop-blur-2xl
-        transition-all duration-300 hover:scale-110 hover:bg-[var(--bg-card)] hover:border-[var(--border-hover)]/30 active:scale-95 
-        flex items-center justify-center group 
+      className="surface-raised !rounded-full md:hidden fixed right-6 bottom-8 z-[60] w-[44px] h-[44px]
+        transition-all duration-300 hover:scale-110 active:scale-95
+        flex items-center justify-center group
         focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none overflow-hidden"
       aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
     >
