@@ -78,10 +78,17 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`访问 ${name} 的网站`}
-      className="group relative block overflow-hidden rounded-2xl border border-[var(--border-subtle)] shadow-lg transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 antialiased"
-      style={{ 
+      data-interactive
+      className="group surface-leaf relative block overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 antialiased"
+      style={{
         animationDelay: `${index * 100}ms`,
-        background: `linear-gradient(145deg, ${themeColor}15, var(--bg-card))`,
+        // 保留 themeColor 品牌识别:145deg 倾斜渐变作为卡片主背景,
+        // 叠在 surface-leaf 的 blur 层上仍保留磨砂纹理。
+        background: `linear-gradient(145deg, ${themeColor}15, var(--bg-leaf))`,
+        // 用当前卡片的 themeColor 本地覆盖 --aurora-1,这样 [data-interactive]::after
+        // 的左侧光带和边框辉光都会跟随友链品牌色,而不是全站统一极光 ——
+        // 既获得 surface 系统的 hover 交互一致性,又保留每张卡片独立色相。
+        ['--aurora-1' as string]: themeColor,
       }}
     >
       {/* 悬浮时的强光晕背景 */}

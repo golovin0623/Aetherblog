@@ -433,14 +433,14 @@ export default function BlogHeader() {
                     handleNavClick('archives');
                   }
                 }}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'archives'
-                    ? 'text-primary'
-                    : 'text-[var(--text-secondary)]'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'archives'
+                    ? 'text-[var(--aurora-1)]'
+                    : 'text-[var(--ink-secondary)]'
                   }`}
               >
                 归档
                 {activePage === 'archives' && (
-                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>
               <Link
@@ -452,14 +452,14 @@ export default function BlogHeader() {
                     handleNavClick('friends');
                   }
                 }}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'friends'
-                    ? 'text-primary'
-                    : 'text-[var(--text-secondary)]'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'friends'
+                    ? 'text-[var(--aurora-1)]'
+                    : 'text-[var(--ink-secondary)]'
                   }`}
               >
                 友链
                 {activePage === 'friends' && (
-                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>
               <Link
@@ -471,14 +471,14 @@ export default function BlogHeader() {
                     handleNavClick('about');
                   }
                 }}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'about'
-                    ? 'text-primary'
-                    : 'text-[var(--text-secondary)]'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'about'
+                    ? 'text-[var(--aurora-1)]'
+                    : 'text-[var(--ink-secondary)]'
                   }`}
               >
                 关于
                 {activePage === 'about' && (
-                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>
               <Link
@@ -490,14 +490,14 @@ export default function BlogHeader() {
                     handleNavClick('design');
                   }
                 }}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'design'
-                    ? 'text-primary'
-                    : 'text-[var(--text-secondary)]'
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'design'
+                    ? 'text-[var(--aurora-1)]'
+                    : 'text-[var(--ink-secondary)]'
                   }`}
               >
                 设计
                 {activePage === 'design' && (
-                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>
 

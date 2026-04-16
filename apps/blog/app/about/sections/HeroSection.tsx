@@ -41,11 +41,14 @@ export default function HeroSection({ isVisible }: Props) {
             AETHERBLOG
           </motion.p>
 
-          {/* Title with aurora gradient + breath */}
+          {/* Title with aurora gradient + breath (cadence aligned to global 4.8s asymmetric) */}
           <motion.h1
             variants={fadeUp}
             className="text-h1 md:text-display font-display font-bold aurora-text"
-            style={{ animation: isVisible ? 'breath-soft 7.2s ease-in-out infinite' : 'none' }}
+            style={{
+              animation: isVisible ? 'breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1) infinite' : 'none',
+              textWrap: 'balance',
+            }}
           >
             以太之上，思想成形
           </motion.h1>

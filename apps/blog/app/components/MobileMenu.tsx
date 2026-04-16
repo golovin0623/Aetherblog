@@ -208,7 +208,7 @@ const MobileMenu = memo(function MobileMenu() {
             // 为抽屉分配独立的 VT 层，防止其模糊效果渗透至根节点
             // 注意：viewTransitionName 已移至 CSS 类，以便 globals.css 在
             // 主题切换期间（html[data-theme-transition]）将其覆盖为 'none'。
-            className="fixed right-0 top-0 bottom-0 w-48 bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] z-[101] flex flex-col shadow-2xl overflow-y-auto transform-gpu will-change-transform mobile-menu-drawer"
+            className="surface-overlay !rounded-none !rounded-l-2xl fixed right-0 top-0 bottom-0 w-48 z-[101] flex flex-col overflow-y-auto transform-gpu will-change-transform mobile-menu-drawer"
           >
             {/* 1. 顶部区域：个人资料 (去除了强分割线) */}
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
@@ -290,9 +290,9 @@ const MobileMenu = memo(function MobileMenu() {
                     href={link.href}
                     onClick={(e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) handleLinkClick(link.key); }}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${isActive
-                      ? 'bg-black/10 dark:bg-[var(--primary-light)]/10 text-black dark:text-[var(--color-primary)]'
-                      : 'text-black dark:text-[var(--text-muted)] hover:text-black dark:hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-[var(--bg-card-hover)]'
+                    className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${isActive
+                      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+                      : 'text-black dark:text-[var(--ink-secondary)] hover:text-black dark:hover:text-[var(--ink-primary)] hover:bg-black/5 dark:hover:bg-[var(--bg-card-hover)]'
                       }`}
                   >
                     <Icon size={16} />
