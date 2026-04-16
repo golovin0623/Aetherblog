@@ -32,15 +32,16 @@ export default function PostNavigation({ prevPost, nextPost }: PostNavigationPro
       {prevPost ? (
         <Link
           href={`/posts/${prevPost.slug}`}
-          className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:border-[var(--border-hover)] focus-visible:shadow-[var(--shadow-md)] focus-visible:bg-[var(--bg-card)]"
+          className="surface-leaf group relative flex items-center gap-3 p-4 sm:p-5 transition-all duration-300 hover:-translate-y-0.5"
+          data-interactive
           aria-label={`上一篇: ${prevPost.title}`}
         >
           <ChevronLeft className="w-5 h-5 flex-shrink-0 text-[var(--text-muted)] group-hover:text-[var(--color-primary)] transition-all duration-300 group-hover:-translate-x-0.5" />
           <div className="min-w-0 flex-1">
-            <span className="text-[10px] sm:text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
-              上一篇
+            <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted,var(--text-muted))]">
+              Prev · 上一篇
             </span>
-            <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm font-medium text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--color-primary)] transition-colors duration-300 leading-relaxed">
+            <p className="mt-1 font-editorial text-sm sm:text-base text-[var(--ink-primary,var(--text-primary))] line-clamp-2 group-hover:text-[var(--color-primary)] transition-colors duration-300 leading-relaxed">
               {prevPost.title}
             </p>
           </div>
@@ -54,14 +55,15 @@ export default function PostNavigation({ prevPost, nextPost }: PostNavigationPro
       {nextPost && (
         <Link
           href={`/posts/${nextPost.slug}`}
-          className="group relative flex items-center gap-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 backdrop-blur-sm transition-all duration-300 hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-md)] hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:border-[var(--border-hover)] focus-visible:shadow-[var(--shadow-md)] focus-visible:bg-[var(--bg-card)]"
+          className="surface-leaf group relative flex items-center gap-3 p-4 sm:p-5 transition-all duration-300 hover:-translate-y-0.5"
+          data-interactive
           aria-label={`下一篇: ${nextPost.title}`}
         >
           <div className="min-w-0 flex-1 text-right">
-            <span className="text-[10px] sm:text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
-              下一篇
+            <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted,var(--text-muted))]">
+              Next · 下一篇
             </span>
-            <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm font-medium text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--color-primary)] transition-colors duration-300 leading-relaxed">
+            <p className="mt-1 font-editorial text-sm sm:text-base text-[var(--ink-primary,var(--text-primary))] line-clamp-2 group-hover:text-[var(--color-primary)] transition-colors duration-300 leading-relaxed">
               {nextPost.title}
             </p>
           </div>
