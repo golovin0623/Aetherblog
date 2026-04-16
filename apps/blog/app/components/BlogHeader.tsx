@@ -42,7 +42,7 @@ export default function BlogHeader() {
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
 
   // 导航页面类型
-  type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
+  type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | 'design' | null;
 
   // 当前激活的导航页面（用于乐观更新）
   const [activePage, setActivePage] = useState<NavPage>(() => {
@@ -51,6 +51,7 @@ export default function BlogHeader() {
     if (pathname === '/archives') return 'archives';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
+    if (pathname === '/design') return 'design';
     return null;
   });
 
@@ -74,6 +75,8 @@ export default function BlogHeader() {
       setActivePage('friends');
     } else if (pathname === '/about') {
       setActivePage('about');
+    } else if (pathname === '/design') {
+      setActivePage('design');
     } else if (isArticleDetail) {
       setActivePage(null);
       const source = sessionStorage.getItem('blogNavSource');
@@ -107,6 +110,7 @@ export default function BlogHeader() {
       archives: '/archives',
       friends: '/friends',
       about: '/about',
+      design: '/design',
     };
 
     // 导航时禁用 Next.js 自动滚动恢复，保留当前视野位置
@@ -474,6 +478,25 @@ export default function BlogHeader() {
               >
                 关于
                 {activePage === 'about' && (
+                  <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                )}
+              </Link>
+              <Link
+                href="/design"
+                aria-current={activePage === 'design' ? 'page' : undefined}
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                    e.preventDefault();
+                    handleNavClick('design');
+                  }
+                }}
+                className={`relative text-sm font-medium transition-all duration-200 hover:text-primary cursor-pointer ${activePage === 'design'
+                    ? 'text-primary'
+                    : 'text-[var(--text-secondary)]'
+                  }`}
+              >
+                设计
+                {activePage === 'design' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full" />
                 )}
               </Link>
