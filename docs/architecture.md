@@ -133,33 +133,34 @@ cmd/server/main.go（Go 可执行入口）
 | **基础层** | `internal/pkg/*` | 分页、响应格式、JWT 工具、图片处理、存储 |
 | **配置层** | `internal/config` | 配置管理（koanf） |
 
-### 核心 Handler（23 个）
+### 核心 Handler（24 个）
 
 | Handler | 路径前缀 | 功能 | 路由示例 |
 |-----------|----------|------|---------|
 | `AuthHandler` | `/v1/auth` | 登录 / JWT 认证 / 个人设置 | POST /v1/auth/login, GET /v1/auth/me, PUT /v1/auth/profile |
-| `PostHandler` | `/v1/admin/posts` | 文章 CRUD / 自动保存 / 发布 | PATCH /v1/admin/posts/:id/publish |
-| `PublicPostHandler` | `/v1/public/posts` | 公开文章 API / 相邻导航 | GET /v1/public/posts/:slug/adjacent |
+| `PostHandler` | `/v1/admin/posts` + `/v1/public/posts` | 文章 CRUD / 自动保存 / 发布 / 属性更新；公开 5 路由 + 密码验证 | PATCH /v1/admin/posts/:id/publish |
 | `CategoryHandler` | `/v1/admin/categories` + `/v1/public/categories` | 分类管理 | GET/POST/PUT/DELETE |
-| `TagHandler` | `/v1/admin/tags` | 标签管理 | GET/POST/PUT/DELETE |
-| `CommentHandler` | `/v1/admin/comments` + `/v1/public/posts/:postId/comments` | 评论审核 / 垃圾标记 | PATCH .../approve, PATCH .../spam |
-| `MediaHandler` | `/v1/admin/media` | 媒体库 / 批量上传 / 回收站 | POST /v1/admin/media/batch-upload |
-| `FolderHandler` | `/v1/admin/folders` | 文件夹层级 / 移动 | GET /v1/admin/folders/tree |
-| `PermissionHandler` | `/v1/admin/permissions` | 文件夹权限 ACL | GET/POST/PUT/DELETE |
-| `StatsHandler` | `/v1/admin/stats` | 统计仪表盘 / 访客趋势 | GET /v1/admin/stats/dashboard |
-| `AiHandler` | `/v1/admin/ai` | AI 写作辅助 / 流式输出 / 配置代理 | POST /v1/admin/ai/summary/stream |
-| `SystemMonitorHandler` | `/v1/admin/monitor` | 系统指标 / 容器 / 告警 | GET /v1/admin/monitor/overview |
-| `SiteHandler` | `/v1/public/site` | 站点信息 / 作者 | GET /v1/public/site/info |
-| `SiteSettingHandler` | `/v1/admin/site-settings` | 站点设置 CRUD / 分组查询 | GET /v1/admin/site-settings/group/:group |
-| `FriendLinkHandler` | `/v1/admin/friend-links` + `/v1/public/friend-links` | 友链 CRUD / 排序 / 开关 | PATCH .../toggle |
-| `ActivityHandler` | `/v1/admin/activities` | 操作活动事件流 | GET /v1/admin/activities/recent |
-| `StorageProviderHandler` | `/v1/admin/storage-providers` | 存储提供商 / 连接测试 | POST .../test |
-| `ArchiveHandler` | `/v1/public/archives` | 归档列表 / 统计 | GET /v1/public/archives/stats |
-| `MigrationHandler` | `/v1/admin/vanblog` | Vanblog 数据导入 | POST /v1/admin/vanblog/import |
-| `MediaTagHandler` | `/v1/admin/media/tags` | 媒体文件标签 CRUD | GET/POST/PUT/DELETE |
-| `SystemHandler` | `/v1/public/system` | 系统时间 | GET /v1/public/system/time |
-| `VisitorHandler` | `/v1/public/visitors` | 访客记录 / 今日统计 | POST /v1/public/visitors |
-| `VersionHandler` | `/v1/admin/files/:fileId/versions` | 文件版本历史 / 回滚 | POST .../versions/:num/restore |
+| `TagHandler` | `/v1/admin/tags` + `/v1/public/tags` | 标签管理 | GET/POST/PUT/DELETE |
+| `CommentHandler` | `/v1/admin/comments` + `/v1/public/comments` | 评论审核 / 批量操作 / 垃圾标记；公开评论列表 + 提交（限流） | PATCH .../approve, PATCH .../spam |
+| `MediaHandler` | `/v1/admin/media` | 媒体库 / 单个+批量上传 / 回收站 / 内容更新 | POST /v1/admin/media/upload |
+| `FolderHandler` | `/v1/admin/folders` | 文件夹树 / 层级 / 移动 | GET /v1/admin/folders/tree |
+| `PermissionHandler` | `/v1/admin/folders/*/permissions` | 文件夹权限 ACL | GET/POST/PUT/DELETE |
+| `ShareHandler` | `/v1/admin/shares` | 文件/文件夹分享链接管理 | POST .../file/:fileId, POST .../folder/:folderId |
+| `StatsHandler` | `/v1/admin/stats` | 统计仪表盘 / 访客趋势 / AI 分析 | GET .../dashboard, .../ai-dashboard, .../ai-pricing-gaps |
+| `AiHandler` | `/v1/admin/ai` | AI 写作辅助（6 工具 + stream）/ Prompt 配置 / 任务配置 / 供应商代理 | POST .../summary/stream |
+| `SystemMonitorHandler` | `/v1/admin/monitor` | 系统指标 / 容器 / 日志 / 告警 / 历史 | GET .../overview, .../containers/:id/logs |
+| `SiteHandler` | `/v1/admin/site` | 站点信息 / 统计 / 作者 | GET .../info, .../stats, .../author |
+| `SiteSettingHandler` | `/v1/admin/settings` | 站点设置 CRUD / 分组查询 / 批量更新 | GET .../group/:group, PATCH .../batch |
+| `FriendLinkHandler` | `/v1/admin/friends` + `/v1/public/friends` | 友链 CRUD / 排序 / 可见切换 / 分页 | PATCH .../toggle-visible, .../reorder |
+| `ActivityHandler` | `/v1/admin/activities` | 操作活动事件流 | GET .../recent, GET /, GET .../user/:userId |
+| `StorageProviderHandler` | `/v1/admin/storage` | 存储提供商 / 默认设置 / 连接测试 | POST .../:id/test, POST .../:id/set-default |
+| `ArchiveHandler` | `/v1/public/archives` | 归档列表 / 统计 | GET .../stats |
+| `MigrationHandler` | `/v1/admin/migration` | Vanblog 数据导入 | POST .../vanblog/import |
+| `MediaTagHandler` | `/v1/admin/media-tags` | 媒体标签 CRUD + 热门 + 搜索 + 批量；文件标签关联 | GET .../popular, POST .../batch |
+| `SystemHandler` | `/v1/system` | 系统时间 | GET .../time |
+| `VisitorHandler` | `/v1/admin/visitors` | 访客记录 / 今日统计 | POST /, GET .../today |
+| `VersionHandler` | `/v1/admin/files/:fileId/versions` | 文件版本历史 / 回滚 / 删除 | POST .../versions/:num/restore |
+| `SearchHandler` | `/v1/public/search` + `/v1/admin/search` | 混合搜索 / 语义搜索 / QA（SSE）/ 配置 / 索引管理 | GET .../search, GET .../qa |
 
 ---
 
@@ -265,22 +266,26 @@ AI 服务作为独立微服务运行，通过 HTTP API 与后端通信：
 - **CodeMirror** — Markdown 编辑器核心
 - **Framer Motion** — 动画交互
 
-#### 主要页面模块（14+ 主页面）
+#### 主要页面模块（17+ 主页面）
 
 | 页面 | 路径 | 说明 |
 |------|------|------|
-| `DashboardPage` | `/dashboard` | 数据概览 / 近期活动 |
+| `DashboardPage` | `/dashboard` | 数据概览 / 近期活动 / AI 使用趋势 |
 | `PostsPage` | `/posts` | 文章列表 |
 | `CreatePostPage` | `/posts/create` | 新建文章（AI 写作工作台） |
 | `EditPostPage` | `/posts/:id/edit` | 编辑文章 |
+| `AiWritingWorkspacePage` | `/posts/ai-workspace` | AI 辅助写作工作区 |
 | `CategoriesPage` | `/categories` | 分类管理 |
 | `CommentsPage` | `/comments` | 评论审核（pending/spam） |
-| `MediaPage` | `/media` | 媒体库 + 文件夹树 |
-| `FriendsPage` | `/friends` | 友链管理 |
-| `MonitorPage` | `/monitor` | 系统监控 |
-| `SettingsPage` | `/settings` | 站点设置（分组） |
+| `MediaPage` | `/media` | 媒体库 + 文件夹树 + 标签 + 版本 |
+| `FriendsPage` | `/friends` | 友链管理（拖拽排序） |
+| `MonitorPage` | `/monitor` | 系统监控（指标 / 容器 / 日志） |
+| `SettingsPage` | `/settings` | 站点设置（分组）+ 存储提供商 |
+| `AnalyticsPage` | `/analytics` | 数据统计分析 |
+| `ActivitiesPage` | `/activities` | 操作活动事件流 |
 | `AIToolsPage` | `/ai-tools` | AI 写作工具集入口 |
-| `AiConfigPage` | `/ai-config` | AI 配置中心（供应商 / Prompt / 任务） |
+| `AiConfigPage` | `/ai-config` | AI 配置中心（供应商 / 模型 / 凭证 / Prompt / 任务） |
+| `SearchConfigPage` | `/search-config` | 搜索功能配置 |
 | `MigrationPage` | `/migration` | Vanblog 数据导入 |
 | `AiTestPage` | `/ai-test` | AI 接口调试 |
 
@@ -290,11 +295,17 @@ AI 工具子页面：`SummaryPage`, `TaggerPage`, `ContentRewriterPage`, `SeoOpt
 
 ```
 packages/
-├── ui/       →  Button, Card, Modal, Toast, Input, ...
-├── hooks/    →  useDebounce, useApi, useMediaQuery, useTheme, ...
-├── types/    →  Post, User, Category, Tag, Comment, MediaFile, ...
-├── utils/    →  cn(), formatDate(), ...
-└── editor/   →  MarkdownEditor, MarkdownPreview, EditorWithPreview
+├── ui/       →  Button, Card, Input, Modal, ConfirmModal, Toast, Avatar, Badge, Tag,
+│                 Skeleton, Dropdown, Tooltip, Textarea, Toggle + cn()
+├── hooks/    →  useDebounce, useThrottle, useMediaQuery, useTheme, useClickOutside,
+│                 useScrollLock, useLocalStorage, useSessionStorage, ... (16 hooks + ThemeToggle)
+├── types/    →  api/ (request, response, error), models/ (post, user, comment, media, friendLink),
+│                 ai/ (prompt, completion)
+├── utils/    →  format/ (date, number, string, duration), url/ (queryString, slug, UrlBuilder),
+│                 helpers/ (deepClone, retry, omit, pick, uuid), validation/ (email, url, password),
+│                 storage/ (IndexedDB), color.ts (theme CSS vars)
+└── editor/   →  MarkdownEditor, MarkdownPreview, EditorWithPreview, UploadProgress,
+                  ImageSizePopover + hooks (useEditorCommands, useTableCommands, useImageUpload)
 ```
 
 ---

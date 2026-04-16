@@ -35,7 +35,7 @@ AetherBlog 项目文档导航。
 |------|------|
 | [AetherHub 蓝图 V1](./AETHERHUB_BLUEPRINT_V1.md) | 系统蓝图与设计思路 |
 | [Markdown 能力矩阵](./blog-markdown-capability-matrix.md) | 博客 Markdown 功能支持清单 |
-| [性能优化报告](./PHASE_6_PERFORMANCE_OPTIMIZATION.md) | 第六阶段性能优化记录 |
+| [前端优化报告](./Phase6-Frontend-Optimization-Report.md) | 第六阶段前端性能优化记录 |
 
 ## 🔧 运维与 QA
 
@@ -48,13 +48,13 @@ AetherBlog 项目文档导航。
 | [AI配置中心验收矩阵](./qa/ai-config-center-acceptance-matrix-2026-04-04.md) | 供应商/模型/凭证三栏界面验收（2026-04-04） |
 | [VanBlog迁移验收矩阵](./qa/vanblog-migration-acceptance-matrix-2026-04-04.md) | VanBlog数据迁移 dry-run/execute 两阶段验收（2026-04-04） |
 | [媒体版本管理验收矩阵](./qa/media-version-history-acceptance-matrix-2026-04-04.md) | 媒体文件版本查看/恢复/删除验收（2026-04-04） |
+| [安全审计报告](./qa/security-audit-report-2026-04-15.md) | 全栈安全审计报告（2026-04-15） |
 | [运维脚本](./ops/) | 发布观察与回滚模板 |
 
 ## 📝 实现报告
 
 | 文档 | 说明 |
 |------|------|
-| [最终实现报告](./FINAL_IMPLEMENTATION_REPORT.md) | 媒体库等核心功能实现记录 |
-| [最终实现报告 V2](./FINAL_IMPLEMENTATION_REPORT_V2.md) | 第二轮功能实现记录 |
+| [实现报告](./IMPLEMENTATION_REPORT.md) | 核心功能实现记录 |
 | [AI 模块报告 V2 Phase1](./AI_MODULE_REPORT_V2_PHASE1.md) | AI 模块迁移第一阶段报告 |
 | [Phase 1-5 总结](./PHASE_1-5_COMPLETION_SUMMARY.md) | 前五阶段完成摘要 |

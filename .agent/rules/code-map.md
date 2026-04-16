@@ -218,7 +218,7 @@ trigger: always_on
 ```
 
 ### CHANGELOG v1.1.0
-- Added: 后端 23 个 Handler 全量列表及路由前缀。
+- Added: 后端 24 个 Handler 全量列表及路由前缀（含 ShareHandler、SearchHandler）。
 - Added: Admin 前端页面 → 后端模块映射表。
 - Added: ai-tools/ 页面列表（ContentRewriter, QA, SeoOptimizer, Summary, Tagger, TextCleaner）。
 - Fixed: 任务1.2 描述从 Maven 改为 Go 模块初始化。
