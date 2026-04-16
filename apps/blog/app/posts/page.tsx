@@ -188,7 +188,7 @@ export default function PostsPage() {
         </div>
 
         {!featuredPost && posts.length === 0 ? (
-          <div className="text-center py-32 bg-[var(--bg-card)] rounded-3xl border border-[var(--border-subtle)] backdrop-blur-sm">
+          <div className="surface-leaf text-center py-32">
             <div className="w-20 h-20 bg-[var(--bg-secondary)] rounded-full flex items-center justify-center mx-auto mb-6">
               <List className="w-10 h-10 text-[var(--text-muted)]" />
             </div>
