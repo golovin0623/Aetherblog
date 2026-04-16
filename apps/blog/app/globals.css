@@ -1772,22 +1772,17 @@ html[data-nav-type="pop"] .animate-in {
    不支持的浏览器自动回退为普通导航(无 morph,无报错)。
    ============================================================ */
 
-/* 根级 crossfade —— 进入/离开曲线采用 Apple Material standard ease */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 420ms;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-}
+/* 重要:此处只覆盖具名 group(`post-*` 等),不动 `::view-transition-old/new(root)` ——
+   第 1191 行已定义主题切换的 `animation: none` + `mix-blend-mode: normal`,
+   由 JS clip-path 驱动圆形扩散,必须保留。避免与 Round 3 路由 morph 冲突。 */
 
-/* 具名组 —— 文章卡片与标题 morph,略过冲的 enter 曲线 */
+/* 具名组 —— 文章卡片 ↔ 文章页 morph,Apple enter ease 略过冲 */
 ::view-transition-group(*) {
   animation-duration: 560ms;
   animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* 减动效 —— 关闭 morph,只保留极短 crossfade */
+/* 减动效 —— 关闭具名组 morph;根层动画由 1191 行规则自行处理,此处不动 */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*) { animation-duration: 1ms; }
-  ::view-transition-old(root),
-  ::view-transition-new(root) { animation-duration: 160ms; }
 }
