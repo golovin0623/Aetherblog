@@ -272,7 +272,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  className="relative w-full max-w-4xl bg-white border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+                  className="relative w-full max-w-4xl bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
                 >
                   {/* 模态框头部 */}
                   <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] dark:border-white/10">

@@ -1,6 +1,42 @@
+/* 设计系统基础层 —— admin 控制面板也需要同一套 token + surface + typography
+   注:数字字体保持原 Inter(不走 Fraunces),dashboard 卡片样式保持原彩色底。 */
+@import '../../../packages/ui/src/styles/tokens.css';
+@import '../../../packages/ui/src/styles/surfaces.css';
+@import '../../../packages/ui/src/styles/typography.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================================
+   Focus Mode —— ⌘. 专注写作模式:隐藏侧栏/顶栏,最大化编辑区
+   ============================================================ */
+:root[data-focus-mode="true"] aside,
+:root[data-focus-mode="true"] [data-admin-header],
+:root[data-focus-mode="true"] [data-admin-mobile-header] {
+  display: none !important;
+}
+:root[data-focus-mode="true"] main {
+  padding: 1.5rem !important;
+}
+:root[data-focus-mode="true"]::after {
+  content: 'FOCUS · ⌘. 退出';
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: color-mix(in oklch, var(--color-primary, #818cf8) 14%, transparent);
+  color: var(--color-primary, #818cf8);
+  border: 1px solid color-mix(in oklch, var(--color-primary, #818cf8) 30%, transparent);
+  backdrop-filter: blur(10px);
+  z-index: 9999;
+  pointer-events: none;
+}
 
 * {
   scrollbar-width: none !important;
@@ -444,4 +480,166 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
 /* Auto-exclude common backdrop patterns from View Transition */
 [class*="backdrop-blur"] {
   view-transition-name: none;
+}
+
+/* ============================================================
+   Article Editor · Markdown Preview 排印升级
+   跟 blog 前台的 .markdown-body 保持同等精致度,
+   不覆盖 markdownPreviewStyles 的基础规则,仅追加 aurora 细节。
+   ============================================================ */
+
+/* 首字下沉 —— 预览区第一段首字母 aurora 渐变 */
+.markdown-preview > p:first-of-type::first-letter {
+  font-size: 3em;
+  line-height: 0.85;
+  font-weight: 700;
+  float: left;
+  margin: 0.08em 0.14em 0 -0.02em;
+  background: linear-gradient(135deg, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* h1 底部 aurora 渐变下划线 */
+.markdown-preview h1 {
+  position: relative;
+}
+.markdown-preview h1::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 4rem;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--aurora-1, var(--color-primary, #818CF8)),
+    var(--aurora-4, var(--color-primary, #818CF8)));
+  border-radius: 2px;
+}
+
+/* h2 前 § 章节标记 */
+.markdown-preview h2::before {
+  content: '§ ';
+  color: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 65%, transparent);
+  font-weight: 400;
+  margin-right: 0.15em;
+  opacity: 0.7;
+}
+
+/* 行内代码 aurora 风 */
+.markdown-preview code:not(pre code) {
+  background: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 8%, transparent) !important;
+  border: 1px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 22%, transparent);
+  color: var(--aurora-1, var(--color-primary, #818CF8)) !important;
+}
+
+/* 代码块左侧 2px 极光条 */
+.markdown-preview pre,
+.markdown-preview .code-block-wrapper {
+  position: relative;
+}
+.markdown-preview pre::before,
+.markdown-preview .code-block-wrapper::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.9rem;
+  bottom: 0.9rem;
+  width: 2px;
+  background: linear-gradient(180deg,
+    transparent,
+    var(--aurora-1, var(--color-primary, #818CF8)) 20%,
+    var(--aurora-2, var(--color-primary, #818CF8)) 80%,
+    transparent);
+  border-radius: 2px;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* blockquote 斜体装饰引号 */
+.markdown-preview blockquote {
+  font-style: italic;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 40%, transparent);
+}
+
+/* 水平线 aurora 渐变 */
+.markdown-preview hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 28%, transparent) 50%,
+    transparent);
+}
+
+/* ============================================================
+   Markdown Editor · 极致源码展示
+   Bear / iA Writer / Ulysses 级别的精致度
+   ============================================================ */
+
+/* CodeMirror 整体容器 —— 营造呼吸感 + Geist Mono 连字 */
+.cm-editor {
+  font-feature-settings: "calt" 1, "liga" 1, "ss01" 1;
+  letter-spacing: -0.005em;
+}
+
+/* 字号渐进 —— Bear 风格 heading 逐级增大且均匀过渡 */
+.cm-editor .cm-line:has(.cm-heading1) { font-size: 1.6em; line-height: 1.25; }
+.cm-editor .cm-line:has(.cm-heading2) { font-size: 1.35em; line-height: 1.3; }
+.cm-editor .cm-line:has(.cm-heading3) { font-size: 1.15em; }
+
+/* Markdown 标记符号(#/**/`/>)淡化到透明度 0.4,符合 iA Writer 哲学 */
+.cm-editor .cm-punctuation,
+.cm-editor .cm-formatting-heading,
+.cm-editor .cm-formatting-strong,
+.cm-editor .cm-formatting-em,
+.cm-editor .cm-formatting-code {
+  opacity: 0.4;
+  color: var(--ink-muted);
+}
+
+/* 光标在该行时,让标记恢复不透明(让写作时能看清) */
+.cm-editor .cm-activeLine .cm-punctuation,
+.cm-editor .cm-activeLine .cm-formatting-heading,
+.cm-editor .cm-activeLine .cm-formatting-strong,
+.cm-editor .cm-activeLine .cm-formatting-em,
+.cm-editor .cm-activeLine .cm-formatting-code {
+  opacity: 0.9;
+}
+
+/* 引用块左 2px aurora 极光条 —— 替代 CodeMirror 默认的竖线
+   注:仅 :has() 生效的现代浏览器(Safari 15.4+ / Chrome 105+)受益,
+   旧浏览器走 bearDecorations 的 Decoration.line 路径仍可见引用样式 */
+.cm-editor .cm-line:has(.cm-quote) {
+  position: relative;
+  padding-left: 16px !important;
+}
+.cm-editor .cm-line:has(.cm-quote)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: linear-gradient(to bottom,
+    transparent,
+    var(--aurora-1, var(--color-primary)) 20%,
+    var(--aurora-2, var(--color-primary)) 80%,
+    transparent);
+  border-radius: 2px;
+  opacity: 0.55;
+}
+
+/* 代码块(fenced)背景 —— 淡雾质感 + 禁用连字(避免 !=/=> 被合并) */
+.cm-editor .cm-line:has(.cm-code-block-body) {
+  background: color-mix(in oklch, var(--ink-muted) 4%, transparent);
+  font-feature-settings: "calt" 0;
+}
+
+/* 减动效模式尊重 */
+@media (prefers-reduced-motion: reduce) {
+  .cm-cursor { animation: none; }
 }

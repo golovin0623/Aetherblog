@@ -2,12 +2,16 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
@@ -17,10 +21,15 @@ import (
 var commentSanitizer = bluemonday.StrictPolicy()
 
 // CommentHandler 负责处理评论审核和公开提交相关接口。
-type CommentHandler struct{ svc *service.CommentService }
+type CommentHandler struct {
+	svc         *service.CommentService
+	activitySvc *service.ActivityService
+}
 
 // NewCommentHandler 创建一个由指定 CommentService 驱动的 CommentHandler 实例。
-func NewCommentHandler(svc *service.CommentService) *CommentHandler { return &CommentHandler{svc: svc} }
+func NewCommentHandler(svc *service.CommentService, activitySvc *service.ActivityService) *CommentHandler {
+	return &CommentHandler{svc: svc, activitySvc: activitySvc}
+}
 
 // MountAdmin 在指定路由组上注册管理端审核路由（列表、审批、拒绝、删除等）。
 func (h *CommentHandler) MountAdmin(g *echo.Group) {
@@ -99,7 +108,18 @@ func (h *CommentHandler) AdminGet(c echo.Context) error {
 // Approve 处理 PATCH /admin/comments/:id/approve 请求，
 // 将待审核评论审批通过，使其公开展示。
 func (h *CommentHandler) Approve(c echo.Context) error {
-	return h.withID(c, h.svc.Approve)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	if err := h.svc.Approve(c.Request().Context(), id); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+
+	// 记录审核评论活动
+	h.recordCommentActivity(c, "comment.approve", fmt.Sprintf("审核评论 #%d", id), fmt.Sprintf("评论 #%d 已审核通过", id))
+
+	return response.OKEmpty(c)
 }
 
 // Reject 处理 PATCH /admin/comments/:id/reject 请求，
@@ -123,7 +143,18 @@ func (h *CommentHandler) Restore(c echo.Context) error {
 // Delete 处理 DELETE /admin/comments/:id 请求，
 // 软删除指定评论。
 func (h *CommentHandler) Delete(c echo.Context) error {
-	return h.withID(c, h.svc.Delete)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+
+	// 记录删除评论活动
+	h.recordCommentActivity(c, "comment.delete", fmt.Sprintf("删除评论 #%d", id), fmt.Sprintf("评论 #%d 已删除", id))
+
+	return response.OKEmpty(c)
 }
 
 // PermanentDelete 处理 DELETE /admin/comments/:id/permanent 请求，
@@ -207,6 +238,29 @@ func (h *CommentHandler) Submit(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OK(c, vo)
+}
+
+// recordCommentActivity 记录评论相关活动事件，失败时仅记录日志不阻塞主流程。
+func (h *CommentHandler) recordCommentActivity(c echo.Context, eventType, title, description string) {
+	if h.activitySvc == nil {
+		return
+	}
+	evtCat := "comment"
+	evtStatus := "SUCCESS"
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), &model.ActivityEvent{
+		EventType:     eventType,
+		EventCategory: &evtCat,
+		Title:         title,
+		Description:   &description,
+		UserID:        userID,
+		Status:        &evtStatus,
+	}); err != nil {
+		log.Warn().Err(err).Msg("record activity failed")
+	}
 }
 
 // withID 从路径参数中解析 :id，调用 fn 处理，成功后返回空 OK 响应。

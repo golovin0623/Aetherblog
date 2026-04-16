@@ -11,7 +11,7 @@ interface BarChartProps {
 export function BarChart({
   data,
   height = 200,
-  color = '#18181b',
+  color = 'var(--color-primary)',
   showLabels = true,
   horizontal = false,
 }: BarChartProps) {
@@ -26,7 +26,7 @@ export function BarChart({
               <span className="text-[var(--text-tertiary)]">{item.label}</span>
               <span className="text-[var(--text-muted)]">{item.value}</span>
             </div>
-            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{

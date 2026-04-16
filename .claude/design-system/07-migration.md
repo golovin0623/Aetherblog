@@ -1,0 +1,194 @@
+# 07 · Migration Guide · 从旧令牌迁移到新令牌
+
+> 新旧令牌**并存**。旧代码不会立刻坏掉 —— 但应该按模块逐步迁移。本文档提供逐项映射表与批量迁移策略。
+
+---
+
+## 迁移原则
+
+1. **一次一个模块**,不要跨模块大规模 find-replace
+2. 每完成一个模块做视觉回归(开 dev、翻页、截图对比)
+3. **保留旧令牌直到所有调用点迁移完毕**,再删除旧令牌
+4. 先迁移 primitive(`packages/ui`),再迁移业务组件
+
+---
+
+## 令牌映射表
+
+### 颜色
+
+| 旧 | 新 |
+|:---|:---|
+| `--text-primary`(暗) | `--ink-primary` |
+| `--text-secondary`(暗) | `--ink-secondary` |
+| `--text-tertiary`(暗) | `--ink-muted` |
+| `--text-muted`(暗) | `--ink-subtle` |
+| `text-white` | `text-[var(--ink-primary)]` |
+| `text-slate-400` | `text-[var(--ink-muted)]` |
+| `text-slate-300` | `text-[var(--ink-secondary)]` |
+| `--bg-primary`(暗) | `--bg-substrate` |
+| `--bg-card` | 不用内联,用 `.surface-leaf` |
+| `--color-primary`(暗紫) | `--aurora-1`(当作重点色时) |
+| `bg-[#09090b]` / `bg-zinc-950` | `bg-[var(--bg-void)]` |
+| `border-amber-500/20` | `border-[var(--signal-warn)]/20` |
+
+### 玻璃
+
+| 旧 | 新 |
+|:---|:---|
+| `.glass` | `.surface-leaf` |
+| `.glass-high` | `.surface-raised` |
+| `.glass-premium` | `.surface-overlay` |
+| `bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl` | `<Card variant="leaf">` |
+| `bg-black/40 backdrop-blur-sm` | `.surface-leaf`(若在流)或 `.surface-raised`(若浮起) |
+
+### 字号
+
+| 旧 | 新 |
+|:---|:---|
+| `text-xs`(12px) | `text-caption` |
+| `text-sm`(14px) | `text-body`(但若为辅助信息用 `text-caption`) |
+| `text-base`(16px) | `text-body` |
+| `text-lg`(18px) | `text-reading`(文章)或 `text-lede` |
+| `text-xl`(20px) | `text-lede` |
+| `text-2xl`(24px) | `text-h4` |
+| `text-3xl`(30px) | `text-h3` |
+| `text-4xl`(36px) | `text-h2`(40px,接近) |
+| `text-5xl`(48px) | `text-h1`(56px,接近) |
+| `text-7xl`(72px) | `text-display` |
+| `text-[46px]` 等内联 | 归入最近阶梯或新增 token(需讨论) |
+
+### 字体
+
+| 旧 | 新(Tailwind 类) |
+|:---|:---|
+| `font-sans`(= Inter) | `font-sans`(= Geist,自动升级) |
+| `font-serif`(= Playfair) | `font-display`(Fraunces)或 `font-editorial`(Instrument Serif) |
+| 内联 `style={{ fontFamily: 'Inter' }}` | `font-sans` |
+| `font-mono`(= JetBrains Mono) | `font-mono`(= Geist Mono,自动升级) |
+
+**注:** `font-sans` 和 `font-mono` 的 Tailwind 类**键名不变**,只是底层 CSS 变量换了,所以代码无需改。
+
+### 动效
+
+| 旧 | 新 |
+|:---|:---|
+| `transition-all duration-300` | `transition-all duration-quick ease-aether` |
+| `ease-out` / `ease-in-out`(Tailwind) | `ease-aether` |
+| `duration-200` | `duration-quick`(260ms,接近) |
+| `duration-500` | `duration-flow` |
+| `duration-700` | `duration-flow`(注意慢 180ms) |
+| 内联 `cubic-bezier(0.22, 1, 0.36, 1)`(SearchPanel 在用) | `ease-aether`(略有差别,但更一致) |
+| `whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}` + transition 缺省 | 引 `spring.precise` |
+
+### 圆角
+
+| 旧 | 新 |
+|:---|:---|
+| `rounded-lg` | `rounded-lg`(映射到 `--radius-lg` = 16px) |
+| `rounded-xl` | `rounded-xl`(`--radius-xl` = 24px) |
+| `rounded-2xl` | `rounded-xl`(合并) |
+| `rounded-[46px]` | `rounded-bleed` |
+| 其他任意值 | 归入标准或讨论新增 |
+
+---
+
+## 迁移顺序(推荐)
+
+### Stage 1 · Primitives(packages/ui)
+
+1. `Button.tsx`:引 `spring.precise`,添 `aurora` variant
+2. `Card.tsx`:加 `variant` prop,内部用 `.surface-*`
+3. `Modal.tsx` / `ConfirmModal.tsx`:`surface-overlay`
+4. `Toast.tsx`、`Tooltip.tsx`、`Dropdown.tsx`:`surface-raised`
+
+### Stage 2 · 入口布局
+
+5. `apps/blog/app/layout.tsx`:`<body>` 加极光光源 + 新字体变量
+6. `apps/admin/src/main.tsx` + `AdminLayout.tsx`:同上
+
+### Stage 3 · 博客高曝光页
+
+7. `page.tsx`(首页)→ Hero 极光日晷
+8. `components/ArticleCard.tsx` → `.surface-leaf[data-interactive]`,象牙色,`--signal-warn`
+9. `components/BlogHeader.tsx` → `.surface-raised` + 极光分隔
+10. `components/SearchPanel.tsx` → 命令路由 + 墨水光标
+11. `globals.css` `.markdown-body` → 编辑级排印升级
+12. `posts/(article)/[slug]/page.tsx` → 加 marginalia + 阅读进度
+
+### Stage 4 · Admin
+
+13. `Sidebar.tsx`、`AdminLayout.tsx`:`.surface-raised`,专注模式
+14. `DataTable.tsx`:极光 hover 线,tnum
+15. `StatsCard.tsx`、`DashboardPage.tsx`:Fraunces 数字
+16. 新建 `CommandPalette.tsx`(全局 ⌘K)
+17. 新建 `FocusModeContext.tsx`(⌘.)
+18. `AiWritingWorkspacePage.tsx`:ink-bleed 流式
+
+### Stage 5 · 零散页面
+
+逐页迁移:categories、tags、settings、analytics 等。每迁移一页视觉回归一次。
+
+---
+
+## 批量 find-replace 模式(慎用)
+
+以下正则仅作为**初筛**,每条必须人肉复核:
+
+```bash
+# 检测所有裸字号(需改为语义)
+rg -n 'className=.*text-(5xl|6xl|7xl)' apps/blog apps/admin packages
+
+# 检测裸 amber 警告色
+rg -n 'border-amber|bg-amber|text-amber' apps packages
+
+# 检测三玻璃旧用法
+rg -n '\b(glass|glass-high|glass-premium)\b' apps
+
+# 检测裸 backdrop-blur
+rg -n 'backdrop-blur-' apps packages | rg -v 'surface-'
+
+# 检测裸白色文字
+rg -n 'text-white\b' apps packages
+```
+
+---
+
+## 视觉回归清单(每次迁移后过一遍)
+
+- [ ] 启动 `./start.sh`
+- [ ] 博客首页 http://localhost:3000 渲染无异常
+- [ ] 文章详情页 http://localhost:3000/posts/xxx 渲染无异常
+- [ ] Admin http://localhost:5173 登录流程正常
+- [ ] 主题切换(亮/暗)仍然工作
+- [ ] FontProvider(后台"字体设置")仍然工作
+- [ ] 控制台无 `undefined CSS variable` 警告
+- [ ] Tailwind 未意外 purge 关键类(建 `safelist`)
+- [ ] 移动端(devtools 375px)关键页面可用
+- [ ] Lighthouse 性能分不低于基线 85
+
+---
+
+## 已知不迁移项
+
+以下内容**保留现状**,不进本次升级:
+
+- Markdown 渲染器 Shiki 配置(代码高亮颜色)
+- mermaid / katex 的内建样式
+- 时间线页的 TimelineTree 特殊布局(已足够独特)
+- PageTransition 的 View Transitions 切换机制
+
+---
+
+## 何时允许破坏旧令牌
+
+当:
+1. 所有 `packages/ui` primitive 完成迁移
+2. 博客前台 8 个高曝光页面完成迁移
+3. Admin 核心 5 页(Dashboard、Posts、AI Tools、Settings、Analytics)完成迁移
+4. CLAUDE.md 设计系统章节同步更新
+5. 至少一次正式验证通过
+
+此时可 PR 删除旧令牌(`.glass`、`--color-primary` 等),并升级 CHANGELOG 到 v2.0。
+
+**在此之前绝不删除旧令牌。**

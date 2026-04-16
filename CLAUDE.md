@@ -300,6 +300,35 @@ Sub-modules: `ai-config/` (16 components + hooks + utils), `ai-tools/` (7 tool p
 
 Libs: `api.ts` (API client), `services.ts` (data fetching), `sanitizeUrl.ts`, `remarkAlertBlock.ts` (custom markdown plugin), `socialLinks.ts`, `headingId.ts`, `logger.ts`
 
+## Design System · Aether Codex Layer
+
+A second design layer (**Aether Codex — 漂浮在夜空中的发光典籍**) sits *on top of* the legacy "Cognitive Elegance" tokens — all old tokens (`.glass`, `--color-primary`, `--text-primary`, etc.) remain intact; new tokens are added in parallel.
+
+**Spec location:** `.claude/design-system/` (00-manifesto → 07-migration).
+
+**New CSS layers** (imported before `@tailwind` in both apps):
+- `packages/ui/src/styles/tokens.css` — `--ink-*`, `--bg-void/substrate/leaf/raised`, `--aurora-1..4`, `--signal-*`, 9-step font scale `--fs-micro..display`, `--ease-out: cubic-bezier(0.16,1,0.3,1)`, `--dur-instant/quick/flow/ambient`
+- `packages/ui/src/styles/surfaces.css` — 4-tier glass system: `.surface-leaf / .surface-raised / .surface-overlay / .surface-luminous`, `[data-interactive]` aurora hover bar
+- `packages/ui/src/styles/typography.css` — `.text-micro..display`, `.font-display/editorial/sans/mono`, `.reading-column`, `.marginalia`, `.drop-cap`, `.section-mark`, `.ai-stream`, `.ink-cursor`, `.aurora-text`, `.cmd-chip`
+
+**Motion presets:** `packages/ui/src/motion.ts` exports `ease`, `duration`, `spring`, `transition`, `variants`, `stagger()`, `cssMotion` — consume via `import { motion as motionPresets } from '@aetherblog/ui'`.
+
+**Fonts:** Fraunces (display, SOFT/WONK/opsz axes) · Instrument Serif (editorial italic lede) · Geist + Geist Mono (UI/mono) · LXGW WenKai (中文正文). Loaded via `next/font` in blog, CDN `<link>` in admin.
+
+**Signature interactions:**
+- Blog hero `<h1>` breathing animation (7.2s ease-in-out on Fraunces opsz).
+- Article `.markdown-body` upgrades: drop-cap, `§` section mark on h2, aurora h1 underline, aurora inline code, aurora left-stripe on code blocks, italic Fraunces blockquote.
+- `<ReadingProgress>` top 2px aurora bar (rAF-throttled scroll → `--reading-progress` CSS var).
+- Article `.marginalia` aside (xl+) with mono uppercase metadata (Published / Reading / Views / Section).
+- Search panel prefix routing: `>` command · `/` tag · `?` AI; aurora `.ink-cursor` on streaming AI answer.
+- Admin Sidebar "Control Room": grouped nav (OVERVIEW / CONTENT / INTELLIGENCE / SYSTEM), aurora left-stripe on active NavLink, Fraunces wordmark.
+- Admin `DataTable`: aurora left-stripe on row hover, mono uppercase headers, `.tnum` numerals, mono pagination footer.
+- Admin `StatsCard`: Fraunces display numerals with WONK axis shift on hover, mono caption titles.
+- **Command Palette (⌘K / Ctrl+K)** — `apps/admin/src/components/common/CommandPalette.tsx`, wired in `AdminLayout`. Grouped: NAVIGATE / CREATE / SYSTEM. ↑↓ navigate · ↵ execute · ESC close.
+- **Focus Mode (⌘. / Ctrl+.)** — `apps/admin/src/contexts/FocusModeContext.tsx` (`FocusModeProvider`, `useFocusMode`). Toggles `:root[data-focus-mode="true"]`, hiding sidebar/headers and showing a top-right aurora chip. ESC also exits.
+
+**Accessibility baseline** (in `tokens.css`): `prefers-reduced-motion` disables aurora/ink-cursor animation; `(hover: none) and (pointer: coarse)` enforces 44×44 touch targets; `prefers-contrast: more` strengthens borders.
+
 ## Design System ("Cognitive Elegance")
 
 ### UI Philosophy

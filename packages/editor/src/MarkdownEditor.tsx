@@ -79,66 +79,68 @@ export function MarkdownEditor({
 
   const extensions = useMemo(
     () => {
-      const monoFont = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-      
-      // Markdown 文档结构高亮（Bear / Typora 风格的极简优雅设计）
+      // 顶尖等宽字体栈 —— Geist Mono 优先,其次 JetBrains / SF Mono,最终降级系统 mono
+      const monoFont = "'Geist Mono', 'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Fira Code', ui-monospace, monospace";
+
+      // Markdown 文档结构高亮 —— 全部走 CSS 变量,跟随用户主色 + 主题动态解析
+      // iA Writer / Bear 哲学:标记符号淡化(opacity 0.4), 正文颜色克制
       const markdownHighlightStyle = HighlightStyle.define([
-        // 标题 - 摒弃彩色，使用不同字号 + 极度加粗 + 主文本色，突出层级
-        { tag: tags.heading1, color: theme === 'light' ? '#0f172a' : '#f8fafc', fontWeight: '800', fontSize: '1.6em' },
-        { tag: tags.heading2, color: theme === 'light' ? '#0f172a' : '#f8fafc', fontWeight: '700', fontSize: '1.4em' },
-        { tag: tags.heading3, color: theme === 'light' ? '#1e293b' : '#f1f5f9', fontWeight: '600', fontSize: '1.2em' },
-        { tag: tags.heading4, color: theme === 'light' ? '#1e293b' : '#f1f5f9', fontWeight: '600', fontSize: '1.1em' },
-        { tag: tags.heading5, color: theme === 'light' ? '#334155' : '#e2e8f0', fontWeight: '600' },
-        { tag: tags.heading6, color: theme === 'light' ? '#475569' : '#cbd5e1', fontWeight: '600' },
-        
+        // 标题 —— 墨色主色,层级由 CSS 端字号控制
+        { tag: tags.heading1, color: 'var(--ink-primary)', fontWeight: '800', fontSize: '1.6em' },
+        { tag: tags.heading2, color: 'var(--ink-primary)', fontWeight: '700', fontSize: '1.4em' },
+        { tag: tags.heading3, color: 'var(--ink-primary)', fontWeight: '600', fontSize: '1.2em' },
+        { tag: tags.heading4, color: 'var(--ink-secondary)', fontWeight: '600', fontSize: '1.1em' },
+        { tag: tags.heading5, color: 'var(--ink-secondary)', fontWeight: '600' },
+        { tag: tags.heading6, color: 'var(--ink-secondary)', fontWeight: '600' },
+
         // 强调
-        { tag: tags.strong, fontWeight: '700', color: theme === 'light' ? '#0f172a' : '#f8fafc' },
-        { tag: tags.emphasis, fontStyle: 'italic', color: theme === 'light' ? '#334155' : '#cbd5e1' },
-        { tag: tags.strikethrough, textDecoration: 'line-through', color: theme === 'light' ? '#94a3b8' : '#64748b' },
-        
-        // 链接 - 柔和的 Apple Blue
-        { tag: tags.link, color: theme === 'light' ? '#007AFF' : '#0A84FF', textDecoration: 'none' },
-        { tag: tags.url, color: theme === 'light' ? '#94a3b8' : '#64748b', fontFamily: monoFont },
-        
-        // 行内代码 - 专属等宽字体，去掉背景色避免在代码块内每行换行产生破坏性盒子
-        { tag: tags.monospace, fontFamily: monoFont, color: theme === 'light' ? '#ea580c' : '#fb923c' },
-        
-        // 【核心优化】Markdown 标记符号（#, *, >, -, ` 等）极度弱化，让位于正文
-        { tag: tags.processingInstruction, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // ``` 代码块标记
-        { tag: tags.contentSeparator, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // #, *, -, > 等符号
-        { tag: tags.meta, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // [ ] 等
-        { tag: tags.angleBracket, color: theme === 'light' ? '#cbd5e1' : '#475569' }, // < >
-        
-        // 引用 - 柔和色彩 + 斜体
-        { tag: tags.quote, color: theme === 'light' ? '#64748b' : '#94a3b8', fontStyle: 'italic' },
-        
-        // 列表标记 - 稍微弱化
-        { tag: tags.list, color: theme === 'light' ? '#94a3b8' : '#64748b' },
-        
-        // HTML 标签 - 略微等宽
-        { tag: tags.tagName, color: theme === 'light' ? '#db2777' : '#f07178', fontFamily: monoFont },
-        { tag: tags.attributeName, color: theme === 'light' ? '#d97706' : '#ffcb6b', fontFamily: monoFont },
-        { tag: tags.attributeValue, color: theme === 'light' ? '#16a34a' : '#c3e88d', fontFamily: monoFont },
-        
-        // 代码块内的语法高亮 - 去除冗余的 fontFamily，因为 .cm-content .ͼc 已全局设置
-        { tag: tags.keyword, color: theme === 'light' ? '#7c3aed' : '#c792ea' },
-        { tag: tags.string, color: theme === 'light' ? '#16a34a' : '#c3e88d' },
-        { tag: tags.number, color: theme === 'light' ? '#ea580c' : '#f78c6c' },
-        { tag: tags.comment, color: theme === 'light' ? '#94a3b8' : '#64748b', fontStyle: 'italic' },
-        { tag: tags.variableName, color: theme === 'light' ? '#0284c7' : '#82aaff' },
-        { tag: tags.definition(tags.variableName), color: theme === 'light' ? '#0284c7' : '#82aaff' },
-        { tag: tags.propertyName, color: theme === 'light' ? '#db2777' : '#f07178' },
-        { tag: tags.typeName, color: theme === 'light' ? '#d97706' : '#ffcb6b' },
-        { tag: tags.operator, color: theme === 'light' ? '#0ea5e9' : '#89ddff' },
-        { tag: tags.punctuation, color: theme === 'light' ? '#94a3b8' : '#64748b' },
-        { tag: tags.function(tags.variableName), color: theme === 'light' ? '#2563eb' : '#82aaff' },
-        { tag: tags.bool, color: theme === 'light' ? '#dc2626' : '#ff5370' },
-        { tag: tags.null, color: theme === 'light' ? '#dc2626' : '#ff5370' },
-        { tag: tags.className, color: theme === 'light' ? '#d97706' : '#ffcb6b' },
-        { tag: tags.labelName, color: theme === 'light' ? '#ea580c' : '#f78c6c' },
-        { tag: tags.self, color: theme === 'light' ? '#db2777' : '#f07178' },
-        { tag: tags.atom, color: theme === 'light' ? '#ea580c' : '#f78c6c' },
-        { tag: tags.invalid, color: theme === 'light' ? '#dc2626' : '#ff5370' },
+        { tag: tags.strong, fontWeight: '700', color: 'var(--ink-primary)' },
+        { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--ink-secondary)' },
+        { tag: tags.strikethrough, textDecoration: 'line-through', color: 'var(--ink-muted)' },
+
+        // 链接 —— 跟随主色
+        { tag: tags.link, color: 'var(--aurora-1, var(--color-primary))', textDecoration: 'none' },
+        { tag: tags.url, color: 'var(--ink-muted)', fontFamily: monoFont },
+
+        // 行内代码 —— aurora 主色 + mono
+        { tag: tags.monospace, fontFamily: monoFont, color: 'var(--aurora-1, var(--color-primary))' },
+
+        // 【核心】Markdown 标记符号 —— 极度淡化(Bear/iA Writer 风)
+        { tag: tags.processingInstruction, color: 'var(--ink-muted)' },
+        { tag: tags.contentSeparator, color: 'var(--ink-muted)' },
+        { tag: tags.meta, color: 'var(--ink-muted)' },
+        { tag: tags.angleBracket, color: 'var(--ink-muted)' },
+
+        // 引用 —— 墨色次色 + 斜体
+        { tag: tags.quote, color: 'var(--ink-secondary)', fontStyle: 'italic' },
+
+        // 列表标记 —— 弱化
+        { tag: tags.list, color: 'var(--ink-muted)' },
+
+        // HTML 标签 —— 信号色,mono 字体
+        { tag: tags.tagName, color: 'var(--signal-danger)', fontFamily: monoFont },
+        { tag: tags.attributeName, color: 'var(--signal-warn)', fontFamily: monoFont },
+        { tag: tags.attributeValue, color: 'var(--signal-success)', fontFamily: monoFont },
+
+        // 代码块内语法高亮 —— signal + aurora 混搭,保持代码可读性
+        { tag: tags.keyword, color: 'var(--aurora-3, var(--color-primary))' },
+        { tag: tags.string, color: 'var(--signal-success)' },
+        { tag: tags.number, color: 'var(--signal-warn)' },
+        { tag: tags.comment, color: 'var(--ink-muted)', fontStyle: 'italic' },
+        { tag: tags.variableName, color: 'var(--signal-info)' },
+        { tag: tags.definition(tags.variableName), color: 'var(--signal-info)' },
+        { tag: tags.propertyName, color: 'var(--signal-danger)' },
+        { tag: tags.typeName, color: 'var(--signal-warn)' },
+        { tag: tags.operator, color: 'var(--signal-info)' },
+        { tag: tags.punctuation, color: 'var(--ink-muted)' },
+        { tag: tags.function(tags.variableName), color: 'var(--aurora-2, var(--color-primary))' },
+        { tag: tags.bool, color: 'var(--signal-danger)' },
+        { tag: tags.null, color: 'var(--signal-danger)' },
+        { tag: tags.className, color: 'var(--signal-warn)' },
+        { tag: tags.labelName, color: 'var(--signal-warn)' },
+        { tag: tags.self, color: 'var(--signal-danger)' },
+        { tag: tags.atom, color: 'var(--signal-warn)' },
+        { tag: tags.invalid, color: 'var(--signal-danger)' },
       ]);
 
       return [
@@ -168,29 +170,31 @@ export function MarkdownEditor({
       EditorView.theme({
         '&': {
           fontSize: `${fontSize}px`,
-          // 极简应用的主文本字体应该是无衬线字体，而非等宽字体
-          fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          color: theme === 'light' ? '#334155' : '#e2e8f0',
-          backgroundColor: theme === 'light' ? '#ffffff' : 'transparent',
-          lineHeight: '1.7', // 提升行高，更适合阅读
+          // 极简应用的主文本字体应该是无衬线字体,而非等宽字体(正文仍保留无衬线回退栈)
+          fontFamily: 'var(--font-sans, ui-sans-serif), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          color: 'var(--ink-primary)',
+          backgroundColor: theme === 'light' ? 'var(--bg-leaf)' : 'transparent',
+          lineHeight: '1.8', // 精致行距 —— iA Writer 级别的呼吸感
         },
         '&.cm-editor': {
           height: '100%',
         },
         '.cm-scroller': {
           overflow: 'auto !important',
+          fontFamily: 'inherit',
         },
         '.cm-content': {
           minHeight,
-          padding: '24px',
+          padding: '16px 24px',
           paddingLeft: '28px',
           maxWidth: contentCentered ? '800px' : 'none',
           margin: contentCentered ? '0 auto' : '0',
+          caretColor: 'var(--aurora-1, var(--color-primary))',
         },
-        // 基线位于文本起始位置（第一个字符的左边缘）
+        // 基线位于文本起始位置(第一个字符的左边缘)
         '.cm-line': {
           padding: '0 4px',
-          borderLeft: '2px solid transparent', // 用于保持对齐，替换原本的实线
+          borderLeft: '2px solid transparent', // 用于保持对齐,替换原本的实线
           marginLeft: '-2px',
           marginBottom: '0.25em', // 段落间距感
         },
@@ -198,13 +202,37 @@ export function MarkdownEditor({
         '.cm-content .ͼc': { // 代码块内容默认使用等宽字体
           fontFamily: monoFont,
         },
+        // 光标 —— aurora 主色,加粗至 2px,易见
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: 'var(--aurora-1, var(--color-primary))',
+          borderLeftWidth: '2px',
+        },
+        '&.cm-focused .cm-cursor': {
+          borderLeftColor: 'var(--aurora-1, var(--color-primary))',
+          borderLeftWidth: '2px',
+        },
+        // 选区 —— aurora 半透明,聚焦/失焦双层级
+        '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 22%, transparent) !important',
+        },
+        '&:not(.cm-focused) .cm-selectionLayer .cm-selectionBackground, &:not(.cm-focused) .cm-content ::selection': {
+          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 14%, transparent) !important',
+        },
+        // 活动行 —— iA Writer 风:极淡 aurora 底
+        '.cm-activeLine': {
+          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 4%, transparent)',
+        },
+        // Gutter(行号槽)—— 透明底,mono 字体
         '.cm-gutters': {
-          backgroundColor: theme === 'light' ? '#f8fafc' : 'rgba(15, 15, 17, 0.8)',
-          borderRight: theme === 'light' ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'transparent',
+          borderRight: 'none',
           paddingLeft: '12px',
           paddingRight: '8px',
-          color: theme === 'light' ? '#94a3b8' : 'rgba(255, 255, 255, 0.35)',
-          display: showLineNumbers ? 'flex' : 'none', // 如果行号关闭，则隐藏整个装订线
+          color: 'var(--ink-muted)',
+          fontFamily: monoFont,
+          fontSize: '12px',
+          opacity: 0.55,
+          display: showLineNumbers ? 'flex' : 'none',
         },
         '.cm-lineNumbers': {
           minWidth: '32px',
@@ -215,30 +243,41 @@ export function MarkdownEditor({
           paddingRight: '8px',
           textAlign: 'right',
         },
-        '.cm-activeLine': {
-          backgroundColor: theme === 'light' ? '#f1f5f9' : 'rgba(255, 255, 255, 0.05)',
+        // 活动行行号 —— aurora 高亮
+        '.cm-activeLineGutter': {
+          backgroundColor: 'transparent',
+          color: 'var(--aurora-1, var(--color-primary))',
+          opacity: 1,
         },
-        '.cm-selectionBackground': {
-          backgroundColor: 'var(--ab-selection-focused) !important',
+        // 匹配括号 —— aurora 低饱和背景 + 描边
+        '.cm-matchingBracket, .cm-nonmatchingBracket': {
+          backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 15%, transparent)',
+          outline: '1px solid color-mix(in oklch, var(--aurora-1, var(--color-primary)) 40%, transparent)',
+          borderRadius: '2px',
         },
-        '.cm-selectionLayer .cm-selectionBackground': {
-          backgroundColor: 'var(--ab-selection-focused) !important',
+        // 搜索匹配 —— 信号警告色
+        '.cm-searchMatch': {
+          backgroundColor: 'color-mix(in oklch, var(--signal-warn) 25%, transparent)',
         },
-        '.cm-content ::selection': {
-          backgroundColor: 'var(--ab-selection-focused) !important',
-          color: 'inherit',
+        '.cm-searchMatch.cm-searchMatch-selected': {
+          backgroundColor: 'color-mix(in oklch, var(--signal-warn) 45%, transparent)',
         },
-        '&.cm-focused .cm-cursor': {
-          borderLeftColor: '#8b5cf6',
+        // 滚动条(webkit)—— 精致细滚动条
+        '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
+        '.cm-scroller::-webkit-scrollbar-track': { background: 'transparent' },
+        '.cm-scroller::-webkit-scrollbar-thumb': {
+          background: 'color-mix(in oklch, var(--ink-muted) 30%, transparent)',
+          borderRadius: '4px',
         },
-        // 代码块样式
-        '.ͼb': { // Markdown 代码标记颜色
-          color: theme === 'light' ? '#94a3b8' : '#94a3b8',
+        '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+          background: 'color-mix(in oklch, var(--ink-muted) 50%, transparent)',
         },
-        '.ͼc': { // 代码块内容
-          color: theme === 'light' ? '#475569' : '#e2e8f0',
-        },
-      }),
+        // 折叠 gutter / line fold
+        '.cm-foldGutter .cm-gutterElement': { color: 'var(--ink-muted)' },
+        // 代码块样式(旧 hash class 兼容)
+        '.ͼb': { color: 'var(--ink-muted)' },
+        '.ͼc': { color: 'var(--ink-primary)' },
+      }, { dark: theme === 'dark' }),
       // 添加外部传入的 Extensions
       ...additionalExtensions,
     ];},

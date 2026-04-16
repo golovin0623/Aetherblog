@@ -48,15 +48,15 @@ const categoryConfig = {
   },
   friend: {
     icon: Link,
-    bgColor: 'bg-pink-500/10',
-    borderColor: 'border-pink-500/20',
-    textColor: 'text-pink-500',
+    bgColor: 'bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--signal-info)_20%,transparent)]',
+    textColor: 'text-[var(--signal-info)]',
   },
   media: {
     icon: Image,
-    bgColor: 'bg-cyan-500/10',
-    borderColor: 'border-cyan-500/20',
-    textColor: 'text-cyan-500',
+    bgColor: 'bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)]',
+    borderColor: 'border-[color-mix(in_oklch,var(--signal-success)_20%,transparent)]',
+    textColor: 'text-[var(--signal-success)]',
   },
   ai: {
     icon: Sparkles,
@@ -125,7 +125,7 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
   };
 
   const handleViewAll = () => {
-    navigate('/activities');
+    navigate('/activities?from=dashboard');
   };
 
   if (loading) {
@@ -141,10 +141,10 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
               <div className="w-6 h-6 bg-[var(--bg-secondary)] rounded-full flex-shrink-0 animate-pulse" />
               <div className="flex-1 space-y-2">
                 <div className="h-4 bg-[var(--bg-secondary)] rounded w-3/4 animate-pulse relative overflow-hidden">
-                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
                 </div>
                 <div className="h-3 bg-[var(--bg-secondary)] rounded w-1/2 animate-pulse relative overflow-hidden">
-                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
                 </div>
               </div>
             </div>

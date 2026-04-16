@@ -36,7 +36,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
       <button
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
-        className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 aria-label="上一页"
       >
         <ChevronLeft className="w-4 h-4 text-[var(--text-muted)]" />
@@ -52,7 +52,7 @@ aria-label={`第 ${p} 页`}
             className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
               p === page
                 ? 'bg-primary text-white'
-                : 'text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+                : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
             }`}
           >
             {p}
@@ -67,7 +67,7 @@ aria-label={`第 ${p} 页`}
       <button
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
-        className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 aria-label="下一页"
       >
         <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />

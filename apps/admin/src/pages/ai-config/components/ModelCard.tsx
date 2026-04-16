@@ -87,7 +87,7 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
       {model.is_enabled && (
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-10 overflow-hidden">
           <div
-            className="absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/30 dark:border-white/10"
+            className="absolute inset-0 rounded-[inherit] border-t border-l border-r border-[var(--border-subtle)]"
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
               WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -171,8 +171,8 @@ export default function ModelCard({ model, onEdit, readOnly = false }: ModelCard
           {abilities.functionCall && <CapabilityBadge icon={Wand2} title="工具" color="text-status-info bg-status-info-light" />}
           {abilities.vision && <CapabilityBadge icon={Eye} title="视觉" color="text-status-success bg-status-success-light" />}
           {abilities.reasoning && <CapabilityBadge icon={Brain} title="推理" color="text-accent bg-accent/10" />}
-          {abilities.imageOutput && <CapabilityBadge icon={Image} title="绘画" color="text-pink-500 bg-pink-500/10" />}
-          {abilities.search && <CapabilityBadge icon={Globe} title="搜索" color="text-cyan-500 bg-cyan-500/10" />}
+          {abilities.imageOutput && <CapabilityBadge icon={Image} title="绘画" color="text-[var(--signal-info)] bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]" />}
+          {abilities.search && <CapabilityBadge icon={Globe} title="搜索" color="text-[var(--signal-info)] bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]" />}
           {abilities.video && <CapabilityBadge icon={Video} title="视频" />}
           {abilities.files && <CapabilityBadge icon={Paperclip} title="文件" />}
           {abilities.structuredOutput && <CapabilityBadge icon={Braces} title="结构化" />}

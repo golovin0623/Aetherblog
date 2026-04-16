@@ -102,7 +102,14 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                             <span>{post.publishedAt}</span>
                         </div>
                         {post.passwordRequired && (
-                            <div className="flex items-center gap-1.5 px-2 py-1 rounded border border-amber-500/30 bg-amber-500/10 text-amber-500 ml-auto">
+                            <div
+                                className="flex items-center gap-1.5 px-2 py-1 rounded ml-auto"
+                                style={{
+                                    border: '1px solid color-mix(in oklch, var(--signal-warn) 30%, transparent)',
+                                    background: 'color-mix(in oklch, var(--signal-warn) 10%, transparent)',
+                                    color: 'var(--signal-warn)',
+                                }}
+                            >
                                 <Lock className="w-3 h-3" />
                                 <span className="text-[10px] font-semibold tracking-wider">已加密</span>
                             </div>
@@ -144,7 +151,14 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                       }}
                     >
                         {post.passwordRequired ? (
-                            <div className="p-3 bg-amber-500/5 border-l-2 border-amber-500/50 rounded-r-md text-amber-600/80 dark:text-amber-400/80 text-xs flex items-start gap-2 h-full mt-2">
+                            <div
+                                className="p-3 rounded-r-md text-xs flex items-start gap-2 h-full mt-2"
+                                style={{
+                                    background: 'color-mix(in oklch, var(--signal-warn) 5%, transparent)',
+                                    borderLeft: '2px solid color-mix(in oklch, var(--signal-warn) 50%, transparent)',
+                                    color: 'color-mix(in oklch, var(--signal-warn) 80%, var(--text-secondary))',
+                                }}
+                            >
                                 <div className="mt-0.5">
                                     此文章内容已使用密码加密。阅读全文和查看摘要需要提供访问凭证。
                                 </div>
@@ -181,15 +195,31 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
                         />
                         {/* 居中悬浮卡片 */}
                         <div className="relative z-10 flex flex-col items-center justify-center p-10 bg-[var(--bg-card)]/40 backdrop-blur-xl rounded-3xl border border-[var(--border-subtle)]/60 shadow-[0_8px_32px_rgba(0,0,0,0.08)] max-w-sm text-center">
-                            <div className="w-16 h-16 mb-6 rounded-full bg-gradient-to-tr from-amber-500/20 to-orange-500/20 flex items-center justify-center border border-amber-500/30 shadow-[inset_0_0_20px_rgba(245,158,11,0.2)]">
-                                <Lock className="w-7 h-7 text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+                            <div
+                                className="w-16 h-16 mb-6 rounded-full flex items-center justify-center"
+                                style={{
+                                    background: 'linear-gradient(to top right, color-mix(in oklch, var(--signal-warn) 20%, transparent), color-mix(in oklch, var(--signal-warn) 10%, transparent))',
+                                    border: '1px solid color-mix(in oklch, var(--signal-warn) 30%, transparent)',
+                                    boxShadow: 'inset 0 0 20px color-mix(in oklch, var(--signal-warn) 20%, transparent)',
+                                }}
+                            >
+                                <Lock
+                                    className="w-7 h-7"
+                                    style={{
+                                        color: 'var(--signal-warn)',
+                                        filter: 'drop-shadow(0 0 8px color-mix(in oklch, var(--signal-warn) 80%, transparent))',
+                                    }}
+                                />
                             </div>
                             <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2 tracking-wide">访问受限</h3>
                             <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">
                                 这是一篇加密文章<br/>预览和正文内容已被隐藏
                             </p>
                             <div className="px-5 py-2 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-default)] text-xs text-[var(--text-muted)] flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                <span
+                                    className="w-1.5 h-1.5 rounded-full animate-pulse"
+                                    style={{ background: 'var(--signal-warn)' }}
+                                ></span>
                                 安全锁定中
                             </div>
                         </div>

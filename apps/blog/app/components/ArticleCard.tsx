@@ -151,8 +151,13 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           {/* 摘要 - 固定3行高度 */}
           <div className="h-[66px] mb-4 overflow-hidden relative">
             {passwordRequired ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-secondary)]/50 backdrop-blur-[2px] border border-amber-500/20 border-dashed rounded-lg">
-                <div className="flex items-center gap-2 text-amber-500/80">
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-[var(--bg-secondary)]/50 backdrop-blur-[2px] border border-dashed rounded-lg"
+                style={{
+                  borderColor: 'color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+                }}
+              >
+                <div className="flex items-center gap-2" style={{ color: 'var(--signal-warn)' }}>
                   <Lock className="w-4 h-4" />
                   <span className="text-xs font-medium tracking-wide">内容已加密</span>
                 </div>

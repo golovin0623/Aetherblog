@@ -11,7 +11,7 @@ interface LineChartProps {
 export function LineChart({
   data,
   height = 200,
-  color = '#18181b',
+  color = 'var(--color-primary)',
   showGrid = true,
   showLabels = true,
 }: LineChartProps) {
@@ -55,7 +55,7 @@ export function LineChart({
               y1={line.y}
               x2="100"
               y2={line.y}
-              stroke="rgba(255,255,255,0.1)"
+              stroke="var(--border-subtle)"
               strokeWidth="0.5"
             />
           ))}

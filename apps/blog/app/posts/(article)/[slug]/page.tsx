@@ -10,6 +10,7 @@ import TableOfContents from '@/app/components/TableOfContents';
 import PostNavigation from '@/app/components/PostNavigation';
 import ArticleFloatingActions from '@/app/components/ArticleFloatingActions';
 import MobileBottomPullNav from '@/app/components/MobileBottomPullNav';
+import ReadingProgress from '@/app/components/ReadingProgress';
 import { SERVER_API_URL } from '@/app/lib/api';
 import { buildAdminPostEditUrl, getAdminLinkConfig } from '@/app/lib/adminUrl';
 import { logger } from '@/app/lib/logger';
@@ -141,13 +142,42 @@ export default async function PostDetailPage({ params }: PageProps) {
 
   const adminEditUrl = buildAdminPostEditUrl(post.id);
   const adminLinkConfig = getAdminLinkConfig();
+  const readingMinutes = Math.max(1, Math.ceil((post.content?.length || 0) / 500));
 
   return (
     <div className="min-h-screen bg-background">
-      {/* 响应式布局容器：PC端显示侧边目录，移动端隐藏 */}
-      <div className="max-w-7xl mx-auto flex justify-center gap-12 px-4 pt-28 pb-12">
+      {/* 顶部阅读进度条 —— 2px 渐变,随滚动拉伸 */}
+      <ReadingProgress />
+
+      {/* 响应式布局容器:PC端显示侧边目录,移动端隐藏 */}
+      <div className="max-w-7xl mx-auto flex justify-center gap-12 px-4 pt-28 pb-12 relative">
         {/* 主要文章内容 */}
-        <article className="w-full max-w-4xl min-w-0">
+        <article className="w-full max-w-4xl min-w-0 relative">
+          {/* 左侧 marginalia 边注 —— xl+ 断点才显示,绝对定位到文章左侧槽位 */}
+          <aside
+            className="hidden xl:block absolute -left-52 top-0 w-40 pt-16 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)] space-y-5"
+            aria-hidden="true"
+          >
+            <div>
+              <div className="mb-1 opacity-60">Published</div>
+              <div className="tabular-nums text-[var(--text-secondary)] normal-case tracking-normal">{post.publishedAt}</div>
+            </div>
+            <div>
+              <div className="mb-1 opacity-60">Reading</div>
+              <div className="tabular-nums text-[var(--text-secondary)] normal-case tracking-normal">{readingMinutes} min</div>
+            </div>
+            <div>
+              <div className="mb-1 opacity-60">Views</div>
+              <div className="tabular-nums text-[var(--text-secondary)] normal-case tracking-normal">{post.viewCount}</div>
+            </div>
+            {post.categoryName && (
+              <div>
+                <div className="mb-1 opacity-60">Section</div>
+                <div className="text-[var(--text-secondary)] normal-case tracking-normal">{post.categoryName}</div>
+              </div>
+            )}
+          </aside>
+
           <FadeIn>
             <BackButton fallbackHref="/posts" className="mb-8" />
           </FadeIn>

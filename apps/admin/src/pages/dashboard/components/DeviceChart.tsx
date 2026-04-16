@@ -6,10 +6,10 @@ interface DeviceChartProps {
 }
 
 const COLORS: Record<string, string> = {
-  '桌面端': '#8b5cf6', // purple-500
-  '移动端': '#06b6d4', // cyan-500
-  '平板': '#f59e0b',   // amber-500
-  '其他': '#71717a',   // zinc-500
+  '桌面端': 'var(--color-primary)',
+  '移动端': 'var(--signal-info)',
+  '平板':   'var(--signal-warn)',
+  '其他':   'var(--text-muted)',
 };
 
 export function DeviceChart({
@@ -20,10 +20,10 @@ export function DeviceChart({
   // 处理数据，添加颜色映射
   const chartData = (data && data.length > 0) ? data.map(item => ({
     ...item,
-    color: COLORS[item.name] || '#71717a'
+    color: COLORS[item.name] || 'var(--text-muted)'
   })) : [
     // 空数据或默认状态
-    { name: '暂无数据', value: 1, color: '#27272a' }
+    { name: '暂无数据', value: 1, color: 'var(--bg-secondary)' }
   ];
 
   // 加载中时显示骨架屏

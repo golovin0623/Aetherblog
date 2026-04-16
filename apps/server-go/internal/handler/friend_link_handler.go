@@ -1,22 +1,29 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
 // FriendLinkHandler 负责管理博客友情链接（Blogroll）资源。
-type FriendLinkHandler struct{ svc *service.FriendLinkService }
+type FriendLinkHandler struct {
+	svc         *service.FriendLinkService
+	activitySvc *service.ActivityService
+}
 
 // NewFriendLinkHandler 创建一个由指定 FriendLinkService 驱动的 FriendLinkHandler 实例。
-func NewFriendLinkHandler(svc *service.FriendLinkService) *FriendLinkHandler {
-	return &FriendLinkHandler{svc: svc}
+func NewFriendLinkHandler(svc *service.FriendLinkService, activitySvc *service.ActivityService) *FriendLinkHandler {
+	return &FriendLinkHandler{svc: svc, activitySvc: activitySvc}
 }
 
 // MountAdmin 在指定路由组上注册管理端 CRUD 及管理路由。
@@ -96,6 +103,10 @@ func (h *FriendLinkHandler) Create(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+
+	// 记录新增友链活动
+	h.recordFriendActivity(c, "friend.create", "新增友链: "+req.Name, fmt.Sprintf("友链 %s 已创建", req.Name))
+
 	return response.OK(c, fl)
 }
 
@@ -127,6 +138,10 @@ func (h *FriendLinkHandler) Delete(c echo.Context) error {
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
+
+	// 记录删除友链活动
+	h.recordFriendActivity(c, "friend.delete", fmt.Sprintf("删除友链 #%d", id), fmt.Sprintf("友链 #%d 已删除", id))
+
 	return response.OKEmpty(c)
 }
 
@@ -168,4 +183,27 @@ func (h *FriendLinkHandler) Reorder(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.OKEmpty(c)
+}
+
+// recordFriendActivity 记录友链相关活动事件，失败时仅记录日志不阻塞主流程。
+func (h *FriendLinkHandler) recordFriendActivity(c echo.Context, eventType, title, description string) {
+	if h.activitySvc == nil {
+		return
+	}
+	evtCat := "friend"
+	evtStatus := "SUCCESS"
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), &model.ActivityEvent{
+		EventType:     eventType,
+		EventCategory: &evtCat,
+		Title:         title,
+		Description:   &description,
+		UserID:        userID,
+		Status:        &evtStatus,
+	}); err != nil {
+		log.Warn().Err(err).Msg("record activity failed")
+	}
 }

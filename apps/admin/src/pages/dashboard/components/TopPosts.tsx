@@ -15,19 +15,19 @@ interface TopPostsProps {
 export function TopPosts({ posts, loading }: TopPostsProps) {
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-white/5 border border-white/10 h-[420px]">
+      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px]">
         <div className="flex justify-between items-center mb-6">
-           <div className="w-24 h-6 bg-white/10 rounded animate-pulse" />
-           <div className="w-16 h-4 bg-white/10 rounded animate-pulse" />
+           <div className="w-24 h-6 bg-[var(--bg-secondary)] rounded animate-pulse" />
+           <div className="w-16 h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
         </div>
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-white/5 animate-pulse relative overflow-hidden">
+            <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-[var(--bg-secondary)] animate-pulse relative overflow-hidden">
               {/* Shimmer effect */}
-              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex-shrink-0" />
-              <div className="flex-1 h-4 bg-white/10 rounded" />
-              <div className="w-12 h-4 bg-white/10 rounded" />
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
+              <div className="w-8 h-8 bg-[var(--bg-secondary)] rounded-lg flex-shrink-0" />
+              <div className="flex-1 h-4 bg-[var(--bg-secondary)] rounded" />
+              <div className="w-12 h-4 bg-[var(--bg-secondary)] rounded" />
             </div>
           ))}
         </div>

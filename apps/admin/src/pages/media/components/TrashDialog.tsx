@@ -154,7 +154,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const handlePermanentDelete = (id: number) => {
     toast.custom((t) => (
-      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <AlertTriangle className="w-5 h-5 text-status-danger" />
@@ -189,7 +189,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
 
   const handleEmptyTrash = () => {
     toast.custom((t) => (
-      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <AlertTriangle className="w-5 h-5 text-status-danger" />
@@ -226,7 +226,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
     const count = selectedIds.size;
     const ids = Array.from(selectedIds);
     toast.custom((t) => (
-      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <AlertTriangle className="w-5 h-5 text-status-danger" />
@@ -280,7 +280,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-white rounded-2xl border border-[var(--border-default)] dark:border-white/10 shadow-2xl overflow-hidden"
+            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-[var(--bg-card)] rounded-2xl border border-[var(--border-default)] dark:border-white/10 shadow-2xl overflow-hidden"
           >
             {/* 头部 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] dark:border-white/10 shrink-0">

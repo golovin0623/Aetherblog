@@ -1,3 +1,13 @@
+/* 设计系统基础层 —— 必须在 @tailwind 之前 @import
+   · tokens.css   —— 设计 token + OKLCH 主色派生 + 低饱和 signal 色
+   · surfaces.css —— surface-leaf/raised/overlay/luminous + data-interactive 极光左带
+   · typography.css —— .marginalia / .aurora-text / .ink-cursor / .ai-stream 等语义类
+   注:首页不使用 Fraunces/Instrument Serif 等字体升级(保持原状),
+   但这些 token/surface/typography 工具类对文章详情页和 admin 控制面板都有用。 */
+@import '../../../packages/ui/src/styles/tokens.css';
+@import '../../../packages/ui/src/styles/surfaces.css';
+@import '../../../packages/ui/src/styles/typography.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -482,6 +492,21 @@ body {
   }
   100% {
     transform: translateX(100%);
+  }
+}
+
+/* Hero 大标题的克制呼吸 —— 7.2s 一循环,
+   仅微调 opacity + letter-spacing + brightness,不撼动布局 */
+@keyframes breath-soft {
+  0%, 100% {
+    opacity: 0.92;
+    letter-spacing: -0.020em;
+    filter: brightness(0.98);
+  }
+  50% {
+    opacity: 1;
+    letter-spacing: -0.015em;
+    filter: brightness(1.04);
   }
 }
 
@@ -1582,4 +1607,132 @@ html[data-nav-type="pop"] .animate-in {
   animation: none !important;
   opacity: 1 !important;
   transform: none !important;
+}
+
+/* ============================================================
+   Markdown Body · 文章详情页排印升级
+   规范:.claude/design-system/03-typography.md
+   注:字体保持原项目栈(Inter + Playfair + Noto Serif),
+   这里只做"排印细节"升级,不替换字体。
+   ============================================================ */
+
+/* 首字下沉 —— 文章正文第一段首字母做 aurora 渐变大字 */
+.markdown-body > p:first-of-type::first-letter {
+  font-size: 3.4em;
+  line-height: 0.85;
+  font-weight: 700;
+  float: left;
+  margin: 0.08em 0.14em 0 -0.02em;
+  background: linear-gradient(135deg, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* h1 底部 aurora 渐变下划线 */
+.markdown-body h1 {
+  position: relative;
+  padding-bottom: 0.4em;
+}
+.markdown-body h1::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 4.5rem;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--aurora-1, var(--color-primary, #818CF8)),
+    var(--aurora-4, var(--color-primary, #818CF8)));
+  border-radius: 2px;
+}
+
+/* h2 前面加 § 章节标记(出版物风格) */
+.markdown-body h2::before {
+  content: '§ ';
+  color: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 70%, transparent);
+  font-weight: 400;
+  margin-right: 0.15em;
+  opacity: 0.7;
+}
+
+/* 行内代码 —— aurora 色边框 + 主色文字,比 Tailwind 默认灰色 chip 更精致 */
+.markdown-body code:not(pre code) {
+  background: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 7%, transparent);
+  border: 1px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 20%, transparent);
+  color: var(--aurora-1, var(--color-primary, #818CF8));
+  padding: 0.1em 0.38em;
+  border-radius: 0.3em;
+  font-size: 0.9em;
+  font-feature-settings: "liga" 0;
+}
+
+/* 代码块 —— 左侧 2px 极光条(签名细节) */
+.markdown-body .code-block-wrapper,
+.markdown-body pre {
+  position: relative;
+}
+.markdown-body .code-block-wrapper::before,
+.markdown-body pre::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 1rem;
+  bottom: 1rem;
+  width: 2px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    var(--aurora-1, var(--color-primary, #818CF8)) 20%,
+    var(--aurora-2, var(--color-primary, #818CF8)) 80%,
+    transparent 100%);
+  border-radius: 2px;
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* blockquote —— 斜体引语 + 装饰引号 */
+.markdown-body blockquote {
+  position: relative;
+  font-style: italic;
+  padding-left: 1.5em;
+  color: var(--text-secondary);
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 40%, transparent);
+}
+.markdown-body blockquote::before {
+  content: '"';
+  position: absolute;
+  left: -0.15em;
+  top: -0.3em;
+  font-size: 3em;
+  line-height: 1;
+  color: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 35%, transparent);
+  font-family: Georgia, 'Times New Roman', serif;
+  pointer-events: none;
+}
+
+/* 正文链接 —— aurora 色 + hover 下划线,不抢戏 */
+.markdown-body a:not(.no-aurora-underline) {
+  color: var(--aurora-1, var(--color-primary, #818CF8));
+  text-decoration: none;
+  background-image: linear-gradient(90deg, currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 220ms ease-out;
+}
+.markdown-body a:not(.no-aurora-underline):hover {
+  background-size: 100% 1px;
+}
+
+/* 水平线 aurora 渐变 */
+.markdown-body hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 30%, transparent) 50%,
+    transparent 100%);
+  margin: 2.5rem 0;
 }

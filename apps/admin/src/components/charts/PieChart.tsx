@@ -7,14 +7,14 @@ interface PieChartProps {
 }
 
 const DEFAULT_COLORS = [
-  '#18181b',
-  '#ec4899',
-  '#06b6d4',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#6366f1',
-  '#84cc16',
+  'oklch(from var(--color-primary) l c h)',
+  'oklch(from var(--color-primary) calc(l + 0.05) c calc(h + 30))',
+  'oklch(from var(--color-primary) calc(l + 0.08) c calc(h + 60))',
+  'oklch(from var(--color-primary) calc(l - 0.05) c calc(h - 30))',
+  'var(--signal-info)',
+  'var(--signal-success)',
+  'var(--signal-warn)',
+  'var(--signal-danger)',
 ];
 
 export function PieChart({ data, size = 160, showLegend = true }: PieChartProps) {
@@ -65,7 +65,7 @@ export function PieChart({ data, size = 160, showLegend = true }: PieChartProps)
             />
           ))}
           {/* Center hole */}
-          <circle cx="50" cy="50" r="20" fill="rgb(17, 24, 39)" />
+          <circle cx="50" cy="50" r="20" fill="var(--bg-secondary)" />
         </svg>
       </div>
 

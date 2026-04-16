@@ -147,11 +147,15 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	siteSettingRepo := repository.NewSiteSettingRepo(s.DB)
 	postRepo := repository.NewPostRepo(s.DB)
 
+	// --- 活动记录服务（提前初始化，供各 handler 注入） ---
+	activityRepo := repository.NewActivityRepo(s.DB)
+	activitySvc := service.NewActivityService(activityRepo, userRepo)
+
 	// --- 认证模块（敏感端点附加速率限制） ---
 	authSvc := service.NewAuthService(userRepo, s.Redis)
 	sessionSvc := service.NewSessionService(s.Redis, s.Config.JWT.Expiration, s.Config.JWT.RefreshExpiration)
 	authGroup := api.Group("/v1/auth")
-	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config)
+	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config, activitySvc)
 	// 按路由挂载速率限制
 	authGroup.POST("/login", authHandler.Login, middleware.RateLimitByIP(s.Redis, "rate:login", 10, time.Minute))
 	authGroup.POST("/register", authHandler.RegisterUser, middleware.JWTAuth(s.Config.JWT.Secret), middleware.RequireRole("admin"), middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
@@ -173,8 +177,8 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountAdmin(admin.Group("/categories"))
 	handler.NewTagHandler(service.NewTagService(tagRepo)).MountAdmin(admin.Group("/tags"))
-	handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo)).MountAdmin(admin.Group("/friend-links"))
-	handler.NewSiteSettingHandler(settingSvc).Mount(admin.Group("/settings"))
+	handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo), activitySvc).MountAdmin(admin.Group("/friend-links"))
+	handler.NewSiteSettingHandler(settingSvc, activitySvc).Mount(admin.Group("/settings"))
 
 	// --- 系统监控模块 ---
 	systemGroup := admin.Group("/system")
@@ -188,18 +192,18 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		sysMonitorSvc, containerMonitorSvc, logViewerSvc, metricsHistorySvc,
 		s.DB, s.Redis, s.Config,
 	).MountAdmin(systemGroup)
-	handler.NewPostHandler(postSvc).MountAdmin(admin.Group("/posts"))
+	handler.NewPostHandler(postSvc, activitySvc).MountAdmin(admin.Group("/posts"))
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)
-	handler.NewCommentHandler(commentSvc).MountAdmin(admin.Group("/comments"))
+	handler.NewCommentHandler(commentSvc, activitySvc).MountAdmin(admin.Group("/comments"))
 
 	// --- 公开路由 ---
 	public := api.Group("/v1/public")
 	handler.NewCategoryHandler(service.NewCategoryService(catRepo)).MountPublic(public.Group("/categories"))
-	handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo)).MountPublic(public.Group("/friend-links"))
+	handler.NewFriendLinkHandler(service.NewFriendLinkService(friendLinkRepo), nil).MountPublic(public.Group("/friend-links"))
 	handler.NewSiteHandler(settingSvc, userRepo, catRepo, tagRepo, postRepo).Mount(public.Group("/site"))
 	postPublic := public.Group("/posts")
-	postHandler := handler.NewPostHandler(postSvc)
+	postHandler := handler.NewPostHandler(postSvc, nil)
 	postHandler.MountPublic(postPublic)
 	// 文章密码验证速率限制：每 IP 每分钟最多 10 次
 	postPublic.POST("/:slug/verify-password", postHandler.VerifyPassword, middleware.RateLimitByIP(s.Redis, "rate:postpwd", 10, time.Minute))
@@ -207,7 +211,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	handler.NewArchiveHandler(postSvc).Mount(public.Group("/archives"))
 
 	commentPublic := public.Group("/comments")
-	commentHandler := handler.NewCommentHandler(commentSvc)
+	commentHandler := handler.NewCommentHandler(commentSvc, nil)
 	commentHandler.MountPublic(commentPublic)
 	// 公开评论提交速率限制：每 IP 每分钟最多 5 次
 	commentPublic.POST("/post/:postId", commentHandler.Submit, middleware.RateLimitByIP(s.Redis, "rate:comment", 5, time.Minute))
@@ -232,7 +236,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	mediaSvc := service.NewMediaService(mediaRepo, localStore, s.Config.Upload.Path)
 	folderSvc := service.NewFolderService(folderRepo)
 	storageProviderSvc := service.NewStorageProviderService(storageProviderRepo)
-	handler.NewMediaHandler(mediaSvc).Mount(admin.Group("/media"))
+	handler.NewMediaHandler(mediaSvc, activitySvc).Mount(admin.Group("/media"))
 	handler.NewFolderHandler(folderSvc).Mount(admin.Group("/media/folders"))
 	handler.NewStorageProviderHandler(storageProviderSvc).Mount(admin.Group("/storage/providers"))
 
@@ -248,9 +252,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 
 	// --- 数据统计与分析 ---
 	analyticsRepo := repository.NewAnalyticsRepo(s.DB)
-	activityRepo := repository.NewActivityRepo(s.DB)
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
-	activitySvc := service.NewActivityService(activityRepo, userRepo)
 	handler.NewStatsHandler(analyticsSvc).Mount(admin.Group("/stats"))
 	handler.NewActivityHandler(activitySvc).Mount(admin.Group("/activities"))
 	handler.NewVisitorHandler(analyticsSvc).Mount(public.Group("/visit"))

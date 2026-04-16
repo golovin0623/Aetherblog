@@ -266,7 +266,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       className={cn(
         "relative flex flex-col overflow-hidden",
         isMobile ? "h-[70vh] rounded-t-[2.5rem]" : "rounded-2xl max-h-[520px]",
-        "bg-[var(--bg-primary)]",
+        // 用设计系统变量,暗色主题下自动切换为深色面板
+        "bg-[var(--bg-card)]",
         !isMobile && "border border-[var(--border-default)]/60 shadow-xl shadow-[var(--shadow-sm)] dark:shadow-black/30"
       )}
     >
@@ -275,9 +276,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
           <div 
             className={cn(
-              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
-              "dark:border-white/10"
-            )} 
+              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-[var(--border-subtle)]"
+            )}
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
               WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -308,7 +308,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             autoFocus={!isMobile}
             className={cn(
               "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
-              "bg-white dark:bg-[var(--bg-secondary)]",
+              "bg-[var(--bg-secondary)]",
               "border border-[var(--border-default)]",
               "text-[var(--text-primary)]",
               "placeholder:text-[var(--text-muted)]",
@@ -332,7 +332,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           filteredGroups.map((group) => (
             <div key={group.provider.code} className="mb-2">
               {/* 提供商头部 */}
-              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] sticky top-0 bg-[var(--bg-primary)]/90 backdrop-blur-sm z-0">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] sticky top-0 bg-[var(--bg-card)]/90 backdrop-blur-sm z-0">
                 <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
                 <span className="uppercase tracking-wider">
                   {group.provider.display_name || group.provider.name}
@@ -540,7 +540,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)]/60 bg-[var(--bg-primary)] overflow-hidden",
+                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)]/60 bg-[var(--bg-card)] overflow-hidden",
                       menuClassName
                     )}
                   >

@@ -18,13 +18,13 @@ const REHYPE_PLUGINS = [rehypeKatex];
 const GENERIC_IMAGE_ALT_PATTERN = /^(image|img|screenshot|snipaste|picture|photo)[-_ ]?\d*\\.(png|jpe?g|gif|webp|svg)$/i;
 const FILE_NAME_ALT_PATTERN = /^[^\\/\n]+\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 
-// 简化版 Alert 类型配置
-const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  info:    { label: '信息', color: 'text-blue-500',   bg: 'bg-blue-500/10',   border: 'border-blue-500/40' },
-  note:    { label: '注意', color: 'text-slate-500',  bg: 'bg-slate-500/10',  border: 'border-slate-500/40' },
-  warning: { label: '警告', color: 'text-amber-500',  bg: 'bg-amber-500/10',  border: 'border-amber-500/40' },
-  danger:  { label: '危险', color: 'text-red-500',    bg: 'bg-red-500/10',    border: 'border-red-500/40' },
-  tip:     { label: '提示', color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/40' },
+// Alert 类型配置 —— 用 --signal-* 语义变量,暗/亮主题 + 用户主色族都能适配
+const ALERT_CONFIG: Record<string, { label: string; varName: string }> = {
+  info:    { label: '信息', varName: '--signal-info' },
+  note:    { label: '注意', varName: '--ink-muted' },
+  warning: { label: '警告', varName: '--signal-warn' },
+  danger:  { label: '危险', varName: '--signal-danger' },
+  tip:     { label: '提示', varName: '--signal-success' },
 };
 
 interface MiniPreviewProps {
@@ -215,9 +215,18 @@ const components: Components = {
     const title = props['data-title'];
     const cfg = ALERT_CONFIG[type] || ALERT_CONFIG.info;
     const displayTitle = title || cfg.label;
+    const tokenVar = `var(${cfg.varName})`;
     return (
-      <div className={`my-2 px-3 py-2 rounded-md border-l-[3px] ${cfg.bg} ${cfg.border}`}>
-        <div className={`text-xs font-bold mb-0.5 ${cfg.color}`}>{displayTitle}</div>
+      <div
+        className="my-2 px-3 py-2 rounded-md border-l-[3px]"
+        style={{
+          background: `color-mix(in oklch, ${tokenVar} 10%, transparent)`,
+          borderLeftColor: `color-mix(in oklch, ${tokenVar} 55%, transparent)`,
+        }}
+      >
+        <div className="text-xs font-bold mb-0.5" style={{ color: tokenVar }}>
+          {displayTitle}
+        </div>
         <div className="text-xs opacity-80">{props.children}</div>
       </div>
     );

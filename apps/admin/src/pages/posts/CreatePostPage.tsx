@@ -2774,11 +2774,17 @@ export function CreatePostPage() {
         </AnimatePresence>
       </div>
 
-      {/* 编辑器页脚 */}
-      <div className="hidden md:flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] text-[var(--text-muted)]">
+      {/* 编辑器页脚 —— 极客级 mono uppercase 状态栏 */}
+      <div className="hidden md:flex items-center justify-between px-4 py-1.5 border-t border-[var(--border-subtle)] bg-[var(--bg-card)] font-mono text-[11px] tracking-wider text-[var(--text-muted)] tnum">
         <div className="flex items-center gap-4">
-          <span>字数: <span className="text-[var(--text-primary)] font-medium">{stats.words.toLocaleString()}</span></span>
-          <span>行数: <span className="text-[var(--text-primary)] font-medium">{stats.lines.toLocaleString()}</span></span>
+          <span className="uppercase tracking-[0.14em]">
+            <span className="opacity-60">WORDS</span>
+            <span className="ml-1.5 text-[var(--text-primary)] font-semibold tracking-normal">{stats.words.toLocaleString()}</span>
+          </span>
+          <span className="uppercase tracking-[0.14em]">
+            <span className="opacity-60">LINES</span>
+            <span className="ml-1.5 text-[var(--text-primary)] font-semibold tracking-normal">{stats.lines.toLocaleString()}</span>
+          </span>
           <div className="flex min-w-0 items-center gap-2 pl-3 border-l border-[var(--border-subtle)]" aria-live="polite">
             <span
               className={cn(
@@ -2787,7 +2793,7 @@ export function CreatePostPage() {
                 (saveStatus.type === 'saving' || isSaving || isPublishing) && 'animate-pulse'
               )}
             />
-            <span className={cn('inline-flex items-center gap-1 text-[11px] font-medium', saveStatusDisplay.toneClass)}>
+            <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em]', saveStatusDisplay.toneClass)}>
               {saveStatusDisplay.icon}
               {saveStatusDisplay.label}
             </span>

@@ -1,0 +1,232 @@
+/* =============================================================
+ * AetherBlog · Typography Utilities
+ * 规范:.claude/design-system/03-typography.md
+ *
+ * 本文件提供:
+ *   · 语义字号类(text-micro/caption/body/reading/lede/h1..h4/display)
+ *   · 阅读列容器(.reading-column)
+ *   · 边注(.marginalia)
+ *   · 首字下沉(.drop-cap)
+ *   · 章节标记(.section-mark)
+ *   · AI 流式(.ai-stream / .delta)
+ * ============================================================= */
+
+/* -----------------------------------------------------------
+ * 语义字号类 —— 始终用这些,不要写 text-5xl
+ * ----------------------------------------------------------- */
+.text-micro   { font-size: var(--fs-micro);   line-height: var(--lh-normal); }
+.text-caption { font-size: var(--fs-caption); line-height: var(--lh-normal); }
+.text-body    { font-size: var(--fs-body);    line-height: var(--lh-normal); }
+.text-reading { font-size: var(--fs-reading); line-height: var(--lh-relaxed); }
+.text-lede    { font-size: var(--fs-lede);    line-height: var(--lh-relaxed); }
+.text-h4      { font-size: var(--fs-h4);      line-height: var(--lh-snug); }
+.text-h3      { font-size: var(--fs-h3);      line-height: var(--lh-snug); }
+.text-h2      { font-size: var(--fs-h2);      line-height: var(--lh-snug); letter-spacing: -0.01em; }
+.text-h1      { font-size: var(--fs-h1);      line-height: var(--lh-tight); letter-spacing: -0.02em; }
+.text-display { font-size: var(--fs-display); line-height: var(--lh-tight); letter-spacing: -0.03em; }
+
+/* 字体角色 */
+.font-display   { font-family: var(--font-display); }
+.font-editorial { font-family: var(--font-editorial); }
+.font-sans      { font-family: var(--font-sans); }
+.font-mono      { font-family: var(--font-mono); }
+
+/* -----------------------------------------------------------
+ * 中英文融合策略 —— 保留旧版中文粗黑体质感 + 英文衬线高级感
+ * ----------------------------------------------------------- */
+
+/* Display(大标题)含中文时需要更足的字重显"白色利落感"
+   注:font-variation-settings 仅对 Fraunces 拉丁字形生效,
+   中文字符会自动回退到下一个字体(PingFang / HarmonyOS),
+   因此保留英文的 WONK 效果,仅调整字重和字距。 */
+:where(.font-display):lang(zh-Hans),
+:where(.font-display):lang(zh-CN),
+:where(.font-display):lang(zh) {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+/* Editorial(引语/lede)中文不用假斜体 —— 真斜体看起来像故障。
+   改为:英文保留 Instrument Serif 斜体,中文走文楷/思源宋体 + 正体。 */
+:where(.font-editorial):lang(zh-Hans),
+:where(.font-editorial):lang(zh-CN),
+:where(.font-editorial):lang(zh) {
+  font-style: normal;
+  font-synthesis: none;   /* 防止浏览器对中文做假斜体 */
+  letter-spacing: 0.02em;
+}
+
+/* 首字下沉遇中文时也用中文宋体,而不是 Fraunces 拉丁字形 */
+.drop-cap:lang(zh-Hans)::first-letter,
+.drop-cap:lang(zh-CN)::first-letter,
+.drop-cap:lang(zh)::first-letter {
+  font-family: var(--font-editorial);  /* LXGW WenKai / Source Han Serif */
+  font-style: normal;
+}
+
+/* -----------------------------------------------------------
+ * 阅读列 —— 文章详情页正文容器
+ * ----------------------------------------------------------- */
+.reading-column {
+  max-width: 68ch;
+  margin-inline: auto;
+}
+
+/* -----------------------------------------------------------
+ * Marginalia —— 桌面端文章左侧边注区域
+ * ----------------------------------------------------------- */
+.marginalia {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--ink-muted);
+  font-feature-settings: "tnum" 1;
+}
+.marginalia .marginalia-item {
+  padding: 0.3em 0 0.3em 0.75em;
+  border-left: 1px solid transparent;
+  transition: border-color var(--dur-quick) var(--ease-out),
+              color var(--dur-quick) var(--ease-out);
+}
+.marginalia .marginalia-item[data-active="true"] {
+  border-left-color: var(--aurora-1);
+  color: var(--ink-primary);
+}
+.marginalia .marginalia-item:hover {
+  color: var(--ink-secondary);
+}
+.marginalia-label {
+  display: block;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  opacity: 0.6;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+/* -----------------------------------------------------------
+ * Drop Cap —— 首字下沉(用于文章第一段)
+ * ----------------------------------------------------------- */
+.drop-cap::first-letter {
+  font-family: var(--font-display);
+  font-size: 4.2em;
+  line-height: 0.85;
+  font-weight: 600;
+  font-style: italic;
+  float: left;
+  margin: 0.08em 0.12em 0 -0.04em;
+  color: var(--ink-primary);
+  background: linear-gradient(135deg, var(--aurora-1), var(--aurora-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* -----------------------------------------------------------
+ * Section Mark —— § 章节标记(供 h2 用)
+ * ----------------------------------------------------------- */
+.section-mark::before {
+  content: "§ ";
+  color: var(--aurora-1);
+  font-weight: 400;
+  margin-right: 0.15em;
+  opacity: 0.55;
+}
+
+/* -----------------------------------------------------------
+ * AI Stream —— ink-bleed 流式文字
+ * ----------------------------------------------------------- */
+.ai-stream {
+  font-family: var(--font-editorial);
+  font-size: var(--fs-reading);
+  line-height: var(--lh-relaxed);
+  color: var(--ink-primary);
+}
+.ai-stream .delta {
+  display: inline;
+  animation: ink-bleed 220ms var(--ease-out) both;
+  will-change: opacity, transform, filter;
+}
+.ai-stream .think-block {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--ink-muted);
+  opacity: 0.7;
+  padding: 0.5em 0.9em;
+  border-left: 2px solid var(--ink-subtle);
+  margin: 0.6em 0;
+  background: color-mix(in oklch, var(--ink-primary) 2%, transparent);
+  border-radius: 0 var(--radius-sm, 0.5rem) var(--radius-sm, 0.5rem) 0;
+}
+
+/* -----------------------------------------------------------
+ * Aurora Gradient Text —— 极光渐变文字
+ * 用法:<span class="aurora-text">...</span>
+ * ----------------------------------------------------------- */
+.aurora-text {
+  background: linear-gradient(135deg,
+    var(--aurora-1) 0%,
+    var(--aurora-2) 50%,
+    var(--aurora-4) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* -----------------------------------------------------------
+ * Eyebrow / Kicker —— 大标题上方的小字指示
+ * ----------------------------------------------------------- */
+.eyebrow {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--aurora-1);
+  opacity: 0.75;
+}
+
+/* -----------------------------------------------------------
+ * Reading Progress —— 顶部极光阅读进度条
+ * 通过 CSS 变量 --reading-progress (0..1) 驱动
+ * ----------------------------------------------------------- */
+.reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--aurora-1) 0%,
+    var(--aurora-2) 50%,
+    var(--aurora-4) 100%);
+  transform: scaleX(var(--reading-progress, 0));
+  transform-origin: left center;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 0 8px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  transition: transform 100ms linear;
+}
+
+/* -----------------------------------------------------------
+ * Chip (命令面板的 [NAV] [ASK] [CMD] 标签)
+ * ----------------------------------------------------------- */
+.cmd-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25em 0.55em;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm, 0.5rem);
+  background: color-mix(in oklch, var(--aurora-1) 15%, transparent);
+  color: var(--aurora-1);
+  border: 1px solid color-mix(in oklch, var(--aurora-1) 30%, transparent);
+  font-weight: 500;
+}
