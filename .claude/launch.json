@@ -2,16 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Blog (Next.js :3000)",
+      "name": "Blog (preview)",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:blog"],
-      "port": 3000
+      "runtimeArgs": ["--filter", "@aetherblog/blog", "dev:preview"],
+      "port": 3099,
+      "autoPort": true
     },
     {
-      "name": "Admin (Vite :5173)",
+      "name": "Admin (preview)",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:admin"],
-      "port": 5173
+      "runtimeArgs": ["--filter", "@aetherblog/admin", "dev"],
+      "port": 5199,
+      "autoPort": true
     },
     {
       "name": "Backend (Go :8080)",

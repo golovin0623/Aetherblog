@@ -22,54 +22,63 @@ import { RangeSetBuilder } from '@codemirror/state';
 
 // ========== Alert Block 配置 ==========
 
-const ALERT_CONFIG: Record<string, { label: string; color: string; bgLight: string; bgDark: string; borderLight: string; borderDark: string; svg: string }> = {
+// 色值全部走 CSS 变量 —— 跟随主色 + 主题动态解析(苹果级低饱和 signal 色)
+const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; svg: string }> = {
   info: {
-    label: '信息', color: '#3b82f6',
-    bgLight: 'rgba(59, 130, 246, 0.06)', bgDark: 'rgba(59, 130, 246, 0.08)',
-    borderLight: '#3b82f6', borderDark: '#60a5fa',
+    label: '信息',
+    color: 'var(--signal-info)',
+    bg: 'color-mix(in oklch, var(--signal-info) 8%, transparent)',
+    border: 'var(--signal-info)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   },
   note: {
-    label: '注意', color: '#64748b',
-    bgLight: 'rgba(100, 116, 139, 0.06)', bgDark: 'rgba(100, 116, 139, 0.08)',
-    borderLight: '#94a3b8', borderDark: '#94a3b8',
+    label: '注意',
+    color: 'var(--ink-muted)',
+    bg: 'color-mix(in oklch, var(--ink-muted) 8%, transparent)',
+    border: 'var(--ink-muted)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>',
   },
   warning: {
-    label: '警告', color: '#f59e0b',
-    bgLight: 'rgba(245, 158, 11, 0.06)', bgDark: 'rgba(245, 158, 11, 0.08)',
-    borderLight: '#f59e0b', borderDark: '#fbbf24',
+    label: '警告',
+    color: 'var(--signal-warn)',
+    bg: 'color-mix(in oklch, var(--signal-warn) 8%, transparent)',
+    border: 'var(--signal-warn)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   },
   danger: {
-    label: '危险', color: '#ef4444',
-    bgLight: 'rgba(239, 68, 68, 0.06)', bgDark: 'rgba(239, 68, 68, 0.08)',
-    borderLight: '#ef4444', borderDark: '#f87171',
+    label: '危险',
+    color: 'var(--signal-danger)',
+    bg: 'color-mix(in oklch, var(--signal-danger) 8%, transparent)',
+    border: 'var(--signal-danger)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
   },
   tip: {
-    label: '提示', color: '#22c55e',
-    bgLight: 'rgba(34, 197, 94, 0.06)', bgDark: 'rgba(34, 197, 94, 0.08)',
-    borderLight: '#22c55e', borderDark: '#4ade80',
+    label: '提示',
+    color: 'var(--signal-success)',
+    bg: 'color-mix(in oklch, var(--signal-success) 8%, transparent)',
+    border: 'var(--signal-success)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>',
   },
 };
 
 // ========== Widget Types ==========
 
-/** 水平分割线 Widget */
+/** 水平分割线 Widget —— aurora 渐变细线,替代硬 hex
+ *  (theme 参数保留用于调用处签名兼容,内部色值由 CSS 变量解析) */
 class HrWidget extends WidgetType {
-  private theme: string;
-  constructor(theme: string) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_theme: string) {
     super();
-    this.theme = theme;
   }
   toDOM() {
     const hr = document.createElement('hr');
     hr.style.cssText = `
       border: none;
       height: 1px;
-      background: ${this.theme === 'light' ? '#e2e8f0' : '#334155'};
+      background: linear-gradient(90deg,
+        transparent,
+        color-mix(in oklch, var(--aurora-1, var(--color-primary)) 28%, transparent) 50%,
+        transparent);
       margin: 0.8em 0;
       pointer-events: none;
     `;
@@ -457,52 +466,52 @@ export function createBearDecorations(theme: string) {
       { decorations: (v) => v.decorations },
     ),
 
-    // Bear 风格样式
+    // Bear 风格样式 —— 全部走 CSS 变量,跟随主色 + 主题自动切换
     EditorView.theme({
       '.cm-bear-codeblock-line': {
-        backgroundColor: theme === 'light' ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.04)',
+        backgroundColor: 'color-mix(in oklch, var(--ink-muted) 5%, transparent)',
         borderRadius: '0',
       },
       '.cm-bear-blockquote-line': {
-        borderLeft: `3px solid ${theme === 'light' ? '#94a3b8' : '#64748b'}`,
+        borderLeft: '2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary)) 45%, transparent)',
         paddingLeft: '12px !important',
-        color: theme === 'light' ? '#64748b' : '#94a3b8',
+        color: 'var(--ink-secondary)',
         fontStyle: 'italic',
       },
       '.cm-bear-inline-code': {
-        backgroundColor: theme === 'light' ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 10%, transparent)',
         borderRadius: '4px',
         padding: '1px 5px',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontFamily: "'Geist Mono', 'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Fira Code', ui-monospace, monospace",
         fontSize: '0.9em',
-        color: theme === 'light' ? '#c2410c' : '#fb923c',
+        color: 'var(--aurora-1, var(--color-primary))',
       },
       // Alert 高亮块行装饰样式
       '.cm-bear-alert-info': {
-        borderLeft: `3px solid ${theme === 'light' ? '#3b82f6' : '#60a5fa'}`,
+        borderLeft: '3px solid var(--signal-info)',
         paddingLeft: '12px !important',
-        backgroundColor: theme === 'light' ? 'rgba(59, 130, 246, 0.06)' : 'rgba(59, 130, 246, 0.08)',
+        backgroundColor: 'color-mix(in oklch, var(--signal-info) 8%, transparent)',
       },
       '.cm-bear-alert-note': {
-        borderLeft: `3px solid ${theme === 'light' ? '#94a3b8' : '#94a3b8'}`,
+        borderLeft: '3px solid var(--ink-muted)',
         paddingLeft: '12px !important',
-        backgroundColor: theme === 'light' ? 'rgba(100, 116, 139, 0.06)' : 'rgba(100, 116, 139, 0.08)',
+        backgroundColor: 'color-mix(in oklch, var(--ink-muted) 8%, transparent)',
       },
       '.cm-bear-alert-warning': {
-        borderLeft: `3px solid ${theme === 'light' ? '#f59e0b' : '#fbbf24'}`,
+        borderLeft: '3px solid var(--signal-warn)',
         paddingLeft: '12px !important',
-        backgroundColor: theme === 'light' ? 'rgba(245, 158, 11, 0.06)' : 'rgba(245, 158, 11, 0.08)',
+        backgroundColor: 'color-mix(in oklch, var(--signal-warn) 8%, transparent)',
       },
       '.cm-bear-alert-danger': {
-        borderLeft: `3px solid ${theme === 'light' ? '#ef4444' : '#f87171'}`,
+        borderLeft: '3px solid var(--signal-danger)',
         paddingLeft: '12px !important',
-        backgroundColor: theme === 'light' ? 'rgba(239, 68, 68, 0.06)' : 'rgba(239, 68, 68, 0.08)',
+        backgroundColor: 'color-mix(in oklch, var(--signal-danger) 8%, transparent)',
       },
       '.cm-bear-alert-tip': {
-        borderLeft: `3px solid ${theme === 'light' ? '#22c55e' : '#4ade80'}`,
+        borderLeft: '3px solid var(--signal-success)',
         paddingLeft: '12px !important',
-        backgroundColor: theme === 'light' ? 'rgba(34, 197, 94, 0.06)' : 'rgba(34, 197, 94, 0.08)',
+        backgroundColor: 'color-mix(in oklch, var(--signal-success) 8%, transparent)',
       },
-    }),
+    }, { dark: theme === 'dark' }),
   ];
 }

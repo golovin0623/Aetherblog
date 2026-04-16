@@ -207,8 +207,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
             className={cn(
-              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
-              "dark:border-white/10"
+              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-[var(--border-subtle)]"
             )}
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -438,8 +437,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 overflow-hidden">
           <div
             className={cn(
-              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-white/40",
-              "dark:border-white/10"
+              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-[var(--border-subtle)]"
             )}
             style={{
               maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
@@ -553,13 +551,13 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
               <div className="relative min-h-[200px]">
                 {viewMode === 'preview' ? (
                   isStreaming && !streamResult ? (
-                    // 正在流式：显示原始增量文本，加打字机光标
-                    <div className="text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed text-[15px]">
+                    // 正在流式:ai-stream 背景渲染 + ink-cursor 极光光标
+                    <div className="ai-stream text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed text-[15px]">
                       {streamContent || (
                         <span className="text-[var(--text-muted)] italic">正在生成...</span>
                       )}
                       {streamContent && (
-                        <span className="inline-block w-0.5 h-4 bg-status-success ml-0.5 animate-pulse" />
+                        <span className="ink-cursor" aria-hidden="true" />
                       )}
                     </div>
                   ) : (
@@ -586,7 +584,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                         </>
                       )}
                       {isStreaming && !isThinking && streamContent && (
-                        <span className="inline-block w-0.5 h-4 bg-status-success ml-0.5 animate-pulse" />
+                        <span className="ink-cursor" aria-hidden="true" />
                       )}
                     </div>
                   </div>

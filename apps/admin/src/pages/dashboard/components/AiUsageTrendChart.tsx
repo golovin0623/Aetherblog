@@ -31,13 +31,15 @@ export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartPr
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
             <defs>
+              {/* 调用次数面积 —— 从 60% 渐淡到 5%,清晰但不刺眼 */}
               <linearGradient id="aiCallsGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.6} />
+                <stop offset="95%" stopColor="#6366f1" stopOpacity={0.05} />
               </linearGradient>
+              {/* Tokens 面积 —— 稍弱于调用次数(视觉主次分层) */}
               <linearGradient id="aiTokensGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
+                <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.45} />
+                <stop offset="95%" stopColor="#14b8a6" stopOpacity={0.05} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />

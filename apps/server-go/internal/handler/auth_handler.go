@@ -23,14 +23,15 @@ import (
 
 // AuthHandler 负责处理所有 /api/v1/auth/* 端点。
 type AuthHandler struct {
-	auth    *service.AuthService
-	session *service.SessionService
-	cfg     *config.Config
+	auth        *service.AuthService
+	session     *service.SessionService
+	cfg         *config.Config
+	activitySvc *service.ActivityService
 }
 
 // NewAuthHandler 创建一个 AuthHandler，注入所需的 Service 和配置依赖。
-func NewAuthHandler(auth *service.AuthService, session *service.SessionService, cfg *config.Config) *AuthHandler {
-	return &AuthHandler{auth: auth, session: session, cfg: cfg}
+func NewAuthHandler(auth *service.AuthService, session *service.SessionService, cfg *config.Config, activitySvc *service.ActivityService) *AuthHandler {
+	return &AuthHandler{auth: auth, session: session, cfg: cfg, activitySvc: activitySvc}
 }
 
 // Mount 将所有认证相关路由挂载到指定的 echo.Group。
@@ -97,6 +98,23 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	}
 
 	h.writeAuthCookies(c, accessToken, refreshToken)
+
+	// 记录登录活动
+	if h.activitySvc != nil {
+		evtCat := "user"
+		evtStatus := "SUCCESS"
+		if err := h.activitySvc.Create(ctx, &model.ActivityEvent{
+			EventType:     "user.login",
+			EventCategory: &evtCat,
+			Title:         "用户登录: " + user.Username,
+			UserID:        &user.ID,
+			IP:            &ip,
+			Status:        &evtStatus,
+		}); err != nil {
+			log.Warn().Err(err).Msg("record activity failed")
+		}
+	}
+
 	return response.OK(c, h.buildLoginResponse(user, accessToken))
 }
 

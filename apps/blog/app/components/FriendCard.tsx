@@ -128,6 +128,10 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
                   onLoadingComplete={handleImageLoad}
                   onError={() => setImageError(true)}
                   className={imageClass}
+                  /* 友链头像来自任意外部域名(博主网站、Google/GitHub/自建 CDN 等),
+                     无法预先穷举白名单 — 关闭 next/image 的域名校验与优化,
+                     用浏览器原生加载。56px 小图也不需要 srcset 优化。 */
+                  unoptimized
                 />
               ) : (
                 <div

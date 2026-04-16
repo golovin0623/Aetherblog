@@ -48,7 +48,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Header Area */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/30 backdrop-blur-md z-20 flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="p-1.5 sm:p-2 rounded-xl bg-black text-white dark:bg-[var(--bg-secondary)] dark:text-white border border-[var(--border-default)] flex-shrink-0">
+          <div className="p-1.5 sm:p-2 rounded-xl bg-primary text-white border border-[var(--border-default)] flex-shrink-0">
             <Terminal className="w-4 h-4" />
           </div>
           <div className="min-w-0">
@@ -56,7 +56,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             <div className="hidden sm:flex items-center gap-1.5 mt-0.5">
               <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium">Task: {taskType}</span>
               <ChevronRight className="w-2.5 h-2.5 text-[var(--text-muted)] opacity-50" />
-              <span className="text-[10px] text-black dark:text-white font-black uppercase tracking-widest animate-pulse">Live Editor</span>
+              <span className="text-[10px] text-primary font-black uppercase tracking-widest animate-pulse">Live Editor</span>
             </div>
           </div>
         </div>
@@ -67,7 +67,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             className={cn(
               "h-8 sm:h-9 px-2.5 sm:px-4 rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all border",
               showDefault
-                ? "bg-black text-white dark:bg-white dark:text-black border-transparent shadow-lg"
+                ? "bg-primary text-white border-transparent shadow-lg"
                 : "bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]"
             )}
           >
@@ -86,7 +86,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               <button
                 onClick={handleSave}
                 disabled={isLoading}
-                className="h-8 sm:h-9 px-3 sm:px-4 rounded-xl text-[9px] sm:text-[10px] font-black bg-black text-white dark:bg-white dark:text-black shadow-xl hover:opacity-90 active:scale-95 uppercase tracking-widest transition-all"
+                className="h-8 sm:h-9 px-3 sm:px-4 rounded-xl text-[9px] sm:text-[10px] font-black bg-primary text-white shadow-xl hover:opacity-90 active:scale-95 uppercase tracking-widest transition-all"
               >
                 Deploy
               </button>

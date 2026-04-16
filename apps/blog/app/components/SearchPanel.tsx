@@ -30,6 +30,24 @@ interface SearchPanelProps {
 
 const TRENDING_SEARCHES = ['Spring Boot', 'React', 'Docker', 'Kubernetes', 'TypeScript'];
 
+/** 前缀路由 —— 识别输入开头的特殊字符,切换到不同模式 */
+type SearchMode = 'default' | 'command' | 'tag' | 'ai';
+
+function parseQueryMode(raw: string): { mode: SearchMode; payload: string; prefix: string } {
+  const trimmed = raw.trimStart();
+  if (trimmed.startsWith('>')) return { mode: 'command', prefix: '>', payload: trimmed.slice(1).trimStart() };
+  if (trimmed.startsWith('/')) return { mode: 'tag',     prefix: '/', payload: trimmed.slice(1).trimStart() };
+  if (trimmed.startsWith('?')) return { mode: 'ai',      prefix: '?', payload: trimmed.slice(1).trimStart() };
+  return { mode: 'default', prefix: '', payload: raw };
+}
+
+const MODE_META: Record<SearchMode, { label: string; hint: string }> = {
+  default: { label: 'SEARCH',  hint: '全文检索' },
+  command: { label: 'COMMAND', hint: '指令模式(> 前缀)' },
+  tag:     { label: 'TAG',     hint: '标签筛选(/ 前缀)' },
+  ai:      { label: 'ASK',     hint: 'AI 问答(? 前缀)' },
+};
+
 /** Format ISO timestamp to YYYY-MM-DD (UTC to avoid timezone day shift) */
 function formatDate(iso: string): string {
   if (!iso) return '';
@@ -104,6 +122,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const [query, setQuery] = useState('');
+  const queryMode = parseQueryMode(query);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [aiAnswer, setAiAnswer] = useState<AiAnswer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -404,8 +423,8 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
 
         {/* 搜索输入框 */}
         <form onSubmit={(e) => e.preventDefault()} className="relative">
-          <div className="group/search flex items-center px-4 py-4 border-b border-[var(--border-subtle)] transition-colors duration-300 focus-within:border-primary focus-within:bg-[var(--bg-card-hover)]">
-            <Search className="h-5 w-5 text-[var(--text-muted)] transition-colors duration-300 group-focus-within/search:text-primary" />
+          <div className="group/search flex items-center px-5 py-4 border-b border-[var(--border-subtle)] transition-colors duration-300 focus-within:border-primary focus-within:bg-[var(--bg-card-hover)]">
+            <Search className="h-5 w-5 flex-shrink-0 text-[var(--text-muted)] transition-colors duration-300 group-focus-within/search:text-primary" />
             <input
               ref={inputRef}
               type="text"
@@ -417,9 +436,19 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
               aria-label="搜索框"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索文章、标签、分类... (支持自然语言)"
-              className="flex-1 mx-3 bg-transparent text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none text-lg"
+              placeholder="搜索文章、标签、分类… · 试试 > 指令 · / 标签 · ? AI 问答"
+              className="flex-1 ml-3.5 mr-3 bg-transparent text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none text-lg"
             />
+            {/* 前缀路由 —— 展示当前激活的模式 chip(COMMAND / TAG / ASK) */}
+            {queryMode.mode !== 'default' && (
+              <span
+                className="cmd-chip mr-2 font-mono text-[10px] uppercase tracking-[0.16em]"
+                aria-label={MODE_META[queryMode.mode].hint}
+                title={MODE_META[queryMode.mode].hint}
+              >
+                {MODE_META[queryMode.mode].label}
+              </span>
+            )}
             {query && (
               <button
                 type="button"
@@ -455,7 +484,13 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                   <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse w-3/4" />
                 </div>
               ) : aiAnswer && (
-                <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{aiAnswer.answer}</p>
+                <p className="ai-stream text-[var(--text-secondary)] text-sm leading-relaxed">
+                  {aiAnswer.answer}
+                  {/* 流式光标 —— 末尾闪烁的极光块,提示 AI 正在生成 */}
+                  {isAiLoading === false && aiAnswer.answer && (
+                    <span className="ink-cursor" aria-hidden="true" />
+                  )}
+                </p>
               )}
             </div>
           )}

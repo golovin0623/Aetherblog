@@ -35,12 +35,12 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
           "w-full flex items-center gap-2 px-4 py-3 text-left transition-colors",
-          "hover:bg-white/5"
+          "hover:bg-[var(--bg-card-hover)]"
         )}
       >
         <div className={cn(
           "p-1.5 rounded-lg transition-colors",
-          isActive ? "bg-black text-white dark:bg-white dark:text-black" : "bg-[var(--bg-card)] text-[var(--text-muted)]"
+          isActive ? "bg-primary text-white" : "bg-[var(--bg-card)] text-[var(--text-muted)]"
         )}>
           {isActive ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -51,7 +51,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
         
         <span className={cn(
           "flex-1 text-sm font-medium",
-          isActive ? "text-black dark:text-white font-bold" : "text-[var(--text-muted)]"
+          isActive ? "text-primary font-bold" : "text-[var(--text-muted)]"
         )}>
           {isActive ? "思考中..." : "思考过程"}
         </span>
@@ -80,7 +80,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
             <div className="px-4 pb-4">
               <div className={cn(
                 "p-4 rounded-lg text-sm leading-relaxed whitespace-pre-wrap",
-                "bg-black/5 dark:bg-black/20",
+                "bg-[var(--bg-secondary)]",
                 "text-[var(--text-secondary)] font-light",
                 "max-h-[300px] overflow-y-auto no-scrollbar"
               )}>
@@ -88,7 +88,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({
                   <span className="text-[var(--text-muted)] italic">思考内容为空</span>
                 )}
                 {isActive && (
-                  <span className="inline-block w-2 h-4 bg-black dark:bg-white ml-0.5 animate-pulse" />
+                  <span className="inline-block w-2 h-4 bg-primary ml-0.5 animate-pulse" />
                 )}
               </div>
             </div>

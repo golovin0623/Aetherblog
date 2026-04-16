@@ -151,6 +151,9 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
                 className={`relative z-[1] w-full h-full object-cover transition-opacity duration-200 ${
                   imageLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
+                /* 友链头像来自任意外部域名,关闭 next/image 域名白名单校验
+                   小头像不需要 srcset 优化,已经有 handleImageError fallback */
+                unoptimized
               />
             ) : (
               <span

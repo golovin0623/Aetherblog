@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -14,7 +15,8 @@ import {
   Filter,
   RefreshCw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowLeft
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -49,6 +51,9 @@ const categories = ['all', 'post', 'comment', 'user', 'system', 'friend', 'media
  * @ref §8.2 - 活动事件管理
  */
 export default function ActivitiesPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromDashboard = searchParams.get('from') === 'dashboard';
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [pageNum, setPageNum] = useState(1);
   const pageSize = 20;
@@ -90,9 +95,21 @@ export default function ActivitiesPage() {
     <div className="p-6 space-y-6">
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">活动记录</h1>
-          <p className="text-[var(--text-secondary)] mt-1">查看系统中的所有活动事件</p>
+        <div className="flex items-center gap-3">
+          {/* 从 Dashboard 跳转来时显示返回按钮;从侧边栏进入不显示 */}
+          {fromDashboard && (
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+              title="返回仪表盘"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">活动记录</h1>
+            <p className="text-[var(--text-secondary)] mt-1">查看系统中的所有活动事件</p>
+          </div>
         </div>
         <button
           onClick={() => refetch()}

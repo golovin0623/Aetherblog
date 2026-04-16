@@ -126,7 +126,7 @@ export function FolderDialog({ open, onClose, folder, parentId }: FolderDialogPr
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="relative w-full max-w-md bg-white border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-md bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               {/* 内容 */}
               <div className="relative z-10">

@@ -1,10 +1,10 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { useSidebarStore } from '@/stores';
 import { MobileHeader } from './MobileHeader';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { CommandPalette } from '@/components/common/CommandPalette';
 
 import { useMediaQuery } from '@/hooks';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,19 @@ export function AdminLayout() {
   const isMobile = useMediaQuery('(max-width: 768px)');
   const location = useLocation();
   const isAppPage = location.pathname.startsWith('/media'); // 管理自身布局/滚动的页面
+  const [cmdkOpen, setCmdkOpen] = useState(false);
+
+  // ⌘K / Ctrl+K 全局命令面板
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCmdkOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
@@ -40,6 +53,9 @@ export function AdminLayout() {
           </Suspense>
         </main>
       </div>
+
+      {/* 全局命令面板(⌘K / Ctrl+K) */}
+      <CommandPalette isOpen={cmdkOpen} onClose={() => setCmdkOpen(false)} />
     </div>
   );
 }

@@ -38,15 +38,15 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
   ];
 
   return (
-    <div className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+    <div className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-hidden">
       {/* 头部 */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary" />
-          <span className="font-medium text-white">AI 助手</span>
+          <span className="font-medium text-[var(--text-primary)]">AI 助手</span>
         </div>
         {isExpanded ? (
           <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
@@ -64,7 +64,7 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
                 key={action.id}
                 onClick={() => handleAction(action.id)}
                 disabled={isLoading || !content}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50"
               >
                 <action.icon className={`w-4 h-4 ${action.color}`} />
                 <span className="text-sm text-[var(--text-tertiary)]">{action.label}</span>
@@ -86,13 +86,13 @@ export function AiAssistant({ content, onInsert }: AiAssistantProps) {
               {suggestions.map((suggestion, i) => (
                 <div
                   key={i}
-                  className="p-3 rounded-lg bg-white/5 border border-white/10"
+                  className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)]"
                 >
                   <p className="text-sm text-[var(--text-tertiary)]">{suggestion}</p>
                   <div className="flex justify-end gap-2 mt-2">
                     <button
                       onClick={() => setSuggestions([])}
-                      className="px-3 py-1 text-xs text-[var(--text-muted)] hover:text-white"
+                      className="px-3 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                     >
                       取消
                     </button>
