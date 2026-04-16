@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Menu, Settings2, Home, Clock, Archive, Link as LinkIcon, Info } from 'lucide-react';
+import { Menu, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Palette } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteSettings } from '../lib/services';
 import { extractSocialLinks } from '../lib/socialLinks';
@@ -14,7 +14,7 @@ import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 
 // 导航页面类型
-type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | null;
+type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | 'design' | null;
 
 const NAV_LINKS = [
   { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
@@ -22,6 +22,7 @@ const NAV_LINKS = [
   { href: '/archives', label: '归档', icon: Archive, key: 'archives' as NavPage },
   { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
   { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
+  { href: '/design', label: '设计', icon: Palette, key: 'design' as NavPage },
 ];
 
 const FOCUSABLE_SELECTOR = [
@@ -56,6 +57,7 @@ const MobileMenu = memo(function MobileMenu() {
     if (pathname === '/archives') return 'archives';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
+    if (pathname === '/design') return 'design';
     return null;
   });
 
@@ -92,6 +94,8 @@ const MobileMenu = memo(function MobileMenu() {
       setActivePage('friends');
     } else if (pathname === '/about') {
       setActivePage('about');
+    } else if (pathname === '/design') {
+      setActivePage('design');
     } else {
       setActivePage(null);
     }
