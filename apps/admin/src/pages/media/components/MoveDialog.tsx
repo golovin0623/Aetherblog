@@ -269,7 +269,7 @@ export function MoveDialog({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
+          className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between mb-4">

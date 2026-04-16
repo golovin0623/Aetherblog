@@ -279,8 +279,9 @@ export default function BlogHeader() {
         style={{
           top: 'env(safe-area-inset-top, 0px)',
           background: 'var(--bg-overlay)',
-          backdropFilter: 'blur(20px)',
-          borderBottom: '1px solid var(--border-subtle)',
+          backdropFilter: 'blur(24px) saturate(140%)',
+          // 替代硬边框 —— 底部用极光渐变细线(见 aurora-divider 伪元素)
+          borderBottom: 'none',
           boxShadow: 'var(--header-shadow)',
           // 显式列出所有需要过渡的属性。之前内联的 transition 只写了
           // background / border-color / box-shadow，把 className 里的
@@ -522,6 +523,11 @@ export default function BlogHeader() {
             <MobileMenu />
           </div>
         </div>
+        {/* 底部极光渐变细线 —— 替代传统硬边框,签名细节 */}
+        <div
+          className="aurora-divider absolute bottom-0 left-0 right-0 pointer-events-none"
+          aria-hidden="true"
+        />
       </header>
 
       <SearchPanel isOpen={isSearchOpen} onClose={closeSearchPanel} />

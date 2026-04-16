@@ -1,114 +1,102 @@
-'use client';
-
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import TimelineTree from '../components/TimelineTree';
-import TimelineLoading from './loading';
-import { API_ENDPOINTS } from '../lib/api';
+import { SERVER_API_URL } from '../lib/api';
+import { logger } from '../lib/logger';
+
+export const revalidate = 300; // 时间线 5 分钟 ISR,与首页一致
 
 interface Post {
-    id: number;
-    title: string;
-    slug: string;
-    summary: string;
-    coverImage?: string;
-    publishedAt: string;
-    viewCount?: number;
-    category?: { name: string; slug: string };
-    tags?: { name: string; slug: string }[];
-    passwordRequired?: boolean;
+  id: number;
+  title: string;
+  slug: string;
+  publishedAt: string;
+  passwordRequired?: boolean;
 }
 
-// 客户端辅助函数：按日期分组文章
-function groupPostsByDate(posts: Post[]): any[] {
-  const groups: { [year: number]: { [month: number]: any[] } } = {};
+interface Archive {
+  year: number;
+  totalPosts: number;
+  months: Array<{
+    month: number;
+    posts: Array<{
+      id: string;
+      title: string;
+      slug: string;
+      publishedAt: string;
+      passwordRequired?: boolean;
+    }>;
+  }>;
+}
 
-  posts.forEach(post => {
+async function getTimelinePosts(): Promise<Post[]> {
+  try {
+    const res = await fetch(`${SERVER_API_URL}/api/v1/public/posts?pageSize=100`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json.data?.list || []).map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      slug: item.slug,
+      publishedAt: new Date(item.publishedAt).toISOString(),
+      passwordRequired: item.passwordRequired,
+    }));
+  } catch (error) {
+    logger.error('Failed to fetch timeline posts:', error);
+    return [];
+  }
+}
+
+// 服务端分组 —— 避免在 client 再计算一次
+function groupPostsByDate(posts: Post[]): Archive[] {
+  const groups: Record<number, Record<number, any[]>> = {};
+
+  for (const post of posts) {
     const date = new Date(post.publishedAt);
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
-
     if (!groups[year]) groups[year] = {};
     if (!groups[year][month]) groups[year][month] = [];
-
     groups[year][month].push({
-      id: post.id.toString(),
+      id: String(post.id),
       title: post.title,
       slug: post.slug,
       publishedAt: post.publishedAt,
-      passwordRequired: post.passwordRequired
+      passwordRequired: post.passwordRequired,
     });
-  });
+  }
 
-  const archives = Object.keys(groups)
+  return Object.keys(groups)
     .sort((a, b) => Number(b) - Number(a))
-    .map(year => {
+    .map((year) => {
       const months = Object.keys(groups[Number(year)])
         .sort((a, b) => Number(b) - Number(a))
-        .map(month => ({
+        .map((month) => ({
           month: Number(month),
-          posts: groups[Number(year)][Number(month)]
+          posts: groups[Number(year)][Number(month)],
         }));
-      
-      const totalPosts = months.reduce((acc, curr) => acc + curr.posts.length, 0);
-
-      return {
-        year: Number(year),
-        months,
-        totalPosts
-      };
+      const totalPosts = months.reduce((acc, m) => acc + m.posts.length, 0);
+      return { year: Number(year), months, totalPosts };
     });
-
-  return archives;
 }
 
-export default function TimelinePage() {
-    // 获取时间轴的所有文章（或较大的分页大小）
-    const { data, isPending } = useQuery({
-        queryKey: ['timelinePosts'],
-        queryFn: async () => {
-             // 在实际应用中，我们可能需要一个专门的时间轴端点或获取全部
-             // 重用公共文章 API，选择较大的大小以获取最新的文章
-             // 对于完整的时间轴，我们需要分页或轻量级列表端点
-             const res = await fetch(`${API_ENDPOINTS.posts}?pageSize=100`);
-             if (!res.ok) throw new Error('Network response was not ok');
-             const json = await res.json();
-             return json.data.list.map((item: any) => ({
-                id: item.id,
-                title: item.title,
-                slug: item.slug,
-                summary: item.summary,
-                coverImage: item.coverImage,
-                viewCount: item.viewCount,
-                publishedAt: new Date(item.publishedAt).toISOString(),
-                category: item.categoryName ? { name: item.categoryName, slug: item.categoryName } : undefined,
-                tags: item.tagNames ? item.tagNames.map((name: string) => ({ name, slug: name })) : [],
-                passwordRequired: item.passwordRequired
-             })) as Post[];
-        },
-        staleTime: 5 * 60 * 1000, // 缓存 5 分钟
-    });
+export default async function TimelinePage() {
+  const posts = await getTimelinePosts();
+  const archives = groupPostsByDate(posts);
 
-    const posts = useMemo(() => data ?? [], [data]);
-    const archives = useMemo(() => groupPostsByDate(posts), [posts]);
-
-    // 首次加载显示骨架屏（无缓存数据时）
-    // 后续切换由于已有缓存数据（staleTime: 5min），isPending=false，直接显示内容
-    if (isPending) {
-        return <TimelineLoading />;
-    }
-
-    return (
-        <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
-            <main className="max-w-4xl mx-auto px-4 pt-32 pb-24 md:pb-12">
-                <div className="relative mb-8 pl-4">
-                    <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">时间轴</h1>
-                    <p className="text-[var(--text-muted)] text-sm italic">共 {posts.length} 篇文章，好事多磨</p>
-                    <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-accent rounded-full" />
-                </div>
-                
-                <TimelineTree archives={archives} />
-            </main>
+  return (
+    <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
+      <main className="max-w-4xl mx-auto px-4 pt-32 pb-24 md:pb-12">
+        <div className="relative mb-8 pl-4">
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">时间轴</h1>
+          <p className="text-[var(--text-muted)] text-sm italic">
+            共 {posts.length} 篇文章，好事多磨
+          </p>
+          <div className="absolute left-0 top-1 bottom-1 w-1 bg-gradient-to-b from-primary to-accent rounded-full" />
         </div>
-    );
+
+        <TimelineTree archives={archives} />
+      </main>
+    </div>
+  );
 }

@@ -10,6 +10,7 @@ import {
   Settings,
   Sparkles,
   Activity,
+  ClipboardList,
   Home,
   LogOut,
   Search,
@@ -31,19 +32,44 @@ import { UserProfileModal } from './UserProfileModal';
 import { getMediaUrl } from '@/services/mediaService';
 import { authService } from '@/services/authService';
 
-const navItems = [
-  { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
-  { path: '/analytics', icon: Activity, label: '数据分析' },
-  { path: '/posts', icon: FileText, label: '文章管理' },
-  { path: '/media', icon: Image, label: '媒体库' },
-  { path: '/categories', icon: FolderTree, label: '分类标签' },
-  { path: '/comments', icon: MessageSquare, label: '评论管理' },
-  { path: '/friends', icon: Link2, label: '友情链接' },
-  { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
-  { path: '/ai-config', icon: Bot, label: 'AI 配置' },
-  { path: '/search-config', icon: Search, label: '搜索配置' },
-  { path: '/monitor', icon: Activity, label: '系统监控' },
-  { path: '/settings', icon: Settings, label: '系统设置' },
+// 分组结构 —— Control Room 风格导航(OVERVIEW / CONTENT / INTELLIGENCE / SYSTEM)
+const navSections: Array<{
+  label: string;
+  items: Array<{ path: string; icon: typeof LayoutDashboard; label: string }>;
+}> = [
+  {
+    label: 'OVERVIEW',
+    items: [
+      { path: '/dashboard', icon: LayoutDashboard, label: '仪表盘' },
+      { path: '/analytics', icon: Activity, label: '数据分析' },
+    ],
+  },
+  {
+    label: 'CONTENT',
+    items: [
+      { path: '/posts', icon: FileText, label: '文章管理' },
+      { path: '/media', icon: Image, label: '媒体库' },
+      { path: '/categories', icon: FolderTree, label: '分类标签' },
+      { path: '/comments', icon: MessageSquare, label: '评论管理' },
+      { path: '/friends', icon: Link2, label: '友情链接' },
+    ],
+  },
+  {
+    label: 'INTELLIGENCE',
+    items: [
+      { path: '/ai-tools', icon: Sparkles, label: 'AI 工具' },
+      { path: '/ai-config', icon: Bot, label: 'AI 配置' },
+      { path: '/search-config', icon: Search, label: '搜索配置' },
+    ],
+  },
+  {
+    label: 'SYSTEM',
+    items: [
+      { path: '/monitor', icon: Activity, label: '系统监控' },
+      { path: '/activities', icon: ClipboardList, label: '活动记录' },
+      { path: '/settings', icon: Settings, label: '系统设置' },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -279,38 +305,54 @@ function SidebarContent({
         </form>
       </div>
 
-      {/* 导航菜单 */}
+      {/* 导航菜单 — Control Room 分组 */}
       <nav className="flex-1 py-3 overflow-y-auto">
-        <ul className={cn(
-          "space-y-0.5 transition-all duration-300",
-          effectiveCollapsed ? "px-4" : "px-3"
-        )}>
-          {navItems.map((item) => (
-            <li key={item.path}>
-              <NavLink
-                to={item.path}
-                onClick={handleNavigation}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center rounded-lg transition-all duration-200',
-                    effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
-                    isActive
-                      ? 'bg-primary text-white'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                  )
-                }
-              >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                <span className={cn(
-                  'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
-                  effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
-                )}>
-                  {item.label}
-                </span>
-              </NavLink>
-            </li>
+        <div className={cn("space-y-4 transition-all duration-300", effectiveCollapsed ? "px-4" : "px-3")}>
+          {navSections.map((section, sectionIdx) => (
+            <div key={section.label} className="space-y-0.5">
+              {/* 分组标签 —— 展开态显示 mono uppercase 小字 */}
+              {!effectiveCollapsed && (
+                <div
+                  className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]/70"
+                  aria-hidden="true"
+                >
+                  {section.label}
+                </div>
+              )}
+              {/* 折叠态用短分隔线代替分组标签 */}
+              {effectiveCollapsed && sectionIdx > 0 && (
+                <div className="mx-auto my-1 h-px w-6 bg-[var(--border-subtle)]" aria-hidden="true" />
+              )}
+              <ul className="space-y-0.5">
+                {section.items.map((item) => (
+                  <li key={item.path}>
+                    <NavLink
+                      to={item.path}
+                      onClick={handleNavigation}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center rounded-lg transition-all duration-200',
+                          effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
+                          isActive
+                            ? 'bg-primary text-white'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                        )
+                      }
+                    >
+                      <item.icon className="w-5 h-5 flex-shrink-0" />
+                      <span className={cn(
+                        'text-sm font-medium overflow-hidden whitespace-nowrap transition-all duration-300',
+                        effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100 ml-0'
+                      )}>
+                        {item.label}
+                      </span>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       </nav>
 
       {/* 快速链接 + 折叠切换 (仅桌面端) */}

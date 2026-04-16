@@ -89,7 +89,7 @@ export function VisitorChart({
             className={cn(
               "px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all min-w-[36px] touch-manipulation",
               activeTab === 'uv'
-                ? "bg-cyan-500 text-white shadow-lg"
+                ? "bg-[var(--signal-info)] text-white shadow-lg"
                 : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
             )}
           >

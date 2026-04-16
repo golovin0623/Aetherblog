@@ -4,6 +4,7 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { FocusModeProvider } from './contexts/FocusModeContext';
 import { Toaster } from 'sonner';
 
 // 懒加载页面组件
@@ -54,6 +55,7 @@ function App() {
   return (
     <BrowserRouter basename={basename === '/' ? undefined : basename}>
       <Toaster richColors position="top-center" />
+      <FocusModeProvider>
       <ErrorBoundary>
         <Suspense fallback={
           <div className="flex h-screen items-center justify-center">
@@ -95,6 +97,7 @@ function App() {
           </Routes>
         </Suspense>
       </ErrorBoundary>
+      </FocusModeProvider>
     </BrowserRouter>
   );
 }

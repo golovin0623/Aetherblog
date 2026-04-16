@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
@@ -23,16 +25,19 @@ import (
 // 版本相关依赖（versionSvc、store、mediaRepo）为可选项，
 // 使用 UploadContent 接口前须先调用 SetVersionDeps 进行注入。
 type MediaHandler struct {
-	svc        *service.MediaService
-	versionSvc *service.VersionService // 可选；UploadContent 接口所必需
-	store      storage.Storage          // 可选；UploadContent 接口所必需
-	uploadDir  string                   // 本地上传根目录
-	mediaRepo  *repository.MediaRepo    // 可选；UploadContent 接口所必需
+	svc         *service.MediaService
+	versionSvc  *service.VersionService // 可选；UploadContent 接口所必需
+	store       storage.Storage          // 可选；UploadContent 接口所必需
+	uploadDir   string                   // 本地上传根目录
+	mediaRepo   *repository.MediaRepo    // 可选；UploadContent 接口所必需
+	activitySvc *service.ActivityService
 }
 
 // NewMediaHandler 创建一个仅含核心 MediaService 的 MediaHandler 实例。
 // 如需启用带版本控制的文件内容替换功能，请调用 SetVersionDeps 注入相关依赖。
-func NewMediaHandler(svc *service.MediaService) *MediaHandler { return &MediaHandler{svc: svc} }
+func NewMediaHandler(svc *service.MediaService, activitySvc *service.ActivityService) *MediaHandler {
+	return &MediaHandler{svc: svc, activitySvc: activitySvc}
+}
 
 // SetVersionDeps 注入版本相关的可选依赖，以启用文件内容上传功能。
 func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, store storage.Storage, uploadDir string, mediaRepo *repository.MediaRepo) {
@@ -90,6 +95,10 @@ func (h *MediaHandler) Upload(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+
+	// 记录上传文件活动
+	h.recordMediaActivity(c, "media.upload", "上传文件: "+fh.Filename, fmt.Sprintf("文件 %s 已上传", fh.Filename))
+
 	return response.OK(c, vo)
 }
 
@@ -324,6 +333,10 @@ func (h *MediaHandler) Delete(c echo.Context) error {
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
+
+	// 记录删除文件活动
+	h.recordMediaActivity(c, "media.delete", fmt.Sprintf("删除文件 #%d", id), fmt.Sprintf("文件 #%d 已移入回收站", id))
+
 	return response.OKEmpty(c)
 }
 
@@ -380,6 +393,29 @@ func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OKEmpty(c)
+}
+
+// recordMediaActivity 记录媒体相关活动事件，失败时仅记录日志不阻塞主流程。
+func (h *MediaHandler) recordMediaActivity(c echo.Context, eventType, title, description string) {
+	if h.activitySvc == nil {
+		return
+	}
+	evtCat := "media"
+	evtStatus := "SUCCESS"
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), &model.ActivityEvent{
+		EventType:     eventType,
+		EventCategory: &evtCat,
+		Title:         title,
+		Description:   &description,
+		UserID:        userID,
+		Status:        &evtStatus,
+	}); err != nil {
+		log.Warn().Err(err).Msg("record activity failed")
+	}
 }
 
 // UploadContent 处理 POST /admin/media/:id/content 请求。

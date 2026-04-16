@@ -2,13 +2,16 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/pagination"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
@@ -16,10 +19,15 @@ import (
 
 // PostHandler 处理博客文章相关的所有 HTTP 接口，
 // 涵盖 /admin/posts（管理端）和 /public/posts（公开端）两组路由。
-type PostHandler struct{ svc *service.PostService }
+type PostHandler struct {
+	svc         *service.PostService
+	activitySvc *service.ActivityService
+}
 
 // NewPostHandler 创建由指定 PostService 驱动的 PostHandler 实例。
-func NewPostHandler(svc *service.PostService) *PostHandler { return &PostHandler{svc: svc} }
+func NewPostHandler(svc *service.PostService, activitySvc *service.ActivityService) *PostHandler {
+	return &PostHandler{svc: svc, activitySvc: activitySvc}
+}
 
 // MountAdmin 将需要身份验证的管理端 CRUD 路由注册到路由组 g。
 func (h *PostHandler) MountAdmin(g *echo.Group) {
@@ -141,6 +149,10 @@ func (h *PostHandler) Create(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+
+	// 记录发布文章活动
+	h.recordPostActivity(c, "post.create", "发布文章: "+req.Title, fmt.Sprintf("文章 #%d 已创建", post.ID))
+
 	return response.OK(c, post)
 }
 
@@ -166,6 +178,10 @@ func (h *PostHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
+
+	// 记录更新文章活动
+	h.recordPostActivity(c, "post.update", "更新文章: "+req.Title, fmt.Sprintf("文章 #%d 已更新", id))
+
 	return response.OK(c, post)
 }
 
@@ -219,6 +235,10 @@ func (h *PostHandler) Delete(c echo.Context) error {
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
+
+	// 记录删除文章活动
+	h.recordPostActivity(c, "post.delete", fmt.Sprintf("删除文章 #%d", id), fmt.Sprintf("文章 #%d 已删除", id))
+
 	return response.OKEmpty(c)
 }
 
@@ -233,7 +253,34 @@ func (h *PostHandler) Publish(c echo.Context) error {
 	if err := h.svc.Publish(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
+
+	// 记录发布文章活动
+	h.recordPostActivity(c, "post.publish", fmt.Sprintf("发布文章 #%d", id), fmt.Sprintf("文章 #%d 已发布", id))
+
 	return response.OKEmpty(c)
+}
+
+// recordPostActivity 记录文章相关活动事件，失败时仅记录日志不阻塞主流程。
+func (h *PostHandler) recordPostActivity(c echo.Context, eventType, title, description string) {
+	if h.activitySvc == nil {
+		return
+	}
+	evtCat := "post"
+	evtStatus := "SUCCESS"
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), &model.ActivityEvent{
+		EventType:     eventType,
+		EventCategory: &evtCat,
+		Title:         title,
+		Description:   &description,
+		UserID:        userID,
+		Status:        &evtStatus,
+	}); err != nil {
+		log.Warn().Err(err).Msg("record activity failed")
+	}
 }
 
 // --- 公开端接口 ---

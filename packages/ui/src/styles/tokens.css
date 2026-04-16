@@ -1,0 +1,309 @@
+/* =============================================================
+ * AetherBlog · Aether Codex Design Tokens
+ * -------------------------------------------------------------
+ * 定义见 .claude/design-system/01-tokens.md
+ *
+ * 与现有 token 并存(非破坏性):新令牌使用独立命名空间
+ *   --ink-*        墨色系(暗主题象牙色)
+ *   --bg-void/substrate/leaf/raised   新四层背景
+ *   --aurora-*     光源色
+ *   --signal-*     信号色
+ *   --fs-*         字号阶梯
+ *   --lh-*         行高
+ *   --ease-X + --dur-X  动效
+ *   --radius-bleed 46px 折角
+ *   --font-display/editorial/sans/mono  字体角色
+ *   --aurora-field 全站唯一极光背景几何
+ * ============================================================= */
+
+/* ---------- Light (default) ---------- */
+:root,
+:root.light {
+  /* INK —— 亮主题下映射为深墨色 */
+  --ink-primary:   #1C1A14;
+  --ink-secondary: #4A463E;
+  --ink-muted:     #7A7468;
+  --ink-subtle:    #C9C3B5;
+
+  /* Obsidian —— 亮主题下映射为米白纸色 */
+  --bg-void:       #FAF9F6;
+  --bg-substrate:  #F4F2EC;
+  --bg-leaf:       #FFFFFF;
+  --bg-raised:     #FFFFFF;
+
+  /* Aurora —— 保底值(不支持 oklch 相对色的旧浏览器用) */
+  --aurora-1: #6366F1;
+  --aurora-2: #7C6FF1;
+  --aurora-3: #8B84F0;
+  --aurora-4: #A598EC;
+
+  /* Signal —— 苹果级低饱和,chroma 统一压至 0.12 附近 */
+  --signal-info:    oklch(0.58 0.12 235);
+  --signal-success: oklch(0.55 0.12 150);
+  --signal-warn:    oklch(0.62 0.13 75);
+  --signal-danger:  oklch(0.55 0.14 25);
+
+  /* Type Scale */
+  --fs-micro:   0.6875rem;
+  --fs-caption: 0.8125rem;
+  --fs-body:    1rem;
+  --fs-reading: 1.125rem;
+  --fs-lede:    1.25rem;
+  --fs-h4:      1.5rem;
+  --fs-h3:      1.875rem;
+  --fs-h2:      2.5rem;
+  --fs-h1:      3.5rem;
+  --fs-display: clamp(4rem, 8vw, 8.5rem);
+
+  /* Line Height */
+  --lh-tight:   1.1;
+  --lh-snug:    1.25;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.75;
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.87, 0, 0.13, 1);
+  --dur-instant: 120ms;
+  --dur-quick:   260ms;
+  --dur-flow:    520ms;
+  --dur-ambient: 1800ms;
+
+  /* Radius (补充) */
+  --radius-bleed: 2.875rem;
+
+  /* Focus Ring */
+  --focus-ring: 0 0 0 2px var(--bg-void), 0 0 0 4px var(--aurora-1);
+
+  /* Font Roles —— 指向 next/font 暴露的具体字体变量,缺省降级
+     英文拉丁字符优先 Fraunces 衬线,中文字符浏览器按字形匹配自动回退到中文黑体栈,
+     这样 "欢迎来到我的博客" 走中文粗黑体(原项目质感),
+     而 "AetherBlog 2026" 走 Fraunces 衬线高级感。 */
+  --font-display: var(--font-fraunces),
+    'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC',
+    'Microsoft YaHei UI', 'Microsoft YaHei',
+    system-ui, sans-serif;
+  --font-editorial: var(--font-instrument-serif),
+    'LXGW WenKai', 'Source Han Serif SC', 'Noto Serif SC', Georgia, serif;
+  --font-sans: var(--font-geist),
+    'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei UI',
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-geist-mono),
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Aurora Field —— 全站唯一极光几何(亮主题下更淡) */
+  --aurora-field:
+    radial-gradient(ellipse 80% 60% at 15% 0%,
+      color-mix(in oklch, var(--aurora-1) 8%, transparent) 0%,
+      transparent 50%),
+    radial-gradient(ellipse 50% 40% at 85% 10%,
+      color-mix(in oklch, var(--aurora-4) 4%, transparent) 0%,
+      transparent 50%);
+}
+
+/* ---------- Dark ---------- */
+:root.dark {
+  /* INK —— 暗主题下真正的象牙色 */
+  --ink-primary:   #F4EFE6;
+  --ink-secondary: #B8B3A8;
+  --ink-muted:     #6B6862;
+  --ink-subtle:    #3A3932;
+
+  /* Obsidian —— 四层深空 */
+  --bg-void:       #05060A;
+  --bg-substrate:  #0B0D14;
+  --bg-leaf:       #12141D;
+  --bg-raised:     #1A1D28;
+
+  /* Aurora(暗主题下更明亮)—— 保底值 */
+  --aurora-1: #818CF8;
+  --aurora-2: #9189F6;
+  --aurora-3: #9E87F3;
+  --aurora-4: #B0A0EC;
+
+  /* Signal(暗主题下亮度抬高,chroma 仍然压制)*/
+  --signal-info:    oklch(0.72 0.12 235);
+  --signal-success: oklch(0.72 0.12 150);
+  --signal-warn:    oklch(0.78 0.13 75);
+  --signal-danger:  oklch(0.70 0.14 25);
+
+  /* Aurora Field(暗主题下更饱和) */
+  --aurora-field:
+    radial-gradient(ellipse 80% 60% at 15% 0%,
+      color-mix(in oklch, var(--aurora-1) 18%, transparent) 0%,
+      transparent 50%),
+    radial-gradient(ellipse 50% 40% at 85% 10%,
+      color-mix(in oklch, var(--aurora-4) 8%, transparent) 0%,
+      transparent 50%);
+
+  /* Focus ring 适配暗底 */
+  --focus-ring: 0 0 0 2px var(--bg-void), 0 0 0 4px var(--aurora-1);
+}
+
+/* =============================================================
+ * Aurora 主色派生 —— 苹果级色彩工程
+ * 现代浏览器(Chrome 119+/Safari 16.4+/Firefox 128+)支持 oklch(from ...) 相对色语法,
+ * 所有 aurora 色彩自动从 --color-primary 派生,用户在后台改一个主色,
+ * 整个装饰色体系(aurora 渐变、光晕、分类色)一起跟着走 —— 不会再出现
+ * "紫 + 橙 + 绿 + 红"的彩虹撞色。
+ *
+ * 派生策略(克制)——
+ *   aurora-1 = primary 本色(锚点)
+ *   aurora-2 = hue +18°  同色系邻近,轻微提亮
+ *   aurora-3 = hue +36°  同色系再远一步
+ *   aurora-4 = hue +60°  邻近色(而非 180° 的补色,避免撞)
+ * chroma 随 hue 推远逐步降低,避免高饱和度撞眼。
+ * ============================================================= */
+@supports (color: oklch(from red l c h)) {
+  :root,
+  :root.light {
+    --aurora-1: oklch(from var(--color-primary) l c h);
+    --aurora-2: oklch(from var(--color-primary) calc(l + 0.02) calc(c * 0.92) calc(h + 18));
+    --aurora-3: oklch(from var(--color-primary) calc(l + 0.05) calc(c * 0.82) calc(h + 36));
+    --aurora-4: oklch(from var(--color-primary) calc(l + 0.08) calc(c * 0.68) calc(h + 60));
+  }
+  :root.dark {
+    --aurora-1: oklch(from var(--color-primary) calc(l + 0.08) c h);
+    --aurora-2: oklch(from var(--color-primary) calc(l + 0.10) calc(c * 0.92) calc(h + 18));
+    --aurora-3: oklch(from var(--color-primary) calc(l + 0.12) calc(c * 0.82) calc(h + 36));
+    --aurora-4: oklch(from var(--color-primary) calc(l + 0.10) calc(c * 0.68) calc(h + 60));
+  }
+}
+
+/* =============================================================
+ * 全局基础 —— 中文优化 / focus-visible / 数字等宽
+ * ============================================================= */
+
+html {
+  word-break: normal;
+  line-break: strict;
+  text-wrap: pretty;                    /* 现代浏览器避免孤字 */
+  font-feature-settings: "palt" 1;       /* 中文标点压缩 */
+}
+
+/* 全局 focus 环 —— 用极光色作为键盘焦点指示 */
+*:focus {
+  outline: none;
+}
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm, 0.5rem);
+  transition: box-shadow var(--dur-instant) var(--ease-out);
+}
+
+/* 数字表格列默认等宽 */
+.tnum,
+[data-tnum] {
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 极光光源层 —— 由页面级容器决定是否铺 */
+.aurora-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--aurora-field);
+  z-index: 0;
+}
+.aurora-layer[data-animated="true"] {
+  animation: aurora-drift 40s var(--ease-in-out) infinite;
+}
+
+/* Ambient animations(默认注册,按需使用) */
+@keyframes aurora-drift {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  33%      { transform: translate(2%, -1%) rotate(2deg); }
+  66%      { transform: translate(-1%, 2%) rotate(-1deg); }
+}
+
+@keyframes breath {
+  0%, 100% { font-variation-settings: "opsz" 144, "SOFT" 30, "WONK" 1; }
+  50%      { font-variation-settings: "opsz" 144, "SOFT" 80, "WONK" 1; }
+}
+
+/* breath-soft —— 对任意字体(含渐变 text)均生效的克制呼吸
+   只做极细微的亮度 + 字距变化,不改字形,不撼动布局 */
+@keyframes breath-soft {
+  0%, 100% {
+    opacity: 0.92;
+    letter-spacing: -0.02em;
+    filter: brightness(0.98);
+  }
+  50% {
+    opacity: 1;
+    letter-spacing: -0.015em;
+    filter: brightness(1.04);
+  }
+}
+
+@keyframes ink-bleed {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+    filter: blur(1.5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes ink-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.2; }
+}
+
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* 极光"墨水光标" —— 供命令面板 / AI 流式使用 */
+.ink-cursor {
+  display: inline-block;
+  width: 0.4em;
+  height: 1em;
+  vertical-align: text-bottom;
+  background: var(--aurora-1);
+  animation: ink-blink 800ms var(--ease-in-out) infinite;
+  box-shadow: 0 0 4px var(--aurora-1);
+  margin-left: 0.1em;
+}
+
+/* 减动效模式 —— 所有非关键动画关闭 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .ink-cursor { animation: none; opacity: 0.6; }
+  .aurora-layer,
+  .aurora-field-root { animation: none !important; }
+}
+
+/* 触控目标最小尺寸 —— 移动端 44×44 */
+@media (hover: none) and (pointer: coarse) {
+  button,
+  [role="button"],
+  a.btn,
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* 高对比度模式 —— 强化边框 */
+@media (prefers-contrast: more) {
+  :root,
+  :root.dark {
+    --border-default: color-mix(in oklch, var(--ink-primary) 40%, transparent);
+    --border-subtle: color-mix(in oklch, var(--ink-primary) 28%, transparent);
+  }
+}

@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] — AI 工具箱输出承接链路修复
+## [Unreleased] — Aether Codex 设计系统
+
+### ✨ 新增 (Features)
+
+#### 全站 UI 升级 —— "Aether Codex · 漂浮在夜空中的发光典籍"
+
+- **设计系统规范** 落地到 `.claude/design-system/` (00-manifesto → 07-migration)，与旧 "Cognitive Elegance" tokens 并行共存、零破坏。
+- **新 CSS 层**：`packages/ui/src/styles/tokens.css` (ink/aurora/signal 调色板 + 9 级字号 + ease/duration) · `surfaces.css` (4 级玻璃面) · `typography.css` (语义字号、marginalia、drop-cap、`.ai-stream`、`.ink-cursor`、`.cmd-chip`)。
+- **Motion 预设**：`packages/ui/src/motion.ts` 导出 `ease / duration / spring / transition / variants / stagger() / cssMotion`。
+- **字体**：Fraunces (display · SOFT/WONK/opsz) · Instrument Serif (editorial italic) · Geist + Geist Mono · LXGW WenKai (中文正文)。
+
+#### 博客前台
+
+- Hero 标题 Fraunces opsz 呼吸动画 + Instrument Serif italic lede + mono caption + aurora CTA。
+- ArticleCard 升级：surface-leaf + data-interactive 极光左边条、aurora 分类徽章。
+- BlogHeader 底部新增 `.aurora-divider` 极光分割线。
+- `.markdown-body` 编辑级排版层：drop-cap、§ 章节标、aurora h1 下划线、aurora inline code、blockquote italic Fraunces、极光分割线。
+- **`ReadingProgress`** 顶部 2px 极光进度条 (rAF 节流，`--reading-progress` CSS var)。
+- 文章页 `marginalia` 左侧注脚 (xl+ 断点)：Published / Reading / Views / Section，Geist Mono uppercase。
+- **SearchPanel 前缀路由**：`>` 指令 · `/` 标签 · `?` AI 问答；AI 流式回答使用 `.ink-cursor` 极光光标。
+
+#### 管理后台
+
+- Sidebar "Control Room"：分组 (OVERVIEW / CONTENT / INTELLIGENCE / SYSTEM)、激活项极光左条、Fraunces wordmark。
+- `DataTable`：行 hover 极光左条、mono uppercase 表头、`.tnum` 等宽数字、mono 分页页脚。
+- `StatsCard`：Fraunces display 数字、hover WONK axis 漂移。
+- **`CommandPalette` (⌘K / Ctrl+K)** 新组件：`apps/admin/src/components/common/CommandPalette.tsx`，在 `AdminLayout` 中全局挂载；分组 NAVIGATE / CREATE / SYSTEM，↑↓ / ↵ / ESC 键位。
+- **`FocusModeContext` (⌘. / Ctrl+.)** 新 context：`apps/admin/src/contexts/FocusModeContext.tsx`，切换 `:root[data-focus-mode="true"]` 隐藏侧栏与 header，右上角显示 aurora chip 提示。
+- `AiWritingWorkspace` 标题切换为 Fraunces display；`AIToolsWorkspace` 流式区域使用 `.ai-stream` + `.ink-cursor`。
+
+### ♿ 可访问性
+
+- `prefers-reduced-motion`：关闭所有 aurora/ink-cursor/aurora-field 动画。
+- 触控目标 (`(hover: none) and (pointer: coarse)`): button / `[role="button"]` 最小 44×44。
+- `prefers-contrast: more`: 强化 border 对比。
+
+---
+
+## [Unreleased · earlier] — AI 工具箱输出承接链路修复
 
 ### 🐛 修复 (Fixes)
 

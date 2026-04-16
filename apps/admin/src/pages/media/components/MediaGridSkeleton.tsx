@@ -6,17 +6,17 @@ export function MediaGridSkeleton() {
       {Array.from({ length: 12 }).map((_, i) => (
         <div 
           key={i} 
-          className="group relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/5"
+          className="group relative aspect-square rounded-2xl overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-subtle)]"
         >
           {/* Skeleton for the media content */}
-          <Skeleton className="w-full h-full bg-white/5" />
-          
+          <Skeleton className="w-full h-full bg-[var(--bg-tertiary,var(--bg-secondary))]" />
+
           {/* Skeleton for the footer/info area */}
           <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-            <Skeleton className="h-4 w-2/3 bg-white/10 mb-2 rounded" />
+            <Skeleton className="h-4 w-2/3 bg-[var(--bg-tertiary,var(--bg-secondary))] mb-2 rounded" />
             <div className="flex justify-between items-center">
-               <Skeleton className="h-3 w-8 bg-white/10 rounded" />
-               <Skeleton className="h-3 w-12 bg-white/10 rounded" />
+               <Skeleton className="h-3 w-8 bg-[var(--bg-tertiary,var(--bg-secondary))] rounded" />
+               <Skeleton className="h-3 w-12 bg-[var(--bg-tertiary,var(--bg-secondary))] rounded" />
             </div>
           </div>
         </div>

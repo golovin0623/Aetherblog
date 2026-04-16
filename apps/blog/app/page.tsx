@@ -49,7 +49,10 @@ export default async function HomePage() {
               <span className="text-sm text-[var(--text-secondary)]">AI 驱动的智能博客</span>
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 pb-2 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-[1.15] tracking-tight">
+            <h1
+              className="text-5xl md:text-7xl font-bold mb-6 pb-2 bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] bg-clip-text text-transparent leading-[1.15] tracking-tight"
+              style={{ animation: 'breath-soft 7.2s ease-in-out infinite' }}
+            >
               {settings?.welcome_title || 'AetherBlog'}
             </h1>
 

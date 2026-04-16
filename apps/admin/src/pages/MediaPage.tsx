@@ -228,7 +228,7 @@ export default function MediaPage() {
   // 删除确认处理 - 支持传入回调
   const handleDeleteConfirm = (id: number, onSuccess?: () => void) => {
     toast.custom((t) => (
-      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <Trash2 className="w-5 h-5 text-status-danger" />
@@ -391,7 +391,7 @@ export default function MediaPage() {
 
   const handleDeleteFolder = (folderId: number) => {
     toast.custom((t) => (
-      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
         <div className="flex items-start gap-4">
           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
             <Trash2 className="w-5 h-5 text-status-danger" />
@@ -867,7 +867,7 @@ export default function MediaPage() {
                     const count = selectedIds.size;
                     const ids = Array.from(selectedIds);
                     toast.custom((t) => (
-                      <div className="bg-white border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
+                      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
                         <div className="flex items-start gap-4">
                           <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
                             <Trash2 className="w-5 h-5 text-status-danger" />

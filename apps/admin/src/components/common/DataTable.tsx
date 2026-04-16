@@ -45,13 +45,13 @@ export function DataTable<T extends { id: number | string }>({
   return (
     <div className="bg-[var(--bg-card)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full tnum">
           <thead>
             <tr className="border-b border-[var(--border-subtle)]">
               {columns.map((column) => (
                 <th
                   key={String(column.key)}
-                  className="px-6 py-4 text-left text-sm font-medium text-[var(--text-muted)]"
+                  className="px-6 py-4 text-left font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]"
                   style={{ width: column.width }}
                   aria-sort={
                     column.sortable
@@ -100,7 +100,20 @@ export function DataTable<T extends { id: number | string }>({
               </tr>
             ) : (
               data.map((item) => (
-                <tr key={item.id} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]">
+                <tr
+                  key={item.id}
+                  className="group relative border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                  data-interactive="true"
+                >
+                  {/* 极光左带 —— hover 时从上往下扫入 */}
+                  <td aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-[2px] p-0 overflow-hidden">
+                    <div
+                      className="absolute inset-0 origin-top scale-y-0 rounded-full transition-transform duration-300 ease-out group-hover:scale-y-100"
+                      style={{
+                        background: 'linear-gradient(to bottom, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)), var(--aurora-3, var(--color-primary, #818CF8)))',
+                      }}
+                    />
+                  </td>
                   {columns.map((column) => (
                     <td key={String(column.key)} className="px-6 py-4 text-[var(--text-primary)]">
                       {column.render
@@ -118,8 +131,8 @@ export function DataTable<T extends { id: number | string }>({
       {/* 分页 */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)]">
-          <span className="text-sm text-[var(--text-muted)]">
-            共 {total} 条，第 {page}/{totalPages} 页
+          <span className="font-mono text-[11px] tracking-wider text-[var(--text-muted)] tnum">
+            共 {total} 条,第 {page}/{totalPages} 页
           </span>
           <div className="flex items-center gap-2">
             <button

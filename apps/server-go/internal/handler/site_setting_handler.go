@@ -5,7 +5,10 @@ import (
 	"io"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
@@ -44,11 +47,14 @@ var allowedSettingKeys = map[string]bool{
 }
 
 // SiteSettingHandler 处理站点设置的管理端 CRUD 接口。
-type SiteSettingHandler struct{ svc *service.SiteSettingService }
+type SiteSettingHandler struct {
+	svc         *service.SiteSettingService
+	activitySvc *service.ActivityService
+}
 
 // NewSiteSettingHandler 创建 SiteSettingHandler 实例。
-func NewSiteSettingHandler(svc *service.SiteSettingService) *SiteSettingHandler {
-	return &SiteSettingHandler{svc: svc}
+func NewSiteSettingHandler(svc *service.SiteSettingService, activitySvc *service.ActivityService) *SiteSettingHandler {
+	return &SiteSettingHandler{svc: svc, activitySvc: activitySvc}
 }
 
 // Mount 将站点设置路由注册到指定的管理员路由组。
@@ -128,6 +134,10 @@ func (h *SiteSettingHandler) UpdateByKey(c echo.Context) error {
 	if err := h.svc.SetValue(c.Request().Context(), key, val); err != nil {
 		return response.Error(c, err)
 	}
+
+	// 记录更新设置活动
+	h.recordSettingActivity(c, "更新系统设置: "+key)
+
 	return response.OKEmpty(c)
 }
 
@@ -147,5 +157,31 @@ func (h *SiteSettingHandler) BatchUpdate(c echo.Context) error {
 	if err := h.svc.SetBatch(c.Request().Context(), kv); err != nil {
 		return response.Error(c, err)
 	}
+
+	// 记录批量更新设置活动
+	h.recordSettingActivity(c, "批量更新系统设置")
+
 	return response.OKEmpty(c)
+}
+
+// recordSettingActivity 记录系统设置相关活动事件，失败时仅记录日志不阻塞主流程。
+func (h *SiteSettingHandler) recordSettingActivity(c echo.Context, title string) {
+	if h.activitySvc == nil {
+		return
+	}
+	evtCat := "system"
+	evtStatus := "SUCCESS"
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), &model.ActivityEvent{
+		EventType:     "system.setting_update",
+		EventCategory: &evtCat,
+		Title:         title,
+		UserID:        userID,
+		Status:        &evtStatus,
+	}); err != nil {
+		log.Warn().Err(err).Msg("record activity failed")
+	}
 }
