@@ -22,21 +22,60 @@ import (
 
 // allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
 var allowedMimeTypes = map[string]bool{
-	"image/jpeg":              true,
-	"image/png":               true,
-	"image/gif":               true,
-	"image/webp":              true,
-	"image/bmp":               true,
-	"image/tiff":              true,
-	"image/avif":              true,
-	"video/mp4":               true,
-	"video/webm":              true,
-	"video/quicktime":         true,
-	"audio/mpeg":              true,
-	"audio/wav":               true,
-	"audio/ogg":               true,
-	"audio/mp4":               true,
-	"application/pdf":         true,
+	// 图片
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+	"image/bmp":  true,
+	"image/tiff": true,
+	"image/avif": true,
+	"image/svg+xml": true,
+	// 视频
+	"video/mp4":        true,
+	"video/webm":       true,
+	"video/quicktime":  true,
+	"video/x-msvideo":  true, // .avi
+	"video/x-matroska": true, // .mkv
+	// 音频
+	"audio/mpeg":  true,
+	"audio/wav":   true,
+	"audio/ogg":   true,
+	"audio/mp4":   true,
+	"audio/flac":  true,
+	"audio/x-m4a": true,
+	// Office 文档 (OOXML)
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true, // .docx
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // .pptx
+	// Office 文档 (旧版)
+	"application/msword":                  true, // .doc
+	"application/vnd.ms-excel":            true, // .xls
+	"application/vnd.ms-powerpoint":       true, // .ppt
+	// 其他文档
+	"application/pdf":             true,
+	"text/plain":                  true, // .txt
+	"text/csv":                    true, // .csv
+	"text/markdown":               true, // .md
+	"application/json":            true, // .json
+	"application/xml":             true, // .xml
+	"text/xml":                    true, // .xml
+	// 压缩包
+	"application/zip":                  true, // .zip
+	"application/x-rar-compressed":     true, // .rar
+	"application/vnd.rar":              true, // .rar (新 MIME)
+	"application/x-7z-compressed":      true, // .7z
+	"application/gzip":                 true, // .gz
+	"application/x-tar":                true, // .tar
+	"application/x-bzip2":              true, // .bz2
+	// 字体
+	"font/woff":              true,
+	"font/woff2":             true,
+	"font/ttf":               true,
+	"font/otf":               true,
+	"application/font-woff":  true,
+	"application/font-woff2": true,
+	// 兜底
 	"application/octet-stream": true,
 }
 
@@ -82,9 +121,13 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 
 	// 优先使用内容嗅探结果；仅当嗅探为通用类型时回退到扩展名猜测，
 	// 不信任客户端提供的 Content-Type 请求头，避免可伪造的 MIME 分类。
+	// application/zip 也需要回退：DOCX/XLSX/PPTX 等 OOXML 格式的 magic bytes 与 ZIP 相同，
+	// 必须通过扩展名区分具体的 Office 文档类型。
 	mimeType := detectedMime
-	if mimeType == "application/octet-stream" || strings.HasPrefix(mimeType, "text/plain") {
-		mimeType = guessMimeType(fh.Filename)
+	if mimeType == "application/octet-stream" || mimeType == "application/zip" || strings.HasPrefix(mimeType, "text/plain") {
+		if guessed := guessMimeType(fh.Filename); guessed != "application/octet-stream" {
+			mimeType = guessed
+		}
 	}
 	// 检查 MIME 类型是否在允许上传的白名单中
 	if !allowedMimeTypes[mimeType] {
@@ -293,6 +336,7 @@ func classifyFileType(mime string) string {
 func guessMimeType(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
+	// 图片
 	case ".jpg", ".jpeg":
 		return "image/jpeg"
 	case ".png":
@@ -301,14 +345,85 @@ func guessMimeType(filename string) string {
 		return "image/gif"
 	case ".webp":
 		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".tiff", ".tif":
+		return "image/tiff"
+	case ".avif":
+		return "image/avif"
 	case ".svg":
 		return "image/svg+xml"
+	// 视频
 	case ".mp4":
 		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".mov":
+		return "video/quicktime"
+	case ".avi":
+		return "video/x-msvideo"
+	case ".mkv":
+		return "video/x-matroska"
+	// 音频
 	case ".mp3":
 		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".ogg":
+		return "audio/ogg"
+	case ".m4a":
+		return "audio/x-m4a"
+	case ".flac":
+		return "audio/flac"
+	// Office 文档 (OOXML — magic bytes 为 ZIP，必须靠扩展名区分)
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	// Office 文档 (旧版)
+	case ".doc":
+		return "application/msword"
+	case ".xls":
+		return "application/vnd.ms-excel"
+	case ".ppt":
+		return "application/vnd.ms-powerpoint"
+	// 其他文档
 	case ".pdf":
 		return "application/pdf"
+	case ".txt":
+		return "text/plain"
+	case ".csv":
+		return "text/csv"
+	case ".md":
+		return "text/markdown"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	// 压缩包
+	case ".zip":
+		return "application/zip"
+	case ".rar":
+		return "application/vnd.rar"
+	case ".7z":
+		return "application/x-7z-compressed"
+	case ".gz":
+		return "application/gzip"
+	case ".tar":
+		return "application/x-tar"
+	case ".bz2":
+		return "application/x-bzip2"
+	// 字体
+	case ".woff":
+		return "font/woff"
+	case ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".otf":
+		return "font/otf"
 	default:
 		return "application/octet-stream"
 	}
@@ -335,8 +450,8 @@ func detectMimeType(file multipart.File, filename string) (string, error) {
 		return "", fmt.Errorf("file content type (%s) does not match extension type (%s)", detected, guessed)
 	}
 
-	// 优先返回内容检测结果；若为兜底类型则使用扩展名推断
-	if detected == "application/octet-stream" && guessed != "application/octet-stream" {
+	// 优先返回内容检测结果；若为兜底类型或 ZIP（OOXML 文档）则使用扩展名推断
+	if (detected == "application/octet-stream" || detected == "application/zip") && guessed != "application/octet-stream" {
 		return guessed, nil
 	}
 	return detected, nil
