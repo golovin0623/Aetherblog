@@ -507,7 +507,7 @@ src/
 
 ### 12.2 CHANGELOG
 - Added: `apps/ai-service/` 结构说明。
-- Added: 后端 23 个 Handler 模块列表。
-- Changed: 共享包导出精确列举（UI 13个，Hooks 16个）。
+- Added: 后端 24 个 Handler 模块列表（含 ShareHandler、SearchHandler）。
+- Changed: 共享包导出精确列举（UI 15个，Hooks 16个）。
 - Changed: Admin `pages/` 目录树精确化（ai-tools, posts/components, media/components）。
 - Fixed: 后端数据流描述移除 Java/JPA 遗留，改为 Go/sqlx。
