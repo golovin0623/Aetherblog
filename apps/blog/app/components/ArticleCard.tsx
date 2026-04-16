@@ -70,7 +70,8 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
       className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-2xl"
     >
       <article
-        className="relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-lg)]"
+        className="surface-leaf relative flex flex-col overflow-hidden transition-transform duration-300 hover:-translate-y-1 cursor-pointer min-h-[280px] h-full hover:shadow-[var(--shadow-lg)]"
+        data-interactive
         style={{
           animationDelay: `${index * 100}ms`,
           // View Transitions:卡片 → 文章页 morph 锚点
@@ -145,7 +146,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
           {/* 标题 - 固定高度，悬停时渐变 */}
           <h2 className="mb-1.5 h-[56px]">
             <span
-              className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-accent group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug"
+              className="font-display text-h4 font-semibold text-[var(--ink-primary,var(--text-primary))] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-accent group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug tracking-tight"
               title={title}
               style={{ viewTransitionName: `post-${slug}-title` } as React.CSSProperties}
             >
