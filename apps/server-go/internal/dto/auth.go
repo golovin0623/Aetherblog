@@ -27,8 +27,12 @@ type UpdateProfileRequest struct {
 }
 
 // UpdateAvatarRequest 是 PUT /api/v1/auth/avatar 接口的请求体 DTO。
+//
+// 2026-04 修复:原 `url` tag 要求绝对 URL(必须带 scheme + host),
+// 但本系统本地上传返回的是相对路径 `/uploads/avatars/xxx.jpg`,会被拒。
+// 改为 `uri` 以同时接受绝对 URL 和相对 URI;系统底层仍会做路径校验/白名单。
 type UpdateAvatarRequest struct {
-	AvatarURL string `json:"avatarUrl" validate:"required,url"` // 头像图片的 URL 地址（必填，需为合法 URL）
+	AvatarURL string `json:"avatarUrl" validate:"required,uri,max=2048"` // 头像 URL/URI（必填，支持相对路径，上限 2048 字符）
 }
 
 // UserInfoVO 是登录及鉴权相关响应中内嵌的用户信息对象。
