@@ -179,7 +179,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
             className="overflow-hidden"
           >
             {headings.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]/50 px-3 py-6 text-center text-sm text-[var(--text-muted)]">
+              <div className="surface-leaf border-dashed px-3 py-6 text-center text-sm text-[var(--ink-muted,var(--text-muted))]">
                 暂无目录项
               </div>
             ) : (
@@ -249,7 +249,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
           onClick={() => setIsDrawerOpen(true)}
           aria-expanded={isDrawerOpen}
           aria-controls="toc-drawer-content"
-          className={`fixed right-6 bottom-8 z-[55] flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/80 px-5 py-3 text-sm font-medium text-[var(--text-primary)] backdrop-blur-xl shadow-2xl transition-all duration-500 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
+          className={`surface-raised fixed right-6 bottom-8 z-[55] flex items-center gap-2 px-5 py-3 text-sm font-medium text-[var(--ink-primary,var(--text-primary))] transition-all duration-500 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${isReading ? 'translate-y-2 opacity-40 scale-95 blur-[0.5px]' : 'translate-y-0 opacity-100'
             } hover:opacity-100 hover:scale-105 hover:blur-0 hover:shadow-primary/20 hover:border-primary/30 ${triggerClassName}`}
         >
           <List className="h-4 w-4 text-primary" />

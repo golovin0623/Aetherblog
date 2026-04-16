@@ -58,7 +58,7 @@ const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: {
 
         <div className="flex-1 pb-2">
           {/* 评论卡片 */}
-          <div className="bg-[var(--bg-card)]/80 backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl rounded-tl-none p-4 hover:border-[var(--border-hover)] transition-colors group">
+          <div className="surface-leaf rounded-xl rounded-tl-none p-4 transition-colors group">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm text-[var(--text-primary)] bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-secondary)] bg-clip-text text-transparent">{comment.nickname}</span>
@@ -328,7 +328,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 onClick={() => setIsFormExpanded(true)}
-                className="w-full bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] hover:border-[var(--border-hover)] rounded-2xl p-4 flex items-center gap-4 transition-all group mb-12 shadow-lg"
+                className="surface-leaf w-full p-4 flex items-center gap-4 transition-all group mb-12"
+                data-interactive
               >
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card-hover)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] group-hover:text-[var(--color-primary)] group-hover:border-[var(--border-hover)] transition-colors">
                   <PenLine className="w-5 h-5" />
@@ -350,7 +351,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                   initial={{ opacity: 0, height: 0, scale: 0.98 }}
                   animate={{ opacity: 1, height: 'auto', scale: 1 }}
                   exit={{ opacity: 0, height: 0, scale: 0.98 }}
-                  className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-8 relative overflow-hidden border border-[var(--border-default)] shadow-2xl mb-12"
+                  className="surface-raised p-6 sm:p-8 relative overflow-hidden mb-12"
                 >
                   {/* 简化的装饰性渐变 */}
                   <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2" style={{ background: 'color-mix(in srgb, var(--color-primary) 5%, transparent)' }} />
