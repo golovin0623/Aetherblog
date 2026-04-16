@@ -58,7 +58,8 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
 
   return (
     <div
-        className="relative group rounded-3xl bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden backdrop-blur-xl transition-all hover:border-[var(--border-hover)] min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 shadow-[var(--shadow-md)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.15)] cursor-pointer"
+        className="surface-raised relative group overflow-hidden transition-all min-h-[33vh] max-h-[66vh] lg:min-h-0 lg:max-h-none lg:h-full flex flex-col duration-300 hover:shadow-[0_20px_50px_rgba(0,0,0,0.15)] cursor-pointer"
+        data-interactive
         style={{ viewTransitionName: `post-${post.slug}` } as React.CSSProperties}
         onClick={handleCardClick}
         onMouseMove={handleMouseMove}
@@ -119,8 +120,11 @@ const FeaturedPostBase: React.FC<FeaturedPostProps> = ({ post }) => {
 
                     {/* 标题 */}
                     <h1
-                        className={`${titleSizeClass} font-bold text-[var(--text-primary)] mb-3 leading-tight group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent transition-all cursor-pointer`}
-                        style={{ viewTransitionName: `post-${post.slug}-title` } as React.CSSProperties}
+                        className={`font-display ${titleSizeClass} font-semibold text-[var(--ink-primary,var(--text-primary))] mb-3 leading-[1.1] tracking-tight group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent transition-all cursor-pointer`}
+                        style={{
+                          viewTransitionName: `post-${post.slug}-title`,
+                          textWrap: 'balance' as unknown as 'inherit',
+                        } as React.CSSProperties}
                     >
                         <Link href={`/posts/${post.slug}`}>
                             {post.title}
