@@ -19,13 +19,15 @@
       "name": "Backend (Go :8080)",
       "runtimeExecutable": "go",
       "runtimeArgs": ["run", "./cmd/server"],
-      "port": 8080
+      "port": 8080,
+      "autoPort": false
     },
     {
       "name": "AI Service (FastAPI :8000)",
       "runtimeExecutable": "uvicorn",
       "runtimeArgs": ["app.main:app", "--reload", "--port", "8000"],
-      "port": 8000
+      "port": 8000,
+      "autoPort": false
     }
   ]
 }
