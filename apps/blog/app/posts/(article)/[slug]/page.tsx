@@ -187,8 +187,11 @@ export default async function PostDetailPage({ params }: PageProps) {
 
           <FadeIn delay={0.1}>
             <h1
-              className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4"
-              style={{ viewTransitionName: `post-${post.slug}-title` } as React.CSSProperties}
+              className="font-display text-h3 md:text-h2 font-semibold text-[var(--ink-primary,var(--text-primary))] mb-4 leading-[1.1]"
+              style={{
+                viewTransitionName: `post-${post.slug}-title`,
+                textWrap: 'balance' as unknown as 'inherit',
+              } as React.CSSProperties}
             >
               {post.title}
             </h1>
