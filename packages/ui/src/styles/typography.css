@@ -21,9 +21,17 @@
 .text-lede    { font-size: var(--fs-lede);    line-height: var(--lh-relaxed); }
 .text-h4      { font-size: var(--fs-h4);      line-height: var(--lh-snug); }
 .text-h3      { font-size: var(--fs-h3);      line-height: var(--lh-snug); }
-.text-h2      { font-size: var(--fs-h2);      line-height: var(--lh-snug); letter-spacing: -0.01em; }
-.text-h1      { font-size: var(--fs-h1);      line-height: var(--lh-tight); letter-spacing: -0.02em; }
-.text-display { font-size: var(--fs-display); line-height: var(--lh-tight); letter-spacing: -0.03em; }
+.text-h2      { font-size: var(--fs-h2);      line-height: var(--lh-snug); letter-spacing: -0.01em; text-wrap: balance; }
+.text-h1      { font-size: var(--fs-h1);      line-height: var(--lh-tight); letter-spacing: -0.02em; text-wrap: balance; }
+.text-display { font-size: var(--fs-display); line-height: var(--lh-tight); letter-spacing: -0.03em; text-wrap: balance; }
+
+/* 中文不做负字距(拉丁排印规则反向),改放开字间 */
+:where(.text-h2):lang(zh-Hans),
+:where(.text-h2):lang(zh) { letter-spacing: 0.02em; }
+:where(.text-h1):lang(zh-Hans),
+:where(.text-h1):lang(zh) { letter-spacing: 0.03em; }
+:where(.text-display):lang(zh-Hans),
+:where(.text-display):lang(zh) { letter-spacing: 0.04em; }
 
 /* 字体角色 */
 .font-display   { font-family: var(--font-display); }

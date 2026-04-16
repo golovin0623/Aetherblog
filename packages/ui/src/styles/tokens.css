@@ -225,17 +225,24 @@ html {
 }
 
 /* breath-soft —— 对任意字体(含渐变 text)均生效的克制呼吸
+   2026-04 Round 4:改 4.8s 周期(人类静息呼吸下限 + 审美余裕)
+   吸气占 40% 时间(快),呼气占 60%(慢),模拟生理节奏
    只做极细微的亮度 + 字距变化,不改字形,不撼动布局 */
 @keyframes breath-soft {
-  0%, 100% {
+  0% {
     opacity: 0.92;
     letter-spacing: -0.02em;
     filter: brightness(0.98);
   }
-  50% {
+  40% {
     opacity: 1;
     letter-spacing: -0.015em;
     filter: brightness(1.04);
+  }
+  100% {
+    opacity: 0.92;
+    letter-spacing: -0.02em;
+    filter: brightness(0.98);
   }
 }
 
