@@ -1616,18 +1616,45 @@ html[data-nav-type="pop"] .animate-in {
    这里只做"排印细节"升级,不替换字体。
    ============================================================ */
 
-/* 首字下沉 —— 文章正文第一段首字母做 aurora 渐变大字 */
+/* 首字下沉 —— 文章正文第一段首字
+   2026-04 重构:按 Butterick《Practical Typography》与 Frere-Jones
+   工艺规则,drop cap 必须 roman(正体)、单色或极细描金、精确基线锁定。
+   取消原先 italic + aurora 渐变 + 4.2em 的堆砌。 */
 .markdown-body > p:first-of-type::first-letter {
-  font-size: 3.4em;
-  line-height: 0.85;
-  font-weight: 700;
+  font-family: var(--font-editorial);        /* Playfair/Noto Serif —— 更适合 drop cap 锚 */
+  font-size: 3.6em;                           /* = 3 × line-height on fs-reading */
+  line-height: 1;
+  font-weight: 400;                           /* Book/Regular —— 不能 600/700 */
+  font-style: normal;                         /* 取消 italic */
   float: left;
-  margin: 0.08em 0.14em 0 -0.02em;
-  background: linear-gradient(135deg, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  margin: 0.05em 0.14em 0 0;                  /* 取消负缩进,改为自然对齐 */
+  color: var(--ink-primary);                  /* 纯墨色,不再渐变 */
+  /* 极细描金 —— 保留品牌极光气质但不牺牲字形采样 */
+  text-shadow: 0 1px 0 color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  /* 清除可能从上一版本遗留的 background-clip */
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* 现代浏览器的真 hanging cap —— initial-letter 能基线对齐,不依赖 float hack */
+@supports (initial-letter: 3) or (-webkit-initial-letter: 3) {
+  .markdown-body > p:first-of-type::first-letter {
+    initial-letter: 3 drop 2;
+    -webkit-initial-letter: 3 drop 2;
+    float: none;
+    margin: 0 0.14em 0 0;
+    font-size: inherit;                       /* initial-letter 接管尺寸 */
+  }
+}
+
+/* 中文首字走 editorial(Noto Serif SC),取消描金避免字形毛刺 */
+.markdown-body:lang(zh) > p:first-of-type::first-letter,
+.markdown-body:lang(zh-Hans) > p:first-of-type::first-letter,
+.markdown-body:lang(zh-CN) > p:first-of-type::first-letter {
+  font-family: var(--font-editorial);
+  text-shadow: none;
 }
 
 /* h1 底部 aurora 渐变下划线 */
@@ -1735,4 +1762,32 @@ html[data-nav-type="pop"] .animate-in {
     color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 30%, transparent) 50%,
     transparent 100%);
   margin: 2.5rem 0;
+}
+
+/* ============================================================
+   View Transitions · 路由切换 morph
+   需要 next.config.ts 开启 `experimental.viewTransition: true`,
+   配合组件上的 `style={{ viewTransitionName: \`post-${slug}\` }}`。
+   浏览器支持矩阵:Chrome/Edge 111+ · Safari 18+ · Firefox 逐步滚动,
+   不支持的浏览器自动回退为普通导航(无 morph,无报错)。
+   ============================================================ */
+
+/* 根级 crossfade —— 进入/离开曲线采用 Apple Material standard ease */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 具名组 —— 文章卡片与标题 morph,略过冲的 enter 曲线 */
+::view-transition-group(*) {
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* 减动效 —— 关闭 morph,只保留极短 crossfade */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) { animation-duration: 1ms; }
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation-duration: 160ms; }
 }
