@@ -338,6 +338,21 @@ A second design layer (**Aether Codex — 漂浮在夜空中的发光典籍**) s
 - **View Transitions** (blog only): `experimental.viewTransition: true` in `next.config.ts`; element opt-in via `style={{ viewTransitionName: \`post-${slug}\` }}` / `post-${slug}-title` on ArticleCard `<article>`, FeaturedPost outer `<div>`, article page `<article>` + `<h1>`. `globals.css` defines `::view-transition-old/new/group` with Apple Material standard ease `cubic-bezier(0.32, 0.72, 0, 1)` (crossfade 420ms) and enter ease `cubic-bezier(0.22, 0.61, 0.36, 1)` (group morph 560ms). Reduce-motion collapses group to 1ms.
 - **`/design` route** (Aether Codex 作品集入口): `apps/blog/app/design/{page.tsx, DesignClient.tsx, loading.tsx, sections/S1–S8.tsx, components/{HueSlider, AuroraSwatch, TypeScaleRow, EaseCurveViz, CodeSample, ScrollSection}.tsx}`. Mirrors `/about` server+client pattern with 10-min ISR. S2 hosts an OKLCH hue slider that derives aurora-1..4 in real time; S5 lets the visitor trigger each ease curve; S7 is the 八问八答 reasoning essay.
 
+### Round 4 · 设计系统落地到全博客 (2026-04-17)
+
+After Round 3 risked being a `/design`-only showcase, Round 4 sweeps the entire blog surface into the Codex layer in four phases:
+
+- **Phase 1 — titles & feature cards**: Hero `<h1>` runs `breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1)` with `text-wrap: balance` and CJK letter-spacing reversal; section titles + article `<h1>` adopt `font-display` (Fraunces) with `text-wrap: balance`; `ArticleCard` → `surface-leaf` + `data-interactive`; `FeaturedPost` → `surface-raised` + `data-interactive`.
+- **Phase 2 — high-visibility sweeps**: `PostNavigation` (both prev/next links), `CommentSection` (comment card + trigger + expanded form), `TableOfContents` (empty state + floating trigger), `SearchPanel` (modal → `surface-overlay`) all moved off hand-rolled `bg-white/10 border border-white/10` onto the canonical `surface-*` classes.
+- **Phase 3 — floating chrome + ambient states**: `ScrollToTop` / `ArticleFloatingActions` (5 sites) / `FloatingThemeToggle` → `surface-raised !rounded-full` circles; `TimelineTree` year/month buttons + `/posts` empty state → surface system.
+- **Phase 4 — nav + /about + FriendCard**:
+  - `BlogHeader` four active nav indicators (archives/friends/about/design) moved from `text-primary` + `bg-primary` (legacy brand-gradient) to `text-[var(--aurora-1)]` + `bg-[var(--aurora-1)]`, with inactive state on `--ink-secondary`. Inline header background retained to protect iOS PWA safe-area + translate collapse logic.
+  - `MobileMenu` drawer replaced `bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] shadow-2xl` with the canonical `surface-overlay !rounded-none !rounded-l-2xl` (right edge flush to viewport, left radius natural). Active link uses `bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]` + `text-[var(--aurora-1)]`.
+  - `/about` `HeroSection` h1 breath cadence aligned to the 4.8s asymmetric global value; `text-wrap: balance` added.
+  - `FriendCard` **hybrid**: wrapper composes `surface-leaf` + `data-interactive` (inherits 4-tier radius/blur/border + aurora hover stripe), and `--aurora-1` is locally overridden to each friend's `themeColor` via inline style — so the `[data-interactive]::after` stripe renders in the friend's brand color, not the site-wide aurora. Background gradient retargeted at `var(--bg-leaf)`; redundant `rounded-2xl border shadow-lg` stripped.
+- **`@property --aurora-angle`** (typography.css): typed `<angle>` custom property enables real rotation tweening on `.aurora-text` hover (previously the `background-image: linear-gradient(<angle>, ...)` would hard-swap at 225° ↔ 315° without animation).
+- **Aurora hover stripe edge fix** (`surfaces.css`): gradient stops switched from 0%/100% hard-cut to 0/6/18/82/94/100% with `border-*-left-radius: inherit` + `filter: drop-shadow` instead of `box-shadow`, so the 2px stripe fades at both ends and follows the card's rounded corner rather than painting a rectangular halo.
+
 ## Design System ("Cognitive Elegance")
 
 ### UI Philosophy

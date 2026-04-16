@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### ✦ Round 4 · 设计系统落地到全博客 (2026-04-17)
+
+Round 3 重精度,Round 4 重**覆盖度** —— 确保 Codex 不是只存在于 `/design` 展厅,而是真的触达每一个用户接触到的页面。
+
+**Added**
+- **`@property --aurora-angle`** (typography.css): 声明为 `<angle>` 类型的 typed custom property,让 `.aurora-text` 的 `linear-gradient(<angle>, ...)` 在 hover 时真正做角度补间动画(225° ↔ 315°),而不是硬切换。
+- **Aurora hover stripe 边缘软化** (surfaces.css): 2px 左侧极光光带的 linear-gradient stops 改为 0/6/18/82/94/100% 非线性分布,配合 `border-*-left-radius: inherit` + `filter: drop-shadow` 代替 `box-shadow`,让光带两端淡出并顺卡片圆角收束,不再硬切断也不再画矩形光晕。
+
+**Changed — Phase 1: 标题体系 + 卡片基座**
+- **Hero h1 呼吸周期**从 `breath 7.2s ease-in-out` 升级为 `breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1)` 非对称节律(进气 40% / 呼气 60%),贴近生理呼吸下限。
+- **Hero h1 + 首页 section h2 + 文章页 h1** 全部接入 `font-display` (Fraunces) + `text-wrap: balance`(西文避免孤行)+ CJK `letter-spacing: 0` 反转(避免汉字不合理字距)。
+- **ArticleCard** 从手写 `bg-white/5 border border-white/10 rounded-2xl` 切到 `surface-leaf` + `data-interactive`(自动获得统一 hover 光带与圆角)。
+- **FeaturedPost** 同上,用 `surface-raised`(因为是 Hero 区的浮起卡片,视觉层级高一档)。
+
+**Changed — Phase 2: 高曝光组件**
+- **PostNavigation** 前后文导航的两个 `<Link>` 切到 `surface-leaf` + `data-interactive` + `font-editorial` 正文字体 + mono uppercase "Prev · 上一篇" 标签。
+- **CommentSection** 三处:评论卡 → `surface-leaf`(保留 `rounded-tl-none` 气泡尾);触发器 → `surface-leaf` + `data-interactive`;展开表单 → `surface-raised`。
+- **TableOfContents** 空态 → `surface-leaf border-dashed`;浮动触发按钮 → `surface-raised`。
+- **SearchPanel** 模态框 → `surface-overlay`(正确的层级,原来是用 `surface-raised` 且缺少极光辉光边)。
+
+**Changed — Phase 3: 浮动交互 + 环境态**
+- **ScrollToTop** / **FloatingThemeToggle** / **ArticleFloatingActions** 5 处(TOC 按钮、scroll-top、桌面圆环、TOC 飞出面板→`surface-overlay`、空占位) → 全部 `surface-raised !rounded-full` 圆形。
+- **TimelineTree** 月份按钮 → `surface-leaf data-interactive`;年份按钮 → `surface-raised data-interactive`。
+- **`/posts` 空态** → `surface-leaf`。
+
+**Changed — Phase 4: 导航 + /about + FriendCard**
+- **BlogHeader** 4 处激活指示器(归档/友链/关于/设计)从 `text-primary` + `bg-primary`(遗留品牌渐变)切到 `text-[var(--aurora-1)]` + `bg-[var(--aurora-1)]`,非激活态用 `--ink-secondary`。顶栏内联 backdrop/transition 样式**保留**,避免破坏 iOS PWA 安全区与文章页折叠动画。
+- **MobileMenu** 抽屉主体从 `bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] shadow-2xl` 切到规范的 `surface-overlay !rounded-none !rounded-l-2xl`(右缘齐屏,左缘承接圆角)。激活链接用 `bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]` + `text-[var(--aurora-1)]`。
+- **`/about` HeroSection** h1 呼吸周期对齐到 4.8s 全局节律(原为 7.2s);补 `text-wrap: balance`。
+- **`FriendCard` 混合方案**:`<a>` 外层组合 `surface-leaf` + `data-interactive`(继承 4 层玻璃的圆角/模糊/边框 + 统一 hover 光带);同时在内联 style 中把 `--aurora-1` **本地覆写**为每位友链的 `themeColor`,这样 `::after` 光带渲染为该友链的品牌色,而非全站统一极光 —— 既保留品牌识别差异,又承接统一 surface 体系。背景渐变改引用 `var(--bg-leaf)`;剥离冗余的 `rounded-2xl border shadow-lg`。
+
+**Fixed**
+- View Transitions 规则与主题切换动画互相覆盖(globals.css:1191 `animation: none` 被 `::view-transition-old(root)` 压掉)—— 现把 view-transition 规则 scoped 到 `::view-transition-group(*)` 命名组。
+- `UpdateAvatarRequest.AvatarURL` validator 从 `url`(仅绝对 URL)放宽到 `uri,max=2048`,接受本地上传的 `/uploads/...` 相对路径。
+- `useCopyToClipboard` 加三层降级:isSecureContext 守护 → legacy `execCommand('copy')` via 离屏 textarea → `console.warn` only;返回类型从 `Promise<void>` 扩展到 `Promise<boolean>`(无现有消费者,安全改动)。
+
+---
+
 ### ✦ Round 3 · 前沿精度升级 (2026-04-17)
 
 **Added**
