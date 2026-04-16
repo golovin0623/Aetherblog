@@ -71,7 +71,11 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
     >
       <article
         className="relative flex flex-col overflow-hidden rounded-2xl bg-[var(--bg-card)] backdrop-blur-md border border-[var(--border-default)] transition-all duration-300 hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] hover:-translate-y-1 cursor-pointer min-h-[280px] h-full shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-lg)]"
-        style={{ animationDelay: `${index * 100}ms` }}
+        style={{
+          animationDelay: `${index * 100}ms`,
+          // View Transitions:卡片 → 文章页 morph 锚点
+          viewTransitionName: `post-${slug}`,
+        } as React.CSSProperties}
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -143,6 +147,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
             <span
               className="text-lg font-bold text-[var(--text-primary)] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-accent group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug"
               title={title}
+              style={{ viewTransitionName: `post-${slug}-title` } as React.CSSProperties}
             >
               {title}
             </span>

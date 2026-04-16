@@ -152,7 +152,10 @@ export default async function PostDetailPage({ params }: PageProps) {
       {/* 响应式布局容器:PC端显示侧边目录,移动端隐藏 */}
       <div className="max-w-7xl mx-auto flex justify-center gap-12 px-4 pt-28 pb-12 relative">
         {/* 主要文章内容 */}
-        <article className="w-full max-w-4xl min-w-0 relative">
+        <article
+          className="w-full max-w-4xl min-w-0 relative"
+          style={{ viewTransitionName: `post-${post.slug}` } as React.CSSProperties}
+        >
           {/* 左侧 marginalia 边注 —— xl+ 断点才显示,绝对定位到文章左侧槽位 */}
           <aside
             className="hidden xl:block absolute -left-52 top-0 w-40 pt-16 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)] space-y-5"
@@ -183,7 +186,12 @@ export default async function PostDetailPage({ params }: PageProps) {
           </FadeIn>
 
           <FadeIn delay={0.1}>
-            <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4">{post.title}</h1>
+            <h1
+              className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] mb-4"
+              style={{ viewTransitionName: `post-${post.slug}-title` } as React.CSSProperties}
+            >
+              {post.title}
+            </h1>
           </FadeIn>
 
           <FadeIn delay={0.15}>

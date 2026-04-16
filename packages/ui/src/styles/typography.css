@@ -108,20 +108,37 @@
 
 /* -----------------------------------------------------------
  * Drop Cap —— 首字下沉(用于文章第一段)
+ * 2026-04 重构:按 Butterick《Practical Typography》与 Frere-Jones 工艺规则,
+ *   · roman 正体(取消 italic —— italic 让 drop cap 从"锚"变成"飘")
+ *   · 3.6em = 3 × line-height(精确基线锁定,不再 4.2em 伸进第 4 行)
+ *   · Book/Regular 400 —— 不能用 600/700 把首段"堵"住
+ *   · 纯墨色 + 极细描金 text-shadow —— 取消 aurora 渐变(衬线 ink trap 不适合采样)
+ *   · @supports initial-letter: 现代浏览器走真 hanging cap
  * ----------------------------------------------------------- */
 .drop-cap::first-letter {
-  font-family: var(--font-display);
-  font-size: 4.2em;
-  line-height: 0.85;
-  font-weight: 600;
-  font-style: italic;
+  font-family: var(--font-editorial);
+  font-size: 3.6em;
+  line-height: 1;
+  font-weight: 400;
+  font-style: normal;
   float: left;
-  margin: 0.08em 0.12em 0 -0.04em;
+  margin: 0.05em 0.14em 0 0;
   color: var(--ink-primary);
-  background: linear-gradient(135deg, var(--aurora-1), var(--aurora-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 0 color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  -webkit-text-fill-color: currentColor;
+}
+
+@supports (initial-letter: 3) or (-webkit-initial-letter: 3) {
+  .drop-cap::first-letter {
+    initial-letter: 3 drop 2;
+    -webkit-initial-letter: 3 drop 2;
+    float: none;
+    margin: 0 0.14em 0 0;
+    font-size: inherit;
+  }
 }
 
 /* -----------------------------------------------------------
@@ -193,7 +210,14 @@
 
 /* -----------------------------------------------------------
  * Reading Progress —— 顶部极光阅读进度条
- * 通过 CSS 变量 --reading-progress (0..1) 驱动
+ *
+ * 2026-04 重构:双路径实现
+ *   - 基础类 .reading-progress 保留 CSS 变量 rAF 降级路径(Safari < 26)
+ *   - 增补类 .reading-progress--css 走 animation-timeline: scroll()
+ *     现代浏览器(Chrome 115+)纯 CSS 驱动,零 JS re-render,120fps
+ *
+ * 组件在 client 检测 CSS.supports('animation-timeline', 'scroll()'),
+ * 支持则渲染两个 class,不支持则只渲染基础 class + 注入 --reading-progress 变量。
  * ----------------------------------------------------------- */
 .reading-progress {
   position: fixed;
@@ -211,6 +235,24 @@
   pointer-events: none;
   box-shadow: 0 0 8px color-mix(in oklch, var(--aurora-1) 60%, transparent);
   transition: transform 100ms linear;
+}
+
+@supports (animation-timeline: scroll()) {
+  .reading-progress--css {
+    transform: scaleX(0);
+    animation: reading-progress-fill linear forwards;
+    animation-timeline: scroll(root block);
+    transition: none;
+    will-change: transform;
+  }
+  @keyframes reading-progress-fill {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+  /* reduce-motion 场景:仍然用 scroll-timeline,只是关掉 box-shadow 的发光分散注意力 */
+  @media (prefers-reduced-motion: reduce) {
+    .reading-progress--css { box-shadow: none; }
+  }
 }
 
 /* -----------------------------------------------------------

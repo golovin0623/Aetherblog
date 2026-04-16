@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   experimental: {
     // 对大型包进行 Tree-shake，仅打包已使用的导出内容 — 可显著减少构建时间
     optimizePackageImports: ['shiki', 'lucide-react', 'framer-motion', 'mermaid', 'date-fns'],
+    // 启用 Next.js 15 原生 View Transitions —— 文章卡片 → 文章页 morph
+    // 协同 CSS `::view-transition-*` 规则 + 元素 `viewTransitionName` 属性
+    viewTransition: true,
   },
   outputFileTracingRoot: path.join(__dirname, '../..'),
   images: {
