@@ -34,6 +34,44 @@ echo "[$(date -Iseconds)] Lock acquired"
 
 cd "$PROJECT_DIR"
 
+# ---------------------------------------------------------------------------
+# 同步仓库配置文件到 git ref (默认 origin/main)。解决 #459 合并后 admin 镜像
+# 切换到 nginx-unprivileged:8080、但服务器磁盘上 docker-compose.prod.yml 还
+# 映射到 :80 的事故（镜像更新了但配置没同步，gateway connect refused）。
+#
+# 行为：
+#   - fetch + reset --hard，会丢弃 tracked 文件的本地修改（.env / .env.* 在
+#     .gitignore 里不受影响）。
+#   - 若 deploy.sh 自身被更新，exec 自己一次让新版本接管剩余流程。
+#   - SKIP_GIT_SYNC=true 可跳过（离线环境或主动暂停 config 滚动）。
+# ---------------------------------------------------------------------------
+if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
+  deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
+  fetch_ref="${DEPLOY_GIT_REF#origin/}"
+  fetch_ref="${fetch_ref:-main}"
+
+  echo "[$(date -Iseconds)] Syncing repo to $deploy_ref"
+  if ! git diff --quiet HEAD 2>/dev/null; then
+    echo "[$(date -Iseconds)] WARN: working tree dirty, reset --hard will discard these tracked changes:"
+    git status --porcelain | head -20 || true
+  fi
+
+  current_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
+
+  if ! git fetch --quiet --tags origin "$fetch_ref"; then
+    echo "[$(date -Iseconds)] ERROR: git fetch origin $fetch_ref failed"
+    exit 1
+  fi
+  git reset --hard "$deploy_ref"
+
+  new_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
+  if [ -n "$current_self_sha" ] && [ "$current_self_sha" != "$new_self_sha" ]; then
+    echo "[$(date -Iseconds)] deploy.sh changed via sync, re-executing with new version"
+    export SKIP_GIT_SYNC=true  # avoid infinite re-exec loop
+    exec "$0" "$@"
+  fi
+fi
+
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo "[$(date -Iseconds)] ERROR: compose file not found: $PROJECT_DIR/$COMPOSE_FILE"
   exit 1
@@ -92,9 +130,46 @@ else
   echo "[$(date -Iseconds)] WARN: preflight script not found or not executable: $PREFLIGHT_SCRIPT"
 fi
 
+# Migration 必须先于 `up -d`：#459 加了 migration 000033 (jwt_secrets 表)，
+# backend 启动时就要 SELECT 它，不存在就 FTL。原来的 run_migrations 要等
+# backend healthy 再跑，死锁。改成一次性容器 `compose run --rm migrate up`，
+# 不依赖 backend 长进程，postgres 通过 depends_on 自动拉起。
+run_pre_deploy_migrations() {
+  # incremental 里如果只动了前端，migration 可以跳过节省时间
+  if [ "$DEPLOY_MODE" = "incremental" ]; then
+    local needs_migrate=false
+    for svc in $DEPLOY_SERVICES; do
+      case "$svc" in
+        backend|ai-service) needs_migrate=true ;;
+      esac
+    done
+    if [ "$needs_migrate" != "true" ]; then
+      echo "[$(date -Iseconds)] Frontend-only incremental deploy, skipping migrations"
+      return
+    fi
+  fi
+
+  echo "[$(date -Iseconds)] Pre-deploy migration (one-shot backend container)"
+  local db_user="${AETHERBLOG_DATABASE_USER:-aetherblog}"
+  local db_name="${AETHERBLOG_DATABASE_DBNAME:-aetherblog}"
+  local db_dsn="postgres://${db_user}:${POSTGRES_PASSWORD}@postgres:5432/${db_name}?sslmode=disable"
+
+  if docker compose -f "$COMPOSE_FILE" run --rm \
+       --entrypoint /app/migrate \
+       -e DATABASE_DSN="$db_dsn" \
+       backend -dir /app/migrations -dsn "$db_dsn" up; then
+    echo "[$(date -Iseconds)] Migrations applied successfully"
+  else
+    echo "[$(date -Iseconds)] ERROR: migration failed, aborting deploy"
+    exit 1
+  fi
+}
+
 run_full_deploy() {
   echo "[$(date -Iseconds)] Running docker compose pull (full)"
   docker compose -f "$COMPOSE_FILE" pull
+
+  run_pre_deploy_migrations
 
   echo "[$(date -Iseconds)] Running docker compose up -d (full)"
   docker compose -f "$COMPOSE_FILE" up -d
@@ -114,6 +189,8 @@ run_incremental_deploy() {
 
   echo "[$(date -Iseconds)] Pulling images: ${services[*]}"
   docker compose -f "$COMPOSE_FILE" pull "${services[@]}"
+
+  run_pre_deploy_migrations
 
   echo "[$(date -Iseconds)] Recreating containers (--no-deps): ${services[*]}"
   docker compose -f "$COMPOSE_FILE" up -d --no-deps "${services[@]}"
@@ -136,6 +213,9 @@ run_canary_deploy() {
 
   echo "[$(date -Iseconds)] Running docker compose pull (canary): ${services[*]}"
   docker compose -f "$COMPOSE_FILE" pull "${services[@]}"
+
+  # canary 默认触达 backend/ai-service，同样先跑 migration 保障兼容性
+  run_pre_deploy_migrations
 
   echo "[$(date -Iseconds)] Running docker compose up -d (canary): ${services[*]}"
   docker compose -f "$COMPOSE_FILE" up -d "${services[@]}"
@@ -161,31 +241,8 @@ case "$DEPLOY_MODE" in
     ;;
 esac
 
-# ---------------------------------------------------------------------------
-# Post-deploy: run database migrations
-# ---------------------------------------------------------------------------
-run_migrations() {
-  echo "[$(date -Iseconds)] Waiting for backend to become healthy..."
-  local retries=0
-  while (( retries < 30 )); do
-    if docker compose -f "$COMPOSE_FILE" exec -T backend /app/server -health 2>/dev/null; then
-      break
-    fi
-    retries=$((retries + 1))
-    sleep 2
-  done
-
-  echo "[$(date -Iseconds)] Running database migrations via backend container"
-  local db_dsn="postgres://${AETHERBLOG_DATABASE_USER:-aetherblog}:${POSTGRES_PASSWORD}@postgres:5432/${AETHERBLOG_DATABASE_DBNAME:-aetherblog}?sslmode=disable"
-  if docker compose -f "$COMPOSE_FILE" exec -T backend /app/migrate -dir /app/migrations -dsn "$db_dsn" up; then
-    echo "[$(date -Iseconds)] Migrations applied successfully"
-  else
-    echo "[$(date -Iseconds)] ERROR: migration failed"
-    exit 1
-  fi
-}
-
-run_migrations
+# 说明：migration 现在在 `up -d` 之前由 run_pre_deploy_migrations 完成（见上方），
+# 这里不再重复执行。保留 sanity 打印便于运维验证版本号。
 
 echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
