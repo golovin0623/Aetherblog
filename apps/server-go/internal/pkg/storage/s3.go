@@ -117,10 +117,36 @@ func NewS3Storage(configJSON string) (*S3Storage, error) {
 	return &S3Storage{client: client, cfg: cfg}, nil
 }
 
+// validateS3Key 阻止畸形 key（前导 '/', '..', 超长）传入 SDK。
+// SECURITY (VULN-054): S3 允许 '/' 作为伪目录分隔符，但绝对路径 '/foo' 会让
+// 对象 key 变成 '/foo' 而非 'foo'，造成 URL 错位且可能与未来的路径穿越防御
+// 冲突。此处做一次前置 sanity check，保持行为可预期。
+func validateS3Key(key string) error {
+	if key == "" {
+		return fmt.Errorf("s3 key: empty")
+	}
+	if len(key) > 1024 {
+		return fmt.Errorf("s3 key: too long (>%d)", 1024)
+	}
+	if key[0] == '/' {
+		return fmt.Errorf("s3 key: must not start with '/'")
+	}
+	// 拒绝任何 '..' 段
+	for i := 0; i < len(key)-1; i++ {
+		if key[i] == '.' && key[i+1] == '.' {
+			return fmt.Errorf("s3 key: must not contain '..'")
+		}
+	}
+	return nil
+}
+
 // Upload 将 reader 中的内容上传到 S3 兼容存储的指定 key。
 // 由于 PutObject 需要完整数据，会先将 reader 内容读入内存缓冲区。
 // 成功时返回文件的公开访问 URL。
 func (s *S3Storage) Upload(ctx context.Context, key string, r io.Reader, size int64, mimeType string) (string, error) {
+	if err := validateS3Key(key); err != nil {
+		return "", err
+	}
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(s.cfg.Bucket),
 		Key:           aws.String(key),

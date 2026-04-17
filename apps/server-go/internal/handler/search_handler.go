@@ -38,11 +38,23 @@ func (h *SearchHandler) Search(c echo.Context) error {
 	if q == "" {
 		return response.FailWith(c, response.BadRequest, "搜索关键词不能为空")
 	}
+	// SECURITY (VULN-053): 查询字符串长度封顶。搜索接口下挂全文索引 + 向量
+	// 检索 + 可能的 LLM 调用，成本与输入长度线性相关。
+	if len(q) > 500 {
+		return response.FailWith(c, response.BadRequest, "查询过长 (上限 500 字符)")
+	}
 
 	mode := c.QueryParam("mode")
+	// SECURITY (VULN-046/050): strconv.Atoi 取代 fmt.Sscanf。Sscanf 对 "5abc"
+	// 会静默解析出 5，同时允许负数；Atoi 明确失败。再钳位到 [1, 50]。
 	limit := 10
 	if l := c.QueryParam("limit"); l != "" {
-		fmt.Sscanf(l, "%d", &limit)
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			if n > 50 {
+				n = 50
+			}
+			limit = n
+		}
 	}
 
 	result, err := h.svc.Search(c.Request().Context(), q, mode, limit)
@@ -57,6 +69,10 @@ func (h *SearchHandler) QA(c echo.Context) error {
 	q := c.QueryParam("q")
 	if q == "" {
 		return response.FailWith(c, response.BadRequest, "搜索关键词不能为空")
+	}
+	// SECURITY (VULN-053): 同 Search —— QA 会吃 token，长度必须封顶。
+	if len(q) > 500 {
+		return response.FailWith(c, response.BadRequest, "查询过长 (上限 500 字符)")
 	}
 
 	cfg := h.svc.GetSearchConfig(c.Request().Context())

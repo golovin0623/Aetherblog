@@ -128,7 +128,10 @@ services:
     networks:
       - aetherblog-network
     healthcheck:
-      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
+      # SECURITY (VULN-147): use REDISCLI_AUTH env var rather than -a flag.
+      # -a flag leaks the password into `ps auxf` output; REDISCLI_AUTH is
+      # consumed internally by redis-cli without appearing in process args.
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -286,7 +289,12 @@ services:
         - linux/amd64
         - linux/arm64
       args:
-        NEXT_PUBLIC_API_URL: http://backend:8080
+        # SECURITY (VULN-144): bake a relative `/api` path — the production
+        # gateway already proxies /api to the backend, so the client never
+        # sees the internal hostname. Baking `http://backend:8080` into the
+        # bundle would ship that internal DNS name to every visitor's browser
+        # (leaks topology + confuses clients when DNS differs).
+        NEXT_PUBLIC_API_URL: /api
         NEXT_PUBLIC_ADMIN_URL: /admin/
     container_name: aetherblog-blog
     restart: unless-stopped

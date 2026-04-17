@@ -9,7 +9,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
@@ -373,9 +373,13 @@ class CredentialResolver:
     async def update_last_used(self, credential_id: int, error: str | None = None) -> None:
         """Update last used timestamp and error."""
         query = """
-            UPDATE ai_credentials 
+            UPDATE ai_credentials
             SET last_used_at = $1, last_error = $2
             WHERE id = $3
         """
         async with self.pool.acquire() as conn:
-            await conn.execute(query, datetime.utcnow(), error, credential_id)
+            # SECURITY (VULN-073): datetime.utcnow() is deprecated in Python 3.12+
+            # and returns a naive datetime (no tzinfo), which silently serializes
+            # as UTC but is ambiguous if moved across processes. Use an explicit
+            # tz-aware timestamp.
+            await conn.execute(query, datetime.now(timezone.utc), error, credential_id)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -268,6 +269,19 @@ func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 	var req dto.UpdateAvatarRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
+	}
+
+	// SECURITY (VULN-047): validator 的 `uri` 约束接受 ``javascript:...`` /
+	// ``data:text/html,...`` 等危险 scheme —— 通过后续被 <img> 或头像卡片
+	// 渲染时触发 XSS。显式拒绝非 http(s) 绝对 URL 与非 '/' 开头的相对 URI。
+	lower := strings.ToLower(strings.TrimSpace(req.AvatarURL))
+	switch {
+	case strings.HasPrefix(lower, "http://"), strings.HasPrefix(lower, "https://"):
+		// 允许：带 scheme 的绝对 URL
+	case strings.HasPrefix(req.AvatarURL, "/") && !strings.HasPrefix(req.AvatarURL, "//"):
+		// 允许：同源绝对路径（e.g. /uploads/avatars/x.jpg）
+	default:
+		return response.FailWith(c, response.BadRequest, "头像 URL 必须是 http(s) 或同源绝对路径")
 	}
 
 	if err := h.auth.UpdateAvatar(c.Request().Context(), lu.UserID, req.AvatarURL); err != nil {

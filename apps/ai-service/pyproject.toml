@@ -1,3 +1,13 @@
+# SECURITY (VULN-075): explicit project metadata pins the Python floor +
+# packaging identity. Without ``requires-python`` a fresh clone on 3.9 would
+# install against incompatible dependencies (pydantic-settings 2.x, MultiFernet
+# rotation syntax, pattern-based validators) and crash at import time.
+[project]
+name = "aetherblog-ai-service"
+version = "0.1.0"
+description = "AetherBlog AI service — FastAPI + LiteLLM proxy and credential vault."
+requires-python = ">=3.11"
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
