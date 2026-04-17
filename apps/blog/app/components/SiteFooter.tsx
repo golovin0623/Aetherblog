@@ -15,7 +15,7 @@
  *    条顶部渐变细线做 section 分隔即可，这是 /design 八节交替的标准做法。
  *  - wordmark 用 `font-display`（Fraunces），签名行用 `font-editorial`（Instrument
  *    Serif italic），版权 / ICP 用 `font-mono` + uppercase + wide tracking；
- *  - § 前缀与 hover 侧边条用 `var(--color-primary)` 以匹配用户的主题色，
+ *  - § 前缀与 hover 侧边条用 `var(--aurora-1)` 以匹配用户的主题色，
  *    同时 fallback 到 `var(--aurora-1)` 作为 Codex 默认；
  *  - 移动端堆叠居中，`pb-[max(1rem,env(safe-area-inset-bottom))]` 适配 iOS 安全区。
  */
@@ -136,13 +136,18 @@ export default function SiteFooter() {
         className="h-px w-full"
         style={{
           background:
-            'linear-gradient(90deg, transparent 0%, color-mix(in oklch, var(--color-primary, var(--aurora-1)) 40%, transparent) 35%, color-mix(in oklch, var(--color-accent, var(--aurora-2)) 35%, transparent) 65%, transparent 100%)',
+            'linear-gradient(90deg, transparent 0%, color-mix(in oklch, var(--aurora-1) 40%, transparent) 35%, color-mix(in oklch, var(--aurora-2) 35%, transparent) 65%, transparent 100%)',
         }}
       />
 
-      {/* 与 /design §section 同款：直接铺 bg-substrate，不叠玻璃层。
-          color-mix 兜底用 --bg-card 兼容旧版 tokens（同样是冷暗值）。*/}
-      <div className="bg-[var(--bg-substrate,var(--bg-card,#0B0D14))]">
+      {/* 底色：
+          - 暗主题走 /design §section 同款的 `--bg-substrate` (#0B0D14 冷深蓝黑)；
+          - 亮主题故意 *不* 用 `--bg-substrate` (#F4F2EC 暖米白) ——那个是
+            Codex "牛皮纸 / 羊皮卷" 色，跟用户在其它 light 场景实际用的冷
+            中性卡片底 (页面 body + 文章卡片均为近冷白) 对不上，会被视觉
+            解读成"发黄"。亮主题改用 Apple 系统级中性灰 #F5F5F7，与页面
+            卡片色温一致。*/}
+      <div className="bg-[#F5F5F7] dark:bg-[var(--bg-substrate,#0B0D14)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* 主区：wordmark + nav + social。
               mobile: 单列居中堆叠；md+: 3 列网格。*/}
@@ -151,7 +156,7 @@ export default function SiteFooter() {
             <div className="space-y-3 md:space-y-4">
               <Link
                 href="/"
-                className="inline-block font-display text-[clamp(1.75rem,3.5vw,2.25rem)] leading-none text-[var(--ink-primary)] tracking-[-0.015em] transition-colors hover:text-[var(--color-primary, var(--aurora-1))]"
+                className="inline-block font-display text-[clamp(1.75rem,3.5vw,2.25rem)] leading-none text-[var(--ink-primary)] tracking-[-0.015em] transition-colors hover:text-[var(--aurora-1)]"
               >
                 {siteName}
               </Link>
@@ -164,7 +169,7 @@ export default function SiteFooter() {
 
             {/* Navigate */}
             <nav aria-label="页脚导航" className="space-y-3 md:space-y-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color-mix(in_oklch,var(--color-primary,var(--aurora-1))_85%,transparent)]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color-mix(in_oklch,var(--aurora-1)_85%,transparent)]">
                 § Navigate
               </div>
               {/* mobile: flex-wrap 紧凑行；md+: 2-col grid */}
@@ -177,7 +182,7 @@ export default function SiteFooter() {
                     >
                       <span
                         aria-hidden="true"
-                        className="hidden md:inline-block h-px w-3 bg-[color-mix(in_oklch,var(--ink-muted)_40%,transparent)] transition-all duration-300 group-hover/fl:w-6 group-hover/fl:bg-[var(--color-primary, var(--aurora-1))]"
+                        className="hidden md:inline-block h-px w-3 bg-[color-mix(in_oklch,var(--ink-muted)_40%,transparent)] transition-all duration-300 group-hover/fl:w-6 group-hover/fl:bg-[var(--aurora-1)]"
                       />
                       {item.label}
                     </Link>
@@ -188,7 +193,7 @@ export default function SiteFooter() {
 
             {/* Connect · social */}
             <div className="space-y-3 md:space-y-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color-mix(in_oklch,var(--color-primary,var(--aurora-1))_85%,transparent)]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color-mix(in_oklch,var(--aurora-1)_85%,transparent)]">
                 § Connect
               </div>
               {socialLinks.length > 0 ? (
@@ -206,7 +211,7 @@ export default function SiteFooter() {
                             ? { target: '_blank', rel: 'noopener noreferrer' }
                             : {})}
                           data-interactive
-                          className="surface-raised !rounded-full flex items-center justify-center w-11 h-11 text-[var(--ink-secondary)] hover:text-[var(--color-primary, var(--aurora-1))] transition-colors"
+                          className="surface-raised !rounded-full flex items-center justify-center w-11 h-11 text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] transition-colors"
                         >
                           <Icon className="w-[18px] h-[18px]" strokeWidth={1.5} />
                         </a>
@@ -215,7 +220,7 @@ export default function SiteFooter() {
                   })}
                 </ul>
               ) : (
-                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[color-mix(in_oklch,var(--ink-muted)_70%,transparent)]">
+                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
                   No social channels configured
                 </p>
               )}
@@ -234,8 +239,11 @@ export default function SiteFooter() {
 
           {/* Legal bar —— mobile: 居中堆叠三行；md+: 左右两列 */}
           <div className="flex flex-col items-center gap-2 md:flex-row md:items-center md:justify-between md:gap-4 py-5 md:py-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-            {/* 左 · 版权 + ICP */}
-            <div className="flex flex-col md:flex-row md:flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] text-center md:text-left">
+            {/* 左 · 版权 + ICP。用 ink-secondary 而非 ink-muted：
+                后者在亮主题 (#7A7468) 下对 #F5F5F7 对比度不足（≈3.2:1,
+                低于 WCAG 4.5:1 文本下限），ink-secondary #4A463E 下直接提
+                到 ≈ 8:1，小字 mono 也能清楚读到。 */}
+            <div className="flex flex-col md:flex-row md:flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-secondary)] text-center md:text-left">
               {footerText ? (
                 <span>{footerText.replace(/\b\d{4}\b/, yearRange)}</span>
               ) : (
@@ -246,15 +254,16 @@ export default function SiteFooter() {
                   href="https://beian.miit.gov.cn/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-[var(--color-primary, var(--aurora-1))] transition-colors"
+                  className="hover:text-[var(--aurora-1)] transition-colors"
                   title="工信部 ICP 备案查询"
                 >
                   {icp}
                 </a>
               )}
             </div>
-            {/* 右 · Codex 尾声标记（呼应 /design §8） */}
-            <div className="font-mono text-[9.5px] md:text-[10px] uppercase tracking-[0.3em] text-[color-mix(in_oklch,var(--ink-muted)_60%,transparent)]">
+            {/* 右 · Codex 尾声标记（呼应 /design §8）。比左侧略淡以表
+                从属关系，但仍用 ink-secondary 保证可读。 */}
+            <div className="font-mono text-[9.5px] md:text-[10px] uppercase tracking-[0.3em] text-[color-mix(in_oklch,var(--ink-secondary)_70%,transparent)]">
               Aether Codex · v1 · {currentYear}
             </div>
           </div>
