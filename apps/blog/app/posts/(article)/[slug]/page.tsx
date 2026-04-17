@@ -156,9 +156,12 @@ export default async function PostDetailPage({ params }: PageProps) {
           className="w-full max-w-4xl min-w-0 relative"
           style={{ viewTransitionName: `post-${post.slug}` } as React.CSSProperties}
         >
-          {/* 左侧 marginalia 边注 —— xl+ 断点才显示,绝对定位到文章左侧槽位 */}
+          {/* 左侧 marginalia 边注 —— xl+ 断点才显示,绝对定位到文章左侧槽位。
+              marginalia--anchored + article-anchor (on h1) 在 Chrome 125+/Safari 26+
+              会自动切换到 CSS anchor-positioning 精确对齐 h1 基线;旧浏览器
+              保留 `absolute -left-52 top-0` 的硬编码位置,两套规则互不冲突。 */}
           <aside
-            className="hidden xl:block absolute -left-52 top-0 w-40 pt-16 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)] space-y-5"
+            className="marginalia marginalia--anchored hidden xl:block absolute -left-52 top-0 w-40 pt-16 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)] space-y-5"
             aria-hidden="true"
           >
             <div>
@@ -187,7 +190,7 @@ export default async function PostDetailPage({ params }: PageProps) {
 
           <FadeIn delay={0.1}>
             <h1
-              className="font-display text-h3 md:text-h2 font-semibold text-[var(--ink-primary,var(--text-primary))] mb-4 leading-[1.1]"
+              className="article-anchor font-display text-h3 md:text-h2 font-semibold text-[var(--ink-primary,var(--text-primary))] mb-4 leading-[1.1]"
               style={{
                 viewTransitionName: `post-${post.slug}-title`,
                 textWrap: 'balance' as unknown as 'inherit',
