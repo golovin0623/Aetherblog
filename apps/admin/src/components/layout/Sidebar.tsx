@@ -258,7 +258,7 @@ function SidebarContent({
         {isMobile && (
           <button
             onClick={closeMobile}
-            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+            className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
             aria-label="关闭菜单"
           >
             <PanelLeftClose className="w-5 h-5" />
@@ -278,7 +278,7 @@ function SidebarContent({
             className={cn(
               'flex-shrink-0 flex items-center justify-center rounded-lg',
               'w-8 h-8',
-              'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+              'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
               'transition-all duration-200'
             )}
           >
@@ -313,7 +313,7 @@ function SidebarContent({
               {/* 分组标签 —— 展开态显示 mono uppercase 小字 */}
               {!effectiveCollapsed && (
                 <div
-                  className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]/70"
+                  className="px-3 pb-1 pt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]"
                   aria-hidden="true"
                 >
                   {section.label}
@@ -335,7 +335,7 @@ function SidebarContent({
                           effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2',
                           isActive
                             ? 'bg-primary text-white'
-                            : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                         )
                       }
                     >
@@ -366,7 +366,7 @@ function SidebarContent({
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            'flex items-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200',
+            'flex items-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200',
             effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
           )}
           title="访问主站"
@@ -385,7 +385,7 @@ function SidebarContent({
           className={cn(
             'w-full flex items-center rounded-lg transition-all duration-200 group',
             effectiveCollapsed ? 'justify-center py-2 px-0' : 'gap-3 px-3 py-2.5',
-            'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+            'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
           )}
           title={effectiveCollapsed ? "展开侧边栏" : "收起侧边栏"}
         >
@@ -457,7 +457,7 @@ function SidebarContent({
                 }}
                 className={cn(
                   'p-1.5 rounded-md transform-gpu will-change-transform',
-                  'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+                  'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
                   'transition-colors duration-150'
                 )}
                 title={isDark ? '切换亮色模式' : '切换暗色模式'}
@@ -475,7 +475,7 @@ function SidebarContent({
                 }}
                 className={cn(
                   'p-1.5 rounded-md transform-gpu will-change-transform',
-                  'text-[var(--text-muted)] hover:text-status-danger hover:bg-[var(--bg-card-hover)]',
+                  'text-[var(--text-secondary)] hover:text-status-danger hover:bg-[var(--bg-card-hover)]',
                   'transition-colors duration-150'
                 )}
                 title="退出登录"

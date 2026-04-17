@@ -3,6 +3,7 @@ import { ArrowRight, Sparkles, LayoutGrid, ChevronDown } from 'lucide-react';
 import { getRecentPosts, getSiteSettings } from './lib/services';
 import ArticleCard from './components/ArticleCard';
 import HeroParallaxContent from './components/HeroParallaxContent';
+import SiteFooter from './components/SiteFooter';
 import StackedParallax from './components/StackedParallax';
 
 export const revalidate = 300; // 首页 5 分钟 ISR (增量静态再生)
@@ -179,6 +180,7 @@ export default async function HomePage() {
       )}
       </StackedParallax>
       </div>
+      <SiteFooter />
     </div>
   );
 }

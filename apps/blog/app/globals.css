@@ -57,11 +57,17 @@ html.font-override blockquote, html.font-override a, html.font-override td, html
   --color-accent-orange: #f59e0b;     /* Amber 500 */
   --color-accent-purple: #52525b;     /* Zinc 600 - 亮色主题中性化 */
 
-  /* === 背景色系统（丰富的层次）=== */
-  --bg-primary: #f8fafc;              /* Slate 50 - 略微暗淡的背景，形成层次对比 */
-  --bg-secondary: #f1f5f9;            /* Slate 100 */
-  --bg-tertiary: #e2e8f0;             /* Slate 200 */
-  --bg-quaternary: #cbd5e1;           /* Slate 300 */
+  /* === 背景色系统（丰富的层次）===
+     ★ 亮主题色温与 Aether Codex (/design, /about, /friends) 统一 ——
+       body 底色采用 Codex bg-void (#FAF9F6 暖 off-white)，而不是
+       legacy Slate-50 冷白 (#f8fafc)。否则首页/文章页/时间线冷白,
+       /about /design 走 Codex 暖奶油，两套色温并存,视觉断层。
+       secondary/tertiary 同步切到 Codex bg-substrate 家族暖米白。
+       === */
+  --bg-primary: #FAF9F6;              /* Codex bg-void - 温暖的 off-white 页面底色 */
+  --bg-secondary: #F4F2EC;            /* Codex bg-substrate - 羊皮纸暖米白（section 交替带） */
+  --bg-tertiary: #ECE8DE;             /* 再深一层的暖米白，用于 tag pills / hover */
+  --bg-quaternary: #D9D2C2;           /* 最深层暖色（控件 active 态） */
 
   --bg-card: #ffffff;                 /* 纯白卡片，与背景形成对比 */
   --bg-card-hover: #fafbfc;           /* 微妙的灰 */

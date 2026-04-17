@@ -140,14 +140,11 @@ export default function SiteFooter() {
         }}
       />
 
-      {/* 底色：
-          - 暗主题走 /design §section 同款的 `--bg-substrate` (#0B0D14 冷深蓝黑)；
-          - 亮主题故意 *不* 用 `--bg-substrate` (#F4F2EC 暖米白) ——那个是
-            Codex "牛皮纸 / 羊皮卷" 色，跟用户在其它 light 场景实际用的冷
-            中性卡片底 (页面 body + 文章卡片均为近冷白) 对不上，会被视觉
-            解读成"发黄"。亮主题改用 Apple 系统级中性灰 #F5F5F7，与页面
-            卡片色温一致。*/}
-      <div className="bg-[#F5F5F7] dark:bg-[var(--bg-substrate,#0B0D14)]">
+      {/* 底色:亮主题纯白,与顶部 BlogHeader (var(--bg-overlay) = rgba(255,255,255,0.95))
+          相呼应 —— header / footer 两端白,中间画布走 Codex 暖 off-white
+          (#FAF9F6),形成"白-暖奶-白"的三明治版式。这是杂志/编辑型排版
+          的经典做法。暗主题仍走 bg-substrate (#0B0D14)。*/}
+      <div className="bg-white dark:bg-[var(--bg-substrate)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* 主区：wordmark + nav + social。
               mobile: 单列居中堆叠；md+: 3 列网格。*/}
