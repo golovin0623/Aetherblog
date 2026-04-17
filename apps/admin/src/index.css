@@ -74,11 +74,14 @@
   --color-info-light: rgba(37, 99, 235, 0.1);
   --color-info-border: rgba(37, 99, 235, 0.2);
 
-  /* === 背景色系统（4 层深度）=== */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;            /* Slate 50 */
-  --bg-tertiary: #f1f5f9;             /* Slate 100 */
-  --bg-quaternary: #e2e8f0;           /* Slate 200 */
+  /* === 背景色系统（4 层深度）===
+     ★ 亮主题色温与 Aether Codex (/design, /about) + blog globals.css 统一 ——
+       bg-primary 走 Codex bg-void (#FAF9F6 暖 off-white),而不是纯 #ffffff。
+       否则 admin 画布冷白,blog 主页是 Codex 暖奶油,两套色温分裂。 */
+  --bg-primary: #FAF9F6;              /* Codex bg-void - 暖 off-white 控制室底 */
+  --bg-secondary: #F4F2EC;            /* Codex bg-substrate - 羊皮纸（section 分隔） */
+  --bg-tertiary: #ECE8DE;             /* 再深一层暖米白（input/卡片内嵌） */
+  --bg-quaternary: #D9D2C2;           /* 最深暖层（active tag / chip） */
   --bg-card: rgba(0, 0, 0, 0.02);
   --bg-card-hover: rgba(0, 0, 0, 0.04);
   --bg-overlay: rgba(255, 255, 255, 0.8);
