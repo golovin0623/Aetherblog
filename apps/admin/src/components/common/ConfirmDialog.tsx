@@ -87,8 +87,8 @@ export function ConfirmDialog({
             transition={{ type: 'spring', duration: 0.3, bounce: 0.2 }}
             className="relative w-full max-w-md"
           >
-            {/* 玻璃拟态卡片 */}
-            <div className="relative overflow-hidden rounded-2xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)] shadow-2xl backdrop-blur-xl">
+            {/* 玻璃拟态卡片 —— 规范 surface-overlay 层级（40px blur + aurora 辉光边）*/}
+            <div className="relative overflow-hidden surface-overlay">
               {/* 微妙的渐变叠加 */}
               <div className="absolute inset-0 bg-gradient-to-br from-[var(--bg-overlay)] to-transparent pointer-events-none" />
               
