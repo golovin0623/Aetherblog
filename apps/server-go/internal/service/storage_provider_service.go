@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/model"
@@ -115,13 +116,47 @@ func (s *StorageProviderService) Test(ctx context.Context, id int64) (bool, stri
 
 // --- 内部辅助函数 ---
 
+// redactProviderConfigJSON 把 S3/MinIO/COS/OSS 等配置里的密钥字段脱敏后再回显。
+// SECURITY (VULN-031): 不脱敏的话任意合法 admin JWT 都能通过列表/默认接口拉出
+// 整个密钥库（accessKeyId + secretAccessKey + token）的明文。保留前后 4 位
+// 给运维肉眼核对，真正的密文不回显到前端。
+func redactProviderConfigJSON(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return "{}"
+	}
+	secretKeys := []string{
+		"accessKeyId", "secretAccessKey", "accessKey", "secretKey",
+		"password", "token", "apiKey", "api_key", "secret",
+	}
+	for _, k := range secretKeys {
+		v, ok := payload[k].(string)
+		if !ok || v == "" {
+			continue
+		}
+		if len(v) <= 8 {
+			payload[k] = "****"
+		} else {
+			payload[k] = v[:2] + "****" + v[len(v)-4:]
+		}
+	}
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return "{}"
+	}
+	return string(out)
+}
+
 // toProviderVO 将 StorageProvider 模型转换为视图对象。
 func toProviderVO(p model.StorageProvider) dto.StorageProviderVO {
 	return dto.StorageProviderVO{
 		ID:           p.ID,
 		Name:         p.Name,
 		ProviderType: p.ProviderType,
-		ConfigJSON:   p.ConfigJSON,
+		ConfigJSON:   redactProviderConfigJSON(p.ConfigJSON),
 		IsDefault:    p.IsDefault,
 		IsEnabled:    p.IsEnabled,
 		Priority:     p.Priority,

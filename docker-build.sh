@@ -136,14 +136,17 @@ check_buildx() {
     fi
     
     # 创建或使用 builder 实例 (配置最优参数)
+    # SECURITY (VULN-145): 历史配置带了 `network=host` +
+    # `--allow-insecure-entitlement network.host`，让 buildkit 容器共享宿主机网络
+    # namespace，可以访问 169.254.169.254 (IMDS) 或内网服务。没有跨容器协作
+    # 需求时 BuildKit 默认 bridge 网络足够，移除以收缩攻击面。
+    # 若镜像确实需要访问 host 上的 registry，改用 `--driver-opt env.BUILDKIT_MIRROR`。
     BUILDER_NAME="aetherblog-builder"
     if ! docker buildx inspect "$BUILDER_NAME" > /dev/null 2>&1; then
         echo -e "Creating optimized builder instance: $BUILDER_NAME"
         docker buildx create \
             --name "$BUILDER_NAME" \
             --driver docker-container \
-            --driver-opt "network=host" \
-            --buildkitd-flags "--allow-insecure-entitlement network.host" \
             --use \
             --bootstrap
     else

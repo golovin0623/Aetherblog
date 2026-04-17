@@ -241,12 +241,23 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
 
     setSubmitting(true);
 
+    // SECURITY (VULN-105): strip raw CR (\r) / LF (\n) / DEL / other C0
+    // control chars out of comment fields before submit. These chars enable
+    // header / log injection if the server ever echoes them unescaped; they
+    // also corrupt markdown rendering. Keep real newlines inside content
+    // (\n is allowed in textareas — we only strip \r and C0 except \n / \t).
+    const stripCtl = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    const cleanNickname = stripCtl(nickname).slice(0, 128);
+    const cleanEmail = stripCtl(email).slice(0, 256);
+    const cleanWebsite = stripCtl(website).slice(0, 2048);
+    const cleanContent = stripCtl(content);
+
     try {
       await createComment(postId, {
-        nickname,
-        email,
-        website,
-        content,
+        nickname: cleanNickname,
+        email: cleanEmail,
+        website: cleanWebsite,
+        content: cleanContent,
         parentId: replyTo?.id
       });
 

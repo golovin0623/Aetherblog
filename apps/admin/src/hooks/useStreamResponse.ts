@@ -90,18 +90,33 @@ export function useStreamResponse(): UseStreamResponseReturn {
     const token = useAuthStore.getState().token;
 
     try {
+      // SECURITY (VULN-085): ``url`` may be absolute (third-party) — an
+      // admin-configured streaming endpoint. Attaching the admin Bearer /
+      // session cookie to a cross-origin host leaks the credential to
+      // whoever controls that host. Detect same-origin; off-origin calls go
+      // credential-less. If auth is required for off-origin, that needs a
+      // dedicated proxy endpoint on our own backend.
+      const sameOrigin = (() => {
+        try {
+          return new URL(url, window.location.origin).origin === window.location.origin;
+        } catch {
+          // Bare relative paths fail URL() — still same-origin.
+          return !/^https?:\/\//i.test(url);
+        }
+      })();
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
 
-      if (token) {
+      if (token && sameOrigin) {
         headers.Authorization = `Bearer ${token}`;
       }
 
       const requestInit: RequestInit = {
         method: 'POST',
         headers,
-        credentials: 'include',
+        credentials: sameOrigin ? 'include' : 'omit',
         body: JSON.stringify(body),
         signal: abortControllerRef.current.signal,
       };

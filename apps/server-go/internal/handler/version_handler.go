@@ -5,16 +5,23 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
 // VersionHandler 处理媒体文件版本历史相关的 HTTP 接口。
-type VersionHandler struct{ svc *service.VersionService }
+//
+// mediaSvc 用于 VULN-042 ownership 校验：版本恢复/删除等同于修改底层文件，
+// 必须由文件 uploader 或 admin 操作。
+type VersionHandler struct {
+	svc      *service.VersionService
+	mediaSvc *service.MediaService
+}
 
 // NewVersionHandler 创建 VersionHandler 实例。
-func NewVersionHandler(svc *service.VersionService) *VersionHandler {
-	return &VersionHandler{svc: svc}
+func NewVersionHandler(svc *service.VersionService, mediaSvc *service.MediaService) *VersionHandler {
+	return &VersionHandler{svc: svc, mediaSvc: mediaSvc}
 }
 
 // Mount 将版本历史管理路由注册到指定的管理员路由组。
@@ -49,6 +56,17 @@ func (h *VersionHandler) Restore(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
+	// SECURITY (VULN-042): restore 等同于覆写文件内容，校验文件所有权。
+	found, uploaderID, err := h.mediaSvc.GetUploaderID(c.Request().Context(), fileID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "文件不存在")
+	}
+	if err := middleware.AssertOwnership(c, uploaderID); err != nil {
+		return err
+	}
 	// 解析路径参数中的版本号
 	versionNumber, err := strconv.Atoi(c.Param("versionNumber"))
 	if err != nil {
@@ -68,6 +86,24 @@ func (h *VersionHandler) Delete(c echo.Context) error {
 	versionID, err := strconv.ParseInt(c.Param("versionId"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的版本ID")
+	}
+	// SECURITY (VULN-042): 先查底层文件，再比对 uploader。
+	fileID, found, err := h.svc.GetFileID(c.Request().Context(), versionID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "版本不存在")
+	}
+	fileFound, uploaderID, err := h.mediaSvc.GetUploaderID(c.Request().Context(), fileID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !fileFound {
+		return response.FailWith(c, response.NotFound, "底层文件不存在")
+	}
+	if err := middleware.AssertOwnership(c, uploaderID); err != nil {
+		return err
 	}
 	if err := h.svc.Delete(c.Request().Context(), versionID); err != nil {
 		return response.Error(c, err)

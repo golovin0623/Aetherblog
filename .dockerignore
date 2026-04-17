@@ -24,10 +24,18 @@ logs
 npm-debug.log*
 
 # Environment files (keep templates)
+# SECURITY (VULN-151): exclude both root-level and per-app .env files. The
+# historical rules only matched the working-directory level, so
+# apps/ai-service/.env could silently ship inside the image. Templates are
+# explicitly re-admitted below.
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
 !.env.example
+!apps/admin/.env.local.example
 
 # OS
 .DS_Store

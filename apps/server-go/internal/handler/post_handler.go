@@ -164,6 +164,17 @@ func (h *PostHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-029): verify caller owns the post (admin bypasses).
+	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if ownerID == nil {
+		return response.FailWith(c, response.NotFound, "文章不存在")
+	}
+	if err := middleware.AssertOwnership(c, ownerID); err != nil {
+		return err
+	}
 	var req dto.CreatePostRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
@@ -194,6 +205,17 @@ func (h *PostHandler) UpdateProperties(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-029): ownership gate before property patch.
+	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if ownerID == nil {
+		return response.FailWith(c, response.NotFound, "文章不存在")
+	}
+	if err := middleware.AssertOwnership(c, ownerID); err != nil {
+		return err
+	}
 	var req dto.UpdatePostPropertiesRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
@@ -214,6 +236,17 @@ func (h *PostHandler) AutoSave(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-029): auto-save must not be writable by non-owners.
+	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if ownerID == nil {
+		return response.FailWith(c, response.NotFound, "文章不存在")
+	}
+	if err := middleware.AssertOwnership(c, ownerID); err != nil {
+		return err
+	}
 	var req dto.CreatePostRequest
 	if err := c.Bind(&req); err != nil {
 		return response.FailWith(c, response.BadRequest, "请求格式错误")
@@ -232,6 +265,17 @@ func (h *PostHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-029): ownership gate before soft delete.
+	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if ownerID == nil {
+		return response.FailWith(c, response.NotFound, "文章不存在")
+	}
+	if err := middleware.AssertOwnership(c, ownerID); err != nil {
+		return err
+	}
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
@@ -249,6 +293,17 @@ func (h *PostHandler) Publish(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	// SECURITY (VULN-029): ownership gate before publish.
+	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if ownerID == nil {
+		return response.FailWith(c, response.NotFound, "文章不存在")
+	}
+	if err := middleware.AssertOwnership(c, ownerID); err != nil {
+		return err
 	}
 	if err := h.svc.Publish(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from cryptography.fernet import Fernet
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -54,6 +55,18 @@ class Settings(BaseSettings):
     jwt_audience: str | None = Field(default=None, validation_alias="AI_JWT_AUDIENCE")
     internal_service_token: str = Field(..., validation_alias="AI_INTERNAL_SERVICE_TOKEN")
 
+    # SECURITY (VULN-056): credential encryption key MUST be independent of
+    # JWT_SECRET. Stored as a raw string in env (pydantic-settings auto-decodes
+    # ``list`` fields as JSON, which breaks comma-separated values); the parsed
+    # list is exposed via the ``ai_credential_encryption_keys`` property below.
+    # First key is used for new encryption, all keys are tried for decryption
+    # (zero-downtime rotation via MultiFernet). Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    ai_credential_encryption_keys_raw: str = Field(
+        default="",
+        validation_alias="AI_CREDENTIAL_ENCRYPTION_KEYS",
+    )
+
     @field_validator("internal_service_token")
     @classmethod
     def _validate_token_strength(cls, v: str) -> str:
@@ -61,8 +74,37 @@ class Settings(BaseSettings):
             raise ValueError("AI_INTERNAL_SERVICE_TOKEN must be at least 32 characters")
         return v
 
+    @field_validator("ai_credential_encryption_keys_raw", mode="after")
+    @classmethod
+    def _validate_encryption_keys(cls, v: str) -> str:
+        keys = [k.strip() for k in v.split(",") if k.strip()] if v else []
+        if not keys:
+            raise ValueError(
+                "AI_CREDENTIAL_ENCRYPTION_KEYS is required (VULN-056). "
+                "Generate one with: python -c "
+                "'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+            )
+        for k in keys:
+            try:
+                Fernet(k.encode())
+            except Exception as exc:
+                raise ValueError(
+                    f"Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: {exc}"
+                ) from exc
+        return v
+
+    @property
+    def ai_credential_encryption_keys(self) -> list[str]:
+        """Comma-split, validated Fernet keys. First entry encrypts new data."""
+        return [k.strip() for k in self.ai_credential_encryption_keys_raw.split(",") if k.strip()]
+
     rate_limit_user_per_min: int = Field(default=10, alias="AI_RATE_LIMIT_USER_PER_MIN")
     rate_limit_global_per_min: int = Field(default=100, alias="AI_RATE_LIMIT_GLOBAL_PER_MIN")
+    # SECURITY (VULN-070): when Redis is unreachable, default to deny (503).
+    # Dev/CI can flip this to True via AI_RATE_LIMIT_FAIL_OPEN=true if a Redis
+    # outage must not block AI calls, but production should keep it False so
+    # that rate limiter failures don't silently let wallet-drain attacks through.
+    rate_limit_fail_open: bool = Field(default=False, alias="AI_RATE_LIMIT_FAIL_OPEN")
 
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     postgres_dsn: str = Field(
@@ -118,4 +160,28 @@ def get_settings() -> Settings:
     global _settings
     if _settings is None:
         _settings = Settings()
+        _warn_if_prod_jwt_claims_unset(_settings)
     return _settings
+
+
+def _warn_if_prod_jwt_claims_unset(settings: Settings) -> None:
+    """SECURITY (VULN-067): emit a startup warning if `AI_ENV=prod` but
+    `AI_JWT_AUDIENCE` / `AI_JWT_ISSUER` are unset — without those claims
+    audience binding cannot be enforced, and a stolen token from another
+    service using the same ``JWT_SECRET`` becomes usable against this one.
+    We avoid raising to keep rollbacks clean; make `verify_aud` require claim
+    presence explicitly in a follow-up once production envs are populated.
+    """
+    if settings.env.lower() != "prod":
+        return
+    if not settings.jwt_audience or not settings.jwt_issuer:
+        import logging as _logging
+        _logging.getLogger("ai-service").warning(
+            "jwt.audience_or_issuer_unset_in_prod",
+            extra={"data": {
+                "env": settings.env,
+                "has_audience": bool(settings.jwt_audience),
+                "has_issuer": bool(settings.jwt_issuer),
+                "remediation": "Set AI_JWT_AUDIENCE and AI_JWT_ISSUER in prod .env",
+            }},
+        )

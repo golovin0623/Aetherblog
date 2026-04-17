@@ -175,6 +175,11 @@ async def require_admin_or_internal(
     """Allow admin JWT or internal service token for Go backend calls."""
     internal_token = request.headers.get("X-Internal-Service")
     settings = get_settings()
+    # SECURITY (VULN-162): the truthy check on internal_token MUST come before
+    # hmac.compare_digest. Calling compare_digest(None, ...) is undefined across
+    # CPython versions (TypeError on 3.12, silent False on older). Token strength
+    # (>=32 chars) and presence are enforced at startup by Settings._validate_token_strength
+    # in app/core/config.py — keep both layers; do not collapse this guard.
     if internal_token and hmac.compare_digest(internal_token, settings.internal_service_token):
         # Internal service call from Go backend
         return UserClaims(user_id="system", role="admin", scopes=None)

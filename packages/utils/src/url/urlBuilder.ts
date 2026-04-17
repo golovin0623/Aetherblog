@@ -13,8 +13,15 @@ export class UrlBuilder {
   }
 
   path(...segments: string[]): this {
+    // SECURITY (VULN-089): 历史实现直接拼接未编码的 segment，允许 '..', '/',
+    // 或任意字节触发 path traversal / SSRF-shaped payload。拒绝分段内含 '/'
+    // 或 '..'，其余字符 encodeURIComponent 后再拼。
     segments.forEach((segment) => {
-      this.pathSegments.push(segment.replace(/^\/|\/$/g, ''));
+      const clean = segment.replace(/^\/|\/$/g, '');
+      if (clean.includes('/') || clean === '..' || clean === '.') {
+        throw new Error(`UrlBuilder.path: invalid segment ${JSON.stringify(segment)}`);
+      }
+      this.pathSegments.push(encodeURIComponent(clean));
     });
     return this;
   }

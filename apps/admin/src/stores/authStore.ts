@@ -36,8 +36,12 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'aetherblog-auth',
+      // SECURITY (VULN-095): persist only the "am I logged in?" bit. The full
+      // user record — including `role` — is re-fetched via /v1/auth/me on app
+      // boot, so a modified localStorage entry cannot silently elevate an
+      // account to ADMIN in the UI. (Backend enforcement is already strict
+      // since VULN-052, but this keeps the UI's surface consistent.)
       partialize: (state) => ({
-        user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
     }

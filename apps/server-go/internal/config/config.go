@@ -72,10 +72,28 @@ func (r *RedisConfig) Addr() string {
 }
 
 // JWTConfig 存储 JSON Web Token 的签名密钥及过期时间配置。
+//
+// 关于 Secret：仅作为启动 seed 使用。实际签名/验签密钥由 jwt_secrets 表管理，
+// 可通过后台 goroutine 定时轮换（见 jwtkeys.Store + migration 000033）。
+// 若表已存在 current 行，则启动时不会覆盖 —— seed 仅用于首次 bootstrap。
 type JWTConfig struct {
-	Secret            string        `koanf:"secret"`              // HMAC-SHA256 签名密钥；生产环境必须配置
+	Secret            string        `koanf:"secret"`              // HMAC-SHA256 启动 seed；生产环境必须配置
 	Expiration        time.Duration `koanf:"expiration"`          // 访问令牌有效期（默认：24h）
 	RefreshExpiration time.Duration `koanf:"refresh_expiration"`  // 刷新令牌有效期，存储于 Redis（默认：7*24h）
+
+	// RotationInterval 控制 jwtkeys.Store 定时轮换签名密钥的节奏。
+	// 推荐值：7 * 24h（一周）。设为 0 可禁用自动轮换（不推荐）。
+	RotationInterval time.Duration `koanf:"rotation_interval"`
+
+	// PreviousGrace 是旧密钥在降级为 previous 后继续参与"只验不签"的保留时长。
+	// 必须 ≥ Expiration，否则已发放的 access token 可能在 grace 结束前就失效。
+	// 推荐值：2 * Expiration，即 48h。
+	PreviousGrace time.Duration `koanf:"previous_grace"`
+
+	// ReloadInterval 控制非 leader 实例从 DB 同步内存快照的频率。
+	// 单实例部署下此值影响不大；多实例部署下应 < RotationInterval 一个数量级，
+	// 典型 60s。
+	ReloadInterval time.Duration `koanf:"reload_interval"`
 }
 
 // AuthConfig 汇聚认证相关配置。
@@ -256,6 +274,9 @@ func defaultConfig() *Config {
 		JWT: JWTConfig{
 			Expiration:        24 * time.Hour,
 			RefreshExpiration: 7 * 24 * time.Hour,
+			RotationInterval:  7 * 24 * time.Hour, // 每周自动轮换
+			PreviousGrace:     48 * time.Hour,     // 轮换后旧 key 保留 48h 验签窗口
+			ReloadInterval:    60 * time.Second,   // DB→内存 snapshot 节奏
 		},
 		Auth: AuthConfig{
 			Cookie: CookieConfig{

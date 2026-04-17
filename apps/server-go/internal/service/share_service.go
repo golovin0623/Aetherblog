@@ -185,6 +185,20 @@ func (s *ShareService) Delete(ctx context.Context, shareID int64) error {
 	return s.repo.Delete(ctx, shareID)
 }
 
+// GetCreatedBy 返回指定分享记录的 created_by 字段（可为空），用于 handler 层
+// ownership 校验。分享不存在时返回 (nil, nil) —— 调用方需要自行区分 nil
+// (记录不存在) 与 *int64==nil (匿名分享) 的语义。
+func (s *ShareService) GetCreatedBy(ctx context.Context, shareID int64) (found bool, ownerID *int64, err error) {
+	existing, err := s.repo.FindByID(ctx, shareID)
+	if err != nil {
+		return false, nil, err
+	}
+	if existing == nil {
+		return false, nil, nil
+	}
+	return true, existing.CreatedBy, nil
+}
+
 // --- 内部辅助函数 ---
 
 // generateShareToken 生成 32 字节的密码学安全随机令牌，以十六进制字符串形式返回（64 字符）。

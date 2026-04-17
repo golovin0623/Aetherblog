@@ -5,6 +5,7 @@ import BlogHeader from './components/BlogHeader';
 import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
 import FontProvider from './components/FontProvider';
+import SiteFooter from './components/SiteFooter';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
@@ -92,6 +93,7 @@ export default async function RootLayout({
               <ClientLayout>
                 {children}
               </ClientLayout>
+              <SiteFooter />
               {/* V3 移动端极简主题悬浮层，提供满帧光圈特效 */}
               <FloatingThemeToggle />
             </FontProvider>

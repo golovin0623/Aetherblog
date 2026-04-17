@@ -12,11 +12,17 @@ import (
 )
 
 // ShareHandler 处理媒体分享链接的创建与管理相关 HTTP 接口。
-type ShareHandler struct{ svc *service.ShareService }
+//
+// mediaSvc 用于 VULN-044 ownership 校验（GetSharesByFile 必须验证调用者拥有
+// 底层文件，否则任何登录用户可枚举他人文件的 share_token）。
+type ShareHandler struct {
+	svc      *service.ShareService
+	mediaSvc *service.MediaService
+}
 
 // NewShareHandler 创建 ShareHandler 实例。
-func NewShareHandler(svc *service.ShareService) *ShareHandler {
-	return &ShareHandler{svc: svc}
+func NewShareHandler(svc *service.ShareService, mediaSvc *service.MediaService) *ShareHandler {
+	return &ShareHandler{svc: svc, mediaSvc: mediaSvc}
 }
 
 // Mount 将分享管理路由注册到指定的管理员路由组。
@@ -90,6 +96,17 @@ func (h *ShareHandler) GetSharesByFile(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
+	// SECURITY (VULN-044): 校验文件所有权，避免任意登录用户枚举他人文件 share_token。
+	fileFound, uploaderID, err := h.mediaSvc.GetUploaderID(c.Request().Context(), fileID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !fileFound {
+		return response.FailWith(c, response.NotFound, "文件不存在")
+	}
+	if err := middleware.AssertOwnership(c, uploaderID); err != nil {
+		return err
+	}
 	shares, err := h.svc.GetSharesByFile(c.Request().Context(), fileID)
 	if err != nil {
 		return response.Error(c, err)
@@ -105,6 +122,17 @@ func (h *ShareHandler) Update(c echo.Context) error {
 	shareID, err := strconv.ParseInt(c.Param("shareId"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的分享ID")
+	}
+	// SECURITY (VULN-037): only the share creator or admin can update.
+	found, createdBy, err := h.svc.GetCreatedBy(c.Request().Context(), shareID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "分享不存在")
+	}
+	if err := middleware.AssertOwnership(c, createdBy); err != nil {
+		return err
 	}
 	var req dto.UpdateShareRequest
 	if err := c.Bind(&req); err != nil {
@@ -129,6 +157,17 @@ func (h *ShareHandler) Delete(c echo.Context) error {
 	shareID, err := strconv.ParseInt(c.Param("shareId"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的分享ID")
+	}
+	// SECURITY (VULN-037): only the share creator or admin can delete.
+	found, createdBy, err := h.svc.GetCreatedBy(c.Request().Context(), shareID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "分享不存在")
+	}
+	if err := middleware.AssertOwnership(c, createdBy); err != nil {
+		return err
 	}
 	if err := h.svc.Delete(c.Request().Context(), shareID); err != nil {
 		return response.Error(c, err)

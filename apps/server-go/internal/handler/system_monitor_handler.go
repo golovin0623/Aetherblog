@@ -162,14 +162,26 @@ func (h *SystemMonitorHandler) GetLogs(c echo.Context) error {
 	cursor := c.QueryParam("cursor")
 
 	// 解析返回行数限制，limit 优先于 lines
+	// SECURITY (VULN-045): 必须钳位到 [1, 1000]。历史实现接受任意整数，admin
+	// 一个 limit=1_000_000 就能把整个 ai-service.log 拉出来并把响应写爆。
+	const logsMaxLimit = 1000
 	limit := 100
+	parseAndClamp := func(v int) int {
+		if v <= 0 {
+			return 100
+		}
+		if v > logsMaxLimit {
+			return logsMaxLimit
+		}
+		return v
+	}
 	if limitStr != "" {
 		if v, err := strconv.Atoi(limitStr); err == nil {
-			limit = v
+			limit = parseAndClamp(v)
 		}
 	} else if linesStr != "" {
 		if v, err := strconv.Atoi(linesStr); err == nil {
-			limit = v
+			limit = parseAndClamp(v)
 		}
 	}
 

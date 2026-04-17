@@ -4,10 +4,17 @@
 
 const URL_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
 
+// SECURITY (VULN-090): previous isValidUrl accepted any string that ``new
+// URL()`` could parse — including ``javascript:alert(1)``, ``data:text/html,...``
+// and ``vbscript:...``. Callers used the boolean to gate user-pasted links
+// into <a href>, amounting to an XSS rubber stamp. Restrict to http/https; all
+// other schemes fall through to the legacy-regex path, which only matches
+// typical domain names.
 export function isValidUrl(url: string): boolean {
+  if (typeof url !== 'string' || !url) return false;
   try {
-    new URL(url);
-    return true;
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
   } catch {
     return URL_REGEX.test(url);
   }

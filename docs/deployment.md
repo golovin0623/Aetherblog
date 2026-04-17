@@ -83,7 +83,7 @@
 
 ### 1. 配置环境变量
 
-在服务器项目根目录下创建 `.env` 文件（参考 [`env.example`](../env.example)）：
+在服务器项目根目录下创建 `.env` 文件（参考 [`.env.example`](../.env.example)，所有必填项均为空占位，须填入真实值后才能启动）：
 
 ```bash
 cat > .env <<EOF
@@ -385,5 +385,5 @@ go build ./...
 | [`apps/server-go/Dockerfile`](../apps/server-go/Dockerfile) | 后端镜像（Go 后端） |
 | [`apps/blog/Dockerfile`](../apps/blog/Dockerfile) | 博客前端镜像（Next.js standalone） |
 | [`apps/admin/Dockerfile`](../apps/admin/Dockerfile) | 管理后台镜像（Vite + Nginx） |
-| [`env.example`](../env.example) | 环境变量模板 |
+| [`.env.example`](../.env.example) | 环境变量模板（所有密钥为空占位） |
 | [`.github/CICD_GUIDE.md`](../.github/CICD_GUIDE.md) | CI/CD 配置指南 |

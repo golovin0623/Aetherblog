@@ -56,3 +56,45 @@ func TestParseToken_Expired(t *testing.T) {
 		t.Error("期望因令牌已过期而返回错误，但实际未返回错误")
 	}
 }
+
+// TestParseTokenWithKeys_AcceptsPrevious 验证 previous key 签发的 token
+// 可以通过多 key 验证 —— 这是 jwtkeys.Store 轮换窗口内不强制用户下线的核心保证。
+func TestParseTokenWithKeys_AcceptsPrevious(t *testing.T) {
+	oldSecret := "previous-secret-padding-to-32-chars!"
+	newSecret := "current-secret-padding-to-32-chars!!"
+
+	// 用旧密钥签发一个 token，模拟轮换前发放给用户的 access token
+	token, err := GenerateToken(7, "alice", "USER", oldSecret, time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateToken 失败: %v", err)
+	}
+
+	// 用 [current, previous] 顺序验证 —— 对应 Store.Verifiers() 实际行为
+	claims, err := ParseTokenWithKeys(token, []string{newSecret, oldSecret})
+	if err != nil {
+		t.Fatalf("ParseTokenWithKeys 应当接受 previous 密钥签名的 token: %v", err)
+	}
+	if claims.Username != "alice" {
+		t.Errorf("Username = %q, 期望值为 alice", claims.Username)
+	}
+}
+
+// TestParseTokenWithKeys_RejectsUnknown 验证不在候选列表中的密钥签发的 token
+// 会被正确拒绝 —— 即便它在某个 retired key 下是合法的。
+func TestParseTokenWithKeys_RejectsUnknown(t *testing.T) {
+	retiredSecret := "retired-secret-from-months-ago!!!"
+	token, _ := GenerateToken(1, "bob", "USER", retiredSecret, time.Hour)
+
+	_, err := ParseTokenWithKeys(token, []string{"current", "previous"})
+	if err == nil {
+		t.Error("期望 retired 密钥签发的 token 被拒绝，但验证通过了")
+	}
+}
+
+// TestParseTokenWithKeys_EmptyKeys 验证传入空 keys 切片是参数错误。
+func TestParseTokenWithKeys_EmptyKeys(t *testing.T) {
+	token, _ := GenerateToken(1, "bob", "USER", "k", time.Hour)
+	if _, err := ParseTokenWithKeys(token, nil); err == nil {
+		t.Error("期望空 keys 返回错误")
+	}
+}

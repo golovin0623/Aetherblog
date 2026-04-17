@@ -526,9 +526,20 @@ start_backend() {
                 set +a
             fi
 
-            # 确保提供 JWT_SECRET
+            # SECURITY (VULN-121): JWT_SECRET 必须由运维显式提供。早期版本会
+            # 在缺失时回落到固定 dev 字符串，导致开发与生产共用已知密钥。
             if [ -z "${JWT_SECRET:-}" ]; then
-                export JWT_SECRET="default-secret-for-dev-only-change-in-prod"
+                echo -e "${RED}❌ FATAL: JWT_SECRET 未设置${NC}" >&2
+                echo -e "${YELLOW}   1) 拷贝模板:  cp .env.example .env${NC}" >&2
+                echo -e "${YELLOW}   2) 生成强密钥: openssl rand -base64 48${NC}" >&2
+                echo -e "${YELLOW}   3) 写入 .env 中的 JWT_SECRET 字段${NC}" >&2
+                record_failure "后端服务"
+                return
+            fi
+            if [ "${#JWT_SECRET}" -lt 32 ]; then
+                echo -e "${RED}❌ FATAL: JWT_SECRET 长度不足 32 字符 (实际 ${#JWT_SECRET})${NC}" >&2
+                record_failure "后端服务"
+                return
             fi
 
             # 确保提供内部服务令牌 (开发模式自动生成，与 AI 服务共享)
@@ -629,9 +640,26 @@ start_ai_service() {
             export POSTGRES_DSN="postgresql+asyncpg://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
         fi
 
-        # 确保提供 JWT_SECRET (与后端共用同一套变量)
+        # SECURITY (VULN-121): 同后端，AI 服务也禁止回落到默认 JWT 密钥。
         if [ -z "${JWT_SECRET:-}" ]; then
-            export JWT_SECRET="default-secret-for-dev-only-change-in-prod"
+            echo -e "${RED}❌ FATAL: JWT_SECRET 未设置 (AI 服务)${NC}" >&2
+            echo -e "${YELLOW}   生成: openssl rand -base64 48${NC}" >&2
+            record_failure "AI 服务"
+            return
+        fi
+        if [ "${#JWT_SECRET}" -lt 32 ]; then
+            echo -e "${RED}❌ FATAL: JWT_SECRET 长度不足 32 字符 (实际 ${#JWT_SECRET}, AI 服务)${NC}" >&2
+            record_failure "AI 服务"
+            return
+        fi
+
+        # SECURITY (VULN-056): credential 加密密钥必须独立于 JWT_SECRET。
+        if [ -z "${AI_CREDENTIAL_ENCRYPTION_KEYS:-}" ]; then
+            echo -e "${RED}❌ FATAL: AI_CREDENTIAL_ENCRYPTION_KEYS 未设置${NC}" >&2
+            echo -e "${YELLOW}   生成: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"${NC}" >&2
+            echo -e "${YELLOW}   写入 .env 后再启动；多 key 用逗号分隔以支持轮换${NC}" >&2
+            record_failure "AI 服务"
+            return
         fi
 
         export AI_LOG_PATH="$LOG_DIR"

@@ -7,6 +7,16 @@ import StackedParallax from './components/StackedParallax';
 
 export const revalidate = 300; // 首页 5 分钟 ISR (增量静态再生)
 
+// SECURITY (VULN-081): welcome CTA 的 link 来自 site_settings（admin 可写）。
+// 若有人把 link 改成 `javascript:alert(1)` 或 `//evil.com`，用户点击就出事。
+// 仅允许站内绝对路径（单 '/' 开头，不能是 '//'）；越界时回落到合理默认。
+function safeInternalHref(raw: string | undefined | null, fallback: string): string {
+  if (!raw || typeof raw !== 'string') return fallback;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return fallback;
+  return trimmed;
+}
+
 export default async function HomePage() {
   const [posts, settings] = await Promise.all([
     getRecentPosts(6),
@@ -70,7 +80,7 @@ export default async function HomePage() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Link
-                href={settings?.welcome_primary_btn_link || '/posts'}
+                href={safeInternalHref(settings?.welcome_primary_btn_link, '/posts')}
                 className="hero-primary-btn group inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl text-white font-medium min-w-40"
               >
                 <span className="hero-btn-shimmer" aria-hidden="true" />
@@ -78,7 +88,7 @@ export default async function HomePage() {
                 <ArrowRight className="relative z-10 w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
               </Link>
               <Link
-                href={settings?.welcome_secondary_btn_link || '/about'}
+                href={safeInternalHref(settings?.welcome_secondary_btn_link, '/about')}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card-hover)] transition-all hover:scale-105 backdrop-blur-sm w-36"
               >
                 {settings?.welcome_secondary_btn_text || '关于我'}

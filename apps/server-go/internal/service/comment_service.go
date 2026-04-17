@@ -178,6 +178,17 @@ func (s *CommentService) GetByPost(ctx context.Context, postID int64) ([]dto.Com
 // 业务规则：若提供了 ParentID，则父评论必须存在且归属于同一篇文章。
 // 错误场景：父评论不存在或不属于当前文章。
 func (s *CommentService) Submit(ctx context.Context, postID int64, req dto.CreateCommentRequest, ip, userAgent string) (*dto.CommentVO, error) {
+	// SECURITY (VULN-043): 校验文章状态 —— 草稿 / 软删除 / 隐藏 / 关闭评论 的文章
+	// 不应接受新评论。旧实现任何 postID 都放行，会污染审核队列并为幽灵评论
+	// 提供落地点。
+	post, err := s.postRepo.FindByID(ctx, postID)
+	if err != nil {
+		return nil, err
+	}
+	if post == nil || post.Deleted || post.IsHidden || !post.AllowComment || post.Status != "PUBLISHED" {
+		return nil, errors.New("文章不允许评论或不存在")
+	}
+
 	// 验证父评论的合法性
 	if req.ParentID != nil {
 		parent, err := s.repo.FindByID(ctx, *req.ParentID)

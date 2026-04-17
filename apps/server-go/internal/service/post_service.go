@@ -116,6 +116,16 @@ func (s *PostService) GetByID(ctx context.Context, id int64) (*dto.PostDetail, e
 	return s.enrichDetail(ctx, p, true)
 }
 
+// GetAuthorID 返回指定文章的作者 ID。用于 handler 层 ownership 校验
+// (middleware.AssertOwnership)，不泄漏其他字段。文章不存在时返回 (nil, nil)。
+func (s *PostService) GetAuthorID(ctx context.Context, id int64) (*int64, error) {
+	p, err := s.repo.FindByID(ctx, id)
+	if err != nil || p == nil {
+		return nil, err
+	}
+	return p.AuthorID, nil
+}
+
 // Create 持久化一篇新文章。
 // 业务规则：
 //   - 未提供 slug 时，从标题自动生成；

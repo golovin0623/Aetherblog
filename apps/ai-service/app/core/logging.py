@@ -3,8 +3,49 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import traceback
 from datetime import datetime, timezone
+
+
+# SECURITY (VULN-165): pattern-based API-key / Bearer token scrubber applied to
+# every log record BEFORE it's serialized to stdout or the rolling file. Prevents
+# LiteLLM exception traces / debug dumps from leaking provider keys into the
+# logs volume (which is shared with the Go backend — VULN-146).
+_SECRET_RE = (
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._\-~+/=]{20,}"),
+)
+
+
+def _scrub(value):
+    if isinstance(value, str):
+        out = value
+        for pat in _SECRET_RE:
+            out = pat.sub("***", out)
+        return out
+    if isinstance(value, dict):
+        return {k: _scrub(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_scrub(v) for v in value)
+    return value
+
+
+class SecretRedactor(logging.Filter):
+    """Redact provider secrets on the way out, regardless of caller hygiene."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            # Rewrite the message payload; getMessage() re-formats record.args
+            # against record.msg, so normalize to an already-formatted string.
+            record.msg = _scrub(record.getMessage())
+            record.args = ()
+            data = getattr(record, "data", None)
+            if data is not None:
+                record.data = _scrub(data)
+        except Exception:  # pragma: no cover — logging must never raise
+            pass
+        return True
 
 
 class JSONFormatter(logging.Formatter):
@@ -40,16 +81,19 @@ def setup_logging(log_path: str = "./logs", level: str = "INFO"):
     root.handlers.clear()
 
     formatter = JSONFormatter()
+    redactor = SecretRedactor()
 
     # Stdout handler
     stdout_handler = logging.StreamHandler()
     stdout_handler.setFormatter(formatter)
+    stdout_handler.addFilter(redactor)
     root.addHandler(stdout_handler)
 
     # File handler (best-effort: skip if path is not writable, e.g. shared Docker volume)
     try:
         file_handler = logging.FileHandler(os.path.join(log_path, "ai-service.log"), encoding="utf-8")
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(redactor)
         root.addHandler(file_handler)
     except (PermissionError, OSError) as exc:
         root.warning("File logging disabled — %s. Falling back to stdout only.", exc)

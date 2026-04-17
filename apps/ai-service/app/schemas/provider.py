@@ -56,14 +56,22 @@ class CredentialCreate(BaseModel):
 
 
 class ProviderCreate(BaseModel):
-    """Request to create a provider."""
-    code: str = Field(min_length=1, max_length=50)
+    """Request to create a provider.
+
+    SECURITY (VULN-173): every user-supplied string gets a max length +
+    (where applicable) a character-class constraint. Otherwise an admin can
+    push multi-MB ``description`` values into the DB and balloon every
+    ``/providers`` list response — a cheap DoS angle that also inflates logs.
+    ``code`` is further restricted to kebab/underscore slugs because it drops
+    into URL paths and SQL lookups without further validation.
+    """
+    code: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9][a-z0-9_-]{0,49}$")
     name: str = Field(min_length=1, max_length=100)
-    display_name: str | None = None
-    api_type: str = Field(default="openai_compat")
-    base_url: str | None = None
-    doc_url: str | None = None
-    icon: str | None = None
+    display_name: str | None = Field(default=None, max_length=200)
+    api_type: str = Field(default="openai_compat", max_length=32)
+    base_url: str | None = Field(default=None, max_length=2048)
+    doc_url: str | None = Field(default=None, max_length=2048)
+    icon: str | None = Field(default=None, max_length=2048)
     is_enabled: bool = True
     priority: int = 0
     capabilities: dict[str, Any] = Field(default_factory=dict)
@@ -72,12 +80,12 @@ class ProviderCreate(BaseModel):
 
 class ProviderUpdate(BaseModel):
     """Request to update a provider."""
-    name: str | None = None
-    display_name: str | None = None
-    api_type: str | None = None
-    base_url: str | None = None
-    doc_url: str | None = None
-    icon: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    display_name: str | None = Field(default=None, max_length=200)
+    api_type: str | None = Field(default=None, max_length=32)
+    base_url: str | None = Field(default=None, max_length=2048)
+    doc_url: str | None = Field(default=None, max_length=2048)
+    icon: str | None = Field(default=None, max_length=2048)
     is_enabled: bool | None = None
     priority: int | None = None
     capabilities: dict[str, Any] | None = None

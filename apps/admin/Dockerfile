@@ -29,9 +29,14 @@ COPY apps/admin ./apps/admin
 ENV NODE_ENV=production
 RUN pnpm --filter @aetherblog/admin build
 
-# Stage 2: Production with Nginx
-FROM nginx:alpine AS runner
+# Stage 2: Production with Nginx (unprivileged)
+# SECURITY (VULN-124): use nginxinc/nginx-unprivileged so the master process
+# does NOT run as root. Image listens on 8080 instead of 80 by default; gateway
+# / admin container mapping must target 8080. docker-compose.prod.yml already
+# uses `"${ADMIN_PORT:-7894}:80"` — update that to :8080 when this image lands.
+FROM nginxinc/nginx-unprivileged:alpine AS runner
 
+USER root
 # Security: Remove default nginx config
 RUN rm -rf /etc/nginx/conf.d/default.conf
 
@@ -41,14 +46,15 @@ COPY apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
 # Copy built files
 COPY --from=builder /app/apps/admin/dist /usr/share/nginx/html
 
-# Security: Set proper permissions
+# Set permissions then drop back to the unprivileged user.
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chmod -R 755 /usr/share/nginx/html
+USER nginx
 
-EXPOSE 80
+EXPOSE 8080
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

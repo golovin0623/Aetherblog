@@ -233,7 +233,7 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 
 | Handler | Prefix | Key Endpoints |
 |---------|--------|---------------|
-| auth_handler | `/v1/auth/*` | POST /login, /register, /refresh, /logout; GET /me; POST /change-password; PUT /profile, /avatar |
+| auth_handler | `/v1/auth/*` + `/v1/admin/auth/*` | POST /login, /register, /refresh, /logout; GET /me; POST /change-password; PUT /profile, /avatar; **admin-only:** POST /rotate-jwt-secret (手动触发 JWT 签名密钥轮换) |
 | post_handler | `/v1/admin/posts/*` + `/v1/public/posts/*` | Admin CRUD + publish + auto-save + properties patch; 5 public routes + password verify |
 | comment_handler | `/v1/admin/comments/*` + `/v1/public/*` | 12 admin routes (incl. batch approve/delete) + 2 public routes (list + submit with rate limit) |
 | media_handler | `/v1/admin/media/*` | 18 routes: upload (single + batch), list, stats, batch-move, trash management, CRUD, content update |
@@ -258,10 +258,17 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 | search_handler | `/v1/public/search/*` + `/v1/admin/search/*` | GET search (hybrid/keyword/semantic), GET qa (SSE), config CRUD, stats, reindex, retry-failed, embedding-status |
 | share_handler | `/v1/admin/shares/*` | 5 endpoints: create file share, create folder share, get file shares, update share, delete share |
 
-**Database Migrations:** 32 total, latest `000032` (search_index_timeout).
-000029: add_font_family_setting, 000030: add_ai_cost_archives, 000031: search_config (site_settings seed for search feature), 000032: search_index_timeout.
+**Database Migrations:** 33 total, latest `000033` (jwt_secrets).
+000029: add_font_family_setting, 000030: add_ai_cost_archives, 000031: search_config (site_settings seed for search feature), 000032: search_index_timeout, 000033: jwt_secrets (DB-managed 定时轮换签名密钥，status: current/previous/retired).
 Key tables added in 000020-000028: `ai_credentials`, `ai_task_types`, `ai_task_routing`, `activity_events`.
 Vanblog migration fields on `posts`: `is_hidden`, `source_key`, `legacy_author_name`, `legacy_visited_count`, `legacy_copyright`.
+
+**JWT 密钥定时轮换（migration 000033 + VULN-152 跟进）：**
+- 签名密钥由 `jwt_secrets` 表管理（`current` 签名，`current`+`previous` 参与验签，`retired` 归档）。
+- Go 后端启动时用 `JWT_SECRET` 做 bootstrap seed（若表空则写入第一条 current）；`jwtkeys.Store` 把 current+previous 缓存进内存，`StartRotator` goroutine 按 `JWT.RotationInterval`（默认 7d）生成新 current、把旧 current 降级为 previous，`PreviousGrace`（默认 48h）期间旧 key 仍参与验签避免用户下线。
+- AI 服务通过 `app/core/jwt_keys.py` 后台任务每 60s 从同一张表同步 keys（在 `app/main.py` lifespan 里启动），`_decode_with_hmac` 按顺序遍历多 key 验签。
+- 管理员可通过 `POST /v1/admin/auth/rotate-jwt-secret` 手动触发计划外轮换（VULN-152 同类历史泄露紧急响应使用）。
+- 可调参数（`config.JWTConfig`，均通过 `AETHERBLOG_JWT_*` 环境变量覆盖）：`rotation_interval` / `previous_grace` / `reload_interval`。将 `rotation_interval` 设为 0 可禁用自动轮换（不推荐）。
 
 ### Frontend Service Layer
 

@@ -25,9 +25,22 @@ class VectorStoreService:
         # the admin switched the embedding model in Search Config.
         model = await self.llm.resolve_embedding_model_id()
         async with self.pool.acquire() as conn:
+            # SECURITY (VULN-060): the raw SQL function search_similar_posts()
+            # only compares vectors — it does NOT filter by post status,
+            # deleted flag, is_hidden, or password. Joining to `posts` here and
+            # adding explicit predicates ensures public semantic search never
+            # leaks draft / hidden / password-protected content (the returned
+            # snippet could reveal 120+ chars that should not be public).
             rows = await conn.fetch(
-                "SELECT post_id, title, slug, content, similarity "
-                "FROM search_similar_posts($1, $2, $3, $4)",
+                """
+                SELECT s.post_id, s.title, s.slug, s.content, s.similarity
+                FROM search_similar_posts($1, $2, $3, $4) s
+                JOIN posts p ON p.id = s.post_id
+                WHERE p.deleted = false
+                  AND p.status = 'PUBLISHED'
+                  AND p.password IS NULL
+                  AND p.is_hidden = false
+                """,
                 embedding,
                 self.settings.search_threshold,
                 limit,

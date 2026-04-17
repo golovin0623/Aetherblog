@@ -12,11 +12,29 @@ import (
 )
 
 // MediaTagHandler 负责处理媒体标签管理及文件与标签关联相关接口。
-type MediaTagHandler struct{ svc *service.MediaTagService }
+//
+// mediaSvc 用于 VULN-041 ownership 校验（附加/移除文件-标签关联必须由文件
+// uploader 或 admin 操作）。
+type MediaTagHandler struct {
+	svc      *service.MediaTagService
+	mediaSvc *service.MediaService
+}
 
 // NewMediaTagHandler 创建一个 MediaTagHandler 实例。
-func NewMediaTagHandler(svc *service.MediaTagService) *MediaTagHandler {
-	return &MediaTagHandler{svc: svc}
+func NewMediaTagHandler(svc *service.MediaTagService, mediaSvc *service.MediaService) *MediaTagHandler {
+	return &MediaTagHandler{svc: svc, mediaSvc: mediaSvc}
+}
+
+// assertFileOwnership 封装按 fileID 做 ownership 校验的样板逻辑。
+func (h *MediaTagHandler) assertFileOwnership(c echo.Context, fileID int64) error {
+	found, uploaderID, err := h.mediaSvc.GetUploaderID(c.Request().Context(), fileID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "文件不存在")
+	}
+	return middleware.AssertOwnership(c, uploaderID)
 }
 
 // Mount 在指定的管理员路由组下注册标签管理和文件-标签关联路由。
@@ -115,6 +133,10 @@ func (h *MediaTagHandler) TagFile(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
+	// SECURITY (VULN-041): only file uploader / admin may attach tags.
+	if err := h.assertFileOwnership(c, fileID); err != nil {
+		return err
+	}
 	var req dto.TagFileRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
@@ -136,6 +158,10 @@ func (h *MediaTagHandler) UntagFile(c echo.Context) error {
 	fileID, err := strconv.ParseInt(c.Param("fileId"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
+	}
+	// SECURITY (VULN-041): only file uploader / admin may detach tags.
+	if err := h.assertFileOwnership(c, fileID); err != nil {
+		return err
 	}
 	tagID, err := strconv.ParseInt(c.Param("tagId"), 10, 64)
 	if err != nil {

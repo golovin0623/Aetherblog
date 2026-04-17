@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/dto"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
@@ -27,23 +30,97 @@ type AuthHandler struct {
 	session     *service.SessionService
 	cfg         *config.Config
 	activitySvc *service.ActivityService
+	// jwtKeys 是 DB 管理的轮换密钥 Store；Login 等端点通过 jwtKeys.Current()
+	// 签名，JWTAuth 中间件通过 jwtKeys.Verifiers() 支持 current+previous 双 key 验证。
+	jwtKeys *jwtkeys.Store
 }
 
 // NewAuthHandler 创建一个 AuthHandler，注入所需的 Service 和配置依赖。
-func NewAuthHandler(auth *service.AuthService, session *service.SessionService, cfg *config.Config, activitySvc *service.ActivityService) *AuthHandler {
-	return &AuthHandler{auth: auth, session: session, cfg: cfg, activitySvc: activitySvc}
+func NewAuthHandler(
+	auth *service.AuthService,
+	session *service.SessionService,
+	cfg *config.Config,
+	activitySvc *service.ActivityService,
+	jwtKeys *jwtkeys.Store,
+) *AuthHandler {
+	return &AuthHandler{
+		auth:        auth,
+		session:     session,
+		cfg:         cfg,
+		activitySvc: activitySvc,
+		jwtKeys:     jwtKeys,
+	}
 }
 
 // Mount 将所有认证相关路由挂载到指定的 echo.Group。
 func (h *AuthHandler) Mount(g *echo.Group) {
+	// 所有需要鉴权的 /auth 子路由统一走 jwtKeys 支持的 Store 版中间件，
+	// 保证轮换窗口内 previous 密钥签发的 token 不会被错误拒绝。
+	authMW := middleware.JWTAuthWithStore(h.jwtKeys)
 	g.POST("/login", h.Login)
-	g.POST("/register", h.RegisterUser, middleware.JWTAuth(h.cfg.JWT.Secret), middleware.RequireRole("admin"))
+	g.POST("/register", h.RegisterUser, authMW, middleware.RequireRole("admin"))
 	g.POST("/refresh", h.Refresh)
 	g.POST("/logout", h.Logout)
-	g.GET("/me", h.Me, middleware.JWTAuth(h.cfg.JWT.Secret))
-	g.POST("/change-password", h.ChangePassword, middleware.JWTAuth(h.cfg.JWT.Secret))
-	g.PUT("/profile", h.UpdateProfile, middleware.JWTAuth(h.cfg.JWT.Secret))
-	g.PUT("/avatar", h.UpdateAvatar, middleware.JWTAuth(h.cfg.JWT.Secret))
+	g.GET("/me", h.Me, authMW)
+	g.POST("/change-password", h.ChangePassword, authMW)
+	g.PUT("/profile", h.UpdateProfile, authMW)
+	g.PUT("/avatar", h.UpdateAvatar, authMW)
+}
+
+// MountAdmin 注册只限管理员调用的认证相关端点：
+//
+//	POST /v1/admin/auth/rotate-jwt-secret  手动触发 JWT 签名密钥轮换
+//
+// 该端点的用途：泄露疑似发生时（例如 VULN-152 那种历史 commit 里带 token
+// 的事故）立刻发起一次计划外轮换，不必等下一个定时 tick。
+func (h *AuthHandler) MountAdmin(g *echo.Group) {
+	g.POST("/rotate-jwt-secret", h.RotateJWTSecret)
+}
+
+// RotateJWTSecret 处理 POST /v1/admin/auth/rotate-jwt-secret。
+// 仅管理员可调用（admin group 已强制 RequireRole("admin")）；成功后：
+//  1. DB 中旧 current 降级为 previous，retires_at = now + PreviousGrace；
+//  2. 新随机密钥写入 DB 作为 current；
+//  3. jwtkeys.Store 刷新内存快照；
+//  4. 已发放的 access token 在 grace window 内仍可验签（不强制用户下线）。
+//
+// 响应只返回 rotated_at / previous_expires_at；绝不回传 secret 本身。
+func (h *AuthHandler) RotateJWTSecret(c echo.Context) error {
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	grace := h.cfg.JWT.PreviousGrace
+	if grace <= 0 {
+		grace = 48 * time.Hour
+	}
+	if _, err := h.jwtKeys.Rotate(c.Request().Context(), grace); err != nil {
+		log.Error().Err(err).Int64("actor", lu.UserID).Msg("manual JWT rotation failed")
+		return response.FailWith(c, response.InternalError, "密钥轮换失败")
+	}
+	log.Warn().
+		Int64("actor", lu.UserID).
+		Str("username", lu.Username).
+		Dur("previous_grace", grace).
+		Msg("manual JWT signing secret rotation executed")
+
+	// 记录到活动审计（若可用）—— 这类敏感操作必须有审计轨迹。
+	if h.activitySvc != nil {
+		cat := "security"
+		status := "SUCCESS"
+		_ = h.activitySvc.Create(c.Request().Context(), &model.ActivityEvent{
+			EventType:     "security.jwt_rotate",
+			EventCategory: &cat,
+			Title:         "手动轮换 JWT 签名密钥",
+			UserID:        &lu.UserID,
+			Status:        &status,
+		})
+	}
+
+	return response.OK(c, map[string]any{
+		"rotated_at":           time.Now().UTC().Format(time.RFC3339),
+		"previous_grace_hours": int(grace / time.Hour),
+	})
 }
 
 // Login 处理 POST /api/v1/auth/login 请求。
@@ -270,6 +347,19 @@ func (h *AuthHandler) UpdateAvatar(c echo.Context) error {
 		return err
 	}
 
+	// SECURITY (VULN-047): validator 的 `uri` 约束接受 ``javascript:...`` /
+	// ``data:text/html,...`` 等危险 scheme —— 通过后续被 <img> 或头像卡片
+	// 渲染时触发 XSS。显式拒绝非 http(s) 绝对 URL 与非 '/' 开头的相对 URI。
+	lower := strings.ToLower(strings.TrimSpace(req.AvatarURL))
+	switch {
+	case strings.HasPrefix(lower, "http://"), strings.HasPrefix(lower, "https://"):
+		// 允许：带 scheme 的绝对 URL
+	case strings.HasPrefix(req.AvatarURL, "/") && !strings.HasPrefix(req.AvatarURL, "//"):
+		// 允许：同源绝对路径（e.g. /uploads/avatars/x.jpg）
+	default:
+		return response.FailWith(c, response.BadRequest, "头像 URL 必须是 http(s) 或同源绝对路径")
+	}
+
 	if err := h.auth.UpdateAvatar(c.Request().Context(), lu.UserID, req.AvatarURL); err != nil {
 		return response.Error(c, err)
 	}
@@ -287,8 +377,10 @@ func truncateForLog(s string) string {
 // --- 内部辅助函数 ---
 
 // generateAccessToken 为指定用户签发 JWT Access Token。
+// 始终用 jwtKeys.Current() 作为签名密钥 —— 轮换发生后立即使用新 key，
+// 旧 key 仅在 JWTAuth 中间件验证阶段（Verifiers 中的 previous）保留。
 func (h *AuthHandler) generateAccessToken(user *model.User) (string, error) {
-	return jwtutil.GenerateToken(user.ID, user.Username, user.Role, h.cfg.JWT.Secret, h.cfg.JWT.Expiration)
+	return jwtutil.GenerateToken(user.ID, user.Username, user.Role, h.jwtKeys.Current(), h.cfg.JWT.Expiration)
 }
 
 // buildLoginResponse 从用户模型和 Access Token 构建 LoginResponse DTO。

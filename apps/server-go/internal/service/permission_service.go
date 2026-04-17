@@ -73,6 +73,20 @@ func (s *PermissionService) Revoke(ctx context.Context, permissionID int64) erro
 	return s.repo.Delete(ctx, permissionID)
 }
 
+// GetFolderID 返回指定权限记录所关联的 folder_id，用于 handler 层 ownership
+// 校验（caller 必须是该 folder 的 owner 或 admin 才能改/撤权限）。
+// 记录不存在时返回 (0, false, nil)。
+func (s *PermissionService) GetFolderID(ctx context.Context, permissionID int64) (folderID int64, found bool, err error) {
+	p, err := s.repo.FindByID(ctx, permissionID)
+	if err != nil {
+		return 0, false, err
+	}
+	if p == nil {
+		return 0, false, nil
+	}
+	return p.FolderID, true, nil
+}
+
 // --- 内部辅助函数 ---
 
 // toPermissionVO 将 FolderPermission 模型转换为视图对象。

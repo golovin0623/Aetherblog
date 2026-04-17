@@ -37,6 +37,16 @@ func (s *FolderService) GetByID(ctx context.Context, id int64) (*dto.MediaFolder
 	return &vo, nil
 }
 
+// GetOwnerID 返回指定文件夹的 owner_id，用于 handler 层 ownership 校验。
+// 文件夹不存在时返回 (nil, nil)。
+func (s *FolderService) GetOwnerID(ctx context.Context, id int64) (*int64, error) {
+	f, err := s.repo.FindByID(ctx, id)
+	if err != nil || f == nil {
+		return nil, err
+	}
+	return f.OwnerID, nil
+}
+
 // GetChildren 返回指定文件夹的直接子文件夹列表（平铺，不递归）。
 func (s *FolderService) GetChildren(ctx context.Context, id int64) ([]dto.MediaFolderVO, error) {
 	fs, err := s.repo.FindChildren(ctx, id)
