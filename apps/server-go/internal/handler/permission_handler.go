@@ -12,11 +12,18 @@ import (
 )
 
 // PermissionHandler 处理文件夹权限授予/撤销相关的 HTTP 接口。
-type PermissionHandler struct{ svc *service.PermissionService }
+//
+// folderSvc 仅用于 VULN-038 ownership 校验 —— Grant/Revoke 等端点必须校验
+// 调用者拥有目标 folder，否则允许任意登录用户给自己授予他人 folder 的 ADMIN
+// 权限（提权链）。
+type PermissionHandler struct {
+	svc       *service.PermissionService
+	folderSvc *service.FolderService
+}
 
 // NewPermissionHandler 创建 PermissionHandler 实例。
-func NewPermissionHandler(svc *service.PermissionService) *PermissionHandler {
-	return &PermissionHandler{svc: svc}
+func NewPermissionHandler(svc *service.PermissionService, folderSvc *service.FolderService) *PermissionHandler {
+	return &PermissionHandler{svc: svc, folderSvc: folderSvc}
 }
 
 // Mount 将权限管理路由注册到指定的管理员路由组。
@@ -52,6 +59,19 @@ func (h *PermissionHandler) Grant(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件夹ID")
 	}
+	// SECURITY (VULN-038): 仅 folder 所有者 / admin 可授予权限，避免任意登录
+	// 用户通过 Grant 给自己授予他人 folder 的 ADMIN 权限形成提权链。
+	folderOwner, err := h.folderSvc.GetOwnerID(c.Request().Context(), folderID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if folderOwner == nil {
+		// folder 不存在；与 ownership 校验区分，以免信息泄露
+		return response.FailWith(c, response.NotFound, "文件夹不存在")
+	}
+	if err := middleware.AssertOwnership(c, folderOwner); err != nil {
+		return err
+	}
 	var req dto.GrantPermissionRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
@@ -78,6 +98,21 @@ func (h *PermissionHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的权限ID")
 	}
+	// SECURITY (VULN-038): caller must own the underlying folder.
+	folderID, found, err := h.svc.GetFolderID(c.Request().Context(), permissionID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "权限不存在")
+	}
+	folderOwner, err := h.folderSvc.GetOwnerID(c.Request().Context(), folderID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if err := middleware.AssertOwnership(c, folderOwner); err != nil {
+		return err
+	}
 	var req dto.UpdatePermissionRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
@@ -101,6 +136,21 @@ func (h *PermissionHandler) Revoke(c echo.Context) error {
 	permissionID, err := strconv.ParseInt(c.Param("permissionId"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的权限ID")
+	}
+	// SECURITY (VULN-038): caller must own the underlying folder to revoke.
+	folderID, found, err := h.svc.GetFolderID(c.Request().Context(), permissionID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "权限不存在")
+	}
+	folderOwner, err := h.folderSvc.GetOwnerID(c.Request().Context(), folderID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if err := middleware.AssertOwnership(c, folderOwner); err != nil {
+		return err
 	}
 	if err := h.svc.Revoke(c.Request().Context(), permissionID); err != nil {
 		return response.Error(c, err)

@@ -166,9 +166,12 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	authGroup.PUT("/profile", authHandler.UpdateProfile, middleware.JWTAuth(s.Config.JWT.Secret))
 	authGroup.PUT("/avatar", authHandler.UpdateAvatar, middleware.JWTAuth(s.Config.JWT.Secret))
 
-	// --- 管理员路由（JWT 认证保护） ---
+	// --- 管理员路由（JWT 认证 + 角色强校验） ---
+	// SECURITY (VULN-052): /v1/admin/* 必须强制 role==admin，否则任何已登录 USER 都能
+	// 命中管理端点，导致 IDOR 簇 (VULN-029/037/038/039/040/041/042/044) 与 AI 代理 (VULN-172)
+	// 授权失效。此处必须与 handler 层 ownership check 协同，不可单独省略。
 	adminJWT := middleware.JWTAuth(s.Config.JWT.Secret)
-	admin := api.Group("/v1/admin", adminJWT)
+	admin := api.Group("/v1/admin", adminJWT, middleware.RequireRole("admin"))
 
 	settingSvc := service.NewSiteSettingService(siteSettingRepo)
 	aiClient := service.NewAIClient(s.Config.AI)
@@ -242,20 +245,24 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 
 	// 媒体高级功能：标签、权限、分享、版本管理
 	mediaTagRepo := repository.NewMediaTagRepo(s.DB)
-	handler.NewMediaTagHandler(service.NewMediaTagService(mediaTagRepo)).Mount(admin.Group("/media"))
+	handler.NewMediaTagHandler(service.NewMediaTagService(mediaTagRepo), mediaSvc).Mount(admin.Group("/media"))
 	permissionRepo := repository.NewPermissionRepo(s.DB)
-	handler.NewPermissionHandler(service.NewPermissionService(permissionRepo)).Mount(admin.Group("/media"))
+	handler.NewPermissionHandler(service.NewPermissionService(permissionRepo), folderSvc).Mount(admin.Group("/media"))
 	shareRepo := repository.NewShareRepo(s.DB)
-	handler.NewShareHandler(service.NewShareService(shareRepo)).Mount(admin.Group("/media"))
+	handler.NewShareHandler(service.NewShareService(shareRepo), mediaSvc).Mount(admin.Group("/media"))
 	versionRepo := repository.NewVersionRepo(s.DB)
-	handler.NewVersionHandler(service.NewVersionService(versionRepo, mediaRepo)).Mount(admin.Group("/media"))
+	handler.NewVersionHandler(service.NewVersionService(versionRepo, mediaRepo), mediaSvc).Mount(admin.Group("/media"))
 
 	// --- 数据统计与分析 ---
 	analyticsRepo := repository.NewAnalyticsRepo(s.DB)
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 	handler.NewStatsHandler(analyticsSvc).Mount(admin.Group("/stats"))
 	handler.NewActivityHandler(activitySvc).Mount(admin.Group("/activities"))
-	handler.NewVisitorHandler(analyticsSvc).Mount(public.Group("/visit"))
+	// SECURITY (VULN-036): /public/visit 每次调用都插入一行 visit_records；
+	// 无限流情况下任意访客可以把 DB 灌满或伪造访问量。按 IP 每分钟 60 次。
+	handler.NewVisitorHandler(analyticsSvc).Mount(
+		public.Group("/visit", middleware.RateLimitByIP(s.Redis, "rate:visit", 60, time.Minute)),
+	)
 
 	// --- 数据迁移 ---
 	handler.NewMigrationHandler(s.DB, catRepo, tagRepo, postRepo).Mount(admin.Group("/migrations"))

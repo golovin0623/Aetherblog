@@ -5,11 +5,57 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
+
+// validateEndpoint 拒绝将 S3 自定义 endpoint 指向内网 / 元数据服务，防御 SSRF。
+// SECURITY (VULN-032): 空字符串（走 AWS 默认）放行；非空字符串必须是 http(s)
+// scheme，且所有解析出的 IP 都不能落在 loopback / private / link-local / 169.254
+// (IMDS) / broadcast 范围内。DNS rebinding 攻击需要网络层封堵作为纵深防御 ——
+// 此函数只在创建客户端时做一次 resolve，不做运行时重查。
+func validateEndpoint(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid endpoint: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("endpoint scheme must be http or https, got %q", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("endpoint missing hostname")
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("endpoint DNS lookup failed: %w", err)
+	}
+	blocked := func(ip net.IP) bool {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return true
+		}
+		// 169.254.169.254 is covered by IsLinkLocalUnicast; explicitly also block
+		// the IPv4-mapped form of loopback and AWS IMDSv2 edge cases.
+		if ip.Equal(net.IPv4bcast) || ip.Equal(net.ParseIP("169.254.169.254")) {
+			return true
+		}
+		return false
+	}
+	for _, ip := range ips {
+		if blocked(ip) {
+			return fmt.Errorf("endpoint %s resolves to internal address %s (blocked)", host, ip)
+		}
+	}
+	return nil
+}
 
 // S3Config 保存从存储提供商配置 JSON（storage_providers.config_json）解析出的连接参数。
 type S3Config struct {
@@ -45,6 +91,10 @@ func NewS3Storage(configJSON string) (*S3Storage, error) {
 	// bucket 为必填参数
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("s3 config: bucket is required")
+	}
+	// SECURITY (VULN-032): 防 SSRF —— 拒绝把 endpoint 指向内网 / IMDS。
+	if err := validateEndpoint(cfg.Endpoint); err != nil {
+		return nil, fmt.Errorf("s3 config: %w", err)
 	}
 	// region 默认值
 	if cfg.Region == "" {

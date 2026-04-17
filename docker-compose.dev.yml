@@ -12,13 +12,16 @@ services:
   postgres:
     image: pgvector/pgvector:pg17
     container_name: aetherblog-postgres
+    # SECURITY (VULN-118): 即便是 dev compose，也不再自带默认口令 —— 强制开发者
+    # 在 .env 里显式设置 DB_PASSWORD。避免从 env.example 迁出的旧密码悄悄继续生效。
     environment:
       POSTGRES_DB: aetherblog
       POSTGRES_USER: aetherblog
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-aetherblog123}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD env var is required (set in .env)}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${DB_PORT:-5432}:5432"
+      # SECURITY (VULN-122 dev): 绑定到 127.0.0.1，避免开发机对外暴露 Postgres。
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - aetherblog_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,13 +37,16 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: aetherblog-redis
-    command: redis-server --appendonly yes
+    # SECURITY (VULN-118/119 dev): 要求 REDIS_PASSWORD，避免本地 dev 实例
+    # 跑裸口令 Redis。如需匿名 Redis（仅容器内测），在 .env 显式设 REDIS_PASSWORD=dev-only-not-secret。
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD env var is required}"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      # 绑本机 only；若团队需要另一 host 访问，走 SSH 隧道。
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - aetherblog_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

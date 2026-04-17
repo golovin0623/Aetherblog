@@ -4,6 +4,23 @@ import { GripVertical, Edit2, Trash2, Eye, EyeOff, ExternalLink } from 'lucide-r
 import { cn } from '@/lib/utils';
 import { FriendLink } from '@/services/friendService';
 
+// SECURITY (VULN-082): friend link URLs come from admin input; previous code
+// dropped them straight into <a href> so a malicious/careless admin could
+// inject ``javascript:`` payloads that fire on hover / click from other admins.
+// Only http(s) URLs pass through; anything else falls back to '#'.
+function safeExternalHref(url: string | undefined | null): string {
+  if (!url || typeof url !== 'string') return '#';
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return '#';
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '#';
+    return parsed.toString();
+  } catch {
+    return '#';
+  }
+}
+
 interface SortableFriendItemProps {
   friend: FriendLink;
   onEdit: () => void;
@@ -93,10 +110,10 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
           </div>
           
           <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
-            <a 
-              href={friend.url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
+            <a
+              href={safeExternalHref(friend.url)}
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-primary transition-colors truncate max-w-[200px] flex items-center gap-1"
             >
               {friend.url}

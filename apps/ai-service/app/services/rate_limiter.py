@@ -33,8 +33,20 @@ class RateLimiter:
             current = await self.redis.eval(LUA_SCRIPT, 1, key, str(window_seconds))
             return int(current) <= limit
         except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("rate_limit.redis_error", extra={"error": str(exc)})
-            return True
+            # SECURITY (VULN-070): by default we fail CLOSED so a Redis outage
+            # cannot bypass the limiter and enable wallet-drain on LLM endpoints.
+            # Flip AI_RATE_LIMIT_FAIL_OPEN=true only when infrastructure
+            # reliability is more critical than limit enforcement.
+            settings = get_settings()
+            if settings.rate_limit_fail_open:
+                logger.warning("rate_limit.redis_error_fail_open", extra={"error": str(exc)})
+                return True
+            logger.error("rate_limit.redis_error_fail_closed", extra={"error": str(exc)})
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Rate limiter unavailable",
+                headers={"Retry-After": "30"},
+            )
 
     async def enforce_user_limit(self, user_id: str, endpoint: str) -> None:
         settings = get_settings()

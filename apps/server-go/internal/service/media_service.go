@@ -30,7 +30,12 @@ var allowedMimeTypes = map[string]bool{
 	"image/bmp":  true,
 	"image/tiff": true,
 	"image/avif": true,
-	"image/svg+xml": true,
+	// SECURITY (VULN-030): SVG is disabled — it can carry inline
+	// <script>/<foreignObject> payloads that execute as same-origin when
+	// served by `/api/uploads/*`, giving stored-XSS against the admin.
+	// Re-enable only when (1) uploads go through DOMPurify-style sanitizer
+	// AND (2) the static handler forces Content-Disposition: attachment.
+	// "image/svg+xml": true,
 	// 视频
 	"video/mp4":        true,
 	"video/webm":       true,
@@ -224,6 +229,19 @@ func (s *MediaService) GetByID(ctx context.Context, id int64) (*dto.MediaFileVO,
 	}
 	vo := toMediaFileVO(*m)
 	return &vo, nil
+}
+
+// GetUploaderID 返回指定媒体文件的 uploader_id，用于 handler 层 ownership 校验。
+// 返回值：found=false 表示文件不存在；found=true 且 uploaderID=nil 表示匿名上传。
+func (s *MediaService) GetUploaderID(ctx context.Context, id int64) (found bool, uploaderID *int64, err error) {
+	m, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return false, nil, err
+	}
+	if m == nil {
+		return false, nil, nil
+	}
+	return true, m.UploaderID, nil
 }
 
 // Update 修改媒体文件的 alt_text 和所属文件夹 folder_id。

@@ -154,8 +154,8 @@ pnpm install
 
 ```bash
 # 配置环境变量
-cp env.example .env
-# 编辑 .env 填入实际配置
+cp .env.example .env
+# 编辑 .env 填入实际配置（POSTGRES_PASSWORD / JWT_SECRET / AI_INTERNAL_SERVICE_TOKEN 等必填项均为空占位）
 
 # 拉取镜像并启动
 export DOCKER_REGISTRY=golovin0623

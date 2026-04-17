@@ -69,7 +69,10 @@ services:
       POSTGRES_USER: aetherblog
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     ports:
-      - "${POSTGRES_PORT:-7895}:5432"
+      # SECURITY (VULN-122): bound to localhost only. External access must go
+      # through the gateway, or via SSH tunnel for DBA. Switch to 0.0.0.0 only
+      # after configuring host firewall + pg_hba.conf.
+      - "127.0.0.1:${POSTGRES_PORT:-7895}:5432"
     volumes:
       - aetherblog_postgres_data:/var/lib/postgresql/data
     networks:
@@ -92,18 +95,19 @@ services:
     image: redis:7.2-alpine
     container_name: aetherblog-redis
     restart: unless-stopped
-    command: >
-      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
-        redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
-      else
-        redis-server --appendonly yes;
-      fi'
+    # SECURITY (VULN-119): REDIS_PASSWORD 必填。旧版 sh -c 条件 fallback 让
+    # 未设密码时无认证启动，任何可达容器网络的组件都能读取 cache / rate-limit
+    # key / session blob。单行 `redis-server --requirepass $REDIS_PASSWORD`
+    # 由 compose 变量替换注入，无需 sh wrapper。
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD env var is required}"]
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD env var is required}
     profiles:
       - with-redis
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      # SECURITY (VULN-122): localhost-only; gateway/backend reach Redis via
+      # internal network.
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     networks:
       - aetherblog-network
     healthcheck:
@@ -149,7 +153,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AETHERBLOG_AI_BASE_URL: http://ai-service:8000
       AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
-      JWT_SECRET: ${JWT_SECRET}
+      # SECURITY (VULN-120): JWT_SECRET required, no silent empty fallback.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET env var is required (min 32 chars)}
       AETHERBLOG_AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AETHERBLOG_AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Strict}
       AETHERBLOG_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:7899,http://127.0.0.1:7899}
@@ -199,11 +204,14 @@ services:
       AI_LOG_LEVEL: info
       AI_MOCK_MODE: ${AI_MOCK_MODE:-false}
       AI_JWT_MODE: ${AI_JWT_MODE:-HMAC}
-      JWT_SECRET: ${JWT_SECRET}  # AI 服务与后端共用同一个密钥
+      # SECURITY (VULN-120): JWT_SECRET required, no silent empty fallback.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET env var is required (min 32 chars)}  # AI 服务与后端共用同一个密钥
       AI_JWT_JWKS_URL: ${AI_JWT_JWKS_URL:-}
       AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
       AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
+      # SECURITY (VULN-056): credential encryption key — must be independent of JWT_SECRET.
+      AI_CREDENTIAL_ENCRYPTION_KEYS: ${AI_CREDENTIAL_ENCRYPTION_KEYS:?AI_CREDENTIAL_ENCRYPTION_KEYS env var is required}
       REDIS_URL: ${AI_REDIS_URL:-redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0}
       POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/aetherblog
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -244,7 +252,8 @@ services:
     container_name: aetherblog-blog
     restart: unless-stopped
     ports:
-      - "${BLOG_PORT:-7893}:3000"  # 可选：直接访问
+      # SECURITY (VULN-122): localhost-only direct access. Public traffic flows via gateway.
+      - "127.0.0.1:${BLOG_PORT:-7893}:3000"  # 可选：直接访问 (本机调试)
     expose:
       - "3000"
     environment:
@@ -273,7 +282,8 @@ services:
     container_name: aetherblog-admin
     restart: unless-stopped
     ports:
-      - "${ADMIN_PORT:-7894}:80"  # 可选：直接访问
+      # SECURITY (VULN-122): localhost-only direct access. Public traffic flows via gateway.
+      - "127.0.0.1:${ADMIN_PORT:-7894}:80"  # 可选：直接访问 (本机调试)
     expose:
       - "80"
     depends_on:

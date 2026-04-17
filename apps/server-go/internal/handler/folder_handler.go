@@ -95,6 +95,14 @@ func (h *FolderHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-039): verify folder ownership before mutation.
+	existingOwner, err := h.svc.GetOwnerID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if err := middleware.AssertOwnership(c, existingOwner); err != nil {
+		return err
+	}
 	var req dto.FolderRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return err
@@ -117,6 +125,14 @@ func (h *FolderHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-039): verify folder ownership before permanent delete.
+	existingOwner, err := h.svc.GetOwnerID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if err := middleware.AssertOwnership(c, existingOwner); err != nil {
+		return err
+	}
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
@@ -129,6 +145,14 @@ func (h *FolderHandler) Move(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	// SECURITY (VULN-039): verify folder ownership before move.
+	existingOwner, err := h.svc.GetOwnerID(c.Request().Context(), id)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if err := middleware.AssertOwnership(c, existingOwner); err != nil {
+		return err
 	}
 	var req dto.MoveFolderRequest
 	if err := c.Bind(&req); err != nil {

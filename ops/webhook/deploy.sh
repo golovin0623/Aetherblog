@@ -40,10 +40,25 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 if [ -f .env ]; then
-  echo "[$(date -Iseconds)] Loading env from $PROJECT_DIR/.env"
-  set -a
-  . ./.env
-  set +a
+  # SECURITY (VULN-133): never `source` the .env file — that would let any value
+  # like FOO=$(rm -rf /) be evaluated by bash. Instead, parse strict
+  # KEY=VALUE pairs (allowing CAPS and underscores) and export them literally.
+  echo "[$(date -Iseconds)] Loading env from $PROJECT_DIR/.env (strict parser)"
+  while IFS='=' read -r k v; do
+    case "$k" in
+      ''|\#*) continue ;;
+    esac
+    if [[ "$k" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+      # strip optional surrounding single/double quotes from value
+      v="${v%\"}"
+      v="${v#\"}"
+      v="${v%\'}"
+      v="${v#\'}"
+      export "$k=$v"
+    else
+      echo "[$(date -Iseconds)] WARN: skipped malformed env key: $k" >&2
+    fi
+  done < .env
 fi
 
 export DOCKER_REGISTRY="${DOCKER_REGISTRY:-golovin0623}"

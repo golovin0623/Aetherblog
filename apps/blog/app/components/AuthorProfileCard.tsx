@@ -8,27 +8,42 @@ import { User, Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronR
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings, getSiteStats } from '../lib/services';
-import { sanitizeImageUrl } from '../lib/sanitizeUrl';
+import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
+
+// SECURITY (VULN-098): 限制 `social_links` JSON 解析的大小，避免恶意超大串在
+// 受害者浏览器里递归解析消耗内存；外加成员数上限防御 DoS。
+const MAX_SOCIAL_LINKS_JSON_LEN = 65_536;
+const MAX_SOCIAL_LINKS = 64;
 
 // 社交链接提取工具
 const extractSocialLinks = (settings: any) => {
   if (!settings) return [];
 
-  const links = [];
+  const links: { platform: string; url: string; icon: React.ElementType }[] = [];
+
+  // SECURITY (VULN-080): admin 保存的 social_links URL 若未净化直接渲染为 <a href>
+  // 会让 `javascript:` / `data:text/html` 等伪协议被点击触发。这里统一走
+  // `sanitizeUrl`，非法/未知协议会回落到 '#'。
+  const pushIfSafe = (platform: string, rawUrl: string) => {
+    if (!platform || typeof rawUrl !== 'string') return;
+    const safe = sanitizeUrl(rawUrl, '');
+    if (!safe || safe === '#') return;
+    links.push({ platform, url: safe, icon: getPlatformIcon(platform) });
+  };
 
   // 处理社交链接 JSON
   if (settings.social_links) {
     try {
-      const parsed = typeof settings.social_links === 'string'
-        ? JSON.parse(settings.social_links)
-        : settings.social_links;
+      const raw = settings.social_links;
+      if (typeof raw === 'string' && raw.length > MAX_SOCIAL_LINKS_JSON_LEN) {
+        return [];
+      }
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       if (Array.isArray(parsed)) {
-        links.push(...parsed.map((item: any) => ({
-          platform: item.platform || item.name,
-          url: item.url,
-          icon: getPlatformIcon(item.platform || item.name)
-        })));
+        for (const item of parsed.slice(0, MAX_SOCIAL_LINKS)) {
+          pushIfSafe(item?.platform || item?.name || '', item?.url || '');
+        }
       }
     } catch (e) {
       console.warn('Failed to parse social links:', e);
@@ -37,9 +52,15 @@ const extractSocialLinks = (settings: any) => {
 
   // 回退到老字段
   if (links.length === 0) {
-    if (settings.github_url) links.push({ platform: 'GitHub', url: settings.github_url, icon: Github });
-    if (settings.twitter_url) links.push({ platform: 'Twitter', url: settings.twitter_url, icon: Twitter });
-    if (settings.author_email) links.push({ platform: 'Email', url: `mailto:${settings.author_email}`, icon: Mail });
+    if (settings.github_url) pushIfSafe('GitHub', settings.github_url);
+    if (settings.twitter_url) pushIfSafe('Twitter', settings.twitter_url);
+    if (settings.author_email) {
+      // mailto: is trusted, bypass sanitizeUrl (which rejects non-http schemes).
+      const email = String(settings.author_email).trim();
+      if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        links.push({ platform: 'Email', url: `mailto:${email}`, icon: Mail });
+      }
+    }
   }
 
   return links;

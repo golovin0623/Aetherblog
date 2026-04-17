@@ -70,6 +70,30 @@ func JWTOptional(secret string) echo.MiddlewareFunc {
 	}
 }
 
+// AssertOwnership 返回 403 错误当调用者既非 admin 也非资源持有者。
+// 在 handler 层读取目标资源后调用；admin 角色直接放行。
+//
+// SECURITY (VULN-IDOR-cluster, 2026-04-17): 深度防御，与 RequireRole 在 group
+// 层互补，不可互相替代。用法：
+//
+//	existing, _ := h.svc.GetByID(ctx, id)
+//	if err := middleware.AssertOwnership(c, existing.AuthorID); err != nil {
+//	    return err // helper 已写入响应
+//	}
+func AssertOwnership(c echo.Context, ownerID *int64) error {
+	lu := GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+	if strings.ToLower(lu.Role) == "admin" {
+		return nil
+	}
+	if ownerID == nil || *ownerID != lu.UserID {
+		return response.FailWith(c, response.Forbidden, "无权操作他人资源")
+	}
+	return nil
+}
+
 // RequireRole 返回一个中间件，检查已认证用户是否具有指定角色之一。
 // 必须在 JWTAuth 之后使用，确保 LoginUser 已存入上下文。
 func RequireRole(roles ...string) echo.MiddlewareFunc {

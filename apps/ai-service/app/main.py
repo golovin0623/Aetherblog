@@ -44,12 +44,31 @@ app = FastAPI(
     openapi_url="/openapi.json" if _docs_url else None,
 )
 
+# SECURITY (VULN-068): tighten CORS. The previous config combined
+# allow_origins=[localhost entries] with allow_methods=["*"] + allow_headers=["*"]
+# + allow_credentials=True — a high-risk shape if the origin list ever grows or
+# is misconfigured. We explicitly enumerate the verbs and headers we actually
+# use; any new header (e.g. X-Internal-Service) must be added intentionally.
+#
+# NOTE: allow_headers deliberately does NOT include "X-Internal-Service" so
+# the browser CORS path cannot trigger internal endpoints even if an origin
+# is allow-listed in the future.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:7899"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:7899",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Request-Id",
+        "X-Trace-Id",
+        "Accept",
+    ],
 )
 
 app.include_router(router)

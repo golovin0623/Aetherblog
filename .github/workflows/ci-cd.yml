@@ -108,6 +108,34 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
   # ===========================================================================
+  # 密钥与默认值守门 (VULN-117): 阻止已知弱口令/Mock 密钥被提交到代码
+  # ===========================================================================
+  forbidden-defaults-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Block leaked secret markers
+        run: |
+          # 仅拦截当前运行时实际可用的弱密钥（VULN-117/121）。
+          # 注意：`aetherblog123` 是历史 dev DB 默认值，散布在 docker-compose.yml /
+          # Makefile / config.yaml / 旧 start.sh 内，将由 VULN-118 (P1) 清理；
+          # 在那之前不要把它加入此 guard 否则 CI 长期红。
+          if grep -RnE 'change-me-to-a-secure-random-string|sk-proj-mock-key-for-testing|default-secret-for-dev-only-change-in-prod' \
+              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv \
+              --exclude-dir=dist --exclude-dir=.next --exclude-dir=__pycache__ \
+              --exclude-dir=bin \
+              --exclude='*.md' \
+              --exclude='ci-cd.yml' \
+              .; then
+            echo "::error::Leaked default secret markers detected — replace with empty placeholders in .env.example."
+            exit 1
+          fi
+          echo "✅ No production-grade default secrets present in tracked source"
+
+  # ===========================================================================
   # Docker 配置验证 (与 detect-changes 并行)
   # ===========================================================================
   config-validate:
@@ -231,6 +259,9 @@ jobs:
           JWT_SECRET: "ci-test-secret"
           AI_INTERNAL_SERVICE_TOKEN: "ci-test-token-minimum-32-characters-long"
           POSTGRES_DSN: "postgresql://test:test@localhost:5432/test_db"
+          # VULN-056: AI service refuses to start without an encryption key set.
+          # Generated once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+          AI_CREDENTIAL_ENCRYPTION_KEYS: "RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI="
         run: |
           python -c "from app.main import app; print('✅ App imports successfully')"
 
