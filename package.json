@@ -15,7 +15,10 @@
     "clean": "pnpm -r clean && rm -rf node_modules",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:logs": "docker-compose logs -f",
+    "design-system:check": "node scripts/codemod-tokens.mjs check",
+    "design-system:fix": "node scripts/codemod-tokens.mjs fix",
+    "design-system:report": "node scripts/codemod-tokens.mjs report"
   },
   "devDependencies": {
     "bcryptjs": "^3.0.3",
