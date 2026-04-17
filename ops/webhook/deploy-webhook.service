@@ -4,17 +4,46 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/Aetherblog/webhook
-Environment=WEBHOOK_SECRET=change-me
+# SECURITY (VULN-134): unprivileged user. Provision with:
+#   sudo useradd -r -s /usr/sbin/nologin -d /var/lib/aetherblog/webhook webhook
+#   sudo usermod -aG docker webhook   # only if deploy.sh needs to run docker compose
+User=webhook
+Group=webhook
+WorkingDirectory=/var/lib/aetherblog/webhook
+
+# WEBHOOK_SECRET MUST come from a 0600-owned env file, never inline literals.
+# Provision /etc/aetherblog/webhook.env with content:
+#   WEBHOOK_SECRET=<openssl rand -hex 32>
+EnvironmentFile=/etc/aetherblog/webhook.env
+
+# Non-secret defaults can stay inline.
 Environment=WEBHOOK_PORT=7868
-Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
+Environment=WEBHOOK_BIND=127.0.0.1
+Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
 # Override PYTHON_BIN per host if pyenv path differs or version is upgraded
-Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
-ExecStart=${PYTHON_BIN} /root/Aetherblog/webhook/webhook_server.py
+Environment=PYTHON_BIN=/usr/bin/python3
+ExecStart=${PYTHON_BIN} /var/lib/aetherblog/webhook/webhook_server.py
 Restart=always
 RestartSec=3
+
+# SECURITY (VULN-134): hardening directives that defang a successful exploit.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+ReadWritePaths=/var/log/aetherblog /var/lock /var/lib/aetherblog
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target

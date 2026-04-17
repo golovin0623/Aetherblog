@@ -5,6 +5,7 @@ FastAPI routes for AI provider and credential management.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Optional
 
@@ -49,6 +50,28 @@ from app.services.model_router import ModelRouter
 from app.services.remote_model_fetcher import RemoteModelFetcher
 
 logger = logging.getLogger("ai-service")
+
+
+# SECURITY (VULN-066 / VULN-165): LiteLLM and upstream providers can echo back
+# the raw Bearer token or ``sk-...`` API key inside error messages. Any path
+# that surfaces ``str(exc)`` to the caller or writes it to logs MUST go through
+# ``_redact_secrets`` first — a leaked exception body is the classic API-key
+# exfil vector for rate-limit / auth failures.
+_REDACT_PATTERNS = (
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._\-~+/=]{20,}"),
+)
+
+
+def _redact_secrets(msg: str, api_key: Optional[str] = None) -> str:
+    if not msg:
+        return msg
+    out = msg
+    if api_key:
+        out = out.replace(api_key, "***")
+    for pat in _REDACT_PATTERNS:
+        out = pat.sub("***", out)
+    return out
 
 router = APIRouter(
     prefix="/api/v1/admin/providers",
@@ -159,8 +182,11 @@ async def create_provider(
             ),
         )
     except Exception as exc:
-        logger.exception("Failed to create provider")
-        raise HTTPException(status_code=400, detail=str(exc))
+        # SECURITY (VULN-069): do not echo raw exception text to client — it
+        # may contain internal paths / SQL / secret material captured in the
+        # traceback. Full detail is in logs via logger.exception above.
+        logger.exception("Failed to create provider", extra={"data": {"error_class": type(exc).__name__}})
+        raise HTTPException(status_code=400, detail="Failed to create provider") from exc
 
 
 @router.put("/batch-toggle", response_model=ApiResponse[dict[str, int]])
@@ -282,8 +308,9 @@ async def create_model(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to create model")
-        raise HTTPException(status_code=400, detail=str(exc))
+        # SECURITY (VULN-069): generic client error, full detail to logs.
+        logger.exception("Failed to create model", extra={"data": {"error_class": type(exc).__name__}})
+        raise HTTPException(status_code=400, detail="Failed to create model") from exc
 
 
 # ============================================================
@@ -491,8 +518,10 @@ async def create_credential(
         )
         return ApiResponse(data={"id": cred_id})
     except Exception as e:
-        logger.exception("Failed to save credential")
-        raise HTTPException(status_code=400, detail=str(e))
+        # SECURITY (VULN-069): don't leak internal exception text (may include
+        # connection strings / SQL fragments); rely on logs for diagnosis.
+        logger.exception("Failed to save credential", extra={"data": {"error_class": type(e).__name__}})
+        raise HTTPException(status_code=400, detail="Failed to save credential") from e
 
 
 @router.get("/credentials", response_model=ApiResponse[list[CredentialResponse]])
@@ -626,6 +655,14 @@ async def test_credential(
             model_name = f"azure/{model_name}"
     # anthropic/google: LiteLLM handles natively with api_key + api_base
     
+    # SECURITY (VULN-057): even the admin "test" endpoint must not issue
+    # SSRF against internal hosts (IMDS / internal services).
+    from app.utils.url_validator import validate_external_url_async
+    if credential.base_url and not await validate_external_url_async(credential.base_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Provider base_url resolves to an internal or private network",
+        )
     # Test with a simple completion
     start = time.perf_counter()
     try:
@@ -650,7 +687,10 @@ async def test_credential(
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
-        error_msg = str(e)
+        # SECURITY (VULN-066): LiteLLM can put the request's Bearer / sk- key
+        # into the exception body when the upstream returns 401/429 etc.
+        # Redact before both persisting and returning.
+        error_msg = _redact_secrets(str(e), credential.api_key)
 
         # Update last error
         await resolver.update_last_used(credential_id, error=error_msg)
@@ -705,6 +745,13 @@ async def test_embedding_credential(
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
+    # SECURITY (VULN-057): SSRF guard also applies to the embedding test path.
+    from app.utils.url_validator import validate_external_url_async
+    if credential.base_url and not await validate_external_url_async(credential.base_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Provider base_url resolves to an internal or private network",
+        )
     # Test with embedding
     start = time.perf_counter()
     try:
@@ -731,7 +778,9 @@ async def test_embedding_credential(
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
-        error_msg = str(e)
+        # SECURITY (VULN-066): redact potential Bearer / sk- tokens leaked in
+        # the upstream 401/429 body before it hits logs or the client.
+        error_msg = _redact_secrets(str(e), credential.api_key)
 
         await resolver.update_last_used(credential_id, error=error_msg)
 

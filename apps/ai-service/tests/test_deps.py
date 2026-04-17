@@ -102,3 +102,67 @@ def test_get_remote_model_fetcher_singleton():
     first = deps_module.get_remote_model_fetcher()
     second = deps_module.get_remote_model_fetcher()
     assert first is second
+
+
+# ---------------------------------------------------------------------------
+# VULN-162 — internal service token guard
+# Verify that require_admin_or_internal:
+#   1. rejects requests with no X-Internal-Service header
+#   2. rejects requests with an empty X-Internal-Service header
+#   3. rejects requests with the wrong token value
+# without ever invoking hmac.compare_digest(None, ...).
+# ---------------------------------------------------------------------------
+
+
+def _make_request(headers: dict[str, str] | None = None) -> Request:
+    """Build a Starlette Request with header/value pairs encoded for ASGI."""
+    raw = []
+    for k, v in (headers or {}).items():
+        raw.append((k.lower().encode("latin-1"), v.encode("latin-1")))
+    return Request({"type": "http", "path": "/api/v1/ai/internal", "headers": raw})
+
+
+@pytest.mark.asyncio
+async def test_require_admin_or_internal_missing_header(monkeypatch):
+    fake = type("S", (), {"internal_service_token": "x" * 48})()
+    monkeypatch.setattr(deps_module, "get_settings", lambda: fake)
+
+    request = _make_request(headers={})
+    with pytest.raises(HTTPException) as exc:
+        await deps_module.require_admin_or_internal(request, None, None)
+    # Falls through to require_admin which requires a JWT — missing token => 401
+    assert exc.value.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_require_admin_or_internal_empty_header(monkeypatch):
+    fake = type("S", (), {"internal_service_token": "x" * 48})()
+    monkeypatch.setattr(deps_module, "get_settings", lambda: fake)
+
+    request = _make_request(headers={"X-Internal-Service": ""})
+    with pytest.raises(HTTPException) as exc:
+        await deps_module.require_admin_or_internal(request, None, None)
+    assert exc.value.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_require_admin_or_internal_wrong_token(monkeypatch):
+    fake = type("S", (), {"internal_service_token": "x" * 48})()
+    monkeypatch.setattr(deps_module, "get_settings", lambda: fake)
+
+    request = _make_request(headers={"X-Internal-Service": "y" * 48})
+    with pytest.raises(HTTPException) as exc:
+        await deps_module.require_admin_or_internal(request, None, None)
+    assert exc.value.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_require_admin_or_internal_correct_token_accepted(monkeypatch):
+    token = "z" * 48
+    fake = type("S", (), {"internal_service_token": token})()
+    monkeypatch.setattr(deps_module, "get_settings", lambda: fake)
+
+    request = _make_request(headers={"X-Internal-Service": token})
+    user = await deps_module.require_admin_or_internal(request, None, None)
+    assert user.user_id == "system"
+    assert user.role == "admin"

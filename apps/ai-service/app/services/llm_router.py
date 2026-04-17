@@ -17,9 +17,11 @@ import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, TYPE_CHECKING
 
+from fastapi import HTTPException
 from litellm import acompletion, aembedding
 
 from app.core.config import get_settings
+from app.utils.url_validator import validate_external_url_async
 
 if TYPE_CHECKING:
     from app.services.model_router import ModelRouter, RoutingConfig
@@ -313,6 +315,26 @@ class LlmRouter:
             return {"content": prompt_variables}
         return prompt_variables
 
+    async def _guard_api_base(self, api_base: str | None) -> None:
+        """Reject SSRF attempts via admin-controlled ``api_base``.
+
+        SECURITY (VULN-057): every LiteLLM ``acompletion`` / ``aembedding``
+        call must run this guard before hitting the network. A compromised /
+        coerced admin account would otherwise be able to point ``base_url`` at
+        AWS IMDS or an internal service and exfiltrate via side-channel
+        (response body, error message timing).
+
+        Empty / None values are allowed (means "use LiteLLM's built-in
+        default", which is itself a public endpoint).
+        """
+        if not api_base:
+            return
+        if not await validate_external_url_async(api_base):
+            raise HTTPException(
+                status_code=502,
+                detail="Provider base_url resolves to an internal or private network",
+            )
+
     async def chat(
         self,
         prompt_variables: dict[str, Any] | str,
@@ -354,6 +376,8 @@ class LlmRouter:
         else:
             messages = [{"role": "user", "content": prompt}]
 
+        # SECURITY (VULN-057): reject SSRF at the admin-controlled api_base.
+        await self._guard_api_base(resolved.api_base)
         try:
             response = await acompletion(
                 model=resolved.model,
@@ -379,6 +403,8 @@ class LlmRouter:
                         fallback_routing.model.model_id,
                         fallback_routing.credential.api_type,
                     )
+                    # SECURITY (VULN-057): guard fallback api_base too.
+                    await self._guard_api_base(fallback_routing.credential.base_url)
                     response = await acompletion(
                         model=fallback_model,
                         messages=messages,
@@ -453,6 +479,8 @@ class LlmRouter:
                 await asyncio.sleep(0)
             return
 
+        # SECURITY (VULN-057): stream path also needs base_url validation.
+        await self._guard_api_base(resolved.api_base)
         stream = await acompletion(
             model=resolved.model,
             messages=messages,
@@ -535,6 +563,8 @@ class LlmRouter:
             repeats = dim // len(seed) + 1
             return (seed * repeats)[:dim]
 
+        # SECURITY (VULN-057): embedding calls must also validate api_base.
+        await self._guard_api_base(api_base)
         start = time.perf_counter()
         try:
             # 显式超时兜底：LiteLLM 默认不给 embedding 设 timeout。

@@ -62,21 +62,57 @@ func GenerateToken(userID int64, username, role, secret string, expiration time.
 
 // ParseToken 验证并解析 JWT 字符串，返回其中的自定义载荷。
 // 若签名不合法、令牌已过期或格式错误，均会返回相应错误。
+//
+// 等价于 ParseTokenWithKeys(tokenStr, []string{secret}) —— 保留此签名以
+// 兼容 test 与 fixtures；生产代码路径走 jwtkeys.Store + ParseTokenWithKeys。
 func ParseToken(tokenStr, secret string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (any, error) {
-		// 强制检查签名算法必须为 HMAC 系列，防止 alg:none 攻击
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+	return ParseTokenWithKeys(tokenStr, []string{secret})
+}
+
+// ParseTokenWithKeys 按给定的 keys 顺序尝试验证 JWT 签名，任一命中即视为有效。
+// 典型用法：keys=[current, previous] —— 热轮换窗口内发放的旧 token 仍可通过。
+//
+// 实现要点：
+//  1. 首先对 "签名不匹配" 与 "token 本身被篡改/过期" 做区分：
+//     - HMAC 验签失败 → 尝试下一个 key；
+//     - exp/iat/alg/JSON 结构错误 → 立即返回，不消耗剩余候选。
+//  2. 强制 HS256，防御 alg:none。
+//  3. 空 keys 切片视为参数错误。
+func ParseTokenWithKeys(tokenStr string, keys []string) (*Claims, error) {
+	if len(keys) == 0 {
+		return nil, errors.New("jwtutil: no keys provided")
+	}
+
+	var lastSignatureErr error
+	for _, key := range keys {
+		if key == "" {
+			continue
 		}
-		return []byte(secret), nil
-	})
-	if err != nil {
-		return nil, err
+		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(key), nil
+		})
+		if err != nil {
+			// 签名不匹配 → 轮到下一个 key；其余类型的错误直接冒出
+			// （过期、格式错、alg 错…这些换个 key 也救不回来）。
+			if errors.Is(err, jwt.ErrSignatureInvalid) ||
+				errors.Is(err, jwt.ErrTokenSignatureInvalid) {
+				lastSignatureErr = err
+				continue
+			}
+			return nil, err
+		}
+		claims, ok := token.Claims.(*Claims)
+		if !ok || !token.Valid {
+			return nil, errors.New("invalid token")
+		}
+		return claims, nil
 	}
-	// 断言载荷类型并验证令牌有效性
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid token")
+
+	if lastSignatureErr != nil {
+		return nil, lastSignatureErr
 	}
-	return claims, nil
+	return nil, errors.New("invalid token: no key matched")
 }

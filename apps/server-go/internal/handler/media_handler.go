@@ -39,6 +39,23 @@ func NewMediaHandler(svc *service.MediaService, activitySvc *service.ActivitySer
 	return &MediaHandler{svc: svc, activitySvc: activitySvc}
 }
 
+// assertMediaOwnership 在 handler 层验证调用者拥有指定媒体文件。
+// SECURITY (VULN-040/041/042): 读取 uploader_id 后委托给 middleware.AssertOwnership。
+// 语义：
+//   - 文件不存在 → 404
+//   - 匿名上传 (uploader_id IS NULL) → 仅 admin 可操作
+//   - 指定上传者 → admin 放行；否则须调用者 user_id 匹配
+func (h *MediaHandler) assertMediaOwnership(c echo.Context, mediaID int64) error {
+	found, uploaderID, err := h.svc.GetUploaderID(c.Request().Context(), mediaID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	if !found {
+		return response.FailWith(c, response.NotFound, "文件不存在")
+	}
+	return middleware.AssertOwnership(c, uploaderID)
+}
+
 // SetVersionDeps 注入版本相关的可选依赖，以启用文件内容上传功能。
 func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, store storage.Storage, uploadDir string, mediaRepo *repository.MediaRepo) {
 	h.versionSvc = versionSvc
@@ -301,6 +318,10 @@ func (h *MediaHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-040): ownership gate before metadata update.
+	if err := h.assertMediaOwnership(c, id); err != nil {
+		return err
+	}
 	// 同时支持通过查询参数传递 altText/originalName（兼容旧版调用方式）
 	var req dto.UpdateMediaRequest
 	if alt := c.QueryParam("altText"); alt != "" {
@@ -330,6 +351,10 @@ func (h *MediaHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-040): ownership gate before soft delete (trash).
+	if err := h.assertMediaOwnership(c, id); err != nil {
+		return err
+	}
 	if err := h.svc.Delete(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
@@ -347,6 +372,10 @@ func (h *MediaHandler) Move(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	// SECURITY (VULN-040): ownership gate before move.
+	if err := h.assertMediaOwnership(c, id); err != nil {
+		return err
 	}
 	// 优先从查询参数获取 folderId（兼容旧版调用方式）
 	var folderID *int64
@@ -376,6 +405,10 @@ func (h *MediaHandler) Restore(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
+	// SECURITY (VULN-040): ownership gate before trash restore.
+	if err := h.assertMediaOwnership(c, id); err != nil {
+		return err
+	}
 	if err := h.svc.Restore(c.Request().Context(), id); err != nil {
 		return response.Error(c, err)
 	}
@@ -388,6 +421,10 @@ func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	// SECURITY (VULN-040): ownership gate before irreversible delete.
+	if err := h.assertMediaOwnership(c, id); err != nil {
+		return err
 	}
 	if err := h.svc.PermanentDelete(c.Request().Context(), id); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
@@ -430,6 +467,10 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	// SECURITY (VULN-040): 覆盖文件二进制内容是最危险的操作之一，必须 ownership 校验。
+	if err := h.assertMediaOwnership(c, id); err != nil {
+		return err
 	}
 
 	fh, err := c.FormFile("file")

@@ -85,6 +85,20 @@ func (s *VersionService) Delete(ctx context.Context, versionID int64) error {
 	return s.repo.Delete(ctx, versionID)
 }
 
+// GetFileID 返回指定版本记录所关联的 media_file_id，用于 handler 层 ownership
+// 校验（caller 必须是底层文件的 uploader 或 admin 才能删除版本）。
+// 版本不存在时返回 (0, false, nil)。
+func (s *VersionService) GetFileID(ctx context.Context, versionID int64) (fileID int64, found bool, err error) {
+	v, err := s.repo.FindByID(ctx, versionID)
+	if err != nil {
+		return 0, false, err
+	}
+	if v == nil {
+		return 0, false, nil
+	}
+	return v.MediaFileID, true, nil
+}
+
 // CreateVersionFromFile 将文件当前状态作为新版本快照保存。
 // 通常在文件内容被修改前调用，用于留存可回滚的历史记录。
 func (s *VersionService) CreateVersionFromFile(ctx context.Context, file *model.MediaFile, description string, createdBy *int64) error {

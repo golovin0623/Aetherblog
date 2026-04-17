@@ -9,11 +9,11 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 
 from app.core.config import get_settings
 from app.utils.provider_urls import normalize_api_base
@@ -49,9 +49,14 @@ def _normalize_user_id(user_id: int | str | None) -> int | None:
     return int(user_id)
 
 
-def _derive_key(secret: str) -> bytes:
-    """Derive a Fernet-compatible key from a secret string."""
-    # Use SHA256 to get 32 bytes, then base64 encode for Fernet
+def _legacy_jwt_derived_key(secret: str) -> bytes:
+    """Compute the legacy Fernet key that was derived from JWT_SECRET.
+
+    Retained ONLY so the rotation script (scripts/rotate_credentials.py) can
+    seed AI_CREDENTIAL_ENCRYPTION_KEYS with the legacy key as a fallback during
+    the migration window. Production code path no longer uses this — see
+    VULN-056 fix plan in docs/qa/fix-plans/vuln-056-fernet-jwt-key-split.md.
+    """
     key_bytes = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(key_bytes)
 
@@ -79,15 +84,30 @@ class CredentialResolver:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self.pool = pool
         self.settings = get_settings()
-        self._fernet = Fernet(_derive_key(self.settings.jwt_secret))  # Reuse JWT secret for encryption
+        # SECURITY (VULN-056): credential encryption uses a dedicated key set
+        # (AI_CREDENTIAL_ENCRYPTION_KEYS), NOT JWT_SECRET. MultiFernet picks the
+        # first key for new encryption and tries every key for decryption,
+        # which lets operators rotate without downtime — see rotation script
+        # in scripts/rotate_credentials.py.
+        self._fernet = MultiFernet([
+            Fernet(k.encode()) for k in self.settings.ai_credential_encryption_keys
+        ])
 
     def encrypt_api_key(self, api_key: str) -> str:
-        """Encrypt an API key for storage."""
+        """Encrypt an API key for storage (uses the first key in the list)."""
         return self._fernet.encrypt(api_key.encode()).decode()
 
     def decrypt_api_key(self, encrypted: str) -> str:
-        """Decrypt an API key from storage."""
+        """Decrypt an API key from storage (tries every configured key)."""
         return self._fernet.decrypt(encrypted.encode()).decode()
+
+    def reencrypt_api_key(self, encrypted: str) -> str:
+        """Decrypt with any configured key, re-encrypt with the first key.
+
+        Used by the offline rotation script (scripts/rotate_credentials.py)
+        when retiring an old encryption key.
+        """
+        return self._fernet.rotate(encrypted.encode()).decode()
 
     def generate_hint(self, api_key: str) -> str:
         """Generate a hint for display (e.g., 'sk-abc...xyz')."""
@@ -353,9 +373,13 @@ class CredentialResolver:
     async def update_last_used(self, credential_id: int, error: str | None = None) -> None:
         """Update last used timestamp and error."""
         query = """
-            UPDATE ai_credentials 
+            UPDATE ai_credentials
             SET last_used_at = $1, last_error = $2
             WHERE id = $3
         """
         async with self.pool.acquire() as conn:
-            await conn.execute(query, datetime.utcnow(), error, credential_id)
+            # SECURITY (VULN-073): datetime.utcnow() is deprecated in Python 3.12+
+            # and returns a naive datetime (no tzinfo), which silently serializes
+            # as UTC but is ambiguous if moved across processes. Use an explicit
+            # tz-aware timestamp.
+            await conn.execute(query, datetime.now(timezone.utc), error, credential_id)

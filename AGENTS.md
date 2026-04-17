@@ -72,7 +72,7 @@
   - `apps/admin/src/services/`
   - `apps/blog/app/lib/api.ts`
   - `packages/types/src/`
-- 修改启动、网关、部署、环境变量相关逻辑时，需同步检查 `README.md`、`env.example`、`apps/admin/.env.local.example`、`nginx/` 与相关 `docs/` 是否也发生漂移。
+- 修改启动、网关、部署、环境变量相关逻辑时，需同步检查 `README.md`、`.env.example`、`apps/admin/.env.local.example`、`nginx/` 与相关 `docs/` 是否也发生漂移。
 - 搜索与审查优先做 diff-scoped 或目标目录 scoped 检查，避免把运行产物或无关目录噪音当成结论依据。
 
 ## 测试规范
@@ -87,8 +87,8 @@
 - PR 至少包含：变更摘要、关联任务、测试证据、UI 改动截图/GIF、配置或迁移说明。
 
 ## 安全与配置提示
-- 禁止提交真实密钥；本地配置写入 `.env` 或应用级 `.env.local`，示例参考 `env.example` 与 `apps/admin/.env.local.example`。
-- `env.example`、`docker-compose.yml`、`README.md` 中的默认密码、示例账号、mock key 仅用于本地演示或占位，不得视为生产可用配置。
+- 禁止提交真实密钥；本地配置写入 `.env` 或应用级 `.env.local`，示例参考 `.env.example` 与 `apps/admin/.env.local.example`。
+- `.env.example`、`docker-compose.yml`、`README.md` 中的占位字段（空 `=` 形式）必须保持空，不得回填默认密码、示例账号或 mock key（VULN-117 历史问题：旧 `env.example` 因含 `aetherblog123` / `change-me-...` 而被淘汰）。
 - 文档与规则文件本身是高风险面：`AGENTS.md`、`CLAUDE.md`、`.agent/workflows/*`、`docs/*` 变更时要额外检查是否泄漏本机 IP、绝对路径、默认口令、令牌或内部地址。
 - 修改容器编排前，除了校验 `docker compose ... config --quiet`，还要确认改动对应的是开发、中间件还是生产栈，避免误改错文件。
 

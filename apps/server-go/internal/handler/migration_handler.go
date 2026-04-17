@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,9 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/crypto/bcrypt"
 
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
@@ -103,6 +106,13 @@ type importSummary struct {
 // 接受 multipart 文件上传（字段名 "file"）和查询参数 "mode"（dry-run | import）。
 // dry-run 模式仅分析数据不写入；import 模式执行实际导入。
 func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
+	// SECURITY (VULN-035): 导入会写 author_id；必须显式取当前管理员，不再
+	// 硬编码 user_id=1。
+	lu := middleware.GetLoginUser(c)
+	if lu == nil {
+		return response.FailWith(c, response.Unauthorized, "未登录")
+	}
+
 	mode := c.QueryParam("mode")
 	if mode == "" {
 		mode = "dry-run"
@@ -112,6 +122,11 @@ func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "未找到文件，请上传 VanBlog 备份 JSON 文件")
 	}
+	// VULN-034 回退：取消硬编码 50MB 上限，恢复对大型 VanBlog 备份的支持。
+	// OOM 风险由上游多层共同约束：网关 client_max_body_size 10G → 后端进程
+	// 内存限额（docker-compose `deploy.resources.limits.memory`）→ JSON 解析
+	// 器串行消费。如果未来进一步硬化，可改为流式解析（`json.NewDecoder` 直接
+	// 包裹 `fh.Open()`），避免 `io.ReadAll` 一次性装载。
 	f, err := fh.Open()
 	if err != nil {
 		return response.FailWith(c, response.InternalError, "无法打开上传文件")
@@ -124,12 +139,14 @@ func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
 	}
 
 	var backup vanBlogBackup
-	if err := json.Unmarshal(data, &backup); err != nil {
-		return response.FailWith(c, response.BadRequest, "JSON 解析失败，请确认文件格式正确")
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&backup); err != nil {
+		return response.FailWith(c, response.BadRequest, "JSON 解析失败，请确认文件格式正确: "+err.Error())
 	}
 
 	ctx := c.Request().Context()
-	result, err := h.processImport(ctx, &backup, mode)
+	result, err := h.processImport(ctx, &backup, mode, lu.UserID)
 	if err != nil {
 		return response.FailWith(c, response.InternalError, err.Error())
 	}
@@ -137,7 +154,9 @@ func (h *MigrationHandler) ImportVanBlog(c echo.Context) error {
 }
 
 // processImport 执行 VanBlog 数据的实际导入逻辑（支持 dry-run 和 import 两种模式）。
-func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBackup, mode string) (*importResult, error) {
+// callerID 是触发导入的管理员 user_id；将其传入写入的每篇文章 author_id，
+// 避免历史版本硬编码 1 的隐患（VULN-035）。
+func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBackup, mode string, callerID int64) (*importResult, error) {
 	res := &importResult{
 		Warnings: []string{},
 		Errors:   []string{},
@@ -273,9 +292,20 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 			if cid, ok := catMap[a.Category]; ok {
 				catID = &cid
 			}
+			// SECURITY (VULN-033): VanBlog 导出里的密码是明文；必须 bcrypt
+			// 加密后再存，否则 DB 泄露 == 密码泄露，且 `GetPublicBySlug` 的
+			// `bcrypt.CompareHashAndPassword` 也无法匹配（功能坏）。
 			var pwd *string
 			if a.Password != "" {
-				pwd = &a.Password
+				hash, hashErr := bcrypt.GenerateFromPassword([]byte(a.Password), bcrypt.DefaultCost)
+				if hashErr != nil {
+					res.Errors = append(res.Errors,
+						fmt.Sprintf("hash password for [%s] failed: %v", a.Title, hashErr))
+					res.Summary.InvalidRecords++
+					continue
+				}
+				h := string(hash)
+				pwd = &h
 			}
 			content := a.Content
 			wordCount := utf8.RuneCountInString(content)
@@ -290,14 +320,15 @@ func (h *MigrationHandler) processImport(ctx context.Context, backup *vanBlogBac
 			}
 
 			var postID int64
+			// SECURITY (VULN-035): author_id 使用发起导入的管理员 ID，不再硬编码 1。
 			err = tx.QueryRowContext(ctx, `
 				INSERT INTO posts (title, slug, content_markdown, status, category_id, author_id,
 					is_pinned, pin_priority, is_hidden, allow_comment, password,
 					word_count, reading_time, view_count, comment_count, like_count,
 					embedding_status, deleted, published_at, source_key, created_at, updated_at)
-				VALUES ($1,$2,$3,$4,$5,1,$6,$7,$8,true,$9,$10,$11,0,0,0,'PENDING',false,$12,$13,NOW(),NOW())
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12,0,0,0,'PENDING',false,$13,$14,NOW(),NOW())
 				RETURNING id`,
-				a.Title, slug, content, status, catID,
+				a.Title, slug, content, status, catID, callerID,
 				a.Top > 0, a.Top, a.Hidden, pwd,
 				wordCount, readingTime, publishedAt, sourceKey,
 			).Scan(&postID)
