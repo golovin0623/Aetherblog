@@ -46,6 +46,14 @@ function sanitizeHtml(dirty: string, config: Record<string, unknown>): string {
 // ============================================================================
 // rehype-sanitize 白名单 — 允许博客常用 HTML 属性，阻止 XSS
 // ============================================================================
+// SECURITY (VULN-116): rehype-sanitize already blocks iframe/object/embed/form
+// in the default schema, but we re-assert the allowlist approach (don't
+// spread raw tag lists from user input). Keep tagNames explicit.
+//
+// SECURITY (VULN-170): rehype-sanitize's default allows `data:` URIs on img
+// src. SVG in a data: URL executes inline <script>, so we narrow the protocols
+// list to drop `data:` from `img@src` specifically. This also defends against
+// the old VULN-021 class of payloads that disguise scripts as images.
 const sanitizeSchema: typeof defaultSchema = {
   ...defaultSchema,
   tagNames: [
@@ -71,6 +79,11 @@ const sanitizeSchema: typeof defaultSchema = {
     ],
     // alert-block 自定义元素
     'alert-block': ['data-type', 'data-title'],
+  },
+  // VULN-170: `data:` removed from img protocols; only http(s) & blob allowed.
+  protocols: {
+    ...(defaultSchema.protocols || {}),
+    src: ['http', 'https', 'blob'],
   },
 };
 

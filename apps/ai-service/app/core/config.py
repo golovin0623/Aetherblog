@@ -160,4 +160,28 @@ def get_settings() -> Settings:
     global _settings
     if _settings is None:
         _settings = Settings()
+        _warn_if_prod_jwt_claims_unset(_settings)
     return _settings
+
+
+def _warn_if_prod_jwt_claims_unset(settings: Settings) -> None:
+    """SECURITY (VULN-067): emit a startup warning if `AI_ENV=prod` but
+    `AI_JWT_AUDIENCE` / `AI_JWT_ISSUER` are unset — without those claims
+    audience binding cannot be enforced, and a stolen token from another
+    service using the same ``JWT_SECRET`` becomes usable against this one.
+    We avoid raising to keep rollbacks clean; make `verify_aud` require claim
+    presence explicitly in a follow-up once production envs are populated.
+    """
+    if settings.env.lower() != "prod":
+        return
+    if not settings.jwt_audience or not settings.jwt_issuer:
+        import logging as _logging
+        _logging.getLogger("ai-service").warning(
+            "jwt.audience_or_issuer_unset_in_prod",
+            extra={"data": {
+                "env": settings.env,
+                "has_audience": bool(settings.jwt_audience),
+                "has_issuer": bool(settings.jwt_issuer),
+                "remediation": "Set AI_JWT_AUDIENCE and AI_JWT_ISSUER in prod .env",
+            }},
+        )
