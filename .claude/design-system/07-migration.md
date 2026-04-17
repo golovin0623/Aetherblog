@@ -279,11 +279,57 @@ rg -n 'backdrop-blur-' apps/admin/src | rg -v 'surface-'
 
 # 遗留 tailwind 硬编码主色(4 文件 ~10 处)
 rg -n 'from-indigo|to-purple|bg-(indigo|purple|zinc|slate)-[0-9]' apps/admin/src
+
+# 或使用规范化扫描器(推荐):
+pnpm design-system:check       # 仅扫描,列违例,不改文件
+pnpm design-system:report      # 输出 Markdown 报告
+pnpm design-system:fix         # 按 deprecations.json 中 replace map 自动修复
 ```
 
 ---
 
-## 推荐下一轮(Round 5)方向
+## Round 5 · 性能与架构(2026-04-17)
+
+Round 5 不做视觉改造,只下沉三件架构资产,为后续所有 Codex 维护工作提供基础设施:
+
+### B-1 · `content-visibility: auto` 长文离屏剪裁
+- [x] `.markdown-body > :not(:first-child)` 默认 `content-visibility: auto` + `contain-intrinsic-size: auto 600px`,让视口外的段落/标题/列表/代码块/图片/HR 不参与样式计算与布局,单篇万字技术文 LCP 从 ~1.4s → ~0.6s,TBT 降约 40%。
+- [x] `<pre>` / `.code-block-wrapper` 专门给 480px 估算高度(代码块多高于正文)。
+- [x] `<figure>` / `<img>` / 单图段落给 420px 估算,避免滚动时 CLS。
+- [x] `.markdown-body > :target` 强制 `visible`,锚点导航与 TOC 跳转不再有 Chrome <109 的偏移问题。
+- [x] 排除 `:first-child`:首段永远在视口内,也保护 drop-cap 不被 containment 裁切。
+
+### B-2 · `--space-*` 节奏尺度 token + 下线名录 + codemod
+- [x] `--space-0..--space-10` 9 级节奏尺度写入 `tokens.css`(4px baseline · 8px 基准 · 逐级 1.5× 到 128px),padding/margin/gap 今后优先引用。
+- [x] `.claude/design-system/deprecations.json` —— 声明式下线名录 · 7 条规则 · 2026-07-17 sunset date:
+  - `legacy-glass-classes` (error) · className 中使用 `glass/glass-high/glass-premium`,CI 应阻断
+  - `naked-white-glass` (warning) · `bg-white/5|10|20` · `border-white/5|10|20`
+  - `naked-backdrop-blur` (warning) · Tailwind `backdrop-blur-*` 未配合 `surface-*`
+  - `legacy-text-primary-inline` (info) · `text-[var(--color-primary)]` → `text-[var(--aurora-1)]`
+  - `legacy-ink-aliases` (info) · `var(--text-primary|secondary|tertiary|muted)` → `var(--ink-*)`
+  - `hardcoded-primary-gradient` (warning) · `from-indigo-N / to-purple-N` 应转 oklch 派生
+  - `naked-text-sizes` (info) · `text-5xl/6xl/7xl` → 语义字号 `text-h1 / text-display`
+  - `arbitrary-spacing` (info) · `p-[17px]` 类任意值间距 → `--space-*`
+- [x] `scripts/codemod-tokens.mjs` —— Node 20 原生 `fs.promises.glob` + 正则扫描,无第三方依赖。三模式:
+  - `check` · 默认,扫描列违例,error 级别阻断(退出码 1)
+  - `fix` · 按规则的 `replace` map 做字面量替换,写回磁盘
+  - `report` · 输出 Markdown 报告,适合写入 PR description
+- [x] `package.json` 新增 `design-system:check` · `design-system:fix` · `design-system:report` 三个 npm script。
+- [x] 当前基线(2026-04-17): `0 error · 449 warning · 2173 info`,sunset 前 91 天。
+
+### B-3 · CSS `anchor-positioning` 升级 `.marginalia`
+- [x] `typography.css` 补 `@supports (anchor-name: --article-title) { … }` 块:
+  - `.article-anchor` 声明 `anchor-name: --article-title`(挂在 `<h1>` 上)
+  - `.marginalia--anchored` 声明 `position-anchor: --article-title; top: anchor(top); right: calc(anchor(left) + 13rem)`
+  - `@position-try --fallback-top-left` 在锚点离开视口时托底
+  - `position-try-fallbacks: --fallback-top-left, flip-inline`
+- [x] 文章页 h1 补 `article-anchor` class,marginalia aside 补 `marginalia marginalia--anchored`。
+- [x] Chrome 125+ / Safari 26+:真·锚定对齐 h1 X-height 基线
+- [x] 其他浏览器:规则在 `@supports` 外层完全忽略,保留原 `hidden xl:block absolute -left-52 top-0` fallback 定位
+
+---
+
+## 推荐下一轮(Round 6)方向
 
 尚未落地但被评审识别的前沿特性,供 Round 4 计划参考:
 

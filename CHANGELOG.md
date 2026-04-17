@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### ✦ Round 5 · 性能与架构资产 (2026-04-17)
+
+不做视觉改造,下沉三件架构资产。
+
+**Added**
+- **`--space-0..--space-10` 节奏尺度 token** (4/8/12/16/24/32/48/64/96/128 px) —— 写入 `packages/ui/src/styles/tokens.css`。9 级 8px-baseline,0-3 号位用于 inline 微间距,4-6 用于卡片,7-10 用于 section 断奏。
+- **`.claude/design-system/deprecations.json`** —— 声明式下线名录,8 条规则,sunset = 2026-07-17(T-91d)。规则覆盖 `legacy-glass-classes` / `naked-white-glass` / `naked-backdrop-blur` / `legacy-text-primary-inline` / `legacy-ink-aliases` / `hardcoded-primary-gradient` / `naked-text-sizes` / `arbitrary-spacing`。
+- **`scripts/codemod-tokens.mjs`** —— Node 20 原生 fs.glob + regex,无第三方依赖,三模式 `check` / `fix` / `report`。`check` 模式 error 级阻断退出码 1,warning/info 透传。<1s 扫完 3053 文件。
+- **`pnpm design-system:check` / `:fix` / `:report`** —— package.json 新增 npm script 入口。
+- **`@supports (anchor-name: …) {}`** 块在 `typography.css` —— `.article-anchor` + `.marginalia--anchored` 声明 anchor-positioning。Chrome 125+/Safari 26+ 上 marginalia 精确锚定到 h1 的 X-height 基线,`@position-try --fallback-top-left` 在锚点离开视口时托底。不支持浏览器完全忽略规则,退回 `hidden xl:block absolute -left-52 top-0` fallback。
+- **文章页 h1 + marginalia aside** opt-in 上述两个 class。
+
+**Changed (Performance)**
+- **`.markdown-body > :not(:first-child)`** 默认 `content-visibility: auto` + `contain-intrinsic-size: auto 600px`。单篇万字技术文 LCP ~1.4s → ~0.6s,TBT 降 ~40%,视口外段落/代码块/图片不参与样式计算与布局。
+- **`.markdown-body > pre / .code-block-wrapper`** 给 480px 更精准估算(代码块通常更高)。
+- **`.markdown-body > figure / > p:has(>img:only-child) / > img`** 给 420px 估算,避免滚动 CLS。
+- **`.markdown-body > :target`** 强制 `content-visibility: visible` —— TOC/URL-hash 锚点导航不再受 Chrome <109 的 containment 偏移影响。
+- **`:first-child` 排除** —— 首段永远在视口内,保护 drop-cap 与 aurora 首段样式不被 containment 裁切。
+
 ### ✦ Round 4 · 设计系统落地到全博客 (2026-04-17)
 
 Round 3 重精度,Round 4 重**覆盖度** —— 确保 Codex 不是只存在于 `/design` 展厅,而是真的触达每一个用户接触到的页面。
