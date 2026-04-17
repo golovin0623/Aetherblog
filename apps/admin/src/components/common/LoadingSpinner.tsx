@@ -20,9 +20,9 @@ export function LoadingSpinner({ size = 'md', className = '' }: LoadingSpinnerPr
 export function LoadingOverlay({ message = '加载中...' }: { message?: string }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="flex flex-col items-center gap-4">
+      <div className="surface-overlay flex flex-col items-center gap-4 px-8 py-6">
         <LoadingSpinner size="lg" />
-        <p className="text-white">{message}</p>
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--ink-secondary)]">{message}</p>
       </div>
     </div>
   );

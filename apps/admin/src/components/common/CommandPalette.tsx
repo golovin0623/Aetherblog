@@ -155,7 +155,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
             exit={{ opacity: 0, y: -8, scale: 0.98, x: '-50%' }}
             transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed left-1/2 top-[12%] z-[101] w-[calc(100%-2rem)] max-w-xl surface-overlay bg-[var(--bg-overlay)] backdrop-blur-2xl rounded-2xl border border-[var(--border-default)] shadow-2xl overflow-hidden"
+            className="fixed left-1/2 top-[12%] z-[101] w-[calc(100%-2rem)] max-w-xl surface-overlay overflow-hidden"
           >
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-subtle)]">
               <Search className="w-4 h-4 text-[var(--text-muted)]" />
