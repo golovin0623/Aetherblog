@@ -73,6 +73,30 @@
   /* Radius (补充) */
   --radius-bleed: 2.875rem;
 
+  /* -------------------------------------------------------------
+   * Space —— 8px baseline 9 级节奏尺度
+   * 规范:.claude/design-system/01-tokens.md §3 Spatial Rhythm
+   *
+   * 所有 padding / margin / gap 都应落在这个阶梯上,不再随手写 p-3、
+   * mt-[17px]、gap-5 这种"软随机"值。Tailwind 侧保持 1-12 的原 spacing
+   * 映射,两者可并存;新组件优先引用 --space-*,长尾组件渐迁。
+   *
+   * 命名采用"号位"而非"px 值",预留今后 1.6× 或 1.25× 换算空间。
+   * 0-3 适用于 inline(图标间距、小按钮内缩),4-6 为卡片内主间距,
+   * 7-10 为 section 级断奏。
+   * ------------------------------------------------------------- */
+  --space-0:  0;
+  --space-1:  0.25rem;  /*  4px — hairline,图标微调 */
+  --space-2:  0.5rem;   /*  8px — 基准,chip / 徽章 inline */
+  --space-3:  0.75rem;  /* 12px — 按钮内缩 */
+  --space-4:  1rem;     /* 16px — 卡片内默认 */
+  --space-5:  1.5rem;   /* 24px — 卡片章节间 */
+  --space-6:  2rem;     /* 32px — 卡片外边距 */
+  --space-7:  3rem;     /* 48px — 小 section 间 */
+  --space-8:  4rem;     /* 64px — section 默认 */
+  --space-9:  6rem;     /* 96px — 大 section 间 */
+  --space-10: 8rem;     /* 128px — Hero / 路由切分 */
+
   /* Focus Ring */
   --focus-ring: 0 0 0 2px var(--bg-void), 0 0 0 4px var(--aurora-1);
 

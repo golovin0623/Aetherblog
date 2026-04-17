@@ -82,6 +82,17 @@
 
 /* -----------------------------------------------------------
  * Marginalia —— 桌面端文章左侧边注区域
+ *
+ * 2026-04 (Round 5) 升级:引入 CSS anchor-positioning(Chrome 125+,
+ * Safari 26+),marginalia 以文章 <h1> 为锚点精确对齐基线,而不是靠
+ * 硬编码 `absolute -left-52 top-0`。旧浏览器保留原 absolute 定位,
+ * 视觉差别微小但锚点版的基线与 h1 X-height 对齐更优。
+ *
+ * 启用方式:
+ *   <h1 class="article-anchor">…</h1>       (生成 anchor-name)
+ *   <aside class="marginalia marginalia--anchored">…</aside>
+ * 支持方可在 @supports 块内声明 position-anchor,不支持方完全忽略
+ * 这条规则,退回组件上的 hidden xl:block absolute -left-52 top-0。
  * ----------------------------------------------------------- */
 .marginalia {
   font-family: var(--font-mono);
@@ -112,6 +123,52 @@
   opacity: 0.6;
   margin-top: 1.5em;
   margin-bottom: 0.5em;
+}
+
+/* -----------------------------------------------------------
+ * Round 5 · B-3 · CSS anchor-positioning 渐进增强
+ * -----------------------------------------------------------
+ * 规范:https://drafts.csswg.org/css-anchor-position-1/
+ *
+ * 当浏览器支持 `anchor-name` 时,marginalia 可以声明绑定到文章 h1,
+ * 从而 marginalia 顶部与 h1 顶部 X-height 对齐(而非页顶)。
+ *
+ * 用法(仅在该浏览器可用时生效,否则 fallback 到组件上的
+ * `absolute -left-52 top-0` 规则):
+ *
+ *   <article>
+ *     <h1 class="article-anchor">...</h1>
+ *     <aside class="marginalia marginalia--anchored">...</aside>
+ *   </article>
+ *
+ * 为保证旧浏览器行为不变,所有 anchor-positioning 规则都放在
+ * @supports 块内,不污染 CSSOM 计算优先级。
+ * ----------------------------------------------------------- */
+@supports (anchor-name: --article-title) {
+  .article-anchor {
+    anchor-name: --article-title;
+  }
+
+  .marginalia--anchored {
+    position: absolute;
+    position-anchor: --article-title;
+    /* 顶部对齐 h1 的顶部 X-height(而非 bounding box 顶部) */
+    top: anchor(top);
+    /* 水平锚到 h1 的左外沿,再向左位移 208px(即 -left-52 in Tailwind) */
+    right: calc(anchor(left) + 13rem);
+    width: 10rem;
+    /* 回退位置 —— 锚点超出视口时,浏览器会自动应用此位置 */
+    position-try-fallbacks:
+      --fallback-top-left,
+      flip-inline;
+  }
+
+  /* 自定义回退:锚点离开视口时,marginalia 贴屏左上 */
+  @position-try --fallback-top-left {
+    top: 8rem;
+    right: auto;
+    left: 1rem;
+  }
 }
 
 /* -----------------------------------------------------------
