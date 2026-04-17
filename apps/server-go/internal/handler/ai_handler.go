@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -96,10 +95,26 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
 
-	// 使用原始编码路径构建目标 URL，避免解码后的特殊字符破坏 URL 结构
+	// 提取原始编码路径构建目标 URL，避免解码后的特殊字符破坏 URL 结构，防范参数注入及 SSRF
+	reqURL := c.Request().URL
+	rawPath := reqURL.RawPath
+	if rawPath == "" {
+		rawPath = reqURL.Path
+	}
+
+	var rawSubPath string
+	if idx := strings.Index(rawPath, "/providers/"); idx != -1 {
+		rawSubPath = rawPath[idx+len("/providers/"):]
+	} else if strings.HasSuffix(rawPath, "/providers") {
+		rawSubPath = ""
+	} else {
+		// 兜底方案，但在代理 URL 中由于 echo 处理过可能存在一定的风险
+		rawSubPath = subPath
+	}
+
 	targetPath := "/api/v1/admin/providers"
-	if subPath != "" {
-		targetPath += "/" + path.Clean(subPath)
+	if rawSubPath != "" {
+		targetPath += "/" + rawSubPath
 	}
 
 	method := c.Request().Method
