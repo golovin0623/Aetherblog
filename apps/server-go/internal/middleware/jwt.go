@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 )
@@ -23,7 +24,22 @@ const (
 
 // JWTAuth 返回一个中间件，从 Authorization 请求头或 ab_access_token Cookie 中验证 JWT。
 // 验证成功后将 *jwtutil.LoginUser 存入 ContextKeyLoginUser 对应的上下文键。
+//
+// 保留此单密钥签名以兼容测试 fixture —— 内部委托给 JWTAuthWithKeys。
+// 生产路径走 JWTAuthWithStore (server.go 在启动时构造 jwtkeys.Store)。
 func JWTAuth(secret string) echo.MiddlewareFunc {
+	return JWTAuthWithKeys(func() []string { return []string{secret} })
+}
+
+// JWTAuthWithStore 是生产路径：从 jwtkeys.Store 的内存快照读取 current +
+// previous 两把 key 作为验签候选，热轮换期间旧 token 不会失效。
+func JWTAuthWithStore(store *jwtkeys.Store) echo.MiddlewareFunc {
+	return JWTAuthWithKeys(store.Verifiers)
+}
+
+// JWTAuthWithKeys 通用形式：用一个回调提供 key 列表。调用方通常走
+// JWTAuth / JWTAuthWithStore 两个薄封装，不应直接引用此函数。
+func JWTAuthWithKeys(keys func() []string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			token := extractToken(c)
@@ -31,7 +47,7 @@ func JWTAuth(secret string) echo.MiddlewareFunc {
 				return response.FailWith(c, response.Unauthorized, "未登录或Token已过期")
 			}
 
-			claims, err := jwtutil.ParseToken(token, secret)
+			claims, err := jwtutil.ParseTokenWithKeys(token, keys())
 			if err != nil {
 				return response.FailWith(c, response.Unauthorized, "Token无效")
 			}
@@ -54,10 +70,20 @@ func JWTAuth(secret string) echo.MiddlewareFunc {
 // JWTOptional 尝试提取并解析 JWT，但不会因解析失败而拦截请求。
 // 若令牌有效，则将用户信息写入上下文；否则直接放行。
 func JWTOptional(secret string) echo.MiddlewareFunc {
+	return JWTOptionalWithKeys(func() []string { return []string{secret} })
+}
+
+// JWTOptionalWithStore 生产路径的 optional 版本。
+func JWTOptionalWithStore(store *jwtkeys.Store) echo.MiddlewareFunc {
+	return JWTOptionalWithKeys(store.Verifiers)
+}
+
+// JWTOptionalWithKeys 通用形式。
+func JWTOptionalWithKeys(keys func() []string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if token := extractToken(c); token != "" {
-				if claims, err := jwtutil.ParseToken(token, secret); err == nil {
+				if claims, err := jwtutil.ParseTokenWithKeys(token, keys()); err == nil {
 					c.Set(ContextKeyLoginUser, &jwtutil.LoginUser{
 						UserID:   mustParseID(claims.Subject),
 						Username: claims.Username,

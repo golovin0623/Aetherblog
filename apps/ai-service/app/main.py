@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import router
 from app.api import deps as deps_module
 from app.core.config import get_settings
+from app.core.jwt_keys import start_refresher as start_jwt_key_refresher, stop_refresher as stop_jwt_key_refresher
 from app.core.logging import setup_logging
 from app.schemas.common import ApiResponse
 
@@ -27,7 +28,20 @@ logger = logging.getLogger("ai-service")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Warm the PG pool early so the JWT key refresher has something to talk to.
+    # If PG isn't reachable yet, start_jwt_key_refresher's initial fetch fails
+    # softly and we fall back to env seed until the refresher's first successful
+    # tick (60s default).
+    try:
+        pool = await deps_module.get_pg_pool()
+        await start_jwt_key_refresher(pool)
+    except Exception as exc:
+        # Non-fatal: auth still works with env seed (settings.jwt_secret).
+        logger.warning("jwt_keys.startup_skipped", extra={"data": {"error": str(exc)}})
+
     yield
+
+    await stop_jwt_key_refresher()
     if deps_module._redis is not None:
         await deps_module._redis.close()
     if deps_module._pg_pool is not None:

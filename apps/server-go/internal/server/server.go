@@ -19,6 +19,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/config"
 	"github.com/golovin0623/aetherblog-server/internal/handler"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
@@ -59,6 +60,7 @@ type Server struct {
 	Config   *config.Config     // 应用配置
 	DB       *sqlx.DB           // PostgreSQL 数据库连接池
 	Redis    *redis.Client      // Redis 客户端
+	JWTKeys  *jwtkeys.Store     // JWT 签名密钥 Store（DB 管理 + 定时轮换）
 	cancelBg context.CancelFunc // 用于取消后台 goroutine 的函数
 }
 
@@ -107,11 +109,32 @@ func New(cfg *config.Config) (*Server, error) {
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 
+	// --- JWT 密钥 Store 初始化（支持定时轮换，见 migration 000033） ---
+	// 失败 fatal —— JWT 验证是所有鉴权路径的前置，没有有效 Store 不能启动。
+	// bootstrapCtx 超时 10s 给 DB bootstrap + SELECT 一个合理的上限。
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(bgCtx, 10*time.Second)
+	jwtRepo := repository.NewJWTSecretRepo(db)
+	jwtStore, err := jwtkeys.New(bootstrapCtx, jwtRepo, cfg.JWT.Secret)
+	bootstrapCancel()
+	if err != nil {
+		bgCancel()
+		return nil, fmt.Errorf("init jwt keystore: %w", err)
+	}
+	// 启动后台 reloader + rotator。两者都监听 bgCtx，Shutdown 时自动退出。
+	jwtStore.StartReloader(bgCtx, cfg.JWT.ReloadInterval)
+	jwtStore.StartRotator(bgCtx, cfg.JWT.RotationInterval, cfg.JWT.PreviousGrace)
+	log.Info().
+		Dur("rotation_interval", cfg.JWT.RotationInterval).
+		Dur("previous_grace", cfg.JWT.PreviousGrace).
+		Dur("reload_interval", cfg.JWT.ReloadInterval).
+		Msg("jwt keystore initialized with scheduled rotation")
+
 	s := &Server{
 		Echo:     e,
 		Config:   cfg,
 		DB:       db,
 		Redis:    rdb,
+		JWTKeys:  jwtStore,
 		cancelBg: bgCancel,
 	}
 
@@ -155,23 +178,27 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	authSvc := service.NewAuthService(userRepo, s.Redis)
 	sessionSvc := service.NewSessionService(s.Redis, s.Config.JWT.Expiration, s.Config.JWT.RefreshExpiration)
 	authGroup := api.Group("/v1/auth")
-	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config, activitySvc)
+	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config, activitySvc, s.JWTKeys)
+	// 所有鉴权中间件走 JWT Store 版本，支持 current+previous 双 key 验证。
+	authMW := middleware.JWTAuthWithStore(s.JWTKeys)
 	// 按路由挂载速率限制
 	authGroup.POST("/login", authHandler.Login, middleware.RateLimitByIP(s.Redis, "rate:login", 10, time.Minute))
-	authGroup.POST("/register", authHandler.RegisterUser, middleware.JWTAuth(s.Config.JWT.Secret), middleware.RequireRole("admin"), middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
+	authGroup.POST("/register", authHandler.RegisterUser, authMW, middleware.RequireRole("admin"), middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.POST("/logout", authHandler.Logout)
-	authGroup.GET("/me", authHandler.Me, middleware.JWTAuth(s.Config.JWT.Secret))
-	authGroup.POST("/change-password", authHandler.ChangePassword, middleware.JWTAuth(s.Config.JWT.Secret), middleware.RateLimitByUser(s.Redis, "rate:changepwd", 5, time.Minute))
-	authGroup.PUT("/profile", authHandler.UpdateProfile, middleware.JWTAuth(s.Config.JWT.Secret))
-	authGroup.PUT("/avatar", authHandler.UpdateAvatar, middleware.JWTAuth(s.Config.JWT.Secret))
+	authGroup.GET("/me", authHandler.Me, authMW)
+	authGroup.POST("/change-password", authHandler.ChangePassword, authMW, middleware.RateLimitByUser(s.Redis, "rate:changepwd", 5, time.Minute))
+	authGroup.PUT("/profile", authHandler.UpdateProfile, authMW)
+	authGroup.PUT("/avatar", authHandler.UpdateAvatar, authMW)
 
 	// --- 管理员路由（JWT 认证 + 角色强校验） ---
 	// SECURITY (VULN-052): /v1/admin/* 必须强制 role==admin，否则任何已登录 USER 都能
 	// 命中管理端点，导致 IDOR 簇 (VULN-029/037/038/039/040/041/042/044) 与 AI 代理 (VULN-172)
 	// 授权失效。此处必须与 handler 层 ownership check 协同，不可单独省略。
-	adminJWT := middleware.JWTAuth(s.Config.JWT.Secret)
-	admin := api.Group("/v1/admin", adminJWT, middleware.RequireRole("admin"))
+	admin := api.Group("/v1/admin", authMW, middleware.RequireRole("admin"))
+
+	// 管理员专用 auth 端点（手动轮换 JWT 密钥等）。
+	authHandler.MountAdmin(admin.Group("/auth"))
 
 	settingSvc := service.NewSiteSettingService(siteSettingRepo)
 	aiClient := service.NewAIClient(s.Config.AI)

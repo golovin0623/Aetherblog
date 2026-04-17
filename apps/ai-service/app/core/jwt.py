@@ -7,6 +7,7 @@ import jwt
 from jwt import PyJWKClient
 
 from app.core.config import get_settings
+from app.core.jwt_keys import get_cached_keys
 
 
 # ref: §4.4, §8.3.1
@@ -18,15 +19,40 @@ class UserClaims:
 
 
 def _decode_with_hmac(token: str, options: dict[str, Any]) -> dict[str, Any]:
+    """Verify HS256 token against all active rotation keys (VULN-152 follow-up).
+
+    Tries each cached key from ``jwt_keys.get_cached_keys()`` — typically
+    ``[current, previous]`` — in order. ``current`` is tried first (hot path).
+    ``previous`` verification only matters during the grace window after a
+    rotation; without it users would get kicked off the moment the Go backend
+    swapped keys.
+
+    Non-signature errors (expired, wrong issuer/audience, bad alg) short-circuit
+    —— no point retrying with another key since the failure is intrinsic to the
+    token, not the signing material.
+    """
     settings = get_settings()
-    return jwt.decode(
-        token,
-        settings.jwt_secret,
-        algorithms=["HS256"],
-        issuer=settings.jwt_issuer,
-        audience=settings.jwt_audience,
-        options=options,
-    )
+    keys = get_cached_keys()
+    if not keys:
+        # Should not happen: get_cached_keys falls back to settings.jwt_secret.
+        raise jwt.InvalidKeyError("no JWT keys available")
+
+    last_sig_err: Exception | None = None
+    for key in keys:
+        try:
+            return jwt.decode(
+                token,
+                key,
+                algorithms=["HS256"],
+                issuer=settings.jwt_issuer,
+                audience=settings.jwt_audience,
+                options=options,
+            )
+        except jwt.InvalidSignatureError as err:
+            last_sig_err = err
+            continue
+    # Exhausted all keys — surface the signature error for logging/debugging.
+    raise last_sig_err if last_sig_err else jwt.InvalidTokenError("no key matched")
 
 
 def _decode_with_jwks(token: str, options: dict[str, Any]) -> dict[str, Any]:
