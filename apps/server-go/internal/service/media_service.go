@@ -20,22 +20,24 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
 
-// allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
+// allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、可执行文件等危险类型。
+//
+// VULN-030 回退：SVG 重新加入白名单以支持站点 logo / 图标 / 可缩放素材。
+// 纵深防御必须同步生效（已在 nginx/nginx.conf VULN-049/070 位置配置）：
+//  1. `/uploads/*.svg` 响应强制携带 `Content-Disposition: attachment` +
+//     `X-Content-Type-Options: nosniff`，浏览器不会按 HTML/JS 解释。
+//  2. 前端渲染只能通过 <img src> 引用，禁止将 SVG inline 到 DOM 树。
+//  3. 若后续有更高信任要求，可追加 Go 层 sanitizer（剥 <script>/<foreignObject>）。
 var allowedMimeTypes = map[string]bool{
 	// 图片
-	"image/jpeg": true,
-	"image/png":  true,
-	"image/gif":  true,
-	"image/webp": true,
-	"image/bmp":  true,
-	"image/tiff": true,
-	"image/avif": true,
-	// SECURITY (VULN-030): SVG is disabled — it can carry inline
-	// <script>/<foreignObject> payloads that execute as same-origin when
-	// served by `/api/uploads/*`, giving stored-XSS against the admin.
-	// Re-enable only when (1) uploads go through DOMPurify-style sanitizer
-	// AND (2) the static handler forces Content-Disposition: attachment.
-	// "image/svg+xml": true,
+	"image/jpeg":    true,
+	"image/png":     true,
+	"image/gif":     true,
+	"image/webp":    true,
+	"image/bmp":     true,
+	"image/tiff":    true,
+	"image/avif":    true,
+	"image/svg+xml": true, // 依赖 nginx 层 attachment + nosniff
 	// 视频
 	"video/mp4":        true,
 	"video/webm":       true,

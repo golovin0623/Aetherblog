@@ -20,8 +20,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD env var is required (set in .env)}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      # SECURITY (VULN-122 dev): 绑定到 127.0.0.1，避免开发机对外暴露 Postgres。
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+      # VULN-122 dev 回退：恢复全接口绑定以支持手机/局域网真机调试
+      # (CLAUDE.md §移动端真机调试 依赖此行为)。
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - aetherblog_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -41,8 +42,8 @@ services:
     # 跑裸口令 Redis。如需匿名 Redis（仅容器内测），在 .env 显式设 REDIS_PASSWORD=dev-only-not-secret。
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD env var is required}"]
     ports:
-      # 绑本机 only；若团队需要另一 host 访问，走 SSH 隧道。
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      # VULN-122 dev 回退：恢复全接口绑定以支持跨主机联调。Redis 仍设 requirepass。
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - aetherblog_redis_data:/data
     healthcheck:

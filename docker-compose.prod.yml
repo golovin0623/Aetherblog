@@ -86,10 +86,10 @@ services:
       POSTGRES_USER: aetherblog
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     ports:
-      # SECURITY (VULN-122): bound to localhost only. External access must go
-      # through the gateway, or via SSH tunnel for DBA. Switch to 0.0.0.0 only
-      # after configuring host firewall + pg_hba.conf.
-      - "127.0.0.1:${POSTGRES_PORT:-7895}:5432"
+      # VULN-122 回退：恢复对外端口暴露以支持远程 DBA / 跨主机访问。
+      # 运维侧必须通过 host 防火墙 + pg_hba.conf 限制来源 IP；若部署拓扑是
+      # 单机自用，推荐改为 "127.0.0.1:${POSTGRES_PORT:-7895}:5432"。
+      - "${POSTGRES_PORT:-7895}:5432"
     volumes:
       - aetherblog_postgres_data:/var/lib/postgresql/data
     networks:
@@ -122,9 +122,9 @@ services:
     profiles:
       - with-redis
     ports:
-      # SECURITY (VULN-122): localhost-only; gateway/backend reach Redis via
-      # internal network.
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      # VULN-122 回退：Redis 仍设 requirepass，外部访问者须持密码；网络隔离
+      # 交给 host 防火墙。若单机自用，推荐改为 "127.0.0.1:${REDIS_PORT:-6379}:6379"。
+      - "${REDIS_PORT:-6379}:6379"
     networks:
       - aetherblog-network
     healthcheck:
@@ -299,8 +299,9 @@ services:
     container_name: aetherblog-blog
     restart: unless-stopped
     ports:
-      # SECURITY (VULN-122): localhost-only direct access. Public traffic flows via gateway.
-      - "127.0.0.1:${BLOG_PORT:-7893}:3000"  # 可选：直接访问 (本机调试)
+      # VULN-122 回退：允许外部直连博客端口（用于独立域名直挂 / CDN 源站）。
+      # 生产推荐仅暴露网关，此端口仅为 fallback。
+      - "${BLOG_PORT:-7893}:3000"
     expose:
       - "3000"
     environment:
@@ -329,9 +330,9 @@ services:
     container_name: aetherblog-admin
     restart: unless-stopped
     ports:
-      # SECURITY (VULN-122): localhost-only direct access. Public traffic flows via gateway.
-      # SECURITY (VULN-124): container listens on 8080 (unprivileged nginx); expose 8080, still publish localhost:7894 as user-visible port.
-      - "127.0.0.1:${ADMIN_PORT:-7894}:8080"  # 可选：直接访问 (本机调试)
+      # VULN-122 回退：允许外部直连 admin 端口（独立域名 / 内网管理直达）。
+      # VULN-124 保留：容器侧仍用 unprivileged nginx:8080。
+      - "${ADMIN_PORT:-7894}:8080"
     expose:
       - "8080"
     depends_on:
