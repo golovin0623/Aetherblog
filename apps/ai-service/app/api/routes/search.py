@@ -156,6 +156,7 @@ async def index_post(
     vector_store=Depends(get_vector_store),
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
+    pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
     """
     Index a single post (called by Go backend per post in a batch).
@@ -178,6 +179,21 @@ async def index_post(
             result = await vector_store.delete_post_embedding(req.postId)
             request_text = str(req.postId)
         else:
+            # SECURITY (VULN-062): require the target post to be PUBLISHED and
+            # not deleted/hidden before indexing. Without this, a bypass of the
+            # internal-service token (or future Go proxy regression) could be
+            # abused to replace existing published-post vectors with malicious
+            # text ("training/retrieval poisoning" via AI search).
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT id, status, deleted, is_hidden FROM posts WHERE id = $1",
+                    req.postId,
+                )
+            if not row or row["deleted"] or row["is_hidden"] or row["status"] != "PUBLISHED":
+                raise HTTPException(
+                    status_code=404,
+                    detail="Post is not indexable (must be PUBLISHED and not hidden/deleted)",
+                )
             _enforce_content_limit(req.content or "")
             result = await vector_store.upsert_post_embedding(
                 post_id=req.postId,

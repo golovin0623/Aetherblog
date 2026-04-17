@@ -76,11 +76,32 @@ func (h *SiteSettingHandler) GetAll(c echo.Context) error {
 	return response.OK(c, m)
 }
 
+// allowedSettingGroups 限定 GetByGroup 可查询的分组，避免任意字符串透传到
+// DB 触发全表扫描或不期望的键暴露（VULN-055）。
+var allowedSettingGroups = map[string]bool{
+	"site":     true,
+	"ui":       true,
+	"author":   true,
+	"seo":      true,
+	"ai":       true,
+	"search":   true,
+	"comment":  true,
+	"welcome":  true,
+	"social":   true,
+	"storage":  true,
+	"analytics": true,
+	"font":     true,
+}
+
 // GetByGroup 处理 GET /admin/settings/group/:group 请求。
 // 返回指定分组（如 "author"、"seo" 等）下的所有配置项。
 // 路径参数 group 为配置分组名称。
 func (h *SiteSettingHandler) GetByGroup(c echo.Context) error {
 	group := c.Param("group")
+	// SECURITY (VULN-055): 拒绝白名单以外的 group，避免遍历/枚举 oracle。
+	if !allowedSettingGroups[group] {
+		return response.FailWith(c, response.BadRequest, "无效的设置分组")
+	}
 	m, err := h.svc.GetByGroup(c.Request().Context(), group)
 	if err != nil {
 		return response.Error(c, err)

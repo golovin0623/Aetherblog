@@ -62,8 +62,16 @@ export function sanitizeUrl(url: string, fallback: string = '#'): string {
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;
   }
-  // Allow protocol-relative URLs
+  // SECURITY (VULN-079): disallow protocol-relative URLs (`//evil.com`). They
+  // inherit the current page's scheme and silently redirect to an arbitrary
+  // host — effectively an open-redirect with the same visual weight as a
+  // "relative" link. If the caller really wants `//cdn.example.com`, they
+  // must spell the scheme out (``https://cdn.example.com``).
   if (trimmed.startsWith('//')) {
+    return fallback;
+  }
+  // Allow same-origin relative paths (``/foo``) — they can't escape origin.
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
     return trimmed;
   }
   // Normalize bare domains (e.g. "example.com") — prepend https://

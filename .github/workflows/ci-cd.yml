@@ -16,6 +16,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# SECURITY (VULN-137): workflow-level permissions start read-only.
+# Individual jobs that need write scopes (docker push, PR comment) must
+# re-declare the specific permission locally. Prevents compromised Actions
+# from silently abusing GITHUB_TOKEN's default read-write scope.
+permissions:
+  contents: read
+
 env:
   DOCKER_REGISTRY: ${{ secrets.DOCKER_USERNAME || 'golovin0623' }}
 
@@ -108,6 +115,90 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
   # ===========================================================================
+  # Gitleaks secret scanning (VULN-160): 阻止硬编码 secret/JWT 在 diff 中泄露
+  # ===========================================================================
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks 需要全历史来扫每次 diff
+
+      - name: Run gitleaks
+        # TODO(supply-chain): replace @v2 with 40-char SHA once baseline CI 稳定 (VULN-136)。
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ===========================================================================
+  # Trivy image scan (VULN-159): 镜像 CVE 扫描。仅在 main 分支构建后执行。
+  # ===========================================================================
+  trivy-scan:
+    needs: [detect-changes, build-backend, build-ai-service, build-blog, build-admin]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write  # 写入 Security → Code scanning alerts
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan backend image
+        # TODO(supply-chain): pin to SHA (VULN-136).
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/aetherblog-backend:${{ github.sha }}
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # 先作为观测，不阻断；稳定后改为 1
+
+  # ===========================================================================
+  # 密钥与默认值守门 (VULN-117): 阻止已知弱口令/Mock 密钥被提交到代码
+  # ===========================================================================
+  forbidden-defaults-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Block VERSION=latest in tracked env files
+        # SECURITY (VULN-143): `latest` tags bypass cosign verify and let
+        # malicious pushes land silently. Tracked .env templates / compose
+        # files must pin to SemVer.
+        run: |
+          if grep -RnE '^VERSION=latest' --include='.env.example' --include='docker-compose*.yml' .; then
+            echo "::error::VERSION=latest is forbidden in tracked config — pin to v\\d+\\.\\d+\\.\\d+"
+            exit 1
+          fi
+          echo "✅ No VERSION=latest pinned in tracked env templates"
+
+      - name: Block leaked secret markers
+        run: |
+          # 仅拦截当前运行时实际可用的弱密钥（VULN-117/121）。
+          # 注意：`aetherblog123` 是历史 dev DB 默认值，散布在 docker-compose.yml /
+          # Makefile / config.yaml / 旧 start.sh 内，将由 VULN-118 (P1) 清理；
+          # 在那之前不要把它加入此 guard 否则 CI 长期红。
+          if grep -RnE 'change-me-to-a-secure-random-string|sk-proj-mock-key-for-testing|default-secret-for-dev-only-change-in-prod' \
+              --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv \
+              --exclude-dir=dist --exclude-dir=.next --exclude-dir=__pycache__ \
+              --exclude-dir=bin \
+              --exclude='*.md' \
+              --exclude='ci-cd.yml' \
+              .; then
+            echo "::error::Leaked default secret markers detected — replace with empty placeholders in .env.example."
+            exit 1
+          fi
+          echo "✅ No production-grade default secrets present in tracked source"
+
+  # ===========================================================================
   # Docker 配置验证 (与 detect-changes 并行)
   # ===========================================================================
   config-validate:
@@ -119,9 +210,17 @@ jobs:
 
       - name: Validate Docker Compose files
         env:
+          # VULN-117/118/119/120 added `${VAR:?}` enforcement; ci dummies must
+          # cover every newly-required variable or the `config --quiet` pass
+          # fails before compose even renders.
           POSTGRES_PASSWORD: ci-validate-dummy
+          DB_PASSWORD: ci-validate-dummy
+          REDIS_PASSWORD: ci-validate-dummy
           JWT_SECRET: ci-validate-dummy
           AI_INTERNAL_SERVICE_TOKEN: ci-validate-dummy-token-minimum-32chars
+          # VULN-056: real Fernet key (generated once). Must decode, not merely
+          # 32 chars of random bytes.
+          AI_CREDENTIAL_ENCRYPTION_KEYS: RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI=
         run: |
           docker compose -f docker-compose.yml config --quiet
           docker compose -f docker-compose.prod.yml config --quiet
@@ -152,7 +251,18 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # SECURITY (VULN-138): PR workflows install with --ignore-scripts so a
+        # malicious dep's postinstall cannot steal GITHUB_TOKEN / secrets on
+        # pull_request runs. Build jobs that run on main push can re-run
+        # install without this flag if a native addon truly needs a build step.
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit dependencies
+        # SECURITY (VULN-157): surface high+critical npm advisories. We don't
+        # fail the build today — CI output acts as a visibility signal while we
+        # tackle existing advisories; flip to `exit 1` once the known-clean
+        # baseline is established.
+        run: pnpm audit --audit-level=high || echo "::warning::pnpm audit reported issues (non-blocking)"
 
       - name: Lint
         run: pnpm lint
@@ -187,6 +297,16 @@ jobs:
       - name: Run tests
         working-directory: apps/server-go
         run: go test ./... -v -count=1
+
+      - name: Go vulnerability check (govulncheck)
+        # SECURITY (VULN-158): Go's official vuln DB lookup. Non-blocking for
+        # now — warn on known vulns so we see them in PR runs; flip to
+        # `continue-on-error: false` after baseline is clean.
+        continue-on-error: true
+        working-directory: apps/server-go
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./... || echo "::warning::govulncheck reported issues (non-blocking)"
 
   # ===========================================================================
   # AI 服务测试 (仅当 AI 服务代码变更时)
@@ -231,6 +351,9 @@ jobs:
           JWT_SECRET: "ci-test-secret"
           AI_INTERNAL_SERVICE_TOKEN: "ci-test-token-minimum-32-characters-long"
           POSTGRES_DSN: "postgresql://test:test@localhost:5432/test_db"
+          # VULN-056: AI service refuses to start without an encryption key set.
+          # Generated once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+          AI_CREDENTIAL_ENCRYPTION_KEYS: "RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI="
         run: |
           python -c "from app.main import app; print('✅ App imports successfully')"
 

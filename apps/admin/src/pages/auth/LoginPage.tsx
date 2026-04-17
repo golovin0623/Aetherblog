@@ -158,7 +158,12 @@ export function LoginPage() {
                   <UserIcon className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
                   <input
                     id="username"
+                    name="username"
                     type="text"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
@@ -171,13 +176,20 @@ export function LoginPage() {
               <div className="space-y-2">
                  <div className="flex items-center justify-between ml-1">
                    <label htmlFor="password" className="text-sm font-medium text-[var(--text-secondary)]">Password</label>
-                   <a href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">Forgot password?</a>
+                   {/* SECURITY (VULN-106): `<a href="#">` silently navigates away and loses form state.
+                       While password reset UX isn't implemented, disable the placeholder button to prevent
+                       accidental clicks; swap to a real route once reset flow ships. */}
+                   <button type="button" disabled className="text-xs text-primary/60 cursor-not-allowed">
+                     Forgot password?
+                   </button>
                  </div>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
                   <input
                     id="password"
+                    name="password"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"

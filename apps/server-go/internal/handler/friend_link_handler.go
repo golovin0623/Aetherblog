@@ -27,16 +27,22 @@ func NewFriendLinkHandler(svc *service.FriendLinkService, activitySvc *service.A
 }
 
 // MountAdmin 在指定路由组上注册管理端 CRUD 及管理路由。
+//
+// SECURITY (VULN-048): 字面量 path (`/batch`, `/reorder`, `/page`) 必须在
+// 参数化 path (`/:id`) 之前注册。Echo 底层 trie 匹配时按注册顺序取第一条命中，
+// 若 `/batch` 登记在 `/:id` 之后，会被当作 id=="batch" 走到 Get/Delete/Update。
+// 当前顺序已经正确，保留此注释以防后续 refactor 错位。
 func (h *FriendLinkHandler) MountAdmin(g *echo.Group) {
 	g.GET("", h.List)
 	g.GET("/page", h.Page)
+	g.DELETE("/batch", h.BatchDelete)
+	g.PATCH("/reorder", h.Reorder)
+	// 参数化路由放在字面量之后。
 	g.GET("/:id", h.Get)
 	g.POST("", h.Create)
 	g.PUT("/:id", h.Update)
 	g.DELETE("/:id", h.Delete)
-	g.DELETE("/batch", h.BatchDelete)
 	g.PATCH("/:id/toggle-visible", h.ToggleVisible)
-	g.PATCH("/reorder", h.Reorder)
 }
 
 // MountPublic 在指定路由组上注册公开的可见友链列表接口。
