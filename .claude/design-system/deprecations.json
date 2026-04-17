@@ -1,0 +1,108 @@
+{
+  "$schema": "./deprecations.schema.json",
+  "version": 1,
+  "description": "Aether Codex 设计系统:遗留 token 下线名录。每条记录声明 legacy 形式、替代方案、下线截止日期、分级严重度。由 scripts/codemod-tokens.mjs 读取并据此扫描/重写/告警。",
+  "sunsetDate": "2026-07-17",
+  "sunsetPolicy": "sunsetDate 之后,legacy token 不再由 tokens.css 定义;代码中残留引用会渲染为 unset。在此之前,legacy 与 codex 并存,但 `pnpm design-system:check` 会将所有 legacy 使用列为 warning,CI 不强制失败。",
+  "rules": [
+    {
+      "id": "legacy-glass-classes",
+      "severity": "error",
+      "match": {
+        "type": "regex",
+        "pattern": "className=[\"'`][^\"'`]*\\b(glass|glass-high|glass-premium)\\b",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": null,
+      "note": "组件中使用旧三级玻璃类。新体系为 4 层 surface-leaf/raised/overlay/luminous。note: CSS 定义层(admin/index.css 中的 .glass/.glass-high/.glass-premium 规则本身)属于迁移期并存实现,不在 match 范围内。"
+    },
+    {
+      "id": "naked-white-glass",
+      "severity": "warning",
+      "match": {
+        "type": "regex",
+        "pattern": "bg-white/(5|10|20)|border-white/(5|10|20)",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": null,
+      "note": "手写毛玻璃。应使用 surface-leaf / surface-raised / surface-overlay 的规范组合,或 color-mix(in oklch, var(--ink-primary) N%, transparent)。"
+    },
+    {
+      "id": "naked-backdrop-blur",
+      "severity": "warning",
+      "match": {
+        "type": "regex",
+        "pattern": "backdrop-blur-(sm|md|lg|xl|2xl|3xl)(?![^\"]*surface-)",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": null,
+      "note": "Tailwind backdrop-blur 裸用法。规范由 surface-* 通过 backdrop-filter: blur() saturate() 统一提供。豁免:同一 className 同时带 surface-* 则通过。"
+    },
+    {
+      "id": "legacy-text-primary-inline",
+      "severity": "info",
+      "match": {
+        "type": "regex",
+        "pattern": "text-\\[var\\(--color-primary\\)\\]",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": {
+        "text-[var(--color-primary)]": "text-[var(--aurora-1)]"
+      },
+      "note": "作为重点色使用时推荐迁到 aurora-1。注意 text-primary(Tailwind 类名)不在此列,那是类名映射不改。"
+    },
+    {
+      "id": "legacy-ink-aliases",
+      "severity": "info",
+      "match": {
+        "type": "regex",
+        "pattern": "var\\(--text-(primary|secondary|tertiary|muted)\\)",
+        "files": ["apps/**/*.{ts,tsx,css}", "packages/**/*.{ts,tsx,css}"]
+      },
+      "replace": {
+        "var(--text-primary)":   "var(--ink-primary)",
+        "var(--text-secondary)": "var(--ink-secondary)",
+        "var(--text-tertiary)":  "var(--ink-muted)",
+        "var(--text-muted)":     "var(--ink-muted)"
+      },
+      "note": "旧 text-* token 映射到 ink-* codex 色阶。"
+    },
+    {
+      "id": "hardcoded-primary-gradient",
+      "severity": "warning",
+      "match": {
+        "type": "regex",
+        "pattern": "(from|to|via)-(indigo|purple)-[0-9]{3}",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": null,
+      "note": "硬编码 Tailwind 主色渐变。推荐 color-mix(in oklch, var(--aurora-1..4) N%, transparent)。"
+    },
+    {
+      "id": "naked-text-sizes",
+      "severity": "info",
+      "match": {
+        "type": "regex",
+        "pattern": "\\btext-(5xl|6xl|7xl)\\b",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": {
+        "text-5xl": "text-h1",
+        "text-6xl": "text-display",
+        "text-7xl": "text-display"
+      },
+      "note": "大字号裸用法。新体系用语义字号 text-display/text-h1/text-h2 etc。"
+    },
+    {
+      "id": "arbitrary-spacing",
+      "severity": "info",
+      "match": {
+        "type": "regex",
+        "pattern": "\\b(p|m|mt|mb|ml|mr|mx|my|pt|pb|pl|pr|px|py|gap|space-[xy])-\\[[0-9]+(px|rem|em)\\]",
+        "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"]
+      },
+      "replace": null,
+      "note": "任意值间距。尽可能落到 --space-* 9 级节奏尺度上,避免软随机值破坏垂直节奏。"
+    }
+  ]
+}
