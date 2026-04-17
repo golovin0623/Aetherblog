@@ -51,27 +51,30 @@ export function StatsCard({
   color = 'primary',
   loading = false,
 }: StatsCardProps) {
+  // primary/indigo/purple 原本是三份同义的"主色" —— 统一折叠到极光体系的 aurora-1/2/3
+  // 让 Dashboard 上同时出现三张这种色的卡片时也会呈现清晰的色相阶梯,而不是几乎一样的指纹。
+  // 其他色继续作为 KPI 类别信号色。
   const colorStyles = {
-    primary: 'from-zinc-800/20 to-zinc-600/10 border-zinc-800/20 dark:from-indigo-500/20 dark:to-purple-500/10 dark:border-indigo-500/20',
+    primary: 'from-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] to-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]',
+    indigo: 'from-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] to-[color-mix(in_oklch,var(--aurora-2)_6%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]',
+    purple: 'from-[color-mix(in_oklch,var(--aurora-2)_18%,transparent)] to-[color-mix(in_oklch,var(--aurora-3)_6%,transparent)] border-[color-mix(in_oklch,var(--aurora-2)_22%,transparent)]',
     green: 'from-green-500/20 to-emerald-500/10 border-green-500/20',
     blue: 'from-blue-500/20 to-cyan-500/10 border-blue-500/20',
     orange: 'from-orange-500/20 to-yellow-500/10 border-orange-500/20',
     pink: 'from-pink-500/20 to-rose-500/10 border-pink-500/20',
-    purple: 'from-zinc-700/20 to-zinc-500/10 border-zinc-700/20 dark:from-purple-500/20 dark:to-indigo-500/10 dark:border-purple-500/20',
     cyan: 'from-cyan-500/20 to-blue-500/10 border-cyan-500/20',
-    indigo: 'from-zinc-800/20 to-zinc-600/10 border-zinc-800/20 dark:from-indigo-500/20 dark:to-purple-500/10 dark:border-indigo-500/20',
     emerald: 'from-emerald-500/20 to-green-500/10 border-emerald-500/20',
   };
 
   const iconColorStyles = {
-    primary: 'bg-zinc-800/20 text-zinc-700 dark:bg-indigo-500/20 dark:text-indigo-400',
+    primary: 'bg-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] text-[var(--aurora-1)]',
+    indigo: 'bg-[color-mix(in_oklch,var(--aurora-1)_20%,transparent)] text-[var(--aurora-1)]',
+    purple: 'bg-[color-mix(in_oklch,var(--aurora-2)_20%,transparent)] text-[var(--aurora-2)]',
     green: 'bg-green-500/20 text-green-600 dark:text-green-400',
     blue: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
     orange: 'bg-orange-500/20 text-orange-600 dark:text-orange-400',
     pink: 'bg-pink-500/20 text-pink-600 dark:text-pink-400',
-    purple: 'bg-zinc-700/20 text-zinc-600 dark:bg-purple-500/20 dark:text-purple-400',
     cyan: 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400',
-    indigo: 'bg-zinc-800/20 text-zinc-700 dark:bg-indigo-500/20 dark:text-indigo-400',
     emerald: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400',
   };
 
@@ -79,7 +82,7 @@ export function StatsCard({
     return (
       <div
         className={cn(
-          "p-4 lg:p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",
+          "surface-leaf p-4 lg:p-6 bg-gradient-to-br transition-all duration-300",
           colorStyles[color]
         )}
       >
@@ -116,8 +119,9 @@ export function StatsCard({
   return (
     <motion.div
       whileHover={{ y: -2 }}
+      data-interactive
       className={cn(
-        "p-4 lg:p-6 rounded-xl bg-gradient-to-br border backdrop-blur-sm transition-all duration-300",
+        "surface-leaf p-4 lg:p-6 bg-gradient-to-br transition-all duration-300",
         colorStyles[color]
       )}
     >
