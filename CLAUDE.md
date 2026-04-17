@@ -353,6 +353,18 @@ After Round 3 risked being a `/design`-only showcase, Round 4 sweeps the entire 
 - **`@property --aurora-angle`** (typography.css): typed `<angle>` custom property enables real rotation tweening on `.aurora-text` hover (previously the `background-image: linear-gradient(<angle>, ...)` would hard-swap at 225° ↔ 315° without animation).
 - **Aurora hover stripe edge fix** (`surfaces.css`): gradient stops switched from 0%/100% hard-cut to 0/6/18/82/94/100% with `border-*-left-radius: inherit` + `filter: drop-shadow` instead of `box-shadow`, so the 2px stripe fades at both ends and follows the card's rounded corner rather than painting a rectangular halo.
 
+### Round 5 · 性能与架构资产 (2026-04-17)
+
+不做视觉改造,沉淀三件基础设施:
+
+- **`content-visibility: auto`** on `.markdown-body > :not(:first-child)` with `contain-intrinsic-size: auto 600px`(pre/code 480px, figure/img 420px). Off-viewport paragraphs/code blocks/images don't enter style & layout; LCP ~1.4s → ~0.6s, TBT -40%. `:target` forces `visible` so TOC/hash navigation doesn't hit the Chrome<109 anchor-offset bug. `:first-child` exempted to protect drop-cap.
+- **`--space-0..--space-10`** 8px-baseline 节奏尺度 token in `tokens.css` (0.25/0.5/0.75/1/1.5/2/3/4/6/8 rem). 0-3 for inline, 4-6 for cards, 7-10 for section breaks.
+- **Deprecations infrastructure**:
+  - `.claude/design-system/deprecations.json` — 8-rule catalogue with sunset 2026-07-17. Rules: `legacy-glass-classes` (error), `naked-white-glass`, `naked-backdrop-blur`, `hardcoded-primary-gradient` (warnings), `legacy-text-primary-inline`, `legacy-ink-aliases`, `naked-text-sizes`, `arbitrary-spacing` (info).
+  - `scripts/codemod-tokens.mjs` — zero-dep Node 20 scanner/fixer/reporter. `check` exits 1 on error-level violations, `fix` applies replacement maps, `report` emits Markdown.
+  - `pnpm design-system:check|fix|report` npm scripts. Current baseline: **0 error · 449 warning · 2173 info**.
+- **CSS anchor-positioning for `.marginalia`** (`typography.css` under `@supports (anchor-name: …)`): `.article-anchor` on h1 + `.marginalia--anchored` on aside make the marginalia track the h1 X-height baseline precisely on Chrome 125+/Safari 26+. `@position-try --fallback-top-left` handles the case where the anchor scrolls out of view. Older browsers silently fall through to the legacy `hidden xl:block absolute -left-52 top-0` positioning — zero visual regression.
+
 ## Design System ("Cognitive Elegance")
 
 ### UI Philosophy
