@@ -61,6 +61,14 @@ if [ -f .env ]; then
   done < .env
 fi
 
+# Preflight 阈值由仓库 ops/release/preflight.sh 作为单一真源维护（默认 60/1500）。
+# 历史上一些部署主机的 .env 里保留了过紧的 68/1591，导致每次发布都卡在
+#   [FAIL] [migration] ai_providers count too low: 67 (< 68)
+#   [FAIL] [migration] ai_models count too low: 1543 (< 1591)
+# 上。在这里显式 unset，允许脚本默认值接管；如果运维确实需要更严格的阈值，
+# 可以在调用 deploy.sh 之前从命令行导出（而不是写进 .env）。
+unset MIN_AI_PROVIDER_COUNT MIN_AI_MODEL_COUNT
+
 export DOCKER_REGISTRY="${DOCKER_REGISTRY:-golovin0623}"
 export VERSION="${VERSION:-latest}"
 
