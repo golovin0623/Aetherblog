@@ -9,28 +9,6 @@ import re
 import time
 from typing import Optional
 
-
-# SECURITY (VULN-066 / VULN-165): LiteLLM and upstream providers can echo back
-# the raw Bearer token or ``sk-...`` API key inside error messages. Any path
-# that surfaces ``str(exc)`` to the caller or writes it to logs MUST go through
-# ``_redact_secrets`` first — a leaked exception body is the classic API-key
-# exfil vector for rate-limit / auth failures.
-_REDACT_PATTERNS = (
-    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
-    re.compile(r"Bearer\s+[A-Za-z0-9._\-~+/=]{20,}"),
-)
-
-
-def _redact_secrets(msg: str, api_key: Optional[str] = None) -> str:
-    if not msg:
-        return msg
-    out = msg
-    if api_key:
-        out = out.replace(api_key, "***")
-    for pat in _REDACT_PATTERNS:
-        out = pat.sub("***", out)
-    return out
-
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
 import asyncpg
@@ -72,6 +50,28 @@ from app.services.model_router import ModelRouter
 from app.services.remote_model_fetcher import RemoteModelFetcher
 
 logger = logging.getLogger("ai-service")
+
+
+# SECURITY (VULN-066 / VULN-165): LiteLLM and upstream providers can echo back
+# the raw Bearer token or ``sk-...`` API key inside error messages. Any path
+# that surfaces ``str(exc)`` to the caller or writes it to logs MUST go through
+# ``_redact_secrets`` first — a leaked exception body is the classic API-key
+# exfil vector for rate-limit / auth failures.
+_REDACT_PATTERNS = (
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._\-~+/=]{20,}"),
+)
+
+
+def _redact_secrets(msg: str, api_key: Optional[str] = None) -> str:
+    if not msg:
+        return msg
+    out = msg
+    if api_key:
+        out = out.replace(api_key, "***")
+    for pat in _REDACT_PATTERNS:
+        out = pat.sub("***", out)
+    return out
 
 router = APIRouter(
     prefix="/api/v1/admin/providers",
@@ -182,8 +182,11 @@ async def create_provider(
             ),
         )
     except Exception as exc:
-        logger.exception("Failed to create provider")
-        raise HTTPException(status_code=400, detail=str(exc))
+        # SECURITY (VULN-069): do not echo raw exception text to client — it
+        # may contain internal paths / SQL / secret material captured in the
+        # traceback. Full detail is in logs via logger.exception above.
+        logger.exception("Failed to create provider", extra={"data": {"error_class": type(exc).__name__}})
+        raise HTTPException(status_code=400, detail="Failed to create provider") from exc
 
 
 @router.put("/batch-toggle", response_model=ApiResponse[dict[str, int]])
@@ -305,8 +308,9 @@ async def create_model(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to create model")
-        raise HTTPException(status_code=400, detail=str(exc))
+        # SECURITY (VULN-069): generic client error, full detail to logs.
+        logger.exception("Failed to create model", extra={"data": {"error_class": type(exc).__name__}})
+        raise HTTPException(status_code=400, detail="Failed to create model") from exc
 
 
 # ============================================================
@@ -514,8 +518,10 @@ async def create_credential(
         )
         return ApiResponse(data={"id": cred_id})
     except Exception as e:
-        logger.exception("Failed to save credential")
-        raise HTTPException(status_code=400, detail=str(e))
+        # SECURITY (VULN-069): don't leak internal exception text (may include
+        # connection strings / SQL fragments); rely on logs for diagnosis.
+        logger.exception("Failed to save credential", extra={"data": {"error_class": type(e).__name__}})
+        raise HTTPException(status_code=400, detail="Failed to save credential") from e
 
 
 @router.get("/credentials", response_model=ApiResponse[list[CredentialResponse]])
