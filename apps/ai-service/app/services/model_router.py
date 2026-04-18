@@ -165,6 +165,112 @@ class ModelRouter:
             fallback_model=fallback_model,
         )
 
+    async def get_routing_db(
+        self,
+        task_type: str,
+        user_id: int | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Admin-facing read: 返回 ai_task_routing 中存储的原始行 (JOIN 过 model /
+        provider 元数据), 不做 credential 解析, 不依赖 provider_registry 缓存.
+
+        resolve_routing() 是运行时解析路径, 只要 credential 缺失就返回 None ——
+        这对于"查询当前保存了哪个模型"的 UI 场景来说过于严格, 会导致:
+        刚保存完的 primary_model_id 因为 openai_compat 还没绑凭证就被隐身,
+        前端下拉框显示"未选择", 让管理员以为没保存成功.
+
+        此方法只读 DB, 只要行存在 + model JOIN 成功就原样返回, 供 Admin UI
+        直接回显保存状态.
+        """
+        user_id = _normalize_user_id(user_id)
+        query = """
+            SELECT r.id, r.primary_model_id, r.fallback_model_id,
+                   r.credential_id, r.config_override,
+                   pm.model_id as primary_model_code,
+                   pm.display_name as primary_model_name,
+                   pm.model_type as primary_model_type,
+                   pm.context_window as primary_context_window,
+                   pm.max_output_tokens as primary_max_output_tokens,
+                   pm.input_cost_per_1k as primary_input_cost_per_1k,
+                   pm.output_cost_per_1k as primary_output_cost_per_1k,
+                   pm.capabilities as primary_capabilities,
+                   pm.is_enabled as primary_is_enabled,
+                   pm.provider_id as primary_provider_id,
+                   pp.code as primary_provider_code,
+                   fm.model_id as fallback_model_code,
+                   fm.display_name as fallback_model_name,
+                   fm.model_type as fallback_model_type,
+                   fm.context_window as fallback_context_window,
+                   fm.max_output_tokens as fallback_max_output_tokens,
+                   fm.input_cost_per_1k as fallback_input_cost_per_1k,
+                   fm.output_cost_per_1k as fallback_output_cost_per_1k,
+                   fm.capabilities as fallback_capabilities,
+                   fm.is_enabled as fallback_is_enabled,
+                   fm.provider_id as fallback_provider_id,
+                   fp.code as fallback_provider_code
+            FROM ai_task_routing r
+            JOIN ai_task_types tt ON r.task_type_id = tt.id
+            LEFT JOIN ai_models pm ON r.primary_model_id = pm.id
+            LEFT JOIN ai_providers pp ON pm.provider_id = pp.id
+            LEFT JOIN ai_models fm ON r.fallback_model_id = fm.id
+            LEFT JOIN ai_providers fp ON fm.provider_id = fp.id
+            WHERE tt.code = $1
+              AND (r.user_id = $2 OR r.user_id IS NULL)
+              AND r.is_enabled = TRUE
+            ORDER BY r.user_id NULLS LAST
+            LIMIT 1
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(query, task_type, user_id)
+
+        if not row:
+            return None
+
+        return {
+            "primary_model_id": row["primary_model_id"],
+            "primary_model": (
+                {
+                    "id": row["primary_model_id"],
+                    "provider_id": row["primary_provider_id"],
+                    "provider_code": row["primary_provider_code"],
+                    "model_id": row["primary_model_code"],
+                    "display_name": row["primary_model_name"],
+                    "model_type": row["primary_model_type"],
+                    "context_window": row["primary_context_window"],
+                    "max_output_tokens": row["primary_max_output_tokens"],
+                    "input_cost_per_1k": row["primary_input_cost_per_1k"],
+                    "output_cost_per_1k": row["primary_output_cost_per_1k"],
+                    "capabilities": _parse_json(row["primary_capabilities"]),
+                    "is_enabled": row["primary_is_enabled"],
+                }
+                if row["primary_model_id"] is not None
+                   and row["primary_model_code"] is not None
+                else None
+            ),
+            "fallback_model_id": row["fallback_model_id"],
+            "fallback_model": (
+                {
+                    "id": row["fallback_model_id"],
+                    "provider_id": row["fallback_provider_id"],
+                    "provider_code": row["fallback_provider_code"],
+                    "model_id": row["fallback_model_code"],
+                    "display_name": row["fallback_model_name"],
+                    "model_type": row["fallback_model_type"],
+                    "context_window": row["fallback_context_window"],
+                    "max_output_tokens": row["fallback_max_output_tokens"],
+                    "input_cost_per_1k": row["fallback_input_cost_per_1k"],
+                    "output_cost_per_1k": row["fallback_output_cost_per_1k"],
+                    "capabilities": _parse_json(row["fallback_capabilities"]),
+                    "is_enabled": row["fallback_is_enabled"],
+                }
+                if row["fallback_model_id"] is not None
+                   and row["fallback_model_code"] is not None
+                else None
+            ),
+            "credential_id": row["credential_id"],
+            "config_override": _parse_json(row["config_override"]),
+        }
+
     async def list_task_types(self) -> list[dict[str, Any]]:
         """List all available task types."""
         query = """

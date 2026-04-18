@@ -813,6 +813,7 @@ async def get_routing(
     task_type: str,
     user: UserClaims = Depends(require_admin),
     model_router: ModelRouter = Depends(get_model_router),
+    credential_resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
     """Get routing configuration for a task type.
 
@@ -824,56 +825,85 @@ async def get_routing(
     ``user_id=user.user_id``, which silently created an admin-scoped row that
     runtime never consulted, producing a "UI shows Embedding-3-Large but
     indexing uses Embedding-3-Small" mismatch.
+
+    This endpoint reads the **raw DB state** (via ``get_routing_db``) rather
+    than the resolve-time state (``resolve_routing``). The latter returns None
+    the moment credential resolution fails, which caused a confusing bug where
+    a freshly-saved ``primary_model_id`` appeared as "未选择" in the UI just
+    because the admin hadn't wired a credential yet. The admin UI should
+    always reflect what it saved; credential issues are surfaced separately
+    via ``credential_configured``.
     """
-    routing = await model_router.resolve_routing(task_type, user_id=None)
-    
-    if not routing:
+    stored = await model_router.get_routing_db(task_type, user_id=None)
+
+    if not stored:
         return ApiResponse(data=None)
-    
-    primary_model = ModelResponse(
-        id=routing.model.id,
-        provider_id=routing.model.provider_id,
-        provider_code=routing.model.provider_code,
-        model_id=routing.model.model_id,
-        display_name=routing.model.display_name,
-        model_type=routing.model.model_type,
-        context_window=routing.model.context_window,
-        max_output_tokens=routing.model.max_output_tokens,
-        input_cost_per_1k=routing.model.input_cost_per_1k,
-        output_cost_per_1k=routing.model.output_cost_per_1k,
-        input_cost_per_1m=routing.model.input_cost_per_1m,
-        output_cost_per_1m=routing.model.output_cost_per_1m,
-        cached_input_cost_per_1m=routing.model.cached_input_cost_per_1m,
-        capabilities=routing.model.capabilities,
-        is_enabled=routing.model.is_enabled,
-    )
-    
-    fallback_model = None
-    if routing.fallback_model:
-        fallback_model = ModelResponse(
-            id=routing.fallback_model.id,
-            provider_id=routing.fallback_model.provider_id,
-            provider_code=routing.fallback_model.provider_code,
-            model_id=routing.fallback_model.model_id,
-            display_name=routing.fallback_model.display_name,
-            model_type=routing.fallback_model.model_type,
-            context_window=routing.fallback_model.context_window,
-            max_output_tokens=routing.fallback_model.max_output_tokens,
-            input_cost_per_1k=routing.fallback_model.input_cost_per_1k,
-            output_cost_per_1k=routing.fallback_model.output_cost_per_1k,
-            input_cost_per_1m=routing.fallback_model.input_cost_per_1m,
-            output_cost_per_1m=routing.fallback_model.output_cost_per_1m,
-            cached_input_cost_per_1m=routing.fallback_model.cached_input_cost_per_1m,
-            capabilities=routing.fallback_model.capabilities,
-            is_enabled=routing.fallback_model.is_enabled,
+
+    primary_dict = stored.get("primary_model")
+    primary_model = None
+    if primary_dict:
+        primary_model = ModelResponse(
+            id=primary_dict["id"],
+            provider_id=primary_dict["provider_id"],
+            provider_code=primary_dict["provider_code"],
+            model_id=primary_dict["model_id"],
+            display_name=primary_dict["display_name"],
+            model_type=primary_dict["model_type"],
+            context_window=primary_dict["context_window"],
+            max_output_tokens=primary_dict["max_output_tokens"],
+            input_cost_per_1k=primary_dict["input_cost_per_1k"],
+            output_cost_per_1k=primary_dict["output_cost_per_1k"],
+            input_cost_per_1m=None,
+            output_cost_per_1m=None,
+            cached_input_cost_per_1m=None,
+            capabilities=primary_dict["capabilities"],
+            is_enabled=primary_dict["is_enabled"],
         )
-    
+
+    fallback_dict = stored.get("fallback_model")
+    fallback_model = None
+    if fallback_dict:
+        fallback_model = ModelResponse(
+            id=fallback_dict["id"],
+            provider_id=fallback_dict["provider_id"],
+            provider_code=fallback_dict["provider_code"],
+            model_id=fallback_dict["model_id"],
+            display_name=fallback_dict["display_name"],
+            model_type=fallback_dict["model_type"],
+            context_window=fallback_dict["context_window"],
+            max_output_tokens=fallback_dict["max_output_tokens"],
+            input_cost_per_1k=fallback_dict["input_cost_per_1k"],
+            output_cost_per_1k=fallback_dict["output_cost_per_1k"],
+            input_cost_per_1m=None,
+            output_cost_per_1m=None,
+            cached_input_cost_per_1m=None,
+            capabilities=fallback_dict["capabilities"],
+            is_enabled=fallback_dict["is_enabled"],
+        )
+
+    # credential_configured: 单独探测凭证解析是否成功, 供前端在 UI 上显示警告.
+    # 只在有 primary_model 时才有意义.
+    credential_configured = False
+    if primary_model is not None:
+        try:
+            cred = await credential_resolver.get_credential(
+                primary_model.provider_code,
+                user_id=None,
+                credential_id=stored.get("credential_id"),
+            )
+            credential_configured = cred is not None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("credential probe failed for %s: %s", task_type, exc)
+            credential_configured = False
+
     return ApiResponse(
         data=RoutingResponse(
             task_type=task_type,
             primary_model=primary_model,
             fallback_model=fallback_model,
-            config=routing.config,
+            config=stored.get("config_override") or {},
+            credential_id=stored.get("credential_id"),
+            credential_configured=credential_configured,
         ),
     )
 
