@@ -111,13 +111,25 @@ main() {
       fail "api" "gateway health check failed: $GATEWAY_BASE_URL/health"
     fi
 
-    local ai_ip
-    if ai_ip=$(docker compose -f "$COMPOSE_FILE" exec -T ai-service hostname -i 2>/dev/null | tr -d '[:space:]') \
-       && [[ -n "$ai_ip" ]] \
-       && curl -fsS --max-time 5 "http://${ai_ip}:8000/health" >/dev/null 2>&1; then
-      pass "api" "ai-service health reachable (${ai_ip}:8000)"
+    # Run curl INSIDE the ai-service container (mirrors the docker healthcheck).
+    # Avoids host->container-IP routing assumptions and `hostname -i` returning
+    # multiple space-separated IPs on multi-network containers.
+    local ai_ok=false ai_attempts=6 ai_attempt=0 ai_last_err=""
+    while (( ai_attempt < ai_attempts )); do
+      ai_attempt=$((ai_attempt + 1))
+      if ai_last_err=$(docker compose -f "$COMPOSE_FILE" exec -T ai-service \
+          curl -fsS --max-time 5 http://localhost:8000/health 2>&1); then
+        ai_ok=true
+        break
+      fi
+      sleep 5
+    done
+    if [[ "$ai_ok" == "true" ]]; then
+      pass "api" "ai-service health reachable (in-container localhost:8000, attempt $ai_attempt/$ai_attempts)"
     else
-      fail "api" "ai-service health check failed"
+      local ai_health
+      ai_health=$(docker inspect --format '{{.State.Health.Status}}' aetherblog-ai-service 2>/dev/null || echo unknown)
+      fail "api" "ai-service health check failed (docker health=${ai_health}); last error: ${ai_last_err}"
     fi
 
     local auth_status
