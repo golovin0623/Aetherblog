@@ -153,16 +153,20 @@
               filter var(--dur-quick) var(--ease-out);
   pointer-events: none;
 }
-[data-interactive].surface-leaf:hover,
-[data-interactive].surface-raised:hover {
-  border-color: color-mix(in oklch, var(--aurora-1) 30%, transparent);
-}
-[data-interactive].surface-leaf:hover::after,
-[data-interactive].surface-raised:hover::after {
-  opacity: 1;
-  /* 用 drop-shadow 代替 box-shadow —— 因为 ::after 本身带透明渐变,
-     box-shadow 会在光带上下端画出硬边阴影,drop-shadow 跟随 alpha 轮廓 */
-  filter: drop-shadow(0 0 6px color-mix(in oklch, var(--aurora-1) 70%, transparent));
+/* 仅在真实 hover 设备 (鼠标) 上启用光带 hover —— 移动端触屏的 sticky :hover
+   会让光带残留,叠加 drop-shadow 的 6px 软阴影看起来像"幽灵暗条"逃出卡片,
+   这是 iOS Safari 的视觉错位元凶 */
+@media (hover: hover) and (pointer: fine) {
+  [data-interactive].surface-leaf:hover,
+  [data-interactive].surface-raised:hover {
+    border-color: color-mix(in oklch, var(--aurora-1) 30%, transparent);
+  }
+  [data-interactive].surface-leaf:hover::after,
+  [data-interactive].surface-raised:hover::after {
+    opacity: 1;
+    /* 软阴影收窄至 3px,避免在卡片外侧画出可见光晕 */
+    filter: drop-shadow(0 0 3px color-mix(in oklch, var(--aurora-1) 60%, transparent));
+  }
 }
 
 /* -----------------------------------------------------------
