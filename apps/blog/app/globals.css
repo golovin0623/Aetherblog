@@ -1321,6 +1321,17 @@ html[data-theme-transition] header[class*="fixed"] {
   background-color: var(--bg-primary) !important;
 }
 
+/* 主题切换期间冻结 header/浮动按钮的 transform + opacity 过渡。
+   header 在文章详情页会随滚动 translate-y/opacity 变化,若切换瞬间
+   恰好触发 scroll 回调(iOS Safari 会在 VT 合成层重建时触发虚假滚动),
+   旧/新快照会分别捕获到不同的 translate-y,最终呈现为"标题栏被遮挡"或
+   "浮动按钮错位"。强制 translate-y(0) + opacity(1) 保证快照一致 */
+html[data-theme-transition] header[class*="fixed"] {
+  transform: translateY(0) !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
+
 html[data-theme-transition] .mobile-menu-backdrop {
   background-color: rgba(0, 0, 0, 0.8) !important;
 }
@@ -1765,9 +1776,14 @@ html[data-nav-type="pop"] .animate-in {
     var(--aurora-2, var(--color-primary, #818CF8)) 80%,
     transparent 100%);
   border-radius: 2px;
-  opacity: 0.6;
+  opacity: 0.35;
   pointer-events: none;
   z-index: 1;
+}
+/* 暗色模式下恢复更高对比度 */
+:root.dark .markdown-body .code-block-wrapper::before,
+:root.dark .markdown-body pre::before {
+  opacity: 0.6;
 }
 
 /* blockquote —— 斜体引语 + 装饰引号 */

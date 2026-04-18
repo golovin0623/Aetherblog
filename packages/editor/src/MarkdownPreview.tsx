@@ -638,6 +638,13 @@ export function MarkdownPreview({ content, className = '', style, theme = 'dark'
         const id = container.getAttribute('data-mermaid-id') || generateMermaidId();
 
         try {
+          // mermaid.render 在无效语法时不会 throw,而是生成"炸弹+Syntax error"的 SVG。
+          // 先 parse 校验,失败时展示友好错误,避免编辑过程中输入一半就看到炸弹
+          const parseResult = await mermaid.parse(code, { suppressErrors: true });
+          if (parseResult === false) {
+            container.innerHTML = `<div class="mermaid-error">图表语法错误,请检查 mermaid 代码</div>`;
+            continue;
+          }
           const { svg } = await mermaid.render(id, code);
           container.innerHTML = DOMPurify.sanitize(svg, SVG_SANITIZE_CONFIG);
         } catch (error) {
