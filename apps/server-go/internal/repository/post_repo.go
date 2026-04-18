@@ -488,20 +488,37 @@ type SearchResultRow struct {
 }
 
 // SearchPublished 使用 PostgreSQL 全文搜索查找已发布文章，按相关性排序。
+// 为兼容中文/CJK 查询，保留 ts_rank 打分的同时叠加 ILIKE 作为兜底匹配：
+// 'simple' 分词器以空白切分，无法切分中文整词，会导致 tsvector 路径对中文查询返回 0 结果；
+// ILIKE 子串匹配确保在这种情况下仍能命中。title/summary 命中给予更高加权。
 func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
 	var rows []SearchResultRow
 	err := r.db.SelectContext(ctx, &rows, `
+		WITH q AS (
+			SELECT plainto_tsquery('simple', $1) AS tsq,
+			       '%' || $1 || '%' AS like_pat
+		)
 		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
-			ts_rank(
-				to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
-				plainto_tsquery('simple', $1)
+			GREATEST(
+				ts_rank(
+					to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,'')),
+					(SELECT tsq FROM q)
+				),
+				CASE WHEN p.title ILIKE (SELECT like_pat FROM q) THEN 0.5 ELSE 0 END,
+				CASE WHEN COALESCE(p.summary,'') ILIKE (SELECT like_pat FROM q) THEN 0.2 ELSE 0 END,
+				CASE WHEN COALESCE(p.content_markdown,'') ILIKE (SELECT like_pat FROM q) THEN 0.05 ELSE 0 END
 			) AS rank
 		FROM posts p
 		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.deleted = false AND p.status = 'PUBLISHED' AND p.is_hidden = false
-			AND to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
-				@@ plainto_tsquery('simple', $1)
-		ORDER BY rank DESC
+			AND (
+				to_tsvector('simple', p.title || ' ' || COALESCE(p.summary,'') || ' ' || COALESCE(p.content_markdown,''))
+					@@ (SELECT tsq FROM q)
+				OR p.title ILIKE (SELECT like_pat FROM q)
+				OR COALESCE(p.summary,'') ILIKE (SELECT like_pat FROM q)
+				OR COALESCE(p.content_markdown,'') ILIKE (SELECT like_pat FROM q)
+			)
+		ORDER BY rank DESC, p.published_at DESC NULLS LAST
 		LIMIT $2 OFFSET $3`,
 		keyword, limit, offset)
 	return rows, err
