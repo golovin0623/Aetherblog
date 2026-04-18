@@ -69,6 +69,10 @@ export interface AiRouting {
   fallback_model: AiModel | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
+  credential_id?: number | null;
+  // 后端探测凭证是否可解析. false 意味着 primary_model 虽保存成功,
+  // 但该 provider 下没有可用凭证, 运行时会降级到 env 默认.
+  credential_configured?: boolean;
 }
 
 export interface CreateProviderRequest {

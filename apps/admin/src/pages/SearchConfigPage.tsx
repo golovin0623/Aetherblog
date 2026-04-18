@@ -506,8 +506,11 @@ export default function SearchConfigPage() {
     }
   };
 
-  // Derived state
-  const embeddingConfigured = !!currentRouting?.primary_model;
+  // embeddingConfigured requires both a selected model AND a resolvable credential;
+  // otherwise runtime falls back to env defaults.
+  const embeddingModelSelected = !!currentRouting?.primary_model;
+  const embeddingCredentialReady = currentRouting?.credential_configured !== false;
+  const embeddingConfigured = embeddingModelSelected && embeddingCredentialReady;
   const semanticEnabled = formData.semanticEnabled ?? false;
 
   // --- Full page skeleton ---
@@ -640,7 +643,10 @@ export default function SearchConfigPage() {
             {/* Current model details — 显示真正生效的 model_id 和 base_url，
                  避免 UI 标签和后端实际调用不一致时出现"我明明选了 large 怎么
                  还是 small"的迷惑场面。base_url 来自 provider 下匹配凭证的
-                 base_url_override（与 ai-service 的 credential resolver 同一逻辑）。 */}
+                 base_url_override（与 ai-service 的 credential resolver 同一逻辑）。
+                 credential_configured=false 时独立提示凭证缺失 —— 以前这种
+                 情况会让整个 primary_model 在 GET 响应里消失, 前端看到的是
+                 "未选择", 管理员完全不知道问题出在哪里. */}
             {!embeddingLoading && currentRouting?.primary_model && (() => {
               const m = currentRouting.primary_model!;
               const creds = credentialsQuery.data || [];
@@ -648,10 +654,15 @@ export default function SearchConfigPage() {
                 creds.find((c) => c.provider_code === m.provider_code && c.is_default) ||
                 creds.find((c) => c.provider_code === m.provider_code);
               const effectiveBase = matched?.base_url_override || '(provider 默认)';
+              const credReady = embeddingCredentialReady;
               return (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    {credReady ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    )}
                     <span className="text-xs text-[var(--text-muted)]">
                       当前使用: <span className="text-[var(--text-secondary)] font-medium">{m.display_name || m.model_id}</span>
                       {' '}<span className="text-[var(--text-muted)]">·</span>{' '}
@@ -664,6 +675,27 @@ export default function SearchConfigPage() {
                       api_base: {effectiveBase}
                     </span>
                   </div>
+                  {!credReady && (
+                    <div className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="text-xs text-amber-300/90 space-y-1">
+                        <div className="font-medium">
+                          该模型已保存, 但 provider <span className="font-mono">{m.provider_code}</span> 下没有可用凭证
+                        </div>
+                        <div className="text-amber-300/70">
+                          运行时的向量化 / 语义搜索会降级到 env 默认配置, 可能调用
+                          错误的 API 地址或失败. 请前往 AI 配置页绑定凭证.
+                        </div>
+                        <button
+                          onClick={() => navigate('/ai-config')}
+                          className="inline-flex items-center gap-1 mt-1 text-amber-200 hover:text-amber-100 underline underline-offset-2"
+                        >
+                          前往配置凭证
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -940,9 +972,14 @@ export default function SearchConfigPage() {
                 </p>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
                   基于向量相似度的智能搜索
-                  {!embeddingConfigured && (
+                  {!embeddingModelSelected && (
                     <span className="text-amber-400 ml-1">
-                      (需先配置 Embedding 模型)
+                      (需先选择 Embedding 模型)
+                    </span>
+                  )}
+                  {embeddingModelSelected && !embeddingCredentialReady && (
+                    <span className="text-amber-400 ml-1">
+                      (模型已选, 但缺少可用凭证 — 见下方向量化状态提示)
                     </span>
                   )}
                 </p>
@@ -950,7 +987,9 @@ export default function SearchConfigPage() {
               <Toggle
                 checked={formData.semanticEnabled ?? false}
                 onChange={(v) => updateField('semanticEnabled', v)}
-                disabled={!embeddingConfigured}
+                // 仅阻止"开启": 未配置 Embedding 模型时无法打开;
+                // 若已打开, 始终允许关闭 (避免模型失效后卡死无法降级)
+                disabled={!formData.semanticEnabled && !embeddingConfigured}
               />
             </div>
 
@@ -972,7 +1011,9 @@ export default function SearchConfigPage() {
               <Toggle
                 checked={formData.aiQaEnabled ?? false}
                 onChange={(v) => updateField('aiQaEnabled', v)}
-                disabled={!semanticEnabled}
+                // 仅阻止"开启": 未启用语义搜索时无法打开 AI 问答;
+                // 若已打开, 始终允许关闭
+                disabled={!formData.aiQaEnabled && !semanticEnabled}
               />
             </div>
           </div>
