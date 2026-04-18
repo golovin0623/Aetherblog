@@ -199,6 +199,12 @@ class RoutingResponse(BaseModel):
     primary_model: ModelResponse | None
     fallback_model: ModelResponse | None
     config: dict[str, Any]
+    # credential_id: 管理端保存时写入的凭证 ID; None 代表未绑定凭证.
+    # credential_configured: 是否确实能解析到凭证 (未绑定 ID 时会尝试在 provider
+    # 下找默认/首个可用凭证). False 代表该路由虽然保存了 model, 但缺少可用凭证,
+    # 运行时会降级到 env 默认, 前端应向用户提示.
+    credential_id: int | None = None
+    credential_configured: bool = False
 
 
 class RoutingUpdateRequest(BaseModel):

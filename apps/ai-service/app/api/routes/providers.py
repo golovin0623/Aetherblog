@@ -44,7 +44,7 @@ from app.schemas.provider import (
     ModelSortRequest,
     ProviderBatchToggleRequest,
 )
-from app.services.provider_registry import ProviderRegistry
+from app.services.provider_registry import ProviderRegistry, ModelInfo
 from app.services.credential_resolver import CredentialResolver
 from app.services.model_router import ModelRouter
 from app.services.remote_model_fetcher import RemoteModelFetcher
@@ -808,11 +808,35 @@ async def list_task_types(
     )
 
 
+def _model_info_to_response(info: ModelInfo | None) -> ModelResponse | None:
+    if info is None:
+        return None
+    return ModelResponse(
+        id=info.id,
+        provider_id=info.provider_id,
+        provider_code=info.provider_code,
+        model_id=info.model_id,
+        display_name=info.display_name,
+        model_type=info.model_type,
+        context_window=info.context_window,
+        max_output_tokens=info.max_output_tokens,
+        input_cost_per_1k=info.input_cost_per_1k,
+        output_cost_per_1k=info.output_cost_per_1k,
+        input_cost_per_1m=info.input_cost_per_1m,
+        output_cost_per_1m=info.output_cost_per_1m,
+        cached_input_cost_per_1m=info.cached_input_cost_per_1m,
+        capabilities=info.capabilities,
+        is_enabled=info.is_enabled,
+    )
+
+
 @router.get("/routing/{task_type}", response_model=ApiResponse[Optional[RoutingResponse]])
 async def get_routing(
     task_type: str,
     user: UserClaims = Depends(require_admin),
     model_router: ModelRouter = Depends(get_model_router),
+    provider_registry: ProviderRegistry = Depends(get_provider_registry),
+    credential_resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
     """Get routing configuration for a task type.
 
@@ -820,60 +844,50 @@ async def get_routing(
     (``user_id IS NULL``), not per-admin overrides. Background workers such as
     the embedding index job invoke ``llm_router.embed()`` without a user_id,
     which matches only system-default rows — so the admin UI must read/write
-    the same row to stay in sync with runtime. Previously we resolved with
-    ``user_id=user.user_id``, which silently created an admin-scoped row that
-    runtime never consulted, producing a "UI shows Embedding-3-Large but
-    indexing uses Embedding-3-Small" mismatch.
+    the same row to stay in sync with runtime.
+
+    This endpoint intentionally bypasses ``resolve_routing`` (which returns
+    None the moment credential resolution fails) so a freshly-saved
+    ``primary_model_id`` always appears in the UI even before the admin has
+    wired up a credential. Credential status is surfaced separately via
+    ``credential_configured``.
     """
-    routing = await model_router.resolve_routing(task_type, user_id=None)
-    
-    if not routing:
+    stored = await model_router.get_routing_db(task_type, user_id=None)
+
+    if not stored:
         return ApiResponse(data=None)
-    
-    primary_model = ModelResponse(
-        id=routing.model.id,
-        provider_id=routing.model.provider_id,
-        provider_code=routing.model.provider_code,
-        model_id=routing.model.model_id,
-        display_name=routing.model.display_name,
-        model_type=routing.model.model_type,
-        context_window=routing.model.context_window,
-        max_output_tokens=routing.model.max_output_tokens,
-        input_cost_per_1k=routing.model.input_cost_per_1k,
-        output_cost_per_1k=routing.model.output_cost_per_1k,
-        input_cost_per_1m=routing.model.input_cost_per_1m,
-        output_cost_per_1m=routing.model.output_cost_per_1m,
-        cached_input_cost_per_1m=routing.model.cached_input_cost_per_1m,
-        capabilities=routing.model.capabilities,
-        is_enabled=routing.model.is_enabled,
-    )
-    
-    fallback_model = None
-    if routing.fallback_model:
-        fallback_model = ModelResponse(
-            id=routing.fallback_model.id,
-            provider_id=routing.fallback_model.provider_id,
-            provider_code=routing.fallback_model.provider_code,
-            model_id=routing.fallback_model.model_id,
-            display_name=routing.fallback_model.display_name,
-            model_type=routing.fallback_model.model_type,
-            context_window=routing.fallback_model.context_window,
-            max_output_tokens=routing.fallback_model.max_output_tokens,
-            input_cost_per_1k=routing.fallback_model.input_cost_per_1k,
-            output_cost_per_1k=routing.fallback_model.output_cost_per_1k,
-            input_cost_per_1m=routing.fallback_model.input_cost_per_1m,
-            output_cost_per_1m=routing.fallback_model.output_cost_per_1m,
-            cached_input_cost_per_1m=routing.fallback_model.cached_input_cost_per_1m,
-            capabilities=routing.fallback_model.capabilities,
-            is_enabled=routing.fallback_model.is_enabled,
-        )
-    
+
+    primary_info = None
+    if stored.get("primary_model_id") is not None:
+        primary_info = await provider_registry.get_model_by_id(stored["primary_model_id"])
+    fallback_info = None
+    if stored.get("fallback_model_id") is not None:
+        fallback_info = await provider_registry.get_model_by_id(stored["fallback_model_id"])
+
+    primary_model = _model_info_to_response(primary_info)
+    fallback_model = _model_info_to_response(fallback_info)
+
+    credential_configured = False
+    if primary_model is not None:
+        try:
+            cred = await credential_resolver.get_credential(
+                primary_model.provider_code,
+                user_id=None,
+                credential_id=stored.get("credential_id"),
+            )
+            credential_configured = cred is not None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("credential probe failed for %s: %s", task_type, exc)
+            credential_configured = False
+
     return ApiResponse(
         data=RoutingResponse(
             task_type=task_type,
             primary_model=primary_model,
             fallback_model=fallback_model,
-            config=routing.config,
+            config=stored.get("config_override") or {},
+            credential_id=stored.get("credential_id"),
+            credential_configured=credential_configured,
         ),
     )
 

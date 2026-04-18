@@ -165,6 +165,46 @@ class ModelRouter:
             fallback_model=fallback_model,
         )
 
+    async def get_routing_db(
+        self,
+        task_type: str,
+        user_id: int | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Return the stored ai_task_routing row ids without resolving credentials.
+
+        resolve_routing() returns None the moment credential lookup fails, which
+        made admin GET responses drop a freshly-saved primary_model_id whenever
+        no credential was bound yet — confusing admins into thinking the save
+        didn't persist. This method exposes the raw IDs so the caller can stitch
+        together ModelResponse via provider_registry (which handles pricing
+        derivation) independently from credential validation.
+        """
+        user_id = _normalize_user_id(user_id)
+        query = """
+            SELECT r.primary_model_id, r.fallback_model_id,
+                   r.credential_id, r.config_override
+            FROM ai_task_routing r
+            JOIN ai_task_types tt ON r.task_type_id = tt.id
+            WHERE tt.code = $1
+              AND (r.user_id = $2 OR r.user_id IS NULL)
+              AND r.is_enabled = TRUE
+            ORDER BY r.user_id NULLS LAST
+            LIMIT 1
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(query, task_type, user_id)
+
+        if not row:
+            return None
+
+        return {
+            "primary_model_id": row["primary_model_id"],
+            "fallback_model_id": row["fallback_model_id"],
+            "credential_id": row["credential_id"],
+            "config_override": _parse_json(row["config_override"]),
+        }
+
     async def list_task_types(self) -> list[dict[str, Any]]:
         """List all available task types."""
         query = """
