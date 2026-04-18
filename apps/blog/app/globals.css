@@ -1769,14 +1769,16 @@ html[data-nav-type="pop"] .animate-in {
   top: 0;
   bottom: 0;
   width: 2px;
-  /* 顶/底端以透明渐变淡出,顺圆角包裹而不是硬切 */
+  /* 顶/底端以透明渐变淡出,顺圆角包裹而不是硬切;
+     在 oklch 空间插值,避免 aurora 鲜艳色淡出到 transparent 时
+     经过 sRGB 默认的灰色过渡带 */
   background: linear-gradient(
-    to bottom,
+    to bottom in oklch,
     transparent 0%,
-    color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 0%, transparent) 6%,
+    transparent 6%,
     var(--aurora-1, var(--color-primary, #818CF8)) 18%,
     var(--aurora-2, var(--color-primary, #818CF8)) 82%,
-    color-mix(in oklch, var(--aurora-2, var(--color-primary, #818CF8)) 0%, transparent) 94%,
+    transparent 94%,
     transparent 100%
   );
   /* 让 2px 光带顺着卡片左上/左下圆角收束,与边框融为一体 */
