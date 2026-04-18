@@ -62,7 +62,10 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
     echo "[$(date -Iseconds)] ERROR: git fetch origin $fetch_ref failed"
     exit 1
   fi
-  git reset --hard "$deploy_ref"
+  # 用 FETCH_HEAD 而不是 $deploy_ref：若调用方传的是无 origin/ 前缀的本地分支名
+  # (DEPLOY_GIT_REF=main)，reset 到本地 main 可能落空（git fetch 不更新本地分支
+  # HEAD）。FETCH_HEAD 一定是刚 fetch 下来的那个 ref，确保跟远端同步。
+  git reset --hard FETCH_HEAD
 
   new_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
   if [ -n "$current_self_sha" ] && [ "$current_self_sha" != "$new_self_sha" ]; then
@@ -152,11 +155,22 @@ run_pre_deploy_migrations() {
   echo "[$(date -Iseconds)] Pre-deploy migration (one-shot backend container)"
   local db_user="${AETHERBLOG_DATABASE_USER:-aetherblog}"
   local db_name="${AETHERBLOG_DATABASE_DBNAME:-aetherblog}"
-  local db_dsn="postgres://${db_user}:${POSTGRES_PASSWORD}@postgres:5432/${db_name}?sslmode=disable"
 
+  # URL-encode 用户名 / 密码，防止 @ : / ? # 等特殊字符破坏 DSN 格式。
+  # 依赖服务器有 python3（deploy.sh 运行环境一贯有）。
+  local db_user_enc db_pass_enc
+  db_user_enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$db_user") || {
+    echo "[$(date -Iseconds)] ERROR: failed to URL-encode db user"; exit 1
+  }
+  db_pass_enc=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "${POSTGRES_PASSWORD:-}") || {
+    echo "[$(date -Iseconds)] ERROR: failed to URL-encode db password"; exit 1
+  }
+  local db_dsn="postgres://${db_user_enc}:${db_pass_enc}@postgres:5432/${db_name}?sslmode=disable"
+
+  # 只传 -dsn flag：cmd/migrate/main.go 里 flag 优先、DATABASE_DSN env 仅兜底，
+  # 两条同时设会冗余也让 log 更难排查。
   if docker compose -f "$COMPOSE_FILE" run --rm \
        --entrypoint /app/migrate \
-       -e DATABASE_DSN="$db_dsn" \
        backend -dir /app/migrations -dsn "$db_dsn" up; then
     echo "[$(date -Iseconds)] Migrations applied successfully"
   else
