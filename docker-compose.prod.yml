@@ -183,9 +183,25 @@ services:
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
-      # REMOVED for security: Docker socket mount provides root-equivalent access
-      # For container monitoring, use cAdvisor or Prometheus node_exporter instead
-      # - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker socket is mounted read-only so the admin "容器监控" panel
+      # (apps/server-go/internal/service/container_monitor.go) can call the
+      # Docker API for container list / stats. The handler is gated behind
+      # /v1/admin/monitor/* (admin-only JWT) and only issues GETs.
+      #
+      # SECURITY TRADEOFF: even a :ro bind of docker.sock grants root-equivalent
+      # access to the host via the Docker daemon API — the ":ro" only blocks
+      # writing to the *socket file* itself, not the API surface. We accept
+      # this for the self-hosted admin-only monitoring use case. For hardened
+      # deployments, swap to a docker-socket-proxy (tecnativa/docker-socket-proxy)
+      # that restricts the API to /containers/json and /containers/*/stats.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # The backend image runs as UID 1001 (non-root). /var/run/docker.sock on
+    # the host is typically owned by root:docker (mode 0660), so UID 1001 must
+    # be in the host's docker group to read it. DOCKER_GID must match the
+    # host's docker group — check with: `stat -c '%g' /var/run/docker.sock`.
+    # Default 999 covers Ubuntu/Debian; set DOCKER_GID in .env if different.
+    group_add:
+      - "${DOCKER_GID:-999}"
     depends_on:
       postgres:
         condition: service_healthy
