@@ -73,6 +73,45 @@ def _redact_secrets(msg: str, api_key: Optional[str] = None) -> str:
         out = pat.sub("***", out)
     return out
 
+
+def _assert_header_encodable(api_key: str, base_url: Optional[str]) -> None:
+    """Guard against non-ASCII smart quotes / em-dashes pasted into credentials.
+
+    HTTP headers must be latin-1 encodable and URLs must be ASCII; if the user
+    pasted an api_key or base_url that a word processor autocorrected (em-dash
+    U+2014, curly quotes, full-width colon...), httpx raises a cryptic
+    UnicodeEncodeError deep inside the transport. Surface a clear 400 instead.
+    """
+    def _first_bad(text: str) -> tuple[int, str] | None:
+        for idx, ch in enumerate(text):
+            if ord(ch) > 0x7F:
+                return idx, ch
+        return None
+
+    if api_key:
+        bad = _first_bad(api_key)
+        if bad:
+            idx, ch = bad
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"API Key 含非 ASCII 字符（U+{ord(ch):04X} 在第 {idx + 1} 位），"
+                    "常见于从 Word/备忘录粘贴时被自动替换成破折号或中文引号。"
+                    "请重新复制原始密钥并保存。"
+                ),
+            )
+    if base_url:
+        bad = _first_bad(base_url)
+        if bad:
+            idx, ch = bad
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Base URL 含非 ASCII 字符（U+{ord(ch):04X} 在第 {idx + 1} 位）。"
+                    "请检查供应商 Base URL 是否混入了中文符号或破折号。"
+                ),
+            )
+
 router = APIRouter(
     prefix="/api/v1/admin/providers",
     tags=["providers"],
@@ -505,7 +544,11 @@ async def create_credential(
 ):
     """Save a new API credential."""
     user_id = user.user_id
-    
+
+    # Reject non-ASCII smart quotes / em-dashes at save time so downstream HTTP
+    # calls don't explode with an opaque UnicodeEncodeError later.
+    _assert_header_encodable(req.api_key or "", req.base_url_override)
+
     try:
         cred_id = await resolver.save_credential(
             provider_code=req.provider_code,
@@ -663,6 +706,9 @@ async def test_credential(
             status_code=400,
             detail="Provider base_url resolves to an internal or private network",
         )
+    # Catch non-ASCII smart-quote / em-dash pasted into credential fields —
+    # httpx otherwise fails with an opaque UnicodeEncodeError deep in transport.
+    _assert_header_encodable(credential.api_key, credential.base_url)
     # Test with a simple completion
     start = time.perf_counter()
     try:
@@ -752,6 +798,8 @@ async def test_embedding_credential(
             status_code=400,
             detail="Provider base_url resolves to an internal or private network",
         )
+    # Catch non-ASCII smart-quote / em-dash pasted into credential fields.
+    _assert_header_encodable(credential.api_key, credential.base_url)
     # Test with embedding
     start = time.perf_counter()
     try:

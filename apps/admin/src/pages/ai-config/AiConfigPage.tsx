@@ -1,7 +1,7 @@
 // AI 配置中心主页面 (重构版)
 // ref: §5.1 - AI Service 架构 (LobeChat 风格)
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RefreshCw, Plus, PanelLeft, PowerOff } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -62,22 +62,31 @@ export default function AiConfigPage() {
     [providers, normalizedSelectedCode]
   );
 
+  // Deep-link from ?provider=...&model=... should apply once after providers load.
+  // Previously this effect re-ran on every query refetch, which kept resetting
+  // initialModelSearch back to the URL value — so switching providers or tabs
+  // would reapply a stale filter and render 模型 tab empty.
+  const deepLinkAppliedRef = useRef(false);
   useEffect(() => {
+    if (deepLinkAppliedRef.current) return;
+    if (providers.length === 0) return;
     const provider = searchParams.get('provider');
     const model = searchParams.get('model');
-    if (model) {
-      setInitialModelSearch(model);
-    }
     if (provider && providers.some((item) => item.code.toLowerCase() === provider.toLowerCase())) {
       setSelectedProviderCode(provider);
       setViewMode('detail');
       setActiveDetailTab('models');
+      if (model) {
+        setInitialModelSearch(model);
+      }
     }
+    deepLinkAppliedRef.current = true;
   }, [providers, searchParams]);
 
   // 进入详情视图
   const handleSelectProvider = useCallback((code: string | null | undefined) => {
     setActiveDetailTab("config"); // 切换时重置为配置 Tab
+    setInitialModelSearch(''); // 切换供应商时清空 deep-link 过滤，避免模型列表空白
     if (!code) {
       setSelectedProviderCode(null);
       setViewMode('grid');
@@ -92,6 +101,7 @@ export default function AiConfigPage() {
     setViewMode('grid');
     setSelectedProviderCode(null);
     setActiveDetailTab("config");
+    setInitialModelSearch('');
   }, []);
 
   // 刷新数据
