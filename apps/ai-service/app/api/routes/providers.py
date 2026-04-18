@@ -44,7 +44,7 @@ from app.schemas.provider import (
     ModelSortRequest,
     ProviderBatchToggleRequest,
 )
-from app.services.provider_registry import ProviderRegistry
+from app.services.provider_registry import ProviderRegistry, ModelInfo
 from app.services.credential_resolver import CredentialResolver
 from app.services.model_router import ModelRouter
 from app.services.remote_model_fetcher import RemoteModelFetcher
@@ -808,7 +808,7 @@ async def list_task_types(
     )
 
 
-def _model_info_to_response(info: Any | None) -> ModelResponse | None:
+def _model_info_to_response(info: ModelInfo | None) -> ModelResponse | None:
     if info is None:
         return None
     return ModelResponse(
