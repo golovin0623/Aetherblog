@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🗃️ 版本化 embedding 存储 + 索引 UX 重构 (2026-04-18)
+
+**Changed — embedding 存储模型：post_vectors → post_embeddings**
+
+- 旧 `post_vectors` 把维度写死在 `vector(1536)` 列上，切换到 3072 维的 `text-embedding-3-large` 会直接触发 `pgvector DataError: expected 1536 dimensions, not 3072` 并 502；运维必须手动 ALTER + 重建 HNSW 索引 + 全量重跑，属于 "换模型 = 升级数据库" 的反模式。
+- **`apps/server-go/migrations/000034_versioned_post_embeddings.up.sql`** 引入版本化存储：`post_embeddings(post_id, model_id, dim, embedding vector, status)`，`embedding` 使用 pgvector 0.7+ 变长列；按 `(dim × status='active')` 分桶的 partial 表达式 HNSW 索引（1536/3072 各一条，未来新维度只需追加）；`(post_id, model_id)` 唯一；`status ∈ {active, shadow, deprecated}` 支持蓝绿切换与回滚。设计参考 Supabase Automatic Embeddings / Pinecone alias flip / Weaviate blue-green collection / dbi-services RAG versioning 2025 年主流模式。
+- **`site_settings.search.active_embedding_model`** 作为 "当前活跃模型" 单点指针，切模型 = 原子翻转此值，旧模型行保留作为回滚依据（30 天后由 GC 清理）。
+
+**Fixed — 索引失败可见性（幽灵态根因）**
+
+- **`apps/ai-service/app/services/vector_store.py`** 的 `upsert_post_embedding` 现在把 DB INSERT 路径也包裹在 try/except 中，捕获 asyncpg `DataError` / `PostgresError`，调用新增的 `_mark_post_failed(post_id)` helper 把 `posts.embedding_status` 标记为 `FAILED`。历史上只有 embedding 生成路径的异常会标 FAILED，DB 写库失败会静默吞掉 → 前端 stats 显示 `pending_posts > 0` → 进度条永久旋转，管理员无从得知真正原因。
+- **`apps/ai-service/app/api/routes/search.py::index_post`** 新增 `DataError` / "dimensions" / "expected...dim" 错误分支，返回 **422** 而不是 502，并给出可执行错误信息（"向量维度与存储不匹配（检测到 pgvector DataError）"）。
+
+**Changed — SearchConfigPage 索引面板 UX 重构**
+
+- **模型切换二次确认**：下拉选新模型 → 不再即时 mutate，先弹 `ConfirmModal` 显示目标模型 / 影响文章数 / 旧向量保留说明，确认后才更新 routing 并自动触发 reindex。
+- **进度面板按 "本次任务" 范围展示**：引入 `IndexingJob` 模型（`kind: 'full' | 'retry' | 'batch' | 'single'` + `jobTotal` + baseline）。触发单篇索引不再错误地显示 "0/90" 全量进度条，而是 "已处理 0/1"；批量索引显示本次勾选的条数；全量 / 重试也各按范围展示。任务 label 同步区分（`索引文章 #123` / `批量索引 N 篇` / `全量重建索引` / `重试失败任务`）。
+- **进度持久化跨导航**：`IndexingJob` 序列化到 `localStorage`（key `aetherblog:search:indexing_job`，2h TTL 兜底），切走页面再回来后台任务仍在跑时进度面板继续显示；`computeJobProgress` 用 delta 法计算进度（indexed/failed_delta = current - baseline），远端任务完成时自动 dismiss 并 toast 提示。
+- **文章列表默认 PENDING**：`statusFilter` 初始值从 `''`（全部）改为 `'PENDING'`，管理员打开页面第一眼就是 "还有哪些没索引"，不需要再手动切 tab。
+
+**Docs**
+
+- `docs/architecture.md`：新增 §版本化向量存储（migration 000034）与 §失败可见性，替换旧的 `ai_vector_store` 表描述。
+- `CLAUDE.md`：数据库迁移节更新（33 → 34）；搜索 UX 与 embedding 切模型流程写入常见操作。
+
 ### 🔧 运维健壮性 · deploy 链路 + ai-service 启动修复 (2026-04-18)
 
 **Fixed — ai-service 启动阻塞的三层根因**
