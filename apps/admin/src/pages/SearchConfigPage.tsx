@@ -282,6 +282,15 @@ export default function SearchConfigPage() {
     refetchInterval: indexingActive ? 2000 : false,
   });
 
+  const { data: diagnosticsRes } = useQuery({
+    queryKey: ['search-diagnostics'],
+    queryFn: () => searchConfigService.getDiagnostics(),
+    // 诊断信息是本地读，刷一次就够；但 indexing 时每 10s 复查一次好让
+    // admin 看到 active_embedding_model 在翻转前后的变化
+    refetchInterval: indexingActive ? 10000 : false,
+  });
+  const diagnostics = diagnosticsRes?.data;
+
   // Fetch enabled providers
   const providersQuery = useQuery({
     queryKey: ['ai-providers'],
@@ -660,6 +669,76 @@ export default function SearchConfigPage() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Diagnostics strip — 一屏诊断搜索链路状态 */}
+      {diagnostics && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className={cn(
+            'mb-6 rounded-xl border p-4',
+            diagnostics.fallback.effectiveMode === 'disabled'
+              ? 'bg-red-500/5 border-red-500/30'
+              : diagnostics.fallback.effectiveMode === 'keyword' && diagnostics.config.semanticEnabled
+              ? 'bg-amber-500/5 border-amber-500/30'
+              : 'bg-[var(--bg-card)] border-[var(--border-subtle)]'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <Activity
+              className={cn(
+                'w-4 h-4 mt-0.5 shrink-0',
+                diagnostics.fallback.effectiveMode === 'disabled'
+                  ? 'text-red-400'
+                  : diagnostics.fallback.effectiveMode === 'keyword' && diagnostics.config.semanticEnabled
+                  ? 'text-amber-400'
+                  : 'text-[var(--text-muted)]'
+              )}
+            />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <span className="font-medium text-[var(--text-primary)]">
+                  当前生效：
+                  <span className="ml-1 font-mono uppercase tracking-wide">
+                    {diagnostics.fallback.effectiveMode}
+                  </span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  关键词
+                  <span className={cn('ml-1 font-mono', diagnostics.fallback.keywordActive ? 'text-emerald-400' : 'text-[var(--text-muted)]')}>
+                    {diagnostics.fallback.keywordActive ? 'on' : 'off'}
+                  </span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  语义
+                  <span className={cn('ml-1 font-mono', diagnostics.fallback.semanticActive ? 'text-emerald-400' : 'text-[var(--text-muted)]')}>
+                    {diagnostics.fallback.semanticActive ? 'on' : 'off'}
+                  </span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  活跃 embedding：
+                  <span className="ml-1 font-mono text-[var(--text-secondary)]">
+                    {diagnostics.activeEmbedding.modelId || '(未设置)'}
+                  </span>
+                  {diagnostics.activeEmbedding.source === 'unset' && (
+                    <span className="ml-1 text-amber-400">· 需全量重建</span>
+                  )}
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  AI 客户端：
+                  <span className={cn('ml-1 font-mono', diagnostics.aiClient.configured ? 'text-emerald-400' : 'text-red-400')}>
+                    {diagnostics.aiClient.configured ? 'configured' : 'missing'}
+                  </span>
+                </span>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                {diagnostics.fallback.note}
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Cards grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

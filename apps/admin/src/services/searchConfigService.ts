@@ -26,6 +26,23 @@ export interface EmbeddingStatus {
   provider?: string;
 }
 
+export interface SearchDiagnostics {
+  config: SearchConfig;
+  activeEmbedding: {
+    modelId: string;
+    source: 'site_settings' | 'unset';
+  };
+  aiClient: {
+    configured: boolean;
+  };
+  fallback: {
+    effectiveMode: 'hybrid' | 'keyword' | 'semantic' | 'disabled';
+    keywordActive: boolean;
+    semanticActive: boolean;
+    note: string;
+  };
+}
+
 export interface EmbeddingPostItem {
   id: number;
   title: string;
@@ -71,6 +88,9 @@ export const searchConfigService = {
 
   getEmbeddingStatus: (): Promise<R<EmbeddingStatus>> =>
     api.get('/v1/admin/search/embedding-status'),
+
+  getDiagnostics: (): Promise<R<SearchDiagnostics>> =>
+    api.get('/v1/admin/search/diagnostics'),
 
   listPosts: (params: {
     embeddingStatus?: string;
