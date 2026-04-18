@@ -4,6 +4,8 @@ import logging
 import time
 from typing import Any
 
+from fastapi import HTTPException
+
 from app.core.config import get_settings
 from app.services.llm_router import LlmRouter
 
@@ -12,30 +14,22 @@ logger = logging.getLogger("ai-service")
 
 # ref: §2.4.2.5, §4.4 · Plan V3 (migration 000034)
 #
-# Storage model (versioned):
+# Storage model (versioned, blue-green switch):
 #   - post_embeddings 表按 (post_id, model_id) 唯一，多模型可共存
 #   - embedding 列不锁 dim，HNSW 通过 partial expression 索引按 dim 分桶
 #   - site_settings.search.active_embedding_model 指向当前活跃模型
-#   - 换模型 = 新行以 active 写入 + 旧 model_id 的 active 行降级为 deprecated
-#
-# 这里的 VectorStoreService 只和表交互，"当前活跃模型是什么"由 llm_router
-# 的 embedding 路由 + site_settings 共同决定。
+#   - 换模型 reindex = 先把新 embeddings 以 status='shadow' 写进新列，全部
+#     完成后用一条事务同时做三件事：shadow→active / 旧 active→deprecated /
+#     翻转 site_settings 指针。搜索流量在翻转前永远落在旧模型上，翻转后
+#     原子落到新模型上——任何时刻都有一组完整的 active 行可查。
 class VectorStoreService:
     def __init__(self, pool, llm: LlmRouter) -> None:
         self.pool = pool
         self.llm = llm
         self.settings = get_settings()
 
-    async def _get_active_embedding_model(self) -> str:
-        """读 site_settings.search.active_embedding_model；缺省回退到 llm 路由。
-
-        来源优先级：
-          1) site_settings 里 admin 明确写入的活跃模型
-          2) llm_router 解析的 embedding 路由（即 aembedding 实际会调用的模型）
-        这两者应该保持一致；不一致时 upsert 会以 (2) 为准写入 model_id，
-        但 semantic_search 过滤器以 (1) 为准——所以 admin 切换时
-        必须同步更新 site_settings 再触发 reindex。
-        """
+    async def _read_active_model_setting(self) -> str | None:
+        """从 site_settings 读活跃模型指针，未设置时返回 None。"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT setting_value FROM site_settings "
@@ -43,12 +37,53 @@ class VectorStoreService:
             )
         if row and row["setting_value"]:
             return row["setting_value"].strip()
+        return None
+
+    async def _get_active_embedding_model(self) -> str:
+        """读 site_settings.search.active_embedding_model；缺省回退到 llm 路由。
+
+        来源优先级：
+          1) site_settings 里 admin 明确写入的活跃模型（蓝绿切换的权威指针）
+          2) llm_router 解析的 embedding 路由（仅首次部署时 site_settings 未
+             写入的 bootstrap 场景使用）
+        """
+        value = await self._read_active_model_setting()
+        if value:
+            return value
         return await self.llm.resolve_embedding_model_id()
+
+    async def _upsert_active_model_setting(self, model: str) -> None:
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO site_settings
+                    (setting_key, setting_value, setting_type, group_name, description)
+                VALUES ('search.active_embedding_model', $1, 'STRING', 'search',
+                    '当前活跃的 embedding 模型 ID')
+                ON CONFLICT (setting_key) DO UPDATE
+                SET setting_value = EXCLUDED.setting_value,
+                    updated_at = NOW()
+                """,
+                model,
+            )
 
     async def semantic_search(self, query: str, limit: int) -> list[dict[str, Any]]:
         embedding = await self.llm.embed(query)
+        dim = len(embedding) if embedding else 0
+        # Defensive: `llm.embed()` 理论上不应返回空向量，但 provider 异常
+        # (上游 500/empty body 被 LiteLLM 吞掉) 或模型路由配错都会让我们
+        # 拿到 []。不拦住的话 f"::vector({dim})" 会拼出 ::vector(0)，
+        # pgvector 把它当语法错误抛 InvalidTextRepresentation，上层只看到
+        # 500 没有可执行错误信息。
+        if dim <= 0:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Embedding 生成失败（返回空向量），语义搜索不可用。"
+                    "请检查搜索配置里的活跃 embedding 模型与上游供应商连通性。"
+                ),
+            )
         active_model = await self._get_active_embedding_model()
-        dim = len(embedding)
         # 直接查 post_embeddings 替代旧的 search_similar_posts SQL 函数——
         # 函数签名和调用点已经漂移过一次，改表后一并清掉。
         # SECURITY (VULN-060): 仍然显式过滤 deleted/status/password/is_hidden，
@@ -217,112 +252,229 @@ class VectorStoreService:
         return {"status": "deleted"}
 
     async def reindex(self) -> dict[str, Any]:
-        """Full reindex against the currently active embedding model.
+        """Full reindex with true blue-green model switch.
 
-        Flow:
-          1) 以 llm_router 当前 embedding 路由作为权威来源，写入
-             site_settings.search.active_embedding_model（等于在这一刻
-             提交"换模型"决定，为原子切换留存指针）
-          2) 把非 active model 的 active 行全部降级为 deprecated，并把
-             所有已发布文章标 PENDING——旧向量保留 30 天作 rollback
-          3) 按 batch 重新 upsert 所有已发布文章到新 model_id
+        历史方案（被替换）：reindex 一开始就 UPSERT site_settings 指针到新模型，
+        导致 semantic_search 的过滤器立刻改看新 model_id——但此时新向量还没
+        写入，搜索返回空，整个 reindex 窗口（数分钟~数小时）期间语义搜索全挂。
+
+        蓝绿方案（当前）：
+          1) 读 site_settings 里"上一次活跃模型"作为 previous_active
+          2) 若 previous_active 与 router_model 相同 → 同模型 refresh，走旧
+             的 active 路径（仅重算 embedding，无切换窗口）
+          3) 若不同 → 真·蓝绿切换：
+             a. 把所有文章新 embedding 以 status='shadow' 写入 (post_id,
+                router_model) 新行。过程中搜索继续命中旧 model 的 active 行，
+                零空窗
+             b. 全部成功 → 一条事务内同时 (i) shadow→active (ii) 旧 active→
+                deprecated (iii) 翻转 site_settings 指针 (iv) 成功文章的
+                posts.embedding_status = INDEXED。搜索流量原子切换到新模型
+             c. 任一文章失败 → 不翻转。旧模型继续服务搜索，shadow 行保留，
+                admin 修完上游再触发 reindex 即可完成切换
         """
-        # 路由 = 下一步 embed() 真正会调用的模型，是"将来"；
-        # site_settings = 当前 semantic_search 过滤器认定的模型，是"现在"。
-        # reindex 的语义就是把"将来"提交为"现在"。
         router_model = await self.llm.resolve_embedding_model_id()
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO site_settings
-                    (setting_key, setting_value, setting_type, group_name, description)
-                VALUES ('search.active_embedding_model', $1, 'STRING', 'search',
-                    '当前活跃的 embedding 模型 ID')
-                ON CONFLICT (setting_key) DO UPDATE
-                SET setting_value = EXCLUDED.setting_value,
-                    updated_at = NOW()
-                """,
-                router_model,
-            )
-        active_model = router_model
+        previous_active = await self._read_active_model_setting()
 
         async with self.pool.acquire() as conn:
-            stale = await conn.fetchval(
-                """
-                SELECT count(*) FROM post_embeddings
-                WHERE model_id IS DISTINCT FROM $1 AND status = 'active'
-                """,
-                active_model,
+            rows = await conn.fetch(
+                "SELECT id, title, slug, content_markdown "
+                "FROM posts "
+                "WHERE deleted = FALSE AND status = 'PUBLISHED' "
+                "ORDER BY id ASC"
             )
-            if stale:
-                logger.info(
-                    "reindex.model_changed",
-                    extra={"data": {
-                        "active_model": active_model,
-                        "stale_active_rows": stale,
-                    }},
-                )
-                await conn.execute(
-                    """
-                    UPDATE post_embeddings
-                    SET status = 'deprecated'
-                    WHERE model_id IS DISTINCT FROM $1 AND status = 'active'
-                    """,
-                    active_model,
-                )
-                await conn.execute(
-                    """
-                    UPDATE posts SET embedding_status = 'PENDING'
-                    WHERE deleted = FALSE AND status = 'PUBLISHED'
-                    """,
-                )
 
-        batch_size = self.settings.reindex_batch_size
+        # Bootstrap / 同模型路径：不需要蓝绿切换，直接走 active upsert。
+        # previous_active is None: 从未配置过指针（首次部署 / 数据迁移后），
+        # 写入指针并用标准 upsert 走一遍即可。
+        is_model_switch = (
+            previous_active is not None and previous_active != router_model
+        )
+        if not is_model_switch:
+            if previous_active is None:
+                await self._upsert_active_model_setting(router_model)
+            return await self._reindex_in_place(rows, router_model)
+
+        # 真·蓝绿切换
+        return await self._reindex_blue_green(rows, router_model, previous_active)
+
+    async def _reindex_in_place(
+        self,
+        rows: list[Any],
+        active_model: str,
+    ) -> dict[str, Any]:
+        """同模型 reindex——直接走 upsert_post_embedding，无切换窗口。"""
         total = 0
         failed = 0
-        offset = 0
-        while True:
-            async with self.pool.acquire() as conn:
-                rows = await conn.fetch(
-                    "SELECT id, title, slug, content_markdown "
-                    "FROM posts "
-                    "WHERE deleted = FALSE AND status = 'PUBLISHED' "
-                    "ORDER BY id ASC "
-                    "LIMIT $1 OFFSET $2",
-                    batch_size,
-                    offset,
+        for row in rows:
+            try:
+                await self.upsert_post_embedding(
+                    post_id=row["id"],
+                    title=row["title"],
+                    slug=row["slug"],
+                    content=row["content_markdown"] or "",
+                    metadata={"status": "PUBLISHED"},
                 )
-            if not rows:
-                break
-            for row in rows:
-                try:
-                    await self.upsert_post_embedding(
-                        post_id=row["id"],
-                        title=row["title"],
-                        slug=row["slug"],
-                        content=row["content_markdown"] or "",
-                        metadata={"status": "PUBLISHED"},
-                    )
-                    total += 1
-                except Exception as exc:
-                    failed += 1
-                    logger.warning(
-                        "reindex.post_failed",
-                        extra={"data": {
-                            "post_id": row["id"],
-                            "error": str(exc),
-                        }},
-                    )
-                    # upsert_post_embedding 内部已经标 FAILED 了，这里不再重复
-            offset += batch_size
-
-        # GC：deprecated 行可选清理（保留 30 天可回滚窗口由外部 cron 处理，
-        # 这里不主动 DELETE）
+                total += 1
+            except Exception as exc:
+                failed += 1
+                logger.warning(
+                    "reindex.in_place.post_failed",
+                    extra={"data": {"post_id": row["id"], "error": str(exc)[:200]}},
+                )
         return {
             "status": "completed",
             "indexed": total,
             "failed": failed,
             "active_model": active_model,
+        }
+
+    async def _reindex_blue_green(
+        self,
+        rows: list[Any],
+        router_model: str,
+        previous_active: str,
+    ) -> dict[str, Any]:
+        """蓝绿切换：shadow 写入全部成功后一次事务翻转指针。"""
+        logger.info(
+            "reindex.blue_green.start",
+            extra={"data": {
+                "previous_active": previous_active,
+                "router_model": router_model,
+                "total_posts": len(rows),
+            }},
+        )
+
+        succeeded_ids: list[int] = []
+        failed_ids: list[int] = []
+
+        for row in rows:
+            post_id = row["id"]
+            content = row["content_markdown"] or ""
+            embed_start = time.perf_counter()
+            try:
+                embedding = await self.llm.embed(content)
+                dim = len(embedding) if embedding else 0
+                if dim <= 0:
+                    raise ValueError(
+                        f"embedding returned empty vector for post {post_id}"
+                    )
+                async with self.pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        INSERT INTO post_embeddings
+                            (post_id, model_id, dim, embedding, status, indexed_at)
+                        VALUES ($1, $2, $3, $4, 'shadow', NOW())
+                        ON CONFLICT (post_id, model_id) DO UPDATE
+                        SET embedding = EXCLUDED.embedding,
+                            dim = EXCLUDED.dim,
+                            status = 'shadow',
+                            indexed_at = NOW()
+                        """,
+                        post_id,
+                        router_model,
+                        dim,
+                        embedding,
+                    )
+                succeeded_ids.append(post_id)
+                logger.debug(
+                    "reindex.blue_green.post_shadow_ok",
+                    extra={"data": {
+                        "post_id": post_id,
+                        "dim": dim,
+                        "embed_ms": round((time.perf_counter() - embed_start) * 1000, 2),
+                    }},
+                )
+            except Exception as exc:
+                failed_ids.append(post_id)
+                logger.warning(
+                    "reindex.blue_green.post_failed",
+                    extra={"data": {
+                        "post_id": post_id,
+                        "error": str(exc)[:200],
+                        "embed_ms": round((time.perf_counter() - embed_start) * 1000, 2),
+                    }},
+                )
+
+        # 任一失败：保留 shadow 行，不翻转指针。旧模型继续服务搜索。
+        if failed_ids:
+            logger.warning(
+                "reindex.blue_green.flip_aborted",
+                extra={"data": {
+                    "succeeded": len(succeeded_ids),
+                    "failed": len(failed_ids),
+                    "first_failed_ids": failed_ids[:10],
+                }},
+            )
+            return {
+                "status": "partial",
+                "indexed": len(succeeded_ids),
+                "failed": len(failed_ids),
+                "active_model": previous_active,
+                "pending_model": router_model,
+                "pending_flip": True,
+                "message": (
+                    f"{len(failed_ids)} 篇文章在新模型 {router_model} 下 embedding 失败。"
+                    f"搜索仍由旧模型 {previous_active} 提供服务，修复上游后再次触发"
+                    "'全量重建索引'即可完成切换。"
+                ),
+            }
+
+        # 全部成功 → 原子翻转
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    UPDATE post_embeddings
+                    SET status = 'active'
+                    WHERE model_id = $1 AND status = 'shadow'
+                    """,
+                    router_model,
+                )
+                await conn.execute(
+                    """
+                    UPDATE post_embeddings
+                    SET status = 'deprecated'
+                    WHERE model_id <> $1 AND status = 'active'
+                    """,
+                    router_model,
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO site_settings
+                        (setting_key, setting_value, setting_type, group_name, description)
+                    VALUES ('search.active_embedding_model', $1, 'STRING', 'search',
+                        '当前活跃的 embedding 模型 ID')
+                    ON CONFLICT (setting_key) DO UPDATE
+                    SET setting_value = EXCLUDED.setting_value,
+                        updated_at = NOW()
+                    """,
+                    router_model,
+                )
+                await conn.execute(
+                    """
+                    UPDATE posts
+                    SET embedding_status = 'INDEXED'
+                    WHERE deleted = FALSE
+                      AND status = 'PUBLISHED'
+                      AND embedding_status <> 'INDEXED'
+                    """,
+                )
+
+        logger.info(
+            "reindex.blue_green.flipped",
+            extra={"data": {
+                "previous_active": previous_active,
+                "router_model": router_model,
+                "indexed": len(succeeded_ids),
+            }},
+        )
+        # GC：deprecated 行由外部 cron 在 30 天回滚窗口后清理
+        return {
+            "status": "completed",
+            "indexed": len(succeeded_ids),
+            "failed": 0,
+            "active_model": router_model,
+            "previous_model": previous_active,
         }
 
     def _row_to_result(self, row: Any, query: str) -> dict[str, Any]:
