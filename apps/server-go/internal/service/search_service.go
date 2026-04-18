@@ -107,6 +107,90 @@ func (s *SearchService) UpdateSearchConfig(ctx context.Context, kv map[string]st
 	return s.settingSvc.SetBatch(ctx, kv)
 }
 
+// DiagnosticsResponse 汇总搜索功能的诊断信息，便于 admin 在搜索失效时
+// 一屏定位问题（哪个开关关着、活跃 embedding 模型是哪个、AI 服务有没有配）。
+type DiagnosticsResponse struct {
+	Config          dto.SearchConfig          `json:"config"`
+	ActiveEmbedding ActiveEmbeddingInfo       `json:"activeEmbedding"`
+	AIClient        AIClientStatus            `json:"aiClient"`
+	Fallback        SearchFallbackDescription `json:"fallback"`
+}
+
+// ActiveEmbeddingInfo 反映 site_settings.search.active_embedding_model 当前值。
+// source="site_settings" 表示已显式写入；source="unset" 表示没配过，
+// 此时 ai-service 会 fallback 到 llm_router 解析出的模型。
+type ActiveEmbeddingInfo struct {
+	ModelID string `json:"modelId"`
+	Source  string `json:"source"`
+}
+
+// AIClientStatus 反映 Go backend 侧是否持有 AI 服务客户端。
+// configured=false 等价于 "aiClient is nil" —— 语义搜索和 QA 都会被跳过，
+// SearchService.Search 只会走关键词兜底。
+type AIClientStatus struct {
+	Configured bool `json:"configured"`
+}
+
+// SearchFallbackDescription 用人话解释当前配置下搜索请求的实际走向。
+type SearchFallbackDescription struct {
+	EffectiveMode  string `json:"effectiveMode"`
+	KeywordActive  bool   `json:"keywordActive"`
+	SemanticActive bool   `json:"semanticActive"`
+	Note           string `json:"note"`
+}
+
+// GetDiagnostics 汇总当前搜索链路的全部可视状态，供 admin UI 展示。
+// 读操作：全部本地 DB/内存，无上游调用 —— 可以随时刷新不怕打爆 AI 服务。
+func (s *SearchService) GetDiagnostics(ctx context.Context) DiagnosticsResponse {
+	cfg := s.GetSearchConfig(ctx)
+
+	activeModel, _ := s.settingSvc.GetValue(ctx, "search.active_embedding_model")
+	active := ActiveEmbeddingInfo{
+		ModelID: strings.TrimSpace(activeModel),
+		Source:  "site_settings",
+	}
+	if active.ModelID == "" {
+		active.Source = "unset"
+	}
+
+	ai := AIClientStatus{Configured: s.aiClient != nil}
+
+	// 解释语义：实际会跑哪条路径？
+	kwActive := cfg.KeywordEnabled
+	semActive := cfg.SemanticEnabled && ai.Configured && active.ModelID != ""
+	fb := SearchFallbackDescription{
+		KeywordActive:  kwActive,
+		SemanticActive: semActive,
+	}
+	switch {
+	case kwActive && semActive:
+		fb.EffectiveMode = "hybrid"
+		fb.Note = "关键词 + 语义并行，RRF 融合；语义出错静默降级为关键词"
+	case kwActive && !semActive:
+		fb.EffectiveMode = "keyword"
+		if !cfg.SemanticEnabled {
+			fb.Note = "语义搜索已在管理后台关闭，当前仅使用关键词"
+		} else if !ai.Configured {
+			fb.Note = "AI 服务未配置 (aiClient=nil)，语义搜索跳过，当前仅使用关键词"
+		} else {
+			fb.Note = "site_settings.search.active_embedding_model 未设置，语义搜索跳过，请运行全量重建索引"
+		}
+	case !kwActive && semActive:
+		fb.EffectiveMode = "semantic"
+		fb.Note = "关键词搜索已关闭，仅使用语义；若 embedding 不可用搜索将返回空"
+	default:
+		fb.EffectiveMode = "disabled"
+		fb.Note = "关键词与语义搜索均已关闭 / 不可用，搜索会返回空结果"
+	}
+
+	return DiagnosticsResponse{
+		Config:          cfg,
+		ActiveEmbedding: active,
+		AIClient:        ai,
+		Fallback:        fb,
+	}
+}
+
 // ListPostsEmbedding 返回已发布文章的向量索引状态列表。
 func (s *SearchService) ListPostsEmbedding(ctx context.Context, statusFilter string, limit, offset int) (*dto.EmbeddingPostListResponse, error) {
 	if limit <= 0 || limit > 100 {

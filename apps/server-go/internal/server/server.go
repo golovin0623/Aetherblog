@@ -303,6 +303,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	searchAdmin := admin.Group("/search")
 	searchAdmin.GET("/config", searchHandler.GetConfig)
 	searchAdmin.PATCH("/config", searchHandler.UpdateConfig)
+	searchAdmin.GET("/diagnostics", searchHandler.Diagnostics)
 	searchAdmin.GET("/stats", searchHandler.GetStats)
 	searchAdmin.POST("/reindex", searchHandler.Reindex)
 	searchAdmin.POST("/retry-failed", searchHandler.RetryFailed)

@@ -23,7 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Toggle } from '@aetherblog/ui';
+import { Toggle, ConfirmModal } from '@aetherblog/ui';
 import {
   searchConfigService,
   type SearchConfig,
@@ -100,35 +100,85 @@ const filterTabs = [
   { key: 'FAILED', label: '失败' },
 ];
 
+// --- Indexing job model ---
+// 进度面板必须按"本次触发的任务"精确范围展示，否则会出现"单篇重建却显示
+// 0/90 全量进度条"这种误导（管理员以为卡住了）。同时要能跨页面导航持久化，
+// 刷新/切换路由回来后台任务仍在跑，进度面板必须还能看到。
+type IndexingJobKind = 'full' | 'retry' | 'batch' | 'single';
+interface IndexingJob {
+  kind: IndexingJobKind;
+  startTime: number;
+  /** 本任务覆盖的条目数：full=total_posts, retry=failed_posts, batch=accepted, single=1 */
+  jobTotal: number;
+  /** 任务启动时的已索引基线，用于计算"本次已处理" */
+  baselineIndexed: number;
+  /** 任务启动时的失败基线（仅 batch/single 用，统计本次失败数） */
+  baselineFailed: number;
+  /** 任务标题，用于面板展示 */
+  label: string;
+}
+
+const INDEXING_JOB_STORAGE_KEY = 'aetherblog:search:indexing_job';
+
+function readPersistedJob(): IndexingJob | null {
+  try {
+    const raw = localStorage.getItem(INDEXING_JOB_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as IndexingJob;
+    // 超过 2 小时的任务视为过期兜底（真正的全量索引也不应超过这么久）
+    if (Date.now() - parsed.startTime > 2 * 60 * 60 * 1000) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function computeJobProgress(job: IndexingJob, stats: IndexStats) {
+  // full / retry: 以"已索引增量"驱动（失败次数不计入完成度，但单独展示）
+  // batch / single: 以"已索引 + 失败 增量"驱动（单篇任务里失败也是"完成"）
+  const indexedDelta = Math.max(0, stats.indexed_posts - job.baselineIndexed);
+  const failedDelta = Math.max(0, stats.failed_posts - job.baselineFailed);
+  let done: number;
+  if (job.kind === 'full' || job.kind === 'retry') {
+    done = indexedDelta;
+  } else {
+    done = indexedDelta + failedDelta;
+  }
+  done = Math.min(done, job.jobTotal);
+  const percent = job.jobTotal > 0 ? Math.min(100, Math.round((done / job.jobTotal) * 100)) : 0;
+  return { done, failedDelta, percent };
+}
+
 // --- Indexing progress panel ---
 function IndexingProgressPanel({
+  job,
   stats,
-  startTime,
   onDone,
 }: {
+  job: IndexingJob;
   stats: IndexStats;
-  startTime: number;
   onDone: () => void;
 }) {
-  const total = stats.total_posts;
-  const done = stats.indexed_posts + stats.failed_posts;
-  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const { done, failedDelta, percent } = computeJobProgress(job, stats);
+  const elapsed = Math.floor((Date.now() - job.startTime) / 1000);
   const minutes = Math.floor(elapsed / 60);
   const seconds = elapsed % 60;
 
-  // Auto-dismiss when complete (pending_posts === 0)
-  const prevPending = useRef(stats.pending_posts);
+  // 任务完成判断：done >= jobTotal（基于本次 delta，不再依赖全站 pending_posts）
+  const prevDone = useRef(done);
   useEffect(() => {
-    if (prevPending.current > 0 && stats.pending_posts === 0) {
+    if (prevDone.current < job.jobTotal && done >= job.jobTotal) {
       const timer = setTimeout(() => {
-        toast.success(`索引完成: 成功 ${stats.indexed_posts} 篇, 失败 ${stats.failed_posts} 篇`);
+        const successDelta = Math.max(0, stats.indexed_posts - job.baselineIndexed);
+        toast.success(
+          `${job.label} 完成: 成功 ${successDelta} 篇${failedDelta > 0 ? `, 失败 ${failedDelta} 篇` : ''}`
+        );
         onDone();
       }, 1500);
       return () => clearTimeout(timer);
     }
-    prevPending.current = stats.pending_posts;
-  }, [stats.pending_posts, stats.indexed_posts, stats.failed_posts, onDone]);
+    prevDone.current = done;
+  }, [done, failedDelta, job, stats.indexed_posts, onDone]);
 
   return (
     <motion.div
@@ -143,7 +193,7 @@ function IndexingProgressPanel({
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
             <span className="text-sm font-medium text-[var(--text-primary)]">
-              索引进行中
+              {job.label}
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
@@ -164,9 +214,9 @@ function IndexingProgressPanel({
           </div>
           <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
             <span>
-              已处理 {done} / {total} 篇
-              {stats.failed_posts > 0 && (
-                <span className="text-red-400 ml-1.5">({stats.failed_posts} 失败)</span>
+              已处理 {done} / {job.jobTotal} 篇
+              {failedDelta > 0 && (
+                <span className="text-red-400 ml-1.5">({failedDelta} 失败)</span>
               )}
             </span>
             <span className="font-medium text-[var(--text-secondary)] tabular-nums">{percent}%</span>
@@ -183,8 +233,22 @@ export default function SearchConfigPage() {
   const queryClient = useQueryClient();
 
   // --- Indexing progress state ---
-  const [indexingActive, setIndexingActive] = useState(false);
-  const [indexingStartTime, setIndexingStartTime] = useState(0);
+  // 以 IndexingJob 替代布尔 indexingActive：存本次任务的 kind/jobTotal/baseline，
+  // 面板才能按"本次触发范围"展示进度；并写入 localStorage 以便跨导航持久化。
+  const [indexingJob, setIndexingJob] = useState<IndexingJob | null>(() => readPersistedJob());
+  const indexingActive = indexingJob !== null;
+
+  useEffect(() => {
+    try {
+      if (indexingJob) {
+        localStorage.setItem(INDEXING_JOB_STORAGE_KEY, JSON.stringify(indexingJob));
+      } else {
+        localStorage.removeItem(INDEXING_JOB_STORAGE_KEY);
+      }
+    } catch {
+      // localStorage 不可用（隐私模式等）时静默降级：任务状态仅保持在内存中
+    }
+  }, [indexingJob]);
 
   // Force re-render every second while indexing is active (for elapsed time)
   const [, setTick] = useState(0);
@@ -195,7 +259,7 @@ export default function SearchConfigPage() {
   }, [indexingActive]);
 
   const stopIndexing = useCallback(() => {
-    setIndexingActive(false);
+    setIndexingJob(null);
     queryClient.invalidateQueries({ queryKey: ['search-stats'] });
     queryClient.invalidateQueries({ queryKey: ['search-posts'] });
   }, [queryClient]);
@@ -217,6 +281,15 @@ export default function SearchConfigPage() {
     queryFn: () => searchConfigService.getStats(),
     refetchInterval: indexingActive ? 2000 : false,
   });
+
+  const { data: diagnosticsRes } = useQuery({
+    queryKey: ['search-diagnostics'],
+    queryFn: () => searchConfigService.getDiagnostics(),
+    // 诊断信息是本地读，刷一次就够；但 indexing 时每 10s 复查一次好让
+    // admin 看到 active_embedding_model 在翻转前后的变化
+    refetchInterval: indexingActive ? 10000 : false,
+  });
+  const diagnostics = diagnosticsRes?.data;
 
   // Fetch enabled providers
   const providersQuery = useQuery({
@@ -254,6 +327,12 @@ export default function SearchConfigPage() {
     queryFn: () => aiProviderService.listCredentials(),
     select: (res) => (res.data || []).filter((c) => c.is_enabled),
   });
+
+  // 模型切换二次确认：V3 版本化存储下切换模型会把旧 embedding 行标记为 deprecated
+  // 并全量重建，这是一次不可忽视的操作（成本 × 时间），必须让管理员显式确认。
+  // pending 为 null 代表没有在切换；为 number 或 ''（清空选择）代表待确认值。
+  const [pendingEmbeddingModelId, setPendingEmbeddingModelId] =
+    useState<number | null | undefined>(undefined);
 
   // Mutation to update embedding routing
   const updateRoutingMutation = useMutation({
@@ -337,15 +416,22 @@ export default function SearchConfigPage() {
     },
   });
 
-  const startProgress = useCallback(() => {
-    setIndexingActive(true);
-    setIndexingStartTime(Date.now());
-  }, []);
+  // 任务启动：记录 baseline，供 computeJobProgress 计算本次 delta
+  const startJob = useCallback((kind: IndexingJobKind, jobTotal: number, label: string) => {
+    setIndexingJob({
+      kind,
+      startTime: Date.now(),
+      jobTotal: Math.max(1, jobTotal),
+      baselineIndexed: stats?.indexed_posts ?? 0,
+      baselineFailed: stats?.failed_posts ?? 0,
+      label,
+    });
+  }, [stats?.indexed_posts, stats?.failed_posts]);
 
   const reindexMutation = useMutation({
     mutationFn: () => searchConfigService.reindex(),
     onSuccess: () => {
-      startProgress();
+      startJob('full', stats?.total_posts ?? 0, '全量重建索引');
       toast.success('全量重建索引已在后台启动');
     },
     onError: (err: unknown) => {
@@ -361,7 +447,7 @@ export default function SearchConfigPage() {
   const retryMutation = useMutation({
     mutationFn: () => searchConfigService.retryFailed(),
     onSuccess: () => {
-      startProgress();
+      startJob('retry', stats?.failed_posts ?? 0, '重试失败任务');
       toast.success('重试失败任务已在后台启动');
     },
     onError: (err: unknown) => {
@@ -375,7 +461,8 @@ export default function SearchConfigPage() {
   });
 
   // --- Post list state ---
-  const [statusFilter, setStatusFilter] = useState('');
+  // 默认展示 PENDING（未索引），管理员进入页面最关心的就是"还有哪些没索引"
+  const [statusFilter, setStatusFilter] = useState('PENDING');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [rebuildingPostId, setRebuildingPostId] = useState<number | null>(null);
@@ -397,11 +484,16 @@ export default function SearchConfigPage() {
 
   const indexBatchMutation = useMutation({
     mutationFn: (postIds: number[]) => searchConfigService.indexBatch(postIds),
-    onSuccess: (res) => {
+    onSuccess: (res, postIds) => {
       const d = res?.data;
       // 新的异步响应：后端立即返回 {status:"started", accepted:N}，实际索引在后台进行
       if (d?.status === 'started') {
-        startProgress();
+        const accepted = d.accepted ?? postIds.length;
+        const isSingle = postIds.length === 1;
+        const label = isSingle
+          ? `索引文章 #${postIds[0]}`
+          : `批量索引 ${accepted} 篇`;
+        startJob(isSingle ? 'single' : 'batch', accepted, label);
         toast.success(
           d.accepted ? `已启动后台索引 ${d.accepted} 篇，进度请看上方面板` : '索引任务已在后台启动'
         );
@@ -578,6 +670,76 @@ export default function SearchConfigPage() {
         </div>
       </div>
 
+      {/* Diagnostics strip — 一屏诊断搜索链路状态 */}
+      {diagnostics && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className={cn(
+            'mb-6 rounded-xl border p-4',
+            diagnostics.fallback.effectiveMode === 'disabled'
+              ? 'bg-red-500/5 border-red-500/30'
+              : diagnostics.fallback.effectiveMode === 'keyword' && diagnostics.config.semanticEnabled
+              ? 'bg-amber-500/5 border-amber-500/30'
+              : 'bg-[var(--bg-card)] border-[var(--border-subtle)]'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <Activity
+              className={cn(
+                'w-4 h-4 mt-0.5 shrink-0',
+                diagnostics.fallback.effectiveMode === 'disabled'
+                  ? 'text-red-400'
+                  : diagnostics.fallback.effectiveMode === 'keyword' && diagnostics.config.semanticEnabled
+                  ? 'text-amber-400'
+                  : 'text-[var(--text-muted)]'
+              )}
+            />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <span className="font-medium text-[var(--text-primary)]">
+                  当前生效：
+                  <span className="ml-1 font-mono uppercase tracking-wide">
+                    {diagnostics.fallback.effectiveMode}
+                  </span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  关键词
+                  <span className={cn('ml-1 font-mono', diagnostics.fallback.keywordActive ? 'text-emerald-400' : 'text-[var(--text-muted)]')}>
+                    {diagnostics.fallback.keywordActive ? 'on' : 'off'}
+                  </span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  语义
+                  <span className={cn('ml-1 font-mono', diagnostics.fallback.semanticActive ? 'text-emerald-400' : 'text-[var(--text-muted)]')}>
+                    {diagnostics.fallback.semanticActive ? 'on' : 'off'}
+                  </span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  活跃 embedding：
+                  <span className="ml-1 font-mono text-[var(--text-secondary)]">
+                    {diagnostics.activeEmbedding.modelId || '(未设置)'}
+                  </span>
+                  {diagnostics.activeEmbedding.source === 'unset' && (
+                    <span className="ml-1 text-amber-400">· 需全量重建</span>
+                  )}
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  AI 客户端：
+                  <span className={cn('ml-1 font-mono', diagnostics.aiClient.configured ? 'text-emerald-400' : 'text-red-400')}>
+                    {diagnostics.aiClient.configured ? 'configured' : 'missing'}
+                  </span>
+                </span>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                {diagnostics.fallback.note}
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Cards grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1: 向量化状态 */}
@@ -608,9 +770,12 @@ export default function SearchConfigPage() {
                     value={currentEmbeddingModelId ?? ''}
                     onChange={(e) => {
                       const val = e.target.value;
-                      updateRoutingMutation.mutate(val ? Number(val) : null);
+                      const nextId = val ? Number(val) : null;
+                      if (nextId === currentEmbeddingModelId) return;
+                      // 不直接 mutate —— 弹 ConfirmModal，在用户明示确认后再写路由并触发 reindex
+                      setPendingEmbeddingModelId(nextId);
                     }}
-                    disabled={updateRoutingMutation.isPending}
+                    disabled={updateRoutingMutation.isPending || reindexMutation.isPending}
                     className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all disabled:opacity-50"
                   >
                     <option value="">未选择</option>
@@ -769,10 +934,10 @@ export default function SearchConfigPage() {
 
           {/* Indexing progress panel */}
           <AnimatePresence>
-            {indexingActive && stats && (
+            {indexingJob && stats && (
               <IndexingProgressPanel
+                job={indexingJob}
                 stats={stats}
-                startTime={indexingStartTime}
                 onDone={stopIndexing}
               />
             )}
@@ -1128,6 +1293,44 @@ export default function SearchConfigPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* 切换向量化模型的二次确认 —— V3 版本化存储下换模型 = 废弃旧 embedding 并
+          全量重建新 embedding, 这是 O(文章数 × 每篇 embed 耗时) 的开销, 必须让
+          管理员显式同意。旧行不会被立即删除, 保留作为回滚依据. */}
+      <ConfirmModal
+        isOpen={pendingEmbeddingModelId !== undefined}
+        title="切换向量化模型"
+        variant="warning"
+        confirmText="切换并重建索引"
+        cancelText="取消"
+        message={(() => {
+          const nextModel =
+            pendingEmbeddingModelId != null
+              ? embeddingModels.find((m) => m.id === pendingEmbeddingModelId)
+              : null;
+          const nextLabel = nextModel
+            ? `${nextModel.display_name || nextModel.model_id} (${nextModel.provider_code})`
+            : '未选择';
+          const totalPosts = stats?.total_posts ?? 0;
+          const approxSec = Math.max(1, Math.round(totalPosts * 1.2));
+          return [
+            `目标模型：${nextLabel}`,
+            `影响范围：${totalPosts} 篇文章将重新生成向量（预计耗时约 ${approxSec}s）`,
+            '旧模型的向量会被标记为 deprecated（而非立即删除），保留以便回滚。',
+            '确认后将自动启动全量重建任务。',
+          ].join('\n');
+        })()}
+        onConfirm={async () => {
+          const target = pendingEmbeddingModelId ?? null;
+          try {
+            await updateRoutingMutation.mutateAsync(target);
+            reindexMutation.mutate();
+          } finally {
+            setPendingEmbeddingModelId(undefined);
+          }
+        }}
+        onCancel={() => setPendingEmbeddingModelId(undefined)}
+      />
     </div>
   );
 }
