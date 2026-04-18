@@ -127,6 +127,13 @@ func (h *SearchHandler) GetConfig(c echo.Context) error {
 	return response.OK(c, cfg)
 }
 
+// Diagnostics 处理 GET /v1/admin/search/diagnostics 请求，返回搜索链路状态。
+// 聚合 search config、active embedding 指针、AI client 可用性、实际 effective mode。
+// 定位"搜索没结果"时不用再翻三处配置，直接看这一个响应。
+func (h *SearchHandler) Diagnostics(c echo.Context) error {
+	return response.OK(c, h.svc.GetDiagnostics(c.Request().Context()))
+}
+
 // UpdateConfig 处理 PATCH /v1/admin/search/config 请求，更新搜索配置。
 func (h *SearchHandler) UpdateConfig(c echo.Context) error {
 	// 直接使用 json.Decoder 解析，避免 Echo Bind 对 map 类型的兼容性问题
