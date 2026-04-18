@@ -941,11 +941,37 @@ function createComponents(
 }
 
 const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps) => {
-  const [highlighter, setHighlighter] = useState<HighlighterCore | null>(null);
+  // Seed from the module-level singleton so SPA navigation to a second article
+  // after Shiki has already resolved doesn't flash a 1-frame visibility:hidden
+  // before the ready effect runs.
+  const [highlighter, setHighlighter] = useState<HighlighterCore | null>(highlighterInstance);
+  // Shiki 加载结果：pending → 初始态；ready → 高亮器可用；failed → 降级为纯文本
+  // 代码块。任何失败（如 CSP 拦截 WASM）都必须走 failed 分支解除 visibility:hidden，
+  // 否则整篇正文永远保持不可见，用户看到空白页。
+  const [shikiStatus, setShikiStatus] = useState<'pending' | 'ready' | 'failed'>(
+    highlighterInstance ? 'ready' : 'pending',
+  );
 
   // 加载 Shiki highlighter
   useEffect(() => {
-    getHighlighter().then(setHighlighter).catch(logger.error);
+    // Singleton already resolved — skip re-subscribing; initial state is correct.
+    if (highlighterInstance) return;
+
+    let cancelled = false;
+    getHighlighter()
+      .then((h) => {
+        if (cancelled) return;
+        setHighlighter(h);
+        setShikiStatus('ready');
+      })
+      .catch((err) => {
+        logger.error('[Shiki] highlighter init failed, falling back to plain code blocks:', err);
+        if (cancelled) return;
+        setShikiStatus('failed');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 检测数学公式，按需加载 KaTeX CSS
@@ -974,7 +1000,9 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
 
   // Markdown FOUC 防护: Shiki 就绪前用 visibility 隐藏内容
   // 不使用 opacity 过渡 → 避免与外层 FadeIn 的 fadeInUp 动画产生双重淡入冲突
-  const isReady = highlighter !== null;
+  // 注意：pending 才隐藏；ready 和 failed 都立刻显示——失败时代码块降级为
+  // 无高亮的 <pre>，但正文必须对用户可见。
+  const isReady = shikiStatus !== 'pending';
 
   return (
     <div
