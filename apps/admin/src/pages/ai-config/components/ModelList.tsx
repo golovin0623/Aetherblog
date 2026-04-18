@@ -1,7 +1,7 @@
 // 模型列表组件
 // ref: §5.1 - AI Service 架构
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -51,7 +51,12 @@ export default function ModelList({
   variant: _variant = 'default',
 }: ModelListProps) {
   const [activeTab, setActiveTab] = useState<ModelType | 'all'>('all');
-  const [search, setSearch] = useState('');
+  // Seed the search input from the deep-link `initialSearch` only on first
+  // mount. Subsequent remounts (e.g. mobile tab switcher unmounting this
+  // component) must start clean — otherwise a stale filter re-applies and
+  // the list looks empty.
+  const [search, setSearch] = useState(initialSearch ?? '');
+  const seededRef = useRef(!!initialSearch);
   const [editingModel, setEditingModel] = useState<AiModel | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showSortDialog, setShowSortDialog] = useState(false);
@@ -62,8 +67,9 @@ export default function ModelList({
   const batchToggleModels = useBatchToggleModels();
 
   useEffect(() => {
-    if (initialSearch) {
+    if (initialSearch && !seededRef.current) {
       setSearch(initialSearch);
+      seededRef.current = true;
     }
   }, [initialSearch]);
 

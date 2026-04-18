@@ -156,13 +156,13 @@ export default function ConnectionTest({
         )}
 
         {/* 自定义模型选择下拉框 */}
-        <div className="relative flex-1" ref={dropdownRef}>
+        <div className="relative flex-1 min-w-0" ref={dropdownRef}>
            <button
              onClick={() => setIsOpen(!isOpen)}
-             className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] hover:border-primary/40 transition-colors"
+             className="w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-sm text-[var(--text-primary)] hover:border-primary/40 transition-colors"
            >
-             <span className="truncate max-w-[180px]">{displayModelName}</span>
-             <ChevronDown className={`w-4 h-4 text-[var(--text-muted)] opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+             <span className="truncate min-w-0 flex-1 text-left">{displayModelName}</span>
+             <ChevronDown className={`w-4 h-4 shrink-0 text-[var(--text-muted)] opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
            </button>
 
            <AnimatePresence>
@@ -215,7 +215,7 @@ export default function ConnectionTest({
           ) : (
             <Zap className="w-4 h-4" />
           )}
-          {testMode === 'chat' ? '检查' : '检查向量化'}
+          检查
         </button>
       </div>
 
