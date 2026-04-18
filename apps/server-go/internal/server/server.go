@@ -307,6 +307,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	searchAdmin.GET("/stats", searchHandler.GetStats)
 	searchAdmin.POST("/reindex", searchHandler.Reindex)
 	searchAdmin.POST("/retry-failed", searchHandler.RetryFailed)
+	searchAdmin.POST("/cancel", searchHandler.Cancel)
 	searchAdmin.GET("/embedding-status", searchHandler.EmbeddingStatus)
 	searchAdmin.GET("/posts", searchHandler.ListPostsEmbedding)
 	searchAdmin.POST("/index-batch", searchHandler.IndexBatch)
