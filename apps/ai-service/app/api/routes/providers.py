@@ -808,11 +808,34 @@ async def list_task_types(
     )
 
 
+def _model_info_to_response(info: Any | None) -> ModelResponse | None:
+    if info is None:
+        return None
+    return ModelResponse(
+        id=info.id,
+        provider_id=info.provider_id,
+        provider_code=info.provider_code,
+        model_id=info.model_id,
+        display_name=info.display_name,
+        model_type=info.model_type,
+        context_window=info.context_window,
+        max_output_tokens=info.max_output_tokens,
+        input_cost_per_1k=info.input_cost_per_1k,
+        output_cost_per_1k=info.output_cost_per_1k,
+        input_cost_per_1m=info.input_cost_per_1m,
+        output_cost_per_1m=info.output_cost_per_1m,
+        cached_input_cost_per_1m=info.cached_input_cost_per_1m,
+        capabilities=info.capabilities,
+        is_enabled=info.is_enabled,
+    )
+
+
 @router.get("/routing/{task_type}", response_model=ApiResponse[Optional[RoutingResponse]])
 async def get_routing(
     task_type: str,
     user: UserClaims = Depends(require_admin),
     model_router: ModelRouter = Depends(get_model_router),
+    provider_registry: ProviderRegistry = Depends(get_provider_registry),
     credential_resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
     """Get routing configuration for a task type.
@@ -821,68 +844,29 @@ async def get_routing(
     (``user_id IS NULL``), not per-admin overrides. Background workers such as
     the embedding index job invoke ``llm_router.embed()`` without a user_id,
     which matches only system-default rows — so the admin UI must read/write
-    the same row to stay in sync with runtime. Previously we resolved with
-    ``user_id=user.user_id``, which silently created an admin-scoped row that
-    runtime never consulted, producing a "UI shows Embedding-3-Large but
-    indexing uses Embedding-3-Small" mismatch.
+    the same row to stay in sync with runtime.
 
-    This endpoint reads the **raw DB state** (via ``get_routing_db``) rather
-    than the resolve-time state (``resolve_routing``). The latter returns None
-    the moment credential resolution fails, which caused a confusing bug where
-    a freshly-saved ``primary_model_id`` appeared as "未选择" in the UI just
-    because the admin hadn't wired a credential yet. The admin UI should
-    always reflect what it saved; credential issues are surfaced separately
-    via ``credential_configured``.
+    This endpoint intentionally bypasses ``resolve_routing`` (which returns
+    None the moment credential resolution fails) so a freshly-saved
+    ``primary_model_id`` always appears in the UI even before the admin has
+    wired up a credential. Credential status is surfaced separately via
+    ``credential_configured``.
     """
     stored = await model_router.get_routing_db(task_type, user_id=None)
 
     if not stored:
         return ApiResponse(data=None)
 
-    primary_dict = stored.get("primary_model")
-    primary_model = None
-    if primary_dict:
-        primary_model = ModelResponse(
-            id=primary_dict["id"],
-            provider_id=primary_dict["provider_id"],
-            provider_code=primary_dict["provider_code"],
-            model_id=primary_dict["model_id"],
-            display_name=primary_dict["display_name"],
-            model_type=primary_dict["model_type"],
-            context_window=primary_dict["context_window"],
-            max_output_tokens=primary_dict["max_output_tokens"],
-            input_cost_per_1k=primary_dict["input_cost_per_1k"],
-            output_cost_per_1k=primary_dict["output_cost_per_1k"],
-            input_cost_per_1m=None,
-            output_cost_per_1m=None,
-            cached_input_cost_per_1m=None,
-            capabilities=primary_dict["capabilities"],
-            is_enabled=primary_dict["is_enabled"],
-        )
+    primary_info = None
+    if stored.get("primary_model_id") is not None:
+        primary_info = await provider_registry.get_model_by_id(stored["primary_model_id"])
+    fallback_info = None
+    if stored.get("fallback_model_id") is not None:
+        fallback_info = await provider_registry.get_model_by_id(stored["fallback_model_id"])
 
-    fallback_dict = stored.get("fallback_model")
-    fallback_model = None
-    if fallback_dict:
-        fallback_model = ModelResponse(
-            id=fallback_dict["id"],
-            provider_id=fallback_dict["provider_id"],
-            provider_code=fallback_dict["provider_code"],
-            model_id=fallback_dict["model_id"],
-            display_name=fallback_dict["display_name"],
-            model_type=fallback_dict["model_type"],
-            context_window=fallback_dict["context_window"],
-            max_output_tokens=fallback_dict["max_output_tokens"],
-            input_cost_per_1k=fallback_dict["input_cost_per_1k"],
-            output_cost_per_1k=fallback_dict["output_cost_per_1k"],
-            input_cost_per_1m=None,
-            output_cost_per_1m=None,
-            cached_input_cost_per_1m=None,
-            capabilities=fallback_dict["capabilities"],
-            is_enabled=fallback_dict["is_enabled"],
-        )
+    primary_model = _model_info_to_response(primary_info)
+    fallback_model = _model_info_to_response(fallback_info)
 
-    # credential_configured: 单独探测凭证解析是否成功, 供前端在 UI 上显示警告.
-    # 只在有 primary_model 时才有意义.
     credential_configured = False
     if primary_model is not None:
         try:
