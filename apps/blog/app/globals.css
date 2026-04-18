@@ -1757,32 +1757,39 @@ html[data-nav-type="pop"] .animate-in {
   font-feature-settings: "liga" 0;
 }
 
-/* 代码块 —— 左侧 2px 极光条(签名细节) */
-.markdown-body .code-block-wrapper,
-.markdown-body pre {
+/* 代码块 —— 左侧 2px 极光条(签名细节)
+   仅绑定到 .code-block-wrapper,避免嵌套 <pre> 渲染出第二条光带 */
+.markdown-body .code-block-wrapper {
   position: relative;
 }
-.markdown-body .code-block-wrapper::before,
-.markdown-body pre::before {
+.markdown-body .code-block-wrapper::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 1rem;
-  bottom: 1rem;
+  top: 0;
+  bottom: 0;
   width: 2px;
-  background: linear-gradient(180deg,
+  /* 顶/底端以透明渐变淡出,顺圆角包裹而不是硬切;
+     在 oklch 空间插值,避免 aurora 鲜艳色淡出到 transparent 时
+     经过 sRGB 默认的灰色过渡带 */
+  background: linear-gradient(
+    to bottom in oklch,
     transparent 0%,
-    var(--aurora-1, var(--color-primary, #818CF8)) 20%,
-    var(--aurora-2, var(--color-primary, #818CF8)) 80%,
-    transparent 100%);
-  border-radius: 2px;
+    transparent 6%,
+    var(--aurora-1, var(--color-primary, #818CF8)) 18%,
+    var(--aurora-2, var(--color-primary, #818CF8)) 82%,
+    transparent 94%,
+    transparent 100%
+  );
+  /* 让 2px 光带顺着卡片左上/左下圆角收束,与边框融为一体 */
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
   opacity: 0.35;
   pointer-events: none;
   z-index: 1;
 }
 /* 暗色模式下恢复更高对比度 */
-:root.dark .markdown-body .code-block-wrapper::before,
-:root.dark .markdown-body pre::before {
+:root.dark .markdown-body .code-block-wrapper::before {
   opacity: 0.6;
 }
 
