@@ -467,6 +467,14 @@ const MermaidBlock: React.FC<{ code: string; theme: string; fallbackText: string
           securityLevel: 'strict',
         });
 
+        // mermaid.render 在语法无效时不会 throw,而是返回带"炸弹+Syntax error"的 SVG。
+        // 先用 parse() 校验,失败走 catch 展示友好错误与原始代码,避免炸弹图标出现在文章里
+        const parseResult = await mermaid.parse(code.trim(), { suppressErrors: true });
+        if (parseResult === false) {
+          setError(fallbackText);
+          return;
+        }
+
         const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
         const { svg: renderedSvg } = await mermaid.render(id, code.trim());
         setSvg(renderedSvg);
