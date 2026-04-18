@@ -941,14 +941,22 @@ function createComponents(
 }
 
 const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps) => {
-  const [highlighter, setHighlighter] = useState<HighlighterCore | null>(null);
+  // Seed from the module-level singleton so SPA navigation to a second article
+  // after Shiki has already resolved doesn't flash a 1-frame visibility:hidden
+  // before the ready effect runs.
+  const [highlighter, setHighlighter] = useState<HighlighterCore | null>(highlighterInstance);
   // Shiki 加载结果：pending → 初始态；ready → 高亮器可用；failed → 降级为纯文本
   // 代码块。任何失败（如 CSP 拦截 WASM）都必须走 failed 分支解除 visibility:hidden，
   // 否则整篇正文永远保持不可见，用户看到空白页。
-  const [shikiStatus, setShikiStatus] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const [shikiStatus, setShikiStatus] = useState<'pending' | 'ready' | 'failed'>(
+    highlighterInstance ? 'ready' : 'pending',
+  );
 
   // 加载 Shiki highlighter
   useEffect(() => {
+    // Singleton already resolved — skip re-subscribing; initial state is correct.
+    if (highlighterInstance) return;
+
     let cancelled = false;
     getHighlighter()
       .then((h) => {
