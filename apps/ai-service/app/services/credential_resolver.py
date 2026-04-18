@@ -188,33 +188,26 @@ class CredentialResolver:
             # and do not filter by user_id. Otherwise every credential saved
             # under an admin user_id would be invisible to the indexer and the
             # SearchConfig page would falsely report "no credential".
-            if user_id is None:
-                query = """
-                    SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
-                           c.api_key_encrypted,
-                           COALESCE(c.base_url_override, p.base_url) as base_url,
-                           c.extra_config, c.is_default
-                    FROM ai_credentials c
-                    JOIN ai_providers p ON c.provider_id = p.id
-                    WHERE c.id = $1
-                      AND c.is_enabled = TRUE
-                """
-                async with self.pool.acquire() as conn:
-                    row = await conn.fetchrow(query, credential_id)
-            else:
-                query = """
-                    SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
-                           c.api_key_encrypted,
-                           COALESCE(c.base_url_override, p.base_url) as base_url,
-                           c.extra_config, c.is_default
-                    FROM ai_credentials c
-                    JOIN ai_providers p ON c.provider_id = p.id
-                    WHERE c.id = $1
-                      AND c.is_enabled = TRUE
-                      AND (c.user_id IS NOT DISTINCT FROM $2 OR c.user_id IS NULL)
-                """
-                async with self.pool.acquire() as conn:
-                    row = await conn.fetchrow(query, credential_id, user_id)
+            base_query = """
+                SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
+                       c.api_key_encrypted,
+                       COALESCE(c.base_url_override, p.base_url) as base_url,
+                       c.extra_config, c.is_default
+                FROM ai_credentials c
+                JOIN ai_providers p ON c.provider_id = p.id
+                WHERE c.id = $1
+                  AND c.is_enabled = TRUE
+            """
+            async with self.pool.acquire() as conn:
+                if user_id is None:
+                    row = await conn.fetchrow(base_query, credential_id)
+                else:
+                    row = await conn.fetchrow(
+                        base_query
+                        + " AND (c.user_id IS NOT DISTINCT FROM $2 OR c.user_id IS NULL)",
+                        credential_id,
+                        user_id,
+                    )
         elif user_id is None:
             # 内部服务（Go backend 通过 X-Internal-Service 调用）没有登录用户上下文。
             # 此时 user_id 字段上原本的 "c.user_id = $2" 条件永远为 FALSE（SQL 里
