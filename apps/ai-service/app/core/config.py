@@ -77,19 +77,31 @@ class Settings(BaseSettings):
     @field_validator("ai_credential_encryption_keys_raw", mode="after")
     @classmethod
     def _validate_encryption_keys(cls, v: str) -> str:
+        gen_hint = (
+            "Generate a valid key with: python -c "
+            "\"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
         keys = [k.strip() for k in v.split(",") if k.strip()] if v else []
         if not keys:
             raise ValueError(
-                "AI_CREDENTIAL_ENCRYPTION_KEYS is required (VULN-056). "
-                "Generate one with: python -c "
-                "'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+                f"AI_CREDENTIAL_ENCRYPTION_KEYS is required (VULN-056). {gen_hint}"
             )
-        for k in keys:
+        for idx, k in enumerate(keys):
             try:
                 Fernet(k.encode())
             except Exception as exc:
+                # A Fernet key is 32 raw bytes url-safe base64-encoded = exactly
+                # 44 chars ending with '='. The most common failure mode is a
+                # stripped trailing '=' (shells/copy-paste eat it), so surface
+                # the observed length to make the mismatch obvious.
+                hint = (
+                    f" (key #{idx + 1} length={len(k)}, expected 44 ending with '=')"
+                    if len(k) != 44
+                    else ""
+                )
                 raise ValueError(
-                    f"Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: {exc}"
+                    f"Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: "
+                    f"{exc}{hint}. {gen_hint}"
                 ) from exc
         return v
 
