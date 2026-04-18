@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🟦🟩 真·蓝绿 embedding 切换 + 空向量防御 (2026-04-18 评审跟进)
+
+**Fixed — semantic_search 空向量崩溃**
+
+- **`apps/ai-service/app/services/vector_store.py::semantic_search`** 在调用 `llm.embed(query)` 后增加 `dim > 0` 守卫。原先若上游 provider 返回空响应（500 被 LiteLLM 吞掉、模型路由配错等），`dim=0` 会让 SQL 字符串拼出 `::vector(0)`，pgvector 抛 `InvalidTextRepresentation`，上层只看到一个无 actionable 的 500。现在直接 `raise HTTPException(503)` 并给出可执行错误信息（"Embedding 生成失败（返回空向量），语义搜索不可用。请检查搜索配置里的活跃 embedding 模型与上游供应商连通性"）。Go backend 的 `SearchService.Search` 收到 5xx 后会自动 silent-degrade 到关键词搜索（`apps/server-go/internal/service/search_service.go:277-280`），用户体验从"白屏 500"变成"关键词结果照常返回 + admin 后台能定位到问题"。
+
+**Changed — reindex 改为真·蓝绿切换**
+
+- 历史方案：`reindex` 一启动就 UPSERT `site_settings.search.active_embedding_model` 指针到新模型，但 `semantic_search` 过滤器 (`model_id = active_model AND status = 'active'`) 立刻只看新 model_id —— 而新 embeddings 此刻还没写入，**整个 reindex 窗口（数分钟~数小时）期间语义搜索全部返回空**。这与 migration 注释里写的"蓝绿切换"承诺自相矛盾。
+- **新方案**（`vector_store.py::reindex` + `_reindex_blue_green`）：
+  1. 读 `previous_active`（site_settings 当前指针）和 `router_model`（llm_router 解析出的下一个模型）。若一致 → 同模型 refresh，走 `_reindex_in_place` 不涉切换。
+  2. 若不一致（真·模型切换）→ 蓝绿路径：所有文章新 embedding 以 `status='shadow'` 写入新行，**不动 site_settings 指针、不动旧 active 行、不动 `posts.embedding_status`**。整个过程中搜索流量持续命中旧模型的 active 行，零空窗。
+  3. 全部成功 → 一条事务内同时做四件事：(i) `shadow → active`、(ii) 旧 `active → deprecated`、(iii) 翻转 `site_settings` 指针、(iv) `posts.embedding_status = 'INDEXED'`（覆盖首次索引的 PENDING 行）。搜索流量原子切换到新模型。
+  4. 任一文章失败 → 不翻转。旧模型继续服务搜索，shadow 行保留，admin 修复上游后再次触发 `全量重建索引` 即可推进切换。返回 `{status:"partial", pending_flip:true, message:"..."}`，UI 可据此提示。
+- 这是真正符合 Supabase Automatic Embeddings / Pinecone alias flip / Weaviate blue-green 模式的实现，回滚也变成单条 UPDATE（指针翻回旧 model + active/deprecated 互换）。
+
 ### 🗃️ 版本化 embedding 存储 + 索引 UX 重构 (2026-04-18)
 
 **Changed — embedding 存储模型：post_vectors → post_embeddings**
