@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Activity,
   Clock,
+  Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toggle, ConfirmModal } from '@aetherblog/ui';
@@ -154,10 +155,14 @@ function IndexingProgressPanel({
   job,
   stats,
   onDone,
+  onStop,
+  canceling,
 }: {
   job: IndexingJob;
   stats: IndexStats;
   onDone: () => void;
+  onStop?: () => void;
+  canceling?: boolean;
 }) {
   const { done, failedDelta, percent } = computeJobProgress(job, stats);
   const elapsed = Math.floor((Date.now() - job.startTime) / 1000);
@@ -196,9 +201,26 @@ function IndexingProgressPanel({
               {job.label}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-            <Clock className="w-3 h-3" />
-            {minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+              <Clock className="w-3 h-3" />
+              {minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`}
+            </div>
+            {onStop && (
+              <button
+                onClick={onStop}
+                disabled={canceling}
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-red-300 hover:text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="停止当前索引任务"
+              >
+                {canceling ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Square className="w-3 h-3" />
+                )}
+                {canceling ? '停止中' : '停止'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -457,6 +479,27 @@ export default function SearchConfigPage() {
       } else {
         toast.error(`重试失败: ${msg || '请检查 AI 服务是否正常运行'}`);
       }
+    },
+  });
+
+  // 任务停止：后端通过 context.CancelFunc 打断 goroutine 里挂起的 HTTP 调用，
+  // 前端这边收到响应后立即清本地任务状态并刷统计；真正取消生效会有 1~2 个
+  // refetchInterval 的延迟（ai-service 单篇阶段完成后才会退出），这是可接受
+  // 的代价 —— 不会强杀正在向量化的那一篇，避免 post_embeddings 写半边。
+  const cancelMutation = useMutation({
+    mutationFn: () => searchConfigService.cancelIndexing(),
+    onSuccess: (res) => {
+      const d = res?.data;
+      if (d?.status === 'idle') {
+        toast.info('当前没有运行中的索引任务');
+      } else {
+        toast.success('已请求停止索引任务');
+      }
+      stopIndexing();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { message?: string })?.message || '';
+      toast.error(`停止失败: ${msg || '请检查后端服务'}`);
     },
   });
 
@@ -939,6 +982,8 @@ export default function SearchConfigPage() {
                 job={indexingJob}
                 stats={stats}
                 onDone={stopIndexing}
+                onStop={() => cancelMutation.mutate()}
+                canceling={cancelMutation.isPending}
               />
             )}
           </AnimatePresence>
