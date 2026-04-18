@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -10,6 +11,20 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/pkg/ctxutil"
 )
+
+// isHealthProbePath 判断 URL 是否属于高频健康探活 / 自检路径。
+// 这类请求在正常状态下没有排查价值，默认降为 Debug 级别；
+// 一旦 4xx/5xx 上面的判断会盖过去，仍然走 Warn/Error 写访问日志。
+func isHealthProbePath(p string) bool {
+	switch p {
+	case "/api/actuator/health",
+		"/api/v1/admin/system/health",
+		"/api/v1/admin/system/metrics":
+		return true
+	}
+	// 兜底：命中 /health / /ready 结尾的探活路径（AI 代理自身、子服务回探等）
+	return strings.HasSuffix(p, "/health") || strings.HasSuffix(p, "/ready")
+}
 
 // Trace 返回一个请求追踪中间件。
 //
@@ -44,12 +59,17 @@ func Trace() echo.MiddlewareFunc {
 			req := c.Request()
 			res := c.Response()
 
-			// 根据 HTTP 状态码选择日志级别：5xx 错误、4xx 警告、其余信息
+			// 根据 HTTP 状态码选择日志级别：5xx 错误、4xx 警告、其余信息。
+			// 健康探活 / liveness 路径（docker healthcheck 每 3s 调一次、
+			// SystemMonitor 巡检 /api/v1/admin/system/health 等）量级非常大，
+			// 成功时降到 Debug 避免把正常业务日志淹没；失败仍按状态码正常告警。
 			event := log.Info()
 			if res.Status >= 500 {
 				event = log.Error()
 			} else if res.Status >= 400 {
 				event = log.Warn()
+			} else if isHealthProbePath(req.URL.Path) {
+				event = log.Debug()
 			}
 
 			// 输出结构化访问日志，包含追踪 ID、方法、路径、状态码、耗时和客户端 IP

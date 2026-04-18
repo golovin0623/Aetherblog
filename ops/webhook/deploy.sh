@@ -84,11 +84,26 @@ if [ -f .env ]; then
   # SECURITY (VULN-133): never `source` the .env file — that would let any value
   # like FOO=$(rm -rf /) be evaluated by bash. Instead, parse strict
   # KEY=VALUE pairs (allowing CAPS and underscores) and export them literally.
+  #
+  # BUG 修复：原先用 `while IFS='=' read -r k v` 解析。bash 在 IFS 为单一非空白
+  # 字符时，会把**行尾的分隔符**当做"空 token"一并吃掉，导致形如
+  #   AI_CREDENTIAL_ENCRYPTION_KEYS=Mt97...k=
+  # 这类 base64 padding 带 '=' 结尾的值被截断成 43 字符，进而让 ai-service 在
+  # Fernet 校验时启动失败。改成 `read -r line` + 参数展开，仅在**首个** '='
+  # 处切分，value 的尾随 '=' 原样保留。
   echo "[$(date -Iseconds)] Loading env from $PROJECT_DIR/.env (strict parser)"
-  while IFS='=' read -r k v; do
-    case "$k" in
+  while IFS= read -r line || [ -n "$line" ]; do
+    # 跳过空行与注释
+    case "$line" in
       ''|\#*) continue ;;
     esac
+    # 行里必须至少含一个 '='，否则不是合法的 KEY=VALUE
+    case "$line" in
+      *=*) ;;
+      *) continue ;;
+    esac
+    k="${line%%=*}"
+    v="${line#*=}"
     if [[ "$k" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
       # strip optional surrounding single/double quotes from value
       v="${v%\"}"

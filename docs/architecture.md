@@ -15,6 +15,7 @@
 - [前端架构](#前端架构)
 - [API 设计](#api-设计)
 - [数据流](#数据流)
+- [部署与发布链路](#部署与发布链路)
 - [技术选型](#技术选型)
 
 ---
@@ -245,6 +246,36 @@ AI 服务作为独立微服务运行，通过 HTTP API 与后端通信：
 - 用户级：10 次 / 分钟 / 操作
 - 全局级：100 次 / 分钟
 - 缓存：summary/tags 缓存 24h，titles 缓存 1h（Redis）
+- **Redis 不可达时默认拒绝（503）**(VULN-070)；开发/CI 可通过 `AI_RATE_LIMIT_FAIL_OPEN=true` 翻转，生产保持 false 防止 Redis 宕机导致 wallet-drain 攻击。
+
+### 凭证加密与密钥管理
+
+| 能力 | 配置项 | 说明 |
+|---|---|---|
+| 供应商 API Key 加密 | `AI_CREDENTIAL_ENCRYPTION_KEYS` (**VULN-056**) | 独立于 `JWT_SECRET`，支持逗号分隔多 key；第一个 key 加密新数据，所有 key 参与解密（MultiFernet 零停机轮换） |
+| Base64url padding 自愈 | `config._pad_b64url` | Fernet key 标准 44 字符末尾 `=`，常见运维事故是 `.env` 复制粘贴 / shell env 解析器吞掉结尾 `=` 变成 43 字符；validator 自动补齐到 4 字节边界，字节数真错时带长度提示报错 |
+| JWT 签名密钥轮换 | `jwt_secrets` 表 + migration 000033 | current 签名、current+previous 参与验签、retired 归档；Go 后端 `StartRotator` goroutine 按 `AETHERBLOG_JWT_ROTATION_INTERVAL` (默认 7d) 自动轮换；ai-service `app/core/jwt_keys.py` 后台任务每 60s 从同表同步 |
+| 手动紧急轮换 | `POST /v1/admin/auth/rotate-jwt-secret` | VULN-152 类历史泄露应急用 |
+
+### ai-service 冷启动与健康探活
+
+Python 容器启动需要完成：
+1. 导入 litellm / asyncpg / pgvector / FastAPI 等大型依赖 (~10s 慢机)
+2. FastAPI lifespan 里 `asyncpg.create_pool(min_size=1)` 首连 (~3s)
+3. `jwt_keys` 后台任务首次 DB 拉取 (~1s)
+
+整段在慢机 / 冷 cache 上可超过 60s。`docker-compose.prod.yml` ai-service healthcheck 配置：
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  start_period: 45s   # 窗口内失败不计 retries,避免 CI preflight 误判
+  interval: 10s
+  timeout: 5s
+  retries: 3
+```
+
+`ops/release/preflight.sh` 同步扩大 ai-service 健康检查重试窗口到 24 次 × 5s (~120s)，以 `docker inspect` 健康状态或容器内 curl 任一成立为通过。
 
 ---
 
@@ -417,6 +448,81 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 | `permissions` | 文件夹 ACL 权限记录 |
 | `shared_items` | 分享链接（含令牌 / 过期时间） |
 | `activity_events` | 操作活动事件流 |
+
+---
+
+## 部署与发布链路
+
+生产部署由 **GitHub Actions → Webhook → deploy.sh → Preflight** 五阶段自动化完成，服务器端零人工介入。**详细的故障排查、部署模式、手动触发方式见 [部署指南](./deployment.md#cicd-自动化发布链路)**。
+
+### 发布触发链
+
+```
+┌──────────────────┐   push / release    ┌──────────────────────┐
+│  GitHub Actions  │ ──────────────────▶ │ ci-cd.yml            │
+│  (.github/wf)    │                     │ build & push images  │
+└──────────────────┘                     └──────────┬───────────┘
+                                                    │ HMAC-SHA256
+                                                    │ 签名 POST /deploy
+                                                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│  服务器 (deploy-webhook.service)                             │
+│                                                              │
+│  webhook_server.py                                           │
+│      │  校验签名 → fork deploy.sh → 返回 202                 │
+│      ▼                                                       │
+│  deploy.sh  (ops/webhook/)                                   │
+│      ├─ flock  /var/lock/aetherblog-deploy.lock              │
+│      ├─ git fetch + reset --hard FETCH_HEAD  ← 代码自拉取    │
+│      ├─ self-reexec (脚本自身变更时)                         │
+│      ├─ strict KEY=VALUE 解析 .env                           │
+│      ├─ docker compose pull                                  │
+│      ├─ pre-deploy migration  (compose run --rm)             │
+│      └─ docker compose up -d                                 │
+│              │                                               │
+│              ▼                                               │
+│  ops/release/preflight.sh                                    │
+│      ├─ static: compose config / 必备命令                    │
+│      └─ runtime: 服务 running / 迁移版本 / gateway 健康 /    │
+│                  ai-service 健康 (≤120s) / auth 生效 /       │
+│                  ai_providers 计数 ≥60 / ai_models ≥1500 /   │
+│                  backend 日志无 schema 错误 / logs 目录可读  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 部署模式
+
+四种模式由 `DEPLOY_MODE` 环境变量切换：
+
+| 模式 | 用例 | Migration 行为 | 中间件 |
+|---|---|---|---|
+| `full` | 首次发布 / 全量升级（默认） | 总是执行 | 保留运行 |
+| `incremental` | 只改部分服务 (`DEPLOY_SERVICES="backend"`) | 前端-only 自动跳过 | 不重启 |
+| `canary` | 核心服务先升 (`CANARY_SERVICES=backend,ai-service`) | 执行 | 保留运行 |
+| `rollback` | 紧急回滚 (`ROLLBACK_VERSION=v1.1.0`) | 执行 | 保留运行 |
+
+### 关键可靠性设计
+
+| 设计 | 位置 | 规避的坑 |
+|---|---|---|
+| `git fetch + reset --hard FETCH_HEAD` | `deploy.sh:61-68` | 配置漂移（镜像更新但 compose 文件未更新）自动修复 |
+| deploy.sh self-reexec | `deploy.sh:70-75` | 同次发布中脚本自身被更新，新版本立即接管 |
+| 严格 `.env` 解析器 | `deploy.sh:95-117` | **VULN-133** 不 `source`，不用 `IFS='='`（后者吞尾随 `=`，致命于 base64 Fernet key） |
+| pre-deploy migration | `deploy.sh:155-195` | 旧版 backend 启动即 FTL 的死锁 (#459) |
+| preflight 冷启动重试 | `preflight.sh:125-144` | ai-service 冷启动 > 60s 时部署被误判失败 |
+
+### 容器安全加固摘要
+
+| 约束 | VULN 编号 | 应用服务 |
+|---|---|---|
+| `no-new-privileges:true` | VULN-123 | gateway / backend / ai-service |
+| `cap_drop: ALL` | VULN-123 | 同上（gateway 仅 `cap_add` 四项绑定 :80 所需） |
+| `read_only: true` + `tmpfs` | VULN-123 | 同上（工作目录 tmpfs，持久数据命名卷） |
+| `JWT_SECRET:?` 必填 | VULN-120 | compose 变量替换层 fail-fast |
+| `AI_CREDENTIAL_ENCRYPTION_KEYS:?` 必填 | VULN-056 | 独立于 JWT_SECRET，MultiFernet 多 key 轮换 |
+| Redis `--requirepass` 必填 | VULN-119 | redis 服务（移除空密码 fallback） |
+| Redis 健康检查 `REDISCLI_AUTH` | VULN-147 | 不让密码进 `ps auxf` |
+| Docker socket `:ro` 挂载 | VULN-123 权衡 | backend（管理员容器监控用；`:ro` 仅限套接字文件，API 仍 root-equivalent） |
 
 ---
 

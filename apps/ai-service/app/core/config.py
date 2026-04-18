@@ -74,6 +74,21 @@ class Settings(BaseSettings):
             raise ValueError("AI_INTERNAL_SERVICE_TOKEN must be at least 32 characters")
         return v
 
+    @staticmethod
+    def _pad_b64url(key: str) -> str:
+        """Restore missing base64url '=' padding on a Fernet key.
+
+        一个标准 Fernet 密钥是 32 字节经 urlsafe-base64 编码 —— 完整形态 44 字符、
+        末尾带 '=' padding。实际运维里常见的失效场景是 .env 文件 / shell 复制粘贴
+        把末尾的 '=' 吃掉了（43 字符），或者中途被 env 解析器二次 strip，导致本来
+        等价的密钥被 cryptography 判定非法而启动崩溃。为了让已有部署不必重新
+        生成 + 数据库回迁就能恢复，这里按 base64 规范补齐到 4 的整数倍。
+        """
+        if not key:
+            return key
+        pad_len = (-len(key)) % 4
+        return key + ("=" * pad_len)
+
     @field_validator("ai_credential_encryption_keys_raw", mode="after")
     @classmethod
     def _validate_encryption_keys(cls, v: str) -> str:
@@ -87,18 +102,13 @@ class Settings(BaseSettings):
                 f"AI_CREDENTIAL_ENCRYPTION_KEYS is required (VULN-056). {gen_hint}"
             )
         for idx, k in enumerate(keys):
+            padded = cls._pad_b64url(k)
             try:
-                Fernet(k.encode())
+                Fernet(padded.encode())
             except Exception as exc:
-                # A Fernet key is 32 raw bytes url-safe base64-encoded = exactly
-                # 44 chars ending with '='. The most common failure mode is a
-                # stripped trailing '=' (shells/copy-paste eat it), so surface
-                # the observed length to make the mismatch obvious.
-                hint = (
-                    f" (key #{idx + 1} length={len(k)}, expected 44 ending with '=')"
-                    if len(k) != 44
-                    else ""
-                )
+                # 仍失败说明字节数真的不对（例如 43 字符但解码出来不是 32 字节），
+                # 这种才是应该要求重新生成的情况。把原始长度写进报错便于定位。
+                hint = f" (key #{idx + 1} length={len(k)}, expected 32 bytes base64url)"
                 raise ValueError(
                     f"Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: "
                     f"{exc}{hint}. {gen_hint}"
@@ -107,8 +117,15 @@ class Settings(BaseSettings):
 
     @property
     def ai_credential_encryption_keys(self) -> list[str]:
-        """Comma-split, validated Fernet keys. First entry encrypts new data."""
-        return [k.strip() for k in self.ai_credential_encryption_keys_raw.split(",") if k.strip()]
+        """Comma-split, validated Fernet keys. First entry encrypts new data.
+
+        返回值已补齐 base64url '=' padding，下游 MultiFernet 可以直接构造。
+        """
+        return [
+            self._pad_b64url(k.strip())
+            for k in self.ai_credential_encryption_keys_raw.split(",")
+            if k.strip()
+        ]
 
     rate_limit_user_per_min: int = Field(default=10, alias="AI_RATE_LIMIT_USER_PER_MIN")
     rate_limit_global_per_min: int = Field(default=100, alias="AI_RATE_LIMIT_GLOBAL_PER_MIN")
