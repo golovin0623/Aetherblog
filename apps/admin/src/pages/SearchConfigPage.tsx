@@ -506,10 +506,8 @@ export default function SearchConfigPage() {
     }
   };
 
-  // Derived state
-  // embeddingModelSelected: 管理员在下拉里选中了向量化模型 (DB 已保存 primary_model_id).
-  // embeddingCredentialReady: provider 下确实有可用凭证, 运行时不会降级到 env 默认.
-  // embeddingConfigured: 两者皆满足, 才视为 "语义搜索真的能跑".
+  // embeddingConfigured requires both a selected model AND a resolvable credential;
+  // otherwise runtime falls back to env defaults.
   const embeddingModelSelected = !!currentRouting?.primary_model;
   const embeddingCredentialReady = currentRouting?.credential_configured !== false;
   const embeddingConfigured = embeddingModelSelected && embeddingCredentialReady;
