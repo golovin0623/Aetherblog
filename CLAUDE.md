@@ -569,6 +569,54 @@ docker-compose -f docker-compose.prod.yml logs -f
 - PostgreSQL: 7895
 - Backend API: Internal only (container network)
 
+### CI/CD Webhook Automation
+
+Production is driven by a five-stage pipeline — **no manual steps on the server**:
+
+```
+GitHub Actions (ci-cd.yml)
+   │ build & push multi-arch images
+   ▼
+HMAC-SHA256 signed POST /deploy
+   │
+   ▼
+webhook_server.py  (ops/webhook/)
+   │ verify → fork deploy.sh → 202
+   ▼
+deploy.sh  (ops/webhook/)
+   ├─ flock  /var/lock/aetherblog-deploy.lock
+   ├─ git fetch + reset --hard FETCH_HEAD   ← code pulled here
+   ├─ self-reexec (if deploy.sh itself changed)
+   ├─ strict KEY=VALUE .env parser (NOT source, NOT IFS='=')
+   ├─ compose pull
+   ├─ pre-deploy migration (compose run --rm)
+   └─ compose up -d   (full / incremental / canary / rollback)
+   ▼
+ops/release/preflight.sh
+   ├─ static: compose config, required cmds
+   └─ runtime: services running, migration ≥33, gateway /health,
+              ai-service /health (≤120s retry window),
+              auth enforcement, ai_providers ≥60, ai_models ≥1500,
+              backend logs clean, /app/logs readable
+```
+
+Failure aborts deploy (`exit 1`); logs appended to `/var/log/aetherblog-deploy.log`.
+
+**Deploy modes** (via `DEPLOY_MODE` env):
+- `full` (default) — pull + up -d all services
+- `incremental` — only specified `DEPLOY_SERVICES`; frontend-only skips migration
+- `canary` — pre-defined `CANARY_SERVICES=backend,ai-service` rollout
+- `rollback` — `ROLLBACK_VERSION=vX.Y.Z` revert to prior image tag
+
+**Container security hardening** (all application services):
+- `security_opt: [no-new-privileges:true]`, `cap_drop: [ALL]`, `read_only: true` + `tmpfs` (VULN-123)
+- `JWT_SECRET:?...` / `AI_CREDENTIAL_ENCRYPTION_KEYS:?...` / `REDIS_PASSWORD:?...` must be set; compose fails fast on missing (VULN-056 / -119 / -120)
+- ai-service healthcheck: `start_period: 45s, interval: 10s` (gives cold start room for litellm/asyncpg/pgvector import + asyncpg pool + jwt_keys DB fetch)
+- backend healthcheck: `start_period: 30s, interval: 3s` (VULN-150 — don't mask crash loops as "healthy yet")
+- Docker socket mounted `:ro` on backend for admin `/v1/admin/monitor/*` — note `:ro` only protects socket file, Docker API itself is root-equivalent; set `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` to match host docker group
+
+Full troubleshooting + flow diagram: [`docs/deployment.md#cicd-自动化发布链路`](docs/deployment.md#cicd-自动化发布链路).
+
 ## Nginx Gateway
 
 Gateway configurations in `nginx/`:
@@ -603,6 +651,29 @@ If seeing "Failed to resolve import":
 1. Check if dependency is declared in that package's `package.json`
 2. Add missing dependency
 3. Run `pnpm install`
+
+### ai-service Won't Start / Preflight Stuck on `docker health=starting`
+
+**Symptom:** `[FAIL] [api] ai-service health check failed (docker health=starting); curl: (7) Failed to connect to localhost port 8000`. Uvicorn never binds.
+
+**First step:** `docker logs aetherblog-ai-service --tail 200`
+
+**Most common root cause** (historical):
+```
+ValueError: Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: ...
+(key #1 length=43, expected 32 bytes base64url)
+```
+The legacy `deploy.sh` `while IFS='=' read -r k v` parser silently eats the trailing `=` padding from base64 Fernet keys (44 chars → 43 chars). All three layers of defense are now in place — pull latest:
+
+1. **`ops/webhook/deploy.sh`** — strict `KEY=VALUE` parser using `${line%%=*}` / `${line#*=}` (no IFS tokenizer gotcha).
+2. **`apps/ai-service/app/core/config.py._pad_b64url`** — auto-pads missing `=` to a 4-byte boundary; decryption of existing DB credentials remains consistent.
+3. **`ops/release/preflight.sh`** — 24 × 5s retry window + `docker inspect Health.Status=healthy` as alternate pass signal.
+
+### Backend Log Spam from Health Probes
+
+**Symptom:** INFO-level `GET /api/actuator/health 200` floods `backend` logs every 3s (docker healthcheck + SystemMonitor).
+
+**Fix (shipped):** `apps/server-go/internal/middleware/trace.go` introduces `isHealthProbePath()` and downgrades successful probe responses to `Debug`. 4xx/5xx still emit `Warn`/`Error`. Matches: `/api/actuator/health`, `/api/v1/admin/system/health`, `/api/v1/admin/system/metrics`, plus any path ending in `/health` or `/ready`.
 
 ## Environment Variables
 

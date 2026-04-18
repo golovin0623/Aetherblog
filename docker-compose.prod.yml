@@ -286,7 +286,13 @@ services:
       - /tmp:rw,size=64M,mode=1777
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
+      # start_period 给 ai-service 足够的冷启动窗口：Python 导入 litellm/asyncpg/
+      # pgvector + FastAPI lifespan 里 asyncpg.create_pool(min_size=1) 首连 +
+      # jwt_keys.start_refresher 的首次 DB 拉取，整段耗时在慢机上可超过 30s。
+      # 该窗口内探活失败不计入 retries，避免 CI 部署 preflight 看到 docker=starting。
+      # interval 从 30s 缩到 10s，让进程真正起来后 docker 能更快翻成 healthy。
+      start_period: 45s
+      interval: 10s
       timeout: 5s
       retries: 3
     deploy:

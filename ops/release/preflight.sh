@@ -114,9 +114,22 @@ main() {
     # Run curl INSIDE the ai-service container (mirrors the docker healthcheck).
     # Avoids host->container-IP routing assumptions and `hostname -i` returning
     # multiple space-separated IPs on multi-network containers.
-    local ai_ok=false ai_attempts=6 ai_attempt=0 ai_last_err=""
+    #
+    # 冷启动窗口：Python 导入 litellm/asyncpg/pgvector + FastAPI lifespan 里
+    # asyncpg.create_pool(min_size=1) 首连 + jwt_keys 首次 DB 拉取，整段在慢机
+    # 上可超过 60s。把 preflight 的重试窗口拉到 ~120s，匹配 docker-compose 里
+    # ai-service 的 start_period=45s + 几轮 interval=10s 的 healthcheck。
+    # 任一条件成立即视为通过：
+    #   (a) docker inspect 已经 Health.Status=healthy（最权威），或
+    #   (b) 在容器内 curl /health 成功（docker 本轮 interval 还没跑到也能判活）。
+    local ai_ok=false ai_attempts=24 ai_attempt=0 ai_last_err="" ai_health="unknown"
     while (( ai_attempt < ai_attempts )); do
       ai_attempt=$((ai_attempt + 1))
+      ai_health=$(docker inspect --format '{{.State.Health.Status}}' aetherblog-ai-service 2>/dev/null || echo unknown)
+      if [[ "$ai_health" == "healthy" ]]; then
+        ai_ok=true
+        break
+      fi
       if ai_last_err=$(docker compose -f "$COMPOSE_FILE" exec -T ai-service \
           curl -fsS --max-time 5 http://localhost:8000/health 2>&1); then
         ai_ok=true
@@ -125,10 +138,8 @@ main() {
       sleep 5
     done
     if [[ "$ai_ok" == "true" ]]; then
-      pass "api" "ai-service health reachable (in-container localhost:8000, attempt $ai_attempt/$ai_attempts)"
+      pass "api" "ai-service health reachable (docker=${ai_health}, attempt $ai_attempt/$ai_attempts)"
     else
-      local ai_health
-      ai_health=$(docker inspect --format '{{.State.Health.Status}}' aetherblog-ai-service 2>/dev/null || echo unknown)
       fail "api" "ai-service health check failed (docker health=${ai_health}); last error: ${ai_last_err}"
     fi
 

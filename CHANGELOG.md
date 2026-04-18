@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🔧 运维健壮性 · deploy 链路 + ai-service 启动修复 (2026-04-18)
+
+**Fixed — ai-service 启动阻塞的三层根因**
+
+- **`ops/webhook/deploy.sh` 严格 .env 解析器**：原先 `while IFS='=' read -r k v` 在 bash 单字符 IFS 下会把行尾分隔符视作空 token 消耗，形如 `AI_CREDENTIAL_ENCRYPTION_KEYS=...k=` 的 base64 Fernet key 尾部 `=` 被吃掉，变成 43 字符触发 `ValueError: Invalid Fernet key`，ai-service 启动崩溃、uvicorn 从未 bind :8000、preflight 循环报 `docker health=starting`。改为 `read -r line` + `${line%%=*}` / `${line#*=}` 参数展开切分，严格保留 value 原始字节；同时保留 VULN-133 的非 `source` 约束（KEY 必须匹配 `^[A-Z_][A-Z0-9_]*$`）。
+- **`apps/ai-service/app/core/config.py._pad_b64url`**：Fernet key 标准 44 字符带末尾 `=` padding，实际运维里常见 .env 复制粘贴 / shell 二次 strip 吃掉 `=`。validator 侧新增 base64url padding 自愈（补齐到 4 字节边界再走 `Fernet(key)` 校验），字节数真错时在报错里带 `length=N` 便于定位。`ai_credential_encryption_keys` property 同步返回补齐后的 key，MultiFernet 下游一致。**已有 DB 加密凭证解密不受影响**：key 在字节层面与历史一致，补齐的仅是 base64 文本形态。
+- **`ops/release/preflight.sh` ai-service 冷启动重试窗口**：从 6 次 × 10s 扩大到 24 次 × 5s (~120s)，任一条件成立即通过：(a) `docker inspect --format '{{.State.Health.Status}}' aetherblog-ai-service == healthy`，(b) 容器内 `curl /health` 成功。匹配 `docker-compose.prod.yml` 里 ai-service healthcheck 新加的 `start_period: 45s` + `interval: 10s`。
+
+**Fixed — 日志噪声**
+
+- **`apps/server-go/internal/middleware/trace.go`**：新增 `isHealthProbePath()` 判定健康探活 / liveness 路径（`/api/actuator/health`、`/api/v1/admin/system/health`、`/api/v1/admin/system/metrics`，以及 `/health` / `/ready` 结尾兜底）。探活成功降为 Debug 级，4xx/5xx 仍按 Warn/Error 写 access log 保留告警通路。docker healthcheck 每 3s 一次 + SystemMonitor 巡检导致 backend 日志被刷屏的问题根除。
+
+**Changed**
+
+- **`docker-compose.prod.yml`** ai-service healthcheck：`interval: 30s → 10s`；新增 `start_period: 45s`。冷启动窗口内失败不计 retries，preflight 不再误判 `docker=starting`。
+- **`docker-compose.prod.yml`** backend healthcheck：`start_period: 30s`（VULN-150，避免 crash loop 被识别为 "healthy yet"）。
+
+**Docs**
+
+- `docs/deployment.md`：新增 §CI/CD 自动化发布链路（五阶段流程图 + flock / self-reexec / 严格 env 解析器等七项关键可靠性设计）、§容器安全加固（VULN-056 / -119 / -120 / -123 / -147 / -150 汇总）；故障排查增加 "ai-service 启动即挂" 与 "健康探活日志刷屏" 两节。
+- `docs/architecture.md`：§AI 服务架构 扩展凭证加密与密钥管理（VULN-056 MultiFernet、Fernet padding 自愈、JWT 轮换 migration 000033）、ai-service 冷启动与健康探活；新增 §部署与发布链路（含发布触发链图 / 四种部署模式 / 容器安全加固摘要）。
+- `CLAUDE.md`：Docker Deployment 节新增 CI/CD Webhook Automation 完整流水线；Common Issues 新增 Fernet padding 与健康探活日志降级两节。
+
 ### ✦ Round 5 · 性能与架构资产 (2026-04-17)
 
 不做视觉改造,下沉三件架构资产。
