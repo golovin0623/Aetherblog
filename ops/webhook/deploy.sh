@@ -47,7 +47,7 @@ cd "$PROJECT_DIR"
 # ---------------------------------------------------------------------------
 if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
   deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
-  fetch_ref="${DEPLOY_GIT_REF#origin/}"
+  fetch_ref="${deploy_ref#origin/}"
   fetch_ref="${fetch_ref:-main}"
 
   echo "[$(date -Iseconds)] Syncing repo to $deploy_ref"
