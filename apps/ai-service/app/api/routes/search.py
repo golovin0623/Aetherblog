@@ -234,6 +234,20 @@ async def index_post(
         elif "NotFoundError" in exc_name or "model_not_found" in error_msg or "404" in error_msg:
             http_code = 404
             user_msg = "Embedding 模型不存在或中转未配置该 channel"
+        elif (
+            "DataError" in exc_name
+            or "dimensions" in error_msg.lower()
+            or "expected" in error_msg.lower() and "dim" in error_msg.lower()
+        ):
+            # V3: 在版本化 post_embeddings 下这一类基本不再发生（dim 不锁列），
+            # 但仍保留分支覆盖老部署/回滚场景——避免撞到这里时再被归到
+            # "Embedding 调用失败"，误导用户以为是 provider 问题。
+            http_code = 422
+            user_msg = (
+                "向量维度与存储不匹配（检测到 pgvector DataError）。"
+                "通常是换了 embedding 模型但未触发全量 reindex 的残留，"
+                "请在搜索配置里点击 '全量重建索引'"
+            )
         else:
             http_code = 502
             user_msg = "Embedding 调用失败"
@@ -368,6 +382,9 @@ async def index_stats(
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
     """Return indexing statistics for the admin dashboard."""
+    # V3 (migration 000034): vector_count 只统计 active 行（shadow/deprecated 不算）。
+    # 这样 admin 切换模型时，stats 展示的 vector_count 和当前查询会用的向量
+    # 数对齐，不会把历史 deprecated 行算进来误导用户。
     async with pool.acquire() as conn:
         stats = await conn.fetchrow("""
             SELECT
@@ -375,7 +392,7 @@ async def index_stats(
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'INDEXED') AS indexed_posts,
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'FAILED') AS failed_posts,
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'PENDING') AS pending_posts,
-                (SELECT COUNT(*) FROM post_vectors) AS vector_count
+                (SELECT COUNT(*) FROM post_embeddings WHERE status = 'active') AS vector_count
         """)
     return ApiResponse(data=dict(stats))
 

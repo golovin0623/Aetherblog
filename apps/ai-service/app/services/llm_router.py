@@ -500,8 +500,8 @@ class LlmRouter:
         """Return the bare ``model_id`` that will be used for ``embed()``.
 
         Used by callers (vector_store, search routes) that need to **persist**
-        or **log** the model name actually routed to — e.g. ``post_vectors.model``
-        and the ``reindex()`` "model changed → drop stale vectors" check. Those
+        or **log** the model name actually routed to — e.g. ``post_embeddings.model_id``
+        and the ``reindex()`` "model changed → deprecate stale rows" check. Those
         sites used to hardcode ``settings.model_embedding`` (the env default),
         which silently diverged from the real model whenever the admin changed
         the embedding routing in the Search Config UI.

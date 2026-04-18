@@ -435,7 +435,63 @@ Browser ──GET──▶ Next.js (SSR) ──fetch──▶ Backend API ──
 | `ai_task_types` | AI 任务类型定义（摘要 / 标签等） |
 | `ai_task_routing` | 任务到模型的路由映射 |
 | `ai_usage_logs` | 使用日志（tokens / latency / cached） |
-| `ai_vector_store` | 向量检索存储（pgvector） |
+| `post_embeddings` | 版本化向量检索存储（pgvector，见下节） |
+
+### 版本化向量存储（migration 000034）
+
+历史上 `post_vectors` 把 dim 写死在 `vector(1536)` 列上，切换到 3072 维的
+`text-embedding-3-large` 会直接触发 `pgvector DataError: expected 1536 dimensions,
+not 3072`，运维必须手动跑 ALTER + 重建索引 + 全量重跑 embedding——这种"换模型
+= 升级数据库"的做法与 2025 年业界主流方案（Supabase Automatic Embeddings、
+Pinecone alias flip、Weaviate blue-green collection、dbi-services RAG versioning）
+完全不同。
+
+`post_embeddings` 采用变长 `vector` 列 + `(post_id, model_id)` 唯一键 + partial
+HNSW 表达式索引模式：
+
+```sql
+CREATE TABLE post_embeddings (
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    model_id VARCHAR(120) NOT NULL,
+    dim INT NOT NULL CHECK (dim > 0 AND dim <= 4096),
+    embedding vector NOT NULL,          -- pgvector 0.7+ 变长 vector，不锁维度
+    status VARCHAR(20) NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'shadow', 'deprecated')),
+    indexed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (post_id, model_id)
+);
+
+CREATE INDEX idx_post_emb_1536_active ON post_embeddings
+    USING hnsw ((embedding::vector(1536)) vector_cosine_ops)
+    WHERE dim = 1536 AND status = 'active';
+
+CREATE INDEX idx_post_emb_3072_active ON post_embeddings
+    USING hnsw ((embedding::vector(3072)) vector_cosine_ops)
+    WHERE dim = 3072 AND status = 'active';
+```
+
+换模型流程（全部在应用层完成，零 schema 变更）：
+
+1. 管理员在 SearchConfigPage 下拉选择新模型 → 弹 ConfirmModal 显示影响范围。
+2. 确认后后端写 `site_settings.search.active_embedding_model = <新模型 ID>`，
+   同时更新 `ai_task_routing.embedding` 的 primary_model_id / credential_id。
+3. `ai-service.reindex` 对所有发布文章生成新 model_id 的 embedding 行（status
+   默认 `active`），并把旧 model_id 的行批量更新为 `deprecated`。
+4. 查询时 `semantic_search` 按 `site_settings.search.active_embedding_model`
+   过滤 `pe.model_id = $active_model AND pe.status = 'active'`，partial HNSW
+   索引保证不同 dim 之间互不污染。
+5. 旧行保留作为回滚凭证；运维可按需运行清理脚本 GC `deprecated` 行。
+
+未来出现新维度（如 8192d）只需追加一条 partial HNSW 索引，主表结构不变。
+
+### 失败可见性
+
+`upsert_post_embedding` 的 DB INSERT 路径也包裹在 try/except 中，任何来自
+pgvector 的 `DataError` 或 asyncpg 异常都会把 `posts.embedding_status` 标记为
+`FAILED`——避免了历史上"embed 成功但写库失败 → 前端看到待索引数持续为非零、
+索引动画永久旋转"的幽灵态。同时 `search.py::index_post` 对 dim 不匹配的情况
+返回 **422** 并给出可执行错误信息，而不是吞掉报错后返回 502。
 
 ### 其他表
 
