@@ -24,13 +24,13 @@
               box-shadow var(--dur-quick) var(--ease-out);
 }
 
-/* 亮模式:毛玻璃减弱,阴影加强 */
+/* 亮模式 leaf —— 紧贴文档,几乎平铺,只有极轻 1px 落地阴影 */
 :root.light .surface-leaf {
-  background: color-mix(in oklch, #ffffff 92%, transparent);
-  -webkit-backdrop-filter: blur(8px) saturate(110%);
-  backdrop-filter: blur(8px) saturate(110%);
-  border: 1px solid color-mix(in oklch, var(--ink-primary) 8%, transparent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: #FFFFFF;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid color-mix(in oklch, var(--ink-primary) 7%, transparent);
+  box-shadow: 0 1px 2px rgba(28, 26, 20, 0.04);
 }
 
 /* -----------------------------------------------------------
@@ -47,13 +47,16 @@
     0 8px 24px -8px rgba(0, 0, 0, 0.4);
 }
 
+/* 亮模式 raised —— 明显"浮"在文档上,中距落地 12px 投影 + 上沿高光 */
 :root.light .surface-raised {
-  background: color-mix(in oklch, #ffffff 94%, transparent);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  backdrop-filter: blur(10px) saturate(120%);
+  background: #FFFFFF;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid color-mix(in oklch, var(--ink-primary) 5%, transparent);
   box-shadow:
-    0 1px 0 inset rgba(255, 255, 255, 0.6),
-    0 8px 24px -8px rgba(0, 0, 0, 0.08);
+    0 1px 0 inset rgba(255, 255, 255, 0.95),
+    0 2px 4px rgba(28, 26, 20, 0.04),
+    0 12px 28px -10px rgba(28, 26, 20, 0.16);
 }
 
 /* -----------------------------------------------------------
@@ -71,14 +74,17 @@
     0 0 0 1px color-mix(in oklch, var(--aurora-1) 8%, transparent);
 }
 
+/* 亮模式 overlay —— 戏剧化 32px 落地投影 + aurora 描边环,栈顶感 */
 :root.light .surface-overlay {
-  background: color-mix(in oklch, #ffffff 96%, transparent);
+  background: #FFFFFF;
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--aurora-1) 22%, transparent);
   box-shadow:
-    0 1px 0 inset rgba(255, 255, 255, 0.8),
-    0 20px 60px -20px rgba(0, 0, 0, 0.12),
-    0 0 0 1px color-mix(in oklch, var(--aurora-1) 12%, transparent);
+    0 1px 0 inset rgba(255, 255, 255, 1),
+    0 4px 12px rgba(28, 26, 20, 0.06),
+    0 24px 56px -16px rgba(28, 26, 20, 0.22),
+    0 0 0 1px color-mix(in oklch, var(--aurora-1) 18%, transparent);
 }
 
 /* -----------------------------------------------------------
@@ -118,44 +124,42 @@
 /* -----------------------------------------------------------
  * 可交互 Surface —— 左侧极光光带签名 hover
  * 用法:<a class="surface-leaf" data-interactive>…
+ *
+ * 几何方案(2026-04 重写):
+ *   ::after 用 `inset: 0` 占满整个卡片 + `border-radius: inherit` 与
+ *   卡片同形,然后 `clip-path: inset(0 calc(100% - 2px) 0 0)` 只露出
+ *   最左边 2px。这样光带的左上/左下天然沿着卡片圆角弧线收束 —— 不再
+ *   出现"2px 直条与 16px 弧角不重合"的视觉错位(那是把 ::after 设成
+ *   width:2px + border-*-left-radius:inherit 后,radius 被钳到 1px,
+ *   光带变成扁柱形竖在卡片圆弧之外的根因)。
  * ----------------------------------------------------------- */
 [data-interactive].surface-leaf,
 [data-interactive].surface-raised {
   position: relative;
   cursor: pointer;
-  overflow: hidden;
 }
-/* 左侧光带:上下端用 linear-gradient 渐变到透明,避免硬切断;
-   border-*-left-radius: inherit 让光带顺圆角包裹,不再跳出 */
 [data-interactive].surface-leaf::after,
 [data-interactive].surface-raised::after {
   content: '';
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  /* 顶/底 12% 透明过渡 → 中段 aurora 实色 → 再淡出 */
+  inset: 0;
+  border-radius: inherit;
+  /* 顶/底淡出 → 中段 aurora 实色 → 再淡出,纵向极光 */
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    color-mix(in oklch, var(--aurora-1) 0%, transparent) 6%,
     var(--aurora-1) 18%,
     var(--aurora-1) 82%,
-    color-mix(in oklch, var(--aurora-1) 0%, transparent) 94%,
     transparent 100%
   );
-  /* 让 2px 光带顺着卡片左上/左下圆角收束,视觉上"被包裹" */
-  border-top-left-radius: inherit;
-  border-bottom-left-radius: inherit;
+  /* 切到最左 2px,沿圆角天然包裹 */
+  clip-path: inset(0 calc(100% - 2px) 0 0);
   opacity: 0;
-  transition: opacity var(--dur-quick) var(--ease-out),
-              filter var(--dur-quick) var(--ease-out);
+  transition: opacity var(--dur-quick) var(--ease-out);
   pointer-events: none;
 }
 /* 仅在真实 hover 设备 (鼠标) 上启用光带 hover —— 移动端触屏的 sticky :hover
-   会让光带残留,叠加 drop-shadow 的 6px 软阴影看起来像"幽灵暗条"逃出卡片,
-   这是 iOS Safari 的视觉错位元凶 */
+   会让光带残留,看起来像幽灵条逃出卡片,这是 iOS Safari 的视觉错位元凶 */
 @media (hover: hover) and (pointer: fine) {
   [data-interactive].surface-leaf:hover,
   [data-interactive].surface-raised:hover {
@@ -164,8 +168,6 @@
   [data-interactive].surface-leaf:hover::after,
   [data-interactive].surface-raised:hover::after {
     opacity: 1;
-    /* 软阴影收窄至 3px,避免在卡片外侧画出可见光晕 */
-    filter: drop-shadow(0 0 3px color-mix(in oklch, var(--aurora-1) 60%, transparent));
   }
 }
 

@@ -4,9 +4,8 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Globe, Github, Twitter, Mail, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings, getSiteStats } from '../lib/services';
 import { sanitizeImageUrl, sanitizeUrl } from '../lib/sanitizeUrl';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
@@ -187,14 +186,8 @@ interface AuthorProfileCardProps {
 }
 
 const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, profile }) => {
-  const [mounted, setMounted] = useState(false);
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
-  const { isDark } = useTheme();
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const { data: settings } = useQuery({
     queryKey: ['siteSettings'],
@@ -225,33 +218,16 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
 
   return (
     <div
-      className={`relative group rounded-3xl border border-[var(--border-default)] overflow-hidden transition-all duration-300 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 ${className}`}
-      style={{
-        background: !mounted || isDark
-          ? 'var(--bg-card)'
-          : `
-            radial-gradient(ellipse 1200px 400px at 12% 18%, rgba(241, 245, 249, 0.4) 0%, transparent 50%),
-            radial-gradient(ellipse 350px 900px at 88% 65%, rgba(226, 232, 240, 0.35) 0%, transparent 52%),
-            radial-gradient(ellipse 600px 280px at 35% 92%, rgba(248, 250, 252, 0.3) 0%, transparent 48%),
-            radial-gradient(ellipse 280px 650px at 68% 8%, rgba(226, 232, 240, 0.38) 0%, transparent 45%),
-            radial-gradient(ellipse 450px 320px at 25% 55%, rgba(248, 250, 252, 0.25) 0%, transparent 42%),
-            radial-gradient(ellipse 320px 580px at 75% 82%, rgba(203, 213, 225, 0.32) 0%, transparent 46%),
-            radial-gradient(ellipse 180px 420px at 48% 28%, rgba(241, 245, 249, 0.28) 0%, transparent 40%),
-            #ffffff
-          `,
-        backdropFilter: 'blur(20px)',
-      }}
+      className={`surface-raised relative group !rounded-3xl overflow-hidden ${className || ''}`}
+      data-interactive
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* 顶部装饰条 */}
-      <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
-
       {/* 聚光灯效果层 */}
       <div
         ref={spotlightRef}
-        className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
+        className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0 rounded-[inherit]"
         style={{
           opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
         }}
