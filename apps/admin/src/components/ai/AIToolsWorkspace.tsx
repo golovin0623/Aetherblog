@@ -399,6 +399,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                 triggerClassName="h-11 sm:h-12 rounded-full bg-[var(--bg-secondary)] shadow-md hover:bg-[var(--bg-card-hover)] hover:shadow-lg border-none"
                 selectedProviderCode={selectedProviderCode}
                 menuPlacement="top"
+                modelType="chat"
               />
 
               {isStreaming ? (
