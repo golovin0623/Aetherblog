@@ -89,8 +89,9 @@ BEGIN
         WITH (m = 16, ef_construction = 64)
         WHERE dim = 1536 AND status = 'active';
 
+    -- pgvector HNSW vector 上限 2000 维；3072 维必须走 halfvec (上限 4000)。
     CREATE INDEX IF NOT EXISTS idx_post_emb_3072_active ON post_embeddings
-        USING hnsw ((embedding::vector(3072)) vector_cosine_ops)
+        USING hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
         WITH (m = 16, ef_construction = 64)
         WHERE dim = 3072 AND status = 'active';
 
