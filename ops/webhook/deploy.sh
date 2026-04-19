@@ -182,6 +182,40 @@ run_pre_deploy_migrations() {
   }
   local db_dsn="postgres://${db_user_enc}:${db_pass_enc}@postgres:5432/${db_name}?sslmode=disable"
 
+  # ----------------------------------------------------------
+  # 故障自愈: 000034 (versioned_post_embeddings) 在存量部署上会因为
+  # 000001 里那张 chunk-版 post_embeddings 占位导致 CREATE INDEX 失败,
+  # schema_migrations 被标 dirty, 迁移链卡在 v34. 后续任何 up 都直接拒绝.
+  # 在 up 前先看一眼 version, 若处于 "v34 dirty" 就 force 35 解锁, 让
+  # 000036_post_embeddings_repair 可以真正跑起来把 schema 修回版本化 V3.
+  # 其它 dirty 场景不动, 避免误伤真正需要人工介入的迁移故障.
+  # ----------------------------------------------------------
+  local version_out
+  if version_out=$(docker compose -f "$COMPOSE_FILE" run --rm \
+       --entrypoint /app/migrate \
+       backend -dir /app/migrations -dsn "$db_dsn" version 2>&1); then
+    echo "[$(date -Iseconds)] migration state: $version_out"
+    local cur_version cur_dirty
+    cur_version=$(echo "$version_out" | sed -nE 's/.*version: ([0-9]+).*/\1/p' | head -1)
+    cur_dirty=$(echo "$version_out" | sed -nE 's/.*dirty: (true|false).*/\1/p' | head -1)
+
+    if [ "$cur_version" = "34" ] && [ "$cur_dirty" = "true" ]; then
+      echo "[$(date -Iseconds)] WARN: detected dirty state at migration v34 — this matches the known 000034 partial-apply bug. Forcing to v35 so 000036 repair can run."
+      if docker compose -f "$COMPOSE_FILE" run --rm \
+           --entrypoint /app/migrate \
+           backend -dir /app/migrations -dsn "$db_dsn" force 35; then
+        echo "[$(date -Iseconds)] migration force 35 succeeded; proceeding with up."
+      else
+        echo "[$(date -Iseconds)] ERROR: migration force 35 failed, aborting deploy"
+        exit 1
+      fi
+    fi
+  else
+    # `version` 失败通常意味着 schema_migrations 表还没建立 (全新部署) —
+    # 这种情况直接交给下面的 `up` 处理即可, 不提前 exit.
+    echo "[$(date -Iseconds)] migration version probe failed (likely fresh install): $version_out"
+  fi
+
   # 只传 -dsn flag：cmd/migrate/main.go 里 flag 优先、DATABASE_DSN env 仅兜底，
   # 两条同时设会冗余也让 log 更难排查。
   if docker compose -f "$COMPOSE_FILE" run --rm \
