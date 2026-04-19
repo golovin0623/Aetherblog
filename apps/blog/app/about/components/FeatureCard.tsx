@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { motion } from 'framer-motion';
 import { useSpotlightEffect } from '@/app/hooks/useSpotlightEffect';
 
@@ -10,7 +11,7 @@ interface FeatureCardProps {
   className?: string;
 }
 
-export default function FeatureCard({ icon, title, description, className }: FeatureCardProps) {
+function FeatureCardBase({ icon, title, description, className }: FeatureCardProps) {
   const {
     spotlightRef,
     isHovering,
@@ -52,3 +53,7 @@ export default function FeatureCard({ icon, title, description, className }: Fea
     </motion.div>
   );
 }
+
+// ⚡ Bolt: 添加 React.memo() 优化 FeatureCard 渲染，防止父组件更新时触发不必要的重渲染
+export const FeatureCard = React.memo(FeatureCardBase);
+export default FeatureCard;
