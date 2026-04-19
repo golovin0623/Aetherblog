@@ -42,12 +42,14 @@ export function StepPreview({
           }
         });
         setSelectedInternal(initial);
-      } catch (e: any) {
-        onAnalyzeFailure(e.message || '分析失败');
-        toast.error(e.message || '分析失败');
+      } catch (e: unknown) {
+        const msg = (e as { message?: string }).message || '分析失败';
+        onAnalyzeFailure(msg);
+        toast.error(msg);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // 依赖列表省略了 callbacks —— 它们是 useReducer 的 dispatch 包装，引用稳定；
+    // 如果放进 deps 会导致重新跑 analyze 覆盖刚返回的结果。
   }, [state.file, state.options, state.analysis]);
 
   const sum = state.analysis?.summary;
