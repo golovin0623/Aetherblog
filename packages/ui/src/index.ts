@@ -18,3 +18,7 @@ export * from './components/Toggle';
 
 // 工具函数
 export * from './utils';
+
+// Motion presets —— ease / duration / spring / transition / variants / stagger / cssMotion
+// 消费方示例:import { spring, transition, variants } from '@aetherblog/ui'
+export * from './motion';
