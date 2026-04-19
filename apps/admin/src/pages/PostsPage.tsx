@@ -51,16 +51,27 @@ export default function PostsPage() {
   const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
-  const pageNumbersRef = useRef<HTMLDivElement>(null);
-
-  const scrollActivePageIntoView = useCallback((page: number) => {
-    if (!pageNumbersRef.current) return;
-    const btn = pageNumbersRef.current.querySelector(`[data-page="${page}"]`) as HTMLElement | null;
-    if (btn) {
-      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: prefersReducedMotion ? 'auto' : 'smooth' });
-    }
-  }, []);
+  /**
+   * 滑动窗口分页: 始终显示首页 + 末页 + 当前页 ± delta, 超出部分用 '...' 占位.
+   * 修复历史 bug —— 旧实现 `Array.from({ length: pages })` 直接渲染所有页码,
+   * 容器 `max-w-[220px] overflow-x-auto no-scrollbar` 让 7 页起的按钮藏在横向
+   * 溢出区域里, 用户以为总共只有 6 页.
+   */
+  const getVisiblePages = useCallback(
+    (current: number, total: number, delta = 2): (number | '...')[] => {
+      if (total <= 1) return total === 1 ? [1] : [];
+      const pages: (number | '...')[] = [];
+      for (let i = 1; i <= total; i++) {
+        if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+          pages.push(i);
+        } else if (pages[pages.length - 1] !== '...') {
+          pages.push('...');
+        }
+      }
+      return pages;
+    },
+    []
+  );
 
   // 点击外部区域时关闭标签弹出框
   useEffect(() => {
@@ -141,8 +152,6 @@ export default function PostsPage() {
 
   const handlePageChange = (page: number) => {
     fetchPosts(page, activeStatus, debouncedSearch || undefined, filters);
-    // 状态更新后自动将当前页码按钮滚动至可视区域
-    requestAnimationFrame(() => scrollActivePageIntoView(page));
   };
 
   // 处理删除操作
@@ -786,25 +795,33 @@ export default function PostsPage() {
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <div
-                  ref={pageNumbersRef}
-                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-0.5 max-w-[220px]"
-                >
-                  {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      data-page={page}
-                      onClick={() => handlePageChange(page)}
-                      className={cn(
-                        'flex-shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all duration-300 flex items-center justify-center',
-                        page === pagination.pageNum
-                          ? 'bg-primary text-white shadow-lg shadow-primary/25'
-                          : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
-                      )}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1.5 px-0.5">
+                  {getVisiblePages(pagination.pageNum, pagination.pages).map((entry, idx) =>
+                    entry === '...' ? (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        aria-hidden="true"
+                        className="flex-shrink-0 w-6 h-8 flex items-end justify-center pb-1 text-xs text-[var(--text-muted)]"
+                      >
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={entry}
+                        onClick={() => handlePageChange(entry)}
+                        aria-current={entry === pagination.pageNum ? 'page' : undefined}
+                        aria-label={`第 ${entry} 页`}
+                        className={cn(
+                          'flex-shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all duration-300 flex items-center justify-center',
+                          entry === pagination.pageNum
+                            ? 'bg-primary text-white shadow-lg shadow-primary/25'
+                            : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
+                        )}
+                      >
+                        {entry}
+                      </button>
+                    )
+                  )}
                 </div>
                 <button
                   onClick={() => handlePageChange(pagination.pageNum + 1)}
