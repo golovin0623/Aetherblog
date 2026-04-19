@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Loader2, Lock, ShieldCheck, ArrowRight, AlertCircle, Sparkles, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, Lock, ShieldCheck, ArrowRight, AlertCircle, Sparkles, KeyRound, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { spring, transition, variants } from '@aetherblog/ui';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
+// 设计语言锚定 Aether Codex (/design, /about) —— 与 LoginPage 配套。
+// 首次登录（isFirstLogin）会叠加一层 signal-warn 语境:aurora-3 橙向渲染,
+// 让用户意识到这是强制步骤；普通修改走默认 aurora-1 语境。
 export function ChangePasswordPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -17,17 +21,16 @@ export function ChangePasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  
+
   const navigate = useNavigate();
   const location = useLocation();
   const logout = useAuthStore((state) => state.logout);
-  
-  // 检查是否为首次登录强制修改密码
+
   const isFirstLogin = location.state?.firstLogin === true;
 
   const validatePasswords = () => {
     if (newPassword.length < 8) {
-      setError('新密码长度至少为8位');
+      setError('新密码长度至少为 8 位');
       return false;
     }
     if (newPassword !== confirmPassword) {
@@ -56,14 +59,13 @@ export function ChangePasswordPage() {
         currentPassword,
         newPassword,
       });
-      
+
       if (res.code === 200) {
         setSuccess(true);
-        // 密码修改成功后，登出并重定向到登录页
         setTimeout(() => {
           logout();
-          navigate('/login', { 
-            state: { message: '密码修改成功，请使用新密码登录' } 
+          navigate('/login', {
+            state: { message: '密码修改成功，请使用新密码登录' },
           });
         }, 2000);
       } else {
@@ -77,278 +79,528 @@ export function ChangePasswordPage() {
     }
   };
 
+  // 密码健康校验信号 —— 两条都满足 aurora-1 绿色,否则 signal-warn / ink-muted
+  const lengthOk = newPassword.length >= 8;
+  const matchOk = newPassword.length > 0 && newPassword === confirmPassword;
+
   return (
-    <div className="w-full min-h-screen flex bg-[var(--bg-primary)] text-[var(--text-primary)] selection:bg-status-warning/30 overflow-hidden font-sans relative">
-      {/* 背景层 - 共享 */}
-      <div className="absolute inset-0 z-0">
-        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-status-warning/10 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-status-warning/5 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
-        {/* 网格图案 */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
+    <div className="relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
+      {/* Ambient —— 首登场景用 warn 极光 (aurora-3 橙),强调"强制"语境 */}
+      <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true">
+        <div
+          className="absolute top-[-25%] left-[-15%] w-[70%] h-[70%] rounded-full blur-[140px] opacity-70"
+          style={{
+            background: isFirstLogin
+              ? 'radial-gradient(circle, color-mix(in oklch, var(--aurora-3) 22%, transparent) 0%, transparent 70%)'
+              : 'radial-gradient(circle, color-mix(in oklch, var(--aurora-1) 22%, transparent) 0%, transparent 70%)',
+            animation: 'breath 12s var(--ease-in-out, ease-in-out) infinite',
+          }}
+        />
+        <div
+          className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full blur-[120px] opacity-60"
+          style={{
+            background: isFirstLogin
+              ? 'radial-gradient(circle, color-mix(in oklch, var(--aurora-4) 18%, transparent) 0%, transparent 70%)'
+              : 'radial-gradient(circle, color-mix(in oklch, var(--aurora-2) 20%, transparent) 0%, transparent 70%)',
+            animation: 'breath 14s var(--ease-in-out, ease-in-out) 2s infinite',
+          }}
+        />
+        <div className="absolute inset-0 opacity-[0.04] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)] bg-[linear-gradient(var(--ink-primary)_1px,transparent_1px),linear-gradient(90deg,var(--ink-primary)_1px,transparent_1px)] bg-[size:64px_64px]" />
       </div>
 
-      {/* 左侧：品牌/艺术区（仅桌面端） */}
-      <motion.div 
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-white/5"
+      {/* 左侧:安全宣言 */}
+      <motion.div
+        variants={variants.fadeUp}
+        initial="initial"
+        animate="animate"
+        transition={transition.flow}
+        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
       >
-        {/* 品牌内容 */}
         <div className="relative z-10">
-           <div className="inline-flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl bg-[image:var(--gradient-primary)] flex items-center justify-center shadow-lg shadow-primary">
-               <Sparkles className="w-6 h-6 text-white" />
-             </div>
-             <span className="text-xl font-bold tracking-tight text-white">AetherBlog</span>
-           </div>
+          <div className="inline-flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{
+                background: `color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 20%, transparent)`,
+                boxShadow: `0 0 32px color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 40%, transparent), 0 1px 0 inset color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 30%, transparent)`,
+              }}
+            >
+              <Sparkles
+                className="w-5 h-5"
+                style={{ color: `var(${isFirstLogin ? '--aurora-3' : '--aurora-1'})` }}
+                strokeWidth={1.75}
+              />
+            </div>
+            <span className="font-display text-lg font-semibold tracking-tight text-[var(--ink-primary)]">AetherBlog</span>
+          </div>
         </div>
 
-        <div className="relative z-10 max-w-lg">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-[var(--color-warning)] to-[var(--color-danger)] flex items-center justify-center shadow-2xl shadow-[var(--shadow-primary)] mb-8">
-            <KeyRound className="w-10 h-10 text-white" />
+        <div className="relative z-10 max-w-xl space-y-6">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-2"
+            style={{
+              background: `linear-gradient(135deg, color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 28%, transparent), color-mix(in oklch, var(${isFirstLogin ? '--aurora-4' : '--aurora-2'}) 16%, transparent))`,
+              border: `1px solid color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 40%, transparent)`,
+              boxShadow: `0 0 40px color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 35%, transparent)`,
+            }}
+          >
+            <KeyRound className="w-8 h-8" style={{ color: `var(${isFirstLogin ? '--aurora-3' : '--aurora-1'})` }} strokeWidth={1.5} />
           </div>
-          <h2 className="text-5xl font-bold leading-tight mb-6 bg-clip-text text-transparent bg-gradient-to-br from-white via-white/90 to-white/50">
-            Account Security First.
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            {isFirstLogin ? 'First Login · Required' : 'Identity · Protection'}
+          </p>
+          <h2
+            className="font-display text-[clamp(3rem,5.2vw,4.8rem)] leading-[1.02] tracking-[-0.02em] text-[var(--ink-primary)]"
+            style={{ textWrap: 'balance' as any }}
+          >
+            {isFirstLogin ? 'Secure your' : 'Account security'}
+            <br />
+            <span className="italic font-editorial" style={{ color: `var(${isFirstLogin ? '--aurora-3' : '--aurora-1'})` }}>
+              {isFirstLogin ? 'access first.' : 'is non-negotiable.'}
+            </span>
           </h2>
-          <p className="text-lg text-[var(--text-muted)] font-medium leading-relaxed">
-            Your security is our top priority. 
-            A strong password helps protect your account from unauthorized access.
+          <p className="font-editorial text-[1.15rem] leading-relaxed text-[var(--ink-secondary)] max-w-lg italic">
+            {isFirstLogin
+              ? 'First login detected. Please replace the default credential with a strong password before continuing.'
+              : 'A strong password is the first line of defense. Choose something long, unique, and unguessable.'}
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2 text-sm text-[var(--text-muted)] font-medium">
-          <div className="w-2 h-2 rounded-full bg-status-warning animate-pulse"></div>
-          <span>Security Update Required</span>
+        <div className="relative z-10 flex items-center gap-2.5">
+          <span className="relative inline-flex w-2 h-2">
+            <span
+              className="absolute inset-0 rounded-full opacity-60 animate-ping"
+              style={{ background: `var(${isFirstLogin ? '--signal-warn' : '--signal-success'})` }}
+            />
+            <span
+              className="relative inline-block w-2 h-2 rounded-full"
+              style={{ background: `var(${isFirstLogin ? '--signal-warn' : '--signal-success'})` }}
+            />
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+            {isFirstLogin ? 'Security update required' : 'Secure environment'}
+          </span>
         </div>
       </motion.div>
 
-      {/* 右侧：表单区 */}
-      <motion.div 
+      {/* 右侧:表单 */}
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
-        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 relative z-10"
+        transition={{ ...transition.flow, delay: 0.1 }}
+        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-10 relative z-10"
       >
-        <div className="w-full max-w-[420px] space-y-8">
-          {/* 移动端品牌展示 */}
-          <div className="lg:hidden flex flex-col items-center mb-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[var(--color-warning)] to-[var(--color-danger)] flex items-center justify-center shadow-2xl shadow-[var(--shadow-primary)] mb-4">
-              <KeyRound className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Security Center</h1>
-            <p className="text-status-warning/70 text-[10px] mt-1 font-bold tracking-[0.2em] uppercase">Identity Protection</p>
-          </div>
-
-          <div className="text-center lg:text-left">
-            <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">
-              {isFirstLogin ? 'Set New Password' : 'Change Password'}
-            </h1>
-            <p className="text-[var(--text-muted)] text-sm">
-              {isFirstLogin 
-                ? 'For security, please set a new password before continuing.' 
-                : 'Enter your current password and choose a new one.'}
-            </p>
-          </div>
-
-          {/* 成功状态 */}
-          {success ? (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="text-center py-12"
+        <div className="w-full max-w-[460px]">
+          {/* 移动端 wordmark */}
+          <motion.div
+            variants={variants.fadeUp}
+            initial="initial"
+            animate="animate"
+            transition={transition.quick}
+            className="lg:hidden flex flex-col items-center mb-8 text-center"
+          >
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+              style={{
+                background: `linear-gradient(135deg, color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 28%, transparent), color-mix(in oklch, var(${isFirstLogin ? '--aurora-4' : '--aurora-2'}) 16%, transparent))`,
+                border: `1px solid color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 40%, transparent)`,
+                boxShadow: `0 0 32px color-mix(in oklch, var(${isFirstLogin ? '--aurora-3' : '--aurora-1'}) 40%, transparent)`,
+              }}
             >
-              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-[var(--color-success)] to-status-success flex items-center justify-center shadow-xl shadow-[var(--color-success)]/30">
-                <ShieldCheck className="w-10 h-10 text-white" />
-              </div>
-              <h2 className="text-2xl font-semibold text-white mb-3">Password Updated!</h2>
-              <p className="text-[var(--text-muted)] text-sm">Redirecting to login page...</p>
-              <div className="mt-6 flex justify-center">
-                <div className="w-8 h-8 border-2 border-status-success/30 border-t-status-success rounded-full animate-spin" />
-              </div>
-            </motion.div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* 首次登录警告 */}
-              {isFirstLogin && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-xl bg-status-warning-light border border-status-warning-border text-[var(--text-secondary)] text-sm flex items-start gap-3"
-                >
-                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-status-warning" />
-                  <div>
-                    <p className="font-semibold text-status-warning">Security Notice</p>
-                    <p className="text-[var(--text-secondary)] mt-1 leading-relaxed">
-                      First login detected. Please update your credentials.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
+              <KeyRound className="w-7 h-7" style={{ color: `var(${isFirstLogin ? '--aurora-3' : '--aurora-1'})` }} strokeWidth={1.5} />
+            </div>
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--ink-primary)]">Security Center</h1>
+            <p className="font-mono text-[10px] mt-1.5 uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+              {isFirstLogin ? 'First Login' : 'Change Password'}
+            </p>
+          </motion.div>
 
-              {/* 错误消息 */}
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-4 rounded-xl bg-status-danger-light border border-status-danger-border text-status-danger text-sm flex items-center gap-3"
-                >
-                  <div className="w-1.5 h-1.5 rounded-full bg-status-danger shrink-0" />
-                  {error}
-                </motion.div>
-              )}
-
-              {/* 表单字段 */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-[var(--text-secondary)] ml-1">Current Password</label>
-                  <div className="relative group">
-                    <Lock className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-status-warning transition-colors" />
-                    <input
-                      type={showCurrentPassword ? "text" : "password"}
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-status-warning/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
-                      placeholder="Current password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                      className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
-                      tabIndex={-1}
-                    >
-                      {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-[var(--text-secondary)] ml-1">New Password</label>
-                  <div className="relative group">
-                    <ShieldCheck className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-status-warning transition-colors" />
-                    <input
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-status-warning/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
-                      placeholder="At least 8 characters"
-                      required
-                      minLength={8}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
-                      tabIndex={-1}
-                    >
-                      {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-[var(--text-secondary)] ml-1">Confirm New Password</label>
-                  <div className="relative group">
-                    <ShieldCheck className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-status-warning transition-colors" />
-                    <input
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-status-warning/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
-                      placeholder="Confirm new password"
-                      required
-                      minLength={8}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none"
-                      tabIndex={-1}
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 密码要求 */}
-              <div className="p-4 rounded-xl bg-white/5 border border-white/5">
-                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-3">Password Health</p>
-                <ul className="space-y-2">
-                  <li className={cn(
-                    "text-xs flex items-center gap-2 transition-colors",
-                    newPassword.length >= 8 ? "text-status-success" : "text-[var(--text-muted)]"
-                  )}>
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]",
-                      newPassword.length >= 8 ? "bg-status-success shadow-[var(--color-success)]/50" : "bg-[var(--bg-quaternary)]"
-                    )} />
-                    Minimum length of 8 characters
-                  </li>
-                  <li className={cn(
-                    "text-xs flex items-center gap-2 transition-colors",
-                    newPassword === confirmPassword && newPassword.length > 0 ? "text-status-success" : "text-[var(--text-muted)]"
-                  )}>
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]",
-                      newPassword === confirmPassword && newPassword.length > 0 ? "bg-status-success shadow-[var(--color-success)]/50" : "bg-[var(--bg-quaternary)]"
-                    )} />
-                    Password confirmation matches
-                  </li>
-                </ul>
-              </div>
-
-              {/* 提交按钮 */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className={cn(
-                  "w-full py-4 rounded-xl bg-primary text-white font-bold text-sm tracking-widest shadow-2xl shadow-primary/30 flex items-center justify-center gap-2 transition-all hover:bg-primary-hover active:scale-[0.98]",
-                  isLoading && "opacity-70 cursor-not-allowed"
-                )}
+          <motion.div
+            variants={variants.scaleIn}
+            initial="initial"
+            animate="animate"
+            transition={spring.soft}
+            className="surface-overlay p-7 md:p-9 space-y-6"
+          >
+            {success ? (
+              <motion.div
+                variants={variants.fadeUp}
+                initial="initial"
+                animate="animate"
+                transition={spring.soft}
+                className="py-8 text-center space-y-6"
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Updating...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>UPDATE PASSWORD</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-
-              {/* 返回链接 */}
-              {!isFirstLogin && (
-                <div className="text-center">
-                  <button 
-                    type="button"
-                    onClick={() => navigate(-1)}
-                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex items-center justify-center gap-2 mx-auto"
-                  >
-                    <span>← Return to Security</span>
-                  </button>
+                <div
+                  className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(135deg, color-mix(in oklch, var(--signal-success) 30%, transparent), color-mix(in oklch, var(--aurora-1) 18%, transparent))',
+                    border: '1px solid color-mix(in oklch, var(--signal-success) 40%, transparent)',
+                    boxShadow: '0 0 40px color-mix(in oklch, var(--signal-success) 35%, transparent)',
+                  }}
+                >
+                  <ShieldCheck className="w-8 h-8 text-[var(--signal-success)]" strokeWidth={1.5} />
                 </div>
-              )}
-            </form>
-          )}
+                <div className="space-y-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">§ Updated</p>
+                  <h2 className="font-display text-2xl font-semibold tracking-tight text-[var(--ink-primary)]">Password renewed</h2>
+                  <p className="text-sm text-[var(--ink-secondary)]">Redirecting to login — please sign in with the new credential.</p>
+                </div>
+                <div
+                  className="w-6 h-6 mx-auto rounded-full animate-spin"
+                  style={{
+                    border: '2px solid color-mix(in oklch, var(--signal-success) 20%, transparent)',
+                    borderTopColor: 'var(--signal-success)',
+                  }}
+                />
+              </motion.div>
+            ) : (
+              <>
+                {/* 标题组 */}
+                <div className="space-y-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                    {isFirstLogin ? 'Mandatory' : 'Change Password'}
+                  </p>
+                  <h1 className="font-display text-[2rem] font-semibold tracking-tight text-[var(--ink-primary)] leading-tight">
+                    {isFirstLogin ? 'Set a new password' : 'Update password'}
+                  </h1>
+                  <p className="text-sm text-[var(--ink-secondary)]">
+                    {isFirstLogin
+                      ? 'For security, please set a new password before continuing.'
+                      : 'Enter your current password and choose a new one.'}
+                  </p>
+                </div>
 
-          <p className="text-center text-[10px] text-[var(--text-muted)] tracking-wider">
-            Your credentials are protected in transit by HTTPS.
-          </p>
+                {/* First-login warning banner */}
+                <AnimatePresence>
+                  {isFirstLogin && (
+                    <motion.div
+                      variants={variants.fadeUp}
+                      initial="initial"
+                      animate="animate"
+                      exit="exit"
+                      transition={transition.quick}
+                    >
+                      <div
+                        className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
+                        style={{
+                          background: 'color-mix(in oklch, var(--signal-warn) 10%, transparent)',
+                          border: '1px solid color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+                        }}
+                      >
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--signal-warn)]" strokeWidth={2} />
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--signal-warn)] font-semibold">
+                            Security Notice
+                          </p>
+                          <p className="text-[var(--ink-secondary)] mt-1 leading-relaxed">
+                            First login detected — default credential must be replaced.
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-          {/* 移动端状态 */}
-          <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-40">
-            <div className="w-1 h-1 bg-status-warning rounded-full" />
-            <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-widest uppercase">Secured Environment</span>
+                {/* Error banner */}
+                <AnimatePresence mode="wait">
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={transition.quick}
+                      className="overflow-hidden"
+                    >
+                      <div
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm"
+                        style={{
+                          background: 'color-mix(in oklch, var(--signal-danger) 10%, transparent)',
+                          border: '1px solid color-mix(in oklch, var(--signal-danger) 25%, transparent)',
+                          color: 'var(--signal-danger)',
+                        }}
+                      >
+                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--signal-danger)] shrink-0" />
+                        {error}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <PasswordField
+                    label="Current Password"
+                    icon={<Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] group-focus-within:text-[var(--aurora-1)] transition-colors" strokeWidth={1.75} />}
+                    value={currentPassword}
+                    onChange={setCurrentPassword}
+                    show={showCurrentPassword}
+                    onToggle={() => setShowCurrentPassword(!showCurrentPassword)}
+                    placeholder="Your current password"
+                    autoComplete="current-password"
+                  />
+
+                  <PasswordField
+                    label="New Password"
+                    icon={<ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] group-focus-within:text-[var(--aurora-1)] transition-colors" strokeWidth={1.75} />}
+                    value={newPassword}
+                    onChange={setNewPassword}
+                    show={showNewPassword}
+                    onToggle={() => setShowNewPassword(!showNewPassword)}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    minLength={8}
+                  />
+
+                  <PasswordField
+                    label="Confirm New Password"
+                    icon={<ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] group-focus-within:text-[var(--aurora-1)] transition-colors" strokeWidth={1.75} />}
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    show={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
+                    placeholder="Repeat new password"
+                    autoComplete="new-password"
+                    minLength={8}
+                  />
+
+                  {/* Password Health panel —— 两条校验信号,命中切到 signal-success */}
+                  <div
+                    className="px-4 py-3.5 rounded-xl"
+                    style={{
+                      background: 'color-mix(in oklch, var(--bg-leaf) 50%, transparent)',
+                      border: '1px solid color-mix(in oklch, var(--ink-primary) 6%, transparent)',
+                    }}
+                  >
+                    <p className="font-mono text-[9px] uppercase tracking-[0.24em] text-[var(--ink-muted)] mb-2.5">
+                      § Password Health
+                    </p>
+                    <ul className="space-y-1.5">
+                      <HealthCheck ok={lengthOk} label="Minimum length of 8 characters" />
+                      <HealthCheck ok={matchOk} label="Password confirmation matches" />
+                    </ul>
+                  </div>
+
+                  <motion.button
+                    type="submit"
+                    disabled={isLoading}
+                    whileTap={{ scale: 0.985 }}
+                    transition={spring.precise}
+                    className={cn(
+                      'codex-submit-btn mt-1',
+                      isLoading && 'opacity-70 cursor-not-allowed'
+                    )}
+                    data-first-login={isFirstLogin ? 'true' : undefined}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                        <span>Updating</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Update Password</span>
+                        <ArrowRight className="w-4 h-4" strokeWidth={2} />
+                      </>
+                    )}
+                  </motion.button>
+
+                  {/* Return link —— 非首登才显示,避免用户绕过 */}
+                  {!isFirstLogin && (
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => navigate(-1)}
+                        className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
+                      >
+                        <ArrowLeft className="w-3 h-3" strokeWidth={2} />
+                        <span>Return</span>
+                      </button>
+                    </div>
+                  )}
+                </form>
+
+                <div className="aurora-divider" />
+                <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  Credentials protected in transit by HTTPS
+                </p>
+              </>
+            )}
+          </motion.div>
+
+          <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-60">
+            <div
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ background: `var(${isFirstLogin ? '--signal-warn' : '--signal-success'})` }}
+            />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+              {isFirstLogin ? 'Security update required' : 'Secure environment'}
+            </span>
           </div>
         </div>
       </motion.div>
+
+      {/* 同 LoginPage 的 codex-input / codex-submit-btn 样式,集中放这里避免重复。
+          长远看应抽成 packages/ui 的公共样式层，先就近维护。 */}
+      <style>{`
+        @keyframes breath {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 0.75; transform: scale(1.05); }
+        }
+        .codex-input {
+          width: 100%;
+          padding: 0.85rem 1rem 0.85rem 2.75rem;
+          font-size: 15px;
+          color: var(--ink-primary);
+          background: color-mix(in oklch, var(--bg-leaf) 60%, transparent);
+          border: 1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent);
+          border-radius: 0.75rem;
+          transition: border-color var(--dur-quick) var(--ease-out),
+                      box-shadow var(--dur-quick) var(--ease-out),
+                      background var(--dur-quick) var(--ease-out);
+          outline: none;
+        }
+        .codex-input::placeholder {
+          color: var(--ink-muted);
+          font-family: var(--font-sans);
+        }
+        .codex-input:hover {
+          background: color-mix(in oklch, var(--bg-leaf) 72%, transparent);
+          border-color: color-mix(in oklch, var(--ink-primary) 16%, transparent);
+        }
+        .codex-input:focus {
+          border-color: color-mix(in oklch, var(--aurora-1) 55%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 18%, transparent);
+          background: color-mix(in oklch, var(--bg-leaf) 80%, transparent);
+        }
+        :root.light .codex-input {
+          background: color-mix(in oklch, #ffffff 80%, transparent);
+          border-color: color-mix(in oklch, var(--ink-primary) 14%, transparent);
+        }
+        :root.light .codex-input:hover { background: #ffffff; }
+        :root.light .codex-input:focus {
+          background: #ffffff;
+          border-color: color-mix(in oklch, var(--aurora-1) 65%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 22%, transparent);
+        }
+
+        .codex-submit-btn {
+          display: inline-flex;
+          width: 100%;
+          align-items: center;
+          justify-content: center;
+          gap: 0.625rem;
+          padding: 0.95rem 1.5rem;
+          font-family: var(--font-sans);
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--bg-void);
+          background: linear-gradient(135deg, var(--aurora-1) 0%, var(--aurora-2) 100%);
+          border: 1px solid color-mix(in oklch, var(--aurora-1) 50%, transparent);
+          border-radius: 0.75rem;
+          box-shadow:
+            0 1px 0 inset color-mix(in oklch, white 30%, transparent),
+            0 8px 24px -8px color-mix(in oklch, var(--aurora-1) 50%, transparent);
+          transition: transform var(--dur-quick) var(--ease-out),
+                      box-shadow var(--dur-quick) var(--ease-out),
+                      filter var(--dur-quick) var(--ease-out);
+          cursor: pointer;
+        }
+        /* 首登语境换成 aurora-3/4 的暖橙渐变,暗示"强制安全步骤" */
+        .codex-submit-btn[data-first-login="true"] {
+          background: linear-gradient(135deg, var(--aurora-3) 0%, var(--aurora-4) 100%);
+          border-color: color-mix(in oklch, var(--aurora-3) 55%, transparent);
+          box-shadow:
+            0 1px 0 inset color-mix(in oklch, white 30%, transparent),
+            0 8px 24px -8px color-mix(in oklch, var(--aurora-3) 55%, transparent);
+        }
+        .codex-submit-btn:hover:not(:disabled) {
+          filter: brightness(1.08);
+          box-shadow:
+            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 12px 36px -8px color-mix(in oklch, var(--aurora-1) 65%, transparent);
+        }
+        .codex-submit-btn[data-first-login="true"]:hover:not(:disabled) {
+          box-shadow:
+            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 12px 36px -8px color-mix(in oklch, var(--aurora-3) 70%, transparent);
+        }
+        .codex-submit-btn:disabled { cursor: not-allowed; }
+        :root.light .codex-submit-btn { color: #FAFAFA; }
+      `}</style>
     </div>
+  );
+}
+
+// 三个 password 字段结构一致,抽成内部小组件避免 120 行重复 JSX
+function PasswordField({
+  label,
+  icon,
+  value,
+  onChange,
+  show,
+  onToggle,
+  placeholder,
+  autoComplete,
+  minLength,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  show: boolean;
+  onToggle: () => void;
+  placeholder: string;
+  autoComplete: string;
+  minLength?: number;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] px-0.5 block">
+        {label}
+      </label>
+      <div className="relative group">
+        {icon}
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          minLength={minLength}
+          required
+          className="codex-input pr-12"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          tabIndex={-1}
+          aria-label={show ? 'Hide password' : 'Show password'}
+          aria-pressed={show}
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+        >
+          {show ? <EyeOff className="w-4 h-4" strokeWidth={1.75} /> : <Eye className="w-4 h-4" strokeWidth={1.75} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HealthCheck({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li
+      className="flex items-center gap-2 text-xs transition-colors"
+      style={{ color: ok ? 'var(--signal-success)' : 'var(--ink-muted)' }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full transition-all"
+        style={{
+          background: ok ? 'var(--signal-success)' : 'color-mix(in oklch, var(--ink-primary) 20%, transparent)',
+          boxShadow: ok ? '0 0 8px color-mix(in oklch, var(--signal-success) 50%, transparent)' : 'none',
+        }}
+      />
+      {label}
+    </li>
   );
 }
 
