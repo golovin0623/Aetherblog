@@ -605,8 +605,20 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: Trigger deployment webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          SERVICES: ${{ steps.services.outputs.services }}
         run: |
           set -euo pipefail
+
+          # Build the exact body that will be both signed and sent — signature
+          # must be computed over the byte-for-byte request body (VULN-132 HMAC).
+          body=$(printf '{"services": "%s"}' "$SERVICES")
+
+          # HMAC-SHA256 in hex; awk '{print $NF}' handles both openssl output
+          # styles ("(stdin)= <hex>" vs plain "<hex>").
+          sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
 
           response_file=$(mktemp)
           http_code=$(curl -sS -X POST \
@@ -616,10 +628,11 @@ jobs:
             --retry-delay 2 \
             --retry-connrefused \
             -H "Content-Type: application/json" \
-            -d '{"services": "${{ steps.services.outputs.services }}"}' \
+            -H "X-Hub-Signature-256: sha256=$sig" \
+            --data-raw "$body" \
             -o "$response_file" \
             -w "%{http_code}" \
-            "${{ secrets.DEPLOY_WEBHOOK_URL }}")
+            "$WEBHOOK_URL")
 
           echo "Webhook HTTP status: $http_code"
           echo "Webhook response:"
