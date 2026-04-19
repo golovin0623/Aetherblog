@@ -236,14 +236,12 @@ export default function PostsPage() {
                       title={post.title}
                       slug={post.slug}
                       summary={post.summary}
-                      coverImage={post.coverImage}
                       category={post.category}
                       tags={post.tags}
                       publishedAt={post.publishedAt}
                       viewCount={post.viewCount}
                       index={index}
                       passwordRequired={post.passwordRequired}
-                      priority={currentPage === 1 && index < 6}
                     />
                   ))}
                 </div>

@@ -54,8 +54,13 @@ export default function S5_Motion({ isVisible }: Props) {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {curves.map((c) => (
-          <EaseCurveViz key={c.name} {...c} />
+        {curves.map((c, i) => (
+          <EaseCurveViz
+            key={c.name}
+            {...c}
+            autoPlay={isVisible}
+            initialDelay={i * 220}
+          />
         ))}
       </div>
 

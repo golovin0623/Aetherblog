@@ -165,14 +165,12 @@ export default async function HomePage() {
                 title={post.title}
                 slug={post.slug}
                 summary={post.summary}
-                coverImage={post.coverImage}
                 category={post.categoryName ? { name: post.categoryName, slug: post.categoryName } : undefined}
                 tags={post.tagNames?.map(name => ({ name, slug: name }))}
                 publishedAt={new Date(post.publishedAt).toLocaleDateString('zh-CN')}
                 viewCount={post.viewCount}
                 index={index}
                 passwordRequired={post.passwordRequired}
-                priority={index < 6}
               />
             ))}
           </div>

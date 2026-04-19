@@ -72,6 +72,9 @@ export default async function RootLayout({
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+        {/* 双写:apple- 前缀供 iOS Safari,标准化版本供 Chrome —— 后者从 Chrome 90 起取代前者,
+            Chrome 控制台会对单独使用 apple- 前缀报 deprecation。两个并存以兼容所有浏览器。 */}
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* 主题初始化脚本 - 防止 FOUC */}

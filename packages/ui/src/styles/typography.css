@@ -126,50 +126,19 @@
 }
 
 /* -----------------------------------------------------------
- * Round 5 · B-3 · CSS anchor-positioning 渐进增强
+ * Round 5 · B-3 · CSS anchor-positioning 渐进增强(已移除)
  * -----------------------------------------------------------
- * 规范:https://drafts.csswg.org/css-anchor-position-1/
+ * 历史:曾尝试用 `anchor-name` / `position-anchor` 让 marginalia 与文章 h1
+ * 基线对齐。问题:Chrome 125+ / Safari 26+ 在某些视口宽度下,主位置
+ * `right: calc(anchor(left) + 13rem)` 解析为 0(可能是 anchor() 与
+ * calc 混用的引擎差异),浏览器自动启用 `position-try-fallbacks`,
+ * 而我们的 `--fallback-top-left { left: 1rem }` 把 marginalia 直接
+ * 推到了 article 内部,把 h1 标题盖住。
  *
- * 当浏览器支持 `anchor-name` 时,marginalia 可以声明绑定到文章 h1,
- * 从而 marginalia 顶部与 h1 顶部 X-height 对齐(而非页顶)。
- *
- * 用法(仅在该浏览器可用时生效,否则 fallback 到组件上的
- * `absolute -left-52 top-0` 规则):
- *
- *   <article>
- *     <h1 class="article-anchor">...</h1>
- *     <aside class="marginalia marginalia--anchored">...</aside>
- *   </article>
- *
- * 为保证旧浏览器行为不变,所有 anchor-positioning 规则都放在
- * @supports 块内,不污染 CSSOM 计算优先级。
+ * 现行方案:仅保留组件内联的 `hidden xl:block absolute -left-52 top-0`,
+ * 这套方案在所有浏览器上行为一致、可预测。anchor-positioning 规范
+ * 等接口稳定 + 跨引擎实现一致后再考虑回归。
  * ----------------------------------------------------------- */
-@supports (anchor-name: --article-title) {
-  .article-anchor {
-    anchor-name: --article-title;
-  }
-
-  .marginalia--anchored {
-    position: absolute;
-    position-anchor: --article-title;
-    /* 顶部对齐 h1 的顶部 X-height(而非 bounding box 顶部) */
-    top: anchor(top);
-    /* 水平锚到 h1 的左外沿,再向左位移 208px(即 -left-52 in Tailwind) */
-    right: calc(anchor(left) + 13rem);
-    width: 10rem;
-    /* 回退位置 —— 锚点超出视口时,浏览器会自动应用此位置 */
-    position-try-fallbacks:
-      --fallback-top-left,
-      flip-inline;
-  }
-
-  /* 自定义回退:锚点离开视口时,marginalia 贴屏左上 */
-  @position-try --fallback-top-left {
-    top: 8rem;
-    right: auto;
-    left: 1rem;
-  }
-}
 
 /* -----------------------------------------------------------
  * Drop Cap —— 首字下沉(用于文章第一段)

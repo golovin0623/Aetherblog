@@ -2,15 +2,13 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Calendar, Eye, Folder, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { useSpotlightEffect } from '../hooks/useSpotlightEffect';
 
 interface ArticleCardProps {
   title: string;
   slug: string;
   summary?: string;
-  coverImage?: string;
   category?: { name: string; slug: string };
   tags?: { name: string; slug: string }[];
   publishedAt: string;
@@ -19,14 +17,12 @@ interface ArticleCardProps {
   isPinned?: boolean;
   index?: number;
   passwordRequired?: boolean;
-  priority?: boolean;
 }
 
 const ArticleCardBase: React.FC<ArticleCardProps> = ({
   title,
   slug,
   summary,
-  coverImage,
   category,
   tags = [],
   publishedAt,
@@ -35,186 +31,183 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
   isPinned = false,
   index = 0,
   passwordRequired = false,
-  priority = false,
 }) => {
   const { spotlightRef, isHovering, handleMouseEnter, handleMouseLeave, handleMouseMove }
     = useSpotlightEffect({ radius: 600 });
 
-  // 计算显示的标签数量
-  const maxVisibleTags = 4;
+  const maxVisibleTags = 3;
   const visibleTags = tags.slice(0, maxVisibleTags);
   const remainingTagCount = tags.length - maxVisibleTags;
 
-  // 对高开销的 Markdown 字符串替换进行 memoize，避免每次悬停重渲染时重复执行
   const displaySummary = useMemo(() => {
-    if (summary) {
-      const processed = summary
-        .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
-        .replace(/^:::\s*$/gm, '')
-        .replace(/<!--\s*more\s*-->/g, '')
-        .replace(/[#*`>\[\]!|_~]/g, '')
-        .replace(/\n+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      return processed.slice(0, 120) + (processed.length > 120 ? '...' : '');
-    }
-    if (title.length > 100) {
-      return title.slice(0, 100) + '...';
-    }
-    return `${title} - 探索更多精彩内容，点击阅读全文了解详情。`;
-  }, [summary, title]);
+    if (!summary) return null;
+    const processed = summary
+      .replace(/:::\s*(info|note|warning|danger|tip)\s*(\{[^}]*\})?/g, '')
+      .replace(/^:::\s*$/gm, '')
+      .replace(/<!--\s*more\s*-->/g, '')
+      .replace(/[#*`>\[\]!|_~]/g, '')
+      .replace(/\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return processed.slice(0, 140) + (processed.length > 140 ? '…' : '');
+  }, [summary]);
 
   return (
     <Link
       href={`/posts/${slug}`}
-      className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-2xl"
+      className="group block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 rounded-2xl"
+      style={{ animationDelay: `${index * 80}ms` } as React.CSSProperties}
     >
       <article
-        className="surface-leaf relative flex flex-col overflow-hidden transition-transform duration-300 hover:-translate-y-1 cursor-pointer min-h-[280px] h-full hover:shadow-[var(--shadow-lg)]"
+        className="surface-leaf relative flex flex-col h-full min-h-[320px] cursor-pointer overflow-hidden p-8 transition-transform duration-[var(--dur-flow,520ms)] ease-[var(--ease-out,cubic-bezier(0.16,1,0.3,1))] hover:-translate-y-[3px]"
         data-interactive
-        style={{
-          animationDelay: `${index * 100}ms`,
-          // View Transitions:卡片 → 文章页 morph 锚点
-          viewTransitionName: `post-${slug}`,
-        } as React.CSSProperties}
+        style={{ viewTransitionName: `post-${slug}` } as React.CSSProperties}
         onMouseMove={handleMouseMove}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        {/* 顶部装饰条 - 品牌色渐变 */}
-        <div className="absolute top-0 left-0 right-0 h-[var(--decoration-bar-height)] bg-[var(--decoration-gradient)] z-30" />
-
-        {/* 聚光灯效果层 */}
+        {/* 聚光灯层(光标跟随径向高光) */}
         <div
           ref={spotlightRef}
-          className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
-          style={{
-            // 由 React state 管理，确保跨重渲染时状态正确持久化
-            opacity: isHovering ? 'var(--spotlight-opacity)' : 0,
-            // 背景通过 ref 手动管理
-          }}
+          className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] transition-opacity duration-300"
+          style={{ opacity: isHovering ? 'var(--spotlight-opacity)' : 0 }}
         />
 
-        {/* 顶部高亮线条 */}
-        <div
-          className="absolute top-0 left-0 right-0 h-px z-10"
-          style={{
-            background: `linear-gradient(to right, transparent, var(--highlight-line), transparent)`
-          }}
-        />
-
-        {/* 封面图片 */}
-        {coverImage && (
-          <div className="block aspect-video w-full overflow-hidden relative z-20 shrink-0">
-            <Image
-              src={coverImage}
-              alt={title}
-              fill
-              priority={priority}
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              className="object-cover transition-transform duration-500 group-hover:scale-105"
-            />
-          </div>
-        )}
-
-        {/* 置顶标记 */}
-        {isPinned && (
-          <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-primary/90 text-white text-[10px] font-medium backdrop-blur-sm z-30 shadow-lg shadow-primary/20">
-            置顶
-          </div>
-        )}
-
-        {/* 内容区域 */}
-        <div className="flex-1 flex flex-col p-5 relative z-20">
-          {/* 分类 & 日期 - 固定高度 */}
-          <div className="flex items-center justify-between mb-3 text-xs h-[20px]">
-             {category ? (
-                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-primary to-accent text-white text-[10px] font-medium shadow-sm">
-                  <Folder className="h-3 w-3" />
-                  {category.name}
-                </span>
-             ) : (
-                <span className="w-1" />
-             )}
-
-             <span className="flex items-center gap-1 text-[var(--text-muted)] font-mono">
-                <Calendar className="h-3 w-3" />
-                {publishedAt}
-             </span>
-          </div>
-
-          {/* 标题 - 固定高度，悬停时渐变 */}
-          <h2 className="mb-1.5 h-[56px]">
+        {/* 顶栏:分类(aurora 签名)· 日期(mono tnum,极静) */}
+        <header className="relative z-10 mb-6 flex items-baseline justify-between gap-3">
+          {category ? (
             <span
-              className="font-display text-h4 font-semibold text-[var(--ink-primary,var(--text-primary))] group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent group-focus-visible:bg-gradient-to-r group-focus-visible:from-primary group-focus-visible:to-accent group-focus-visible:bg-clip-text group-focus-visible:text-transparent transition-all line-clamp-2 leading-snug tracking-tight"
-              title={title}
-              style={{ viewTransitionName: `post-${slug}-title` } as React.CSSProperties}
+              className="font-mono text-[11px] uppercase tracking-[0.22em] truncate"
+              style={{ color: 'color-mix(in oklch, var(--aurora-1) 90%, transparent)' }}
             >
-              {title}
+              {category.name}
             </span>
-          </h2>
+          ) : (
+            <span aria-hidden />
+          )}
+          <time
+            className="font-mono text-[10px] tnum tabular-nums whitespace-nowrap"
+            style={{ color: 'var(--ink-muted)' }}
+          >
+            {publishedAt}
+          </time>
+        </header>
 
-          {/* 摘要 - 固定3行高度 */}
-          <div className="h-[66px] mb-4 overflow-hidden relative">
-            {passwordRequired ? (
-              <div
-                className="absolute inset-0 flex items-center justify-center bg-[var(--bg-secondary)]/50 backdrop-blur-[2px] border border-dashed rounded-lg"
-                style={{
-                  borderColor: 'color-mix(in oklch, var(--signal-warn) 25%, transparent)',
-                }}
-              >
-                <div className="flex items-center gap-2" style={{ color: 'var(--signal-warn)' }}>
-                  <Lock className="w-4 h-4" />
-                  <span className="text-xs font-medium tracking-wide">内容已加密</span>
-                </div>
-              </div>
+        {/* 标题 —— Fraunces display,balance,2 行截断 */}
+        <h2 className="relative z-10 mb-5">
+          <span
+            className="font-display font-semibold transition-colors duration-[var(--dur-quick,260ms)]"
+            style={{
+              color: 'var(--ink-primary)',
+              fontSize: 'clamp(1.5rem, 1.4rem + 0.5vw, 1.875rem)',
+              lineHeight: '1.2',
+              letterSpacing: '-0.01em',
+              textWrap: 'balance' as unknown as 'inherit',
+              viewTransitionName: `post-${slug}-title`,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            } as React.CSSProperties}
+            title={title}
+          >
+            {title}
+          </span>
+        </h2>
+
+        {/* 摘要 / 加密锁 —— Instrument Serif italic,3 行截断 */}
+        <div className="relative z-10 mb-6 flex-1">
+          {passwordRequired ? (
+            <div
+              className="inline-flex items-center gap-2 rounded-md px-3 py-1.5"
+              style={{
+                color: 'var(--signal-warn)',
+                background: 'color-mix(in oklch, var(--signal-warn) 8%, transparent)',
+                border: '1px solid color-mix(in oklch, var(--signal-warn) 22%, transparent)',
+              }}
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em]">Encrypted</span>
+            </div>
+          ) : displaySummary ? (
+            <p
+              className="font-editorial italic text-[15px] leading-[1.65]"
+              style={{
+                color: 'color-mix(in oklch, var(--ink-secondary) 90%, transparent)',
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              } as React.CSSProperties}
+            >
+              {displaySummary}
+            </p>
+          ) : null}
+        </div>
+
+        {/* 底栏 —— hairline 分隔 + tags / reading */}
+        <footer
+          className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-5"
+          style={{
+            borderTop: '1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent)',
+          }}
+        >
+          {/* 左:tags(mono,字号 11) */}
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+            {visibleTags.length > 0 ? (
+              <>
+                {visibleTags.map((tag) => (
+                  <span
+                    key={tag.slug}
+                    className="font-mono text-[11px] whitespace-nowrap"
+                    style={{ color: 'var(--ink-muted)' }}
+                  >
+                    #{tag.name}
+                  </span>
+                ))}
+                {remainingTagCount > 0 && (
+                  <span
+                    className="font-mono text-[11px] tnum tabular-nums"
+                    style={{ color: 'var(--ink-muted)' }}
+                  >
+                    +{remainingTagCount}
+                  </span>
+                )}
+              </>
             ) : (
-              <p className="text-[var(--text-secondary)] text-sm leading-relaxed line-clamp-3">
-                {displaySummary}
-              </p>
+              <span aria-hidden />
             )}
           </div>
 
-          {/* 底部区域 - 标签和元信息 */}
-          <div className="mt-auto pt-3 border-t border-[var(--border-subtle)]">
-            {/* 标签 - 固定高度，优化显示 */}
-            <div className="flex items-center gap-1.5 h-[24px] mb-2 overflow-hidden">
-              {visibleTags.length > 0 ? (
-                <>
-                  {visibleTags.map((tag) => (
-                    <span
-                      key={tag.slug}
-                      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)] font-mono whitespace-nowrap"
-                    >
-                      #{tag.name}
-                    </span>
-                  ))}
-                  {remainingTagCount > 0 && (
-                    <span className="text-[10px] text-[var(--text-muted)] font-mono">
-                      +{remainingTagCount}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-[10px] text-[var(--text-muted)] italic">无标签</span>
-              )}
-            </div>
-    
-            {/* 底部元信息 */}
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)] h-[20px]">
-               <span className="flex items-center gap-1">
-                  {readingTime && <span>{readingTime}m 阅读</span>}
-               </span>
-               
-               {viewCount !== undefined && (
-                <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity">
-                  <Eye className="h-3 w-3" />
-                  {viewCount}
-                </span>
-              )}
-            </div>
+          {/* 右:reading time(常驻)· views 仅 hover 时浮现 */}
+          <div className="flex shrink-0 items-center gap-3 font-mono text-[10px] tnum tabular-nums uppercase tracking-[0.18em] whitespace-nowrap">
+            {readingTime ? (
+              <span style={{ color: 'var(--ink-muted)' }}>{readingTime} min</span>
+            ) : null}
+            {viewCount !== undefined && viewCount > 0 && (
+              <span
+                className="opacity-0 transition-opacity duration-[var(--dur-quick,260ms)] group-hover:opacity-100 group-focus:opacity-100"
+                style={{ color: 'color-mix(in oklch, var(--aurora-1) 75%, transparent)' }}
+              >
+                {viewCount} ·  views
+              </span>
+            )}
           </div>
-        </div>
+        </footer>
+
+        {/* 置顶标记 —— 右上角小印章,aurora 配色 */}
+        {isPinned && (
+          <div
+            className="absolute right-4 top-4 z-20 rounded-sm px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.24em]"
+            style={{
+              color: 'var(--aurora-1)',
+              background: 'color-mix(in oklch, var(--aurora-1) 14%, transparent)',
+              boxShadow: '0 0 0 1px color-mix(in oklch, var(--aurora-1) 22%, transparent)',
+            }}
+          >
+            Pinned
+          </div>
+        )}
       </article>
     </Link>
   );
