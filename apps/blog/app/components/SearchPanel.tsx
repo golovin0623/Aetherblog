@@ -237,6 +237,8 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     if (!searchQuery.trim()) {
       setResults([]);
       setAiAnswer(null);
+      setIsLoading(false);
+      setIsAiLoading(false);
       setShowHistory(true);
       closeEventSource();
       searchAbortRef.current?.abort();
