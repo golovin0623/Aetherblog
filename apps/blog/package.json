@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
-    "dev:preview": "next dev",
+    "dev": "next dev --port 3000 --turbopack",
+    "dev:preview": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

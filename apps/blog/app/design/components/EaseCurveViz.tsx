@@ -1,39 +1,106 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface EaseCurveVizProps {
   name: string;
   cubic: [number, number, number, number];
   duration?: number;
   description?: string;
+  /** 进入视口后自动循环演示;离开视口暂停。 */
+  autoPlay?: boolean;
+  /** 进入视口后首次起跑的额外延迟,用于多卡 stagger,默认 0。 */
+  initialDelay?: number;
 }
 
 /**
- * SVG 可视化 cubic-bezier 曲线 + 点击触发真实动画演示。
- * 点击后圆点从左到右运动一次,曲线决定运动速率。
+ * SVG 可视化 cubic-bezier 曲线 + 真实动画演示。
+ * autoPlay=true 时进入视口循环播放,圆点按曲线节奏从左到右滑过 → 0.5s
+ * 静止 → 复位 → 2s 留白 → 下一轮。点击亦可手动触发。
  */
 export default function EaseCurveViz({
   name,
   cubic,
   duration = 800,
   description,
+  autoPlay = false,
+  initialDelay = 0,
 }: EaseCurveVizProps) {
-  const [playing, setPlaying] = useState(false);
+  // phase: idle (左) → run (运动到右) → hold (停在右) → reset (复位到左)
+  const [phase, setPhase] = useState<'idle' | 'run' | 'hold' | 'reset'>('idle');
+  const timeoutIdsRef = useRef(new Set<number>());
+  const intervalIdRef = useRef<number | null>(null);
   const [x1, y1, x2, y2] = cubic;
   const cubicStr = `cubic-bezier(${cubic.join(', ')})`;
 
-  const play = () => {
-    if (playing) return;
-    setPlaying(true);
-    window.setTimeout(() => setPlaying(false), duration + 50);
+  const scheduleTimeout = (callback: () => void, ms: number) => {
+    const id = window.setTimeout(() => {
+      timeoutIdsRef.current.delete(id);
+      callback();
+    }, ms);
+    timeoutIdsRef.current.add(id);
+    return id;
   };
 
-  // SVG 视图:100x100,y 轴翻转(视觉上 0 在底部)
+  const clearScheduledTimers = () => {
+    timeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
+    timeoutIdsRef.current.clear();
+    if (intervalIdRef.current !== null) {
+      window.clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+  };
+
+  // 单次播放周期 —— 把所有 setTimeout 收拢在一起,并在触发后自动移出跟踪集合
+  const playOnce = () => {
+    setPhase('run');
+    scheduleTimeout(() => {
+      setPhase('hold');
+      scheduleTimeout(() => {
+        // 复位用线性瞬移(无 transition),圆点直接弹回左边
+        setPhase('reset');
+        scheduleTimeout(() => setPhase('idle'), 30);
+      }, 600);
+    }, duration + 30);
+  };
+
+  // 手动点击:仅在 idle 时响应,避免连击叠状态
+  const handleClick = () => {
+    if (phase !== 'idle') return;
+    playOnce();
+  };
+
+  // autoPlay loop:进入视口 → initialDelay 起跑 → 周期 = duration + 600 hold + 30 reset + 2200 rest
+  useEffect(() => {
+    if (!autoPlay) return;
+    let cancelled = false;
+    const cycle = duration + 600 + 30 + 2200;
+
+    scheduleTimeout(() => {
+      if (cancelled) return;
+      playOnce();
+      intervalIdRef.current = window.setInterval(() => {
+        if (cancelled) return;
+        playOnce();
+      }, cycle);
+    }, initialDelay);
+
+    return () => {
+      cancelled = true;
+      clearScheduledTimers();
+      setPhase('idle');
+    };
+  }, [autoPlay, duration, initialDelay]);
+
+  // 计算圆点 left + transition 表达
+  const dotLeft = phase === 'run' || phase === 'hold' ? 'calc(100% - 16px)' : '0';
+  const dotTransition =
+    phase === 'run' ? `left ${duration}ms ${cubicStr}` : 'none';
+
   return (
     <button
       type="button"
-      onClick={play}
+      onClick={handleClick}
       className="surface-leaf block w-full p-5 text-left rounded-xl group focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
       data-interactive
       aria-label={`播放 ${name} 动画样本`}
@@ -74,8 +141,8 @@ export default function EaseCurveViz({
         <div
           className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[var(--aurora-1)]"
           style={{
-            left: playing ? 'calc(100% - 16px)' : '0',
-            transition: playing ? `left ${duration}ms ${cubicStr}` : 'none',
+            left: dotLeft,
+            transition: dotTransition,
             boxShadow: '0 0 12px var(--aurora-1)',
           }}
         />

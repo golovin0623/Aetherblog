@@ -84,6 +84,12 @@ class VectorStoreService:
                 ),
             )
         active_model = await self._get_active_embedding_model()
+        # pgvector 的 hnsw 对 `vector` 类型限 2000 维 —— text-embedding-3-large
+        # 的 3072 维超过这个阈值, migration 000036 对 dim > 2000 的分区用 halfvec
+        # (float16, hnsw 最大 4000 维). planner 只有在 ORDER BY / WHERE 的 cast
+        # 精确匹配索引表达式时才会选中 partial HNSW, 所以 3072 查询要同步 cast
+        # 成 halfvec; 1536 / 768 等小维仍走 vector.
+        cast_type = "halfvec" if dim > 2000 else "vector"
         # 直接查 post_embeddings 替代旧的 search_similar_posts SQL 函数——
         # 函数签名和调用点已经漂移过一次，改表后一并清掉。
         # SECURITY (VULN-060): 仍然显式过滤 deleted/status/password/is_hidden，
@@ -97,7 +103,7 @@ class VectorStoreService:
                     p.title,
                     p.slug,
                     COALESCE(p.content_markdown, '') AS content,
-                    1 - (pe.embedding::vector({dim}) <=> $1::vector({dim})) AS similarity
+                    1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
                 FROM post_embeddings pe
                 JOIN posts p ON p.id = pe.post_id
                 WHERE pe.model_id = $2
@@ -107,8 +113,8 @@ class VectorStoreService:
                   AND p.status = 'PUBLISHED'
                   AND p.password IS NULL
                   AND p.is_hidden = FALSE
-                  AND 1 - (pe.embedding::vector({dim}) <=> $1::vector({dim})) >= $4
-                ORDER BY pe.embedding::vector({dim}) <=> $1::vector({dim})
+                  AND 1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) >= $4
+                ORDER BY pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
                 LIMIT $5
                 """,
                 embedding,
