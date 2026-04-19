@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import time
 
+import asyncpg
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
 
 from app.api.deps import (
@@ -19,6 +21,8 @@ from app.schemas.common import ApiResponse
 from app.schemas.search import IndexRequest, ReindexRequest, SemanticSearchData
 from app.services.metrics import MetricsStore
 from app.services.usage_logger import UsageLogger, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 
 # ref: §5.4
@@ -381,20 +385,47 @@ async def index_stats(
     user=Depends(require_admin),
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
-    """Return indexing statistics for the admin dashboard."""
-    # V3 (migration 000034): vector_count 只统计 active 行（shadow/deprecated 不算）。
-    # 这样 admin 切换模型时，stats 展示的 vector_count 和当前查询会用的向量
-    # 数对齐，不会把历史 deprecated 行算进来误导用户。
+    """Return indexing statistics for the admin dashboard.
+
+    Resilience: on legacy deployments where migration 000034 was marked
+    applied but the versioned ``post_embeddings`` schema never materialized
+    (stale ``CREATE TABLE IF NOT EXISTS`` collision with the 000001 chunk
+    table), the ``WHERE status = 'active'`` sub-select raises
+    ``UndefinedColumnError`` and turns the whole admin panel into a 500
+    loop. We split the post-level counts from the vector count so a schema
+    gap only suppresses ``vector_count`` (surfaced as ``0`` with
+    ``schema_ready: false``), keeping the rest of the dashboard usable
+    until migration 000036 runs.
+    """
     async with pool.acquire() as conn:
-        stats = await conn.fetchrow("""
+        post_counts = await conn.fetchrow("""
             SELECT
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED') AS total_posts,
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'INDEXED') AS indexed_posts,
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'FAILED') AS failed_posts,
-                (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'PENDING') AS pending_posts,
-                (SELECT COUNT(*) FROM post_embeddings WHERE status = 'active') AS vector_count
+                (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'PENDING') AS pending_posts
         """)
-    return ApiResponse(data=dict(stats))
+
+        vector_count = 0
+        schema_ready = True
+        try:
+            row = await conn.fetchrow(
+                "SELECT COUNT(*) AS c FROM post_embeddings WHERE status = 'active'"
+            )
+            vector_count = int(row["c"]) if row else 0
+        except (asyncpg.UndefinedColumnError, asyncpg.UndefinedTableError) as exc:
+            # legacy chunk table / missing schema — don't 500 the whole panel.
+            schema_ready = False
+            logger.warning(
+                "post_embeddings versioned schema missing (%s). "
+                "Returning vector_count=0 until migration 000036 repairs it.",
+                exc.__class__.__name__,
+            )
+
+    payload = dict(post_counts)
+    payload["vector_count"] = vector_count
+    payload["schema_ready"] = schema_ready
+    return ApiResponse(data=payload)
 
 
 @router.post("/api/v1/admin/search/retry-failed")
