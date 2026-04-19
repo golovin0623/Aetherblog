@@ -72,12 +72,15 @@ docker compose down
 
 ### One-Command Startup
 
-```bash
-# Development mode (direct port access)
-./start.sh
+> ⚠️ **本地启动 / 重启验证一律走网关模式 `./start.sh --gateway`**
+> 直连模式（`./start.sh`）不会拉起 nginx 容器，用户无法通过 `http://localhost:7899` 验证路由、跨域、SSE 透传等真实链路。除非用户明确要求"直连"或只调试单个服务，否则默认 `--gateway`。
 
-# Development with gateway (test routing, keep hot reload)
+```bash
+# 默认本地启动（推荐 / 验证用）
 ./start.sh --gateway
+
+# 仅调试单个服务时使用（无网关，直连端口）
+./start.sh
 
 # Production mode (unified gateway entry :7899)
 ./start.sh --prod
@@ -89,10 +92,18 @@ docker compose down
 ./stop.sh --all
 ```
 
-**Development mode URLs:**
+**Gateway 模式 URL（默认验证入口）:**
+- 统一入口: http://localhost:7899
+  - `/` → 博客前台
+  - `/admin/` → 管理后台
+  - `/api/` → 后端 API
+  - `/api/v1/ai/` → AI 服务（SSE 已配 `X-Accel-Buffering: no`）
+
+**直连模式 URL（仅单服务调试时）:**
 - Blog: http://localhost:3000
 - Admin: http://localhost:5173
 - Backend API: http://localhost:8080/api
+- AI Service: http://localhost:8000
 
 **Production mode URL:**
 - Gateway: http://localhost:7899 (routes to all services)
