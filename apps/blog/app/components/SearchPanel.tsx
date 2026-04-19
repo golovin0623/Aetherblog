@@ -132,9 +132,12 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
   const [showHistory, setShowHistory] = useState(true);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [semanticEnabled, setSemanticEnabled] = useState(false);
+  const [aiQaEnabled, setAiQaEnabled] = useState(false);
   const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 获取搜索功能开关状态
+  // 获取搜索功能开关状态 —— aiQaEnabled 用于前端自我 gate, 避免在站点没开 QA
+  // 的情况下还发 EventSource 拿 400, 把报错吞进 console (见 SearchPanel
+  // 原先 "Failed to fetch" 噪音)
   useEffect(() => {
     if (!isOpen) return;
     const controller = new AbortController();
@@ -142,9 +145,13 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         setSemanticEnabled(!!data?.data?.semanticEnabled);
+        setAiQaEnabled(!!data?.data?.aiQaEnabled);
       })
       .catch(err => {
-        if (err.name !== 'AbortError') setSemanticEnabled(false);
+        if (err.name !== 'AbortError') {
+          setSemanticEnabled(false);
+          setAiQaEnabled(false);
+        }
       });
     return () => controller.abort();
   }, [isOpen]);
@@ -205,6 +212,9 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
 
   // 跟踪当前 QA 流的 EventSource，便于清理
   const eventSourceRef = useRef<EventSource | null>(null);
+  // 跟踪当前搜索请求的 AbortController —— 快速输入/关闭面板时中断在飞的 fetch,
+  // 不然组件卸载后 fetch reject 会在 console 抛 "TypeError: Failed to fetch".
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   // 清理 EventSource
   const closeEventSource = useCallback(() => {
@@ -214,9 +224,12 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     }
   }, []);
 
-  // 组件卸载时清理 EventSource
+  // 组件卸载时清理 EventSource + 在飞的 fetch
   useEffect(() => {
-    return () => closeEventSource();
+    return () => {
+      closeEventSource();
+      searchAbortRef.current?.abort();
+    };
   }, [closeEventSource]);
 
   // 执行搜索
@@ -226,6 +239,7 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
       setAiAnswer(null);
       setShowHistory(true);
       closeEventSource();
+      searchAbortRef.current?.abort();
       return;
     }
 
@@ -233,9 +247,17 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
     setShowHistory(false);
     closeEventSource();
 
+    // 终止上一次请求 (debounce 快速连打时)
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     try {
       // 调用搜索 API
-      const res = await fetch(`/api/v1/public/search?q=${encodeURIComponent(searchQuery)}&mode=hybrid&limit=10`);
+      const res = await fetch(
+        `/api/v1/public/search?q=${encodeURIComponent(searchQuery)}&mode=hybrid&limit=10`,
+        { signal: controller.signal }
+      );
       if (!res.ok) {
         setResults([]);
         setIsLoading(false);
@@ -261,7 +283,15 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
       }
       setIsLoading(false);
 
-      // 启动 QA 流式回答
+      // QA 流式回答 —— 仅在站点开启 AI 问答时才启动 EventSource.
+      // 没开启还打 /qa 会收 204/4xx, EventSource.onerror 会吞掉但 devtools 里
+      // 仍然刷 "Failed to load /api/v1/public/search/qa" 噪音. 前置判断直接绕开.
+      if (!aiQaEnabled) {
+        setIsAiLoading(false);
+        setAiAnswer(null);
+        return;
+      }
+
       setIsAiLoading(true);
       setAiAnswer(null);
 
@@ -317,12 +347,14 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
         }
       };
     } catch (error) {
+      // AbortError 是主动中断, 不是 bug, 不噪音到 console
+      if ((error as { name?: string })?.name === 'AbortError') return;
       logger.error('Search error:', error);
       setResults([]);
       setIsLoading(false);
       setIsAiLoading(false);
     }
-  }, [closeEventSource]);
+  }, [closeEventSource, aiQaEnabled]);
 
   // 防抖搜索
   useEffect(() => {
