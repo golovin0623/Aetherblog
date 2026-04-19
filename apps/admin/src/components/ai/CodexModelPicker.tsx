@@ -150,7 +150,7 @@ export function CodexModelPicker({
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node;
       const inTrigger = triggerRef.current?.contains(target);
-      const inPortal = (target as HTMLElement).closest('[data-embed-picker-portal]');
+      const inPortal = (target instanceof Element ? target : target.parentElement)?.closest('[data-embed-picker-portal]');
       if (!inTrigger && !inPortal) setIsOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
