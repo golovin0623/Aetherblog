@@ -250,7 +250,7 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 | activity_handler | `/v1/admin/activities/*` | 3 endpoints: recent, list, by-user |
 | storage_provider_handler | `/v1/admin/storage/*` | 8 endpoints: list, default, CRUD, set-default, test |
 | archive_handler | `/v1/public/archives/*` | 2 endpoints: list, stats |
-| migration_handler | `/v1/admin/migration/*` | 1 endpoint (Vanblog import) |
+| migration_handler | `/v1/admin/migrations/vanblog/*` | 3 endpoints: `POST /analyze` (dry-run → AnalysisReport), `POST /import/stream` (NDJSON/SSE 流式执行), `POST /import?mode=dry-run\|execute` (兼容旧客户端)。500MB 上限，source_key = `vanblog:<id>` + 双读兼容 `vanblog:<title>` 历史格式；支持 skip / overwrite / rename 三种冲突策略；分类/标签批量预加载 + 多行 VALUES INSERT 消灭 N+1；`SET LOCAL app.preserve_updated_at=true` 让 VanBlog 原始 createdAt/updatedAt 落库（依赖 migration 000028 触发器） |
 | media_tag_handler | `/v1/admin/media-tags/*` | 9 endpoints: tags CRUD + popular + search + batch; file-tag association (list, add, remove) |
 | system_handler | `/v1/system/*` | GET /system/time |
 | visitor_handler | `/v1/admin/visitors/*` | 2 endpoints: create, today |

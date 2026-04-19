@@ -9,6 +9,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 📥 VanBlog 迁移 2.0 · 正确性 + 性能 + 5 步向导 (2026-04-19)
+
+**基于实测 4.5MB 生产备份（74 articles / 11 categories / 13 tags / 16 password-protected / 3 hidden）的数据驱动重写。老 handler 的 DTO 形状基于上游 Mongoose schema 推理，和真实导出多处不对齐 —— 该备份扔进老 handler 的 `DisallowUnknownFields()` 直接 400。**
+
+**Fixed — DTO 对齐真实导出形状**
+
+- **`apps/server-go/internal/service/migration_types.go` (新)** —— DTO 按 4.5MB 实测备份形状声明：
+  - 顶层 `meta` / `user` 为**单对象**（非数组），key 为单数（老 DTO 用 `Users []`）。
+  - `categories` / `tags` 为**字符串数组**（老 DTO 用 `[{name}]`）。
+  - 文章补齐 `id / author / createdAt / updatedAt / pathname / private / viewer / visited / copyright / lastVisitedTime / deleted`（老 DTO 全缺）。
+  - `viewer / visit / static / setting` 用 `json.RawMessage` 接住不处理，避免未知字段报错。
+- **解析策略**：故意不调用 `DisallowUnknownFields()`，让不同 VanBlog 版本新增字段都能安静丢弃。
+
+**Fixed — source_key 错配导致的重复导入**
+
+- **老实现**用 `vanblog:<title>` 作 source_key —— 同名文章会误判为重复，且 VanBlog 导出时 `_id` 被投影掉了，真正的唯一键是数字 `id`。
+- **新实现**：`vanblog:<id>`（实测 74/74 文章都带唯一 `id`）。同时**双读兼容**老格式 `vanblog:<title>` —— 老代码导入过的文章新代码不会重复导入。
+
+**Fixed — VanBlog 明文密码 / 时间戳 / pinPriority / 作者 / copyright 等字段丢失**
+
+- `password` 明文（如 `Vs2016214237`）→ bcrypt 后再存（VULN-033 跟进）。
+- `createdAt` / `updatedAt` 保留到 posts 表 —— 通过 `SET LOCAL app.preserve_updated_at = 'true'` 绕过 `update_updated_at_column` 触发器（依赖 migration 000028）。
+- `top > 0` → `is_pinned=true` + `pin_priority=top`。
+- `author` → `legacy_author_name`；`visited` → `legacy_visited_count`；`copyright` → `legacy_copyright`。
+- `hidden=true` → `is_hidden=true`；`password` 非空 → bcrypt 到 `posts.password`。
+- 自动派生：`summary`（正文前 200 rune，按 CJK 截断）+ `cover_image`（首个 markdown 图片 URL）。
+
+**Performance — 消灭 N+1**
+
+- **`apps/server-go/internal/repository/migration_repo.go` (新)** —— 批量读 (`WHERE name = ANY($1)`) + 多行 VALUES INSERT（分类/标签 500/批，文章 200/批，post_tags 1000/批）。
+- **分阶段事务**：categories → commit → tags → commit → posts → commit → post_tags → commit。任一阶段崩了，凭 source_key UNIQUE 天然续跑。
+- 实测：**74 articles + 11 categories + 13 tags + 121 post_tag relations 总耗时 971ms**（老 N+1 实现约 400+ 次查询）。
+
+**Added — POST /v1/admin/migrations/vanblog/analyze**
+
+- 返回结构化 `AnalysisReport`（summary + per-article action plans + category/tag 新建 vs 复用 + unsupported detection）。前端预览页据此渲染可排序勾选的文章表。
+- `action` 枚举：`create / overwrite / rename / skip_duplicate / skip_hidden / skip_deleted / skip_filtered / invalid`。
+
+**Added — POST /v1/admin/migrations/vanblog/import/stream**
+
+- NDJSON over HTTP（与 SSE 协议兼容，每行 `data: <json>\n\n`），前端用 fetch + ReadableStream 消费（EventSource 不支持 multipart POST）。
+- 事件类型：`phase`（阶段开始/结束 + total）、`item`（逐条）、`summary`（最终汇总）、`fatal`（致命错误）。15s 心跳防代理断连。
+- 文件上限从 50MB（硬编码 OOM 护栏）放宽到 **500MB**；网关 `client_max_body_size: 10GB` 是上限，应用层 500MB 是二次保护。
+
+**Added — ImportOptions (multipart `options` JSON 字段)**
+
+| 字段 | 默认 | 含义 |
+|---|---|---|
+| `conflictStrategy` | `skip` | skip / overwrite / rename |
+| `preserveTimestamps` | `true` | 保留 VanBlog 的 createdAt/updatedAt |
+| `importHidden` | `true` | 把 hidden=true 文章作 is_hidden=true 导入 |
+| `importDrafts` | `true` | 导入 drafts[] 为 DRAFT 状态 |
+| `importDeleted` | `false` | 默认跳过 deleted=true 条目 |
+| `preservePasswords` | `true` | overwrite 时不用 VanBlog 明文覆盖已有 bcrypt |
+| `onlyArticleIds` | `[]` | dry-run 预览后的精选白名单 |
+
+**Added — Admin 5 步向导（替换旧 MigrationPage）**
+
+- `apps/admin/src/pages/MigrationPage.tsx` 重写为 stepper 外壳；子组件 `apps/admin/src/pages/migration/`:
+  - `useMigrationWizard.ts` — useReducer 状态机，聚合 SSE 事件
+  - `steps/StepUpload.tsx` — 拖放区 + 客户端解析出概览卡
+  - `steps/StepOptions.tsx` — 冲突策略三选一 + 5 个开关（共用 `@aetherblog/ui` Toggle）
+  - `steps/StepPreview.tsx` — 逐条 action badge + 分类/标签 create vs reuse
+  - `steps/StepExecute.tsx` — 4 阶段进度条 + 80 条滚动日志
+  - `steps/StepSummary.tsx` — Fraunces 大数字 + 最近导入深链
+- 全部叠 Aether Codex 层：`surface-raised/-leaf`、`data-interactive` aurora hover、`font-display + tnum`、`--aurora-1` 激活高亮。
+
+**Fixed — overwrite 对老 source_key 格式的静默失败 (同日跟进)**
+
+- **问题**：Analyze 的 `classifyArticle` 用 "新 key (`vanblog:<id>`) miss → 老 key (`vanblog:<title>`) hit" 的双读做幂等检测，但 overwrite 路径的 `UpdatePostBySourceKey` 只用新 key 做 WHERE，对老 handler 写入过的数据 → WHERE 不匹配 → 影响 0 行 → 被记成"成功"但实际没改动。任何从老 migration 升级过来、且有遗留 `vanblog:<title>` 记录的环境都会踩到。
+- **修复**：
+  - `ArticlePlan` 新增 `MatchedSourceKey` 字段 —— Analyze 把 DB 实际命中的 key（可能老可能新）暴露给 Execute。
+  - `UpdatePostBySourceKey(ctx, tx, p, matchKey)` 签名改造：`WHERE source_key = matchKey`（老/新都能命中），`SET source_key = p.SourceKey`（固定新格式）。一次 overwrite 同时完成"内容同步"和"source_key 格式迁移"。
+  - 单测 `TestClassifyArticle_LegacyOverwrite_ReturnsLegacyKey` 锁死这个行为。
+- **验证**：seed 一条 `source_key=vanblog:<title>` 的老行 → 用 1 篇 fixture 跑 overwrite → 观察到 `matchedSourceKey` 暴露老 key 给 UPDATE，事后 `source_key` 列升级到 `vanblog:<id>`，content/visited_count 同步写入，21ms 完成。
+
+**Tested**
+
+- `apps/server-go/internal/service/migration_service_test.go` —— **17 个**纯函数单测覆盖 DTO 解析（含真实导出 JSON snippet）、source_key 新老两种模式 + overwrite 路径命中键、冲突分类 6 条路径、slug 冲突回退、CJK slug + 摘要截断、时间戳解析。
+- Live verification：clean DB → analyze → 971ms import → 74 posts / 11 cats / 13 tags / 121 post_tags / 0 errors；idempotent 重跑 42ms 全部 skip；hidden 文章不入公开列表；bcrypt 密码验证；pinned 文章排序正确；tagNames/categoryName 在公开 API 正常返回。
+
 ### 🟦🟩 真·蓝绿 embedding 切换 + 空向量防御 (2026-04-18 评审跟进)
 
 **Fixed — semantic_search 空向量崩溃**
