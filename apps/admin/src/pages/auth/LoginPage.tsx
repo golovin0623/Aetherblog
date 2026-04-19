@@ -2,11 +2,16 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { spring, transition, variants } from '@aetherblog/ui';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 
+// NOTE: 本页设计语言锚定 `apps/blog/app/design/` + `apps/blog/app/about/` 里建立的
+// Aether Codex 规范 —— surface-overlay / --ink-* / --aurora-* / Fraunces display.
+// 双主题由 tokens 自动适配（:root.light 在 packages/ui/src/styles/tokens.css
+// 反转 ink / bg / signal 色），不在本文件里手写 dark: variant.
 export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -23,40 +28,37 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      const res = await authService.login({ 
-        username, 
+      const res = await authService.login({
+        username,
         password,
       });
-      
+
       if (res.code === 200 && res.data) {
-         const { userInfo, mustChangePassword } = res.data;
-         const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
-         // 验证角色是否为允许值之一
-         const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
-         const role = validRoles.includes(roleStr as typeof validRoles[number]) 
-           ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER') 
-           : 'USER';
-         
-         const user = {
-            id: String(userInfo.id),
-            username: userInfo.username,
-            nickname: userInfo.nickname,
-            avatar: userInfo.avatar || '',
-            role
-         };
-         
-         login(user);
-         
-         // 检查用户是否需要在首次登录时更改密码
-         if (mustChangePassword) {
-            navigate('/change-password', { state: { firstLogin: true } });
-         } else {
-            // 登录成功后，如果有来源页面则跳转回来源页面，否则跳转到首页
-            const from = (location.state as any)?.from?.pathname || '/';
-            navigate(from, { replace: true });
-         }
+        const { userInfo, mustChangePassword } = res.data;
+        const roleStr = (userInfo.roles && userInfo.roles.length > 0) ? userInfo.roles[0] : 'USER';
+        const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
+        const role = validRoles.includes(roleStr as typeof validRoles[number])
+          ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER')
+          : 'USER';
+
+        const user = {
+          id: String(userInfo.id),
+          username: userInfo.username,
+          nickname: userInfo.nickname,
+          avatar: userInfo.avatar || '',
+          role,
+        };
+
+        login(user);
+
+        if (mustChangePassword) {
+          navigate('/change-password', { state: { firstLogin: true } });
+        } else {
+          const from = (location.state as any)?.from?.pathname || '/';
+          navigate(from, { replace: true });
+        }
       } else {
-         setError(res.message || '登录失败');
+        setError(res.message || '登录失败');
       }
     } catch (err: any) {
       logger.error('Login failed:', err);
@@ -67,95 +69,161 @@ export function LoginPage() {
   };
 
   return (
-    <div className="w-full min-h-screen flex bg-[var(--bg-primary)] text-[var(--text-primary)] selection:bg-primary/30 overflow-hidden font-sans relative">
-      {/* 背景层 - 所有视图共享 */}
-      <div className="absolute inset-0 z-0">
-        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-primary/15 rounded-full blur-[120px] mix-blend-screen animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/10 rounded-full blur-[100px] mix-blend-screen animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
-        {/* 网格图案 */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)]"></div>
+    <div className="relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
+      {/* Ambient 背景:极光辉光 + 微噪点 + 网格(只在暗模式可见)
+          所有色值用 aurora tokens —— 暗/亮模式自动渐变,无需 dark: variant. */}
+      <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true">
+        <div
+          className="absolute top-[-25%] left-[-15%] w-[70%] h-[70%] rounded-full blur-[140px] opacity-70"
+          style={{
+            background: 'radial-gradient(circle, color-mix(in oklch, var(--aurora-1) 22%, transparent) 0%, transparent 70%)',
+            animation: 'breath 12s var(--ease-in-out, ease-in-out) infinite',
+          }}
+        />
+        <div
+          className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full blur-[120px] opacity-60"
+          style={{
+            background: 'radial-gradient(circle, color-mix(in oklch, var(--aurora-2) 20%, transparent) 0%, transparent 70%)',
+            animation: 'breath 14s var(--ease-in-out, ease-in-out) 2s infinite',
+          }}
+        />
+        <div className="absolute inset-0 opacity-[0.04] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)] bg-[linear-gradient(var(--ink-primary)_1px,transparent_1px),linear-gradient(90deg,var(--ink-primary)_1px,transparent_1px)] bg-[size:64px_64px]" />
       </div>
 
-      {/* 左侧：品牌/艺术区域 (仅桌面端) */}
-      <motion.div 
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-white/5"
+      {/* 左侧:品牌/宣言区(桌面端) —— 参考 /about Hero + /design S1 排版语言 */}
+      <motion.div
+        variants={variants.fadeUp}
+        initial="initial"
+        animate="animate"
+        transition={transition.flow}
+        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
       >
-        {/* 品牌内容 */}
+        {/* Wordmark */}
         <div className="relative z-10">
-           <div className="inline-flex items-center gap-3">
-             <div className="w-10 h-10 rounded-xl bg-[image:var(--gradient-primary)] flex items-center justify-center shadow-lg shadow-primary">
-               <Sparkles className="w-6 h-6 text-white" />
-             </div>
-             <span className="text-xl font-bold tracking-tight">AetherBlog</span>
-           </div>
+          <div className="inline-flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{
+                background: 'color-mix(in oklch, var(--aurora-1) 20%, transparent)',
+                boxShadow: '0 0 32px color-mix(in oklch, var(--aurora-1) 40%, transparent), 0 1px 0 inset color-mix(in oklch, var(--aurora-1) 30%, transparent)',
+              }}
+            >
+              <Sparkles className="w-5 h-5 text-[var(--aurora-1)]" strokeWidth={1.75} />
+            </div>
+            <span className="font-display text-lg font-semibold tracking-tight text-[var(--ink-primary)]">AetherBlog</span>
+          </div>
         </div>
 
-        <div className="relative z-10 max-w-lg">
-          <h2 className="text-5xl font-bold leading-tight mb-6 bg-clip-text text-transparent bg-gradient-to-br from-white via-white/90 to-white/50">
-            Cognitive Elegance for Your Content.
+        {/* 宣言 —— Fraunces display + Instrument Serif 副标 */}
+        <div className="relative z-10 max-w-xl space-y-6">
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">Admin · Console</p>
+          <h2
+            className="font-display text-[clamp(3rem,5.2vw,4.8rem)] leading-[1.02] tracking-[-0.02em] text-[var(--ink-primary)]"
+            style={{ textWrap: 'balance' as any }}
+          >
+            Cognitive Elegance
+            <br />
+            <span className="italic font-editorial text-[var(--aurora-1)]">for Your Content.</span>
           </h2>
-          <p className="text-lg text-[var(--text-muted)] font-medium leading-relaxed">
-            Experience the next generation of blog management. 
-            AI-driven insights, seamless editing, and a design language that inspires.
+          <p className="font-editorial text-[1.15rem] leading-relaxed text-[var(--ink-secondary)] max-w-lg italic">
+            AI-driven insights, seamless editing, and a design language that
+            inspires — engineered for the modern editorial workflow.
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2 text-sm text-[var(--text-muted)] font-medium">
-          <div className="w-2 h-2 rounded-full bg-status-success animate-pulse"></div>
-          <span>System Operational v1.0.0</span>
+        {/* 底部系统状态 */}
+        <div className="relative z-10 flex items-center gap-2.5">
+          <span className="relative inline-flex w-2 h-2">
+            <span className="absolute inset-0 rounded-full bg-[var(--signal-success)] opacity-50 animate-ping" />
+            <span className="relative inline-block w-2 h-2 rounded-full bg-[var(--signal-success)]" />
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">System Operational · v1.0.0</span>
         </div>
       </motion.div>
 
-      {/* 右侧：登录表单区域 */}
-      <motion.div 
+      {/* 右侧:登录表单 —— surface-overlay 承载,整体是"漂浮在夜空中的发光典籍"的单页实例 */}
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
-        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-8 relative z-10"
+        transition={{ ...transition.flow, delay: 0.1 }}
+        className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-10 relative z-10"
       >
-        <div className="w-full max-w-[420px] space-y-8">
-          {/* 移动端品牌 */}
-          <div className="lg:hidden flex flex-col items-center mb-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-[image:var(--gradient-primary)] flex items-center justify-center shadow-2xl shadow-primary-lg mb-4">
-              <Sparkles className="w-8 h-8 text-white" />
+        <div className="w-full max-w-[440px]">
+          {/* 移动端简版 wordmark */}
+          <motion.div
+            variants={variants.fadeUp}
+            initial="initial"
+            animate="animate"
+            transition={transition.quick}
+            className="lg:hidden flex flex-col items-center mb-8 text-center"
+          >
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+              style={{
+                background: 'color-mix(in oklch, var(--aurora-1) 20%, transparent)',
+                boxShadow: '0 0 32px color-mix(in oklch, var(--aurora-1) 40%, transparent), 0 1px 0 inset color-mix(in oklch, var(--aurora-1) 30%, transparent)',
+              }}
+            >
+              <Sparkles className="w-7 h-7 text-[var(--aurora-1)]" strokeWidth={1.75} />
             </div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">AetherBlog</h1>
-            <p className="text-[var(--text-muted)] text-xs mt-1 font-medium tracking-widest uppercase">Cognitive Elegance</p>
-          </div>
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--ink-primary)]">AetherBlog</h1>
+            <p className="font-mono text-[10px] mt-1.5 uppercase tracking-[0.22em] text-[var(--ink-muted)]">Cognitive Elegance</p>
+          </motion.div>
 
-          <div className="text-center lg:text-left">
-            <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)] mb-2">Welcome back</h1>
-            <p className="text-[var(--text-muted)] text-sm">Enter your credentials to access the admin panel.</p>
-          </div>
+          <motion.div
+            variants={variants.scaleIn}
+            initial="initial"
+            animate="animate"
+            transition={spring.soft}
+            className="surface-overlay p-7 md:p-9 space-y-7"
+          >
+            {/* 标题组 */}
+            <div className="space-y-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">Sign In</p>
+              <h1 className="font-display text-[2rem] font-semibold tracking-tight text-[var(--ink-primary)] leading-tight">
+                Welcome back
+              </h1>
+              <p className="text-sm text-[var(--ink-secondary)]">
+                Enter your credentials to access the admin console.
+              </p>
+            </div>
 
-          <AnimatePresence mode="wait">
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                animate={{ opacity: 1, height: "auto", marginBottom: 24 }}
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="p-4 rounded-xl bg-status-danger-light border border-status-danger-border text-status-danger text-sm flex items-center gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-status-danger shrink-0" />
-                  {error}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            {/* Error banner —— signal-danger token,双主题自动 */}
+            <AnimatePresence mode="wait">
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={transition.quick}
+                  className="overflow-hidden"
+                >
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm"
+                    style={{
+                      background: 'color-mix(in oklch, var(--signal-danger) 10%, transparent)',
+                      border: '1px solid color-mix(in oklch, var(--signal-danger) 25%, transparent)',
+                      color: 'var(--signal-danger)',
+                    }}
+                  >
+                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--signal-danger)] shrink-0" />
+                    {error}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-
-
-            <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Username */}
               <div className="space-y-2">
-                <label htmlFor="username" className="text-sm font-medium text-[var(--text-secondary)] ml-1">Username</label>
+                <label htmlFor="username" className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] px-0.5">
+                  Username
+                </label>
                 <div className="relative group">
-                  <UserIcon className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                  <UserIcon
+                    className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] group-focus-within:text-[var(--aurora-1)] transition-colors"
+                    strokeWidth={1.75}
+                  />
                   <input
                     id="username"
                     name="username"
@@ -166,88 +234,191 @@ export function LoginPage() {
                     spellCheck={false}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
-                    placeholder="Enter your username"
                     required
+                    placeholder="admin"
+                    className="codex-input"
                   />
                 </div>
               </div>
 
+              {/* Password */}
               <div className="space-y-2">
-                 <div className="flex items-center justify-between ml-1">
-                   <label htmlFor="password" className="text-sm font-medium text-[var(--text-secondary)]">Password</label>
-                   {/* SECURITY (VULN-106): `<a href="#">` silently navigates away and loses form state.
-                       While password reset UX isn't implemented, disable the placeholder button to prevent
-                       accidental clicks; swap to a real route once reset flow ships. */}
-                   <button type="button" disabled className="text-xs text-primary/60 cursor-not-allowed">
-                     Forgot password?
-                   </button>
-                 </div>
+                <div className="flex items-center justify-between px-0.5">
+                  <label htmlFor="password" className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                    Password
+                  </label>
+                  {/* VULN-106: 真实 reset 流未实现，保留占位禁用按钮。实装时挂到 /auth/reset. */}
+                  <button
+                    type="button"
+                    disabled
+                    className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)] opacity-50 cursor-not-allowed"
+                  >
+                    Forgot?
+                  </button>
+                </div>
                 <div className="relative group">
-                  <Lock className="absolute left-4 top-3.5 w-5 h-5 text-[var(--text-muted)] group-focus-within:text-primary transition-colors" />
+                  <Lock
+                    className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] group-focus-within:text-[var(--aurora-1)] transition-colors"
+                    strokeWidth={1.75}
+                  />
                   <input
                     id="password"
                     name="password"
-                    type={showPassword ? "text" : "password"}
+                    type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-12 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[var(--text-primary)] text-[16px] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-white/[0.08]"
-                    placeholder="Enter your password"
                     required
+                    placeholder="••••••••"
+                    className="codex-input pr-12"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded"
-                    aria-label="Toggle password visibility" aria-pressed={showPassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)]"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
                   >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPassword ? <EyeOff className="w-4 h-4" strokeWidth={1.75} /> : <Eye className="w-4 h-4" strokeWidth={1.75} />}
                   </button>
                 </div>
               </div>
+
+              {/* Submit —— aurora 实心按钮 + 轻微光晕 */}
+              <motion.button
+                type="submit"
+                disabled={isLoading}
+                whileTap={{ scale: 0.985 }}
+                transition={spring.precise}
+                className={cn(
+                  'codex-submit-btn mt-2',
+                  isLoading && 'opacity-70 cursor-not-allowed'
+                )}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                    <span>Verifying</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Sign In</span>
+                    <ArrowRight className="w-4 h-4" strokeWidth={2} />
+                  </>
+                )}
+              </motion.button>
+            </form>
+
+            {/* Aurora divider */}
+            <div className="aurora-divider" />
+
+            {/* Secure Access section mark */}
+            <div className="flex items-center justify-center gap-3">
+              <div className="h-px flex-1 bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--ink-muted)]">§ Secure Access</span>
+              <div className="h-px flex-1 bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
             </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={cn(
-                "w-full py-4 rounded-xl bg-primary text-white font-bold text-sm tracking-widest shadow-2xl shadow-primary/30 flex items-center justify-center gap-2 transition-all hover:bg-primary/90 active:scale-[0.98]",
-                isLoading && "opacity-70 cursor-not-allowed"
-              )}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Verifying...</span>
-                </>
-              ) : (
-                <>
-                  <span>SIGN IN</span>
-                  <ArrowRight className="w-5 h-5" />
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="pt-4">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5"></div></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-transparent px-2 text-[var(--text-muted)]">Secure Access</span></div>
-            </div>
-          </div>
-
-          <p className="text-center text-[10px] text-[var(--text-muted)] tracking-wider">
-            By continuing, you agree to our <a href="#" className="underline text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">Terms</a> and <a href="#" className="underline text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">Privacy</a>.
-          </p>
+            <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              By continuing you agree to the{' '}
+              <a href="#" className="text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] transition-colors underline-offset-2 underline decoration-[var(--aurora-1)]/30">Terms</a>
+              {' · '}
+              <a href="#" className="text-[var(--ink-secondary)] hover:text-[var(--aurora-1)] transition-colors underline-offset-2 underline decoration-[var(--aurora-1)]/30">Privacy</a>
+            </p>
+          </motion.div>
 
           {/* 移动端系统状态 */}
-          <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-50">
-            <div className="w-1.5 h-1.5 bg-status-success rounded-full animate-pulse" />
-            <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-tight">System Operational v1.0.0</span>
+          <div className="lg:hidden flex justify-center items-center gap-2 pt-8 opacity-60">
+            <div className="w-1.5 h-1.5 bg-[var(--signal-success)] rounded-full animate-pulse" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">System Operational · v1.0.0</span>
           </div>
         </div>
       </motion.div>
+
+      {/* 局部样式：codex-input / codex-submit-btn —— 抽出是为了让 hover/focus/填充状态的
+          token 组合集中在一处,避免 inline 变量字符串污染 JSX 可读性. */}
+      <style>{`
+        @keyframes breath {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 0.75; transform: scale(1.05); }
+        }
+        .codex-input {
+          width: 100%;
+          padding: 0.85rem 1rem 0.85rem 2.75rem;
+          font-size: 15px;
+          color: var(--ink-primary);
+          background: color-mix(in oklch, var(--bg-leaf) 60%, transparent);
+          border: 1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent);
+          border-radius: 0.75rem;
+          transition: border-color var(--dur-quick) var(--ease-out),
+                      box-shadow var(--dur-quick) var(--ease-out),
+                      background var(--dur-quick) var(--ease-out);
+          outline: none;
+        }
+        .codex-input::placeholder {
+          color: var(--ink-muted);
+          font-family: var(--font-sans);
+        }
+        .codex-input:hover {
+          background: color-mix(in oklch, var(--bg-leaf) 72%, transparent);
+          border-color: color-mix(in oklch, var(--ink-primary) 16%, transparent);
+        }
+        .codex-input:focus {
+          border-color: color-mix(in oklch, var(--aurora-1) 55%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 18%, transparent);
+          background: color-mix(in oklch, var(--bg-leaf) 80%, transparent);
+        }
+        :root.light .codex-input {
+          background: color-mix(in oklch, #ffffff 80%, transparent);
+          border-color: color-mix(in oklch, var(--ink-primary) 14%, transparent);
+        }
+        :root.light .codex-input:hover {
+          background: #ffffff;
+        }
+        :root.light .codex-input:focus {
+          background: #ffffff;
+          border-color: color-mix(in oklch, var(--aurora-1) 65%, transparent);
+          box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 22%, transparent);
+        }
+
+        .codex-submit-btn {
+          display: inline-flex;
+          width: 100%;
+          align-items: center;
+          justify-content: center;
+          gap: 0.625rem;
+          padding: 0.95rem 1.5rem;
+          font-family: var(--font-sans);
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--bg-void);
+          background: linear-gradient(135deg, var(--aurora-1) 0%, var(--aurora-2) 100%);
+          border: 1px solid color-mix(in oklch, var(--aurora-1) 50%, transparent);
+          border-radius: 0.75rem;
+          box-shadow:
+            0 1px 0 inset color-mix(in oklch, white 30%, transparent),
+            0 8px 24px -8px color-mix(in oklch, var(--aurora-1) 50%, transparent);
+          transition: transform var(--dur-quick) var(--ease-out),
+                      box-shadow var(--dur-quick) var(--ease-out),
+                      filter var(--dur-quick) var(--ease-out);
+          cursor: pointer;
+        }
+        .codex-submit-btn:hover:not(:disabled) {
+          filter: brightness(1.08);
+          box-shadow:
+            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 12px 36px -8px color-mix(in oklch, var(--aurora-1) 65%, transparent);
+        }
+        .codex-submit-btn:disabled {
+          cursor: not-allowed;
+        }
+        /* 亮模式按钮：保持 aurora 渐变但改写文字颜色（白底 aurora 文字不够通透 → 深底 + 白字更稳） */
+        :root.light .codex-submit-btn {
+          color: #FAFAFA;
+        }
+      `}</style>
     </div>
   );
 }

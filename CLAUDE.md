@@ -336,6 +336,28 @@ A second design layer (**Aether Codex — 漂浮在夜空中的发光典籍**) s
 
 **Accessibility baseline** (in `tokens.css`): `prefers-reduced-motion` disables aurora/ink-cursor animation; `(hover: none) and (pointer: coarse)` enforces 44×44 touch targets; `prefers-contrast: more` strengthens borders.
 
+### 🎯 Design Reference Authority (MUST-READ before any UI work)
+
+**Canonical references for the Aether Codex design language:**
+
+| Reference | Purpose | Inspect for |
+| --- | --- | --- |
+| `apps/blog/app/design/DesignClient.tsx` + `sections/S1–S8.tsx` | Live showcase of every token, surface, typography scale, motion curve, and signature interaction | Color (OKLCH hue slider), 9-step font scale, 4-tier surfaces, ease curves, signature moments |
+| `apps/blog/app/about/` | "Apple-grade" reference page — the first full-page Codex implementation outside /design | Hero breath animation, marginalia rhythm, `reading-column` flow |
+| `.claude/design-system/` (00-manifesto → 07-migration) | Written spec for the design system | Manifesto, surfaces, typography, motion, migration guidance |
+| `packages/ui/src/styles/{tokens,surfaces,typography}.css` | Source of truth for token values | What tokens exist and how they auto-flip light/dark |
+
+**HARD RULES for every new UI surface (auth, modal, editor panel, etc.):**
+
+1. **Never invent new color values.** Compose from `--ink-*`, `--bg-void/substrate/leaf/raised`, `--aurora-1..4`, `--signal-success/warn/danger/info`. Aurora tints via `color-mix(in oklch, var(--aurora-N) X%, transparent)`.
+2. **Never hand-roll glass.** Use `.surface-leaf` (95% of cards), `.surface-raised` (sidebar/sticky), `.surface-overlay` (modal/auth card), `.surface-luminous` (≤1 signature card per page). `[data-interactive]` adds aurora hover stripe.
+3. **Never skip the typography ladder.** Headings get `.font-display` (Fraunces); italic ledes get `.font-editorial` (Instrument Serif); labels/captions get `.font-mono` (Geist Mono) with `tracking-[0.2em] uppercase`. Sizes come from `--fs-micro..display` (9 steps).
+4. **Never write raw bezier / spring numbers.** Import `{ spring, transition, variants, stagger }` from `@aetherblog/ui` (motion presets). Short transitions = `transition.quick` (260ms), entrances = `spring.soft`, button press = `spring.precise`.
+5. **Never use `dark:` Tailwind variants for Codex-migrated surfaces.** The tokens self-flip via `:root.light`. If a new color needs a separate light value, add it to `tokens.css` — not inline.
+6. **Before adding a new component or page, open `/design` and `/about` first.** If the pattern isn't there, it's a signal the design spec needs an update — NOT that you should improvise.
+
+**Migration stance for legacy tokens:** `--text-*`, `--bg-primary`, `bg-white/5`, `border-white/10`, `status-danger-light`, gradient-primary etc. are deprecated but **not** deleted (see `.claude/design-system/deprecations.json` with sunset 2026-07-17). When modifying a legacy component, migrate it to Codex tokens in the same commit — do not leave half-Codex half-legacy. Run `pnpm design-system:check` to surface violations.
+
 ### Round 3 · 前沿精度升级 (2026-04-17)
 
 - **Font role bridge** (tokens.css tail): `--font-fraunces` / `--font-instrument-serif` / `--font-geist` / `--font-geist-mono` aliased to currently-loaded `--font-playfair` / `--font-noto-serif-sc` / `--font-inter` / system mono. Without this, all typography classes referencing `var(--font-display)` / `var(--font-editorial)` silently fell through to system fonts. **Any future font swap only needs these four lines edited.**
