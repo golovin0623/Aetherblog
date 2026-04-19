@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🐛 PostsPage 分页器 · 6 页封顶 bug (2026-04-20)
+
+**症状:** 文章管理页总页数显示"10 / 10 页", 分页按钮却只渲染 `< 1 2 3 4 5 6 >`。
+
+**根因:** [apps/admin/src/pages/PostsPage.tsx:793](apps/admin/src/pages/PostsPage.tsx#L793) 旧实现直接 `Array.from({ length: pagination.pages })` 渲染所有页按钮, 外层容器 `max-w-[220px] overflow-x-auto no-scrollbar` —— 7 页起的按钮被横向溢出裁掉且滚动条被隐藏, 用户无法看到也无法滚到它们。
+
+**Fixed:** 换成 sliding-window 分页算法 `getVisiblePages(current, total, delta=2)` —— 始终渲染首页 + 末页 + 当前页 ±2, 超出部分用 `…` 占位。同时移除死代码 `scrollActivePageIntoView` / `pageNumbersRef` / `data-page` 自动滚动逻辑(滑窗下不再需要), 以及 `max-w-[220px]` 容器限制。可访问性: `aria-current="page"` + `aria-label` 补齐。
+
+### 🎨 Codex Model Picker · 向量模型选择器重设计 + 泛化 (2026-04-20)
+
+**背景:** 原生 `<select>` 与旧 `ModelSelector` (legacy tokens + `dark:` 变体) 在 Aether Codex 设计层里观感割裂。按 `.claude/design-system/` 规范统一重做。
+
+**Added:**
+
+- **`apps/admin/src/components/ai/CodexModelPicker.tsx` (新)** —— 前身 `EmbeddingModelPicker`, 重命名泛化:
+  - Props 签名改 `value: number | null` → `value: AiModel | null`, 调用方统一用 AiModel 对象 (chat 场景可直接接 ModelSelector 的旧状态)。
+  - Chip 按 `model.model_type` 自适应: embedding 显示 `Xd` 维度, 其他(chat/reasoning)显示上下文 `XK`。
+  - 新增 `menuPlacement: 'top' | 'bottom'` + `clearable` + `clearLabel` props, 可在 AI 工具工作台顶端向上弹开。
+  - 严格依规范: `.surface-leaf !rounded-full` 触发胶囊 + `.surface-overlay` 下拉面板, `--ink-*` / `--bg-raised` / `--aurora-1` token 自翻, 无 `dark:` 变体; Fraunces / Geist Mono 字体层级按 `--fs-micro..caption` 落位; 选中态 2px aurora 左光带 + `0 0 8px` 辉光; motion 来自 `@aetherblog/ui` 预设 (`spring.precise` 按压, `transition.quick` 弹出, `spring.soft` 移动端 Sheet 升起)。
+  - 移动端 (≤ 768px) 走 Bottom Sheet: `max-h-[66vh]` + `pb: max(1rem, env(safe-area-inset-bottom))`, 顶部抽屉手柄 + 标题 + 关闭按钮; 打开时锁 `body.overflow` 防惯性滑。
+  - 桌面 popover 位置夹取: `left + width > vw - 8` 时自动左移, 防止在右侧卡片里溢出视窗。
+
+**Changed:**
+
+- **`apps/admin/src/pages/SearchConfigPage.tsx:34,843` 向量模型选择器** —— 原生 `<select>` → `CodexModelPicker`。同时移除 `providersQuery.select` 里 `Set` 投影, 保留整条 AiProvider 数据供下游 Picker 渲染品牌图标 + 分组名 (`enabledProviderCodes` 改 memo 派生)。
+
+### 🔧 SearchConfig · 活跃 embedding 指针与路由同步 (2026-04-19)
+
+**症状:** admin SearchConfig 页面顶部"活跃 embedding: text-embedding-3-small"(管理员从未配置),底部"当前使用: text-embedding-3-large"(实际路由)。两值背离。点"仅切换模型"按钮看不到任何变化,以为按钮没生效。
+
+**根因(两 bug 同源):**
+
+1. migration 000034 / 000036 seed `site_settings.search.active_embedding_model` 时使用 `COALESCE(... LIMIT 1, 'text-embedding-3-small')`。`post_embeddings` 空时落到兜底字符串——与管理员实际配置的 `ai_task_routing.embedding` 模型无关。
+2. ai-service `update_routing` 更新 `ai_task_routing` 后**不回写** `site_settings` 指针,两个真值来源永久分裂。
+3. 前端 `updateRoutingMutation.onSuccess` 只 invalidate `['embedding-routing']`,没 invalidate `['search-diagnostics']`,顶部诊断条不刷新 → 按钮看起来没反应。
+
+**Fixed:**
+
+- **`apps/server-go/migrations/000037_heal_active_embedding_pointer.up.sql` (新)** —— 存量部署修复: 指针指向 `post_embeddings` 里无 active 行的孤儿模型时,对齐到行数最多的实际活跃模型,或清空让 ai-service 走 `llm_router` fallback。幂等。
+- **`apps/ai-service/app/api/routes/providers.py:948` `update_routing`** —— `task_type=='embedding'` 时追加 `_sync_active_embedding_pointer` 钩子。**蓝绿不变量保护:** 新模型在 `post_embeddings` 已有 active 行时才翻转指针(切回旧模型 / 已重建完成场景,零空窗);否则保持旧指针,等管理员触发全量重建由蓝绿收尾翻转(避免 `semantic_search` 过滤器撞空窗)。同步失败只打 warning,不阻塞主路由更新。
+- **`apps/admin/src/pages/SearchConfigPage.tsx:390` `updateRoutingMutation.onSuccess`** —— 追加 `queryClient.invalidateQueries({ queryKey: ['search-diagnostics'] })`。
+- **`apps/admin/src/pages/SearchConfigPage.tsx:778` 诊断条** —— `diagnostics.activeEmbedding.modelId !== currentRouting.primary_model.model_id` 时显示 "待重建 → <目标模型>" 琥珀色徽章。蓝绿等待是正确语义,不再让用户误以为 UI 坏了。
+- **`apps/admin/src/pages/SearchConfigPage.tsx:1405` ConfirmModal 文案** —— 去矛盾: 原文"仅切换模型 — 只翻转 active 指针,不触发重建;语义检索将以旧向量继续工作"两件事互相冲突。改为"只更新路由,新发布文章按新模型写向量;已有向量保留在旧模型下继续服务语义检索,直到管理员手动触发全量重建"。
+
+**验证:**
+
+- Go `go build ./...` ✅ · admin `tsc --noEmit` ✅ · ai-service AST 语法 ✅
+- migration 幂等性: 已对齐部署 WHERE 过滤掉不改写; 孤儿部署(seed 兜底值)被清理; 已跑过 reindex 的部署 setting_value 必然匹配 active 行,不动。
+
 ### 📥 VanBlog 迁移 2.0 · 正确性 + 性能 + 5 步向导 (2026-04-19)
 
 **基于实测 4.5MB 生产备份（74 articles / 11 categories / 13 tags / 16 password-protected / 3 hidden）的数据驱动重写。老 handler 的 DTO 形状基于上游 Mongoose schema 推理，和真实导出多处不对齐 —— 该备份扔进老 handler 的 `DisallowUnknownFields()` 直接 400。**

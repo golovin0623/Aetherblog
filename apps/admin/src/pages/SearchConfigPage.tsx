@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -15,7 +15,6 @@ import {
   Save,
   Zap,
   RotateCcw,
-  ChevronDown,
   FileText,
   ChevronLeft,
   ChevronRight,
@@ -32,6 +31,7 @@ import {
   type EmbeddingPostItem,
 } from '@/services/searchConfigService';
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
+import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
 
 // Toggle imported from @aetherblog/ui
 
@@ -320,16 +320,22 @@ export default function SearchConfigPage() {
   });
   const diagnostics = diagnosticsRes?.data;
 
-  // Fetch enabled providers
+  // Fetch enabled providers —— 保留整条数据, 下游 EmbeddingModelPicker 需要
+  // provider.icon / display_name / priority 渲染 Codex 分组头 + 品牌图标.
   const providersQuery = useQuery({
     queryKey: ['ai-providers'],
     queryFn: () => aiProviderService.listProviders(true),
-    select: (res) => new Set((res.data || []).map((p) => p.code)),
+    select: (res) => res.data || [],
     staleTime: 30_000,
   });
 
+  const enabledProviders = providersQuery.data;
+  const enabledProviderCodes = useMemo(
+    () => (enabledProviders ? new Set(enabledProviders.map((p) => p.code)) : undefined),
+    [enabledProviders]
+  );
+
   // Fetch embedding models — only from enabled providers
-  const enabledProviderCodes = providersQuery.data;
   const embeddingModelsQuery = useQuery({
     queryKey: ['embedding-models', enabledProviderCodes ? Array.from(enabledProviderCodes).sort().join(',') : ''],
     queryFn: () => aiProviderService.listModels(undefined, 'embedding'),
@@ -389,6 +395,11 @@ export default function SearchConfigPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['embedding-routing'] });
+      // ai-service `update_routing` 在新模型已有 active 向量时会同步翻转
+      // site_settings.search.active_embedding_model 指针, diagnostics 条的
+      // "活跃 embedding" 需要立即重读才能看见变化; 不刷的话用户点"仅切换模型"
+      // 会觉得按钮没响应.
+      queryClient.invalidateQueries({ queryKey: ['search-diagnostics'] });
       toast.success('向量化模型已更新');
     },
     onError: () => toast.error('更新失败'),
@@ -774,6 +785,19 @@ export default function SearchConfigPage() {
                   {diagnostics.activeEmbedding.source === 'unset' && (
                     <span className="ml-1 text-amber-400">· 需全量重建</span>
                   )}
+                  {/* Divergence 提示: 路由已切到新模型但指针还没翻 (新模型无 active 行,
+                      需要全量重建才能原子切过去). 不显式标出的话两值背离会让管理员
+                      误以为"仅切换模型"按钮没生效. */}
+                  {diagnostics.activeEmbedding.modelId &&
+                    currentRouting?.primary_model?.model_id &&
+                    diagnostics.activeEmbedding.modelId !== currentRouting.primary_model.model_id && (
+                      <span
+                        className="ml-1 font-mono text-amber-400"
+                        title={`路由已指向 ${currentRouting.primary_model.model_id}, 需全量重建后生效`}
+                      >
+                        · 待重建 → {currentRouting.primary_model.model_id}
+                      </span>
+                    )}
                 </span>
                 <span className="text-[var(--text-muted)]">
                   AI 客户端：
@@ -813,29 +837,22 @@ export default function SearchConfigPage() {
                 向量化模型
               </label>
               {embeddingLoading ? (
-                <div className="h-9 flex-1 max-w-xs bg-[var(--bg-card-hover)] rounded-lg animate-pulse" />
+                <div className="h-10 flex-1 max-w-xs surface-leaf !rounded-full animate-pulse" />
               ) : embeddingModels.length > 0 ? (
-                <div className="relative flex-1 max-w-xs">
-                  <select
-                    value={currentEmbeddingModelId ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const nextId = val ? Number(val) : null;
+                <div className="flex-1 max-w-xs">
+                  <CodexModelPicker
+                    models={embeddingModels}
+                    providers={enabledProviders}
+                    value={embeddingModels.find((m) => m.id === currentEmbeddingModelId) ?? null}
+                    onChange={(nextModel) => {
+                      const nextId = nextModel?.id ?? null;
                       if (nextId === currentEmbeddingModelId) return;
                       // 不直接 mutate —— 弹 ConfirmModal，在用户明示确认后再写路由并触发 reindex
                       setPendingEmbeddingModelId(nextId);
                     }}
                     disabled={updateRoutingMutation.isPending || reindexMutation.isPending}
-                    className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all disabled:opacity-50"
-                  >
-                    <option value="">未选择</option>
-                    {embeddingModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.display_name || m.model_id} ({m.provider_code})
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
+                    placeholder="选择向量化模型"
+                  />
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
@@ -1384,8 +1401,8 @@ export default function SearchConfigPage() {
             `目标模型：${nextLabel}`,
             `影响范围：${totalPosts} 篇文章将重新生成向量（预计耗时约 ${approxSec}s）`,
             '旧模型的向量会被标记为 deprecated（而非立即删除），保留以便回滚。',
-            '• 切换并重建索引 — 立即启动全量重建任务',
-            '• 仅切换模型 — 只翻转 active 指针，不触发重建；语义检索将以旧向量继续工作，可之后手动重建',
+            '• 切换并重建索引 — 立即启动全量重建任务，完成后原子翻转活跃指针',
+            '• 仅切换模型 — 只更新路由，新发布文章按新模型写向量；已有向量保留在旧模型下继续服务语义检索，直到管理员在「索引管理」手动触发全量重建以原子切换',
           ].join('\n');
         })()}
         onConfirm={async () => {
