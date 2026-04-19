@@ -130,3 +130,28 @@ def test_index_stats_missing_table_falls_back():
         assert data["vector_count"] == 0
     finally:
         app.dependency_overrides = {}
+
+
+def test_index_stats_null_post_counts_does_not_500():
+    """Defensive: 纯聚合 SELECT 应始终返回一行, 但万一 fetchrow 返回 None
+    (连接池被中断等极端情况), dict(None) 会 TypeError 把整个面板连带 500.
+    兜底到全零计数 + schema_ready=True (后者决定于 post_embeddings 查询本身).
+    """
+    class _NullCountsConn(_FakeConn):
+        async def fetchrow(self, query, *args):
+            if "post_embeddings" in query:
+                return {"c": 0}
+            return None  # 模拟极端断流
+
+    conn = _NullCountsConn(post_counts={})
+    _override_deps(conn)
+    try:
+        client = TestClient(app)
+        res = client.get("/api/v1/admin/search/stats")
+        assert res.status_code == 200
+        data = res.json()["data"]
+        assert data["total_posts"] == 0
+        assert data["indexed_posts"] == 0
+        assert data["vector_count"] == 0
+    finally:
+        app.dependency_overrides = {}

@@ -422,7 +422,15 @@ async def index_stats(
                 exc.__class__.__name__,
             )
 
-    payload = dict(post_counts)
+    # 纯聚合 SELECT 在语义上必返一行, 但 dict(None) 会 TypeError, 管理面板被
+    # 连带 500. 兜一下 None —— 成本为零, 在连接池中途断开等极端条件下避免
+    # 错误被放大.
+    payload = dict(post_counts) if post_counts else {
+        "total_posts": 0,
+        "indexed_posts": 0,
+        "failed_posts": 0,
+        "pending_posts": 0,
+    }
     payload["vector_count"] = vector_count
     payload["schema_ready"] = schema_ready
     return ApiResponse(data=payload)
