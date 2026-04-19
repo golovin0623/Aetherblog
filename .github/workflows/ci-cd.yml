@@ -152,7 +152,9 @@ jobs:
 
       - name: Scan backend image
         # TODO(supply-chain): pin to SHA (VULN-136).
-        uses: aquasecurity/trivy-action@v0.28.0
+        # v0.28.0 内嵌 setup-trivy@v0.2.1（已被上游删除 → "unable to find version"）；
+        # v0.35.0 用 SHA 钉死 setup-trivy 不再受 tag 移动影响。
+        uses: aquasecurity/trivy-action@v0.35.0
         continue-on-error: true
         with:
           image-ref: ${{ env.DOCKER_REGISTRY }}/aetherblog-backend:${{ github.sha }}

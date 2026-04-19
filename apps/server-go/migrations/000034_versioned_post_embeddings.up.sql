@@ -34,8 +34,10 @@ CREATE INDEX IF NOT EXISTS idx_post_emb_1536_active ON post_embeddings
     WITH (m = 16, ef_construction = 64)
     WHERE dim = 1536 AND status = 'active';
 
+-- pgvector HNSW vector 上限 2000 维；3072 维（text-embedding-3-large 默认输出）
+-- 必须走 halfvec (上限 4000)。查询端 cast 到 halfvec(3072) 才能走这条索引。
 CREATE INDEX IF NOT EXISTS idx_post_emb_3072_active ON post_embeddings
-    USING hnsw ((embedding::vector(3072)) vector_cosine_ops)
+    USING hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
     WITH (m = 16, ef_construction = 64)
     WHERE dim = 3072 AND status = 'active';
 

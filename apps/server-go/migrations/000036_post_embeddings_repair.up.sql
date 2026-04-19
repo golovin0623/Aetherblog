@@ -68,8 +68,12 @@ BEGIN
         WITH (m = 16, ef_construction = 64)
         WHERE dim = 1536 AND status = 'active';
 
+    -- pgvector HNSW 对 vector 的硬上限是 2000 维；3072 维（text-embedding-3-large
+    -- 默认输出）必须走 halfvec 才能建 HNSW（halfvec 上限 4000）。ai-service 查询
+    -- 3072 向量时要相应 cast 成 halfvec(3072) 才能走这条索引；未来切到 3072 模型
+    -- 同步更新 vector_store.py 的 SELECT 表达式即可，其他 1536 分支不受影响。
     CREATE INDEX IF NOT EXISTS idx_post_emb_3072_active ON post_embeddings
-        USING hnsw ((embedding::vector(3072)) vector_cosine_ops)
+        USING hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
         WITH (m = 16, ef_construction = 64)
         WHERE dim = 3072 AND status = 'active';
 
