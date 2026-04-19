@@ -116,7 +116,12 @@ func (h *SearchHandler) QA(c echo.Context) error {
 
 	cfg := h.svc.GetSearchConfig(c.Request().Context())
 	if !cfg.AiQAEnabled {
-		return response.FailWith(c, response.BadRequest, "AI 问答功能未启用")
+		// AI 问答是可选能力, 未启用不是客户端错误, 也不是请求合法性问题.
+		// 用 204 No Content 表达 "这个能力暂不可用, 没东西给你". EventSource
+		// 会触发 onerror 被前端静默处理; 前端理想情况下先查 /features 自己
+		// gate 掉本次调用 (SearchPanel 已实现), 这里是兜底 —— 直接命中 /qa
+		// 也不刷 4xx 错误日志.
+		return c.NoContent(http.StatusNoContent)
 	}
 
 	body, statusCode, err := h.svc.ProxyQA(c.Request().Context(), q)
