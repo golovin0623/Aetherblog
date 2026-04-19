@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,14 +23,52 @@ import (
 )
 
 // SearchHandler 处理博客搜索相关的 HTTP 请求。
+//
+// 并发/取消模型：
+//   - reindexing 作为"是否有任务在跑"的原子锁，保证同一时刻最多一个重建类任务
+//   - activeMu 保护 activeCancel/activeKind：任务启动时写入，停止/完成时清零
+//   - activeCancel 是任务 goroutine 所用 context 的 CancelFunc——Cancel 端点
+//     调用它即可同时中止本地循环 + 已发出去的 ai-service HTTP 请求（HTTP 客户端
+//     感知 ctx，会立刻关掉连接，让 ai-service 那边的 SELECT/embed 也尽早释放）
 type SearchHandler struct {
-	svc        *service.SearchService
-	reindexing atomic.Bool // 防止并发重建索引
+	svc          *service.SearchService
+	reindexing   atomic.Bool
+	activeMu     sync.Mutex
+	activeCancel context.CancelFunc
+	activeKind   string // "full" | "retry" | "batch" —— 仅用于日志和 API 响应
 }
 
 // NewSearchHandler 创建 SearchHandler 实例。
 func NewSearchHandler(svc *service.SearchService) *SearchHandler {
 	return &SearchHandler{svc: svc}
+}
+
+// setActiveJob 由任务启动 goroutine 调用，把 cancel 绑定到 handler。
+func (h *SearchHandler) setActiveJob(kind string, cancel context.CancelFunc) {
+	h.activeMu.Lock()
+	h.activeCancel = cancel
+	h.activeKind = kind
+	h.activeMu.Unlock()
+}
+
+// clearActiveJob 由任务 goroutine 在退出前调用，释放 cancel 引用。
+func (h *SearchHandler) clearActiveJob() {
+	h.activeMu.Lock()
+	h.activeCancel = nil
+	h.activeKind = ""
+	h.activeMu.Unlock()
+}
+
+// cancelActiveJob 由 Cancel 端点调用，返回被取消的任务类型（空串表示无活跃任务）。
+func (h *SearchHandler) cancelActiveJob() string {
+	h.activeMu.Lock()
+	cancel := h.activeCancel
+	kind := h.activeKind
+	h.activeMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return kind
 }
 
 // Search 处理 GET /v1/public/search 请求，执行关键词/语义/混合搜索。
@@ -213,12 +252,20 @@ func (h *SearchHandler) IndexBatch(c echo.Context) error {
 
 	postIDs := append([]int64(nil), req.PostIDs...)
 	go func() {
-		defer h.reindexing.Store(false)
 		// 单批最多 100 篇，每篇 90s，预留 3 倍余量给重试/慢请求
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+		h.setActiveJob("batch", cancel)
+		defer func() {
+			cancel()
+			h.clearActiveJob()
+			h.reindexing.Store(false)
+		}()
 		result, err := h.svc.IndexBatchPosts(ctx, postIDs)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Info().Msg("async index-batch canceled by admin")
+				return
+			}
 			log.Error().Err(err).Msg("async index-batch failed")
 			return
 		}
@@ -274,11 +321,19 @@ func (h *SearchHandler) Reindex(c echo.Context) error {
 	headers := searchProxyHeaders(c)
 
 	go func() {
-		defer h.reindexing.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+		h.setActiveJob("full", cancel)
+		defer func() {
+			cancel()
+			h.clearActiveJob()
+			h.reindexing.Store(false)
+		}()
 		body, _, err := h.svc.ProxyReindex(ctx, bytes.NewReader(reqBody), headers)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Info().Msg("async reindex canceled by admin")
+				return
+			}
 			log.Error().Err(err).Msg("async reindex failed")
 			return
 		}
@@ -299,11 +354,19 @@ func (h *SearchHandler) RetryFailed(c echo.Context) error {
 	headers := searchProxyHeaders(c)
 
 	go func() {
-		defer h.reindexing.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+		h.setActiveJob("retry", cancel)
+		defer func() {
+			cancel()
+			h.clearActiveJob()
+			h.reindexing.Store(false)
+		}()
 		body, _, err := h.svc.ProxyRetryFailed(ctx, headers)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Info().Msg("async retry-failed canceled by admin")
+				return
+			}
 			log.Error().Err(err).Msg("async retry-failed failed")
 			return
 		}
@@ -313,6 +376,31 @@ func (h *SearchHandler) RetryFailed(c echo.Context) error {
 	}()
 
 	return response.OK(c, map[string]string{"status": "started", "message": "重试失败任务已在后台启动"})
+}
+
+// Cancel 处理 POST /v1/admin/search/cancel 请求，取消当前活跃的索引任务。
+//
+// 语义：
+//   - 若当前无活跃任务 → 返回 200 + {status:"idle"}，前端据此清理本地 job 面板
+//   - 若有任务 → 触发 context.CancelFunc，任务 goroutine 会尽快退出:
+//       * IndexBatchPosts 内部的逐篇 http 调用发现 ctx.Done 后立刻返回 context.Canceled
+//       * ProxyReindex / ProxyRetryFailed 基于 aiClient.DoStream(ctx, …) 也会立即断开
+//     残留的 PENDING 文章保持 PENDING 状态（下次触发索引时仍会被选中），
+//     避免"取消后状态被强改成 FAILED"引起用户混淆
+func (h *SearchHandler) Cancel(c echo.Context) error {
+	kind := h.cancelActiveJob()
+	if kind == "" {
+		return response.OK(c, map[string]string{
+			"status":  "idle",
+			"message": "当前没有进行中的索引任务",
+		})
+	}
+	log.Info().Str("kind", kind).Msg("search indexing job cancel requested")
+	return response.OK(c, map[string]string{
+		"status":  "canceling",
+		"kind":    kind,
+		"message": "索引任务正在取消，稍后生效",
+	})
 }
 
 // EmbeddingStatus 处理 GET /v1/admin/search/embedding-status 请求。

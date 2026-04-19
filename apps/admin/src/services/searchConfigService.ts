@@ -70,6 +70,12 @@ export interface IndexBatchResult {
   reason?: string;
 }
 
+export interface CancelIndexResult {
+  status: 'canceling' | 'idle';
+  kind?: 'full' | 'retry' | 'batch';
+  message?: string;
+}
+
 export const searchConfigService = {
   getConfig: (): Promise<R<SearchConfig>> =>
     api.get('/v1/admin/search/config'),
@@ -85,6 +91,9 @@ export const searchConfigService = {
 
   retryFailed: (): Promise<R<void>> =>
     api.post('/v1/admin/search/retry-failed'),
+
+  cancelIndexing: (): Promise<R<CancelIndexResult>> =>
+    api.post('/v1/admin/search/cancel'),
 
   getEmbeddingStatus: (): Promise<R<EmbeddingStatus>> =>
     api.get('/v1/admin/search/embedding-status'),
