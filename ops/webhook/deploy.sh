@@ -198,10 +198,18 @@ run_pre_deploy_migrations() {
   # 介入的迁移故障误 heal 成"绿色部署".
   # ----------------------------------------------------------
 
+  # Capture `migrate version` regardless of exit code. golang-migrate v4 returns
+  # exit 0 on dirty states (only `Up()` refuses to advance), but on a truly
+  # fresh install (ErrNilVersion) or transient DB glitch it exits non-zero and
+  # writes to stderr. We still want the text for downstream parsing; gating on
+  # exit code alone would drop a legitimate "version: 34, dirty: true" if a
+  # future migrate version changes its exit convention. 2>&1 folds stderr into
+  # the stream; the `_heal_v34_dirty_if_present` regex is specific enough that
+  # garbage/error text simply won't match and returns 1.
   _probe_migration_version() {
     docker compose -f "$COMPOSE_FILE" run --rm \
       --entrypoint /app/migrate \
-      backend -dir /app/migrations -dsn "$db_dsn" version 2>&1
+      backend -dir /app/migrations -dsn "$db_dsn" version 2>&1 || true
   }
 
   # returns 0 if a v34-dirty state was detected **and** successfully force-bumped to 35.
@@ -228,11 +236,12 @@ run_pre_deploy_migrations() {
 
   # Stage 1: pre-up probe (handles historical v34 dirty carry-over from earlier deploys)
   local version_out
-  if version_out=$(_probe_migration_version); then
+  version_out=$(_probe_migration_version)
+  if [ -n "$version_out" ]; then
     echo "[$(date -Iseconds)] migration state (pre-up): $version_out"
     _heal_v34_dirty_if_present "$version_out" || true
   else
-    echo "[$(date -Iseconds)] migration version probe failed (likely fresh install): $version_out"
+    echo "[$(date -Iseconds)] migration version probe returned empty (likely fresh install with no schema_migrations yet)"
   fi
 
   # Stage 2: run migrations
@@ -247,7 +256,8 @@ run_pre_deploy_migrations() {
   # cycle will do exactly this), heal + retry once in the same deploy. Anything else
   # aborts so real migration bugs aren't silently papered over.
   echo "[$(date -Iseconds)] WARN: migration up failed; re-probing to check for v34 dirty signature."
-  if ! version_out=$(_probe_migration_version); then
+  version_out=$(_probe_migration_version)
+  if [ -z "$version_out" ]; then
     echo "[$(date -Iseconds)] ERROR: cannot re-probe migration version after failure, aborting deploy"
     exit 1
   fi
