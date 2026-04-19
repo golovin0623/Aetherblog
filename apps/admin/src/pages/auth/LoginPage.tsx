@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, User as UserIcon, Lock, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Loader2, User as UserIcon, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { spring, transition, variants } from '@aetherblog/ui';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
@@ -12,6 +12,85 @@ import { logger } from '@/lib/logger';
 // Aether Codex 规范 —— surface-overlay / --ink-* / --aurora-* / Fraunces display.
 // 双主题由 tokens 自动适配（:root.light 在 packages/ui/src/styles/tokens.css
 // 反转 ink / bg / signal 色），不在本文件里手写 dark: variant.
+
+/**
+ * AetherMark —— 品牌图形,致敬 "Aether · Codex" 主题:
+ *   - 外圈:极淡 aurora 轨道环(orbit ring),隐喻漂浮夜空
+ *   - 中心:8-point aether 星芒(compass-rose 风格),四主轴 + 四次轴
+ *   - 核心:白色高光点,模拟光源
+ * 色值来自 SVG gradient 的 stop-color = var(--aurora-N),跟随页面主题自动切换.
+ */
+function AetherMark({ size = 28 }: { size?: number }) {
+  const uid = 'aether-mark-grad';
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
+      <defs>
+        <linearGradient id={uid} x1="15%" y1="0%" x2="85%" y2="100%">
+          <stop offset="0%" style={{ stopColor: 'var(--aurora-1)' }} />
+          <stop offset="55%" style={{ stopColor: 'var(--aurora-2)' }} />
+          <stop offset="100%" style={{ stopColor: 'var(--aurora-3)' }} />
+        </linearGradient>
+      </defs>
+
+      {/* 外圈轨道环 —— 极淡 */}
+      <circle
+        cx="20" cy="20" r="18"
+        stroke={`url(#${uid})`}
+        strokeWidth="0.75"
+        fill="none"
+        opacity="0.35"
+      />
+      {/* 内圈轨道环 —— 更淡一档 */}
+      <circle
+        cx="20" cy="20" r="13.5"
+        stroke={`url(#${uid})`}
+        strokeWidth="0.5"
+        fill="none"
+        opacity="0.25"
+      />
+
+      {/* 8-point aether star —— 主轴长、次轴短的 compass-rose */}
+      <path
+        d="M 20 2.5
+           L 21.4 17
+           L 37.5 18.8
+           L 21.4 21
+           L 20 37.5
+           L 18.6 21
+           L 2.5 18.8
+           L 18.6 17 Z"
+        fill={`url(#${uid})`}
+      />
+      {/* 次轴 —— 45° 短芒 */}
+      <path
+        d="M 20 7.5
+           L 21 19.2
+           L 32.5 20
+           L 21 20.8
+           L 20 32.5
+           L 19 20.8
+           L 7.5 20
+           L 19 19.2 Z"
+        fill={`url(#${uid})`}
+        opacity="0.55"
+        transform="rotate(45 20 20)"
+      />
+
+      {/* 中心高光 —— 光源点 */}
+      <circle cx="20" cy="20" r="2.4" fill="white" opacity="0.95" />
+      <circle cx="20" cy="20" r="0.8" fill={`url(#${uid})`} />
+    </svg>
+  );
+}
+
 export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -69,63 +148,79 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
-      {/* Ambient 背景:极光辉光 + 微噪点 + 网格(只在暗模式可见)
-          所有色值用 aurora tokens —— 暗/亮模式自动渐变,无需 dark: variant. */}
+    <div className="auth-codex-page relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
+      {/* Ambient 背景:
+          ★ 亮主题:干脆不要 aurora 软色光晕 —— admin 的 --color-primary 是近黑,
+            无论怎么 override specificity,渲染到暖米白底上都会是一块"灰污渍"。
+            改用:极淡网格 + 底部横向 aurora 渐变线条(参考 /design 分隔)。干净克制。
+          ★ 暗主题:保留原三层 aurora blob,"漂浮在夜空的发光典籍"的签名语言。
+          用 .codex-ambient-* 类在下方 <style> 按主题分支控制,不再在 style 里硬写 bg。 */}
       <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true">
-        <div
-          className="absolute top-[-25%] left-[-15%] w-[70%] h-[70%] rounded-full blur-[140px] opacity-70"
-          style={{
-            background: 'radial-gradient(circle, color-mix(in oklch, var(--aurora-1) 22%, transparent) 0%, transparent 70%)',
-            animation: 'breath 12s var(--ease-in-out, ease-in-out) infinite',
-          }}
-        />
-        <div
-          className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full blur-[120px] opacity-60"
-          style={{
-            background: 'radial-gradient(circle, color-mix(in oklch, var(--aurora-2) 20%, transparent) 0%, transparent 70%)',
-            animation: 'breath 14s var(--ease-in-out, ease-in-out) 2s infinite',
-          }}
-        />
-        <div className="absolute inset-0 opacity-[0.04] [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_100%)] bg-[linear-gradient(var(--ink-primary)_1px,transparent_1px),linear-gradient(90deg,var(--ink-primary)_1px,transparent_1px)] bg-[size:64px_64px]" />
+        <div className="codex-ambient-blob codex-ambient-blob-1" />
+        <div className="codex-ambient-blob codex-ambient-blob-2" />
+        <div className="codex-ambient-blob codex-ambient-blob-3" />
+        <div className="codex-ambient-grid" />
+        <div className="codex-ambient-aurora-line" />
       </div>
 
-      {/* 左侧:品牌/宣言区(桌面端) —— 参考 /about Hero + /design S1 排版语言 */}
+      {/* 左侧:品牌/宣言区(桌面端)
+          去掉 border-r + overflow-hidden:之前这两条一起制造了视觉上的"中缝"——
+          border 画出硬竖线,overflow 又把 aurora 辉光裁在 50% 外侧,导致中间垂直条
+          变成一个没有 aurora wash 的"灰色死角",红框问题就是这个. */}
       <motion.div
         variants={variants.fadeUp}
         initial="initial"
         animate="animate"
         transition={transition.flow}
-        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden border-r border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]"
+        className="hidden lg:flex w-1/2 relative flex-col justify-between p-12"
       >
-        {/* Wordmark */}
+        {/* Wordmark —— AetherMark + Fraunces 字标 */}
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'color-mix(in oklch, var(--aurora-1) 20%, transparent)',
-                boxShadow: '0 0 32px color-mix(in oklch, var(--aurora-1) 40%, transparent), 0 1px 0 inset color-mix(in oklch, var(--aurora-1) 30%, transparent)',
-              }}
+          <div className="inline-flex items-center gap-3.5">
+            <span className="aether-mark-wrap" aria-hidden="true">
+              <AetherMark size={32} />
+            </span>
+            <span
+              className="font-display text-[1.35rem] tracking-[-0.01em] text-[var(--ink-primary)]"
+              style={{ fontWeight: 500, fontVariationSettings: '"opsz" 16, "SOFT" 50, "WONK" 0' }}
             >
-              <Sparkles className="w-5 h-5 text-[var(--aurora-1)]" strokeWidth={1.75} />
-            </div>
-            <span className="font-display text-lg font-semibold tracking-tight text-[var(--ink-primary)]">AetherBlog</span>
+              AetherBlog
+            </span>
           </div>
         </div>
 
-        {/* 宣言 —— Fraunces display + Instrument Serif 副标 */}
-        <div className="relative z-10 max-w-xl space-y-6">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">Admin · Console</p>
+        {/* 宣言 —— Fraunces display + Instrument Serif 副标
+            font-size 收紧到 clamp(2.6rem, 4.4vw, 4rem) 避免在 1280-1440 宽度下挤 4 行。
+            aurora-text 是 typography.css 预设的渐变文字工具类,用 aurora-1→3 描绘斜体副标。 */}
+        <div className="relative z-10 max-w-xl space-y-8">
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+            Admin · Console
+          </p>
           <h2
-            className="font-display text-[clamp(3rem,5.2vw,4.8rem)] leading-[1.02] tracking-[-0.02em] text-[var(--ink-primary)]"
-            style={{ textWrap: 'balance' as any }}
+            className="font-display leading-[1.04] tracking-[-0.018em] text-[var(--ink-primary)]"
+            style={{
+              fontSize: 'clamp(2.6rem, 4.4vw, 4rem)',
+              textWrap: 'balance' as any,
+              fontWeight: 500,
+            }}
           >
             Cognitive Elegance
             <br />
-            <span className="italic font-editorial text-[var(--aurora-1)]">for Your Content.</span>
+            <em className="not-italic font-editorial font-normal" style={{
+              fontStyle: 'italic',
+              background: 'linear-gradient(135deg, var(--aurora-1) 0%, var(--aurora-2) 60%, var(--aurora-3) 100%)',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              for Your Content.
+            </em>
           </h2>
-          <p className="font-editorial text-[1.15rem] leading-relaxed text-[var(--ink-secondary)] max-w-lg italic">
+          <p
+            className="font-editorial leading-relaxed text-[var(--ink-secondary)] max-w-lg"
+            style={{ fontSize: '1.1rem', fontStyle: 'italic' }}
+          >
             AI-driven insights, seamless editing, and a design language that
             inspires — engineered for the modern editorial workflow.
           </p>
@@ -157,16 +252,10 @@ export function LoginPage() {
             transition={transition.quick}
             className="lg:hidden flex flex-col items-center mb-8 text-center"
           >
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-              style={{
-                background: 'color-mix(in oklch, var(--aurora-1) 20%, transparent)',
-                boxShadow: '0 0 32px color-mix(in oklch, var(--aurora-1) 40%, transparent), 0 1px 0 inset color-mix(in oklch, var(--aurora-1) 30%, transparent)',
-              }}
-            >
-              <Sparkles className="w-7 h-7 text-[var(--aurora-1)]" strokeWidth={1.75} />
-            </div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--ink-primary)]">AetherBlog</h1>
+            <span className="aether-mark-wrap mb-4" aria-hidden="true">
+              <AetherMark size={44} />
+            </span>
+            <h1 className="font-display text-2xl tracking-[-0.01em] text-[var(--ink-primary)]" style={{ fontWeight: 500 }}>AetherBlog</h1>
             <p className="font-mono text-[10px] mt-1.5 uppercase tracking-[0.22em] text-[var(--ink-muted)]">Cognitive Elegance</p>
           </motion.div>
 
@@ -335,19 +424,141 @@ export function LoginPage() {
         </div>
       </motion.div>
 
-      {/* 局部样式：codex-input / codex-submit-btn —— 抽出是为了让 hover/focus/填充状态的
-          token 组合集中在一处,避免 inline 变量字符串污染 JSX 可读性. */}
+      {/* 局部样式集
+          ★ Aurora 令牌 scoped override:admin 的 --color-primary 是 #18181b (近黑),
+          tokens.css 亮主题走 OKLCH 从 primary 派生 aurora,结果 --aurora-1..4 全部
+          退化为黑色系。本页面在 .auth-codex-page scope 下显式给出"真正的极光色",
+          让 Sparkles glow、SIGN IN 渐变、hero 斜体渐变文字在亮/暗两个主题都可见。
+          ★ Autofill fix:Chrome 的 :-webkit-autofill 会用自己的蓝紫底色覆盖输入框,
+          必须用大号 inset box-shadow hack 伪装成 codex-input 的背景。
+          ★ codex-brand-mark:品牌图标盒,aurora-1 纸片玻璃 + 外圈柔光晕,双主题显著. */}
       <style>{`
-        @keyframes breath {
-          0%, 100% { opacity: 0.5; transform: scale(1); }
-          50% { opacity: 0.75; transform: scale(1.05); }
+        /* Aurora 令牌策略:
+           ★ 亮主题:不 override,让 tokens.css 的 :root.light OKLCH 派生从
+             --color-primary (#18181b) 生成"近黑 + 微小色相偏移"的单色序列,
+             与博客头页、admin Dashboard 的单色冷淡审美一致 (/design §2 规范)。
+           ★ 暗主题:tokens.css :root 默认已提供 #818CF8/A78BFA/FBBF24/FCA5A5
+             (indigo→violet→amber→rose) 的真极光色,也不需要 override。
+           —— 所以之前的 aurora 显式覆盖已删除,完全走 token 派生链。 */
+
+        @keyframes codex-breath {
+          0%, 100% { opacity: 0.55; transform: scale(1); }
+          50% { opacity: 0.85; transform: scale(1.06); }
         }
+
+        /* === Ambient 背景 ===
+           亮主题:隐藏 aurora blob,避免彩色渐变在白底上变成"污渍";改用极淡网格 +
+                   一条水平 aurora 分隔线(在底部三分之一处),参考 /design 章节分隔.
+           暗主题:三层 aurora blob 正常 breathe,产出"发光典籍漂浮夜空"签名语言. */
+        .codex-ambient-blob {
+          position: absolute;
+          border-radius: 9999px;
+          filter: blur(140px);
+          pointer-events: none;
+        }
+        :root.light .codex-ambient-blob { display: none; }
+        .codex-ambient-blob-1 {
+          top: -30%; left: -20%;
+          width: 85%; height: 85%;
+          background: radial-gradient(circle, color-mix(in oklch, var(--aurora-1) 40%, transparent) 0%, transparent 65%);
+          animation: codex-breath 12s var(--ease-in-out, ease-in-out) infinite;
+        }
+        .codex-ambient-blob-2 {
+          bottom: -25%; right: -15%;
+          width: 70%; height: 70%;
+          background: radial-gradient(circle, color-mix(in oklch, var(--aurora-2) 35%, transparent) 0%, transparent 65%);
+          animation: codex-breath 14s 2s var(--ease-in-out, ease-in-out) infinite;
+        }
+        .codex-ambient-blob-3 {
+          top: 40%; left: 30%;
+          width: 45%; height: 45%;
+          opacity: 0.5;
+          background: radial-gradient(circle, color-mix(in oklch, var(--aurora-3) 30%, transparent) 0%, transparent 65%);
+          animation: codex-breath 16s 4s var(--ease-in-out, ease-in-out) infinite;
+        }
+        .codex-ambient-grid {
+          position: absolute;
+          inset: 0;
+          opacity: 0.06;
+          -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 90%);
+          mask-image: radial-gradient(ellipse at center, black 35%, transparent 90%);
+          background-image:
+            linear-gradient(var(--ink-primary) 1px, transparent 1px),
+            linear-gradient(90deg, var(--ink-primary) 1px, transparent 1px);
+          background-size: 56px 56px;
+          pointer-events: none;
+        }
+        :root.light .codex-ambient-grid { opacity: 0.035; }
+
+        .codex-ambient-aurora-line {
+          display: none;  /* only light mode */
+          position: absolute;
+          bottom: 22%;
+          left: 0;
+          right: 0;
+          height: 1px;
+          pointer-events: none;
+          background: linear-gradient(90deg,
+            transparent 0%,
+            color-mix(in oklch, var(--aurora-1) 28%, transparent) 25%,
+            color-mix(in oklch, var(--aurora-2) 32%, transparent) 50%,
+            color-mix(in oklch, var(--aurora-3) 24%, transparent) 75%,
+            transparent 100%);
+          filter: blur(0.5px);
+        }
+        :root.light .codex-ambient-aurora-line { display: block; }
+
+        /* AetherMark:自定义 logo mark 的外层光晕(相对简单,避免每次闪动) */
+        .aether-mark-wrap {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .aether-mark-wrap::before {
+          content: '';
+          position: absolute;
+          inset: -6px;
+          border-radius: 9999px;
+          background: radial-gradient(circle, color-mix(in oklch, var(--aurora-1) 25%, transparent) 0%, transparent 70%);
+          filter: blur(10px);
+          z-index: -1;
+          opacity: 0.7;
+        }
+        :root.light .aether-mark-wrap::before { opacity: 0.5; }
+
+        /* Brand mark:Sparkles 图标盒,带 aurora-1 光晕 */
+        .codex-brand-mark {
+          background: linear-gradient(135deg,
+            color-mix(in oklch, var(--aurora-1) 22%, transparent) 0%,
+            color-mix(in oklch, var(--aurora-2) 14%, transparent) 100%);
+          border: 1px solid color-mix(in oklch, var(--aurora-1) 35%, transparent);
+          box-shadow:
+            0 0 0 1px inset color-mix(in oklch, var(--aurora-1) 20%, transparent),
+            0 0 24px color-mix(in oklch, var(--aurora-1) 35%, transparent),
+            0 8px 20px -6px color-mix(in oklch, var(--aurora-1) 40%, transparent);
+          backdrop-filter: blur(8px) saturate(140%);
+          -webkit-backdrop-filter: blur(8px) saturate(140%);
+        }
+        :root.light .codex-brand-mark {
+          background: linear-gradient(135deg,
+            color-mix(in oklch, var(--aurora-1) 16%, white) 0%,
+            color-mix(in oklch, var(--aurora-2) 8%, white) 100%);
+          border-color: color-mix(in oklch, var(--aurora-1) 30%, transparent);
+          box-shadow:
+            0 0 0 1px inset color-mix(in oklch, var(--aurora-1) 18%, transparent),
+            0 0 32px color-mix(in oklch, var(--aurora-1) 24%, transparent),
+            0 6px 18px -6px color-mix(in oklch, var(--aurora-1) 30%, transparent);
+        }
+
+        /* Input:codex token 驱动,双主题自适应 */
         .codex-input {
           width: 100%;
-          padding: 0.85rem 1rem 0.85rem 2.75rem;
+          padding: 0.9rem 1rem 0.9rem 2.75rem;
           font-size: 15px;
+          font-family: var(--font-sans);
           color: var(--ink-primary);
-          background: color-mix(in oklch, var(--bg-leaf) 60%, transparent);
+          background: color-mix(in oklch, var(--bg-leaf) 55%, transparent);
           border: 1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent);
           border-radius: 0.75rem;
           transition: border-color var(--dur-quick) var(--ease-out),
@@ -356,7 +567,7 @@ export function LoginPage() {
           outline: none;
         }
         .codex-input::placeholder {
-          color: var(--ink-muted);
+          color: color-mix(in oklch, var(--ink-muted) 70%, transparent);
           font-family: var(--font-sans);
         }
         .codex-input:hover {
@@ -366,58 +577,69 @@ export function LoginPage() {
         .codex-input:focus {
           border-color: color-mix(in oklch, var(--aurora-1) 55%, transparent);
           box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 18%, transparent);
-          background: color-mix(in oklch, var(--bg-leaf) 80%, transparent);
+          background: color-mix(in oklch, var(--bg-leaf) 82%, transparent);
         }
         :root.light .codex-input {
-          background: color-mix(in oklch, #ffffff 80%, transparent);
+          background: color-mix(in oklch, white 82%, transparent);
           border-color: color-mix(in oklch, var(--ink-primary) 14%, transparent);
         }
-        :root.light .codex-input:hover {
-          background: #ffffff;
-        }
+        :root.light .codex-input:hover { background: white; }
         :root.light .codex-input:focus {
-          background: #ffffff;
+          background: white;
           border-color: color-mix(in oklch, var(--aurora-1) 65%, transparent);
           box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 22%, transparent);
         }
 
+        /* Chrome autofill hijack:大号 inset box-shadow 盖掉浏览器默认蓝紫填充 */
+        .auth-codex-page input:-webkit-autofill,
+        .auth-codex-page input:-webkit-autofill:hover,
+        .auth-codex-page input:-webkit-autofill:focus,
+        .auth-codex-page input:-webkit-autofill:active {
+          -webkit-text-fill-color: var(--ink-primary);
+          -webkit-box-shadow: 0 0 0 1000px color-mix(in oklch, var(--bg-leaf) 55%, transparent) inset !important;
+          box-shadow: 0 0 0 1000px color-mix(in oklch, var(--bg-leaf) 55%, transparent) inset !important;
+          caret-color: var(--aurora-1);
+          transition: background-color 5000s ease-in-out 0s;
+        }
+        :root.light .auth-codex-page input:-webkit-autofill,
+        :root.light .auth-codex-page input:-webkit-autofill:hover,
+        :root.light .auth-codex-page input:-webkit-autofill:focus {
+          -webkit-box-shadow: 0 0 0 1000px color-mix(in oklch, white 90%, transparent) inset !important;
+          box-shadow: 0 0 0 1000px color-mix(in oklch, white 90%, transparent) inset !important;
+        }
+
+        /* Submit button:aurora-1 → aurora-2 实色渐变 */
         .codex-submit-btn {
           display: inline-flex;
           width: 100%;
           align-items: center;
           justify-content: center;
           gap: 0.625rem;
-          padding: 0.95rem 1.5rem;
+          padding: 1rem 1.5rem;
           font-family: var(--font-sans);
           font-size: 13px;
           font-weight: 600;
           letter-spacing: 0.1em;
           text-transform: uppercase;
-          color: var(--bg-void);
+          color: white;
           background: linear-gradient(135deg, var(--aurora-1) 0%, var(--aurora-2) 100%);
           border: 1px solid color-mix(in oklch, var(--aurora-1) 50%, transparent);
           border-radius: 0.75rem;
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 30%, transparent),
-            0 8px 24px -8px color-mix(in oklch, var(--aurora-1) 50%, transparent);
+            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 8px 24px -8px color-mix(in oklch, var(--aurora-1) 55%, transparent);
           transition: transform var(--dur-quick) var(--ease-out),
                       box-shadow var(--dur-quick) var(--ease-out),
                       filter var(--dur-quick) var(--ease-out);
           cursor: pointer;
         }
         .codex-submit-btn:hover:not(:disabled) {
-          filter: brightness(1.08);
+          filter: brightness(1.06);
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
-            0 12px 36px -8px color-mix(in oklch, var(--aurora-1) 65%, transparent);
+            0 1px 0 inset color-mix(in oklch, white 50%, transparent),
+            0 14px 36px -8px color-mix(in oklch, var(--aurora-1) 65%, transparent);
         }
-        .codex-submit-btn:disabled {
-          cursor: not-allowed;
-        }
-        /* 亮模式按钮：保持 aurora 渐变但改写文字颜色（白底 aurora 文字不够通透 → 深底 + 白字更稳） */
-        :root.light .codex-submit-btn {
-          color: #FAFAFA;
-        }
+        .codex-submit-btn:disabled { cursor: not-allowed; }
       `}</style>
     </div>
   );
