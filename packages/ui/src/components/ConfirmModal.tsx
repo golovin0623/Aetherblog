@@ -10,6 +10,9 @@ interface ConfirmModalProps {
   message: string;
   confirmText?: string;
   cancelText?: string;
+  /** 可选的第三按钮 —— 用于「确认+副作用」与「只确认」这类三选场景 */
+  secondaryText?: string;
+  onSecondary?: () => void;
   variant?: 'danger' | 'warning' | 'info';
   onConfirm: () => void;
   onCancel: () => void;
@@ -21,6 +24,8 @@ export function ConfirmModal({
   message,
   confirmText = '确定',
   cancelText = '取消',
+  secondaryText,
+  onSecondary,
   variant = 'danger',
   onConfirm,
   onCancel,
@@ -96,10 +101,10 @@ export function ConfirmModal({
 
               {/* 内容 */}
               <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">{title}</h3>
-              <p className="text-[var(--text-secondary)] mb-6">{message}</p>
+              <p className="text-[var(--text-secondary)] mb-6 whitespace-pre-line">{message}</p>
 
               {/* 操作按钮 */}
-              <div className="flex gap-3 justify-end">
+              <div className="flex flex-wrap gap-3 justify-end">
                 <button
                   onClick={onCancel}
                   className={cn(
@@ -109,6 +114,20 @@ export function ConfirmModal({
                 >
                   {cancelText}
                 </button>
+                {secondaryText && onSecondary && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={onSecondary}
+                    className={cn(
+                      'px-4 py-2.5 rounded-lg font-medium transition-colors',
+                      'border border-[var(--border-default)] text-[var(--text-primary)]',
+                      'bg-transparent hover:bg-[var(--bg-card-hover)]'
+                    )}
+                  >
+                    {secondaryText}
+                  </motion.button>
+                )}
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
