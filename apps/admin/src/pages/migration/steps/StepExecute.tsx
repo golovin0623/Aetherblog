@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { WizardState } from '../useMigrationWizard';
@@ -17,38 +17,49 @@ interface Props {
 
 /** Step 4：开启 SSE 流，实时渲染阶段进度条 + 滚动日志。 */
 export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEnd, onNext }: Props) {
-  const startedRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
-
   useEffect(() => {
-    if (startedRef.current || !state.file) return;
-    startedRef.current = true;
-    onExecuteStart();
+    if (!state.file) return;
+
+    let cancelled = false;
     const controller = new AbortController();
-    abortRef.current = controller;
-    (async () => {
-      try {
-        await streamImport(
-          state.file!,
-          {
-            ...state.options,
-            onlyArticleIds: state.selectedArticleIds
-              ? Array.from(state.selectedArticleIds)
-              : undefined,
-          },
-          onExecuteEvent,
-          controller.signal,
-        );
-      } catch (e: unknown) {
-        const err = e as { name?: string; message?: string };
-        if (err.name === 'AbortError') return;
-        toast.error(err.message || '导入失败');
-        onExecuteEvent({ type: 'fatal', error: err.message || '网络中断' });
-      } finally {
-        onExecuteEnd();
-      }
-    })();
-    return () => controller.abort();
+
+    // 用 microtask 推迟 fetch 启动 —— React 18 StrictMode 的 dev 模式会做
+    // mount → cleanup → mount 双跑序列；如果直接同步发 fetch，第一轮 cleanup
+    // 里的 controller.abort() 会把还没真正发出去的请求一并中断，第二轮 effect
+    // 因为 startedRef 已为 true 而被跳过，结果 fetch 永远到不了后端、UI 卡在
+    // "正在执行... (start)" 不动。改为 microtask 后第一轮 cleanup 把 cancelled
+    // 翻为 true，第一轮的 microtask 自然跳过，只有第二轮真正发起 fetch。
+    queueMicrotask(() => {
+      if (cancelled) return;
+      onExecuteStart();
+      void (async () => {
+        try {
+          await streamImport(
+            state.file!,
+            {
+              ...state.options,
+              onlyArticleIds: state.selectedArticleIds
+                ? Array.from(state.selectedArticleIds)
+                : undefined,
+            },
+            onExecuteEvent,
+            controller.signal,
+          );
+        } catch (e: unknown) {
+          const err = e as { name?: string; message?: string };
+          if (err.name === 'AbortError') return;
+          toast.error(err.message || '导入失败');
+          onExecuteEvent({ type: 'fatal', error: err.message || '网络中断' });
+        } finally {
+          onExecuteEnd();
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
     // 刻意只在挂载时跑一次：迁移执行是一次性动作，重新触发会重复上传。
   }, []);
 

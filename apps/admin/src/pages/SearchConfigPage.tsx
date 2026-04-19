@@ -839,9 +839,15 @@ export default function SearchConfigPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    <span className="text-sm text-amber-400 font-medium">
+                  <div
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                    style={{
+                      background: 'color-mix(in oklch, var(--signal-warn) 10%, transparent)',
+                      border: '1px solid color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+                    }}
+                  >
+                    <AlertTriangle className="w-4 h-4 text-[var(--signal-warn)]" />
+                    <span className="text-sm text-[var(--signal-warn)] font-medium">
                       尚未添加向量化模型
                     </span>
                   </div>
@@ -874,9 +880,9 @@ export default function SearchConfigPage() {
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     {credReady ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[var(--signal-success)]" />
                     ) : (
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                      <AlertTriangle className="w-3.5 h-3.5 text-[var(--signal-warn)]" />
                     )}
                     <span className="text-xs text-[var(--text-muted)]">
                       当前使用: <span className="text-[var(--text-secondary)] font-medium">{m.display_name || m.model_id}</span>
@@ -891,19 +897,25 @@ export default function SearchConfigPage() {
                     </span>
                   </div>
                   {!credReady && (
-                    <div className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <div className="text-xs text-amber-300/90 space-y-1">
-                        <div className="font-medium">
+                    <div
+                      className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg"
+                      style={{
+                        background: 'color-mix(in oklch, var(--signal-warn) 10%, transparent)',
+                        border: '1px solid color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+                      }}
+                    >
+                      <AlertTriangle className="w-4 h-4 text-[var(--signal-warn)] shrink-0 mt-0.5" />
+                      <div className="text-xs space-y-1">
+                        <div className="font-medium text-[var(--signal-warn)]">
                           该模型已保存, 但 provider <span className="font-mono">{m.provider_code}</span> 下没有可用凭证
                         </div>
-                        <div className="text-amber-300/70">
+                        <div className="text-[var(--ink-secondary)]">
                           运行时的向量化 / 语义搜索会降级到 env 默认配置, 可能调用
                           错误的 API 地址或失败. 请前往 AI 配置页绑定凭证.
                         </div>
                         <button
                           onClick={() => navigate('/ai-config')}
-                          className="inline-flex items-center gap-1 mt-1 text-amber-200 hover:text-amber-100 underline underline-offset-2"
+                          className="inline-flex items-center gap-1 mt-1 text-[var(--signal-warn)] hover:text-[var(--ink-primary)] underline underline-offset-2 transition-colors"
                         >
                           前往配置凭证
                           <ArrowRight className="w-3 h-3" />
@@ -1346,14 +1358,17 @@ export default function SearchConfigPage() {
         </motion.div>
       </div>
 
-      {/* 切换向量化模型的二次确认 —— V3 版本化存储下换模型 = 废弃旧 embedding 并
-          全量重建新 embedding, 这是 O(文章数 × 每篇 embed 耗时) 的开销, 必须让
-          管理员显式同意。旧行不会被立即删除, 保留作为回滚依据. */}
+      {/* 切换向量化模型的二次确认 —— V3 版本化存储下换模型 = 翻转 active 模型指针,
+          旧 embedding 被标记为 deprecated 保留以便回滚。是否立即全量重建由管理员
+          决定: "切换并重建索引"(默认)立刻跑全量; "仅切换模型" 只翻指针, 旧文章
+          仍使用旧向量做语义检索, 关键词检索不受影响 —— 适合先观察 / 少量补跑
+          的场景, 管理员可之后在「索引管理」手动触发 reindex. */}
       <ConfirmModal
         isOpen={pendingEmbeddingModelId !== undefined}
         title="切换向量化模型"
         variant="warning"
         confirmText="切换并重建索引"
+        secondaryText="仅切换模型"
         cancelText="取消"
         message={(() => {
           const nextModel =
@@ -1369,7 +1384,8 @@ export default function SearchConfigPage() {
             `目标模型：${nextLabel}`,
             `影响范围：${totalPosts} 篇文章将重新生成向量（预计耗时约 ${approxSec}s）`,
             '旧模型的向量会被标记为 deprecated（而非立即删除），保留以便回滚。',
-            '确认后将自动启动全量重建任务。',
+            '• 切换并重建索引 — 立即启动全量重建任务',
+            '• 仅切换模型 — 只翻转 active 指针，不触发重建；语义检索将以旧向量继续工作，可之后手动重建',
           ].join('\n');
         })()}
         onConfirm={async () => {
@@ -1377,6 +1393,14 @@ export default function SearchConfigPage() {
           try {
             await updateRoutingMutation.mutateAsync(target);
             reindexMutation.mutate();
+          } finally {
+            setPendingEmbeddingModelId(undefined);
+          }
+        }}
+        onSecondary={async () => {
+          const target = pendingEmbeddingModelId ?? null;
+          try {
+            await updateRoutingMutation.mutateAsync(target);
           } finally {
             setPendingEmbeddingModelId(undefined);
           }

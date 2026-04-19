@@ -85,7 +85,9 @@
   --bg-card: rgba(0, 0, 0, 0.02);
   --bg-card-hover: rgba(0, 0, 0, 0.04);
   --bg-overlay: rgba(255, 255, 255, 0.8);
-  --bg-input: #f1f5f9;
+  /* input 背景沿用 Codex bg-substrate(暖羊皮纸),不用 Slate-50 冷蓝白 ——
+     冷白叠在 Codex 暖奶油底色上会被对比拉成可见的浅蓝色 */
+  --bg-input: #F4F2EC;
   --bg-popover: #ffffff;
 
   /* === 文字色系统（4 层层次）=== */
