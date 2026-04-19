@@ -88,3 +88,4 @@ scripts/vanblog-test/output/
 *.class
 verify_mobile_menu*.py
 docs/qa/**
+.tmp-*.json

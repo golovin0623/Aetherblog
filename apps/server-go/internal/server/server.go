@@ -292,7 +292,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	)
 
 	// --- 数据迁移 ---
-	handler.NewMigrationHandler(s.DB, catRepo, tagRepo, postRepo).Mount(admin.Group("/migrations"))
+	// 新实现走 MigrationRepo 的批量读/写路径，避免旧 handler 的 N+1 查询。
+	migrationRepo := repository.NewMigrationRepo(s.DB)
+	migrationSvc := service.NewMigrationService(s.DB, migrationRepo)
+	handler.NewMigrationHandler(migrationSvc).Mount(admin.Group("/migrations"))
 
 	// --- AI 代理接口 ---
 	aiHandler := handler.NewAiHandler(s.Config)
