@@ -69,9 +69,13 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
 
   new_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
   if [ -n "$current_self_sha" ] && [ "$current_self_sha" != "$new_self_sha" ]; then
-    echo "[$(date -Iseconds)] deploy.sh changed via sync, re-executing with new version"
-    export SKIP_GIT_SYNC=true  # avoid infinite re-exec loop
-    exec "$0" "$@"
+    # 历史上这里 `exec "$0" "$@"` 自举新版本，但与脚本顶部 `exec > >(tee ...)`
+    # 的 process substitution 叠加后，原 tee subshell 不随 exec 被回收，产生
+    # 双 tee / 双日志 / fd 200 锁归属混乱，最终触发 flock 死锁（见事故
+    # 2026-04-19：5 次 CI 触发全部卡在 "Waiting deployment lock"）。
+    # 改为不再 re-exec：本次用预同步版本跑完，下一次 webhook 触发时会自然
+    # 用新版 deploy.sh。代价是 deploy.sh 关键变更需要多等一次部署生效。
+    echo "[$(date -Iseconds)] WARN: deploy.sh updated on disk; continuing this run with pre-sync version. Next deploy will use the new script."
   fi
 fi
 
