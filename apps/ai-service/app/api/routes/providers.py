@@ -20,6 +20,7 @@ from app.api.deps import (
     get_model_router,
     get_remote_model_fetcher,
     get_pg_pool,
+    get_llm_router,
     require_admin,
 )
 from app.core.jwt import UserClaims
@@ -48,6 +49,7 @@ from app.services.provider_registry import ProviderRegistry, ModelInfo
 from app.services.credential_resolver import CredentialResolver
 from app.services.model_router import ModelRouter
 from app.services.remote_model_fetcher import RemoteModelFetcher
+from app.services.llm_router import LlmRouter
 
 logger = logging.getLogger("ai-service")
 
@@ -946,6 +948,8 @@ async def update_routing(
     req: RoutingUpdateRequest,
     user: UserClaims = Depends(require_admin),
     model_router: ModelRouter = Depends(get_model_router),
+    llm_router: LlmRouter = Depends(get_llm_router),
+    pool: asyncpg.Pool = Depends(get_pg_pool),
 ):
     """Update routing configuration for a task type.
 
@@ -973,4 +977,76 @@ async def update_routing(
         user_id=None,
     )
 
+    # 蓝绿安全地同步 site_settings.search.active_embedding_model 指针。
+    # 历史 bug: 管理员改 embedding 路由后, site_settings 里的指针不变, 导致
+    # admin UI "活跃 embedding" 与 "当前使用" 两值背离 (顶部显示 migration
+    # seed 的 text-embedding-3-small, 底部显示实际路由的 text-embedding-3-large).
+    #
+    # 蓝绿不变量: 指针只能指向 `post_embeddings` 里当前有 `status='active'` 行的
+    # 模型, 否则 `semantic_search` 的过滤器 (model_id=pointer AND status='active')
+    # 瞬间返回空, 整个未重建窗口语义搜索全挂 (CHANGELOG 2026-01 记录过).
+    #
+    # 策略:
+    #   · 新路由模型已有 active 行 (用户切回旧模型的场景, 或已跑过 reindex)
+    #     → 立即写入指针, UI 两值即刻对齐
+    #   · 新路由模型无 active 行 (首次切换, 等待管理员触发 reindex)
+    #     → 不写. vector_store.reindex 的蓝绿完成阶段会负责翻转.
+    #     此时 UI 仍会看到指针落后于路由——但诊断信息会标明 "pending reindex",
+    #     这是正确的语义, 不是 bug.
+    if task_type == "embedding" and update_primary:
+        try:
+            await _sync_active_embedding_pointer(llm_router, pool)
+        except Exception as exc:  # noqa: BLE001
+            # 同步失败不能阻塞路由更新——路由保存本身是主操作, 指针同步是增强.
+            logger.warning(
+                "embedding routing pointer sync failed: %s",
+                exc,
+                extra={"data": {"task_type": task_type}},
+            )
+
     return ApiResponse(data=True)
+
+
+async def _sync_active_embedding_pointer(
+    llm_router: LlmRouter,
+    pool: asyncpg.Pool,
+) -> None:
+    """Blue-green safe upsert of `site_settings.search.active_embedding_model`."""
+    new_model_id = await llm_router.resolve_embedding_model_id(user_id=None)
+    if not new_model_id:
+        return
+
+    async with pool.acquire() as conn:
+        has_active = await conn.fetchval(
+            "SELECT EXISTS("
+            "  SELECT 1 FROM post_embeddings "
+            "  WHERE model_id = $1 AND status = 'active' LIMIT 1"
+            ")",
+            new_model_id,
+        )
+        if not has_active:
+            logger.info(
+                "routing.pointer_sync.skipped",
+                extra={"data": {
+                    "reason": "no_active_rows_for_new_model",
+                    "new_model_id": new_model_id,
+                }},
+            )
+            return
+
+        await conn.execute(
+            """
+            INSERT INTO site_settings
+                (setting_key, setting_value, setting_type, group_name, description)
+            VALUES ('search.active_embedding_model', $1, 'STRING', 'search',
+                '当前活跃的 embedding 模型 ID')
+            ON CONFLICT (setting_key) DO UPDATE
+            SET setting_value = EXCLUDED.setting_value,
+                updated_at = NOW()
+            """,
+            new_model_id,
+        )
+        logger.info(
+            "routing.pointer_sync.ok",
+            extra={"data": {"new_model_id": new_model_id}},
+        )
