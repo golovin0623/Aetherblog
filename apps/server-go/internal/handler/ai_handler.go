@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -78,10 +77,12 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 // ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
-	subPath := c.Param("*")
+	// Use c.Param("*") to retrieve the matched wildcard parameter.
+	// In echo, c.Param returns the parameter as it was in the request (encoded).
+	rawSubPath := c.Param("*")
 
 	// 循环进行 URL 解码，彻底防御多重编码的路径穿越攻击（如 %2e%2e、%252e%252e）
-	unescapedPath := subPath
+	unescapedPath := rawSubPath
 	for {
 		decoded, err := url.PathUnescape(unescapedPath)
 		if err != nil {
@@ -97,9 +98,10 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	}
 
 	// 使用原始编码路径构建目标 URL，避免解码后的特殊字符破坏 URL 结构
+	// 不使用 path.Clean(rawSubPath) 避免破坏 URL 结构并引发 SSRF
 	targetPath := "/api/v1/admin/providers"
-	if subPath != "" {
-		targetPath += "/" + path.Clean(subPath)
+	if rawSubPath != "" {
+		targetPath += "/" + rawSubPath
 	}
 
 	method := c.Request().Method
