@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
+import os
 import socket
 from typing import Union
 from urllib.parse import urlparse
@@ -37,6 +38,32 @@ BLOCKED_NETWORKS = [
     ipaddress.ip_network('fe80::/10'),
 ]
 
+# Local-dev escape hatch for fake-ip proxies (Clash/Mihomo default
+# ``fake-ip-range: 198.18.0.0/16``). In fake-ip mode the proxy DNS hands back
+# synthetic IPs from RFC2544 benchmark space (198.18/15) that stdlib classifies
+# as ``is_private`` — tripping this guard for genuinely public hostnames.
+#
+# When set, drop the broad ``is_private/is_loopback/is_link_local/is_reserved``
+# heuristic and rely ONLY on the explicit BLOCKED_NETWORKS enumeration above —
+# that list still covers every real SSRF threat: RFC1918 (10/8, 172.16/12,
+# 192.168/16), loopback (127/8 + ::1), link-local incl. AWS/GCP/Azure IMDS
+# (169.254/16), CGNAT (100.64/10), v6 ULA (fd00::/8). What becomes *allowed*
+# is 198.18/15 (fake-ip), 192.0.2/24 / 198.51.100/24 / 203.0.113/24 (TEST-NET
+# doc ranges), 240/4 (class E) — all inert in practice, safe for dev.
+#
+# MUST remain off in production. Startup logs a warning when enabled.
+_ALLOW_RESERVED = os.environ.get(
+    "AETHERBLOG_SSRF_ALLOW_RESERVED", ""
+).strip().lower() in ("1", "true", "yes", "on")
+
+if _ALLOW_RESERVED:
+    logger.warning(
+        "AETHERBLOG_SSRF_ALLOW_RESERVED=1 — SSRF guard running in PERMISSIVE "
+        "mode for local development (e.g. behind Clash/Mihomo fake-ip proxy). "
+        "RFC2544/TEST-NET/class-E ranges are allowed; RFC1918 + loopback + "
+        "IMDS link-local remain blocked. MUST NOT be set in production."
+    )
+
 
 def is_ip_blocked(ip: IPAddress) -> bool:
     """Check if an IP address is blocked.
@@ -47,7 +74,9 @@ def is_ip_blocked(ip: IPAddress) -> bool:
     """
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         return is_ip_blocked(ip.ipv4_mapped)
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+    if not _ALLOW_RESERVED and (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+    ):
         return True
     return any(ip in network for network in BLOCKED_NETWORKS)
 
