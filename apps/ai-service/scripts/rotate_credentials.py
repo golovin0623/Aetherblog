@@ -46,29 +46,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 
 import asyncpg
 
 from app.core.config import get_settings
 from app.services.credential_resolver import CredentialResolver
-
-logger = logging.getLogger(__name__)
-
-
-async def _scan_dead_credentials(
-    resolver: CredentialResolver, conn: asyncpg.Connection
-) -> list[int]:
-    """Return IDs of credential rows whose api_key_encrypted fails to decrypt
-    with *any* currently-configured key."""
-    rows = await conn.fetch("SELECT id, api_key_encrypted FROM ai_credentials")
-    dead: list[int] = []
-    for row in rows:
-        try:
-            resolver.decrypt_api_key(row["api_key_encrypted"])
-        except Exception:  # noqa: BLE001
-            dead.append(row["id"])
-    return dead
 
 
 async def _repair_orphan_routings(

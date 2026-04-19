@@ -28,24 +28,40 @@ export default function EaseCurveViz({
 }: EaseCurveVizProps) {
   // phase: idle (左) → run (运动到右) → hold (停在右) → reset (复位到左)
   const [phase, setPhase] = useState<'idle' | 'run' | 'hold' | 'reset'>('idle');
-  const timersRef = useRef<number[]>([]);
+  const timeoutIdsRef = useRef(new Set<number>());
+  const intervalIdRef = useRef<number | null>(null);
   const [x1, y1, x2, y2] = cubic;
   const cubicStr = `cubic-bezier(${cubic.join(', ')})`;
 
-  // 单次播放周期 —— 把所有 setTimeout 收拢在一起,用 ref 跟踪以便清理
+  const scheduleTimeout = (callback: () => void, ms: number) => {
+    const id = window.setTimeout(() => {
+      timeoutIdsRef.current.delete(id);
+      callback();
+    }, ms);
+    timeoutIdsRef.current.add(id);
+    return id;
+  };
+
+  const clearScheduledTimers = () => {
+    timeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
+    timeoutIdsRef.current.clear();
+    if (intervalIdRef.current !== null) {
+      window.clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+  };
+
+  // 单次播放周期 —— 把所有 setTimeout 收拢在一起,并在触发后自动移出跟踪集合
   const playOnce = () => {
     setPhase('run');
-    const t1 = window.setTimeout(() => {
+    scheduleTimeout(() => {
       setPhase('hold');
-      const t2 = window.setTimeout(() => {
+      scheduleTimeout(() => {
         // 复位用线性瞬移(无 transition),圆点直接弹回左边
         setPhase('reset');
-        const t3 = window.setTimeout(() => setPhase('idle'), 30);
-        timersRef.current.push(t3);
+        scheduleTimeout(() => setPhase('idle'), 30);
       }, 600);
-      timersRef.current.push(t2);
     }, duration + 30);
-    timersRef.current.push(t1);
   };
 
   // 手动点击:仅在 idle 时响应,避免连击叠状态
@@ -60,24 +76,18 @@ export default function EaseCurveViz({
     let cancelled = false;
     const cycle = duration + 600 + 30 + 2200;
 
-    const start = window.setTimeout(() => {
+    scheduleTimeout(() => {
       if (cancelled) return;
       playOnce();
-      const interval = window.setInterval(() => {
+      intervalIdRef.current = window.setInterval(() => {
         if (cancelled) return;
         playOnce();
       }, cycle);
-      timersRef.current.push(interval);
     }, initialDelay);
-    timersRef.current.push(start);
 
     return () => {
       cancelled = true;
-      timersRef.current.forEach((id) => {
-        window.clearTimeout(id);
-        window.clearInterval(id);
-      });
-      timersRef.current = [];
+      clearScheduledTimers();
       setPhase('idle');
     };
   }, [autoPlay, duration, initialDelay]);
