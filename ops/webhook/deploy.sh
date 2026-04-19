@@ -182,16 +182,97 @@ run_pre_deploy_migrations() {
   }
   local db_dsn="postgres://${db_user_enc}:${db_pass_enc}@postgres:5432/${db_name}?sslmode=disable"
 
-  # 只传 -dsn flag：cmd/migrate/main.go 里 flag 优先、DATABASE_DSN env 仅兜底，
-  # 两条同时设会冗余也让 log 更难排查。
+  # ----------------------------------------------------------
+  # 故障自愈: 000034 (versioned_post_embeddings) 使用 CREATE TABLE IF NOT
+  # EXISTS post_embeddings, 但 000001 里已经建过一张 chunk-版 post_embeddings.
+  # 存量部署和 fresh install 都会命中 —— CREATE TABLE 被静默跳过, 紧随其后
+  # 的 CREATE INDEX ... WHERE dim = 1536 AND status = 'active' 引用旧表不
+  # 存在的列直接崩塌, schema_migrations 被标 dirty, 迁移链卡在 v34.
+  #
+  # 自愈策略: "v34 dirty → force 35" + up, 让 000036 的幂等修复接管重建.
+  # 两阶段触发:
+  #   1) 部署前先探: 若已经 v34 dirty (历史受损实例), 直接 force 35 再 up.
+  #   2) up 若失败: 再探一次, 若这次 up 把 schema 拖到 v34 dirty (首次 fresh
+  #      install 命中 bug 的场景), 同一部署周期内 force 35 + 重试 up 一次.
+  # 只识别 exactly v34 dirty 这一种特征, 不动其他 dirty. 避免把真正需要人工
+  # 介入的迁移故障误 heal 成"绿色部署".
+  # ----------------------------------------------------------
+
+  # Capture `migrate version` regardless of exit code. golang-migrate v4 returns
+  # exit 0 on dirty states (only `Up()` refuses to advance), but on a truly
+  # fresh install (ErrNilVersion) or transient DB glitch it exits non-zero and
+  # writes to stderr. We still want the text for downstream parsing; gating on
+  # exit code alone would drop a legitimate "version: 34, dirty: true" if a
+  # future migrate version changes its exit convention. 2>&1 folds stderr into
+  # the stream; the `_heal_v34_dirty_if_present` regex is specific enough that
+  # garbage/error text simply won't match and returns 1.
+  _probe_migration_version() {
+    docker compose -f "$COMPOSE_FILE" run --rm \
+      --entrypoint /app/migrate \
+      backend -dir /app/migrations -dsn "$db_dsn" version 2>&1 || true
+  }
+
+  # returns 0 if a v34-dirty state was detected **and** successfully force-bumped to 35.
+  # returns 1 for anything else (no dirty / dirty at a different version / force failed).
+  # Caller decides what "not-our-signature" means in context (pre-up: harmless skip,
+  # post-up: surface the underlying migration error).
+  _heal_v34_dirty_if_present() {
+    local out="$1"
+    local v d
+    v=$(echo "$out" | sed -nE 's/.*version: ([0-9]+).*/\1/p' | head -1)
+    d=$(echo "$out" | sed -nE 's/.*dirty: (true|false).*/\1/p' | head -1)
+    if [ "$v" = "34" ] && [ "$d" = "true" ]; then
+      echo "[$(date -Iseconds)] WARN: detected dirty state at migration v34 — matches the known 000034 partial-apply bug. Forcing to v35 so 000036 repair can run."
+      if docker compose -f "$COMPOSE_FILE" run --rm \
+           --entrypoint /app/migrate \
+           backend -dir /app/migrations -dsn "$db_dsn" force 35; then
+        echo "[$(date -Iseconds)] migration force 35 succeeded."
+        return 0
+      fi
+      echo "[$(date -Iseconds)] ERROR: migration force 35 failed"
+    fi
+    return 1
+  }
+
+  # Stage 1: pre-up probe (handles historical v34 dirty carry-over from earlier deploys)
+  local version_out
+  version_out=$(_probe_migration_version)
+  if [ -n "$version_out" ]; then
+    echo "[$(date -Iseconds)] migration state (pre-up): $version_out"
+    _heal_v34_dirty_if_present "$version_out" || true
+  else
+    echo "[$(date -Iseconds)] migration version probe returned empty (likely fresh install with no schema_migrations yet)"
+  fi
+
+  # Stage 2: run migrations
   if docker compose -f "$COMPOSE_FILE" run --rm \
        --entrypoint /app/migrate \
        backend -dir /app/migrations -dsn "$db_dsn" up; then
     echo "[$(date -Iseconds)] Migrations applied successfully"
-  else
-    echo "[$(date -Iseconds)] ERROR: migration failed, aborting deploy"
+    return
+  fi
+
+  # Stage 3: up failed — if it landed on the v34 dirty signature (fresh install first
+  # cycle will do exactly this), heal + retry once in the same deploy. Anything else
+  # aborts so real migration bugs aren't silently papered over.
+  echo "[$(date -Iseconds)] WARN: migration up failed; re-probing to check for v34 dirty signature."
+  version_out=$(_probe_migration_version)
+  if [ -z "$version_out" ]; then
+    echo "[$(date -Iseconds)] ERROR: cannot re-probe migration version after failure, aborting deploy"
     exit 1
   fi
+  echo "[$(date -Iseconds)] migration state (post-up): $version_out"
+  if _heal_v34_dirty_if_present "$version_out"; then
+    echo "[$(date -Iseconds)] retrying migrate up after v34 dirty heal"
+    if docker compose -f "$COMPOSE_FILE" run --rm \
+         --entrypoint /app/migrate \
+         backend -dir /app/migrations -dsn "$db_dsn" up; then
+      echo "[$(date -Iseconds)] Migrations applied successfully (after heal)"
+      return
+    fi
+  fi
+  echo "[$(date -Iseconds)] ERROR: migration failed and did not match the known self-heal signature, aborting deploy"
+  exit 1
 }
 
 run_full_deploy() {

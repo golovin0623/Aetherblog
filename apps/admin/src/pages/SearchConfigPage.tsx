@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -302,6 +302,13 @@ export default function SearchConfigPage() {
     queryKey: ['search-stats'],
     queryFn: () => searchConfigService.getStats(),
     refetchInterval: indexingActive ? 2000 : false,
+    // 面板闪烁根因: /search/stats 偶发 500 (例如 post_embeddings schema
+    // 未就绪时) 让 data 在 refetch 之间被重置, StatSkeleton 反复进出场.
+    // keepPreviousData 让 refetch 失败时沿用上一次成功值, UI 稳定不闪.
+    placeholderData: keepPreviousData,
+    // refetch 失败不重试 3 次 * 指数退避, 直接一次带过, 把下一次可能成功的
+    // 机会让给 refetchInterval 的下一个周期.
+    retry: 1,
   });
 
   const { data: diagnosticsRes } = useQuery({
