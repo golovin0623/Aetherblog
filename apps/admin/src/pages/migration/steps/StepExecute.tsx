@@ -39,16 +39,17 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
           onExecuteEvent,
           controller.signal,
         );
-      } catch (e: any) {
-        if (e.name === 'AbortError') return;
-        toast.error(e.message || '导入失败');
-        onExecuteEvent({ type: 'fatal', error: e.message || '网络中断' });
+      } catch (e: unknown) {
+        const err = e as { name?: string; message?: string };
+        if (err.name === 'AbortError') return;
+        toast.error(err.message || '导入失败');
+        onExecuteEvent({ type: 'fatal', error: err.message || '网络中断' });
       } finally {
         onExecuteEnd();
       }
     })();
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // 刻意只在挂载时跑一次：迁移执行是一次性动作，重新触发会重复上传。
   }, []);
 
   // 流结束或 fatal 时自动进入 Summary。

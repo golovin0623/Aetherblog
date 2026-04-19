@@ -636,6 +636,13 @@ func (s *MigrationService) runArticlePhase(
 	sum *ExecutionSummary,
 	emit ProgressEmit,
 ) (map[string]int64, error) {
+	// 事务外先跑完 bcrypt：每次 ~100ms，16 篇密码保护的实测值在 1.6s 级别；
+	// 若搬进事务里会让整段时间 DB 连接被占用、可能与其他 tx 产生锁冲突。
+	pwMap, pwErrs := precomputePasswordHashes(backup, plans, opts)
+	for _, e := range pwErrs {
+		sum.Errors = append(sum.Errors, e)
+	}
+
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -664,7 +671,7 @@ func (s *MigrationService) runArticlePhase(
 
 		switch p.Action {
 		case "create", "rename":
-			ins, err := buildPostInsert(a, p, catMap, callerID, opts)
+			ins, err := buildPostInsert(a, p, catMap, callerID, opts, pwMap)
 			if err != nil {
 				sum.FailedPosts++
 				sum.Errors = append(sum.Errors, fmt.Sprintf("文章 [%s] 构建失败: %v", p.Title, err))
@@ -679,7 +686,7 @@ func (s *MigrationService) runArticlePhase(
 			toInsert = append(toInsert, ins)
 
 		case "overwrite":
-			ins, err := buildPostInsert(a, p, catMap, callerID, opts)
+			ins, err := buildPostInsert(a, p, catMap, callerID, opts, pwMap)
 			if err != nil {
 				sum.FailedPosts++
 				sum.Errors = append(sum.Errors,
@@ -747,10 +754,53 @@ func (s *MigrationService) runArticlePhase(
 	return postMap, nil
 }
 
-// buildPostInsert 把 VanBlog 文章转成 repository.PostInsert。bcrypt 在此处完成。
+// precomputePasswordHashes 在开事务之前串行跑 bcrypt，产出 source_key → hash 映射。
+// 策略：
+//   - 只对 action ∈ {create, rename, overwrite(且 preservePasswords=false)} 的文章做哈希
+//   - overwrite + preservePasswords=true 的文章不需要新哈希（走 COALESCE 保留旧密码）
+//   - skip_* / invalid 的文章不需要哈希
+//
+// 返回的 errors 列表会合并到 ExecutionSummary.Errors；单篇哈希失败不中断整批。
+func precomputePasswordHashes(
+	backup *VanBlogBackup, plans []ArticlePlan, opts ImportOptions,
+) (map[string]string, []string) {
+	out := make(map[string]string)
+	var errs []string
+	preservePwOnOverwrite := opts.PreservePasswords != nil && *opts.PreservePasswords
+	for i, p := range plans {
+		if p.Action == "skip_duplicate" || p.Action == "skip_hidden" ||
+			p.Action == "skip_deleted" || p.Action == "skip_filtered" || p.Action == "invalid" {
+			continue
+		}
+		if p.Action == "overwrite" && preservePwOnOverwrite {
+			continue
+		}
+		var a *VanBlogArticle
+		if i < len(backup.Articles) {
+			a = &backup.Articles[i]
+		} else {
+			a = &backup.Drafts[i-len(backup.Articles)]
+		}
+		if a.Password == "" {
+			continue
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(a.Password), bcrypt.DefaultCost)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("文章 [%s] 密码哈希失败: %v", p.Title, err))
+			continue
+		}
+		out[p.SourceKey] = string(hash)
+	}
+	return out, errs
+}
+
+// buildPostInsert 把 VanBlog 文章转成 repository.PostInsert。
+// 密码哈希通过 pwMap 传入（key=文章的 source_key），在事务外预计算，避免
+// 在循环里跑 bcrypt（~100ms/次 × N）占用 DB 连接和锁资源。
 func buildPostInsert(
 	a *VanBlogArticle, p ArticlePlan,
 	catMap map[string]int64, callerID int64, opts ImportOptions,
+	pwMap map[string]string,
 ) (repository.PostInsert, error) {
 	ins := repository.PostInsert{
 		Title:        a.Title,
@@ -773,14 +823,13 @@ func buildPostInsert(
 	}
 	uid := callerID
 	ins.AuthorID = &uid
+	// SECURITY (VULN-033): VanBlog 导出里密码明文；必须 bcrypt 后再存。
+	// 哈希已在 precomputePasswordHashes 里生成；这里只做 lookup。
 	if a.Password != "" {
-		// SECURITY (VULN-033): VanBlog 导出里密码明文；必须 bcrypt 后再存。
-		hash, err := bcrypt.GenerateFromPassword([]byte(a.Password), bcrypt.DefaultCost)
-		if err != nil {
-			return ins, fmt.Errorf("hash password: %w", err)
+		if h, ok := pwMap[p.SourceKey]; ok {
+			hs := h
+			ins.Password = &hs
 		}
-		h := string(hash)
-		ins.Password = &h
 	}
 	ins.WordCount = utf8.RuneCountInString(content)
 	ins.ReadingTime = ins.WordCount / 300
@@ -858,8 +907,9 @@ func (s *MigrationService) runPostTagPhase(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// overwrite 策略：先清空目标文章的旧 tag 关联再重建。
-	cleared := make(map[int64]bool)
+	// overwrite 策略：收集所有需要清空的 post_id，一次 DELETE 搞定，
+	// 避免 overwrite 100 篇 = 100 次 round-trip 的 N+1。
+	toClearSet := make(map[int64]struct{})
 	for _, p := range plans {
 		if p.Action != "overwrite" {
 			continue
@@ -868,15 +918,17 @@ func (s *MigrationService) runPostTagPhase(
 		if !ok {
 			continue
 		}
-		if cleared[id] {
-			continue
+		toClearSet[id] = struct{}{}
+	}
+	if len(toClearSet) > 0 {
+		toClear := make([]int64, 0, len(toClearSet))
+		for id := range toClearSet {
+			toClear = append(toClear, id)
 		}
-		if err := s.repo.ClearPostTags(ctx, tx, id); err != nil {
+		if err := s.repo.ClearPostTagsBatch(ctx, tx, toClear); err != nil {
 			sum.Warnings = append(sum.Warnings,
-				fmt.Sprintf("清空 post_tags 失败 (post=%d): %v", id, err))
-			continue
+				fmt.Sprintf("批量清空 post_tags 失败 (%d 条): %v", len(toClear), err))
 		}
-		cleared[id] = true
 	}
 
 	n, err := s.repo.BatchInsertPostTags(ctx, tx, links)

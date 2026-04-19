@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -81,6 +81,10 @@ func (h *MigrationHandler) ImportStream(c echo.Context) error {
 	res.Header().Set("X-Accel-Buffering", "no")
 	res.WriteHeader(http.StatusOK)
 
+	// writerMu 串行化所有 res.Writer 写入。Go 的 http.ResponseWriter 非并发安全
+	// (Execute 主 goroutine 的 emit 与 心跳 goroutine 都会写)；不加锁的后果是 SSE
+	// 帧交错、前端 JSON 解析失败、最坏情况 server panic。
+	var writerMu sync.Mutex
 	flush := func() {
 		if f, ok := res.Writer.(http.Flusher); ok {
 			f.Flush()
@@ -93,6 +97,8 @@ func (h *MigrationHandler) ImportStream(c echo.Context) error {
 			// 理论上 Marshal 不会失败；若失败就吞掉，避免污染流。
 			return
 		}
+		writerMu.Lock()
+		defer writerMu.Unlock()
 		_, _ = fmt.Fprintf(res.Writer, "data: %s\n\n", buf)
 		flush()
 	}
@@ -109,8 +115,10 @@ func (h *MigrationHandler) ImportStream(c echo.Context) error {
 				return
 			case <-t.C:
 				// SSE comment 行以冒号开头，不会被当成事件。
+				writerMu.Lock()
 				_, _ = res.Writer.Write([]byte(": heartbeat\n\n"))
 				flush()
+				writerMu.Unlock()
 			}
 		}
 	}()
@@ -181,24 +189,26 @@ func parseVanBlogUpload(c echo.Context) (*service.VanBlogBackup, *service.Import
 	}
 	defer f.Close()
 
-	// 用 LimitReader 加 1 字节，读完后若长度超出即判断为超限。
-	data, err := io.ReadAll(io.LimitReader(f, maxVanBlogUploadBytes+1))
-	if err != nil {
-		return nil, nil, response.FailWith(c, response.InternalError, "读取文件失败")
-	}
-	if int64(len(data)) > maxVanBlogUploadBytes {
-		return nil, nil, response.FailWith(c, response.BadRequest,
-			fmt.Sprintf("文件超过 %d MB 上限", maxVanBlogUploadBytes/1024/1024))
-	}
-
+	// 流式解码：直接用 json.NewDecoder 包裹 io.LimitReader，避免把整个 500MB 文件
+	// 先读入内存再解析（峰值内存 = 字节数组 + 解析后结构体 ≈ 2× 文件大小）。
+	// LimitReader 设 maxBytes+1，确保超限能被检测到：超限时解析会读到 EOF 并 fail。
+	limited := &countingReader{r: io.LimitReader(f, maxVanBlogUploadBytes+1)}
 	var backup service.VanBlogBackup
-	dec := json.NewDecoder(bytes.NewReader(data))
+	dec := json.NewDecoder(limited)
 	// 故意不调用 dec.DisallowUnknownFields() —— VanBlog 不同版本会新增顶层/文章字段，
 	// 严格模式会导致能正常使用的备份直接 400。未知字段让 decoder 安静丢弃，
 	// 已知重要字段通过结构体显式接住。
 	if err := dec.Decode(&backup); err != nil {
+		if limited.n > maxVanBlogUploadBytes {
+			return nil, nil, response.FailWith(c, response.BadRequest,
+				fmt.Sprintf("文件超过 %d MB 上限", maxVanBlogUploadBytes/1024/1024))
+		}
 		return nil, nil, response.FailWith(c, response.BadRequest,
 			"JSON 解析失败，请确认文件格式正确: "+err.Error())
+	}
+	if limited.n > maxVanBlogUploadBytes {
+		return nil, nil, response.FailWith(c, response.BadRequest,
+			fmt.Sprintf("文件超过 %d MB 上限", maxVanBlogUploadBytes/1024/1024))
 	}
 
 	opts := &service.ImportOptions{}
@@ -229,4 +239,17 @@ func requireAdmin(c echo.Context) (int64, error) {
 		return 0, response.FailWith(c, response.Unauthorized, "未登录")
 	}
 	return lu.UserID, nil
+}
+
+// countingReader 包裹一个 io.Reader 并累计已读字节数。用于流式解码路径下
+// 判断是否超过 maxVanBlogUploadBytes —— 解析错时可以区分 "文件超限" 和 "JSON 本身坏"。
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }

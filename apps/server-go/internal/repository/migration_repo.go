@@ -401,34 +401,42 @@ func (r *MigrationRepo) BatchInsertPostTags(
 }
 
 // ClearPostTags 删除 postID 的所有 post_tags 关联（overwrite 时重建用）。
+// 保留单条版本供测试或小规模场景；批量路径走 ClearPostTagsBatch。
 func (r *MigrationRepo) ClearPostTags(ctx context.Context, tx *sqlx.Tx, postID int64) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM post_tags WHERE post_id = $1`, postID)
 	return err
 }
 
+// ClearPostTagsBatch 一次删除多个 post 的 post_tags 关联。overwrite 路径用它替代
+// 循环调用 ClearPostTags —— 同样是 N+1 的慢路径（老版本 handler 里已经有过教训）。
+func (r *MigrationRepo) ClearPostTagsBatch(ctx context.Context, tx *sqlx.Tx, postIDs []int64) error {
+	if len(postIDs) == 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `DELETE FROM post_tags WHERE post_id = ANY($1)`, pq.Array(postIDs))
+	return err
+}
+
 // RecomputePostCounts 在导入尾端更新 categories.post_count / tags.post_count 缓存字段。
-// 使用聚合子查询，避免逐条 increment 的竞态。
+//
+// 用 scalar subquery 更新**所有行**，而不是 `UPDATE FROM (GROUP BY)` 只更新子查询
+// 里出现的行 —— 后者会漏掉 "迁移后文章数归零" 的分类/标签（它们不会进 GROUP BY 结果），
+// 导致 post_count 停留在旧值。这里保证 0-count 行也会被正确重置到 0。
 func (r *MigrationRepo) RecomputePostCounts(ctx context.Context, tx *sqlx.Tx) error {
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE categories c SET post_count = COALESCE(sub.cnt, 0)
-		FROM (
-			SELECT category_id, COUNT(*) AS cnt
-			FROM posts WHERE deleted = false AND category_id IS NOT NULL
-			GROUP BY category_id
-		) sub
-		WHERE c.id = sub.category_id`); err != nil {
+		UPDATE categories SET post_count = (
+			SELECT COUNT(*) FROM posts
+			WHERE posts.category_id = categories.id AND posts.deleted = false
+		)`); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE tags t SET post_count = COALESCE(sub.cnt, 0)
-		FROM (
-			SELECT pt.tag_id, COUNT(DISTINCT pt.post_id) AS cnt
+		UPDATE tags SET post_count = (
+			SELECT COUNT(DISTINCT pt.post_id)
 			FROM post_tags pt
 			JOIN posts p ON p.id = pt.post_id
-			WHERE p.deleted = false
-			GROUP BY pt.tag_id
-		) sub
-		WHERE t.id = sub.tag_id`); err != nil {
+			WHERE pt.tag_id = tags.id AND p.deleted = false
+		)`); err != nil {
 		return err
 	}
 	return nil

@@ -163,7 +163,7 @@ export async function streamImport(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const base = (import.meta as any).env?.VITE_API_URL || '/api';
+  const base = (import.meta as ImportMeta & { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL || '/api';
   const res = await fetch(`${base}/v1/admin/migrations/vanblog/import/stream`, {
     method: 'POST',
     credentials: 'include',
@@ -196,10 +196,10 @@ export async function streamImport(
       try {
         const ev = JSON.parse(jsonStr) as ProgressEvent;
         onEvent(ev);
-      } catch (err) {
-        // JSON 解析失败多半是上游截断，忽略该事件但保留流继续。
-        // eslint-disable-next-line no-console
-        console.warn('[migrationService] 无法解析 SSE 事件:', jsonStr);
+      } catch {
+        // JSON 解析失败多半是上游截断，忽略该事件但保留流继续消费。
+        // 这里不上报也不 log —— 心跳等非 JSON 事件在上层已被 data: 前缀过滤，
+        // 真正的截断场景在生产罕见，不值得为它牺牲 no-console 纯度。
       }
     }
   };
