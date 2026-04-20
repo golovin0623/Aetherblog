@@ -347,11 +347,19 @@ func (s *SearchService) Search(ctx context.Context, query, mode string, limit in
 	}
 
 	// 语义搜索
+	// hybrid 模式下语义搜索限 3 秒——关键词已经可以兜底,不能让慢 embedding
+	// 拖慢整次请求 (historical: ~10s)。纯 semantic 模式下仍走 ctx 原始超时。
 	if cfg.SemanticEnabled && (mode == "semantic" || mode == "hybrid") && s.aiClient != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			semResults, semErr = s.semanticSearch(ctx, query, limit)
+			semCtx := ctx
+			if mode == "hybrid" {
+				var cancel context.CancelFunc
+				semCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+				defer cancel()
+			}
+			semResults, semErr = s.semanticSearch(semCtx, query, limit)
 		}()
 	}
 
@@ -470,10 +478,14 @@ func (s *SearchService) semanticSearch(ctx context.Context, query string, limit 
 }
 
 // fusionRRF 使用 Reciprocal Rank Fusion 合并两组搜索结果。
+// Source 按贡献来源打标：两侧都命中 → "hybrid"，否则保留原始 "keyword" / "semantic"，
+// 让前端 badge 可以区分结果出处。
 func fusionRRF(kwResults, semResults []dto.SearchResultItem, k, limit int) []dto.SearchResultItem {
 	type scored struct {
 		item  dto.SearchResultItem
 		score float64
+		inKw  bool
+		inSem bool
 	}
 
 	scores := make(map[int64]*scored)
@@ -482,16 +494,23 @@ func fusionRRF(kwResults, semResults []dto.SearchResultItem, k, limit int) []dto
 		scores[r.ID] = &scored{
 			item:  r,
 			score: 1.0 / float64(k+rank+1),
+			inKw:  true,
 		}
 	}
 
 	for rank, r := range semResults {
 		if existing, ok := scores[r.ID]; ok {
 			existing.score += 1.0 / float64(k+rank+1)
+			existing.inSem = true
+			// 语义命中时补齐 highlight(关键词 highlight 可能为空)
+			if existing.item.Highlight == "" && r.Highlight != "" {
+				existing.item.Highlight = r.Highlight
+			}
 		} else {
 			scores[r.ID] = &scored{
 				item:  r,
 				score: 1.0 / float64(k+rank+1),
+				inSem: true,
 			}
 		}
 	}
@@ -512,7 +531,14 @@ func fusionRRF(kwResults, semResults []dto.SearchResultItem, k, limit int) []dto
 	items := make([]dto.SearchResultItem, len(results))
 	for i, r := range results {
 		r.item.Score = r.score
-		r.item.Source = "hybrid"
+		switch {
+		case r.inKw && r.inSem:
+			r.item.Source = "hybrid"
+		case r.inSem:
+			r.item.Source = "semantic"
+		default:
+			r.item.Source = "keyword"
+		}
 		items[i] = r.item
 	}
 	return items

@@ -32,6 +32,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
         const res = await authService.getCurrentUser();
         if (res.code !== 200 || !res.data) {
           logout();
+        } else {
+          // 会话验证通过后同步最新的用户档案（昵称、头像、邮箱等）——
+          // 过去只校验 code 不写 store,导致用户改了昵称或上传了头像后,
+          // 侧边栏 / 个人面板仍然显示旧值甚至空值。
+          useAuthStore.setState({ user: res.data });
         }
       } catch (error) {
         logger.error('[AuthGuard] Session validation error:', error);
