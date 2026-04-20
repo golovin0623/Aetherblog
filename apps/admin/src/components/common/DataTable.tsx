@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Column<T> {
   key: keyof T | string;
@@ -105,17 +106,32 @@ export function DataTable<T extends { id: number | string }>({
                   className="group relative border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
                   data-interactive="true"
                 >
-                  {/* 极光左带 —— hover 时从上往下扫入 */}
-                  <td aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-[2px] p-0 overflow-hidden">
-                    <div
-                      className="absolute inset-0 origin-top scale-y-0 rounded-full transition-transform duration-300 ease-out group-hover:scale-y-100"
-                      style={{
-                        background: 'linear-gradient(to bottom, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)), var(--aurora-3, var(--color-primary, #818CF8)))',
-                      }}
-                    />
-                  </td>
-                  {columns.map((column) => (
-                    <td key={String(column.key)} className="px-6 py-4 text-[var(--text-primary)]">
+                  {/* 极光左带装饰作为首列 <td> 的子元素渲染 —— 不能再单独
+                      插一个 <td>,否则 tbody 比 thead 多一个 cell,在 iOS
+                      Safari 等把 position:absolute 的 <td> 仍计入列数的
+                      浏览器里会造成列错位(时间→任务格、任务→模型格...)。 */}
+                  {columns.map((column, columnIndex) => (
+                    <td
+                      key={String(column.key)}
+                      className={cn(
+                        'px-6 py-4 text-[var(--text-primary)]',
+                        columnIndex === 0 && 'relative',
+                      )}
+                    >
+                      {columnIndex === 0 && (
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] overflow-hidden"
+                        >
+                          <span
+                            className="absolute inset-0 origin-top scale-y-0 rounded-full transition-transform duration-300 ease-out group-hover:scale-y-100"
+                            style={{
+                              background:
+                                'linear-gradient(to bottom, var(--aurora-1, var(--color-primary, #818CF8)), var(--aurora-2, var(--color-primary, #818CF8)), var(--aurora-3, var(--color-primary, #818CF8)))',
+                            }}
+                          />
+                        </span>
+                      )}
                       {column.render
                         ? column.render(item)
                         : String(item[column.key as keyof T] ?? '')}
