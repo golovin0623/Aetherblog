@@ -5,15 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AetherBlog Admin</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!--
+      Inline FOUC guard — 必须在 external CSS 之前,否则从博客(Next.js dark)跳转到
+      admin(Vite)的瞬间,external CSS 还没解析完,浏览器会用默认白底绘制首帧。
+      tokens 里 --bg-primary: light=#FAF9F6 / dark=#0a0a0f,这里把同样的值写成内联规则,
+      配合下方 theme init script 抢先在 <html> 上加 .dark/.light,首帧就直接上色。
+    -->
+    <style>
+      html { background-color: #0a0a0f; color-scheme: dark; }
+      html.light { background-color: #FAF9F6; color-scheme: light; }
+      html.dark { background-color: #0a0a0f; color-scheme: dark; }
+      body { background-color: inherit; margin: 0; }
+    </style>
     <!-- Theme Init Script - Prevents FOUC by setting theme before first paint -->
     <script>
       (function() {
         try {
           var theme = localStorage.getItem('aetherblog-theme');
-          var isDark = theme === 'dark' || 
+          var isDark = theme === 'dark' ||
             (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
           document.documentElement.classList.add(isDark ? 'dark' : 'light');
           document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
@@ -22,6 +31,9 @@
         }
       })();
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
