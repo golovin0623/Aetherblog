@@ -1,4 +1,5 @@
 import { Menu } from 'lucide-react';
+import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore } from '@/stores';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 
@@ -23,18 +24,9 @@ export function MobileHeader() {
             <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />
           </div>
         ) : (
-          <div className="relative w-7 h-7 rounded-lg overflow-hidden flex-shrink-0 shadow-md shadow-primary/20">
-            {/* 基础渐变 */}
-            <div className="absolute inset-0 bg-[image:var(--gradient-primary)]" />
-            {/* 玻璃光泽叠加 */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
-            {/* 内部发光 */}
-            <div className="absolute inset-[1px] rounded-[6px] bg-gradient-to-br from-white/20 to-transparent" />
-            {/* 字母 */}
-            <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm drop-shadow-sm">
-              A
-            </span>
-          </div>
+          <span className="relative w-7 h-7 inline-flex items-center justify-center flex-shrink-0">
+            <AetherMark size={28} />
+          </span>
         )}
         {/* 渐变文本 */}
         <span className="font-semibold text-lg text-transparent bg-clip-text bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-secondary)] to-[var(--text-muted)] tracking-tight">

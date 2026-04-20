@@ -22,6 +22,7 @@ import {
   Bot,
   PanelLeftClose,
 } from 'lucide-react';
+import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
@@ -228,18 +229,9 @@ function SidebarContent({
               <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />
             </div>
           ) : (
-            <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
-              {/* 基础渐变 */}
-              <div className="absolute inset-0 bg-[image:var(--gradient-primary)]" />
-              {/* 玻璃光泽叠加 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
-              {/* 内部发光 */}
-              <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
-              {/* 字母 */}
-              <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg drop-shadow-md">
-                A
-              </span>
-            </div>
+            <span className="relative w-8 h-8 inline-flex items-center justify-center flex-shrink-0">
+              <AetherMark size={32} />
+            </span>
           )}
           <div className={cn(
             'overflow-hidden transition-all duration-300',
