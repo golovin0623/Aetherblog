@@ -212,7 +212,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         )}
 
         <div className={cn(
-          'flex items-center justify-between px-5 border-b border-[var(--border-subtle)]',
+          'flex items-center justify-between px-5 border-b border-[var(--border-subtle)] shrink-0',
           isMobile ? 'py-3 bg-transparent' : 'py-4 bg-[var(--bg-secondary)]'
         )}>
           <div className="flex items-center gap-2">
