@@ -312,12 +312,20 @@ export function RealtimeLogViewer({
     };
   }, [downloadFeedback]);
 
+  // 选中某个容器时,容器视图优先于 backend 聚合日志 —— MonitorPage 只负责
+  // 传 containerId,不显式翻转 useAppLogs,所以这里用 containerId 作为唯一
+  // 来源开关,避免"点容器→刷新→仍显示 backend 日志"的体感 bug。
+  const viewingContainer = Boolean(containerId);
+
   const getTitle = useCallback(() => {
+    if (viewingContainer) {
+      return containerName || containerId?.slice(0, 12) || '日志查看器';
+    }
     if (useAppLogs) {
       return 'Backend (Go)';
     }
-    return containerName || containerId?.slice(0, 12) || '日志查看器';
-  }, [useAppLogs, containerName, containerId]);
+    return '日志查看器';
+  }, [viewingContainer, useAppLogs, containerName, containerId]);
 
   useEffect(() => {
     setLogs([]);
@@ -337,7 +345,7 @@ export function RealtimeLogViewer({
     const fetchLogs = async () => {
       dispatchViewState({ type: 'FETCH_START' });
       try {
-        if (useAppLogs) {
+        if (!viewingContainer) {
           const result = await systemService.getLogs(filterLevel, MAX_LOG_LINES);
 
           if (result.status === 'ok') {
@@ -448,7 +456,7 @@ export function RealtimeLogViewer({
         clearTimeout(timer);
       }
     };
-  }, [containerId, refreshInterval, isPaused, useAppLogs, filterLevel, refreshTick, MAX_LOG_LINES]);
+  }, [containerId, refreshInterval, isPaused, viewingContainer, useAppLogs, filterLevel, refreshTick, MAX_LOG_LINES]);
 
   useEffect(() => {
     if (autoScroll && !isPaused && scrollRef.current) {
