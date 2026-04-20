@@ -88,19 +88,30 @@ func NewContainerMonitorService(linkedTargets ...LinkedTarget) *ContainerMonitor
 }
 
 // matchesLinkedTarget 判断一个容器是否是配置里声明的外部依赖。
-// 多级匹配(任一命中即算):
-//  1. 容器名等于 target.Host —— 覆盖 docker-compose 服务名场景
-//  2. 容器任一 PublicPort 等于 target.Port 且镜像包含 target.ImageHint ——
-//     覆盖 REDIS_HOST 填 IP 的场景(IP 无法直接与容器名对齐时靠端口 + 镜像指纹识别)
+// 匹配分两档,按 Host 形态二选一,绝不同时启用以避免宿主机上另一个
+// 同端口同镜像的无关容器(如 my_postgres)被误纳入:
+//  1. Host 是容器名/compose 服务名(非 IP 字面量) —— 严格等于匹配,
+//     不再看端口和镜像;否则 my_postgres 与 aetherblog-postgres 都有
+//     postgres 镜像 + 5432 端口,port+image fallback 会把两者都抓进来。
+//  2. Host 是 IP 字面量 —— 容器名无法比对,才退到 PublicPort + ImageHint
+//     指纹匹配,覆盖 "REDIS_HOST=124.22.30.10" 这种场景。
 func matchesLinkedTarget(c dockerContainer, name string, targets []LinkedTarget) bool {
 	if len(targets) == 0 {
 		return false
 	}
 	imageLower := strings.ToLower(c.Image)
 	for _, t := range targets {
-		if t.Host != "" && strings.EqualFold(name, t.Host) {
-			return true
+		if t.Host == "" {
+			continue
 		}
+		if net.ParseIP(t.Host) == nil {
+			// 非 IP: 只认容器名精确匹配(compose 服务名 / 自定义容器名)
+			if strings.EqualFold(name, t.Host) {
+				return true
+			}
+			continue
+		}
+		// IP 场景: 靠端口 + 镜像指纹识别实际后端容器
 		if t.Port > 0 && t.ImageHint != "" && strings.Contains(imageLower, strings.ToLower(t.ImageHint)) {
 			for _, p := range c.Ports {
 				if p.PublicPort == t.Port {
