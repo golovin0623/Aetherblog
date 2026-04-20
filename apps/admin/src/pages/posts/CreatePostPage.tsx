@@ -3036,7 +3036,7 @@ export function CreatePostPage() {
                   <div className="space-y-2">
                     {tocItems.length === 0 ? (
                       <div className="rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-4 py-8 text-center text-sm text-[var(--ink-tertiary)]">
-                        暂无目录,请先在正文中添加标题
+                        暂无目录，请先在正文中添加标题
                       </div>
                     ) : (
                       tocItems.map((item, index) => (
