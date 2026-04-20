@@ -14,7 +14,10 @@ export function AdminLayout() {
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const isMobile = useMediaQuery('(max-width: 768px)');
   const location = useLocation();
-  const isAppPage = location.pathname.startsWith('/media'); // 管理自身布局/滚动的页面
+  // 自管布局/滚动的页面：媒体库 + AI 协同写作
+  const isAppPage =
+    location.pathname.startsWith('/media') ||
+    location.pathname.startsWith('/posts/ai-writing');
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
   // ⌘K / Ctrl+K 全局命令面板
