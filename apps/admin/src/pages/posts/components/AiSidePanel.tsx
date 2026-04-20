@@ -197,18 +197,27 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         exit={isMobile ? { y: '100%' } : { width: 0, opacity: 0, x: 60 }}
         transition={isMobile ? { type: 'spring', damping: 30, stiffness: 260 } : { type: 'spring', stiffness: 320, damping: 30, mass: 0.6 }}
         className={cn(
-          'overflow-visible flex flex-col relative',
+          'flex flex-col relative',
           isMobile
-            ? 'h-full w-full bg-[var(--bg-primary)]'
-            : 'h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl z-30 shadow-xl'
+            ? 'h-full w-full surface-overlay !rounded-none !rounded-t-2xl overflow-hidden'
+            : 'overflow-visible h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl z-30 shadow-xl'
         )}
       >
         {!isMobile && <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />}
 
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+        {isMobile && (
+          <div className="flex justify-center pt-2 pb-1 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-[var(--ink-tertiary)]/40" />
+          </div>
+        )}
+
+        <div className={cn(
+          'flex items-center justify-between px-5 border-b border-[var(--border-subtle)]',
+          isMobile ? 'py-3 bg-transparent' : 'py-4 bg-[var(--bg-secondary)]'
+        )}>
           <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-            <span className="text-sm font-semibold text-[var(--text-primary)] tracking-wide uppercase">AI 写作面板</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--aurora-1)] shadow-[0_0_8px_color-mix(in_oklch,var(--aurora-1)_60%,transparent)]" />
+            <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-primary)]">AI 写作面板</span>
           </div>
           <div className="flex items-center gap-2">
             <ModelSelector
@@ -225,9 +234,13 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
             />
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300"
+              className={cn(
+                'rounded-full text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] transition-colors',
+                isMobile ? 'p-2' : 'p-1.5'
+              )}
+              aria-label="关闭 AI 面板"
             >
-              <X className="w-4 h-4" />
+              <X className={cn(isMobile ? 'w-5 h-5' : 'w-4 h-4')} />
             </button>
           </div>
         </div>
