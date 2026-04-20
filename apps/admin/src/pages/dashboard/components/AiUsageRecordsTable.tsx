@@ -10,6 +10,8 @@ interface AiUsageRecordsTableProps {
   pageSize: number;
   total: number;
   onPageChange: (nextPage: number) => void;
+  pageSizeOptions?: number[];
+  onPageSizeChange?: (pageSize: number) => void;
   modelOptions: string[];
   taskOptions: string[];
   selectedTaskType?: string;
@@ -43,6 +45,8 @@ export function AiUsageRecordsTable({
   pageSize,
   total,
   onPageChange,
+  pageSizeOptions,
+  onPageSizeChange,
   modelOptions,
   taskOptions,
   selectedTaskType,
@@ -233,6 +237,8 @@ export function AiUsageRecordsTable({
         pageSize={pageSize}
         total={total}
         onPageChange={onPageChange}
+        pageSizeOptions={pageSizeOptions}
+        onPageSizeChange={onPageSizeChange}
       />
     </div>
   );

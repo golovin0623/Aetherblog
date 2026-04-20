@@ -32,6 +32,28 @@ export function AuthGuard({ children }: AuthGuardProps) {
         const res = await authService.getCurrentUser();
         if (res.code !== 200 || !res.data) {
           logout();
+        } else {
+          // 会话验证通过后同步最新的用户档案（昵称、头像、邮箱等）——
+          // 过去只校验 code 不写 store,导致用户改了昵称或上传了头像后,
+          // 侧边栏 / 个人面板仍然显示旧值甚至空值。
+          // 注意：/auth/me 返回 roles[] (UserInfoVO),authStore 用 role 单数,
+          // 与 LoginPage 适配逻辑保持一致。
+          const info = res.data;
+          const roleStr = (info.roles && info.roles.length > 0) ? info.roles[0] : 'USER';
+          const validRoles = ['ADMIN', 'EDITOR', 'USER'] as const;
+          const role = validRoles.includes(roleStr as typeof validRoles[number])
+            ? (roleStr as 'ADMIN' | 'EDITOR' | 'USER')
+            : 'USER';
+          useAuthStore.setState({
+            user: {
+              id: String(info.id),
+              username: info.username,
+              nickname: info.nickname,
+              avatar: info.avatar || '',
+              email: info.email,
+              role,
+            },
+          });
         }
       } catch (error) {
         logger.error('[AuthGuard] Session validation error:', error);

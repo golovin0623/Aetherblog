@@ -17,7 +17,8 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { getAiResponseRateSummary } from '@/lib/aiMetrics';
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
 
 const EMPTY_DATA: AiDashboardData = {
   rangeDays: 30,
@@ -39,7 +40,7 @@ const EMPTY_DATA: AiDashboardData = {
   records: {
     list: [],
     pageNum: 1,
-    pageSize: PAGE_SIZE,
+    pageSize: DEFAULT_PAGE_SIZE,
     total: 0,
     pages: 0,
   },
@@ -52,6 +53,7 @@ function uniqueBy<T>(items: T[], mapper: (item: T) => string): string[] {
 export function AnalyticsPage() {
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [taskType, setTaskType] = useState('');
   const [modelId, setModelId] = useState('');
   const [successFilter, setSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
@@ -60,6 +62,10 @@ export function AnalyticsPage() {
   const [archiving, setArchiving] = useState(false);
   const [data, setData] = useState<AiDashboardData>(EMPTY_DATA);
   const [pricingGaps, setPricingGaps] = useState<AiPricingGap[]>([]);
+  // refreshNonce 让「归档后强制刷新」也走 useEffect 统一通道：
+  // React 会把 setPage(1) + setRefreshNonce 批成一次渲染,effect 只触发一次,
+  // 避免以前"setPage(1) 触发一次 + 手动 fetch 一次"的重复请求/竞态。
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -69,7 +75,7 @@ export function AnalyticsPage() {
         const query = {
           days,
           pageNum: page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           taskType: taskType || undefined,
           modelId: modelId || undefined,
           success,
@@ -102,7 +108,7 @@ export function AnalyticsPage() {
     };
 
     fetchData();
-  }, [days, page, taskType, modelId, successFilter, keyword]);
+  }, [days, page, pageSize, taskType, modelId, successFilter, keyword, refreshNonce]);
 
   const overview = data.overview || EMPTY_DATA.overview;
   const modelOptions = useMemo(
@@ -135,27 +141,10 @@ export function AnalyticsPage() {
         throw new Error('归档失败');
       }
       toast.success(`归档完成：成功 ${response.data.archived} 条，失败 ${response.data.failed} 条`);
+      // 回到首页 + bump nonce,由 useEffect 去 fetch,避免重复请求/竞态。
+      // page 若已经是 1 仅依赖 setPage 不会重跑 effect,所以始终 bump nonce。
       setPage(1);
-      const refreshed = await analyticsService.getAiDashboard({
-        days,
-        pageNum: 1,
-        pageSize: PAGE_SIZE,
-        taskType: taskType || undefined,
-        modelId: modelId || undefined,
-        success,
-        keyword: keyword.trim() || undefined,
-      });
-      if (refreshed.code === 200 && refreshed.data) {
-        setData(refreshed.data);
-      }
-      const refreshedGaps = await analyticsService.getAiPricingGaps({
-        days,
-        taskType: taskType || undefined,
-        modelId: modelId || undefined,
-        success,
-        keyword: keyword.trim() || undefined,
-      });
-      setPricingGaps(refreshedGaps.data || []);
+      setRefreshNonce(n => n + 1);
     } catch (error) {
       logger.error('Failed to archive AI costs:', error);
       toast.error('归档 AI 费用失败');
@@ -321,7 +310,7 @@ export function AnalyticsPage() {
         records={records}
         loading={loading}
         page={data.records?.pageNum || page}
-        pageSize={data.records?.pageSize || PAGE_SIZE}
+        pageSize={data.records?.pageSize || pageSize}
         total={data.records?.total || 0}
         onPageChange={(nextPage) => {
           if (nextPage < 1) {
@@ -332,6 +321,11 @@ export function AnalyticsPage() {
             return;
           }
           setPage(nextPage);
+        }}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(nextSize) => {
+          setPageSize(nextSize);
+          setPage(1);
         }}
         modelOptions={modelOptions}
         taskOptions={taskOptions}
