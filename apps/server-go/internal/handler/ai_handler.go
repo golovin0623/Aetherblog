@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -76,30 +75,45 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 }
 
 // ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
+//
+// 安全要点（对应 Gemini code-review 三条修复）：
+//  1. 透明代理必须使用 *已编码* 的子路径。`c.Param("*")` 返回的是 Echo
+//     已 URL-decode 后的值，若直接拼回 targetPath，`?` `#` `;` 会被误解析为
+//     查询串/片段/Matrix 分隔符（参数注入 / SSRF 绕过），且 `%2F` 会被
+//     还原成真正的 `/`、空格等字符会让下游 URL 非法。改用
+//     `c.Request().URL.EscapedPath()` 去掉前缀 `/api/v1/admin/providers`，
+//     原始编码完整透传给 FastAPI。
+//  2. 多重解码循环只用于检测 `..` 路径穿越。循环不应把"解码失败"升级为
+//     400 —— 路径中合法出现的 `%`（例如 `100%25...`）不可一竿子打死。
+//     decode 失败直接 break，用当前最新解码结果做 `..` 匹配。
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
-	// 重建 FastAPI 目标路径：/api/v1/admin/providers + 子路径
-	subPath := c.Param("*")
+	const proxyPrefix = "/api/v1/admin/providers"
 
-	// 循环进行 URL 解码，彻底防御多重编码的路径穿越攻击（如 %2e%2e、%252e%252e）
-	unescapedPath := subPath
+	// 使用 EscapedPath() 保留客户端原始编码，避免 Echo 自动解码带来的注入/绕过
+	escapedFull := c.Request().URL.EscapedPath()
+	encodedSubPath := strings.TrimPrefix(escapedFull, proxyPrefix)
+	encodedSubPath = strings.TrimPrefix(encodedSubPath, "/")
+
+	// 多级解码，尽力发现隐藏的 `..`；遇到非法百分号编码时 break 而非 400
+	probe := encodedSubPath
 	for {
-		decoded, err := url.PathUnescape(unescapedPath)
+		decoded, err := url.PathUnescape(probe)
 		if err != nil {
-			return response.FailWith(c, response.BadRequest, "invalid path encoding")
-		}
-		if decoded == unescapedPath {
 			break
 		}
-		unescapedPath = decoded
+		if decoded == probe {
+			break
+		}
+		probe = decoded
 	}
-	if strings.Contains(unescapedPath, "..") {
+	if strings.Contains(probe, "..") {
 		return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
 
-	// 使用原始编码路径构建目标 URL，避免解码后的特殊字符破坏 URL 结构
-	targetPath := "/api/v1/admin/providers"
-	if subPath != "" {
-		targetPath += "/" + path.Clean(subPath)
+	// 透明转发：保留原始编码的 subPath，不走 path.Clean 以免合并 `/`、吞 `%2F`
+	targetPath := proxyPrefix
+	if encodedSubPath != "" {
+		targetPath += "/" + encodedSubPath
 	}
 
 	method := c.Request().Method
