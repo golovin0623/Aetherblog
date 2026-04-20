@@ -3188,7 +3188,7 @@ export function CreatePostPage() {
                         rows={4}
                         value={summary}
                         onChange={(e) => setSummary(e.target.value)}
-                        placeholder="输入文章摘要,或使用 AI 生成..."
+                        placeholder="输入文章摘要，或使用 AI 生成..."
                         className="w-full rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-3 py-2.5 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)] resize-none focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,var(--border-subtle))] transition-colors"
                       />
                     </div>
