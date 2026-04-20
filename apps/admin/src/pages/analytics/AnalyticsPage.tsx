@@ -17,7 +17,8 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { getAiResponseRateSummary } from '@/lib/aiMetrics';
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 200];
 
 const EMPTY_DATA: AiDashboardData = {
   rangeDays: 30,
@@ -39,7 +40,7 @@ const EMPTY_DATA: AiDashboardData = {
   records: {
     list: [],
     pageNum: 1,
-    pageSize: PAGE_SIZE,
+    pageSize: DEFAULT_PAGE_SIZE,
     total: 0,
     pages: 0,
   },
@@ -52,6 +53,7 @@ function uniqueBy<T>(items: T[], mapper: (item: T) => string): string[] {
 export function AnalyticsPage() {
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [taskType, setTaskType] = useState('');
   const [modelId, setModelId] = useState('');
   const [successFilter, setSuccessFilter] = useState<'all' | 'success' | 'failed'>('all');
@@ -69,7 +71,7 @@ export function AnalyticsPage() {
         const query = {
           days,
           pageNum: page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           taskType: taskType || undefined,
           modelId: modelId || undefined,
           success,
@@ -102,7 +104,7 @@ export function AnalyticsPage() {
     };
 
     fetchData();
-  }, [days, page, taskType, modelId, successFilter, keyword]);
+  }, [days, page, pageSize, taskType, modelId, successFilter, keyword]);
 
   const overview = data.overview || EMPTY_DATA.overview;
   const modelOptions = useMemo(
@@ -139,7 +141,7 @@ export function AnalyticsPage() {
       const refreshed = await analyticsService.getAiDashboard({
         days,
         pageNum: 1,
-        pageSize: PAGE_SIZE,
+        pageSize,
         taskType: taskType || undefined,
         modelId: modelId || undefined,
         success,
@@ -321,7 +323,7 @@ export function AnalyticsPage() {
         records={records}
         loading={loading}
         page={data.records?.pageNum || page}
-        pageSize={data.records?.pageSize || PAGE_SIZE}
+        pageSize={data.records?.pageSize || pageSize}
         total={data.records?.total || 0}
         onPageChange={(nextPage) => {
           if (nextPage < 1) {
@@ -332,6 +334,11 @@ export function AnalyticsPage() {
             return;
           }
           setPage(nextPage);
+        }}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageSizeChange={(nextSize) => {
+          setPageSize(nextSize);
+          setPage(1);
         }}
         modelOptions={modelOptions}
         taskOptions={taskOptions}

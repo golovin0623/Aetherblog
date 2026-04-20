@@ -19,6 +19,8 @@ interface DataTableProps<T> {
   pageSize?: number;
   total?: number;
   onPageChange?: (page: number) => void;
+  pageSizeOptions?: number[];
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 export function DataTable<T extends { id: number | string }>({
@@ -30,6 +32,8 @@ export function DataTable<T extends { id: number | string }>({
   pageSize = 10,
   total = 0,
   onPageChange,
+  pageSizeOptions,
+  onPageSizeChange,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -145,12 +149,27 @@ export function DataTable<T extends { id: number | string }>({
       </div>
 
       {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)]">
+      {(totalPages > 1 || (pageSizeOptions && pageSizeOptions.length > 0 && total > 0)) && (
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[var(--border-subtle)]">
           <span className="font-mono text-[11px] tracking-wider text-[var(--text-muted)] tnum">
-            共 {total} 条,第 {page}/{totalPages} 页
+            共 {total} 条,第 {page}/{Math.max(totalPages, 1)} 页
           </span>
           <div className="flex items-center gap-2">
+            {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
+              <label className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-[var(--text-muted)]">
+                <span className="hidden sm:inline">每页</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                  className="h-7 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-subtle)] px-1.5 text-[11px] text-[var(--text-primary)]"
+                  aria-label="每页条数"
+                >
+                  {pageSizeOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               onClick={() => onPageChange?.(page - 1)}
               disabled={page <= 1}
