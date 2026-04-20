@@ -234,19 +234,12 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
       />
 
       <div className="relative p-6 flex flex-col items-center text-center">
-        {/* 头像 */}
+        {/* 头像：仅阴影层次，无光圈/边环 */}
         <div
           className="relative w-24 h-24 mb-3 outline-none select-none"
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
-          <div className="absolute -inset-3 rounded-full blur-md opacity-30 bg-[var(--text-primary)]/8 dark:opacity-0 pointer-events-none transition-opacity duration-300" />
-          <div className="absolute -inset-2 bg-[var(--bg-primary)] rounded-full blur-sm opacity-60 pointer-events-none transition-colors duration-300" />
-          {/* 光晕渐变层：使用 CSS 变量直接设置 background，避免 Tailwind v3 对 CSS 变量颜色不支持 /opacity 修饰符的问题 */}
-          <div
-            className="absolute inset-0 rounded-full blur-2xl opacity-25 pointer-events-none"
-            style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))' }}
-          />
-          <div className="relative w-full h-full rounded-full overflow-hidden ring-4 ring-[var(--border-default)] outline-none focus:outline-none shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-lg bg-[var(--bg-secondary)] transition-all duration-300">
+          <div className="relative w-full h-full rounded-full overflow-hidden outline-none focus:outline-none shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6),0_4px_14px_-4px_rgba(0,0,0,0.4)] bg-[var(--bg-secondary)] transition-all duration-300">
             <Image
               src={avatar}
               alt={name}

@@ -49,14 +49,14 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
 
       {/* Author card */}
       <div className="flex flex-col items-center gap-8">
-        {/* Avatar */}
+        {/* Avatar：仅阴影层次，无边环/光晕 */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={isVisible ? { opacity: 1, scale: 1 } : {}}
           transition={{ delay: 0.15, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           className="relative"
         >
-          <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-[var(--aurora-1)]/30 shadow-lg">
+          <div className="w-28 h-28 rounded-full overflow-hidden shadow-[0_14px_36px_-14px_rgba(15,23,42,0.28),0_6px_16px_-6px_rgba(15,23,42,0.14)] dark:shadow-[0_16px_40px_-14px_rgba(0,0,0,0.65),0_6px_18px_-6px_rgba(0,0,0,0.45)]">
             {authorAvatar ? (
               <Image
                 src={authorAvatar}
@@ -71,12 +71,6 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
               </div>
             )}
           </div>
-          {/* Glow ring */}
-          <div
-            className="absolute -inset-2 rounded-full opacity-20 blur-lg"
-            style={{ background: 'radial-gradient(circle, var(--aurora-1), transparent 70%)' }}
-            aria-hidden="true"
-          />
         </motion.div>
 
         {/* Name + Bio */}
