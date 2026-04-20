@@ -122,15 +122,11 @@ func (s *PostService) GetByID(ctx context.Context, id int64) (*dto.PostDetail, e
 // 不可用旧 GetAuthorID 的 (*int64, error) 签名：nil 指针无法区分
 // “文章不存在” 与 “文章存在但无作者”——前者应 404，后者应走 AssertOwnership
 // （admin 放行 / 非 admin 403）。
+//
+// 走 PostRepo.FindOwnership 的轻量查询（只 SELECT author_id），避免把整篇
+// Markdown 正文拉回来；AutoSave 等高频写路径收益明显。
 func (s *PostService) GetOwnership(ctx context.Context, id int64) (bool, *int64, error) {
-	p, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return false, nil, err
-	}
-	if p == nil {
-		return false, nil, nil
-	}
-	return true, p.AuthorID, nil
+	return s.repo.FindOwnership(ctx, id)
 }
 
 // Create 持久化一篇新文章。
