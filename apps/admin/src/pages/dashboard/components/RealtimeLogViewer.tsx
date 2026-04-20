@@ -316,6 +316,9 @@ export function RealtimeLogViewer({
   // 传 containerId,不显式翻转 useAppLogs,所以这里用 containerId 作为唯一
   // 来源开关,避免"点容器→刷新→仍显示 backend 日志"的体感 bug。
   const viewingContainer = Boolean(containerId);
+  // 容器日志 API 不接收 level 参数,派生一个稳定值入依赖,避免容器视图
+  // 下 level dropdown 触发无意义的 refetch。
+  const effectiveFilterLevel = viewingContainer ? 'ALL' : filterLevel;
 
   const getTitle = useCallback(() => {
     if (viewingContainer) {
@@ -346,7 +349,7 @@ export function RealtimeLogViewer({
       dispatchViewState({ type: 'FETCH_START' });
       try {
         if (!viewingContainer) {
-          const result = await systemService.getLogs(filterLevel, MAX_LOG_LINES);
+          const result = await systemService.getLogs(effectiveFilterLevel, MAX_LOG_LINES);
 
           if (result.status === 'ok') {
             const nextLines = Array.isArray(result.lines) ? result.lines : [];
@@ -456,7 +459,7 @@ export function RealtimeLogViewer({
         clearTimeout(timer);
       }
     };
-  }, [containerId, refreshInterval, isPaused, viewingContainer, useAppLogs, filterLevel, refreshTick, MAX_LOG_LINES]);
+  }, [containerId, refreshInterval, isPaused, viewingContainer, useAppLogs, effectiveFilterLevel, refreshTick, MAX_LOG_LINES]);
 
   useEffect(() => {
     if (autoScroll && !isPaused && scrollRef.current) {
