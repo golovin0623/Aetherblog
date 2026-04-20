@@ -43,6 +43,9 @@ type SearchConfig struct {
 	// Go 侧会为每篇文章启动独立 context，AI service 的 aembedding timeout 也
 	// 会透传这个值，保证两端一致。
 	IndexPostTimeoutSec int `json:"indexPostTimeoutSec"`
+	// SemanticTimeoutMs hybrid 模式下语义搜索的单次超时（毫秒）。关键词可以
+	// 兜底,不能让慢 embedding 拖慢整次请求。纯 semantic 模式仍走 ctx 原始超时。
+	SemanticTimeoutMs int `json:"semanticTimeoutMs"`
 }
 
 // EmbeddingPostItem 是管理端文章向量索引列表中的单条记录。
