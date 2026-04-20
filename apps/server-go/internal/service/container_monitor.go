@@ -44,6 +44,14 @@ type ContainerInfo struct {
 	Type          string  `json:"type"`          // 容器类型（database/cache/search 等）
 }
 
+// LinkedTarget 描述一个"非 aetherblog-* 前缀,但被应用实际连接"的外部依赖容器。
+// 监控把它纳入容器列表,避免用户用外部 Redis/Postgres 时看不到实际后端的健康状况。
+type LinkedTarget struct {
+	Host      string // 配置里的主机名或 IP(如 redis-server / 124.22.30.10)
+	Port      int    // 应用侧连接端口(匹配容器 PublicPort 时用)
+	ImageHint string // 期望容器镜像包含的关键字(如 "redis" / "postgres"),降低误匹配风险
+}
+
 // ContainerMonitorService 通过 Docker Unix Socket API 提供容器监控功能。
 // 内置缓存机制：缓存有效期内直接返回上次结果，避免频繁请求 Docker daemon。
 // 使用 singleflight 防止缓存过期瞬间的并发击穿。
@@ -55,12 +63,15 @@ type ContainerMonitorService struct {
 	cachedAt   time.Time
 	cacheTTL   time.Duration
 	sfGroup    singleflight.Group
+
+	linkedTargets []LinkedTarget // 配置里声明的外部依赖(通常是 Redis/Postgres)
 }
 
 // NewContainerMonitorService 创建 ContainerMonitorService 实例。
 // 通过 Unix Socket（/var/run/docker.sock）连接 Docker daemon，请求超时为 5 秒。
 // 结果缓存 3 秒，防止多客户端并发请求时重复访问 Docker API。
-func NewContainerMonitorService() *ContainerMonitorService {
+// linkedTargets 允许把"非 aetherblog 项目但实际被连接的"容器也纳入监控。
+func NewContainerMonitorService(linkedTargets ...LinkedTarget) *ContainerMonitorService {
 	return &ContainerMonitorService{
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -71,8 +82,34 @@ func NewContainerMonitorService() *ContainerMonitorService {
 			},
 			Timeout: 5 * time.Second,
 		},
-		cacheTTL: 3 * time.Second,
+		cacheTTL:      3 * time.Second,
+		linkedTargets: linkedTargets,
 	}
+}
+
+// matchesLinkedTarget 判断一个容器是否是配置里声明的外部依赖。
+// 多级匹配(任一命中即算):
+//  1. 容器名等于 target.Host —— 覆盖 docker-compose 服务名场景
+//  2. 容器任一 PublicPort 等于 target.Port 且镜像包含 target.ImageHint ——
+//     覆盖 REDIS_HOST 填 IP 的场景(IP 无法直接与容器名对齐时靠端口 + 镜像指纹识别)
+func matchesLinkedTarget(c dockerContainer, name string, targets []LinkedTarget) bool {
+	if len(targets) == 0 {
+		return false
+	}
+	imageLower := strings.ToLower(c.Image)
+	for _, t := range targets {
+		if t.Host != "" && strings.EqualFold(name, t.Host) {
+			return true
+		}
+		if t.Port > 0 && t.ImageHint != "" && strings.Contains(imageLower, strings.ToLower(t.ImageHint)) {
+			for _, p := range c.Ports {
+				if p.PublicPort == t.Port {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // dockerContainer 是 Docker API /containers/json 响应体的 JSON 结构。
@@ -83,6 +120,16 @@ type dockerContainer struct {
 	State  string            `json:"State"`
 	Status string            `json:"Status"`
 	Labels map[string]string `json:"Labels"`
+	Ports  []dockerPort      `json:"Ports"` // 用于 linkedTargets 端口匹配
+}
+
+// dockerPort 对应 Docker API /containers/json 返回的端口映射子对象。
+// PublicPort = 宿主机端口(可能为 0 表示仅容器内网暴露); PrivatePort = 容器内端口。
+type dockerPort struct {
+	IP          string `json:"IP"`
+	PrivatePort int    `json:"PrivatePort"`
+	PublicPort  int    `json:"PublicPort"`
+	Type        string `json:"Type"`
 }
 
 // ListContainers 返回所有 aetherblog 相关 Docker 容器的实时状态概览。
@@ -113,9 +160,14 @@ func (s *ContainerMonitorService) fetchContainers() ContainerOverview {
 		Containers: []ContainerInfo{},
 	}
 
-	// 优先使用 compose project label 过滤，查询 aetherblog 相关容器
-	resp, err := s.client.Get("http://docker/containers/json?all=true&filters=" +
-		`{"label":["com.docker.compose.project"]}`)
+	// 有 linkedTargets 时必须拉全量 —— 外部容器(如用户自管的 redis-server)
+	// 没有 com.docker.compose.project 标签,server-side label filter 会漏掉。
+	// 没有 linkedTargets 时优先用 label 过滤省带宽。
+	url := "http://docker/containers/json?all=true"
+	if len(s.linkedTargets) == 0 {
+		url += `&filters={"label":["com.docker.compose.project"]}`
+	}
+	resp, err := s.client.Get(url)
 	if err != nil {
 		// 回退：不带 label 过滤，获取全部容器后在本地过滤
 		resp, err = s.client.Get("http://docker/containers/json?all=true")
@@ -142,7 +194,9 @@ func (s *ContainerMonitorService) fetchContainers() ContainerOverview {
 		}
 
 		project := c.Labels["com.docker.compose.project"]
-		if !strings.Contains(name, "aetherblog") && project != "aetherblog" {
+		isAether := strings.Contains(name, "aetherblog") || project == "aetherblog"
+		isLinked := !isAether && matchesLinkedTarget(c, name, s.linkedTargets)
+		if !isAether && !isLinked {
 			continue
 		}
 

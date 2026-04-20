@@ -2966,7 +2966,7 @@ export function CreatePostPage() {
               onClick={closeMobilePanel}
               className="fixed inset-0 z-[120] bg-black/45 backdrop-blur-sm md:hidden"
             />
-            <div className="fixed inset-0 z-[121] md:hidden">
+            <div className="fixed inset-x-0 bottom-0 top-[max(3.5rem,env(safe-area-inset-top))] z-[121] md:hidden">
               <AiSidePanel
                 isMobile
                 ref={aiPanelRef}
@@ -3004,35 +3004,38 @@ export function CreatePostPage() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 260 }}
-              className="fixed inset-x-0 bottom-0 z-[121] bg-[var(--bg-primary)] flex flex-col md:hidden rounded-t-2xl max-h-[66vh] shadow-[0_-4px_24px_rgba(0,0,0,0.15)]"
+              className="fixed inset-x-0 bottom-0 top-[max(3.5rem,env(safe-area-inset-top))] z-[121] flex flex-col md:hidden surface-overlay !rounded-none !rounded-t-2xl overflow-hidden"
             >
               {/* 顶部拖拽指示条 */}
-              <div className="flex justify-center pt-2 pb-1">
-                <div className="w-8 h-1 rounded-full bg-[var(--text-muted)]/30" />
+              <div className="flex justify-center pt-2 pb-1 shrink-0">
+                <div className="w-10 h-1 rounded-full bg-[var(--ink-tertiary)]/40" />
               </div>
               <div className={cn(
-                'flex items-center border-b border-[var(--border-subtle)] px-4 py-2 bg-[var(--bg-secondary)]',
+                'flex items-center border-b border-[var(--border-subtle)] px-5 py-3 shrink-0',
                 mobilePanel === 'toc' ? 'justify-center' : 'justify-between'
               )}>
-                <div className="text-sm font-semibold text-[var(--text-primary)]">
-                  {mobilePanel === 'toc' ? '目录' : '文章设置'}
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[var(--aurora-1)] shadow-[0_0_8px_color-mix(in_oklch,var(--aurora-1)_60%,transparent)]" />
+                  <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-primary)]">
+                    {mobilePanel === 'toc' ? '目录' : '文章设置'}
+                  </span>
                 </div>
                 {mobilePanel !== 'toc' && (
                   <button
                     type="button"
                     onClick={closeMobilePanel}
-                    className="p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
+                    className="p-2 rounded-lg text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+              <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 min-h-0">
                 {mobilePanel === 'toc' && (
                   <div className="space-y-2">
                     {tocItems.length === 0 ? (
-                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 px-4 py-8 text-center text-sm text-[var(--text-muted)]">
+                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-4 py-8 text-center text-sm text-[var(--ink-tertiary)]">
                         暂无目录，请先在正文中添加标题
                       </div>
                     ) : (
@@ -3044,8 +3047,8 @@ export function CreatePostPage() {
                           className={cn(
                             'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
                             activeTocLine === item.line
-                              ? 'bg-primary/12 text-[var(--text-primary)]'
-                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                              ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
+                              : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
                           )}
                           style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
                         >
@@ -3057,45 +3060,45 @@ export function CreatePostPage() {
                 )}
 
                 {mobilePanel === 'settings' && (
-                  <div className="space-y-5">
+                  <div className="space-y-6">
                     {/* 分类 */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-[var(--text-secondary)]">分类</label>
+                        <label className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-secondary)]">分类</label>
                         <button
                           type="button"
                           onClick={() => setShowCreateCategoryModal(true)}
-                          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                          className="inline-flex items-center gap-1 text-xs text-[var(--aurora-1)] hover:opacity-80 transition-opacity"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                           新建分类
                         </button>
                       </div>
                       <div className="relative">
-                        <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Search className="w-4 h-4 text-[var(--ink-tertiary)] absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
                           value={categorySearch}
                           onChange={(e) => setCategorySearch(e.target.value)}
                           placeholder="搜索分类..."
-                          className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] focus:outline-none"
+                          className="w-full rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] py-2.5 pl-9 pr-3 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)] focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,var(--border-subtle))] transition-colors"
                         />
                       </div>
-                      <div className="max-h-40 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
+                      <div className="max-h-48 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_40%,transparent)] p-1.5">
                         {filteredCategories.map((cat) => (
                           <button
                             key={cat.id}
                             type="button"
                             onClick={() => setSelectedCategory(cat)}
                             className={cn(
-                              'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors flex items-center justify-between',
+                              'w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors flex items-center justify-between',
                               selectedCategory?.id === cat.id
-                                ? 'bg-primary/15 text-primary font-medium border border-primary/30'
-                                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)] font-medium border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]'
+                                : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
                             )}
                           >
                             {cat.name}
-                            {selectedCategory?.id === cat.id && <CheckCircle className="w-4 h-4 text-primary flex-shrink-0" />}
+                            {selectedCategory?.id === cat.id && <CheckCircle className="w-4 h-4 text-[var(--aurora-1)] flex-shrink-0" />}
                           </button>
                         ))}
                       </div>
@@ -3103,17 +3106,26 @@ export function CreatePostPage() {
 
                     {/* 标签 */}
                     <div className="space-y-3">
-                      <label className="text-sm font-medium text-[var(--text-secondary)]">标签</label>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedTags.map((tag) => (
-                          <span key={tag.id} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
-                            #{tag.name}
-                            <button type="button" onClick={() => removeTag(tag.id)}>
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
+                      <label className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-secondary)] block">标签</label>
+                      {selectedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {selectedTags.map((tag) => (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-2.5 py-1 text-xs text-[var(--aurora-1)]"
+                            >
+                              #{tag.name}
+                              <button
+                                type="button"
+                                onClick={() => removeTag(tag.id)}
+                                className="hover:opacity-70 transition-opacity"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -3121,23 +3133,23 @@ export function CreatePostPage() {
                           onChange={(e) => setTagSearch(e.target.value)}
                           onKeyDown={handleTagKeyDown}
                           placeholder="输入标签后回车"
-                          className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none"
+                          className="flex-1 rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-3 py-2.5 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)] focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,var(--border-subtle))] transition-colors"
                         />
                         <button
                           type="button"
                           onClick={handleTagInputConfirm}
-                          className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary"
+                          className="rounded-xl border border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] px-4 py-2.5 text-sm font-medium text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_16%,transparent)] transition-colors"
                         >
                           添加
                         </button>
                       </div>
-                      <div className="max-h-36 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 p-1">
+                      <div className="max-h-40 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_40%,transparent)] p-1.5">
                         {filteredTags.slice(0, 60).map((tag) => (
                           <button
                             key={tag.id}
                             type="button"
                             onClick={() => setSelectedTags((prev) => prev.find((item) => item.id === tag.id) ? prev : [...prev, tag])}
-                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] transition-colors"
                           >
                             #{tag.name}
                           </button>
@@ -3148,25 +3160,27 @@ export function CreatePostPage() {
                     <div className="h-px bg-[var(--border-subtle)]" />
 
                     {/* 发布时间 */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-[var(--text-secondary)]">发布时间</label>
+                    <div className="space-y-2.5">
+                      <label className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-secondary)] block">发布时间</label>
                       <input
                         type="datetime-local"
                         value={publishTime}
                         onChange={(e) => setPublishTime(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none"
+                        className="w-full rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-3 py-2.5 text-sm text-[var(--ink-primary)] focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,var(--border-subtle))] transition-colors"
                         style={{ colorScheme: resolvedTheme }}
                       />
                     </div>
-                    <div className="space-y-2">
+
+                    {/* 摘要 */}
+                    <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-[var(--text-secondary)]">文章摘要</label>
+                        <label className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-secondary)]">文章摘要</label>
                         <button
                           type="button"
                           onClick={() => openAiPanel('summary')}
-                          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                          className="inline-flex items-center gap-1 text-xs text-[var(--aurora-1)] hover:opacity-80 transition-opacity"
                         >
-                          <Sparkles className="w-3 h-3" />
+                          <Sparkles className="w-3.5 h-3.5" />
                           AI 生成
                         </button>
                       </div>
@@ -3175,30 +3189,35 @@ export function CreatePostPage() {
                         value={summary}
                         onChange={(e) => setSummary(e.target.value)}
                         placeholder="输入文章摘要，或使用 AI 生成..."
-                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none"
+                        className="w-full rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-3 py-2.5 text-sm text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)] resize-none focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_40%,var(--border-subtle))] transition-colors"
                       />
                     </div>
-                    <label className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/60 px-3 py-2 text-sm text-[var(--text-secondary)]">
-                      自动保存
-                      <input
-                        type="checkbox"
-                        checked={isAutoSaveEnabled}
-                        onChange={(e) => setIsAutoSaveEnabled(e.target.checked)}
-                        className="w-4 h-4 rounded border-[var(--border-subtle)]"
-                      />
+
+                    {/* 自动保存 */}
+                    <label className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_40%,transparent)] px-4 py-3 text-sm text-[var(--ink-secondary)] cursor-pointer hover:bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] transition-colors">
+                      <span className="font-mono text-[11px] tracking-[0.2em] uppercase">自动保存</span>
+                      <div className="relative inline-flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={isAutoSaveEnabled}
+                          onChange={(e) => setIsAutoSaveEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="relative w-9 h-5 rounded-full bg-[var(--border-subtle)] peer-checked:bg-[var(--aurora-1)] transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4" />
+                      </div>
                     </label>
                   </div>
                 )}
               </div>
 
               {mobilePanel !== 'toc' && (
-                <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <div className="border-t border-[var(--border-subtle)] px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0">
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => void handleSave()}
                       disabled={isSaving}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-primary)] py-2.5 text-sm font-medium text-[var(--text-primary)] disabled:opacity-60"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] py-3 text-sm font-medium text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] disabled:opacity-60 transition-colors"
                     >
                       {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                       保存草稿
@@ -3206,7 +3225,7 @@ export function CreatePostPage() {
                     <button
                       type="button"
                       onClick={closeMobilePanel}
-                      className="rounded-xl bg-primary py-2.5 text-sm font-medium text-white"
+                      className="rounded-xl bg-[var(--aurora-1)] py-3 text-sm font-medium text-white shadow-[0_4px_14px_color-mix(in_oklch,var(--aurora-1)_35%,transparent)] hover:opacity-95 transition-opacity"
                     >
                       完成
                     </button>
