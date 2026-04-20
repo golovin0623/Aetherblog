@@ -3203,7 +3203,7 @@ export function CreatePostPage() {
                           onChange={(e) => setIsAutoSaveEnabled(e.target.checked)}
                           className="sr-only peer"
                         />
-                        <div className="w-9 h-5 rounded-full bg-[var(--border-subtle)] peer-checked:bg-[var(--aurora-1)] transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4" />
+                        <div className="relative w-9 h-5 rounded-full bg-[var(--border-subtle)] peer-checked:bg-[var(--aurora-1)] transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4" />
                       </div>
                     </label>
                   </div>
