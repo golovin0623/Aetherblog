@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Settings2, Search } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
+import { AetherMark } from '@aetherblog/ui';
 import { useQuery } from '@tanstack/react-query';
 import MobileMenu from './MobileMenu';
 import MobileNavSwitch from './MobileNavSwitch';
@@ -327,9 +328,9 @@ export default function BlogHeader() {
                 <Image src={siteLogo} alt="Logo" fill sizes="32px" className="object-contain" priority />
               </div>
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow flex-shrink-0">
-                A
-              </div>
+              <span className="w-8 h-8 inline-flex items-center justify-center flex-shrink-0">
+                <AetherMark size={32} />
+              </span>
             )}
             <span className="text-xl font-bold bg-gradient-to-r from-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent">
               AetherBlog

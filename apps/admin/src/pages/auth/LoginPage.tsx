@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User as UserIcon, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
-import { spring, transition, variants } from '@aetherblog/ui';
+import { spring, transition, variants, AetherMark } from '@aetherblog/ui';
 import { useAuthStore } from '@/stores';
 import { authService } from '@/services/authService';
 import { cn } from '@/lib/utils';
@@ -13,83 +13,7 @@ import { logger } from '@/lib/logger';
 // 双主题由 tokens 自动适配（:root.light 在 packages/ui/src/styles/tokens.css
 // 反转 ink / bg / signal 色），不在本文件里手写 dark: variant.
 
-/**
- * AetherMark —— 品牌图形,致敬 "Aether · Codex" 主题:
- *   - 外圈:极淡 aurora 轨道环(orbit ring),隐喻漂浮夜空
- *   - 中心:8-point aether 星芒(compass-rose 风格),四主轴 + 四次轴
- *   - 核心:白色高光点,模拟光源
- * 色值来自 SVG gradient 的 stop-color = var(--aurora-N),跟随页面主题自动切换.
- */
-function AetherMark({ size = 28 }: { size?: number }) {
-  const uid = 'aether-mark-grad';
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      style={{ display: 'block' }}
-    >
-      <defs>
-        <linearGradient id={uid} x1="15%" y1="0%" x2="85%" y2="100%">
-          <stop offset="0%" style={{ stopColor: 'var(--aurora-1)' }} />
-          <stop offset="55%" style={{ stopColor: 'var(--aurora-2)' }} />
-          <stop offset="100%" style={{ stopColor: 'var(--aurora-3)' }} />
-        </linearGradient>
-      </defs>
-
-      {/* 外圈轨道环 —— 极淡 */}
-      <circle
-        cx="20" cy="20" r="18"
-        stroke={`url(#${uid})`}
-        strokeWidth="0.75"
-        fill="none"
-        opacity="0.35"
-      />
-      {/* 内圈轨道环 —— 更淡一档 */}
-      <circle
-        cx="20" cy="20" r="13.5"
-        stroke={`url(#${uid})`}
-        strokeWidth="0.5"
-        fill="none"
-        opacity="0.25"
-      />
-
-      {/* 8-point aether star —— 主轴长、次轴短的 compass-rose */}
-      <path
-        d="M 20 2.5
-           L 21.4 17
-           L 37.5 18.8
-           L 21.4 21
-           L 20 37.5
-           L 18.6 21
-           L 2.5 18.8
-           L 18.6 17 Z"
-        fill={`url(#${uid})`}
-      />
-      {/* 次轴 —— 45° 短芒 */}
-      <path
-        d="M 20 7.5
-           L 21 19.2
-           L 32.5 20
-           L 21 20.8
-           L 20 32.5
-           L 19 20.8
-           L 7.5 20
-           L 19 19.2 Z"
-        fill={`url(#${uid})`}
-        opacity="0.55"
-        transform="rotate(45 20 20)"
-      />
-
-      {/* 中心高光 —— 光源点 */}
-      <circle cx="20" cy="20" r="2.4" fill="white" opacity="0.95" />
-      <circle cx="20" cy="20" r="0.8" fill={`url(#${uid})`} />
-    </svg>
-  );
-}
+// AetherMark —— 品牌图形,来自 @aetherblog/ui 共享组件,双主题跟随 --aurora-* tokens 自动切换.
 
 export function LoginPage() {
   const [username, setUsername] = useState('');
