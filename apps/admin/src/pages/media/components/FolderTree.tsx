@@ -9,10 +9,11 @@
  * - 右键菜单
  */
 
-import { useState, useMemo, useEffect, useRef, memo } from 'react';
+import { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useMediaQuery } from '@aetherblog/hooks';
 import {
   DndContext,
   useDraggable,
@@ -49,6 +50,8 @@ interface FolderTreeProps {
   onEditFolder?: (folder: MediaFolder) => void;
   onDeleteFolder?: (folderId: number) => void;
   onMoveFolder?: (folderId: number, targetParentId?: number) => void;
+  /** 紧凑布局:用于移动端抽屉,隐藏拖拽把手、减小缩进、增大点击区 */
+  compact?: boolean;
 }
 
 export const FolderTree = memo(({
@@ -58,11 +61,15 @@ export const FolderTree = memo(({
   onEditFolder,
   onDeleteFolder,
   onMoveFolder,
+  compact = false,
 }: FolderTreeProps) => {
   const queryClient = useQueryClient();
   const [activeId, setActiveId] = useState<number | null>(null);
   const [overId, setOverId] = useState<number | null>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  // 自动识别触屏:如果调用方没传 compact,也会按触屏环境收紧布局
+  const isTouch = useMediaQuery('(hover: none) and (pointer: coarse)');
+  const isCompact = compact || isTouch;
 
   // 拖拽传感器配置 - 使用 MouseSensor 更精确
   const sensors = useSensors(
@@ -240,6 +247,7 @@ export const FolderTree = memo(({
           onCreateChild={() => onCreateFolder?.()}
           isRoot
           isOver={overId === 0}
+          isCompact={isCompact}
           selectedFolderId={selectedFolderId}
           onSelectFolder={onSelectFolder}
           onEditFolder={onEditFolder}
@@ -260,6 +268,7 @@ export const FolderTree = memo(({
             onCreateChild={() => onCreateFolder?.(folder.id)}
             isOver={overId === folder.id}
             isDragging={activeId === folder.id}
+            isCompact={isCompact}
             selectedFolderId={selectedFolderId}
             onSelectFolder={onSelectFolder}
             onEditFolder={onEditFolder}
@@ -280,9 +289,9 @@ export const FolderTree = memo(({
             transform: 'translate(-50%, -50%)',
           }}
         >
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-primary/50 shadow-2xl">
-            <Folder className="w-5 h-5" style={{ color: activeFolder.color }} />
-            <span className="text-sm font-medium text-white">{activeFolder.name}</span>
+          <div className="flex items-center gap-2 px-4 py-2.5 surface-overlay !rounded-xl">
+            <Folder className="w-5 h-5" style={{ color: activeFolder.color }} strokeWidth={1.5} />
+            <span className="text-sm font-medium text-[var(--ink-primary)]">{activeFolder.name}</span>
           </div>
         </div>,
         document.body
@@ -301,6 +310,7 @@ interface DraggableFolderNodeProps {
   depth?: number;
   isOver?: boolean;
   isDragging?: boolean;
+  isCompact?: boolean;
   selectedFolderId?: number;
   onSelectFolder: (folderId: number | undefined) => void;
   onEditFolder?: (folder: MediaFolder) => void;
@@ -319,6 +329,7 @@ function DraggableFolderNode({
   depth = 0,
   isOver = false,
   isDragging = false,
+  isCompact = false,
   selectedFolderId,
   onSelectFolder,
   onEditFolder,
@@ -330,6 +341,29 @@ function DraggableFolderNode({
   const [showMenu, setShowMenu] = useState(false);
 
   const hasChildren = folder.children && folder.children.length > 0;
+
+  // 长按触发上下文菜单 (仅触屏)
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const handleTouchStart = useCallback(() => {
+    if (!isCompact) return;
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      if (navigator.vibrate) navigator.vibrate(12);
+      setShowMenu(true);
+    }, 420);
+  }, [isCompact]);
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => cancelLongPress(), [cancelLongPress]);
+
+  // 紧凑模式缩进:8px 步进,比桌面 16px 更精打细算
+  const indentStep = isCompact ? 10 : 16;
 
   // 拖拽
   const {
@@ -359,36 +393,60 @@ function DraggableFolderNode({
       {/* 文件夹项 */}
       <motion.div
         ref={setNodeRef}
-        initial={{ opacity: 0, x: -10 }}
+        initial={{ opacity: 0, x: -6 }}
         animate={{ opacity: isDragging ? 0.3 : 1, x: 0 }}
         transition={{ duration: 0.2 }}
         className={cn(
-          'group relative flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-200',
+          'group relative flex items-center rounded-xl cursor-pointer transition-[background-color,color] duration-200',
+          isCompact ? 'gap-2 px-2 py-2.5 min-h-[44px]' : 'gap-2.5 px-2.5 py-2',
           selected
-            ? 'bg-primary text-white shadow-md shadow-primary/20'
-            : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
-          (isOver || isDropOver) && 'ring-2 ring-primary ring-offset-2 ring-offset-[var(--bg-card)] bg-primary/10',
+            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
+            : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
+          (isOver || isDropOver) && 'ring-2 ring-[var(--aurora-1)] ring-offset-2 ring-offset-[var(--bg-leaf,var(--bg-card))] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]',
           isDragging && 'opacity-40'
         )}
-        onClick={onSelect}
+        style={{ paddingLeft: `${(isCompact ? 10 : 12) + depth * indentStep}px` }}
+        onClick={() => {
+          // 长按已触发上下文菜单时,吞掉 touchend 合成的 click,
+          // 否则会跟 onSelect 竞争:移动端表现为长按出菜单后紧接着把抽屉关掉。
+          // 下一次 touchstart 会把 ref 置回 false(line 350),所以不影响后续常规点击。
+          if (longPressTriggeredRef.current) return;
+          onSelect();
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={cancelLongPress}
+        onTouchCancel={cancelLongPress}
+        onTouchMove={cancelLongPress}
       >
-        {/* 拖拽手柄 - 始终可见但颜色较淡 */}
-        <div
-          {...attributes}
-          {...listeners}
-          className={cn(
-            "flex-shrink-0 cursor-grab active:cursor-grabbing p-1 -ml-1 rounded transition-colors",
-            selected ? "text-white/60 hover:text-white hover:bg-white/10" : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
-          )}
-          style={{ marginLeft: `${depth * 16}px` }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <GripVertical className="w-4 h-4" />
-        </div>
+        {/* 选中态左侧极光指示条 */}
+        {selected && (
+          <motion.span
+            layoutId="folder-active-indicator"
+            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[var(--aurora-1)]"
+          />
+        )}
 
-        {/* 展开/折叠图标 */}
-        {hasChildren && (
-          <motion.div
+        {/* 拖拽手柄 —— 触屏/紧凑模式隐藏(手指无法稳妥拖拽 16px 区域) */}
+        {!isCompact && (
+          <div
+            {...attributes}
+            {...listeners}
+            className={cn(
+              "flex-shrink-0 cursor-grab active:cursor-grabbing rounded transition-colors p-0.5 -ml-0.5",
+              "opacity-0 group-hover:opacity-60 hover:!opacity-100",
+              selected ? "text-[var(--aurora-1)]" : "text-[var(--ink-tertiary,var(--text-muted))]"
+            )}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="拖拽排序"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </div>
+        )}
+
+        {/* 展开/折叠图标 —— 触屏放大点击区 */}
+        {hasChildren ? (
+          <motion.button
+            type="button"
             animate={{ rotate: expanded ? 90 : 0 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => {
@@ -396,60 +454,77 @@ function DraggableFolderNode({
               setExpanded(!expanded);
             }}
             className={cn(
-              "flex-shrink-0 cursor-pointer p-0.5 rounded transition-colors",
-              selected ? "hover:bg-white/10" : "hover:bg-[var(--bg-card-hover)]"
+              "flex-shrink-0 inline-flex items-center justify-center rounded",
+              isCompact ? "w-7 h-7 -ml-1" : "w-5 h-5",
+              "text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
             )}
+            aria-label={expanded ? '折叠' : '展开'}
           >
             <ChevronRight className="w-4 h-4" />
-          </motion.div>
+          </motion.button>
+        ) : (
+          <div className={cn("flex-shrink-0", isCompact ? "w-4" : "w-5")} />
         )}
-
-        {!hasChildren && <div className="w-5" />}
 
         {/* 文件夹图标 */}
         <div className="flex-shrink-0">
           {expanded && hasChildren ? (
-            <FolderOpen className={cn("w-5 h-5", selected ? "text-white" : "")} style={!selected ? { color: folder.color } : {}} />
+            <FolderOpen
+              className="w-[18px] h-[18px]"
+              style={{ color: selected ? 'var(--aurora-1)' : folder.color }}
+              strokeWidth={1.5}
+            />
           ) : (
-            <Folder className={cn("w-5 h-5", selected ? "text-white" : "")} style={!selected ? { color: folder.color } : {}} />
+            <Folder
+              className="w-[18px] h-[18px]"
+              style={{ color: selected ? 'var(--aurora-1)' : folder.color }}
+              strokeWidth={1.5}
+            />
           )}
         </div>
 
         {/* 文件夹名称 */}
         <span className={cn(
-          "flex-1 text-sm font-medium truncate",
-          selected ? "text-white" : "text-[var(--text-primary)]"
+          "flex-1 text-[13px] font-medium truncate min-w-0",
+          selected ? "text-[var(--ink-primary)]" : "text-[var(--ink-primary,var(--text-primary))]"
         )}>
           {folder.name}
         </span>
 
-        {/* 文件数量徽章 */}
+        {/* 文件数量徽章 —— 数字等宽 */}
         {folder.fileCount > 0 && (
           <span className={cn(
-            "text-xs px-2 py-0.5 rounded-full transition-colors",
+            "font-mono tnum text-[10px] px-1.5 py-0.5 rounded-full shrink-0",
             selected
-              ? "bg-white/20 text-white"
-              : "text-[var(--text-muted)] bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-card)]"
+              ? "bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-[var(--aurora-1)]"
+              : "bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-tertiary,var(--text-muted))]"
           )}>
             {folder.fileCount}
           </span>
         )}
 
-        {/* 操作菜单 */}
+        {/* 操作菜单按钮 —— 紧凑模式始终可见 */}
         <div
-          className="opacity-0 group-hover:opacity-100 transition-opacity"
+          className={cn(
+            'shrink-0 transition-opacity',
+            isCompact ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           <button
+            type="button"
             data-folder-menu={folder.id}
             onClick={(e) => {
               e.stopPropagation();
               setShowMenu(!showMenu);
             }}
             className={cn(
-              "p-1 rounded transition-colors",
-              selected ? "hover:bg-white/10 text-white" : "hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]"
+              "inline-flex items-center justify-center rounded-md transition-colors",
+              isCompact ? "w-8 h-8" : "w-6 h-6",
+              "text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--ink-primary)]",
+              "hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
             )}
+            aria-label="更多操作"
           >
             <MoreVertical className="w-4 h-4" />
           </button>
@@ -487,6 +562,7 @@ function DraggableFolderNode({
                 onDelete={() => onDeleteFolder?.(child.id)}
                 onCreateChild={() => onCreateFolder?.(child.id)}
                 depth={depth + 1}
+                isCompact={isCompact}
                 selectedFolderId={selectedFolderId}
                 onSelectFolder={onSelectFolder}
                 onEditFolder={onEditFolder}
@@ -509,6 +585,7 @@ interface DroppableFolderNodeProps {
   onCreateChild?: () => void;
   isRoot?: boolean;
   isOver?: boolean;
+  isCompact?: boolean;
   selectedFolderId?: number;
   onSelectFolder: (folderId: number | undefined) => void;
   onEditFolder?: (folder: MediaFolder) => void;
@@ -524,6 +601,7 @@ function DroppableFolderNode({
   onCreateChild,
   isRoot = false,
   isOver = false,
+  isCompact = false,
 }: DroppableFolderNodeProps) {
   const { setNodeRef, isOver: isDropOver } = useDroppable({
     id: folder.id,
@@ -532,28 +610,40 @@ function DroppableFolderNode({
   return (
     <motion.div
       ref={setNodeRef}
-      initial={{ opacity: 0, x: -10 }}
+      initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        'group relative flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-200',
+        'group relative flex items-center rounded-xl cursor-pointer transition-[background-color,color] duration-200',
+        isCompact ? 'gap-2 px-3 py-2.5 min-h-[44px]' : 'gap-2.5 px-3 py-2',
         selected
-          ? 'bg-primary text-white shadow-md shadow-primary/20'
-          : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
-        (isOver || isDropOver) && 'ring-2 ring-primary ring-offset-2 ring-offset-[var(--bg-card)] bg-primary/10'
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
+          : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
+        (isOver || isDropOver) && 'ring-2 ring-[var(--aurora-1)] ring-offset-2 ring-offset-[var(--bg-leaf,var(--bg-card))] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
       )}
-      style={{ paddingLeft: '12px' }}
       onClick={onSelect}
     >
+      {/* 选中态左侧极光指示条 */}
+      {selected && (
+        <motion.span
+          layoutId="folder-active-indicator"
+          className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[var(--aurora-1)]"
+        />
+      )}
+
       {/* 文件夹图标 */}
       <div className="flex-shrink-0">
-        <Folder className={cn("w-5 h-5", selected ? "text-white" : "")} style={!selected ? { color: folder.color } : {}} />
+        <Folder
+          className="w-[18px] h-[18px]"
+          style={{ color: selected ? 'var(--aurora-1)' : folder.color }}
+          strokeWidth={1.5}
+        />
       </div>
 
       {/* 文件夹名称 */}
       <span className={cn(
-        "flex-1 text-sm font-medium truncate",
-        selected ? "text-white" : "text-[var(--text-primary)]"
+        "flex-1 text-[13px] font-medium truncate min-w-0",
+        selected ? "text-[var(--ink-primary)]" : "text-[var(--ink-primary,var(--text-primary))]"
       )}>
         {folder.name}
       </span>
@@ -561,10 +651,10 @@ function DroppableFolderNode({
       {/* 文件数量徽章 */}
       {folder.fileCount > 0 && (
         <span className={cn(
-          "text-xs px-2 py-0.5 rounded-full transition-colors",
+          "font-mono tnum text-[10px] px-1.5 py-0.5 rounded-full shrink-0",
           selected
-            ? "bg-white/20 text-white"
-            : "text-[var(--text-muted)] bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-card)]"
+            ? "bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-[var(--aurora-1)]"
+            : "bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-tertiary,var(--text-muted))]"
         )}>
           {folder.fileCount}
         </span>
@@ -573,14 +663,18 @@ function DroppableFolderNode({
       {/* 根目录添加按钮 */}
       {isRoot && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onCreateChild?.();
           }}
           className={cn(
-            "opacity-0 group-hover:opacity-100 p-1 rounded transition-all",
-            selected ? "hover:bg-white/10 text-white" : "hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]"
+            "inline-flex items-center justify-center rounded-md transition-colors",
+            isCompact ? "w-8 h-8 opacity-100" : "w-6 h-6 opacity-0 group-hover:opacity-100",
+            "text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--aurora-1)]",
+            "hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]"
           )}
+          aria-label="新建根文件夹"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -695,34 +789,35 @@ function FolderContextMenuPortal({
       {/* 透明遮罩层 - 用于捕获点击 */}
       <div className="fixed inset-0 z-[9998]" onClick={onClose} />
 
-      {/* 菜单 */}
+      {/* 菜单 —— Codex surface-overlay */}
       <motion.div
         ref={menuRef}
-        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+        initial={{ opacity: 0, scale: 0.95, y: -6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+        exit={{ opacity: 0, scale: 0.95, y: -6 }}
         transition={{ duration: 0.15 }}
-        className="fixed z-[9999] bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border-subtle)] rounded-lg shadow-2xl overflow-hidden"
+        className="fixed z-[9999] surface-overlay !rounded-xl overflow-hidden min-w-[180px]"
         style={{
           top: position.top,
-          left: Math.max(8, position.left), // 确保不超出左边界
+          left: Math.max(8, position.left),
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="py-1 min-w-[160px]">
+        <div className="py-1.5">
           {menuItems.map((item, index) => (
             <button
               key={index}
+              type="button"
               onClick={item.onClick}
               className={cn(
-                'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                'w-full flex items-center gap-3 px-3.5 py-2 text-[13px] transition-colors text-left',
                 item.danger
-                  ? 'text-status-danger hover:bg-status-danger-light'
-                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                  ? 'text-[var(--signal-danger,#E26B6B)] hover:bg-[color-mix(in_oklch,var(--signal-danger,#E26B6B)_12%,transparent)]'
+                  : 'text-[var(--ink-secondary,var(--text-secondary))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
               )}
             >
-              <item.icon className="w-4 h-4" />
-              <span>{item.label}</span>
+              <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.6} />
+              <span className="truncate">{item.label}</span>
             </button>
           ))}
         </div>
@@ -796,8 +891,8 @@ function FolderTreeSkeleton() {
       {[...Array(5)].map((_, i) => (
         <div
           key={i}
-          className="h-10 bg-white/5 rounded-lg animate-pulse"
-          style={{ marginLeft: `${(i % 3) * 16}px` }}
+          className="h-10 rounded-xl animate-pulse bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]"
+          style={{ marginLeft: `${(i % 3) * 12}px` }}
         />
       ))}
     </div>

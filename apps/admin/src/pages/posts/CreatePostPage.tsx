@@ -2697,78 +2697,111 @@ export function CreatePostPage() {
               animate="show"
               exit="exit"
               variants={tocPanelVariants}
-              className="h-full border-l border-[var(--border-subtle)] bg-[var(--bg-card)]/95 backdrop-blur-2xl overflow-hidden flex flex-col z-30 shadow-xl relative"
+              className="h-full border-l border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] bg-[var(--bg-leaf,var(--bg-card))] overflow-hidden flex flex-col z-30 relative"
             >
-              {/* 电影感边缘高光 */}
-              <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
+              {/* 极光左缘高光 */}
+              <div className="absolute inset-y-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-[var(--aurora-1)]/30 to-transparent pointer-events-none" />
 
               {/* 目录标题栏 */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-                  <span className="text-sm font-semibold text-[var(--text-primary)] tracking-wide uppercase">目录索引</span>
+              <div className="flex items-center justify-between px-5 py-4 shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative inline-flex items-center justify-center w-7 h-7">
+                    <span className="absolute inset-0 rounded-lg bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]" />
+                    <List className="relative w-4 h-4 text-[var(--aurora-1)]" strokeWidth={1.6} />
+                  </span>
+                  <span className="font-display text-[14px] font-semibold text-[var(--ink-primary)]">文章目录</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowToc(false)}
-                  className="p-1.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300"
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] transition-colors"
+                  aria-label="关闭目录"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* 目录内容 */}
-              <div className="flex-1 overflow-y-auto py-4 scrollbar-hide">
+              <div className="flex-1 overflow-y-auto py-3 scrollbar-hide">
                 {tocItems.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className="px-6 py-12 text-center"
                   >
-                    <div className="inline-flex p-3 rounded-full bg-[var(--bg-secondary)] mb-3">
-                      <ListTree className="w-5 h-5 text-[var(--text-muted)]" />
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]">
+                      <ListTree className="w-5 h-5 text-[var(--aurora-1)]" strokeWidth={1.5} />
                     </div>
-                    <p className="text-sm font-medium text-[var(--text-secondary)]">空空如也</p>
-                    <p className="mt-1 text-xs text-[var(--text-muted)] px-4">
-                      在编辑器中输入 # 标题 即可自动生成目录
+                    <p className="text-sm font-medium text-[var(--ink-secondary,var(--text-secondary))]">空空如也</p>
+                    <p className="mt-1 text-xs text-[var(--ink-tertiary,var(--text-muted))] px-4 leading-relaxed">
+                      在编辑器中输入 <span className="font-mono text-[var(--aurora-1)]">#</span> 标题 即可自动生成目录
                     </p>
                   </motion.div>
                 ) : (
-                  <div className="space-y-0.5 px-3">
-                    {tocItems.map((item, index) => (
-                      <motion.button
-                        key={`${item.line}-${index}`}
-                        variants={tocItemVariants}
-                        onClick={() => scrollToHeading(item.text, item.line)}
-                        className={cn(
-                          'w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-300 group relative flex items-center gap-3',
-                          activeTocLine === item.line
-                            ? 'bg-primary/12 text-[var(--text-primary)]'
-                            : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                        )}
-                        style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
-                        title={item.text}
-                      >
-                        {/* 优雅的悬停指示条 */}
-                        <div className={cn(
-                          'absolute left-1 w-0.5 bg-primary transition-all duration-400 ease-out-expo rounded-full shadow-[0_0_8px_#8b5cf6]',
-                          activeTocLine === item.line
-                            ? 'h-3/5 opacity-100'
-                            : 'h-0 opacity-0 group-hover:h-3/5 group-hover:opacity-100'
-                        )} />
-
-                        <span className={cn(
-                          "truncate transition-all duration-500",
-                          item.level === 1 ? "font-bold text-[var(--text-primary)] tracking-tight" :
-                            item.level === 2 ? "font-semibold text-[var(--text-secondary)]" :
-                              "font-normal text-[var(--text-muted)]"
-                        )}>
-                          {item.text}
-                        </span>
-                      </motion.button>
-                    ))}
-                  </div>
+                  (() => {
+                    const minLevel = Math.min(...tocItems.map(i => i.level));
+                    return (
+                      <div className="relative pl-4 pr-3">
+                        {/* 竖向进度轨道 */}
+                        <div className="absolute left-4 top-1 bottom-1 w-[1.5px] rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+                        <div className="space-y-0.5 relative">
+                          {tocItems.map((item, index) => {
+                            const isActive = activeTocLine === item.line;
+                            return (
+                              <motion.button
+                                key={`${item.line}-${index}`}
+                                variants={tocItemVariants}
+                                onClick={() => scrollToHeading(item.text, item.line)}
+                                className={cn(
+                                  'group relative block w-full text-left py-2 rounded-lg text-[13px] transition-colors',
+                                  isActive
+                                    ? 'text-[var(--aurora-1)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] font-medium'
+                                    : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)]'
+                                )}
+                                style={{ paddingLeft: `${(item.level - minLevel) * 12 + 16}px`, paddingRight: '12px' }}
+                                title={item.text}
+                              >
+                                {isActive && (
+                                  <motion.span
+                                    layoutId="desktop-toc-active"
+                                    className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[var(--aurora-1)]"
+                                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                  />
+                                )}
+                                <span className={cn(
+                                  'line-clamp-1',
+                                  item.level === minLevel && 'font-semibold'
+                                )}>
+                                  {item.text}
+                                </span>
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
+
+              {/* 回到顶部 */}
+              {tocItems.length > 0 && (
+                <div className="px-4 py-3 shrink-0 border-t border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.querySelector('.cm-scroller') as HTMLElement | null;
+                      el?.scrollTo({ top: 0, behavior: 'smooth' });
+                      const pv = document.querySelector('[data-preview-scroll-container]') as HTMLElement | null;
+                      pv?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-[12.5px] font-medium text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-transparent hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] transition-all"
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" strokeWidth={1.8} />
+                    <span>返回顶部</span>
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -3033,30 +3066,75 @@ export function CreatePostPage() {
 
               <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 min-h-0">
                 {mobilePanel === 'toc' && (
-                  <div className="space-y-2">
-                    {tocItems.length === 0 ? (
-                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-4 py-8 text-center text-sm text-[var(--ink-tertiary)]">
-                        暂无目录，请先在正文中添加标题
+                  (() => {
+                    const minLevel = tocItems.length > 0 ? Math.min(...tocItems.map(i => i.level)) : 1;
+                    if (tocItems.length === 0) {
+                      return (
+                        <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_60%,transparent)] px-4 py-10 text-center">
+                          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full mb-3 bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]">
+                            <ListTree className="w-5 h-5 text-[var(--aurora-1)]" strokeWidth={1.5} />
+                          </div>
+                          <p className="text-sm font-medium text-[var(--ink-secondary)]">空空如也</p>
+                          <p className="mt-1 text-xs text-[var(--ink-tertiary)] px-4 leading-relaxed">
+                            在编辑器中输入 <span className="font-mono text-[var(--aurora-1)]">#</span> 标题 即可自动生成目录
+                          </p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex flex-col h-full">
+                        {/* 左侧竖向进度轨道 + 标题列表 */}
+                        <div className="relative pl-1 pr-1 flex-1 min-h-0">
+                          <div className="absolute left-[3px] top-1 bottom-1 w-[1.5px] rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+                          <div className="space-y-0.5">
+                            {tocItems.map((item, index) => {
+                              const isActive = activeTocLine === item.line;
+                              return (
+                                <button
+                                  key={`${item.line}-${index}`}
+                                  type="button"
+                                  onClick={() => scrollToHeading(item.text, item.line)}
+                                  className={cn(
+                                    'group relative block w-full text-left py-2 rounded-lg text-[13.5px] transition-colors',
+                                    isActive
+                                      ? 'text-[var(--aurora-1)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] font-medium'
+                                      : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)]'
+                                  )}
+                                  style={{ paddingLeft: `${(item.level - minLevel) * 12 + 16}px`, paddingRight: '12px' }}
+                                >
+                                  {isActive && (
+                                    <motion.span
+                                      layoutId="mobile-toc-active"
+                                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[var(--aurora-1)]"
+                                    />
+                                  )}
+                                  <span className="line-clamp-1">{item.text}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 回到顶部 */}
+                        <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.querySelector('.cm-scroller') as HTMLElement | null;
+                              el?.scrollTo({ top: 0, behavior: 'smooth' });
+                              const pv = document.querySelector('[data-preview-scroll-container]') as HTMLElement | null;
+                              pv?.scrollTo({ top: 0, behavior: 'smooth' });
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-[13px] font-medium text-[var(--ink-tertiary)] hover:text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-transparent hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] transition-all"
+                          >
+                            <ArrowUp className="w-4 h-4" strokeWidth={1.8} />
+                            <span>返回顶部</span>
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      tocItems.map((item, index) => (
-                        <button
-                          key={`${item.line}-${index}`}
-                          type="button"
-                          onClick={() => scrollToHeading(item.text, item.line)}
-                          className={cn(
-                            'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
-                            activeTocLine === item.line
-                              ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
-                              : 'text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
-                          )}
-                          style={{ paddingLeft: `${(item.level - 1) * 14 + 12}px` }}
-                        >
-                          {item.text}
-                        </button>
-                      ))
-                    )}
-                  </div>
+                    );
+                  })()
                 )}
 
                 {mobilePanel === 'settings' && (
