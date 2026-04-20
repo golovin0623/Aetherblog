@@ -119,7 +119,7 @@ export default function MediaPage() {
   const [showMobileFolders, setShowMobileFolders] = useState(false);
 
   // 文件夹面板可调整宽度
-  const [folderPanelWidth, setFolderPanelWidth] = useState(256);
+  const [folderPanelWidth, setFolderPanelWidth] = useState(288);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -515,23 +515,26 @@ export default function MediaPage() {
           />
         </div>
 
-        <div className="flex items-center justify-between gap-3 overflow-x-auto no-scrollbar lg:contents">
-            <div className="flex items-center gap-1.5 lg:gap-1 p-1 bg-[var(--bg-secondary)] lg:bg-[var(--bg-secondary)] rounded-xl overflow-x-auto no-scrollbar flex-1 lg:flex-none">
+        <div className="flex items-center justify-between gap-3 lg:contents">
+            {/* 类型过滤胶囊组 —— 自适应内容宽度,可横向滚动 */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] min-w-0 overflow-x-auto no-scrollbar">
             {typeOptions.map((opt) => {
                 const Icon = opt.icon;
+                const active = filterType === opt.value;
                 return (
                 <button
                     key={opt.value}
+                    type="button"
                     onClick={() => setFilterType(opt.value)}
                     className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 whitespace-nowrap',
-                    filterType === opt.value
-                        ? 'bg-primary text-white shadow-md'
-                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                    'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium transition-all shrink-0 whitespace-nowrap',
+                    active
+                        ? 'bg-[var(--aurora-1)] text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
+                        : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
                     )}
                 >
-                    <Icon className="w-3.5 h-3.5" />
-                    {opt.label}
+                    <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                    <span className="leading-none">{opt.label}</span>
                 </button>
                 );
             })}
@@ -539,24 +542,33 @@ export default function MediaPage() {
 
             <div className="w-px h-6 bg-[var(--border-subtle)] hidden lg:block" />
 
-            <div className="flex items-center gap-1 p-1 bg-[var(--bg-secondary)] lg:bg-[var(--bg-secondary)] rounded-xl shrink-0">
+            {/* 视图切换 —— 正方形等宽,确保图标视觉居中 */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)] shrink-0">
             <button
+                type="button"
                 onClick={() => setViewMode('grid')}
+                aria-label="网格视图"
                 className={cn(
-                'p-1.5 rounded-lg transition-all',
-                viewMode === 'grid' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                'inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all',
+                viewMode === 'grid'
+                    ? 'bg-[var(--aurora-1)] text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
+                    : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
                 )}
             >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="w-4 h-4" strokeWidth={1.8} />
             </button>
             <button
+                type="button"
                 onClick={() => setViewMode('list')}
+                aria-label="列表视图"
                 className={cn(
-                'p-1.5 rounded-lg transition-all',
-                viewMode === 'list' ? 'bg-primary text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                'inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all',
+                viewMode === 'list'
+                    ? 'bg-[var(--aurora-1)] text-white shadow-[0_4px_12px_-4px_color-mix(in_oklch,var(--aurora-1)_45%,transparent)]'
+                    : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
                 )}
             >
-                <List className="w-4 h-4" />
+                <List className="w-4 h-4" strokeWidth={1.8} />
             </button>
             </div>
         </div>
@@ -569,16 +581,24 @@ export default function MediaPage() {
           className="hidden lg:flex shrink-0 relative"
           style={{ width: folderPanelWidth }}
         >
-          <div className="flex-1 h-full bg-[var(--bg-card)] backdrop-blur-sm rounded-2xl border border-[var(--border-subtle)] flex flex-col overflow-hidden">
+          <div className="flex-1 h-full surface-leaf !rounded-2xl flex flex-col overflow-hidden">
             {/* 固定标题头 */}
-            <div className="px-4 py-3.5 flex items-center justify-between shrink-0 border-b border-[var(--border-subtle)]/50">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">文件夹</h2>
+            <div className="px-4 py-3.5 flex items-center justify-between shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+              <div className="flex items-center gap-2">
+                <span className="relative inline-flex items-center justify-center w-6 h-6">
+                  <span className="absolute inset-0 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]" />
+                  <FolderOpen className="relative w-3.5 h-3.5 text-[var(--aurora-1)]" strokeWidth={1.6} />
+                </span>
+                <h2 className="font-display text-[14px] font-semibold text-[var(--ink-primary)]">文件夹</h2>
+              </div>
               <button
+                type="button"
                 onClick={() => handleCreateFolder()}
-                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors group"
+                className="inline-flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--aurora-1)] transition-colors"
                 title="新建文件夹"
+                aria-label="新建文件夹"
               >
-                <Plus className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+                <Plus className="w-4 h-4" strokeWidth={2} />
               </button>
             </div>
 
@@ -965,68 +985,72 @@ export default function MediaPage() {
           )}
         </AnimatePresence>
 
-        {/* 抽屉内容 - 常驻 DOM，通过 transform 切换，性能更佳 */}
+        {/* 抽屉内容 —— Codex surface-overlay,加宽到 88vw / 360px 以消除截断 */}
         <div
           className={cn(
-            "fixed left-0 top-0 bottom-0 w-[75vw] max-w-[280px] bg-[var(--bg-overlay)] backdrop-blur-xl border-r border-border z-[70] flex flex-col shadow-2xl transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
+            "fixed left-0 top-0 bottom-0 w-[88vw] max-w-[360px] z-[70] flex flex-col",
+            "surface-overlay !rounded-none !rounded-r-2xl",
+            "transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
             showMobileFolders ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          {/* 抽屉头部 */}
-          <div className="px-4 h-14 flex items-center justify-between border-b border-border shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary via-accent to-primary" />
-                <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-transparent to-transparent" />
-                <div className="absolute inset-[1px] rounded-[10px] bg-gradient-to-br from-white/20 to-transparent" />
-                <FolderOpen className="absolute inset-0 m-auto w-4 h-4 text-white drop-shadow-md" />
-              </div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">文件夹管理</h2>
+          {/* 抽屉头部 —— 极光点 + Fraunces 标题,剥离品牌渐变 */}
+          <div className="px-4 h-14 flex items-center justify-between shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="relative inline-flex items-center justify-center w-7 h-7 shrink-0">
+                <span className="absolute inset-0 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]" />
+                <FolderOpen className="relative w-4 h-4 text-[var(--aurora-1)]" strokeWidth={1.6} />
+              </span>
+              <h2 className="font-display text-[15px] font-semibold text-[var(--ink-primary)] truncate">
+                文件夹
+              </h2>
             </div>
             <button
+              type="button"
               onClick={() => setShowMobileFolders(false)}
-              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-tertiary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] transition-colors"
+              aria-label="关闭"
             >
               <PanelLeftClose className="w-5 h-5" />
             </button>
           </div>
 
           {/* 抽屉主体 - 文件树 */}
-          <div className="flex-1 overflow-y-auto no-scrollbar p-3">
-            <div className="flex items-center justify-between mb-4 px-1">
-              <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.2em]">目录结构</span>
+          <div className="flex-1 overflow-y-auto no-scrollbar px-2.5 py-3">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="font-mono text-[10px] font-semibold text-[var(--ink-tertiary,var(--text-muted))] uppercase tracking-[0.22em]">
+                目录结构
+              </span>
               <button
+                type="button"
                 onClick={() => handleCreateFolder()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-primary text-white rounded-lg transition-all active:scale-95 shadow-lg shadow-primary/20 hover:bg-primary/90"
+                className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg transition-all active:scale-[0.97] bg-[var(--aurora-1)] text-white shadow-[0_6px_16px_-6px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)] hover:brightness-110"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="text-xs font-bold">新建</span>
+                <Plus className="w-3.5 h-3.5" strokeWidth={2.2} />
+                <span className="text-[12px] font-semibold">新建</span>
               </button>
             </div>
 
-            <div className="text-[var(--text-primary)]">
-              <FolderTree
-                selectedFolderId={currentFolderId}
-                onSelectFolder={(id: number | undefined) => {
-                  setCurrentFolderId(id);
-                  setShowMobileFolders(false); // 选择后自动关闭
-                }}
-                onCreateFolder={handleCreateFolder}
-                onEditFolder={handleEditFolder}
-                onDeleteFolder={handleDeleteFolder}
-                onMoveFolder={handleMoveFolder}
-              />
-            </div>
+            <FolderTree
+              selectedFolderId={currentFolderId}
+              onSelectFolder={(id: number | undefined) => {
+                setCurrentFolderId(id);
+                setShowMobileFolders(false);
+              }}
+              onCreateFolder={handleCreateFolder}
+              onEditFolder={handleEditFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onMoveFolder={handleMoveFolder}
+              compact
+            />
           </div>
 
-          {/* 抽屉底部 */}
-          <div className="p-4 border-t border-border bg-[var(--bg-card)]/50 shrink-0">
-            <div className="px-3 py-2 rounded-xl bg-primary/5 border border-primary/10">
-              <p className="text-[10px] text-[var(--text-muted)] text-center leading-relaxed">
-                <span className="text-primary font-bold mr-1">TIPS</span>
-                长按文件夹项可唤起编辑或删除菜单
-              </p>
-            </div>
+          {/* 抽屉底部 TIPS */}
+          <div className="px-4 py-3 shrink-0 border-t border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+            <p className="font-mono text-[10px] text-[var(--ink-tertiary,var(--text-muted))] text-center leading-relaxed tracking-wide">
+              <span className="text-[var(--aurora-1)] font-semibold mr-1">TIPS</span>
+              长按文件夹可唤起编辑 / 删除菜单
+            </p>
           </div>
         </div>
       </div>
