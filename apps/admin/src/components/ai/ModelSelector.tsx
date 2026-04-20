@@ -275,7 +275,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         <div className="flex-shrink-0 flex justify-center pt-3 pb-2">
           <div
             className="w-10 h-1 rounded-full"
-            style={{ background: 'color-mix(in oklch, var(--ink-tertiary) 50%, transparent)' }}
+            style={{ background: 'color-mix(in oklch, var(--ink-muted) 50%, transparent)' }}
           />
         </div>
       )}
@@ -289,7 +289,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         )}
       >
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-tertiary)]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)]" />
           <input
             type="text"
             value={search}
@@ -301,7 +301,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               "bg-[color-mix(in_oklch,var(--bg-substrate)_70%,transparent)]",
               "border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]",
               "text-[var(--ink-primary)]",
-              "placeholder:text-[var(--ink-tertiary)]",
+              "placeholder:text-[var(--ink-muted)]",
               "focus:outline-none",
               "focus:border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]",
               "focus:ring-2 focus:ring-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]"
@@ -316,7 +316,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         isMobile ? "px-4" : "min-h-[200px] max-h-[380px]"
       )}>
         {filteredGroups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-[var(--ink-tertiary)]">
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--ink-muted)]">
             <Box className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm">未找到匹配模型</p>
           </div>
@@ -327,7 +327,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
               <div
                 className={cn(
                   "flex items-center gap-2 px-3 pt-2 pb-1.5 sticky top-0 z-[1]",
-                  "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-tertiary)]",
+                  "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]",
                   "bg-[color-mix(in_oklch,var(--bg-substrate)_78%,transparent)] backdrop-blur-sm"
                 )}
               >
@@ -384,7 +384,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                           {model.display_name || model.model_id}
                         </div>
                         {isMobile && contextWindow && (
-                          <div className="mt-0.5 font-mono text-[10px] tracking-[0.14em] text-[var(--ink-tertiary)] flex items-center gap-1">
+                          <div className="mt-0.5 font-mono text-[10px] tracking-[0.14em] text-[var(--ink-muted)] flex items-center gap-1">
                             <Zap className="w-3 h-3" />
                             {formatContext(contextWindow)} · CTX
                           </div>
@@ -409,7 +409,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                         )}
 
                         {!isMobile && contextWindow && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono text-[10px] tracking-[0.12em] text-[var(--ink-tertiary)]">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono text-[10px] tracking-[0.12em] text-[var(--ink-muted)]">
                             <Zap className="w-3 h-3" />
                             {formatContext(contextWindow)}
                           </span>
@@ -439,7 +439,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           className={cn(
             "flex items-center justify-between w-full px-3 py-2.5 rounded-xl",
             "font-mono text-[11px] uppercase tracking-[0.18em]",
-            "text-[var(--ink-tertiary)]",
+            "text-[var(--ink-muted)]",
             "hover:text-[var(--aurora-1)]",
             "hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]",
             "transition-colors"
@@ -555,7 +555,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex flex-col max-h-[520px] overflow-hidden",
+                      "flex flex-col max-h-[520px]",
                       menuClassName
                     )}
                   >
