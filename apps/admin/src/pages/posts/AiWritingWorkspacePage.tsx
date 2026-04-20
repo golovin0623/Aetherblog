@@ -6,6 +6,7 @@
  * ✅ Phase 2: 实时 AI 预测（Ghost Text）
  * ✅ Phase 3: 批注/批量优化/对话面板
  * ✅ Phase 4: 工作流优化（自由/引导模式切换）
+ * ✅ Phase 5: 移动端重构 —— Aether Codex 四层表面 + 双排头部 + 底抽屉面板
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
@@ -14,20 +15,20 @@ import {
   Sparkles,
   ArrowLeft,
   Save,
-  Settings,
   X,
   History,
   RotateCcw,
   RotateCw,
   MessageSquare,
-  FileCheck,
-  Zap,
   Workflow,
   Pen,
+  Edit3,
+  Eye,
+  Columns,
 } from 'lucide-react';
 import { EditorWithPreview, EditorView } from '@aetherblog/editor';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useTheme } from '@aetherblog/hooks';
+import { useTheme, useMediaQuery } from '@aetherblog/hooks';
 import { cn } from '@/lib/utils';
 
 // Hook
@@ -40,12 +41,10 @@ import { FloatingAiToolbar } from '@/components/ai/FloatingAiToolbar';
 import { WorkflowNavigation } from '@/components/ai/WorkflowNavigation';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { DiffView } from '@/components/history/DiffView';
-import { AnnotationList } from '@/components/ai/AnnotationCard';
-import { BatchOptimizationPanel } from '@/components/ai/BatchOptimizationPanel';
 import { AiChatPanel } from '@/components/ai/AiChatPanel';
 
 // 类型定义
-import type { AiCapability, WritingStage, Annotation } from '@/types/writing-workflow';
+import type { AiCapability } from '@/types/writing-workflow';
 import type { ContentSnapshot } from '@/types/content-history';
 
 // 编辑器扩展
@@ -84,11 +83,15 @@ const AI_CAPABILITIES: AiCapability[] = [
   },
 ];
 
+type EditorViewMode = 'edit' | 'preview' | 'split';
+type MobilePanel = 'history' | 'chat' | 'workflow' | null;
+
 export function AiWritingWorkspacePage() {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
   const { id } = useParams<{ id: string }>();
   const postId = id ? parseInt(id, 10) : null;
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   // 编辑器状态
   const [title, setTitle] = useState('');
@@ -97,16 +100,33 @@ export function AiWritingWorkspacePage() {
   const editorViewRef = useRef<EditorView | null>(null);
 
   // UI 状态
-  const [workflowMode, setWorkflowMode] = useState<'guided' | 'free'>('free'); // 模式切换
+  const [workflowMode, setWorkflowMode] = useState<'guided' | 'free'>('free');
+  const [editorViewMode, setEditorViewMode] = useState<EditorViewMode>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+      ? 'edit'
+      : 'split'
+  );
   const [showWorkflowNav, setShowWorkflowNav] = useState(true);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
-  const [showAnnotationList, setShowAnnotationList] = useState(false);
-  const [showBatchOptimization, setShowBatchOptimization] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null);
   const [compareSnapshots, setCompareSnapshots] = useState<{
     snapshot1: ContentSnapshot;
     snapshot2: ContentSnapshot;
   } | null>(null);
+
+  // 过 mobile 边界时自动迁移编辑器视图：移动端 split 不可用 → edit
+  useEffect(() => {
+    if (isMobile && editorViewMode === 'split') {
+      setEditorViewMode('edit');
+    }
+  }, [isMobile, editorViewMode]);
+
+  // 统一收口：移动端的各抽屉面板互斥；桌面端各用各的
+  const openMobilePanel = useCallback((panel: MobilePanel) => {
+    setMobilePanel(panel);
+  }, []);
+  const closeMobilePanel = useCallback(() => setMobilePanel(null), []);
 
   // 工作流
   const workflow = useWritingWorkflow({
@@ -162,7 +182,6 @@ export function AiWritingWorkspacePage() {
     async (toolId: string, selectedText: string) => {
       workflow.recordToolUsage(toolId);
 
-      // 创建快照
       if (postId) {
         await historyManager.createSnapshot({
           title,
@@ -176,8 +195,6 @@ export function AiWritingWorkspacePage() {
       try {
         let result: string = '';
 
-        // 调用实际 AI API —— tone / maxLength 等参数从 ToolParamsPanel 统一
-        // 的 localStorage 持久化里读取，与 AIToolsPage 共享同一套配置。
         if (toolId === 'polish') {
           const polishParams = loadToolParams('polish');
           const res = await aiService.polishContent({
@@ -206,11 +223,9 @@ export function AiWritingWorkspacePage() {
           return;
         }
 
-        // 替换选中文本
         const newContent = content.replace(selectedText, result);
         setContent(newContent);
 
-        // 创建 AI 修改快照（不再硬编码 model name；具体模型由后端路由决定）
         if (postId) {
           await historyManager.createSnapshot({
             title,
@@ -260,227 +275,418 @@ export function AiWritingWorkspacePage() {
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
         e.preventDefault();
-        setShowHistoryPanel((prev) => !prev);
+        if (isMobile) {
+          setMobilePanel((p) => (p === 'history' ? null : 'history'));
+        } else {
+          setShowHistoryPanel((prev) => !prev);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyManager]);
+  }, [historyManager, isMobile]);
+
+  const handleSave = useCallback(() => {
+    if (postId) {
+      historyManager.createSnapshot({
+        title,
+        content,
+        summary,
+        source: 'manual-save',
+        sourceName: '手动保存',
+      });
+    }
+    toast.success('保存成功');
+  }, [postId, historyManager, title, content, summary]);
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--bg-primary)]">
-      {/* 顶部栏 */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate('/posts')}
-            className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            <span className="text-lg font-semibold text-[var(--text-primary)]">
-              AI 协同写作
-            </span>
-          </div>
-
-          {/* 模式切换 */}
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-secondary)]">
-            <button
-              onClick={() => setWorkflowMode('free')}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
-                workflowMode === 'free'
-                  ? 'bg-primary text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              )}
-            >
-              <Pen className="w-4 h-4 inline mr-1" />
-              自由写作
-            </button>
-            <button
-              onClick={() => setWorkflowMode('guided')}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm transition-colors',
-                workflowMode === 'guided'
-                  ? 'bg-primary text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-              )}
-            >
-              <Workflow className="w-4 h-4 inline mr-1" />
-              引导模式
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* 历史控制 */}
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-secondary)]">
-            <button
-              onClick={() => historyManager.undo()}
-              disabled={!historyManager.state.canUndo}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                historyManager.state.canUndo
-                  ? 'hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)]'
-                  : 'text-[var(--text-muted)] opacity-50 cursor-not-allowed'
-              )}
-              title="撤销 (Ctrl+Z)"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => historyManager.redo()}
-              disabled={!historyManager.state.canRedo}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                historyManager.state.canRedo
-                  ? 'hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)]'
-                  : 'text-[var(--text-muted)] opacity-50 cursor-not-allowed'
-              )}
-              title="重做"
-            >
-              <RotateCw className="w-4 h-4" />
-            </button>
-            <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
-            <button
-              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
-              className={cn(
-                'p-1.5 rounded-md transition-colors',
-                showHistoryPanel
-                  ? 'bg-primary/10 text-primary'
-                  : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
-              )}
-              title="历史版本"
-            >
-              <History className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* 功能按钮 */}
-          <button
-            onClick={() => setShowChatPanel(!showChatPanel)}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              showChatPanel ? 'bg-primary/10 text-primary' : 'hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]'
-            )}
-            title="AI 对话"
-          >
-            <MessageSquare className="w-5 h-5" />
-          </button>
-
-          {workflowMode === 'guided' && (
-            <button
-              onClick={() => setShowWorkflowNav(!showWorkflowNav)}
-              className={cn(
-                'px-3 py-2 rounded-lg transition-colors text-sm',
-                showWorkflowNav
-                  ? 'bg-primary/10 text-primary'
-                  : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)]'
-              )}
-            >
-              工作流 {workflow.progress.percentage}%
-            </button>
-          )}
-
-          <button
-            onClick={() => {
-              if (postId) {
-                historyManager.createSnapshot({
-                  title,
-                  content,
-                  summary,
-                  source: 'manual-save',
-                  sourceName: '手动保存',
-                });
-              }
-              toast.success('保存成功');
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90"
-          >
-            <Save className="w-4 h-4" />
-            保存
-          </button>
-        </div>
-      </header>
-
-      {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 工作流导航 */}
-        <AnimatePresence>
-          {workflowMode === 'guided' && showWorkflowNav && (
-            <motion.aside
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="border-r border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden"
-            >
-              <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">创作流程</h3>
-                  <button onClick={() => setShowWorkflowNav(false)} className="p-1 rounded hover:bg-[var(--bg-card-hover)]">
-                    <X className="w-4 h-4 text-[var(--text-muted)]" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  <WorkflowNavigation
-                    currentStage={workflow.context.currentStage}
-                    completedStages={workflow.context.stageHistory}
-                    progress={workflow.progress}
-                    onStageClick={(stage) => workflow.enterStage(stage)}
-                    canJumpTo={(stage) => {
-                      const stageIndex = workflow.config.enabledStages.indexOf(stage);
-                      const currentIndex = workflow.config.enabledStages.indexOf(workflow.context.currentStage);
-                      return stageIndex <= currentIndex + 1;
-                    }}
-                  />
-                </div>
+    <div className="absolute inset-0 flex flex-col bg-[var(--bg-void)]">
+      {/* ============ 移动端头部：双排紧凑布局 ============ */}
+      {isMobile ? (
+        <header className="surface-raised !rounded-none border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex-shrink-0">
+          {/* Row 1 · 导航条 */}
+          <div className="flex items-center justify-between px-4 h-12">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={() => navigate('/posts')}
+                aria-label="返回"
+                className="-ml-2 p-2 rounded-lg text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Sparkles className="w-4 h-4 text-[var(--aurora-1)] flex-shrink-0" />
+                <span className="font-display text-[var(--fs-body)] text-[var(--ink-primary)] truncate tracking-tight">
+                  AI 协同写作
+                </span>
               </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
+            </div>
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium active:scale-95 transition-transform"
+            >
+              <Save className="w-3.5 h-3.5" />
+              保存
+            </button>
+          </div>
 
-        {/* 编辑器 */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-6 py-4 border-b border-[var(--border-subtle)]">
+          {/* Row 2 · 模式 + 控制条 */}
+          <div className="flex items-center justify-between gap-3 px-3 pb-2">
+            {/* 模式切换 pill */}
+            <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+              <button
+                onClick={() => setWorkflowMode('free')}
+                className={cn(
+                  'flex items-center gap-1 h-7 px-3 rounded-full text-[var(--fs-micro)] font-mono uppercase tracking-[0.14em] transition-all',
+                  workflowMode === 'free'
+                    ? 'bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'text-[var(--ink-secondary)]'
+                )}
+              >
+                <Pen className="w-3 h-3" />
+                自由
+              </button>
+              <button
+                onClick={() => setWorkflowMode('guided')}
+                className={cn(
+                  'flex items-center gap-1 h-7 px-3 rounded-full text-[var(--fs-micro)] font-mono uppercase tracking-[0.14em] transition-all',
+                  workflowMode === 'guided'
+                    ? 'bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'text-[var(--ink-secondary)]'
+                )}
+              >
+                <Workflow className="w-3 h-3" />
+                引导
+              </button>
+            </div>
+
+            {/* 控制图标组 */}
+            <div className="flex items-center gap-0.5">
+              <MobileIconButton
+                onClick={() => historyManager.undo()}
+                disabled={!historyManager.state.canUndo}
+                label="撤销"
+              >
+                <RotateCcw className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
+                onClick={() => historyManager.redo()}
+                disabled={!historyManager.state.canRedo}
+                label="重做"
+              >
+                <RotateCw className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
+                onClick={() => openMobilePanel(mobilePanel === 'history' ? null : 'history')}
+                active={mobilePanel === 'history'}
+                label="历史"
+              >
+                <History className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              <MobileIconButton
+                onClick={() => openMobilePanel(mobilePanel === 'chat' ? null : 'chat')}
+                active={mobilePanel === 'chat'}
+                label="对话"
+              >
+                <MessageSquare className="w-[18px] h-[18px]" />
+              </MobileIconButton>
+              {workflowMode === 'guided' && (
+                <MobileIconButton
+                  onClick={() => openMobilePanel(mobilePanel === 'workflow' ? null : 'workflow')}
+                  active={mobilePanel === 'workflow'}
+                  label="流程"
+                >
+                  <span className="font-mono text-[10px] tracking-tight tabular-nums">
+                    {workflow.progress.percentage}%
+                  </span>
+                </MobileIconButton>
+              )}
+            </div>
+          </div>
+        </header>
+      ) : (
+        // ============ 桌面端头部 ============
+        <header className="flex items-center justify-between px-6 py-3 surface-raised !rounded-none border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/posts')}
+              className="p-2 rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-[var(--aurora-1)]" />
+              <span className="font-display text-[var(--fs-lede)] text-[var(--ink-primary)] tracking-tight">
+                AI 协同写作
+              </span>
+            </div>
+
+            <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+              <button
+                onClick={() => setWorkflowMode('free')}
+                className={cn(
+                  'flex items-center gap-1.5 h-8 px-3.5 rounded-full text-[var(--fs-caption)] font-mono uppercase tracking-[0.16em] transition-all',
+                  workflowMode === 'free'
+                    ? 'bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                )}
+              >
+                <Pen className="w-3.5 h-3.5" />
+                自由写作
+              </button>
+              <button
+                onClick={() => setWorkflowMode('guided')}
+                className={cn(
+                  'flex items-center gap-1.5 h-8 px-3.5 rounded-full text-[var(--fs-caption)] font-mono uppercase tracking-[0.16em] transition-all',
+                  workflowMode === 'guided'
+                    ? 'bg-[var(--ink-primary)] text-[var(--bg-void)]'
+                    : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                )}
+              >
+                <Workflow className="w-3.5 h-3.5" />
+                引导模式
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0.5 p-0.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
+              <DesktopIconButton
+                onClick={() => historyManager.undo()}
+                disabled={!historyManager.state.canUndo}
+                title="撤销 (Ctrl+Z)"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </DesktopIconButton>
+              <DesktopIconButton
+                onClick={() => historyManager.redo()}
+                disabled={!historyManager.state.canRedo}
+                title="重做 (Ctrl+Shift+Z)"
+              >
+                <RotateCw className="w-4 h-4" />
+              </DesktopIconButton>
+              <div className="w-px h-4 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] mx-1" />
+              <DesktopIconButton
+                onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+                active={showHistoryPanel}
+                title="历史版本 (Ctrl+H)"
+              >
+                <History className="w-4 h-4" />
+              </DesktopIconButton>
+            </div>
+
+            <DesktopIconButton
+              onClick={() => setShowChatPanel(!showChatPanel)}
+              active={showChatPanel}
+              title="AI 对话"
+            >
+              <MessageSquare className="w-5 h-5" />
+            </DesktopIconButton>
+
+            {workflowMode === 'guided' && (
+              <button
+                onClick={() => setShowWorkflowNav(!showWorkflowNav)}
+                className={cn(
+                  'flex items-center gap-1.5 h-9 px-3 rounded-full text-[var(--fs-caption)] font-mono uppercase tracking-[0.14em] transition-all',
+                  showWorkflowNav
+                    ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+                    : 'bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                )}
+              >
+                工作流
+                <span className="tabular-nums">{workflow.progress.percentage}%</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-2 h-9 px-4 rounded-full bg-[var(--ink-primary)] text-[var(--bg-void)] text-[var(--fs-caption)] font-medium hover:opacity-90 transition-opacity"
+            >
+              <Save className="w-4 h-4" />
+              保存
+            </button>
+          </div>
+        </header>
+      )}
+
+      {/* ============ 主内容区 ============ */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* 工作流导航（仅桌面） */}
+        {!isMobile && (
+          <AnimatePresence>
+            {workflowMode === 'guided' && showWorkflowNav && (
+              <motion.aside
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 280, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+                className="border-r border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] overflow-hidden flex-shrink-0"
+              >
+                <div className="h-full flex flex-col w-[280px]">
+                  <div className="flex items-center justify-between px-4 h-12 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+                    <h3 className="font-mono text-[var(--fs-micro)] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      创作流程
+                    </h3>
+                    <button
+                      onClick={() => setShowWorkflowNav(false)}
+                      className="p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <WorkflowNavigation
+                      currentStage={workflow.context.currentStage}
+                      completedStages={workflow.context.stageHistory}
+                      progress={workflow.progress}
+                      onStageClick={(stage) => workflow.enterStage(stage)}
+                      canJumpTo={(stage) => {
+                        const stageIndex = workflow.config.enabledStages.indexOf(stage);
+                        const currentIndex = workflow.config.enabledStages.indexOf(workflow.context.currentStage);
+                        return stageIndex <= currentIndex + 1;
+                      }}
+                    />
+                  </div>
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        )}
+
+        {/* 编辑器主体 */}
+        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* 标题输入 */}
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-void)] flex-shrink-0">
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="输入文章标题..."
-              className="w-full text-3xl font-bold bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+              placeholder="输入文章标题…"
+              className={cn(
+                'w-full bg-transparent font-display tracking-tight text-[var(--ink-primary)]',
+                'placeholder:text-[var(--ink-subtle)] placeholder:font-editorial placeholder:italic',
+                'focus:outline-none',
+                // 移动端 h4(24px) · 桌面端 h3(30px)
+                'text-[var(--fs-h4)] md:text-[var(--fs-h3)] leading-[var(--lh-tight)]'
+              )}
             />
           </div>
 
-          <div className="flex-1 relative overflow-hidden">
+          {/* 视图模式 segmented tabs */}
+          <div className="flex items-center gap-1 px-4 md:px-6 py-2 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-substrate)] flex-shrink-0">
+            <EditorModeTab
+              active={editorViewMode === 'edit'}
+              onClick={() => setEditorViewMode('edit')}
+              icon={<Edit3 className="w-3.5 h-3.5" />}
+              label="编辑"
+            />
+            <EditorModeTab
+              active={editorViewMode === 'preview'}
+              onClick={() => setEditorViewMode('preview')}
+              icon={<Eye className="w-3.5 h-3.5" />}
+              label="预览"
+            />
+            {!isMobile && (
+              <EditorModeTab
+                active={editorViewMode === 'split'}
+                onClick={() => setEditorViewMode('split')}
+                icon={<Columns className="w-3.5 h-3.5" />}
+                label="分屏"
+              />
+            )}
+          </div>
+
+          {/* 编辑器 */}
+          <div className="flex-1 relative overflow-hidden min-h-0">
             <EditorWithPreview
               value={content}
               onChange={setContent}
-              viewMode="split"
+              viewMode={editorViewMode}
+              onViewModeChange={setEditorViewMode}
+              hideToolbar
+              useCrossfade={isMobile}
               editorViewRef={editorViewRef}
               theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
               additionalExtensions={ghostTextExtensions}
             />
 
-            <FloatingAiToolbar
-              editorViewRef={editorViewRef}
-              currentStage={workflow.context.currentStage}
-              availableTools={AI_CAPABILITIES}
-              onToolExecute={handleToolExecute}
-            />
+            {/* 浮动 AI 工具栏：仅桌面。移动端靠选中 → 长按原生菜单或 AI 对话面板触发 */}
+            {!isMobile && (
+              <FloatingAiToolbar
+                editorViewRef={editorViewRef}
+                currentStage={workflow.context.currentStage}
+                availableTools={AI_CAPABILITIES}
+                onToolExecute={handleToolExecute}
+              />
+            )}
           </div>
         </main>
 
-        {/* 历史面板 */}
-        <AnimatePresence>
-          {showHistoryPanel && (
+        {/* 桌面端：历史面板（侧栏） */}
+        {!isMobile && (
+          <AnimatePresence>
+            {showHistoryPanel && (
+              <HistoryPanel
+                state={historyManager.state}
+                currentSnapshotId={historyManager.currentSnapshot?.id}
+                onJumpTo={(id) => historyManager.jumpTo(id)}
+                onUndo={() => historyManager.undo()}
+                onRedo={() => historyManager.redo()}
+                onToggleBookmark={(id, note) => historyManager.toggleBookmark(id, note)}
+                onDelete={(id) => historyManager.deleteSnapshot(id)}
+                onClear={() => historyManager.clearHistory()}
+                onCompare={(id1, id2) => {
+                  const snapshot1 = historyManager.state.snapshots.find((s) => s.id === id1);
+                  const snapshot2 = historyManager.state.snapshots.find((s) => s.id === id2);
+                  if (snapshot1 && snapshot2) {
+                    setCompareSnapshots({ snapshot1, snapshot2 });
+                  }
+                }}
+                onClose={() => setShowHistoryPanel(false)}
+              />
+            )}
+          </AnimatePresence>
+        )}
+
+        {/* 桌面端：AI 对话面板（侧栏） */}
+        {!isMobile && (
+          <AnimatePresence>
+            {showChatPanel && (
+              <AiChatPanel
+                messages={workflow.context.conversationHistory || []}
+                onSendMessage={async (message, _includeContext) => {
+                  workflow.addConversation('user', message);
+                  setTimeout(() => {
+                    workflow.addConversation('ai', '这是 AI 的回复示例');
+                  }, 1000);
+                }}
+                onClearHistory={() => {
+                  // 清空对话历史
+                }}
+                onClose={() => setShowChatPanel(false)}
+                currentDocumentContext={{
+                  title,
+                  content,
+                  wordCount: content.length,
+                }}
+              />
+            )}
+          </AnimatePresence>
+        )}
+      </div>
+
+      {/* ============ 移动端：底部抽屉面板 ============ */}
+      {isMobile && (
+        <MobileBottomSheet open={mobilePanel !== null} onClose={closeMobilePanel}>
+          {mobilePanel === 'history' && (
             <HistoryPanel
               state={historyManager.state}
               currentSnapshotId={historyManager.currentSnapshot?.id}
-              onJumpTo={(id) => historyManager.jumpTo(id)}
+              onJumpTo={(id) => {
+                historyManager.jumpTo(id);
+                closeMobilePanel();
+              }}
               onUndo={() => historyManager.undo()}
               onRedo={() => historyManager.redo()}
               onToggleBookmark={(id, note) => historyManager.toggleBookmark(id, note)}
@@ -491,29 +697,23 @@ export function AiWritingWorkspacePage() {
                 const snapshot2 = historyManager.state.snapshots.find((s) => s.id === id2);
                 if (snapshot1 && snapshot2) {
                   setCompareSnapshots({ snapshot1, snapshot2 });
+                  closeMobilePanel();
                 }
               }}
-              onClose={() => setShowHistoryPanel(false)}
+              onClose={closeMobilePanel}
             />
           )}
-        </AnimatePresence>
-
-        {/* AI 对话面板 */}
-        <AnimatePresence>
-          {showChatPanel && (
+          {mobilePanel === 'chat' && (
             <AiChatPanel
               messages={workflow.context.conversationHistory || []}
-              onSendMessage={async (message, includeContext) => {
+              onSendMessage={async (message, _includeContext) => {
                 workflow.addConversation('user', message);
-                // TODO: 调用 AI API
                 setTimeout(() => {
                   workflow.addConversation('ai', '这是 AI 的回复示例');
                 }, 1000);
               }}
-              onClearHistory={() => {
-                // 清空对话历史
-              }}
-              onClose={() => setShowChatPanel(false)}
+              onClearHistory={() => {}}
+              onClose={closeMobilePanel}
               currentDocumentContext={{
                 title,
                 content,
@@ -521,8 +721,40 @@ export function AiWritingWorkspacePage() {
               }}
             />
           )}
-        </AnimatePresence>
-      </div>
+          {mobilePanel === 'workflow' && (
+            <div className="h-full flex flex-col bg-[var(--bg-void)]">
+              <div className="flex items-center justify-between px-4 h-12 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex-shrink-0">
+                <h3 className="font-mono text-[var(--fs-micro)] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  创作流程
+                </h3>
+                <button
+                  onClick={closeMobilePanel}
+                  className="p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+                  aria-label="关闭"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <WorkflowNavigation
+                  currentStage={workflow.context.currentStage}
+                  completedStages={workflow.context.stageHistory}
+                  progress={workflow.progress}
+                  onStageClick={(stage) => {
+                    workflow.enterStage(stage);
+                    closeMobilePanel();
+                  }}
+                  canJumpTo={(stage) => {
+                    const stageIndex = workflow.config.enabledStages.indexOf(stage);
+                    const currentIndex = workflow.config.enabledStages.indexOf(workflow.context.currentStage);
+                    return stageIndex <= currentIndex + 1;
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </MobileBottomSheet>
+      )}
 
       {/* 差异对比 */}
       <AnimatePresence>
@@ -538,16 +770,160 @@ export function AiWritingWorkspacePage() {
   );
 }
 
-function getStageName(stage: WritingStage): string {
-  const names: Record<WritingStage, string> = {
-    'topic-selection': '选题',
-    'outline-planning': '大纲规划',
-    'draft-generation': '初稿创作',
-    'refinement': '内容精修',
-    'batch-optimization': '批量优化',
-    'final-review': '全文检查',
-    'publication': '发布准备',
-    'free-writing': '自由写作',
-  };
-  return names[stage] || stage;
+// ==================== 移动端图标按钮 ====================
+// 44×44 最小触控区，无障碍 label，活跃态用 aurora tint
+function MobileIconButton({
+  children,
+  onClick,
+  disabled,
+  active,
+  label,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex items-center justify-center w-11 h-9 rounded-lg transition-all',
+        active
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+          : 'text-[var(--ink-secondary)] active:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]',
+        disabled && 'opacity-40 pointer-events-none'
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ==================== 桌面端图标按钮 ====================
+function DesktopIconButton({
+  children,
+  onClick,
+  disabled,
+  active,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={cn(
+        'p-1.5 rounded-md transition-colors',
+        active
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
+          : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]',
+        disabled && 'opacity-40 cursor-not-allowed hover:bg-transparent'
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ==================== 编辑器视图模式 Tab ====================
+function EditorModeTab({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[var(--fs-micro)] font-mono uppercase tracking-[0.18em] transition-all',
+        active
+          ? 'bg-[var(--ink-primary)] text-[var(--bg-void)]'
+          : 'text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+// ==================== 移动端底抽屉 ====================
+// surface-overlay + 向上滑入 + 遮罩点击关闭 + safe-area 底内衬
+function MobileBottomSheet({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onClose}
+            className="fixed inset-0 z-40 bg-[color-mix(in_oklch,var(--ink-primary)_40%,transparent)] backdrop-blur-sm"
+            aria-hidden="true"
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 320, damping: 34, mass: 0.8 }}
+            className={cn(
+              'surface-overlay',
+              'fixed left-0 right-0 bottom-0 z-50',
+              '!rounded-b-none !rounded-t-2xl',
+              'h-[82vh] max-h-[82dvh]',
+              'flex flex-col overflow-hidden',
+              'pb-[env(safe-area-inset-bottom)]'
+            )}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex justify-center pt-2 pb-1 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]" />
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!border-l-0">
+              {children}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
 }
