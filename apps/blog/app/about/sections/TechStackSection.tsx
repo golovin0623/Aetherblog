@@ -19,51 +19,53 @@ const fadeUp = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
 };
 
-export default function TechStackSection({ isVisible }: Props) {
-  const stacks = [
-    {
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-        </svg>
-      ),
-      title: 'Go 1.24',
-      description: 'Echo v4 框架 + sqlx + zerolog 结构化日志。高并发、低延迟、类型安全的后端引擎。',
-    },
-    {
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <path d="M8 21h8" />
-          <path d="M12 17v4" />
-        </svg>
-      ),
-      title: 'Next.js 15',
-      description: 'App Router + ISR + Server Components。SSR/SSG 混合渲染，首屏秒开，SEO 友好。',
-    },
-    {
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <ellipse cx="12" cy="5" rx="9" ry="3" />
-          <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-        </svg>
-      ),
-      title: 'PostgreSQL 17',
-      description: 'pgvector 向量索引 + tsvector 全文搜索。关系数据与语义搜索统一于一个数据库。',
-    },
-    {
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </svg>
-      ),
-      title: 'Redis 7',
-      description: '会话缓存、速率限制、实时计数器。毫秒级响应，为高频读写场景保驾护航。',
-    },
-  ];
+// Module-scope: icon JSX references stay stable across re-renders so
+// React.memo on FeatureCard can actually skip re-renders via shallow compare.
+const stacks = [
+  {
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+      </svg>
+    ),
+    title: 'Go 1.24',
+    description: 'Echo v4 框架 + sqlx + zerolog 结构化日志。高并发、低延迟、类型安全的后端引擎。',
+  },
+  {
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <path d="M8 21h8" />
+        <path d="M12 17v4" />
+      </svg>
+    ),
+    title: 'Next.js 15',
+    description: 'App Router + ISR + Server Components。SSR/SSG 混合渲染，首屏秒开，SEO 友好。',
+  },
+  {
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </svg>
+    ),
+    title: 'PostgreSQL 17',
+    description: 'pgvector 向量索引 + tsvector 全文搜索。关系数据与语义搜索统一于一个数据库。',
+  },
+  {
+    icon: (
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+      </svg>
+    ),
+    title: 'Redis 7',
+    description: '会话缓存、速率限制、实时计数器。毫秒级响应，为高频读写场景保驾护航。',
+  },
+];
 
+export default function TechStackSection({ isVisible }: Props) {
   return (
     <div className="space-y-12">
       {/* Header */}
