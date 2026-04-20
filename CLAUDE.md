@@ -550,7 +550,7 @@ The admin `useStreamResponse` hook exposes `{content, result, isDone, error, ...
 **Configuration Endpoints** (managed by Go backend AiHandler + proxied to FastAPI):
 - Prompts: `GET/PUT /v1/admin/ai/prompts[/:taskType]` (Go handler)
 - Tasks: `CRUD /v1/admin/ai/tasks[/:code]` (Go handler)
-- Providers/Models/Credentials: `ANY /v1/admin/ai/providers/*` (Go proxy → FastAPI)
+- Providers/Models/Credentials: `ANY /v1/admin/providers/*` (Go proxy → FastAPI)
 - Health: `GET /v1/admin/ai/health`
 
 **Nginx routing for AI:** `/api/v1/ai/*` proxied to FastAPI:8000 with 600s timeout and SSE support (`X-Accel-Buffering: no`)
