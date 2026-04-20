@@ -491,12 +491,15 @@ type SearchResultRow struct {
 // 为兼容中文/CJK 查询，保留 ts_rank 打分的同时叠加 ILIKE 作为兜底匹配：
 // 'simple' 分词器以空白切分，无法切分中文整词，会导致 tsvector 路径对中文查询返回 0 结果；
 // ILIKE 子串匹配确保在这种情况下仍能命中。title/summary 命中给予更高加权。
+// 大小写兼容：在 CTE 里显式 lower($1),让 tsquery 的词位和 ILIKE 的子串模式都走
+// 小写分支;'simple' 分词器理论上已经 lowercase,但部分 PG 字典/本地化配置会打破
+// 这个假设,导致 "Docker" 与 "docker" 出不同结果。前置 lower 让两条查询等价。
 func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, offset int) ([]SearchResultRow, error) {
 	var rows []SearchResultRow
 	err := r.db.SelectContext(ctx, &rows, `
 		WITH q AS (
-			SELECT plainto_tsquery('simple', $1) AS tsq,
-			       '%' || $1 || '%' AS like_pat
+			SELECT plainto_tsquery('simple', lower($1)) AS tsq,
+			       '%' || lower($1) || '%' AS like_pat
 		)
 		SELECT p.id, p.title, p.slug, p.summary, c.name AS category_name, p.published_at,
 			GREATEST(

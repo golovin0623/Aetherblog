@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import AnimatedCounter from '../components/AnimatedCounter';
+import { sanitizeImageUrl } from '@/app/lib/sanitizeUrl';
 import type { SiteSettings } from '@/app/lib/services';
 
 interface Props {
@@ -21,11 +22,15 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
   const authorName = settings.authorName || settings.author_name || 'Admin';
   const authorBio = settings.authorBio || settings.author_bio || '';
 
-  // Build avatar URL: prefix /api if relative path
-  const rawAvatar = settings.authorAvatar || settings.author_avatar || '';
-  const authorAvatar = rawAvatar && !rawAvatar.startsWith('http')
-    ? `/api${rawAvatar.startsWith('/') ? '' : '/'}${rawAvatar}`
-    : rawAvatar;
+  // 后端 /site/info 已对本地上传的头像 prefix 过 /api（site_handler.prefixLocal），
+  // 所以这里只用 sanitizeImageUrl 通过协议白名单，不再叠加 /api ——
+  // 否则会出现 /api/api/uploads/... 的双前缀导致 Next.js Image 加载失败。
+  const authorAvatar = sanitizeImageUrl(
+    settings.authorAvatar || settings.author_avatar || '',
+    ''
+  );
+  const needsUnoptimized =
+    authorAvatar.startsWith('/api/uploads') || authorAvatar.startsWith('/uploads');
 
   const statItems = [
     { label: '文章', value: stats.posts || 0 },
@@ -64,6 +69,7 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
                 width={112}
                 height={112}
                 className="w-full h-full object-cover"
+                unoptimized={needsUnoptimized}
               />
             ) : (
               <div className="w-full h-full bg-[var(--bg-raised)] flex items-center justify-center text-h2 font-display text-[var(--aurora-1)]">
