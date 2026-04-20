@@ -406,7 +406,13 @@ function DraggableFolderNode({
           isDragging && 'opacity-40'
         )}
         style={{ paddingLeft: `${(isCompact ? 10 : 12) + depth * indentStep}px` }}
-        onClick={onSelect}
+        onClick={() => {
+          // 长按已触发上下文菜单时,吞掉 touchend 合成的 click,
+          // 否则会跟 onSelect 竞争:移动端表现为长按出菜单后紧接着把抽屉关掉。
+          // 下一次 touchstart 会把 ref 置回 false(line 350),所以不影响后续常规点击。
+          if (longPressTriggeredRef.current) return;
+          onSelect();
+        }}
         onTouchStart={handleTouchStart}
         onTouchEnd={cancelLongPress}
         onTouchCancel={cancelLongPress}
