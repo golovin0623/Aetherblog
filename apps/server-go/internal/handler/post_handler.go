@@ -165,13 +165,15 @@ func (h *PostHandler) Update(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
 	// SECURITY (VULN-029): verify caller owns the post (admin bypasses).
-	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	exists, ownerID, err := h.svc.GetOwnership(c.Request().Context(), id)
 	if err != nil {
 		return response.Error(c, err)
 	}
-	if ownerID == nil {
+	if !exists {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 允许 ownerID == nil（VanBlog 导入的遗留文章 author_id 为 NULL）：
+	// 由 AssertOwnership 决定——admin 放行，非 admin 返回 403。
 	if err := middleware.AssertOwnership(c, ownerID); err != nil {
 		return err
 	}
@@ -206,13 +208,15 @@ func (h *PostHandler) UpdateProperties(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
 	// SECURITY (VULN-029): ownership gate before property patch.
-	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	exists, ownerID, err := h.svc.GetOwnership(c.Request().Context(), id)
 	if err != nil {
 		return response.Error(c, err)
 	}
-	if ownerID == nil {
+	if !exists {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 允许 ownerID == nil（VanBlog 导入的遗留文章 author_id 为 NULL）：
+	// 由 AssertOwnership 决定——admin 放行，非 admin 返回 403。
 	if err := middleware.AssertOwnership(c, ownerID); err != nil {
 		return err
 	}
@@ -237,13 +241,15 @@ func (h *PostHandler) AutoSave(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
 	// SECURITY (VULN-029): auto-save must not be writable by non-owners.
-	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	exists, ownerID, err := h.svc.GetOwnership(c.Request().Context(), id)
 	if err != nil {
 		return response.Error(c, err)
 	}
-	if ownerID == nil {
+	if !exists {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 允许 ownerID == nil（VanBlog 导入的遗留文章 author_id 为 NULL）：
+	// 由 AssertOwnership 决定——admin 放行，非 admin 返回 403。
 	if err := middleware.AssertOwnership(c, ownerID); err != nil {
 		return err
 	}
@@ -266,13 +272,15 @@ func (h *PostHandler) Delete(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
 	// SECURITY (VULN-029): ownership gate before soft delete.
-	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	exists, ownerID, err := h.svc.GetOwnership(c.Request().Context(), id)
 	if err != nil {
 		return response.Error(c, err)
 	}
-	if ownerID == nil {
+	if !exists {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 允许 ownerID == nil（VanBlog 导入的遗留文章 author_id 为 NULL）：
+	// 由 AssertOwnership 决定——admin 放行，非 admin 返回 403。
 	if err := middleware.AssertOwnership(c, ownerID); err != nil {
 		return err
 	}
@@ -295,13 +303,15 @@ func (h *PostHandler) Publish(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
 	// SECURITY (VULN-029): ownership gate before publish.
-	ownerID, err := h.svc.GetAuthorID(c.Request().Context(), id)
+	exists, ownerID, err := h.svc.GetOwnership(c.Request().Context(), id)
 	if err != nil {
 		return response.Error(c, err)
 	}
-	if ownerID == nil {
+	if !exists {
 		return response.FailWith(c, response.NotFound, "文章不存在")
 	}
+	// 允许 ownerID == nil（VanBlog 导入的遗留文章 author_id 为 NULL）：
+	// 由 AssertOwnership 决定——admin 放行，非 admin 返回 403。
 	if err := middleware.AssertOwnership(c, ownerID); err != nil {
 		return err
 	}
