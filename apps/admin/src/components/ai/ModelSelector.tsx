@@ -265,41 +265,31 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     <div
       className={cn(
         "relative flex flex-col overflow-hidden",
-        isMobile ? "h-[70vh] rounded-t-[2.5rem]" : "rounded-2xl max-h-[520px]",
-        // 用设计系统变量,暗色主题下自动切换为深色面板
-        "bg-[var(--bg-card)]",
-        !isMobile && "border border-[var(--border-default)]/60 shadow-xl shadow-[var(--shadow-sm)] dark:shadow-black/30"
+        isMobile
+          ? "surface-overlay h-[70vh] !rounded-none !rounded-t-2xl"
+          : "surface-overlay !rounded-2xl max-h-[520px]"
       )}
     >
-      {/* 顶部光泽效果 - 仅桌面端 */}
-      {!isMobile && (
-        <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-20 overflow-hidden">
-          <div 
-            className={cn(
-              "absolute inset-0 rounded-[inherit] border-t border-l border-r border-[var(--border-subtle)]"
-            )}
-            style={{
-              maskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 15%, transparent 60%)',
-            }}
+      {/* 移动端抽屉手柄 */}
+      {isMobile && (
+        <div className="flex-shrink-0 flex justify-center pt-3 pb-2">
+          <div
+            className="w-10 h-1 rounded-full"
+            style={{ background: 'color-mix(in oklch, var(--ink-muted) 50%, transparent)' }}
           />
         </div>
       )}
 
-      {/* 移动端抽屉手柄 */}
-      {isMobile && (
-        <div className="flex-shrink-0 flex justify-center py-4">
-          <div className="w-12 h-1.5 rounded-full bg-[var(--bg-quaternary)] dark:bg-[var(--bg-secondary)]" />
-        </div>
-      )}
-
       {/* 搜索头部 */}
-      <div className={cn(
-        "px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]/80 backdrop-blur-sm sticky top-0 z-10",
-        isMobile && "pt-0"
-      )}>
+      <div
+        className={cn(
+          "px-4 py-3 sticky top-0 z-10",
+          "border-b border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]",
+          isMobile && "pt-1"
+        )}
+      >
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)]" />
           <input
             type="text"
             value={search}
@@ -308,11 +298,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
             autoFocus={!isMobile}
             className={cn(
               "w-full pl-10 pr-3 py-2.5 rounded-xl text-sm",
-              "bg-[var(--bg-secondary)]",
-              "border border-[var(--border-default)]",
-              "text-[var(--text-primary)]",
-              "placeholder:text-[var(--text-muted)]",
-              "focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+              "bg-[color-mix(in_oklch,var(--bg-substrate)_70%,transparent)]",
+              "border border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]",
+              "text-[var(--ink-primary)]",
+              "placeholder:text-[var(--ink-muted)]",
+              "focus:outline-none",
+              "focus:border-[color-mix(in_oklch,var(--aurora-1)_55%,transparent)]",
+              "focus:ring-2 focus:ring-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]"
             )}
           />
         </div>
@@ -320,31 +312,46 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 模型列表 */}
       <div className={cn(
-        "flex-1 overflow-y-auto p-2 space-y-1 no-scrollbar",
+        "flex-1 overflow-y-auto p-2 no-scrollbar",
         isMobile ? "px-4" : "min-h-[200px] max-h-[380px]"
       )}>
         {filteredGroups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--ink-muted)]">
             <Box className="w-10 h-10 mb-3 opacity-30" />
             <p className="text-sm">未找到匹配模型</p>
           </div>
         ) : (
-          filteredGroups.map((group) => (
-            <div key={group.provider.code} className="mb-2">
-              {/* 提供商头部 */}
-              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] sticky top-0 bg-[var(--bg-card)]/90 backdrop-blur-sm z-0">
-                <ProviderIcon code={group.provider.code} icon={group.provider.icon} size={16} />
-                <span className="uppercase tracking-wider">
+          filteredGroups.map((group, groupIndex) => (
+            <div key={group.provider.code} className={cn("mb-3", groupIndex === 0 && "mt-1")}>
+              {/* 提供商分组头 —— mono uppercase,视觉上与模型行严格区分 */}
+              <div
+                className={cn(
+                  "flex items-center gap-2 px-3 pt-2 pb-1.5 sticky top-0 z-[1]",
+                  "font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]",
+                  "bg-[color-mix(in_oklch,var(--bg-substrate)_78%,transparent)] backdrop-blur-sm"
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-px flex-1"
+                  style={{ background: 'color-mix(in oklch, var(--ink-primary) 10%, transparent)' }}
+                />
+                <span className="shrink-0">
                   {group.provider.display_name || group.provider.name}
                 </span>
+                <span
+                  aria-hidden="true"
+                  className="h-px w-4 shrink-0"
+                  style={{ background: 'color-mix(in oklch, var(--ink-primary) 10%, transparent)' }}
+                />
               </div>
-              
+
               {/* 模型项 */}
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 pt-1">
                 {group.models.map((model) => {
                   const abilities = resolveAbilities(model);
                   const contextWindow = resolveContextWindow(model);
-                  const isSelected = value === model.model_id && 
+                  const isSelected = value === model.model_id &&
                     (!selectedProviderCode || selectedProviderCode === group.provider.code);
 
                   return (
@@ -352,34 +359,34 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                       key={model.id}
                       onClick={() => handleSelect(model, group.provider)}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150",
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors duration-150",
                         isSelected
-                          ? "bg-primary/10 dark:bg-primary/15"
-                          : "hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-secondary)]/60"
+                          ? "bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]"
+                          : "hover:bg-[color-mix(in_oklch,var(--aurora-2)_8%,transparent)]"
                       )}
                     >
                       {/* 模型图标 */}
-                      <ProviderIcon 
-                        code={group.provider.code} 
+                      <ProviderIcon
+                        code={group.provider.code}
                         icon={group.provider.icon}
                         size={20}
                         className="shrink-0"
                       />
-                      
+
                       {/* 模型名称 */}
                       <div className="flex-1 min-w-0">
                         <div className={cn(
                           "font-medium text-sm truncate",
-                          isSelected 
-                            ? "text-primary" 
-                            : "text-[var(--text-secondary)]"
+                          isSelected
+                            ? "text-[var(--aurora-1)]"
+                            : "text-[var(--ink-primary)]"
                         )}>
                           {model.display_name || model.model_id}
                         </div>
                         {isMobile && contextWindow && (
-                          <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
-                            <Zap className="w-3 h-3 text-status-warning" />
-                            {formatContext(contextWindow)} 上下文
+                          <div className="mt-0.5 font-mono text-[10px] tracking-[0.14em] text-[var(--ink-muted)] flex items-center gap-1">
+                            <Zap className="w-3 h-3" />
+                            {formatContext(contextWindow)} · CTX
                           </div>
                         )}
                       </div>
@@ -387,22 +394,22 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                       {/* 能力徽章 */}
                       <div className="flex items-center gap-1 shrink-0">
                         {!isMobile && abilities.vision && (
-                          <AbilityBadge 
-                            icon={Eye} 
-                            color="bg-status-success-light text-status-success dark:bg-status-success/20" 
+                          <AbilityBadge
+                            icon={Eye}
+                            color="bg-[color-mix(in_oklch,var(--signal-success)_16%,transparent)] text-[var(--signal-success)]"
                             title="视觉"
                           />
                         )}
                         {!isMobile && abilities.reasoning && (
-                          <AbilityBadge 
-                            icon={Brain} 
-                            color="bg-accent/10 text-accent dark:bg-accent/20" 
+                          <AbilityBadge
+                            icon={Brain}
+                            color="bg-[color-mix(in_oklch,var(--aurora-3)_16%,transparent)] text-[var(--aurora-3)]"
                             title="推理"
                           />
                         )}
-                        
+
                         {!isMobile && contextWindow && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-[var(--text-muted)]">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono text-[10px] tracking-[0.12em] text-[var(--ink-muted)]">
                             <Zap className="w-3 h-3" />
                             {formatContext(contextWindow)}
                           </span>
@@ -410,7 +417,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
                         {/* 选中标记 */}
                         {isSelected && (
-                          <Check className="w-5 h-5 text-primary ml-1" />
+                          <Check className="w-5 h-5 text-[var(--aurora-1)] ml-1" />
                         )}
                       </div>
                     </button>
@@ -424,12 +431,19 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
       {/* 底部 */}
       <div className={cn(
-        "p-2 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50",
-        isMobile && "pb-8 px-4"
+        "p-2 border-t border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]",
+        isMobile && "pb-[max(1rem,env(safe-area-inset-bottom))] px-4"
       )}>
-        <a 
-          href="/admin/ai-config" 
-          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-sm font-medium text-[var(--text-muted)] hover:text-primary hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-secondary)] transition-all"
+        <a
+          href="/admin/ai-config"
+          className={cn(
+            "flex items-center justify-between w-full px-3 py-2.5 rounded-xl",
+            "font-mono text-[11px] uppercase tracking-[0.18em]",
+            "text-[var(--ink-muted)]",
+            "hover:text-[var(--aurora-1)]",
+            "hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]",
+            "transition-colors"
+          )}
         >
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4" />
@@ -498,7 +512,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={() => setIsOpen(false)}
-                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                  className="absolute inset-0 backdrop-blur-sm"
+                  style={{ background: 'color-mix(in oklch, var(--bg-void) 70%, transparent)' }}
                 />
                 <motion.div
                   initial={{ y: "100%" }}
@@ -540,7 +555,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex flex-col max-h-[520px] shadow-2xl rounded-2xl border border-[var(--border-default)]/60 bg-[var(--bg-card)] overflow-hidden",
+                      "flex flex-col max-h-[520px]",
                       menuClassName
                     )}
                   >
