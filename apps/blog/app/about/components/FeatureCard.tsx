@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { useSpotlightEffect } from '@/app/hooks/useSpotlightEffect';
 
@@ -10,7 +11,7 @@ interface FeatureCardProps {
   className?: string;
 }
 
-export default function FeatureCard({ icon, title, description, className }: FeatureCardProps) {
+function FeatureCard({ icon, title, description, className }: FeatureCardProps) {
   const {
     spotlightRef,
     isHovering,
@@ -52,3 +53,5 @@ export default function FeatureCard({ icon, title, description, className }: Fea
     </motion.div>
   );
 }
+
+export default memo(FeatureCard);

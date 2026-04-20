@@ -334,12 +334,13 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
             {/* 折叠表单触发器 */}
             {!isFormExpanded && (
               <motion.button
+                type="button"
                 ref={formTriggerRef}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 onClick={() => setIsFormExpanded(true)}
-                className="surface-leaf w-full p-4 flex items-center gap-4 transition-all group mb-12"
+                className="surface-leaf w-full p-4 flex items-center gap-4 transition-all group mb-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aurora-1)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-void)]"
                 data-interactive
               >
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-card-hover)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-muted)] group-hover:text-[var(--color-primary)] group-hover:border-[var(--border-hover)] transition-colors">
@@ -376,7 +377,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                         </>
                       ) : '发表评论'}
                     </h4>
-                    <button type="button" onClick={closeForm} aria-label={replyTo ? 'Cancel Reply' : 'Cancel Comment'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:rounded-sm">
+                    <button type="button" onClick={closeForm} aria-label={replyTo ? `取消回复 @${replyTo.nickname}` : '取消评论'} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/50 focus-visible:rounded-sm">
                       取消
                     </button>
                   </div>
