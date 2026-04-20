@@ -76,23 +76,28 @@ func (h *AiHandler) MountProviders(g *echo.Group) {
 
 // ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
 //
-// 安全要点（对应 Gemini code-review 三条修复）：
-//  1. 透明代理必须使用 *已编码* 的子路径。`c.Param("*")` 返回的是 Echo
-//     已 URL-decode 后的值，若直接拼回 targetPath，`?` `#` `;` 会被误解析为
-//     查询串/片段/Matrix 分隔符（参数注入 / SSRF 绕过），且 `%2F` 会被
-//     还原成真正的 `/`、空格等字符会让下游 URL 非法。改用
-//     `c.Request().URL.EscapedPath()` 去掉前缀 `/api/v1/admin/providers`，
-//     原始编码完整透传给 FastAPI。
-//  2. 多重解码循环只用于检测 `..` 路径穿越。循环不应把"解码失败"升级为
-//     400 —— 路径中合法出现的 `%`（例如 `100%25...`）不可一竿子打死。
-//     decode 失败直接 break，用当前最新解码结果做 `..` 匹配。
+// 安全 / 透明代理要点（汇总 Gemini code-review 5 条反馈）：
+//  1. 必须使用 *已编码* 的子路径。`c.Param("*")` 返回的是 Echo 已 URL-decode
+//     后的值，若直接拼回 targetPath，`?` `#` `;` 会被下游误解析为查询串 /
+//     片段 / matrix 分隔符（参数注入 / SSRF 绕过），`%2F` 会被还原成真正
+//     的 `/`、空格等字符让下游 URL 非法。改用 `c.Request().URL.EscapedPath()`
+//     去掉前缀，原始编码完整透传给 FastAPI。
+//  2. 多级解码循环只用于探测 `..` 路径穿越。循环不应把"解码失败"升级为
+//     400 —— 合法的 `%` 字面量（如 `100%25`）不可一竿子打死。decode 失败
+//     直接 break，用当前最新解码结果做 `..` 匹配。
+//  3. 前缀从 `c.Path()` 动态提取而非硬编码。Echo 在通配符路由下返回的
+//     `c.Path()` 形如 `/api/v1/admin/providers/*`，去尾部 `/*` 即得到稳定前缀；
+//     未来若把 `/providers` 改成 `/providers-v2` 无需同步修改处理器。
+//  4. 保留 subPath 的前导斜杠并直接拼接，让尾斜杠等原始 URL 结构
+//     （如 `/providers/` vs `/providers`）完整透传给下游路由器。
 func (h *AiHandler) ProxyProviders(c echo.Context) error {
-	const proxyPrefix = "/api/v1/admin/providers"
+	// 动态提取代理前缀：c.Path() = "/api/v1/admin/providers/*" → 去掉 "*" 再去掉尾 "/"
+	proxyPrefix := strings.TrimSuffix(strings.TrimSuffix(c.Path(), "*"), "/")
 
 	// 使用 EscapedPath() 保留客户端原始编码，避免 Echo 自动解码带来的注入/绕过
 	escapedFull := c.Request().URL.EscapedPath()
+	// subPath 保留前导斜杠；`/providers` → "" / `/providers/` → "/" / `/providers/foo/` → "/foo/"
 	encodedSubPath := strings.TrimPrefix(escapedFull, proxyPrefix)
-	encodedSubPath = strings.TrimPrefix(encodedSubPath, "/")
 
 	// 多级解码，尽力发现隐藏的 `..`；遇到非法百分号编码时 break 而非 400
 	probe := encodedSubPath
@@ -110,11 +115,8 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 		return response.FailWith(c, response.BadRequest, "invalid path traversal")
 	}
 
-	// 透明转发：保留原始编码的 subPath，不走 path.Clean 以免合并 `/`、吞 `%2F`
-	targetPath := proxyPrefix
-	if encodedSubPath != "" {
-		targetPath += "/" + encodedSubPath
-	}
+	// 透明转发：直接拼接已编码 subPath（含前导斜杠 / 尾斜杠），不走 path.Clean
+	targetPath := proxyPrefix + encodedSubPath
 
 	method := c.Request().Method
 
