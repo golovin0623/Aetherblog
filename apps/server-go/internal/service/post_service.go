@@ -116,14 +116,17 @@ func (s *PostService) GetByID(ctx context.Context, id int64) (*dto.PostDetail, e
 	return s.enrichDetail(ctx, p, true)
 }
 
-// GetAuthorID 返回指定文章的作者 ID。用于 handler 层 ownership 校验
-// (middleware.AssertOwnership)，不泄漏其他字段。文章不存在时返回 (nil, nil)。
-func (s *PostService) GetAuthorID(ctx context.Context, id int64) (*int64, error) {
-	p, err := s.repo.FindByID(ctx, id)
-	if err != nil || p == nil {
-		return nil, err
-	}
-	return p.AuthorID, nil
+// GetOwnership 返回文章存在标志与作者 ID（供 handler 层做 ownership 校验）。
+// exists=false 表示文章不存在或已软删除；exists=true 时 authorID 可为 nil
+// （历史 VanBlog 导入文章的 author_id 允许为 NULL）。
+// 不可用旧 GetAuthorID 的 (*int64, error) 签名：nil 指针无法区分
+// “文章不存在” 与 “文章存在但无作者”——前者应 404，后者应走 AssertOwnership
+// （admin 放行 / 非 admin 403）。
+//
+// 走 PostRepo.FindOwnership 的轻量查询（只 SELECT author_id），避免把整篇
+// Markdown 正文拉回来；AutoSave 等高频写路径收益明显。
+func (s *PostService) GetOwnership(ctx context.Context, id int64) (bool, *int64, error) {
+	return s.repo.FindOwnership(ctx, id)
 }
 
 // Create 持久化一篇新文章。

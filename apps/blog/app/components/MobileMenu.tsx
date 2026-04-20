@@ -214,9 +214,7 @@ const MobileMenu = memo(function MobileMenu() {
             <div className="p-6 pb-2 relative bg-gradient-to-b from-[var(--bg-card)]/50 to-transparent">
               <div className="flex flex-col items-center text-center">
                 <div className="relative w-14 h-14 mb-2">
-                  <div className="absolute -inset-1 rounded-full blur-md opacity-30 bg-black/10 dark:opacity-0" />
-                  <div className="absolute inset-0 bg-gradient-to-tr from-primary to-accent rounded-full blur-md opacity-40 dark:opacity-50" />
-                  <div className="relative w-full h-full rounded-full overflow-hidden border-2 border-white/60 dark:border-white/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:shadow-none">
+                  <div className="relative w-full h-full rounded-full overflow-hidden shadow-[0_8px_20px_-8px_rgba(15,23,42,0.28),0_3px_8px_-3px_rgba(15,23,42,0.14)] dark:shadow-[0_10px_24px_-10px_rgba(0,0,0,0.6),0_3px_10px_-3px_rgba(0,0,0,0.4)]">
                     <Image
                       src={authorAvatar}
                       alt=""

@@ -33,6 +33,25 @@ func (r *PostRepo) FindByID(ctx context.Context, id int64) (*model.Post, error) 
 	return &p, err
 }
 
+// FindOwnership 仅拉取用于 ownership 校验的最小列（author_id）。
+// 避免走 FindByID 的 SELECT * —— 后者会把可能达到 MB 级的 Markdown 正文、
+// 全部元数据字段一并加载，而写操作前的权限校验只需要一列。AutoSave 在编辑
+// 器里被高频调用，此路径收益最明显。
+// 返回值：exists=false 表示记录不存在或已软删除；exists=true 时 authorID
+// 可为 nil（VanBlog 导入的遗留文章 author_id 允许 NULL）。
+func (r *PostRepo) FindOwnership(ctx context.Context, id int64) (bool, *int64, error) {
+	var authorID *int64
+	err := r.db.GetContext(ctx, &authorID,
+		`SELECT author_id FROM posts WHERE id = $1 AND deleted = false`, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	return true, authorID, nil
+}
+
 // FindBySlug 根据 slug 查询未删除的文章（不限状态），不存在时返回 nil。
 // 操作表：posts；过滤条件：deleted = false，状态不限。
 func (r *PostRepo) FindBySlug(ctx context.Context, slug string) (*model.Post, error) {
