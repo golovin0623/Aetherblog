@@ -57,7 +57,8 @@ func (s *SearchService) GetSearchConfig(ctx context.Context) dto.SearchConfig {
 		AnonSearchRatePerMin: 10,
 		AnonQARatePerMin:     3,
 		AutoIndexOnPublish:   true,
-		IndexPostTimeoutSec:  180, // 默认单篇 3 分钟
+		IndexPostTimeoutSec:  180,  // 默认单篇 3 分钟
+		SemanticTimeoutMs:    3000, // hybrid 语义搜索默认 3 秒
 	}
 
 	m, err := s.settingSvc.GetByKeyPrefix(ctx, "search.")
@@ -90,6 +91,11 @@ func (s *SearchService) GetSearchConfig(ctx context.Context) dto.SearchConfig {
 	if v, ok := m["search.index_post_timeout_sec"]; ok {
 		if n, e := strconv.Atoi(v); e == nil && n >= 10 && n <= 600 {
 			cfg.IndexPostTimeoutSec = n
+		}
+	}
+	if v, ok := m["search.semantic_timeout_ms"]; ok {
+		if n, e := strconv.Atoi(v); e == nil && n >= 200 && n <= 30000 {
+			cfg.SemanticTimeoutMs = n
 		}
 	}
 
@@ -347,16 +353,21 @@ func (s *SearchService) Search(ctx context.Context, query, mode string, limit in
 	}
 
 	// 语义搜索
-	// hybrid 模式下语义搜索限 3 秒——关键词已经可以兜底,不能让慢 embedding
-	// 拖慢整次请求 (historical: ~10s)。纯 semantic 模式下仍走 ctx 原始超时。
+	// hybrid 模式下语义搜索使用 SearchConfig.SemanticTimeoutMs（默认 3s）——
+	// 关键词已经可以兜底,不能让慢 embedding 拖慢整次请求 (historical: ~10s)。
+	// 纯 semantic 模式下仍走 ctx 原始超时。
 	if cfg.SemanticEnabled && (mode == "semantic" || mode == "hybrid") && s.aiClient != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			semCtx := ctx
 			if mode == "hybrid" {
+				timeout := time.Duration(cfg.SemanticTimeoutMs) * time.Millisecond
+				if timeout <= 0 {
+					timeout = 3 * time.Second
+				}
 				var cancel context.CancelFunc
-				semCtx, cancel = context.WithTimeout(ctx, 3*time.Second)
+				semCtx, cancel = context.WithTimeout(ctx, timeout)
 				defer cancel()
 			}
 			semResults, semErr = s.semanticSearch(semCtx, query, limit)
