@@ -242,7 +242,8 @@ const AuthorProfileCardBase: React.FC<AuthorProfileCardProps> = ({ className, pr
           <div className="relative w-full h-full rounded-full overflow-hidden outline-none focus:outline-none shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6),0_4px_14px_-4px_rgba(0,0,0,0.4)] bg-[var(--bg-secondary)] transition-all duration-300">
             <Image
               src={avatar}
-              alt={name}
+              alt=""
+              aria-hidden="true"
               fill
               sizes="96px"
               className="object-cover outline-none select-none"

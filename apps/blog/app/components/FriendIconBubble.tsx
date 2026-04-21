@@ -143,7 +143,8 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
             {!showFallback ? (
               <Image
                 src={safeAvatar}
-                alt={name}
+                alt=""
+                aria-hidden="true"
                 width={size}
                 height={size}
                 onLoad={handleImageLoad}

@@ -129,7 +129,8 @@ const FriendCardBase: React.FC<FriendCardProps> = ({
               {!showFallback ? (
                 <Image
                   src={safeAvatar}
-                  alt={name}
+                  alt=""
+                  aria-hidden="true"
                   fill
                   sizes="56px"
                   onLoadingComplete={handleImageLoad}

@@ -325,7 +325,7 @@ export default function BlogHeader() {
           <Link href="/" className="flex items-center gap-2 group/logo">
             {siteLogo ? (
               <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 group-hover/logo:shadow-[var(--shadow-primary-lg)] transition-shadow relative">
-                <Image src={siteLogo} alt="Logo" fill sizes="32px" className="object-contain" priority />
+                <Image src={siteLogo} alt="" aria-hidden="true" fill sizes="32px" className="object-contain" priority />
               </div>
             ) : (
               <span className="w-8 h-8 inline-flex items-center justify-center flex-shrink-0">
