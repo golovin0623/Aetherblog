@@ -8,7 +8,7 @@ import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
-import { themeInitScript } from '@aetherblog/hooks';
+import { themeInitScript, themeFoucGuardStyle } from '@aetherblog/hooks';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 const playfair = Playfair_Display({ subsets: ['latin'], display: 'swap', variable: '--font-playfair', weight: ['400', '700'] });
@@ -77,6 +77,13 @@ export default async function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* 跟随主题的 theme-color —— 移动端浏览器顶栏/状态栏避免白闪 */}
+        <meta name="theme-color" content="#FAF9F6" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#0a0a0f" media="(prefers-color-scheme: dark)" />
+        {/* FOUC Guard —— 新标签页从 admin 跳过来时,外部 CSS 到达前先上色,防止白闪。
+            必须放在 themeInitScript 之前:script 加 .dark/.light class,class 立即匹配
+            本 <style> 里的规则。tokens 改变时需同步 packages/hooks/useTheme.tsx。 */}
+        <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
         {/* 主题初始化脚本 - 防止 FOUC */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {/* 非系统字体预加载 Google Fonts 样式表 */}

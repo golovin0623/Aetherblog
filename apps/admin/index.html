@@ -5,11 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AetherBlog Admin</title>
+    <!-- 跟随主题的 theme-color —— 移动端浏览器顶栏/状态栏避免白闪 -->
+    <meta name="theme-color" content="#FAF9F6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0f" media="(prefers-color-scheme: dark)" />
     <!--
       Inline FOUC guard — 必须在 external CSS 之前,否则从博客(Next.js dark)跳转到
       admin(Vite)的瞬间,external CSS 还没解析完,浏览器会用默认白底绘制首帧。
       tokens 里 --bg-primary: light=#FAF9F6 / dark=#0a0a0f,这里把同样的值写成内联规则,
       配合下方 theme init script 抢先在 <html> 上加 .dark/.light,首帧就直接上色。
+
+      真相源 (Single Source of Truth): packages/hooks/src/useTheme.tsx → themeFoucGuardStyle
+      Blog 端通过 import 该常量消费;Admin 是静态 HTML 无法 import,改动时两处必须同步。
     -->
     <style>
       html { background-color: #0a0a0f; color-scheme: dark; }
