@@ -9,6 +9,9 @@
 
 import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 
+// 纯数据常量在独立文件(无 'use client'),以便 Server Component 也能消费。
+// 本文件不再 re-export 它们 —— 消费者直接从 '@aetherblog/hooks' 导入即可,
+// 通过 index.ts 的 barrel 从 themeConstants.ts 拿到非 client-ref 的值。
 export type Theme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
@@ -450,31 +453,7 @@ export function useTheme(): UseThemeReturn {
   return context;
 }
 
-/**
- * 主题初始化脚本 (用于避免 FOUC)
- * 
- * 在 <head> 中内联此脚本，在 CSS 加载前应用主题类名
- * 
- * @example
- * ```tsx
- * // Next.js 布局文件 layout.tsx
- * <head>
- *   <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
- * </head>
- * ```
- */
-export const themeInitScript = `
-(function() {
-  try {
-    var theme = localStorage.getItem('${THEME_STORAGE_KEY}');
-    var isDark = theme === 'dark' || 
-      (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.classList.add(isDark ? 'dark' : 'light');
-    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
-  } catch (e) {
-    document.documentElement.classList.add('dark');
-  }
-})();
-`;
+// themeInitScript / themeFoucGuardStyle / THEME_LIGHT_BG / THEME_DARK_BG
+// 均已迁移到 ./themeConstants,从 @aetherblog/hooks 的 barrel 消费。
 
 export default useTheme;

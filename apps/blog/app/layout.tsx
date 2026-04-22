@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Playfair_Display, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import BlogHeader from './components/BlogHeader';
@@ -8,7 +8,21 @@ import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
-import { themeInitScript } from '@aetherblog/hooks';
+import {
+  themeInitScript,
+  themeFoucGuardStyle,
+  THEME_LIGHT_BG,
+  THEME_DARK_BG,
+} from '@aetherblog/hooks';
+
+// Next 13.3+ 推荐的 viewport 配置对象 —— themeColor 让移动端浏览器顶栏
+// 跟主题走,避免暗黑模式下 URL bar 显示白色。
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: THEME_LIGHT_BG },
+    { media: '(prefers-color-scheme: dark)', color: THEME_DARK_BG },
+  ],
+};
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 const playfair = Playfair_Display({ subsets: ['latin'], display: 'swap', variable: '--font-playfair', weight: ['400', '700'] });
@@ -77,6 +91,11 @@ export default async function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* theme-color 由 `export const viewport` 统一管理,无需手写 meta */}
+        {/* FOUC Guard —— 新标签页从 admin 跳过来时,外部 CSS 到达前先上色,防止白闪。
+            必须放在 themeInitScript 之前:script 加 .dark/.light class,class 立即匹配
+            本 <style> 里的规则。tokens 改变时需同步 packages/hooks/useTheme.tsx。 */}
+        <style dangerouslySetInnerHTML={{ __html: themeFoucGuardStyle }} />
         {/* 主题初始化脚本 - 防止 FOUC */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {/* 非系统字体预加载 Google Fonts 样式表 */}
