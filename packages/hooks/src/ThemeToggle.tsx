@@ -71,6 +71,7 @@ export function ThemeToggle({
   if (!showSystem) {
     return (
       <motion.button
+        type="button"
         onClick={handleToggle}
         whileHover={{ scale: 1.1, rotate: 15 }}
         whileTap={{ scale: 0.9 }}
@@ -78,7 +79,7 @@ export function ThemeToggle({
           relative flex items-center justify-center rounded-full
           bg-transparent hover:bg-[var(--bg-card)]
           border border-transparent hover:border-[var(--border-default)]
-          transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+          transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]
           ${buttonSize} ${className}
         `}
         title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
@@ -149,7 +150,7 @@ export function ThemeToggle({
           relative flex items-center justify-center rounded-full
           bg-transparent hover:bg-[var(--bg-card)]
           border border-transparent hover:border-[var(--border-default)]
-          transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+          transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]
           ${buttonSize}
         `}
         title="选择主题"
@@ -200,7 +201,7 @@ export function ThemeToggle({
                   }}
                   className={`
                     w-full flex items-center gap-2 px-3 py-2 rounded-lg
-                    text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+                    text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]
                     ${theme === option.value
                       ? 'bg-[var(--color-primary)] bg-opacity-20 text-[var(--color-primary)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
