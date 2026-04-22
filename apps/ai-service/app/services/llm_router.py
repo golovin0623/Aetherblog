@@ -265,7 +265,7 @@ class LlmRouter:
         except Exception as exc:  # pragma: no cover - defensive
             logger.error(
                 "llm_router.prompt_render_failed",
-                extra={"error": str(exc), "template": tpl[:120] if tpl else ""},
+                extra={"data": {"error": str(exc), "error_type": type(exc).__name__, "template": tpl[:120] if tpl else ""}},
             )
             return f"{tpl}\n\nContext: {kwargs}"
 

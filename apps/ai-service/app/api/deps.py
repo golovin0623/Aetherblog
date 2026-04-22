@@ -156,7 +156,7 @@ async def require_user(
         claims = decode_token(token)
         return extract_user(claims)
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("jwt.invalid", extra={"error": str(exc)})
+        logger.warning("jwt.invalid", extra={"data": {"error": str(exc), "error_type": type(exc).__name__}})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 

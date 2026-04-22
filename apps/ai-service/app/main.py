@@ -18,12 +18,70 @@ from app.core.config import get_settings
 from app.core.jwt_keys import start_refresher as start_jwt_key_refresher, stop_refresher as stop_jwt_key_refresher
 from app.core.logging import setup_logging
 from app.schemas.common import ApiResponse
+from app.services.rate_limiter import _classify_redis_error
 
 
 # ref: §2.4.2.5
 settings = get_settings()
 setup_logging(log_path=settings.log_path, level=settings.log_level)
 logger = logging.getLogger("ai-service")
+
+
+def _redacted_redis_url(url: str) -> str:
+    """Return REDIS_URL with any password in the userinfo segment replaced by ``***``.
+
+    We only emit this at startup so an on-call engineer can confirm whether the
+    password was merged into the URL (via Settings._merge_redis_password) without
+    leaking the raw secret into logs.
+    """
+    from urllib.parse import urlparse, urlunparse
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return "<unparseable>"
+    netloc = parsed.netloc or ""
+    if "@" in netloc:
+        _, host_port = netloc.rsplit("@", 1)
+        netloc = f":***@{host_port}"
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+async def _redis_preflight() -> None:
+    """PING Redis at startup and log a classified failure if unreachable.
+
+    Rate-limit failures fail-closed and return 503 on every AI request
+    (VULN-070), so a misconfigured REDIS_URL / REDIS_PASSWORD silently breaks
+    every admin AI feature until the first user report. Surfacing it in the
+    startup banner gives operators an immediate, actionable signal rather than
+    waiting for ``rate_limit.redis_error_fail_closed`` to fire in production.
+    """
+    try:
+        redis = deps_module._get_redis()
+        pong = await redis.ping()
+        logger.info(
+            "redis.preflight_ok",
+            extra={"data": {"url": _redacted_redis_url(settings.redis_url), "pong": bool(pong)}},
+        )
+    except Exception as exc:
+        logger.error(
+            "redis.preflight_failed",
+            extra={
+                "data": {
+                    "url": _redacted_redis_url(settings.redis_url),
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "category": _classify_redis_error(exc),
+                    "hint": (
+                        "If category=auth, confirm REDIS_PASSWORD is exported to the "
+                        "ai-service container and that REDIS_URL does not already carry "
+                        "a userinfo segment (the @-check in Settings._merge_redis_password "
+                        "skips the merge when one is present)."
+                    ),
+                }
+            },
+            exc_info=True,
+        )
 
 
 @asynccontextmanager
@@ -38,6 +96,12 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         # Non-fatal: auth still works with env seed (settings.jwt_secret).
         logger.warning("jwt_keys.startup_skipped", extra={"data": {"error": str(exc)}})
+
+    # Non-fatal Redis ping — we deliberately do NOT abort startup on failure.
+    # The service can still serve /health and cached responses; we just want the
+    # misconfig spelled out loudly in the log so it doesn't hide behind the
+    # generic 503 from the rate limiter.
+    await _redis_preflight()
 
     yield
 
@@ -138,7 +202,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("unhandled_exception", extra={"error": str(exc)})
+    # extra={"data": {...}} because JSONFormatter only reads record.data;
+    # the older extra={"error": ...} shape was silently dropped.
+    logger.exception(
+        "unhandled_exception",
+        extra={"data": {"error": str(exc), "error_type": type(exc).__name__}},
+    )
     payload = ApiResponse(
         code=500,
         message="Internal server error",
