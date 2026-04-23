@@ -27,7 +27,8 @@ import { useSidebarStore, useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { startTransition, useCallback, useState } from 'react';
+
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { UserProfileModal } from './UserProfileModal';
 import { getMediaUrl } from '@/services/mediaService';
@@ -86,15 +87,45 @@ export function Sidebar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchValue.trim()) {
-      navigate(`/posts?search=${encodeURIComponent(searchValue.trim())}`);
-      setMobileOpen(false); // 搜索时关闭移动端抽屉
-    }
+    const q = searchValue.trim();
+    if (!q) return;
+    setMobileOpen(false);
+    startTransition(() => {
+      navigate(`/posts?search=${encodeURIComponent(q)}`);
+    });
   };
 
-  const handleNavigation = () => {
-    setMobileOpen(false); // 导航时关闭移动端抽屉
-  };
+  // 点击导航项：
+  // 1. 立即(urgent)关闭移动端抽屉 —— 用户看到的视觉反馈不能被阻塞
+  // 2. 路由切换包进 startTransition —— 把老页面(例如媒体库/AI 配置)的 unmount
+  //    降级为可中断的低优先级更新，让 React 能分帧处理、浏览器可以立刻 paint
+  //    抽屉关闭动画。这是"点侧边栏没反应"的核心修复。
+  const handleNavClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
+      // 放行新标签页 / 非左键的原生行为
+      if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey
+      ) {
+        setMobileOpen(false);
+        return;
+      }
+
+      e.preventDefault();
+      setMobileOpen(false);
+
+      // 不拦截"点击当前路径"——用户常用这个手势清空 query/reset 视图。
+      // react-router 的 navigate() 对相同 URL 已是 no-op，无需自己判重。
+      startTransition(() => {
+        navigate(path);
+      });
+    },
+    [navigate, setMobileOpen]
+  );
 
   const contentProps = {
     effectiveCollapsed,
@@ -105,7 +136,7 @@ export function Sidebar() {
     setSearchValue,
     handleSearch,
     toggle,
-    handleNavigation,
+    handleNavClick,
     isProfileOpen: showProfileModal,
   };
 
@@ -181,7 +212,7 @@ interface SidebarContentProps {
   handleSearch: (e: React.FormEvent) => void;
   toggle: () => void;
   isMobile?: boolean;
-  handleNavigation: () => void;
+  handleNavClick: (e: React.MouseEvent<HTMLAnchorElement>, path: string) => void;
   closeMobile?: () => void;
   isProfileOpen: boolean;
 }
@@ -196,7 +227,7 @@ function SidebarContent({
   handleSearch,
   toggle,
   isMobile,
-  handleNavigation,
+  handleNavClick,
   closeMobile,
   isProfileOpen,
 }: SidebarContentProps) {
@@ -319,7 +350,7 @@ function SidebarContent({
                   <li key={item.path}>
                     <NavLink
                       to={item.path}
-                      onClick={handleNavigation}
+                      onClick={(e) => handleNavClick(e, item.path)}
                       className={({ isActive }) =>
                         cn(
                           'flex items-center rounded-lg transition-all duration-200',
