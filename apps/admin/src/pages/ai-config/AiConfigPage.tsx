@@ -154,7 +154,7 @@ export default function AiConfigPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="p-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
               >
                 <PanelLeft className="w-4 h-4" />
               </button>
@@ -174,7 +174,7 @@ export default function AiConfigPage() {
                 <motion.button
                   onClick={handleRefresh}
                   whileTap={{ scale: 0.9 }}
-                  className="p-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] transition-all"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </motion.button>
@@ -184,7 +184,7 @@ export default function AiConfigPage() {
                     setShowProviderDialog(true);
                   }}
                   whileTap={{ scale: 0.9 }}
-                  className="px-3 py-1.5 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
+                  className="inline-flex items-center justify-center h-9 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
                 >
                   添加
                 </motion.button>
