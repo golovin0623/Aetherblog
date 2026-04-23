@@ -147,7 +147,8 @@ export function MediaGrid({
                       'shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]',
                       'opacity-0 group-hover:opacity-100 group-data-[active]:opacity-100',
                       'transition-[opacity,transform] duration-300 ease-out',
-                      isCompact || isTouch ? 'w-10 h-10' : 'w-14 h-14'
+                      // !min-w-0 !min-h-0 绕开 tokens.css 全局触屏 44×44 最小尺寸,让缩略图工具栏按需缩小
+                      isCompact || isTouch ? 'w-10 h-10 !min-w-0 !min-h-0' : 'w-14 h-14'
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -277,7 +278,8 @@ function ToolbarIconButton({
       aria-label={title}
       className={cn(
         'inline-flex items-center justify-center rounded-full transition-colors',
-        isTouch ? 'w-8 h-8' : 'w-7 h-7',
+        // !min-w-0 !min-h-0 绕开 tokens.css 全局触屏 44×44 最小尺寸 —— 否则工具栏 4 颗按钮在半栏卡片里还是会被裁切
+        isTouch ? 'w-8 h-8 !min-w-0 !min-h-0' : 'w-7 h-7',
         danger
           ? 'text-[var(--signal-danger,#E26B6B)] hover:bg-[color-mix(in_oklch,var(--signal-danger,#E26B6B)_14%,transparent)]'
           : 'text-[var(--ink-secondary,var(--text-secondary))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]'
