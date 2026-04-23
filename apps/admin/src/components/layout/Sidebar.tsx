@@ -210,10 +210,13 @@ function SidebarContent({
         "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
+        {/* 同标签页导航 —— 移动端跨应用 target="_blank" 会在浏览器新 tab spawn 瞬间
+            用默认白底绘制一帧(iOS Safari 新 tab 永远白底),即使 blog 的 layout.tsx 在
+            <head> 内联了 themeFoucGuardStyle 也遮盖不住那一帧,视觉上就是白闪。同标签页
+            跳转让管理后台(已是用户主题)保留到 blog HTML 的 FOUC guard 接管,全程无白帧。
+            桌面用户如需新 tab,可 ⌘ / Ctrl / 中键点击 —— 浏览器原生支持。 */}
         <a
           href="/"
-          target="_blank"
-          rel="noopener noreferrer"
           title="访问主站"
           aria-label="访问主站"
           className={cn(
@@ -353,10 +356,9 @@ function SidebarContent({
         effectiveCollapsed ? "px-4" : "px-3",
         isMobile && "hidden" // 移动端隐藏收起按钮，因为已有顶部X按钮
       )}>
+        {/* 同理(见顶部 logo 注释):同标签页跳转避免 target="_blank" 新 tab spawn 白闪。 */}
         <a
           href="/"
-          target="_blank"
-          rel="noopener noreferrer"
           className={cn(
             'flex items-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200',
             effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'
