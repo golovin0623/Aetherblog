@@ -179,25 +179,26 @@ export function MediaList({
       </table>
       </div>
 
-      {/* 移动端卡片视图 */}
-      <div className="md:hidden divide-y divide-white/5 border border-white/10 rounded-xl bg-white/5 overflow-hidden">
+      {/* 移动端卡片视图 —— 使用 Codex token,明/暗主题自动切换 */}
+      <div className="md:hidden surface-leaf !rounded-xl overflow-hidden divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
         {items.map((item) => {
           const Icon = typeIcons[item.fileType] || FileText;
           const isSelected = selectedId === item.id || selectedIds.has(item.id);
           const fullUrl = getMediaUrl(item.fileUrl);
 
           return (
-            <div 
+            <div
               key={item.id}
               onClick={() => onSelect(item.id)}
               className={cn(
-                'p-4 space-y-3 active:bg-white/5 transition-colors relative',
-                isSelected && 'bg-primary/5'
+                'p-4 space-y-3 transition-colors relative',
+                'active:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
+                isSelected && 'bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)]'
               )}
             >
               <div className="flex items-start gap-4">
                 {/* 缩略图 */}
-                <div className="w-16 h-16 rounded-xl flex items-center justify-center overflow-hidden bg-white/10 shrink-0 border border-white/5 shadow-inner">
+                <div className="w-16 h-16 rounded-xl flex items-center justify-center overflow-hidden bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-subtle)] shadow-inner">
                   {item.fileType === 'IMAGE' ? (
                     <img src={fullUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -208,7 +209,7 @@ export function MediaList({
                 {/* 基本信息 */}
                 <div className="flex-1 min-w-0 pt-1">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-white font-medium text-sm line-clamp-2 leading-relaxed break-all">
+                    <h3 className="text-[var(--text-primary)] font-medium text-sm line-clamp-2 leading-relaxed break-all">
                       {item.originalName}
                     </h3>
                     <input
@@ -218,49 +219,49 @@ export function MediaList({
                         e.stopPropagation();
                         onToggleSelect(item.id);
                       }}
-                      className="mt-1 w-5 h-5 rounded border-2 border-white/20 bg-transparent text-primary focus:ring-primary/30 shrink-0"
+                      className="mt-1 w-5 h-5 rounded border-2 border-[var(--border-default)] bg-transparent text-primary focus:ring-primary/30 shrink-0"
                     />
                   </div>
-                  
+
                   <div className="flex items-center gap-2 mt-1.5 text-[10px] text-[var(--text-muted)] font-medium">
-                    <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[var(--text-muted)] uppercase tracking-tight">
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] uppercase tracking-tight">
                       {typeLabels[item.fileType] || item.fileType}
                     </span>
-                    <span className="w-px h-2 bg-white/10" />
+                    <span className="w-px h-2 bg-[var(--border-subtle)]" />
                     <span>{formatFileSize(item.fileSize)}</span>
                   </div>
                 </div>
               </div>
 
               {/* 操作区 */}
-              <div className="flex items-center justify-between pt-1 border-t border-white/[0.02]">
+              <div className="flex items-center justify-between pt-1 border-t border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
                 <span className="text-[10px] text-[var(--text-secondary)] font-mono">
                   {format(new Date(item.createdAt), 'yyyy-MM-dd HH:mm')}
                 </span>
-                
+
                 <div className="flex items-center gap-0.5">
                   <button
                     onClick={(e) => { e.stopPropagation(); onPreview(item.id); }}
-                    className="p-2 text-[var(--text-muted)] active:text-white"
+                    className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                   >
                     <Eye className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onCopyUrl(fullUrl); }}
-                    className="p-2 text-[var(--text-muted)] active:text-white"
+                    className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                   >
                     <Link2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDownload(fullUrl, item.originalName); }}
-                    className="p-2 text-[var(--text-muted)] active:text-white"
+                    className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                   >
                     <Download className="w-4 h-4" />
                   </button>
                   {onMove && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onMove(item.id, item.originalName); }}
-                      className="p-2 text-[var(--text-muted)] active:text-white"
+                      className="p-2 text-[var(--text-muted)] active:text-[var(--text-primary)]"
                     >
                       <FolderInput className="w-4 h-4" />
                     </button>
