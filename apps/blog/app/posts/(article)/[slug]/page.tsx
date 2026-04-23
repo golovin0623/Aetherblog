@@ -207,10 +207,11 @@ export default async function PostDetailPage({ params }: PageProps) {
               <span className="italic">{post.viewCount} 阅读</span>
               <div className="flex items-center gap-2 ml-1">
                 {adminEditUrl ? (
+                  // 同标签页导航:避免 target="_blank" 在移动端新 tab spawn 时的首帧白闪
+                  // (iOS Safari 新 tab 永远白底,FOUC guard 遮盖不了那一帧)。
+                  // 桌面用户如需新 tab,可 ⌘ / Ctrl / 中键点击 —— 浏览器原生支持。
                   <a
                     href={adminEditUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40 transition-colors"
                     title={`编辑文章 #${post.id}`}
                     aria-label={`编辑文章 #${post.id}`}
