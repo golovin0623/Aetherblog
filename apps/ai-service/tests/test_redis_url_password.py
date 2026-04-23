@@ -65,3 +65,21 @@ def test_redis_url_rediss_tls_scheme(monkeypatch, fresh_settings):
     monkeypatch.setenv("REDIS_PASSWORD", "tls-pwd")
     monkeypatch.setenv("REDIS_URL", "rediss://host:6380/1")
     assert fresh_settings().redis_url == "rediss://:tls-pwd@host:6380/1"
+
+
+def test_redis_password_field_drives_merge(monkeypatch, fresh_settings):
+    """Validator should prefer the pydantic-parsed field over os.environ.
+
+    pydantic-settings populates ``redis_password`` from both ``os.environ`` and
+    ``.env`` files, whereas the previous ``os.environ.get`` read missed the
+    .env path. If the parsed field is authoritative, the URL still gets auth
+    even when the raw environ lookup returns empty — which is the case dev
+    setups that only declare REDIS_PASSWORD in .env hit.
+    """
+    monkeypatch.setenv("REDIS_PASSWORD", "env-pwd")
+    monkeypatch.setenv("REDIS_URL", "redis://host:6379/0")
+    settings = fresh_settings()()
+    # Field should be parsed, not None.
+    assert settings.redis_password == "env-pwd"
+    # URL should carry the merged auth.
+    assert settings.redis_url == "redis://:env-pwd@host:6379/0"
