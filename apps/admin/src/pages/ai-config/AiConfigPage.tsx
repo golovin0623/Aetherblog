@@ -85,7 +85,8 @@ export default function AiConfigPage() {
 
   // 进入详情视图
   const handleSelectProvider = useCallback((code: string | null | undefined) => {
-    setActiveDetailTab("config"); // 切换时重置为配置 Tab
+    // 保留用户当前的 config/models tab 选择 —— 在 A 的"模型"tab 切到 B,
+    // 用户的意图是"去看 B 的模型",硬重置回"配置"是反直觉的。
     setInitialModelSearch(''); // 切换供应商时清空 deep-link 过滤，避免模型列表空白
     if (!code) {
       setSelectedProviderCode(null);
@@ -249,7 +250,11 @@ export default function AiConfigPage() {
 
           {/* 主内容 */}
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--border-subtle)] scrollbar-track-transparent pr-1">
-            <AnimatePresence mode="popLayout" initial={false}>
+            {/* mode="wait" 确保"离开的 provider → 进入的 provider"顺序执行；
+                 旧的 popLayout 会把 exit 节点设成 position:absolute，ProviderDetail
+                 的根 h-full 在 overflow-hidden 滚动容器里坍缩成 0，表现为切到
+                 另一个 provider 后内容区一片空白。 */}
+            <AnimatePresence mode="wait" initial={false}>
               {viewMode === 'grid' ? (
                 <motion.div
                   key="grid"
