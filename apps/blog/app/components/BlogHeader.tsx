@@ -519,13 +519,8 @@ export default function BlogHeader() {
               {/* 主题切换 */}
               <ThemeToggle size="sm" />
 
+              {/* 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
               {isAdminLinkAvailable ? (
-                // 不带 target="_blank":移动端新标签页 spawn 瞬间会被浏览器用默认白底
-                // (iOS Safari 新 tab 永远白底)绘制出一帧,哪怕目标站已在 <head> 里内联
-                // 了 FOUC guard <style> 也无法覆盖那一帧 —— 视觉上就是"先白闪再进入
-                // 暗色管理后台"。同标签页导航让当前页(已是用户选定主题)保留可见,
-                // 直到新 HTML 的 FOUC guard <style> 接管首帧,全程无白帧。
-                // 桌面用户若想在新 tab 打开,可 ⌘ / Ctrl / 中键点击 —— 浏览器原生支持。
                 <a
                   href={adminHomeUrl!}
                   className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

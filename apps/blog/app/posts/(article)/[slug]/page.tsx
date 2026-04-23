@@ -206,10 +206,8 @@ export default async function PostDetailPage({ params }: PageProps) {
               {post.categoryName && <span className="italic">{post.categoryName}</span>}
               <span className="italic">{post.viewCount} 阅读</span>
               <div className="flex items-center gap-2 ml-1">
+                {/* 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
                 {adminEditUrl ? (
-                  // 同标签页导航:避免 target="_blank" 在移动端新 tab spawn 时的首帧白闪
-                  // (iOS Safari 新 tab 永远白底,FOUC guard 遮盖不了那一帧)。
-                  // 桌面用户如需新 tab,可 ⌘ / Ctrl / 中键点击 —— 浏览器原生支持。
                   <a
                     href={adminEditUrl}
                     className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-primary hover:border-primary/40 transition-colors"
