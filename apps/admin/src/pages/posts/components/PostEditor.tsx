@@ -63,7 +63,7 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
                 key={i}
                 onClick={btn.action}
                 title={btn.title}
-                className="p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                className="inline-flex items-center justify-center appearance-none p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <btn.icon className="w-4 h-4" />
               </button>
@@ -73,13 +73,13 @@ export function PostEditor({ value, onChange }: PostEditorProps) {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowPreview(false)}
-            className={`p-1.5 rounded ${!showPreview ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}
+            className={`inline-flex items-center justify-center appearance-none p-1.5 rounded ${!showPreview ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowPreview(true)}
-            className={`p-1.5 rounded ${showPreview ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}
+            className={`inline-flex items-center justify-center appearance-none p-1.5 rounded ${showPreview ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}
           >
             <Eye className="w-4 h-4" />
           </button>

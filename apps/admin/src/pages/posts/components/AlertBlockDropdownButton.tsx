@@ -32,11 +32,11 @@ export function AlertBlockDropdownButton({ onInsertMarkdown, className }: AlertB
     <Tooltip content="自定义高亮块" side="top" delay={0}>
       <button
         className={cn(
-          'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors inline-block',
+          'relative inline-flex items-center justify-center appearance-none p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
           className
         )}
       >
-        <span className="flex items-center gap-1 transition-transform active:scale-90">
+        <span className="inline-flex items-center justify-center gap-1 transition-transform active:scale-90">
           <MessageSquareWarning className="w-4 h-4" />
         </span>
       </button>
