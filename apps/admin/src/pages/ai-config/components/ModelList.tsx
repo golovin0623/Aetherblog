@@ -151,7 +151,7 @@ export default function ModelList({
               onClick={handleFetchRemote}
               disabled={isLoading || syncRemoteModels.isPending}
               title="拉取模型"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] transition-all disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-secondary)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] hover:border-[var(--border-hover)] transition-all disabled:opacity-50"
             >
               <RefreshCw className={cn("w-3.5 h-3.5", syncRemoteModels.isPending && "animate-spin")} />
               <span className="hidden sm:inline">拉取</span>
@@ -164,7 +164,7 @@ export default function ModelList({
               onClick={() => setConfirmAction('clearRemote')}
               disabled={clearProviderModels.isPending}
               title="清空远程"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-status-danger-border text-xs text-status-danger bg-[var(--bg-primary)] hover:bg-status-danger/5 transition-all disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-status-danger-border text-xs text-status-danger bg-[var(--bg-primary)] hover:bg-status-danger/5 transition-all disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">清空远程</span>
@@ -176,7 +176,7 @@ export default function ModelList({
             onClick={() => setConfirmAction('resetAll')}
             disabled={clearProviderModels.isPending || !modelEditable}
             title="重置全部"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">重置</span>
@@ -187,7 +187,7 @@ export default function ModelList({
             onClick={() => setShowSortDialog(true)}
             disabled={!modelEditable}
             title="手动排序"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
             <ArrowDownUp className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">排序</span>
@@ -198,7 +198,7 @@ export default function ModelList({
             onClick={handleDisableAll}
             disabled={batchToggleModels.isPending || enabled.length === 0 || !modelEditable}
             title="全部禁用"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 h-9 min-w-9 sm:min-w-0 px-2.5 rounded-lg border border-[var(--border-default)] text-xs text-[var(--text-muted)] bg-[var(--bg-primary)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
           >
             <ToggleLeft className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">下架</span>
@@ -208,7 +208,7 @@ export default function ModelList({
           {allowAddModel && (
             <button
               onClick={() => setShowAddDialog(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
+              className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:opacity-90 transition-all shadow-sm active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
               <span className="inline">添加</span>
