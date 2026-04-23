@@ -302,11 +302,7 @@ const MobileMenu = memo(function MobileMenu() {
 
             {/* 5. 底部固定区域：清爽无边框设计 */}
             <div className="p-4 space-y-2 mt-auto">
-              {/* 管理后台
-                  —— 同标签页导航:移动端 target="_blank" 会在新 tab spawn 时被
-                  浏览器用默认白底绘制一帧(iOS Safari 新 tab 永远白底),即使 admin
-                  的 index.html 里内联了 FOUC guard 也无法遮盖。同标签页跳转让当前
-                  (已是用户主题)页面保留到 admin HTML 的 FOUC guard 接管,全程无白闪。*/}
+              {/* 管理后台 —— 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
               {isAdminLinkAvailable ? (
                 <a
                   href={adminHomeUrl!}

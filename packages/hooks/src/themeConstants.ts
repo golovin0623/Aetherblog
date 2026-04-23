@@ -58,6 +58,21 @@ export const themeFoucGuardStyle =
   `body{background-color:inherit;margin:0}`;
 
 /**
+ * 跨应用导航约定:**Blog ↔ Admin 之间的 `<a>` 一律不带 `target="_blank"`**
+ *
+ * 上面的 themeFoucGuardStyle 只能保护"目标 HTML 开始解析以后"的首帧,管不到
+ * 浏览器 spawn 新 tab 那一瞬间自己画的 about:blank 白底 —— 移动端(尤其
+ * iOS Safari)的新 tab 永远先白闪一帧。同标签页导航受 browser paint holding
+ * 保护:旧页(已是用户主题)保留到目标 HTML 开始解析,内联 FOUC guard 接管,
+ * 全程无白帧。桌面用户若想新 tab 打开,⌘/Ctrl/中键点击浏览器原生支持。
+ *
+ * 所以所有 Blog 指向 Admin、或 Admin 指向 Blog 的跨应用 `<a>`(BlogHeader
+ * 管理后台图标、MobileMenu 管理后台按钮、文章详情编辑铅笔、Admin Sidebar
+ * 顶部 logo + 底部"主站")都**不要**加 `target="_blank"` / `rel="noopener"`。
+ * 站内普通链接、友链、评论用户主页等外部/外链不适用此约定,按常规加。
+ */
+
+/**
  * 主题初始化脚本 (用于避免 FOUC)
  *
  * 在 <head> 中内联此脚本,在 CSS 加载前应用主题类名。
