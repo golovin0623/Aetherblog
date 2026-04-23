@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Menu, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Palette } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings } from '../lib/services';
 import { extractSocialLinks } from '../lib/socialLinks';
 import { sanitizeImageUrl } from '../lib/sanitizeUrl';
@@ -78,6 +79,11 @@ const MobileMenu = memo(function MobileMenu() {
   );
   const authorBio = settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);
+  // 主题感知：部分社交 logo（如 GitHub）本身是纯黑单色，在暗色主题下完全
+  // 看不见 —— useTheme 会在 SSR / 首帧返回 isDark=false（基于 resolvedTheme
+  // 的 mounted 守卫），等客户端挂载后若用户实际是 dark 会自动 swap 成亮色变
+  // 体。与 PLATFORM_ICON_URLS_DARK 配合使用。
+  const { isDark } = useTheme();
   const adminLinkConfig = getAdminLinkConfig();
   const adminHomeUrl = buildAdminUrl('/');
   const isAdminLinkAvailable = Boolean(adminHomeUrl);
@@ -238,9 +244,12 @@ const MobileMenu = memo(function MobileMenu() {
               <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] w-full justify-items-start">
                 {socialLinks.length > 0 ? (
                   socialLinks.map((link) => {
-                    const icon = link.iconUrl ? (
+                    const resolvedIconUrl = isDark
+                      ? (link.iconUrlDark ?? link.iconUrl)
+                      : link.iconUrl;
+                    const icon = resolvedIconUrl ? (
                       <Image
-                        src={link.iconUrl}
+                        src={resolvedIconUrl}
                         alt={link.label}
                         width={12}
                         height={12}
