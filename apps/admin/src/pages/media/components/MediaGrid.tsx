@@ -135,7 +135,7 @@ export function MediaGrid({
                   />
                 </div>
 
-                {/* 预览按钮 (中心) —— 圆形胶囊,统一亮/暗模式 */}
+                {/* 预览按钮 (中心) —— 圆形胶囊,统一亮/暗模式;触屏跟随卡片宽度等比缩小 */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <motion.button
                     type="button"
@@ -147,7 +147,7 @@ export function MediaGrid({
                       'shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]',
                       'opacity-0 group-hover:opacity-100 group-data-[active]:opacity-100',
                       'transition-[opacity,transform] duration-300 ease-out',
-                      isCompact ? 'w-11 h-11' : 'w-14 h-14'
+                      isCompact || isTouch ? 'w-10 h-10' : 'w-14 h-14'
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -155,7 +155,7 @@ export function MediaGrid({
                     }}
                     aria-label="预览"
                   >
-                    <Eye className={cn(isCompact ? 'w-5 h-5' : 'w-6 h-6')} strokeWidth={1.6} />
+                    <Eye className={cn(isCompact || isTouch ? 'w-4 h-4' : 'w-6 h-6')} strokeWidth={1.6} />
                   </motion.button>
                 </div>
 
@@ -177,19 +177,17 @@ export function MediaGrid({
                   </div>
                 </div>
 
-                {/* 底部悬浮工具条 —— Codex surface-raised 胶囊 */}
+                {/* 底部悬浮工具条 —— Codex surface-raised 胶囊;触屏整体等比缩小避免左右被裁切 */}
                 {!isCompact && (
                   <div
                     className={cn(
-                      'absolute left-1/2 -translate-x-1/2 flex justify-center pointer-events-none',
+                      'absolute left-1/2 -translate-x-1/2 flex justify-center pointer-events-none max-w-[calc(100%-0.5rem)]',
                       isTouch ? 'bottom-2' : 'bottom-3'
                     )}
                   >
                     <div
                       className={cn(
-                        'surface-raised !rounded-full flex items-center',
-                        // 触屏使用更大内边距 + 更大点击区,PC 紧凑
-                        isTouch ? 'gap-1 p-1.5' : 'gap-0.5 p-1',
+                        'surface-raised !rounded-full flex items-center gap-0.5 p-1',
                         'translate-y-3 opacity-0 scale-95',
                         'group-hover:translate-y-0 group-hover:opacity-100 group-hover:scale-100',
                         'group-data-[active]:translate-y-0 group-data-[active]:opacity-100 group-data-[active]:scale-100',
@@ -204,7 +202,7 @@ export function MediaGrid({
                           title="移动"
                           isTouch={isTouch}
                         >
-                          <FolderInput className={isTouch ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
+                          <FolderInput className="w-3.5 h-3.5" />
                         </ToolbarIconButton>
                       )}
                       <ToolbarIconButton
@@ -212,14 +210,14 @@ export function MediaGrid({
                         title="复制链接"
                         isTouch={isTouch}
                       >
-                        <Link2 className={isTouch ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
+                        <Link2 className="w-3.5 h-3.5" />
                       </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => onDownload(fullUrl, item.originalName)}
                         title="下载"
                         isTouch={isTouch}
                       >
-                        <Download className={isTouch ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
+                        <Download className="w-3.5 h-3.5" />
                       </ToolbarIconButton>
                       <div className="w-px h-4 bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] mx-0.5" />
                       <ToolbarIconButton
@@ -228,7 +226,7 @@ export function MediaGrid({
                         isTouch={isTouch}
                         danger
                       >
-                        <Trash2 className={isTouch ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </ToolbarIconButton>
                     </div>
                   </div>
@@ -279,7 +277,7 @@ function ToolbarIconButton({
       aria-label={title}
       className={cn(
         'inline-flex items-center justify-center rounded-full transition-colors',
-        isTouch ? 'w-9 h-9' : 'w-7 h-7',
+        isTouch ? 'w-8 h-8' : 'w-7 h-7',
         danger
           ? 'text-[var(--signal-danger,#E26B6B)] hover:bg-[color-mix(in_oklch,var(--signal-danger,#E26B6B)_14%,transparent)]'
           : 'text-[var(--ink-secondary,var(--text-secondary))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)]'
