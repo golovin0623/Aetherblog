@@ -6,17 +6,17 @@ Use this during the VULN-056 migration window:
 
     # 1. Compute the legacy key derived from JWT_SECRET (so MultiFernet can
     #    decrypt existing rows during the transition).
-    OLD_KEY=$(python -c "from app.services.credential_resolver import _legacy_jwt_derived_key; \
+    OLD_KEY=$(python3 -c "from app.services.credential_resolver import _legacy_jwt_derived_key; \
                           import os; print(_legacy_jwt_derived_key(os.environ['JWT_SECRET']).decode())")
 
     # 2. Generate a fresh primary key.
-    NEW_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    NEW_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
     # 3. Configure both, new key first.
     export AI_CREDENTIAL_ENCRYPTION_KEYS="$NEW_KEY,$OLD_KEY"
 
     # 4. Restart ai-service so it picks up the new keys, then run this script.
-    python -m scripts.rotate_credentials
+    python3 -m scripts.rotate_credentials
 
     # 5. Drop the legacy key from the env after verification.
     export AI_CREDENTIAL_ENCRYPTION_KEYS="$NEW_KEY"

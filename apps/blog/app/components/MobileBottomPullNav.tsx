@@ -1,13 +1,13 @@
 /**
  * @file MobileBottomPullNav.tsx
- * @description 移动端底部上滑快捷导航 — 灵感源自 Google Chrome 移动端下拉刷新手势
+ * @description 移动端底部上滑快捷导航 — Framer Motion + 速度感知手势
  *
- * 交互逻辑（Chrome 风格）：
- * 1. 用户在文章底部继续上滑 → 中心圆圈（返回箭头）从底部升起，尺寸渐增，箭头旋转
- * 2. 上滑过半 → 两侧按钮（上一篇/下一篇）从中心展开渐入
- * 3. 达到就绪态 → 圆圈出现选中态背景 + 脉冲动画，显示提示文字
- * 4. 按住横滑 → 选中背景磁性吸附到目标按钮，圆圈弹性变形（椭圆拉伸）
- * 5. 松手 → 执行选中操作（返回/上一篇/下一篇）
+ * 架构要点：
+ * - 连续量（位置/缩放/透明度/形变）= useMotionValue，每帧 .set() 直接写 DOM transform，零 React 渲染
+ * - 离散量（active / isReady / snappedTo）= useState，仅在阶段转换时更新，驱动触觉 + label 文案 + 图标颜色
+ * - 释放 = animate(mv, rest, { type: 'spring', velocity: mv.getVelocity() }) 按手指速度弹簧投掷
+ * - 吸附跳变 = animate() 稍硬弹簧；未跳变帧仍走 .set() 直写
+ * - backdrop-filter 半径固定 4px 只动透明度；blob 固定 56×56 用 scale 驱动，全走合成器
  */
 
 'use client';
@@ -15,6 +15,13 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
+import {
+  motion,
+  useMotionValue,
+  useTransform,
+  animate,
+  type AnimationPlaybackControls,
+} from 'framer-motion';
 import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 
 /* ─── Types ─── */
@@ -31,52 +38,28 @@ interface MobileBottomPullNavProps {
 
 type SnapTarget = 'prev' | 'center' | 'next';
 
-interface GestureState {
-  /** 手势是否激活中 */
-  active: boolean;
-  /** 0→1 纵向上拉进度 */
-  pullProgress: number;
-  /** 相对于手势起始点的水平偏移量（向左为负，向右为正），单位 px */
-  lateralOffset: number;
-  /** 当前吸附到的按钮 */
-  snappedTo: SnapTarget;
-  /** 上拉进度是否已达到就绪阈值 */
-  isReady: boolean;
-}
-
 /* ─── Constants ─── */
 
-/** 上拉激活前的无效区 */
 const DEAD_ZONE = 18;
-/** 达到满进度所需的上拉距离 */
 const FULL_PULL = 120;
-/** 触发动作所需的最小进度 */
 const RELEASE_THRESHOLD = 0.4;
-/** 侧边按钮开始出现的进度阈值 */
 const SIDE_APPEAR_THRESHOLD = 0.45;
-/** 吸附到侧边按钮所需的水平偏移量 */
 const SNAP_THRESHOLD = 60;
-/** 迟滞：从吸附状态回到中心所需越过的最小绝对距离 */
 const UNSNAP_THRESHOLD = 25;
 
-/** 中心圆大小范围 */
-const CIRCLE_MIN = 0;
 const CIRCLE_MAX = 56;
-/** 侧边图标大小 */
 const SIDE_ICON_SIZE = 48;
-/** 中心圆与侧边按钮之间的间距 */
 const SIDE_SPACING = 96;
+
+const RELEASE_SPRING = { type: 'spring' as const, stiffness: 380, damping: 32, mass: 1 };
+const SNAP_SPRING = { type: 'spring' as const, stiffness: 500, damping: 28 };
 
 /* ─── Helpers ─── */
 
-/** 将值钳制在 [min, max] 范围内 */
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-/** 三次缓出函数 */
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-/** 线性插值 */
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** 尝试触发触觉反馈 */
 const vibrate = (pattern: number | number[]) => {
   try { navigator.vibrate?.(pattern); } catch { /* noop */ }
 };
@@ -84,19 +67,16 @@ const vibrate = (pattern: number | number[]) => {
 /* ─── Component ─── */
 
 function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProps) {
-  const [gesture, setGesture] = useState<GestureState>({
-    active: false,
-    pullProgress: 0,
-    lateralOffset: 0,
-    snappedTo: 'center',
-    isReady: false,
-  });
+  // ── Discrete state (low-frequency) ──
+  const [active, setActive] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [snappedTo, setSnappedTo] = useState<SnapTarget>('center');
   const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   const router = useRouter();
 
-  // ── Refs（引用）──
+  // ── Refs ──
   const touchRef = useRef({
     startY: 0,
     startX: 0,
@@ -107,23 +87,42 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   });
   const prevPostRef = useRef(prevPost);
   const nextPostRef = useRef(nextPost);
-  const rafRef = useRef<number | null>(null);
-  const pendingRef = useRef<GestureState | null>(null);
+  // Ongoing snap-transition spring (so subsequent frames don't interrupt it with direct .set())
+  const snapAnimRef = useRef<AnimationPlaybackControls | null>(null);
 
   useEffect(() => { prevPostRef.current = prevPost; }, [prevPost]);
   useEffect(() => { nextPostRef.current = nextPost; }, [nextPost]);
   useEffect(() => { setMounted(true); }, []);
 
-  // ── 移动端检测 ──
-  useEffect(() => {
-    const mql = window.matchMedia('(max-width: 768px)');
-    const onChange = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches);
-    onChange(mql);
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }, []);
+  // ── Motion values (continuous, direct .set() driven) ──
+  const pullProgress = useMotionValue(0);
+  const blobX = useMotionValue(0);
+  const blobStretchX = useMotionValue(1);
+  const blobStretchY = useMotionValue(1);
+  const prevIconOpacity = useMotionValue(0);
+  const nextIconOpacity = useMotionValue(0);
+  const centerIconOpacity = useMotionValue(0);
+  const prevIconScale = useMotionValue(0.3);
+  const nextIconScale = useMotionValue(0.3);
 
-  // ── 辅助函数 ──
+  // ── Derived (useTransform, source-driven — no React state closure) ──
+  const containerY = useTransform(pullProgress, (p) => lerp(80, 0, easeOut(clamp(p, 0, 1))));
+  const containerOpacity = useTransform(pullProgress, (p) => clamp(Math.max(p, 0) * 2.5, 0, 1));
+  const overlayOpacity = useTransform(pullProgress, (p) => clamp(Math.max(p, 0) * 1.5, 0, 1));
+  const blobScale = useTransform(pullProgress, (p) => easeOut(clamp(p, 0, 1)));
+  const blobCoreOpacity = useTransform(pullProgress, (p) => clamp(Math.max(p, 0) * 5, 0, 1));
+  const arrowRotation = useTransform(pullProgress, (p) => -lerp(90, 0, clamp(Math.max(p, 0) * 2, 0, 1)));
+  const arrowScale = useTransform(pullProgress, (p) => {
+    const eased = easeOut(clamp(p, 0, 1));
+    return clamp((eased * CIRCLE_MAX * 0.42) / 24, 0, 1);
+  });
+  const sideSpread = useTransform(pullProgress, (p) => {
+    const sp = clamp((clamp(p, 0, 1) - SIDE_APPEAR_THRESHOLD) / (1 - SIDE_APPEAR_THRESHOLD), 0, 1);
+    return easeOut(sp) * SIDE_SPACING;
+  });
+  const sideSpreadNeg = useTransform(sideSpread, (s) => -s);
+
+  // ── Helpers ──
   const isAtBottom = useCallback(() => {
     const st = window.scrollY;
     const sh = document.documentElement.scrollHeight;
@@ -141,18 +140,16 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     }
   }, [router]);
 
-  /** 经 RAF 节流的手势状态更新 */
-  const scheduleUpdate = useCallback((state: GestureState) => {
-    pendingRef.current = state;
-    if (rafRef.current == null) {
-      rafRef.current = requestAnimationFrame(() => {
-        if (pendingRef.current) setGesture(pendingRef.current);
-        rafRef.current = null;
-      });
-    }
+  // ── Mobile detection ──
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 768px)');
+    const onChange = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches);
+    onChange(mql);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  // ── 触摸事件处理 ──
+  // ── Touch event handling ──
   useEffect(() => {
     if (!isMobile) return;
 
@@ -173,84 +170,121 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       if (!t.atBottom) return;
 
       const touch = e.touches[0];
-      const deltaY = t.startY - touch.clientY; // 正值表示向上滑动
+      const deltaY = t.startY - touch.clientY;
 
       if (deltaY < DEAD_ZONE) {
         if (t.pulling) {
           t.pulling = false;
-          scheduleUpdate({
-            active: false,
-            pullProgress: 0,
-            lateralOffset: 0,
-            snappedTo: 'center',
-            isReady: false,
-          });
+          snapAnimRef.current?.stop();
+          snapAnimRef.current = null;
+          pullProgress.set(0);
+          blobX.set(0);
+          blobStretchX.set(1);
+          blobStretchY.set(1);
+          prevIconOpacity.set(0);
+          nextIconOpacity.set(0);
+          centerIconOpacity.set(0);
+          prevIconScale.set(0.3);
+          nextIconScale.set(0.3);
+          setActive(false);
+          setIsReady(false);
+          setSnappedTo('center');
+          t.wasReady = false;
+          t.prevSnap = 'center';
         }
         return;
       }
 
-      // 进入上拉手势
       if (!t.pulling) {
         t.pulling = true;
         vibrate(8);
+        setActive(true);
       }
 
       e.preventDefault();
 
-      const pullProgress = clamp((deltaY - DEAD_ZONE) / FULL_PULL, 0, 1);
+      const progress = clamp((deltaY - DEAD_ZONE) / FULL_PULL, 0, 1);
       const lateralOffset = touch.clientX - t.startX;
-      const isReady = pullProgress >= RELEASE_THRESHOLD;
+      const ready = progress >= RELEASE_THRESHOLD;
 
-      // 进入就绪状态时触发触觉反馈
-      if (isReady && !t.wasReady) {
-        vibrate(12);
-        t.wasReady = true;
-      } else if (!isReady && t.wasReady) {
-        t.wasReady = false;
+      if (ready !== t.wasReady) {
+        if (ready) vibrate(12);
+        t.wasReady = ready;
+        setIsReady(ready);
       }
 
-      // 具有强迟滞的吸附逻辑
-      let snappedTo: SnapTarget = t.prevSnap;
-
-      if (isReady && pullProgress > SIDE_APPEAR_THRESHOLD) {
+      // Snap state machine with hysteresis (strong: exit requires crossing UNSNAP_THRESHOLD)
+      let snap: SnapTarget = t.prevSnap;
+      if (ready && progress > SIDE_APPEAR_THRESHOLD) {
         const hasPrev = !!prevPostRef.current;
         const hasNext = !!nextPostRef.current;
-
-        if (snappedTo === 'center') {
-          // 从中心脱离需要越过吸附阈值
-          if (lateralOffset < -SNAP_THRESHOLD && hasPrev) {
-            snappedTo = 'prev';
-            vibrate(10);
-          } else if (lateralOffset > SNAP_THRESHOLD && hasNext) {
-            snappedTo = 'next';
-            vibrate(10);
-          }
-        } else if (snappedTo === 'prev') {
-          // 从"上一篇"脱离，需向右移动超过 -UNSNAP_THRESHOLD
-          if (lateralOffset > -UNSNAP_THRESHOLD) {
-            snappedTo = 'center';
-            vibrate(5);
-          }
-        } else if (snappedTo === 'next') {
-          // 从"下一篇"脱离，需向左移动超过 UNSNAP_THRESHOLD
-          if (lateralOffset < UNSNAP_THRESHOLD) {
-            snappedTo = 'center';
-            vibrate(5);
-          }
+        if (snap === 'center') {
+          if (lateralOffset < -SNAP_THRESHOLD && hasPrev) { snap = 'prev'; vibrate(10); }
+          else if (lateralOffset > SNAP_THRESHOLD && hasNext) { snap = 'next'; vibrate(10); }
+        } else if (snap === 'prev') {
+          if (lateralOffset > -UNSNAP_THRESHOLD) { snap = 'center'; vibrate(5); }
+        } else if (snap === 'next') {
+          if (lateralOffset < UNSNAP_THRESHOLD) { snap = 'center'; vibrate(5); }
         }
       } else {
-        snappedTo = 'center';
+        snap = 'center';
       }
 
-      t.prevSnap = snappedTo;
+      const snapChanged = snap !== t.prevSnap;
+      if (snapChanged) {
+        t.prevSnap = snap;
+        setSnappedTo(snap);
+      }
 
-      scheduleUpdate({
-        active: true,
-        pullProgress,
-        lateralOffset,
-        snappedTo,
-        isReady,
-      });
+      // ── Derive instantaneous side spread (for blob base + icon state-dependent derivations) ──
+      const sideP = clamp((progress - SIDE_APPEAR_THRESHOLD) / (1 - SIDE_APPEAR_THRESHOLD), 0, 1);
+      const sideEased = easeOut(sideP);
+      const spread = sideEased * SIDE_SPACING;
+
+      const blobBaseX = snap === 'prev' ? -spread : snap === 'next' ? spread : 0;
+
+      // Sticky drag offset: blob resists leaving the snapped position but lets finger tug it slightly
+      let dragDist = 0;
+      if (ready) {
+        if (snap === 'center') dragDist = lateralOffset;
+        else if (snap === 'prev' && lateralOffset > -50) dragDist = lateralOffset + 50;
+        else if (snap === 'next' && lateralOffset < 50) dragDist = lateralOffset - 50;
+      }
+      const blobXTarget = blobBaseX + clamp(dragDist * 0.25, -20, 20);
+      const stretchFactor = ready ? Math.abs(dragDist) / 100 : 0;
+      const stretchXTarget = 1 + clamp(stretchFactor, 0, 0.4);
+      const stretchYTarget = 1 - clamp(stretchFactor * 0.4, 0, 0.15);
+
+      // State-dependent icon channels — direct write per frame
+      const prevOpTarget = snap === 'prev' ? 1 : snap === 'center' ? sideEased * 0.5 : 0;
+      const nextOpTarget = snap === 'next' ? 1 : snap === 'center' ? sideEased * 0.5 : 0;
+      const centerOpTarget = snap === 'center' ? 1 : 0;
+      const prevScaleTarget = snap === 'prev' ? 1.2 : 0.3 + 0.7 * sideEased;
+      const nextScaleTarget = snap === 'next' ? 1.2 : 0.3 + 0.7 * sideEased;
+
+      // ── Write channels ──
+      pullProgress.set(progress);
+      blobStretchX.set(stretchXTarget);
+      blobStretchY.set(stretchYTarget);
+      prevIconOpacity.set(prevOpTarget);
+      nextIconOpacity.set(nextOpTarget);
+      centerIconOpacity.set(centerOpTarget);
+      prevIconScale.set(prevScaleTarget);
+      nextIconScale.set(nextScaleTarget);
+
+      // blobX: spring-ride snap transitions; direct-set otherwise
+      if (snapChanged) {
+        snapAnimRef.current?.stop();
+        const anim = animate(blobX, blobXTarget, SNAP_SPRING);
+        snapAnimRef.current = anim;
+        anim.then(() => {
+          // Only null out if THIS animation is still the current one
+          if (snapAnimRef.current === anim) snapAnimRef.current = null;
+        });
+      } else if (!snapAnimRef.current) {
+        blobX.set(blobXTarget);
+      }
+      // else: snap spring still running — leave it, it'll catch up within ~250ms
     };
 
     const onTouchEnd = () => {
@@ -260,19 +294,40 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       t.pulling = false;
       t.atBottom = false;
 
-      setGesture((prev) => {
-        if (prev.isReady) {
-          const target = prev.snappedTo;
-          vibrate([5, 50, 15]);
-          requestAnimationFrame(() => navigate(target));
-        }
-        return {
-          active: false,
-          pullProgress: 0,
-          lateralOffset: 0,
-          snappedTo: 'center',
-          isReady: false,
-        };
+      // Execute navigation immediately (don't wait for spring)
+      if (t.wasReady) {
+        const target = t.prevSnap;
+        vibrate([5, 50, 15]);
+        requestAnimationFrame(() => navigate(target));
+      }
+
+      // Cancel in-flight snap spring so release takes over
+      snapAnimRef.current?.stop();
+      snapAnimRef.current = null;
+
+      // Spring-release every channel with its current velocity (framer-motion tracks d/dt from .set() history)
+      const anims = [
+        animate(pullProgress, 0, { ...RELEASE_SPRING, velocity: pullProgress.getVelocity() }),
+        animate(blobX, 0, { ...RELEASE_SPRING, velocity: blobX.getVelocity() }),
+        animate(blobStretchX, 1, { ...RELEASE_SPRING, velocity: blobStretchX.getVelocity() }),
+        animate(blobStretchY, 1, { ...RELEASE_SPRING, velocity: blobStretchY.getVelocity() }),
+        animate(prevIconOpacity, 0, { ...RELEASE_SPRING, velocity: prevIconOpacity.getVelocity() }),
+        animate(nextIconOpacity, 0, { ...RELEASE_SPRING, velocity: nextIconOpacity.getVelocity() }),
+        animate(centerIconOpacity, 0, { ...RELEASE_SPRING, velocity: centerIconOpacity.getVelocity() }),
+        animate(prevIconScale, 0.3, { ...RELEASE_SPRING, velocity: prevIconScale.getVelocity() }),
+        animate(nextIconScale, 0.3, { ...RELEASE_SPRING, velocity: nextIconScale.getVelocity() }),
+      ];
+
+      setIsReady(false);
+      setSnappedTo('center');
+      t.wasReady = false;
+      t.prevSnap = 'center';
+
+      // Keep overlay mounted until the springs settle, then unmount to stop compositing.
+      // Guard with touchRef.pulling so overlapping gestures (user starts a new pull mid-spring)
+      // don't deactivate the overlay while a pull is still in progress.
+      Promise.all(anims).then(() => {
+        if (!touchRef.current.pulling) setActive(false);
       });
     };
 
@@ -286,84 +341,20 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('touchend', onTouchEnd);
       document.removeEventListener('touchcancel', onTouchEnd);
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [isMobile, isAtBottom, navigate, scheduleUpdate]);
+  }, [
+    isMobile, isAtBottom, navigate,
+    pullProgress, blobX, blobStretchX, blobStretchY,
+    prevIconOpacity, nextIconOpacity, centerIconOpacity,
+    prevIconScale, nextIconScale,
+  ]);
 
-  // ── 渲染 ──
-  if (!isMobile || !mounted) return null;
-
-  const { active, pullProgress, lateralOffset, snappedTo, isReady } = gesture;
-  const easedProgress = easeOut(pullProgress);
-
-  // ── 计算视觉参数 ──
-
-  // 中心圆大小：0 → CIRCLE_MAX
-  const circleSize = lerp(CIRCLE_MIN, CIRCLE_MAX, easedProgress);
-  // 箭头旋转：90°（向上）→ 0°（向左）
-  const arrowRotation = lerp(90, 0, clamp(pullProgress * 2, 0, 1));
-  // 整体 translateY：从底部向上升起
-  const translateY = active ? lerp(80, 0, easedProgress) : 80;
-  const opacity = active ? clamp(pullProgress * 2.5, 0, 1) : 0;
-
-  // 侧边按钮可见性：超过阈值后出现
-  const sideProgress = clamp((pullProgress - SIDE_APPEAR_THRESHOLD) / (1 - SIDE_APPEAR_THRESHOLD), 0, 1);
-  const sideEased = easeOut(sideProgress);
-  const sideOpacity = sideEased;
-  // 侧边按钮从中心向两侧展开
-  const sideSpread = lerp(0, SIDE_SPACING, sideEased);
-  const sideScale = lerp(0.3, 1, sideEased);
-
-  // ── 磁性吸附形变（单一统一 Blob）──
-  
-  let blobX = 0;
-  let blobScaleX = 1;
-  let blobScaleY = 1;
-
-  // 1. 根据当前吸附状态确定 blob 的"目标"位置
-  const blobBaseX = snappedTo === 'prev' ? -sideSpread : snappedTo === 'next' ? sideSpread : 0;
-
-  if (isReady && active) {
-    let dragDist = 0;
-    
-    // 2. 计算手指与圆球理想基准位置之间的距离
-    // 但仅在手指拉力*方向与吸附位置相反*时才拉伸形变
-    if (snappedTo === 'center') {
-      dragDist = lateralOffset;
-    } else if (snappedTo === 'prev') {
-      // 仅在从 -50 位置向右（回到中心方向）拉动时才拉伸
-      if (lateralOffset > -50) dragDist = lateralOffset + 50;
-    } else if (snappedTo === 'next') {
-      // 仅在从 50 位置向左（回到中心方向）拉动时才拉伸
-      if (lateralOffset < 50) dragDist = lateralOffset - 50;
-    }
-
-    // 3. 施加粘性：blob 随手指轻微移动，但强烈抵抗大幅偏移
-    blobX = blobBaseX + clamp(dragDist * 0.25, -20, 20);
-
-    // 4. 施加弹性形变：手指偏离吸附中心越远，拉伸越明显
-    const stretchFactor = Math.abs(dragDist) / 100;
-    blobScaleX = 1 + clamp(stretchFactor, 0, 0.4);  // 最大宽度增加 40%
-    blobScaleY = 1 - clamp(stretchFactor * 0.4, 0, 0.15); // 最大高度减少 15%
-  } else {
-    // 未就绪或手指已释放时，严格遵守基准位置和球形形状
-    blobX = blobBaseX;
-  }
-
-  // ── 激活图标高亮 ──
-  const isCenterActive = snappedTo === 'center';
-  const isPrevActive = snappedTo === 'prev';
-  const isNextActive = snappedTo === 'next';
-
-  // 透明度：非激活图标完全隐藏，减少视觉干扰
-  const prevIconOpacity = isPrevActive ? 1 : (isCenterActive ? sideOpacity * 0.5 : 0);
-  const nextIconOpacity = isNextActive ? 1 : (isCenterActive ? sideOpacity * 0.5 : 0);
-  const centerIconOpacity = isCenterActive ? 1 : 0;
+  if (!isMobile || !mounted || !active) return null;
 
   const hasPrev = !!prevPost;
   const hasNext = !!nextPost;
+  const centerIsActive = snappedTo === 'center';
 
-  // 确定标签文本
   const labelText = snappedTo === 'prev' && hasPrev
     ? '上一篇'
     : snappedTo === 'next' && hasNext
@@ -371,139 +362,137 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       : '返回';
 
   return createPortal(
-    <div
+    <motion.div
       className="fixed inset-0 z-[200] pointer-events-none"
       aria-hidden="true"
-      style={{
-        visibility: active ? 'visible' : 'hidden',
-        opacity,
-      }}
+      style={{ opacity: containerOpacity }}
     >
-      {/* 半透明背景遮罩 */}
-      <div
+      {/* Static-blur overlay — only opacity animates, backdrop-filter stays at 4px */}
+      <motion.div
         className="absolute inset-0 bg-black/5 dark:bg-black/20"
         style={{
-          opacity: clamp(pullProgress * 1.5, 0, 1),
-          // 强力滑动时对背景施加轻微模糊
-          backdropFilter: `blur(${clamp(pullProgress * 2, 0, 4)}px)`,
-          transition: active ? 'none' : 'opacity 0.3s ease-out, backdrop-filter 0.3s',
+          opacity: overlayOpacity,
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          willChange: 'opacity',
         }}
       />
 
-      {/* ── Navigation Container ── */}
-      <div
+      {/* Navigation container */}
+      <motion.div
         className="absolute left-1/2 flex flex-col items-center"
         style={{
           bottom: '56px',
-          transform: `translate(-50%, ${translateY}px)`,
-          transition: active ? 'none' : 'all 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+          x: '-50%',
+          y: containerY,
+          willChange: 'transform',
         }}
       >
-        {/* ── Icons & Background Layer ── */}
+        {/* Icon & blob layer */}
         <div className="relative flex items-center justify-center" style={{ height: `${CIRCLE_MAX}px`, width: '100%' }}>
 
-          {/* ── ONE Unified Selection Blob (Magnetic Background) ── */}
-          <div
+          {/* Unified blob — fixed 56×56, scale + stretch via transform only */}
+          <motion.div
             className="absolute rounded-full pointer-events-none"
             style={{
-              width: `${circleSize}px`, // 跟随拖拽进度从 0 增长至 CIRCLE_MAX
-              height: `${circleSize}px`,
-              transform: `translateX(${blobX}px) scaleX(${blobScaleX}) scaleY(${blobScaleY})`,
+              width: `${CIRCLE_MAX}px`,
+              height: `${CIRCLE_MAX}px`,
+              x: blobX,
+              scale: blobScale,
+              scaleX: blobStretchX,
+              scaleY: blobStretchY,
+              opacity: blobCoreOpacity,
               background: 'var(--bg-secondary, rgba(235, 235, 240, 0.9))',
-              backdropFilter: 'blur(12px)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 0 1px 1px rgba(255,255,255,0.6)',
-              opacity: clamp(pullProgress * 5, 0, 1), // 从 0 急速增长至 1
-              // 弹簧物理过渡：用于 blob 移动与缩放
-              transition: active
-                ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.5, 1), width 0.2s, height 0.2s'
-                : 'all 0.4s ease-out',
-              animation: isCenterActive && isReady ? 'blobPulse 2s ease-in-out infinite' : 'none',
-              zIndex: 1, // 在图标层之下
+              animation: centerIsActive && isReady ? 'blobPulse 2s ease-in-out infinite' : 'none',
+              zIndex: 1,
+              willChange: 'transform, opacity',
             }}
           />
 
-          {/* ── Prev Icon ── */}
+          {/* Prev Icon */}
           {hasPrev && (
-            <div
+            <motion.div
               className="absolute flex items-center justify-center z-10"
               style={{
                 width: `${SIDE_ICON_SIZE}px`,
                 height: `${SIDE_ICON_SIZE}px`,
-                transform: `translateX(${-sideSpread}px) scale(${isPrevActive ? 1.2 : sideScale})`,
+                x: sideSpreadNeg,
+                scale: prevIconScale,
                 opacity: prevIconOpacity,
-                transition: active
-                  ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s'
-                  : 'all 0.3s ease-out',
+                willChange: 'transform, opacity',
               }}
             >
               <ChevronLeft
                 style={{
-                  width: '24px', height: '24px',
-                  color: isPrevActive ? 'var(--text-primary, #000)' : 'var(--text-muted, #777)',
-                  strokeWidth: isPrevActive ? 2.5 : 2,
-                  transition: 'all 0.25s',
+                  width: '24px',
+                  height: '24px',
+                  color: snappedTo === 'prev' ? 'var(--text-primary, #000)' : 'var(--text-muted, #777)',
+                  strokeWidth: snappedTo === 'prev' ? 2.5 : 2,
+                  transition: 'color 0.25s, stroke-width 0.25s',
                 }}
               />
-            </div>
+            </motion.div>
           )}
 
-          {/* ── Center Icon (Back) ── */}
-          <div
+          {/* Center Icon (Back arrow) */}
+          <motion.div
             className="absolute flex items-center justify-center z-10"
             style={{
               width: `${CIRCLE_MAX}px`,
               height: `${CIRCLE_MAX}px`,
-              transition: active ? 'none' : 'all 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+              scale: arrowScale,
+              opacity: centerIconOpacity,
+              willChange: 'transform, opacity',
             }}
           >
-            <ArrowLeft
-              style={{
-                width: `${clamp(circleSize * 0.42, 0, 24)}px`,
-                height: `${clamp(circleSize * 0.42, 0, 24)}px`,
-                transform: `rotate(${-arrowRotation}deg)`,
-                color: isCenterActive && isReady
-                  ? 'var(--text-primary, #000)'
-                  : isCenterActive
-                    ? 'var(--text-secondary, #444)'
-                    : 'var(--text-muted, #888)',
-                opacity: centerIconOpacity,
-                strokeWidth: isCenterActive && isReady ? 2.5 : 2,
-                transition: 'color 0.2s, opacity 0.2s',
-                // 独立展示时（未就绪）添加细微阴影
-                filter: (!isReady && isCenterActive && circleSize > 15) 
-                  ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' 
-                  : 'none'
-              }}
-            />
-          </div>
+            <motion.div style={{ rotate: arrowRotation }}>
+              <ArrowLeft
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  color: centerIsActive && isReady
+                    ? 'var(--text-primary, #000)'
+                    : centerIsActive
+                      ? 'var(--text-secondary, #444)'
+                      : 'var(--text-muted, #888)',
+                  strokeWidth: centerIsActive && isReady ? 2.5 : 2,
+                  transition: 'color 0.2s, stroke-width 0.2s',
+                  filter: !isReady && centerIsActive
+                    ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))'
+                    : 'none',
+                }}
+              />
+            </motion.div>
+          </motion.div>
 
-          {/* ── Next Icon ── */}
+          {/* Next Icon */}
           {hasNext && (
-            <div
+            <motion.div
               className="absolute flex items-center justify-center z-10"
               style={{
                 width: `${SIDE_ICON_SIZE}px`,
                 height: `${SIDE_ICON_SIZE}px`,
-                transform: `translateX(${sideSpread}px) scale(${isNextActive ? 1.2 : sideScale})`,
+                x: sideSpread,
+                scale: nextIconScale,
                 opacity: nextIconOpacity,
-                transition: active
-                  ? 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s'
-                  : 'all 0.3s ease-out',
+                willChange: 'transform, opacity',
               }}
             >
               <ChevronRight
                 style={{
-                  width: '24px', height: '24px',
-                  color: isNextActive ? 'var(--text-primary, #000)' : 'var(--text-muted, #777)',
-                  strokeWidth: isNextActive ? 2.5 : 2,
-                  transition: 'all 0.25s',
+                  width: '24px',
+                  height: '24px',
+                  color: snappedTo === 'next' ? 'var(--text-primary, #000)' : 'var(--text-muted, #777)',
+                  strokeWidth: snappedTo === 'next' ? 2.5 : 2,
+                  transition: 'color 0.25s, stroke-width 0.25s',
                 }}
               />
-            </div>
+            </motion.div>
           )}
         </div>
 
-        {/* ── Label Text ── */}
+        {/* Label text */}
         <div
           className="mt-1 text-[11px] font-medium whitespace-nowrap"
           style={{
@@ -516,7 +505,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
           {labelText}
         </div>
 
-        {/* ── Release Hint ── */}
+        {/* Release hint */}
         <div
           className="mt-1.5 text-[10px] font-medium"
           style={{
@@ -528,16 +517,15 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         >
           松手{labelText}
         </div>
-      </div>
+      </motion.div>
 
-      {/* ── Keyframe animation for blob pulse ── */}
       <style jsx>{`
         @keyframes blobPulse {
           0%, 100% { box-shadow: 0 2px 20px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04); }
           50% { box-shadow: 0 4px 30px rgba(0,0,0,0.12), 0 0 0 1.5px rgba(0,0,0,0.06); }
         }
       `}</style>
-    </div>,
+    </motion.div>,
     document.body
   );
 }

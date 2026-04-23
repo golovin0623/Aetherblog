@@ -59,7 +59,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
       style={{ animationDelay: `${index * 80}ms` } as React.CSSProperties}
     >
       <article
-        className="surface-leaf relative flex flex-col h-full min-h-[320px] cursor-pointer overflow-hidden p-8 transition-transform duration-[var(--dur-flow,520ms)] ease-[var(--ease-out,cubic-bezier(0.16,1,0.3,1))] hover:-translate-y-[3px]"
+        className="surface-raised relative flex flex-col h-full min-h-[320px] cursor-pointer overflow-hidden p-8 transition-transform duration-[var(--dur-flow,520ms)] ease-[var(--ease-out,cubic-bezier(0.16,1,0.3,1))] hover:-translate-y-[3px]"
         data-interactive
         style={{ viewTransitionName: `post-${slug}` } as React.CSSProperties}
         onMouseMove={handleMouseMove}

@@ -656,7 +656,7 @@ start_ai_service() {
         # SECURITY (VULN-056): credential 加密密钥必须独立于 JWT_SECRET。
         if [ -z "${AI_CREDENTIAL_ENCRYPTION_KEYS:-}" ]; then
             echo -e "${RED}❌ FATAL: AI_CREDENTIAL_ENCRYPTION_KEYS 未设置${NC}" >&2
-            echo -e "${YELLOW}   生成: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"${NC}" >&2
+            echo -e "${YELLOW}   生成: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"${NC}" >&2
             echo -e "${YELLOW}   写入 .env 后再启动；多 key 用逗号分隔以支持轮换${NC}" >&2
             record_failure "AI 服务"
             return
