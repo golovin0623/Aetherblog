@@ -80,10 +80,10 @@ const MobileMenu = memo(function MobileMenu() {
   const authorBio = settings?.author_bio || settings?.authorBio || '一只小凉凉';
   const socialLinks = useMemo(() => extractSocialLinks(settings), [settings]);
   // 主题感知：部分社交 logo（如 GitHub）本身是纯黑单色，在暗色主题下完全
-  // 看不见 —— useTheme 会在 SSR / 首帧返回 'light'，等客户端挂载后若用户实
-  // 际是 dark 会自动 swap 成亮色变体。与 PLATFORM_ICON_URLS_DARK 配合使用。
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+  // 看不见 —— useTheme 会在 SSR / 首帧返回 isDark=false（基于 resolvedTheme
+  // 的 mounted 守卫），等客户端挂载后若用户实际是 dark 会自动 swap 成亮色变
+  // 体。与 PLATFORM_ICON_URLS_DARK 配合使用。
+  const { isDark } = useTheme();
   const adminLinkConfig = getAdminLinkConfig();
   const adminHomeUrl = buildAdminUrl('/');
   const isAdminLinkAvailable = Boolean(adminHomeUrl);
