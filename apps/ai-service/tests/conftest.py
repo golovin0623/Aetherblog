@@ -20,7 +20,7 @@ _DEFAULTS = {
     "JWT_SECRET": "test-secret",
     "AI_INTERNAL_SERVICE_TOKEN": "pytest-internal-service-token-minimum-32-chars",
     # VULN-056: a real Fernet key (validated at startup); generated with
-    # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     "AI_CREDENTIAL_ENCRYPTION_KEYS": "j2V7X9f8TMZLMTipxOmI1oDV4MherQCh_MN2gXszJyg=",
     "POSTGRES_DSN": "postgresql://test:test@localhost:5432/test_db",
 }

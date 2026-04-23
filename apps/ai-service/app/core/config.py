@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     # list is exposed via the ``ai_credential_encryption_keys`` property below.
     # First key is used for new encryption, all keys are tried for decryption
     # (zero-downtime rotation via MultiFernet). Generate with:
-    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     ai_credential_encryption_keys_raw: str = Field(
         default="",
         validation_alias="AI_CREDENTIAL_ENCRYPTION_KEYS",
