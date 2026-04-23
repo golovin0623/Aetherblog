@@ -852,7 +852,7 @@ export default function MediaPage() {
                 <span className="text-[var(--ink-primary,var(--text-primary))] text-xs sm:text-sm font-bold whitespace-nowrap">
                   {selectedIds.size} 项已选中
                 </span>
-                <span className="hidden sm:block text-[var(--ink-tertiary,var(--text-muted))] text-[10px] tracking-widest uppercase">
+                <span className="hidden sm:block text-[var(--ink-muted,var(--text-muted))] text-[10px] tracking-widest uppercase">
                   Batch Mode
                 </span>
               </div>
