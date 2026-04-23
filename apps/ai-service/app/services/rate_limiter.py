@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import HTTPException, status
@@ -16,7 +17,7 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-def _classify_redis_error(exc: BaseException) -> str:
+def classify_redis_error(exc: Exception) -> str:
     """Map a raw Redis exception to a short, operator-friendly category.
 
     Shows up in the structured log so an on-call engineer can tell at a glance
@@ -32,7 +33,7 @@ def _classify_redis_error(exc: BaseException) -> str:
         if "NOAUTH" in msg or "WRONGPASS" in msg:
             return "auth"
         return "response"
-    if isinstance(exc, RedisTimeoutError):
+    if isinstance(exc, RedisTimeoutError) or isinstance(exc, asyncio.TimeoutError):
         return "timeout"
     if isinstance(exc, RedisConnectionError):
         return "connection"
@@ -73,7 +74,7 @@ class RateLimiter:
             payload = {
                 "error": str(exc),
                 "error_type": type(exc).__name__,
-                "category": _classify_redis_error(exc),
+                "category": classify_redis_error(exc),
             }
             if settings.rate_limit_fail_open:
                 logger.warning(

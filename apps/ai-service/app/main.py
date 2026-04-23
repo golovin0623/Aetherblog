@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -18,7 +19,7 @@ from app.core.config import get_settings
 from app.core.jwt_keys import start_refresher as start_jwt_key_refresher, stop_refresher as stop_jwt_key_refresher
 from app.core.logging import setup_logging
 from app.schemas.common import ApiResponse
-from app.services.rate_limiter import _classify_redis_error
+from app.services.rate_limiter import classify_redis_error
 
 
 # ref: §2.4.2.5
@@ -47,6 +48,14 @@ def _redacted_redis_url(url: str) -> str:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
+# Upper bound for the startup Redis PING. redis-py's default socket_connect_timeout
+# is None (unlimited), so an unreachable Redis would block lifespan() for the full
+# TCP SYN retry window (~2min on Linux) — longer than the ai-service healthcheck
+# start_period, which would mark the container unhealthy for the wrong reason.
+# 3s is plenty for a same-network Redis and tight enough to fail fast.
+_REDIS_PREFLIGHT_TIMEOUT_SEC = 3.0
+
+
 async def _redis_preflight() -> None:
     """PING Redis at startup and log a classified failure if unreachable.
 
@@ -58,7 +67,7 @@ async def _redis_preflight() -> None:
     """
     try:
         redis = deps_module._get_redis()
-        pong = await redis.ping()
+        pong = await asyncio.wait_for(redis.ping(), timeout=_REDIS_PREFLIGHT_TIMEOUT_SEC)
         logger.info(
             "redis.preflight_ok",
             extra={"data": {"url": _redacted_redis_url(settings.redis_url), "pong": bool(pong)}},
@@ -71,7 +80,8 @@ async def _redis_preflight() -> None:
                     "url": _redacted_redis_url(settings.redis_url),
                     "error": str(exc),
                     "error_type": type(exc).__name__,
-                    "category": _classify_redis_error(exc),
+                    "category": classify_redis_error(exc),
+                    "timeout_sec": _REDIS_PREFLIGHT_TIMEOUT_SEC,
                     "hint": (
                         "If category=auth, confirm REDIS_PASSWORD is exported to the "
                         "ai-service container and that REDIS_URL does not already carry "
