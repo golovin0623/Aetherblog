@@ -75,7 +75,7 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
           className
         )}
       >
-        <span className="inline-flex items-center justify-center transition-transform active:scale-90">
+        <span className="inline-block transition-transform active:scale-90">
           {children}
         </span>
       </button>
