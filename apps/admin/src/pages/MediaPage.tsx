@@ -841,20 +841,25 @@ export default function MediaPage() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+            className="fixed left-1/2 -translate-x-1/2 z-50 pointer-events-none bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-10 w-[calc(100vw-1rem)] sm:w-auto max-w-[min(960px,calc(100vw-1rem))]"
           >
             <div className={cn(
-              "pointer-events-auto flex items-center gap-6 px-8 py-4",
-              "bg-[var(--bg-card)]/90 backdrop-blur-2xl border border-[var(--border-subtle)] rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+              "pointer-events-auto surface-overlay flex items-center",
+              "gap-2 px-3 py-2.5 sm:gap-6 sm:px-8 sm:py-4",
+              "!rounded-3xl sm:!rounded-[2rem]"
             )}>
-              <div className="flex flex-col">
-                <span className="text-[var(--text-primary)] text-sm font-bold">{selectedIds.size} 项已选中</span>
-                <span className="text-[var(--text-muted)] text-[10px] tracking-widest uppercase">Batch Mode</span>
+              <div className="flex flex-col shrink-0 min-w-0">
+                <span className="text-[var(--ink-primary,var(--text-primary))] text-xs sm:text-sm font-bold whitespace-nowrap">
+                  {selectedIds.size} 项已选中
+                </span>
+                <span className="hidden sm:block text-[var(--ink-muted,var(--text-muted))] text-[10px] tracking-widest uppercase">
+                  Batch Mode
+                </span>
               </div>
-              
-              <div className="w-px h-8 bg-white/10 mx-2" />
-              
-              <div className="flex items-center gap-3">
+
+              <div className="w-px h-6 sm:h-8 bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] shrink-0" />
+
+              <div className="flex items-center gap-1.5 sm:gap-3 flex-1 min-w-0 overflow-x-auto no-scrollbar">
                 <button
                   onClick={() => {
                     const urls = currentItems
@@ -864,10 +869,12 @@ export default function MediaPage() {
                     navigator.clipboard.writeText(urls);
                     toast.success('已复制所有选中链接');
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group"
+                  title="复制全部链接"
+                  aria-label="复制全部链接"
+                  className="flex items-center gap-2 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group shrink-0 p-2 sm:px-4 sm:py-2.5"
                 >
                   <Link2 className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">复制全部</span>
+                  <span className="hidden sm:inline text-xs font-semibold">复制全部</span>
                 </button>
 
                 <button
@@ -876,10 +883,12 @@ export default function MediaPage() {
                     setMoveTarget({ type: 'file', id: 0, name: '' });
                     setMoveDialogOpen(true);
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group"
+                  title="批量移动到文件夹"
+                  aria-label="批量移动到文件夹"
+                  className="flex items-center gap-2 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-primary)] transition-all group shrink-0 p-2 sm:px-4 sm:py-2.5"
                 >
                   <FolderInput className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">批量移动</span>
+                  <span className="hidden sm:inline text-xs font-semibold">批量移动</span>
                 </button>
 
                 <button
@@ -919,19 +928,26 @@ export default function MediaPage() {
                       </div>
                     ), { duration: 5000 });
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-status-danger-light hover:bg-status-danger/20 border border-status-danger-border text-status-danger transition-all group"
+                  title="批量删除"
+                  aria-label="批量删除"
+                  className="flex items-center gap-2 rounded-xl sm:rounded-2xl bg-status-danger-light hover:bg-status-danger/20 border border-status-danger-border text-status-danger transition-all group shrink-0 p-2 sm:px-4 sm:py-2.5"
                 >
                   <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">批量删除</span>
-                </button>
-                
-                <button
-                  onClick={() => setSelectedIds(new Set())}
-                  className="p-2.5 rounded-2xl hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-                >
-                  <X className="w-5 h-5" />
+                  <span className="hidden sm:inline text-xs font-semibold">批量删除</span>
                 </button>
               </div>
+
+              <div className="w-px h-6 sm:h-8 bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] shrink-0" />
+
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                title="取消全选"
+                aria-label="取消全选"
+                className="flex items-center gap-1.5 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all shrink-0 p-2 sm:px-3 sm:py-2.5"
+              >
+                <X className="w-4 h-4" />
+                <span className="text-xs font-semibold">取消全选</span>
+              </button>
             </div>
           </motion.div>
         )}
