@@ -69,13 +69,13 @@ function ToolbarButton({ onClick, tooltip, children, isActive, activeColor = 'pr
       <button
         onClick={onClick}
         className={cn(
-          'relative p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
+          'relative inline-flex items-center justify-center appearance-none p-1.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors',
           isActive && activeColor === 'primary' && 'bg-primary/90 text-white',
           isActive && activeColor === 'emerald' && 'bg-status-success text-white hover:bg-status-success',
           className
         )}
       >
-        <span className="block transition-transform active:scale-90">
+        <span className="inline-flex items-center justify-center transition-transform active:scale-90">
           {children}
         </span>
       </button>
@@ -1763,7 +1763,7 @@ export function CreatePostPage() {
               <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
                 <button
                   onClick={() => navigate('/posts')}
-                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors flex-shrink-0"
+                  className="inline-flex items-center justify-center appearance-none p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors flex-shrink-0"
                   title="返回列表"
                 >
                   <ArrowLeft className="w-5 h-5" />
@@ -1789,7 +1789,7 @@ export function CreatePostPage() {
                       void handlePublish();
                     }}
                     disabled={isPublishing}
-                    className="flex-shrink-0 w-9 h-9 rounded-full bg-[#007AFF] text-white disabled:opacity-50 transition-all active:scale-95 flex items-center justify-center shadow-[0_2px_8px_rgba(0,122,255,0.3)]"
+                    className="flex-shrink-0 appearance-none w-9 h-9 rounded-full bg-[#007AFF] text-white disabled:opacity-50 transition-all active:scale-95 inline-flex items-center justify-center shadow-[0_2px_8px_rgba(0,122,255,0.3)]"
                   >
                     {isPublishing ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : <ArrowUpFromLine className="w-[18px] h-[18px]" />}
                   </button>
@@ -2906,7 +2906,7 @@ export function CreatePostPage() {
                 </div>
                 <button
                   onClick={() => setShowSettings(false)}
-                  className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  className="inline-flex items-center justify-center appearance-none p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -3057,7 +3057,7 @@ export function CreatePostPage() {
                   <button
                     type="button"
                     onClick={closeMobilePanel}
-                    className="p-2 rounded-lg text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] transition-colors"
+                    className="inline-flex items-center justify-center appearance-none p-2 rounded-lg text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)] transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -3392,7 +3392,7 @@ export function CreatePostPage() {
             type="button"
             onClick={() => setShowMobileToolbox(prev => !prev)}
             className={cn(
-              'fixed bottom-6 right-4 z-[110] w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 md:hidden backdrop-blur-xl',
+              'fixed bottom-6 right-4 z-[110] w-12 h-12 rounded-full inline-flex items-center justify-center appearance-none transition-all duration-200 active:scale-90 md:hidden backdrop-blur-xl',
               showMobileToolbox
                 ? 'bg-[#636366] text-white rotate-45 shadow-lg'
                 : 'bg-[#007AFF]/90 text-white shadow-[0_4px_16px_rgba(0,122,255,0.35)]'

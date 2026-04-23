@@ -22,7 +22,7 @@ export function EditPostPage() {
       {/* 头部 */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-4">
-          <button className="p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]">
+          <button className="inline-flex items-center justify-center appearance-none p-2 rounded-lg hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <input
