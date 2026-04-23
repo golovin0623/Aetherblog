@@ -2,6 +2,10 @@ import { Mail, MousePointer2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // 社交平台图标映射 (与 Admin 后台一一对应)
+// 浅色主题 / 默认使用的 icon URL —— 多数品牌色 logo 在浅暗两种背景下都有
+// 足够对比度，因此共用同一个 URL；个别单色 logo（github / snapchat 等）
+// 的浅色版本会被 PLATFORM_ICON_URLS_DARK 在暗色主题下覆写为亮色变体，
+// 避免"黑图标打在黑背景上直接隐身"。
 export const PLATFORM_ICON_URLS: Record<string, string> = {
   // 国内主流
   wechat: 'https://api.iconify.design/logos:wechat.svg',
@@ -17,7 +21,10 @@ export const PLATFORM_ICON_URLS: Record<string, string> = {
   csdn: 'https://api.iconify.design/simple-icons:csdn.svg?color=%23FC5531',
 
   // 国际主流
-  github: 'https://api.iconify.design/logos:github-icon.svg',
+  // GitHub brand 本身就是黑/白双色 —— 浅色下用官方深色 #181717，暗色下在下面
+  // PLATFORM_ICON_URLS_DARK 覆盖为白色；避免 logos:github-icon.svg 硬编码黑色
+  // 在暗黑主题下完全看不见。
+  github: 'https://api.iconify.design/simple-icons:github.svg?color=%23181717',
   twitter: 'https://api.iconify.design/logos:twitter.svg',
   facebook: 'https://api.iconify.design/logos:facebook.svg',
   instagram: 'https://api.iconify.design/logos:instagram-icon.svg',
@@ -31,12 +38,21 @@ export const PLATFORM_ICON_URLS: Record<string, string> = {
   spotify: 'https://api.iconify.design/logos:spotify-icon.svg',
   stackoverflow: 'https://api.iconify.design/logos:stackoverflow-icon.svg',
   whatsapp: 'https://api.iconify.design/logos:whatsapp-icon.svg',
-  snapchat: 'https://api.iconify.design/simple-icons:snapchat.svg?color=black',
+  // Snapchat 的真实品牌色是亮黄 #FFFC00；之前硬编码 color=black 在暗色下
+  // 完全消失，在浅色下虽可见但与官方 VI 不符。改用品牌黄后两种主题下对比
+  // 度都足够。
+  snapchat: 'https://api.iconify.design/simple-icons:snapchat.svg?color=%23FFFC00',
 
   // 其他
   email: 'https://api.iconify.design/noto:envelope.svg',
   rss: 'https://api.iconify.design/simple-icons:rss.svg?color=%23FFA500',
   website: 'https://api.iconify.design/logos:chrome.svg',
+};
+
+// 暗色主题专用覆盖：只有在浅色 URL 本身对比度不足（例如 GitHub 纯黑 logo）
+// 时才需要登记；其余留空即可继承 PLATFORM_ICON_URLS。
+export const PLATFORM_ICON_URLS_DARK: Record<string, string> = {
+  github: 'https://api.iconify.design/simple-icons:github.svg?color=%23ffffff',
 };
 
 const RELATIVE_URL_PREFIXES = ['/', './', '../'];
@@ -112,7 +128,10 @@ export interface SocialLinkItem {
   href: string;
   label: string;
   icon?: LucideIcon;
+  /** 浅色主题 / 默认 icon URL。消费者若无主题感知直接用这个。 */
   iconUrl?: string;
+  /** 暗色主题专用 icon URL；未定义时消费者应回落到 iconUrl。 */
+  iconUrlDark?: string;
   isExternal: boolean;
 }
 
@@ -151,12 +170,14 @@ export function extractSocialLinks(settings?: Record<string, unknown>): SocialLi
         const mappedIconUrl = sanitizeIconUrl(
           PLATFORM_ICON_URLS[rawPlatform] ?? link.icon
         );
+        const mappedIconUrlDark = sanitizeIconUrl(PLATFORM_ICON_URLS_DARK[rawPlatform]);
 
         links.push({
           id: rawPlatform,
           href: safeLink.href,
           label: name,
           iconUrl: mappedIconUrl,
+          iconUrlDark: mappedIconUrlDark,
           isExternal: safeLink.isExternal,
         });
       });
@@ -171,6 +192,7 @@ export function extractSocialLinks(settings?: Record<string, unknown>): SocialLi
         if (!safeLink) return;
 
         const mappedIconUrl = sanitizeIconUrl(PLATFORM_ICON_URLS[platform]);
+        const mappedIconUrlDark = sanitizeIconUrl(PLATFORM_ICON_URLS_DARK[platform]);
         const label = platform.charAt(0).toUpperCase() + platform.slice(1);
 
         links.push({
@@ -179,6 +201,7 @@ export function extractSocialLinks(settings?: Record<string, unknown>): SocialLi
           label,
           icon: MousePointer2,
           iconUrl: mappedIconUrl,
+          iconUrlDark: mappedIconUrlDark,
           isExternal: safeLink.isExternal,
         });
       }
@@ -196,6 +219,7 @@ export function extractSocialLinks(settings?: Record<string, unknown>): SocialLi
       label: 'Email',
       icon: Mail,
       iconUrl: PLATFORM_ICON_URLS.email,
+      iconUrlDark: PLATFORM_ICON_URLS_DARK.email,
       isExternal: false,
     });
   }
