@@ -42,7 +42,21 @@ def _get_redis() -> Redis:
     global _redis
     if _redis is None:
         settings = get_settings()
-        _redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        # Pass REDIS_PASSWORD as an explicit kwarg in addition to the URL merge
+        # done in Settings._merge_redis_password. Two independent paths so a stale
+        # image without the URL validator, or a URL already carrying explicit
+        # userinfo, still ends up AUTH'd. redis-py's from_url treats kwargs as
+        # overrides for URL-parsed params, so when the URL already embeds auth
+        # (parsed.netloc contains "@"), we suppress the kwarg to respect the
+        # operator's explicit choice. Without this NOAUTH fail-closes the rate
+        # limiter and every AI endpoint returns 503.
+        from urllib.parse import urlparse
+
+        kwargs: dict = {"decode_responses": True}
+        url_has_userinfo = "@" in (urlparse(settings.redis_url).netloc or "")
+        if settings.redis_password and not url_has_userinfo:
+            kwargs["password"] = settings.redis_password
+        _redis = Redis.from_url(settings.redis_url, **kwargs)
     return _redis
 
 

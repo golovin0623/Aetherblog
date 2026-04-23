@@ -135,12 +135,18 @@ class Settings(BaseSettings):
     # that rate limiter failures don't silently let wallet-drain attacks through.
     rate_limit_fail_open: bool = Field(default=False, alias="AI_RATE_LIMIT_FAIL_OPEN")
 
-    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     # SECURITY (RATE-LIMITER-PWD): docker-compose.prod.yml 默认的 REDIS_URL 只
     # 拼了 host:port,没有把 REDIS_PASSWORD 注入 URL。当 Redis 需要 AUTH 时
     # eval 会 NOAUTH 失败,rate_limiter 走 fail-closed 返回 503。这里允许显式
-    # 传 REDIS_PASSWORD,由 _merge_redis_password validator 安全合并进 URL。
+    # 传 REDIS_PASSWORD,由 _merge_redis_password validator 安全合并进 URL,
+    # 并在 deps.py::_get_redis 作为 from_url 的 password kwarg 再兜底一次。
+    #
+    # 字段声明顺序敏感: redis_password 必须排在 redis_url 之前,这样
+    # _merge_redis_password (field_validator mode="after") 可以从 info.data 里
+    # 读到已经被 pydantic-settings 解析过的值 —— 比 os.environ.get 更可靠,
+    # 因为 .env 文件里的值不会被注入到 os.environ,只会进 pydantic 字段。
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     postgres_dsn: str = Field(
         ...,
         alias="POSTGRES_DSN",
@@ -148,11 +154,13 @@ class Settings(BaseSettings):
 
     @field_validator("redis_url", mode="after")
     @classmethod
-    def _merge_redis_password(cls, v: str) -> str:
+    def _merge_redis_password(cls, v: str, info) -> str:
         """把 REDIS_PASSWORD 合并进 REDIS_URL 的 userinfo 段。
 
         - 若 URL 已含 userinfo (含 ``@``),原样保留 —— 用户已显式指定。
-        - 否则读 ``REDIS_PASSWORD`` 环境变量,URL-encode 后拼成 ``:pwd@`` 塞入。
+        - 否则优先读 pydantic 已解析的 ``redis_password`` 字段(通过 ``info.data``
+          获取,覆盖 os.environ 与 .env 两种来源),缺失再兜底读 ``os.environ``。
+          URL-encode 后拼成 ``:pwd@`` 塞入。
         - 未设密码时不改动 URL,保持与无认证 Redis 兼容。
         """
         import os
@@ -166,7 +174,8 @@ class Settings(BaseSettings):
             return v
         if "@" in (parsed.netloc or ""):
             return v
-        password = os.environ.get("REDIS_PASSWORD")
+        password = (info.data.get("redis_password") if info and info.data else None) \
+            or os.environ.get("REDIS_PASSWORD")
         if not password:
             return v
         host_port = parsed.netloc or ""
