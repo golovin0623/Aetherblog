@@ -841,7 +841,7 @@ export default function MediaPage() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed left-1/2 -translate-x-1/2 z-50 pointer-events-none bottom-[max(1rem,env(safe-area-inset-bottom))] sm:bottom-10 w-[calc(100vw-1rem)] sm:w-auto max-w-[min(960px,calc(100vw-1rem))]"
+            className="fixed left-1/2 -translate-x-1/2 z-50 pointer-events-none bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] sm:bottom-10 w-[calc(100vw-2rem)] sm:w-auto max-w-[min(960px,calc(100vw-2rem))]"
           >
             <div className={cn(
               "pointer-events-auto surface-overlay flex items-center",
@@ -859,7 +859,7 @@ export default function MediaPage() {
 
               <div className="w-px h-6 sm:h-8 bg-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)] shrink-0" />
 
-              <div className="flex items-center gap-1.5 sm:gap-3 flex-1 min-w-0 overflow-x-auto no-scrollbar">
+              <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-3 flex-1 min-w-0 overflow-x-auto no-scrollbar">
                 <button
                   onClick={() => {
                     const urls = currentItems
@@ -946,7 +946,7 @@ export default function MediaPage() {
                 className="flex items-center gap-1.5 rounded-xl sm:rounded-2xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all shrink-0 p-2 sm:px-3 sm:py-2.5"
               >
                 <X className="w-4 h-4" />
-                <span className="text-xs font-semibold">取消全选</span>
+                <span className="hidden sm:inline text-xs font-semibold">取消全选</span>
               </button>
             </div>
           </motion.div>
