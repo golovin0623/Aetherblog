@@ -210,10 +210,9 @@ function SidebarContent({
         "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
       )}>
+        {/* 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
         <a
           href="/"
-          target="_blank"
-          rel="noopener noreferrer"
           title="访问主站"
           aria-label="访问主站"
           className={cn(
@@ -353,10 +352,9 @@ function SidebarContent({
         effectiveCollapsed ? "px-4" : "px-3",
         isMobile && "hidden" // 移动端隐藏收起按钮，因为已有顶部X按钮
       )}>
+        {/* 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
         <a
           href="/"
-          target="_blank"
-          rel="noopener noreferrer"
           className={cn(
             'flex items-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-all duration-200',
             effectiveCollapsed ? 'justify-center py-1.5 px-0' : 'gap-3 px-3 py-2'

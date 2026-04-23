@@ -519,11 +519,10 @@ export default function BlogHeader() {
               {/* 主题切换 */}
               <ThemeToggle size="sm" />
 
+              {/* 跨应用导航不加 target="_blank",见 packages/hooks/src/themeConstants.ts 约定。 */}
               {isAdminLinkAvailable ? (
                 <a
                   href={adminHomeUrl!}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all duration-300 group/admin focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="管理后台"
                   aria-label="管理后台"
