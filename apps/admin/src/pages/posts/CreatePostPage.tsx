@@ -1350,8 +1350,18 @@ export function CreatePostPage() {
       toast.error('请输入文章标题');
       return false;
     }
+    // 对齐后端 CreatePostRequest.Title 的 max=200 校验,在本地拦下
+    if (title.trim().length > 200) {
+      toast.error(`标题不能超过 200 字（当前 ${title.trim().length} 字）`);
+      return false;
+    }
     if (!content.trim()) {
       toast.error('请输入文章内容');
+      return false;
+    }
+    // 对齐后端 CreatePostRequest.Summary 的 max=500 校验
+    if (summary.trim().length > 500) {
+      toast.error(`摘要不能超过 500 字（当前 ${summary.trim().length} 字）`);
       return false;
     }
     // 发布需要分类
@@ -1367,6 +1377,44 @@ export function CreatePostPage() {
       return false;
     }
     return true;
+  };
+
+  /**
+   * 把 axios/后端抛出的 error 转成人话。
+   * - api.ts 拦截器把 error 规整为后端 JSON (含 message 字段)
+   * - Go validator v10 的错误原文形如
+   *   `Key: 'CreatePostRequest.Summary' Error:Field validation for 'Summary' failed on the 'max' tag`
+   *   对用户不友好,这里翻译成中文场景描述
+   */
+  const extractSaveErrorMessage = (error: unknown, fallback: string): string => {
+    const raw =
+      typeof error === 'object' && error !== null && 'message' in error
+        ? (error as { message?: unknown }).message
+        : undefined;
+    if (typeof raw !== 'string' || !raw) return fallback;
+
+    const m = raw.match(/Field validation for '(\w+)' failed on the '(\w+)' tag/);
+    if (!m) return raw; // 非 validator 原文,原样显示(后端中文错误消息能直接被读懂)
+
+    const [, field, tag] = m;
+    const zhField: Record<string, string> = {
+      Title: '标题',
+      Content: '内容',
+      Summary: '摘要',
+      Slug: 'URL 别名',
+      Password: '密码',
+    };
+    const f = zhField[field] ?? field;
+    switch (tag) {
+      case 'required':
+        return `${f}不能为空`;
+      case 'max':
+        if (field === 'Title') return `${f}不能超过 200 字`;
+        if (field === 'Summary') return `${f}不能超过 500 字`;
+        return `${f}长度超出上限`;
+      default:
+        return `${f}不符合校验规则（${tag}）`;
+    }
   };
 
   // 创建新分类
@@ -1472,12 +1520,13 @@ export function CreatePostPage() {
       }
     } catch (error) {
       logger.error('Save error:', error);
-      toast.error('保存失败，请重试');
+      const msg = extractSaveErrorMessage(error, '保存失败，请重试');
+      toast.error(msg);
       updateSaveStatus({
         type: 'error',
         source: 'manual',
         label: '保存失败',
-        detail: '请检查网络后重试',
+        detail: msg,
       });
     } finally {
       setIsSaving(false);
@@ -1538,12 +1587,13 @@ export function CreatePostPage() {
       }
     } catch (error) {
       logger.error('Publish error:', error);
-      toast.error('发布失败，请重试');
+      const msg = extractSaveErrorMessage(error, '发布失败，请重试');
+      toast.error(msg);
       updateSaveStatus({
         type: 'error',
         source: 'publish',
         label: '发布失败',
-        detail: '请检查网络后重试',
+        detail: msg,
       });
     } finally {
       setIsPublishing(false);
