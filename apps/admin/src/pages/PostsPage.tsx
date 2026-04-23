@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock } from 'lucide-react';
@@ -54,6 +54,10 @@ export default function PostsPage() {
 
   // 分页滚动条: 当前页跟随滚动并在可视区域居中显示, 边界时自然贴合首尾
   const pageStripRef = useRef<HTMLDivElement>(null);
+  const pageNumbers = useMemo(
+    () => Array.from({ length: pagination.pages }, (_, i) => i + 1),
+    [pagination.pages]
+  );
 
   // 点击外部区域时关闭标签弹出框
   useEffect(() => {
@@ -72,7 +76,7 @@ export default function PostsPage() {
   useEffect(() => {
     const container = pageStripRef.current;
     if (!container) return;
-    const activeBtn = container.querySelector<HTMLButtonElement>('[data-active="true"]');
+    const activeBtn = container.querySelector<HTMLButtonElement>('[aria-current="page"]');
     if (!activeBtn) return;
     const containerRect = container.getBoundingClientRect();
     const btnRect = activeBtn.getBoundingClientRect();
@@ -801,13 +805,12 @@ export default function PostsPage() {
                   className="flex items-center gap-1.5 px-0.5 overflow-x-auto overscroll-x-contain no-scrollbar min-w-0 max-w-[240px] sm:max-w-[360px] md:max-w-[520px] lg:max-w-[640px] snap-x snap-proximity scroll-smooth touch-pan-x [scrollbar-width:none]"
                   style={{ WebkitOverflowScrolling: 'touch' }}
                 >
-                  {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((entry) => {
+                  {pageNumbers.map((entry) => {
                     const isActive = entry === pagination.pageNum;
                     return (
                       <button
                         key={entry}
                         onClick={() => handlePageChange(entry)}
-                        data-active={isActive || undefined}
                         aria-current={isActive ? 'page' : undefined}
                         aria-label={`第 ${entry} 页`}
                         className={cn(
