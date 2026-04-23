@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from cryptography.fernet import Fernet
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 计算项目根目录的 .env 路径 (apps/ai-service/app/core/config.py -> 根目录)
@@ -135,16 +135,18 @@ class Settings(BaseSettings):
     # that rate limiter failures don't silently let wallet-drain attacks through.
     rate_limit_fail_open: bool = Field(default=False, alias="AI_RATE_LIMIT_FAIL_OPEN")
 
-    # SECURITY (RATE-LIMITER-PWD): docker-compose.prod.yml 默认的 REDIS_URL 只
-    # 拼了 host:port,没有把 REDIS_PASSWORD 注入 URL。当 Redis 需要 AUTH 时
-    # eval 会 NOAUTH 失败,rate_limiter 走 fail-closed 返回 503。这里允许显式
-    # 传 REDIS_PASSWORD,由 _merge_redis_password validator 安全合并进 URL,
-    # 并在 deps.py::_get_redis 作为 from_url 的 password kwarg 再兜底一次。
+    # 三段式 Redis 配置,跟 Go backend 对齐。优先级:
+    #   1. 显式 REDIS_URL (非空) → 直接使用,_merge_redis_password 负责合入 AUTH
+    #   2. REDIS_HOST 有值 → 由 _build_redis_url_from_parts 合成完整 URL
+    #   3. 全部缺省 → 保留 redis_url 的默认值 (本地 localhost:6379/0)
     #
-    # 字段声明顺序敏感: redis_password 必须排在 redis_url 之前,这样
-    # _merge_redis_password (field_validator mode="after") 可以从 info.data 里
-    # 读到已经被 pydantic-settings 解析过的值 —— 比 os.environ.get 更可靠,
-    # 因为 .env 文件里的值不会被注入到 os.environ,只会进 pydantic 字段。
+    # 字段声明顺序敏感: redis_password / redis_host / redis_port 必须排在
+    # redis_url 之前,这样 _merge_redis_password (field_validator mode="after")
+    # 可以从 info.data 里读到已经被 pydantic-settings 解析过的值 —— 比
+    # os.environ.get 更可靠,因为 .env 文件里的值不会被注入到 os.environ,
+    # 只会进 pydantic 字段。
+    redis_host: str | None = Field(default=None, alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     postgres_dsn: str = Field(
@@ -181,6 +183,42 @@ class Settings(BaseSettings):
         host_port = parsed.netloc or ""
         new_netloc = f":{quote(password, safe='')}@{host_port}"
         return urlunparse(parsed._replace(netloc=new_netloc))
+
+    @model_validator(mode="after")
+    def _build_redis_url_from_parts(self) -> "Settings":
+        """当未显式配置 REDIS_URL 时,用 REDIS_HOST/PORT/PASSWORD 三段式合成。
+
+        背景: backend (Go) 一直读 REDIS_HOST + REDIS_PORT + REDIS_PASSWORD 三个
+        独立变量;ai-service 历史上只认 REDIS_URL,导致两边配置要各自维护一份,
+        运维易错 (常见的坑: docker 网络内 Redis 容器内部端口是 6379,但宿主机
+        映射到 6999,backend 走宿主机 IP + 6999 OK,ai-service 只会把 REDIS_URL
+        里的 host/port 照搬,容易写成 redis:6999 这种永远通不了的组合)。
+
+        此处对齐到同一套三段式,REDIS_URL 退化为可选的 URL override (外部 Redis
+        cluster / rediss:// TLS / sentinel 这种高级场景仍可直接喂完整 URL)。
+
+        - 若 os.environ 显式带了非空 REDIS_URL → 什么都不动, _merge_redis_password
+          已经负责把密码合进 userinfo。
+        - 否则若 redis_host 有值 → 按 redis://[:password@]host:port/0 合成,password
+          走 url-encode 兼容特殊字符。
+        - 两边都没有 → redis_url 保留字段默认值 (redis://localhost:6379/0)。
+        """
+        import os
+        from urllib.parse import quote
+
+        raw_url_env = (os.environ.get("REDIS_URL") or "").strip()
+        if raw_url_env:
+            # _merge_redis_password 已经跑过, 不要覆盖用户显式指定的 URL。
+            return self
+
+        if self.redis_host:
+            auth = (
+                f":{quote(self.redis_password, safe='')}@"
+                if self.redis_password
+                else ""
+            )
+            self.redis_url = f"redis://{auth}{self.redis_host}:{self.redis_port}/0"
+        return self
 
     @field_validator("postgres_dsn", mode="after")
     @classmethod

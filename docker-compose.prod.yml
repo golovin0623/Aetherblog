@@ -260,12 +260,19 @@ services:
       AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
       # SECURITY (VULN-056): credential encryption key — must be independent of JWT_SECRET.
       AI_CREDENTIAL_ENCRYPTION_KEYS: ${AI_CREDENTIAL_ENCRYPTION_KEYS:?AI_CREDENTIAL_ENCRYPTION_KEYS env var is required}
-      REDIS_URL: ${AI_REDIS_URL:-redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0}
-      # SECURITY (RATE-LIMITER-PWD): 默认 REDIS_URL 只拼 host:port,没带 password。
-      # 当外部 Redis 要求 AUTH 时,ai-service 会 NOAUTH 失败触发 fail-closed 503。
-      # 把 REDIS_PASSWORD 独立传给容器,由 app/core/config.py::_merge_redis_password
-      # 以 URL-encoded 形式安全合入 URL 的 userinfo 段(已显式带 @ 的 URL 不改)。
+      # 对齐 Go backend 的三段式 Redis 配置,避免 ai-service 只认 REDIS_URL
+      # 时出现 "backend 连得上但 ai-service 连不上" 的运维漂移。常见坑:
+      # Redis 容器内部端口 6379 + 宿主机映射到 6999, backend 走宿主机 IP + 6999
+      # OK, 但 ai-service 如果只读 REDIS_URL 就容易拼出 redis:6999 这种永远
+      # 不通的组合 —— 三段式配置让两边同步, 由 Python 侧合成 URL。
+      # ai-service: app/core/config.py::_build_redis_url_from_parts
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Optional 完整 URL override。外部 Redis cluster / rediss:// TLS / sentinel
+      # 场景下可以直接写完整 URL, 此时三段式变量被忽略 (_build_redis_url_from_parts
+      # 检测到非空 REDIS_URL 就短路返回)。
+      REDIS_URL: ${AI_REDIS_URL:-}
       POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/aetherblog
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com}
