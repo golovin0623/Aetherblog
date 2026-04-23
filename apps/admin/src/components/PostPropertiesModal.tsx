@@ -25,6 +25,7 @@ import { Tag } from '@/services/tagService';
 import { X, Calendar, Eye, EyeOff, Loader2, Search, Hash, Lock, Globe, Trash2, ChevronLeft, ChevronRight, Clock, Check, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { getTagColor } from '@/lib/tagColor';
 
 interface PostPropertiesModalProps {
   isOpen: boolean;
@@ -34,15 +35,6 @@ interface PostPropertiesModalProps {
   tags: Tag[];
   onSave: (data: UpdatePostPropertiesRequest) => Promise<void>;
 }
-
-const TAG_COLORS = [
-  { border: 'border-accent/30', bg: 'bg-accent/10', text: 'text-accent', icon: 'text-accent', glow: 'shadow-accent/10' },
-  { border: 'border-status-info-border', bg: 'bg-status-info-light', text: 'text-status-info', icon: 'text-status-info', glow: 'shadow-status-info/10' },
-  { border: 'border-status-success-border', bg: 'bg-status-success-light', text: 'text-status-success', icon: 'text-status-success', glow: 'shadow-status-success/10' },
-  { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-600 dark:text-rose-300', icon: 'text-rose-500 dark:text-rose-400', glow: 'shadow-rose-500/10' },
-  { border: 'border-status-warning-border', bg: 'bg-status-warning-light', text: 'text-status-warning', icon: 'text-status-warning', glow: 'shadow-status-warning/10' },
-  { border: 'border-cyan-500/30', bg: 'bg-cyan-500/10', text: 'text-cyan-600 dark:text-cyan-300', icon: 'text-cyan-500 dark:text-cyan-400', glow: 'shadow-cyan-500/10' },
-];
 
 export function PostPropertiesModal({
   isOpen,
@@ -136,11 +128,9 @@ export function PostPropertiesModal({
     );
   };
 
-  const filteredTags = tags.filter(t => 
+  const filteredTags = tags.filter(t =>
     !tagSearch || t.name.toLowerCase().includes(tagSearch.toLowerCase())
   );
-
-  const getTagColor = (index: number) => TAG_COLORS[index % TAG_COLORS.length];
 
   // --- 自定义日期选择器组件 ---
   const DatePickerPopover = ({ 
@@ -411,54 +401,63 @@ export function PostPropertiesModal({
                 />
               </div>
               
-              {/* 已选标签 - 左边框卡片网格 */}
-              <div className="grid grid-cols-2 gap-2">
-                <AnimatePresence mode="popLayout">
-                  {tags.filter(t => selectedTags.includes(t.id)).map((tag, idx) => {
-                    const color = getTagColor(idx);
-                    return (
-                      <motion.div
-                        layout
-                        initial={{ opacity: 0, scale: 0.95, y: 5 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                        key={tag.id}
-                        className={cn(
-                          "flex items-center justify-between px-3 py-2 rounded-full border backdrop-blur-md transition-all group shadow-sm",
-                          color.border, color.bg, color.glow
-                        )}
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Hash className={cn("w-3 h-3 shrink-0 opacity-60", color.icon)} />
-                          <span className={cn("text-xs font-medium truncate", color.text)}>{tag.name}</span>
-                        </div>
-                        <button
+              {/* 已选标签 - 哈希配色，flex-wrap 自适应排布 */}
+              {selectedTags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {tags.filter(t => selectedTags.includes(t.id)).map((tag) => {
+                      const color = getTagColor(tag.name);
+                      return (
+                        <motion.button
+                          layout
                           type="button"
                           onClick={() => toggleTag(tag.id)}
-                          className="ml-1.5 p-0.5 rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                          key={tag.id}
+                          className={cn(
+                            'group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors shadow-sm',
+                            color.bg, color.border, color.text, color.shadow
+                          )}
                         >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </motion.div>
+                          <Hash className={cn('w-3 h-3 shrink-0', color.icon)} />
+                          <span className="truncate">{tag.name}</span>
+                          <X className={cn('w-3 h-3 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity', color.icon)} />
+                        </motion.button>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              {/* 未选标签池 - 保持同一标签配色，以虚线描边区分"未选"状态 */}
+              {filteredTags.some(t => !selectedTags.includes(t.id)) && (
+                <div
+                  className={cn(
+                    'flex flex-wrap gap-2',
+                    selectedTags.length > 0 && 'pt-3 border-t border-[var(--border-subtle)]'
+                  )}
+                >
+                  {filteredTags.filter(t => !selectedTags.includes(t.id)).map((tag) => {
+                    const color = getTagColor(tag.name);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-dashed bg-transparent text-xs font-medium transition-opacity opacity-65 hover:opacity-100',
+                          color.border,
+                          color.text
+                        )}
+                      >
+                        <Plus className={cn('w-3 h-3 shrink-0', color.icon)} />
+                        <span className="truncate">{tag.name}</span>
+                      </button>
                     );
                   })}
-                </AnimatePresence>
-              </div>
-
-              {/* 未选标签池 */}
-              {filteredTags.some(t => !selectedTags.includes(t.id)) && (
-                <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--border-subtle)]">
-                  {filteredTags.filter(t => !selectedTags.includes(t.id)).map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => toggleTag(tag.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] hover:text-primary hover:border-primary/40 hover:bg-primary/5 hover:shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)] transition-all duration-300"
-                    >
-                      <Plus className="w-3 h-3" />
-                      {tag.name}
-                    </button>
-                  ))}
                 </div>
               )}
             </div>
