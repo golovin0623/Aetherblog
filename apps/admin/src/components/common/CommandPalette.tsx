@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, startTransition } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -48,8 +48,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [activeIdx, setActiveIdx] = useState(0);
 
   const go = useCallback((path: string) => {
-    navigate(path);
+    // 先 urgent 关闭命令面板，再把路由切换降级为低优先级更新，
+    // 避免老页面(媒体库/AI 配置等)的 unmount 阻塞面板的收起 paint。
     onClose();
+    startTransition(() => {
+      navigate(path);
+    });
   }, [navigate, onClose]);
 
   const items = useMemo<CommandItem[]>(() => [
