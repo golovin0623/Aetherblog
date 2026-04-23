@@ -841,7 +841,7 @@ export default function MediaPage() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed left-1/2 -translate-x-1/2 z-50 pointer-events-none bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] sm:bottom-10 w-[calc(100vw-2rem)] sm:w-auto max-w-[min(960px,calc(100vw-2rem))]"
+            className="fixed left-1/2 -translate-x-1/2 z-50 pointer-events-none bottom-[max(1.25rem,calc(env(safe-area-inset-bottom,0px)_+_0.5rem))] sm:bottom-10 w-[calc(100vw_-_2rem)] sm:w-auto max-w-[min(960px,calc(100vw_-_2rem))]"
           >
             <div className={cn(
               "pointer-events-auto surface-overlay flex items-center",
