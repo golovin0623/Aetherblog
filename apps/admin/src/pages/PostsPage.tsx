@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock } from 'lucide-react';
@@ -51,26 +51,12 @@ export default function PostsPage() {
   const [isPropertiesModalOpen, setIsPropertiesModalOpen] = useState(false);
   const [activeTagPopover, setActiveTagPopover] = useState<number | null>(null);
   const tagPopoverRef = useRef<HTMLDivElement>(null);
-  /**
-   * 滑动窗口分页: 始终显示首页 + 末页 + 当前页 ± delta, 超出部分用 '...' 占位.
-   * 修复历史 bug —— 旧实现 `Array.from({ length: pages })` 直接渲染所有页码,
-   * 容器 `max-w-[220px] overflow-x-auto no-scrollbar` 让 7 页起的按钮藏在横向
-   * 溢出区域里, 用户以为总共只有 6 页.
-   */
-  const getVisiblePages = useCallback(
-    (current: number, total: number, delta = 2): (number | '...')[] => {
-      if (total <= 1) return total === 1 ? [1] : [];
-      const pages: (number | '...')[] = [];
-      for (let i = 1; i <= total; i++) {
-        if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
-          pages.push(i);
-        } else if (pages[pages.length - 1] !== '...') {
-          pages.push('...');
-        }
-      }
-      return pages;
-    },
-    []
+
+  // 分页滚动条: 当前页跟随滚动并在可视区域居中显示, 边界时自然贴合首尾
+  const pageStripRef = useRef<HTMLDivElement>(null);
+  const pageNumbers = useMemo(
+    () => Array.from({ length: pagination.pages }, (_, i) => i + 1),
+    [pagination.pages]
   );
 
   // 点击外部区域时关闭标签弹出框
@@ -83,6 +69,23 @@ export default function PostsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // 当前页变化时将 active 按钮滚动到容器中心; 容器自身滚动, 不影响外层视口.
+  // 当 active 靠近首尾时, scrollLeft 被浏览器自动钳制在 [0, scrollWidth - clientWidth],
+  // 自然呈现 "近端跟随移动 / 中段始终居中" 的效果.
+  useEffect(() => {
+    const container = pageStripRef.current;
+    if (!container) return;
+    const activeBtn = container.querySelector<HTMLButtonElement>('[aria-current="page"]');
+    if (!activeBtn) return;
+    const containerRect = container.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    const target =
+      container.scrollLeft +
+      (btnRect.left + btnRect.width / 2) -
+      (containerRect.left + containerRect.width / 2);
+    container.scrollTo({ left: target, behavior: 'smooth' });
+  }, [pagination.pageNum, pagination.pages]);
 
 
   // 防抖搜索
@@ -795,33 +798,32 @@ export default function PostsPage() {
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <div className="flex items-center gap-1.5 px-0.5">
-                  {getVisiblePages(pagination.pageNum, pagination.pages).map((entry, idx) =>
-                    entry === '...' ? (
-                      <span
-                        key={`ellipsis-${idx}`}
-                        aria-hidden="true"
-                        className="flex-shrink-0 w-6 h-8 flex items-end justify-center pb-1 text-xs text-[var(--text-muted)]"
-                      >
-                        …
-                      </span>
-                    ) : (
+                <div
+                  ref={pageStripRef}
+                  role="group"
+                  aria-label="分页导航"
+                  className="flex items-center gap-1.5 px-0.5 overflow-x-auto overscroll-x-contain no-scrollbar min-w-0 max-w-[240px] sm:max-w-[360px] md:max-w-[520px] lg:max-w-[640px] snap-x snap-proximity scroll-smooth touch-pan-x [scrollbar-width:none]"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                  {pageNumbers.map((entry) => {
+                    const isActive = entry === pagination.pageNum;
+                    return (
                       <button
                         key={entry}
                         onClick={() => handlePageChange(entry)}
-                        aria-current={entry === pagination.pageNum ? 'page' : undefined}
+                        aria-current={isActive ? 'page' : undefined}
                         aria-label={`第 ${entry} 页`}
                         className={cn(
-                          'flex-shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all duration-300 flex items-center justify-center',
-                          entry === pagination.pageNum
+                          'flex-shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all duration-300 flex items-center justify-center snap-center',
+                          isActive
                             ? 'bg-primary text-white shadow-lg shadow-primary/25'
                             : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
                         )}
                       >
                         {entry}
                       </button>
-                    )
-                  )}
+                    );
+                  })}
                 </div>
                 <button
                   onClick={() => handlePageChange(pagination.pageNum + 1)}
