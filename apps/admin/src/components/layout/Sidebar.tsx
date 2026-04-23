@@ -1,4 +1,4 @@
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -79,7 +79,6 @@ export function Sidebar() {
   const effectiveCollapsed = isCollapsed || isAutoCollapsed;
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
   const [searchValue, setSearchValue] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -119,14 +118,13 @@ export function Sidebar() {
       e.preventDefault();
       setMobileOpen(false);
 
-      // 已在当前路径，不必触发路由工作
-      if (pathname === path) return;
-
+      // 不拦截"点击当前路径"——用户常用这个手势清空 query/reset 视图。
+      // react-router 的 navigate() 对相同 URL 已是 no-op，无需自己判重。
       startTransition(() => {
         navigate(path);
       });
     },
-    [navigate, pathname, setMobileOpen]
+    [navigate, setMobileOpen]
   );
 
   const contentProps = {
