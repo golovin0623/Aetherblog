@@ -230,7 +230,7 @@ export function CodexModelPicker({
             onMouseEnter={(e) => {
               if (!isMobile) {
                 e.currentTarget.style.background =
-                  'color-mix(in oklch, var(--ink-primary) 5%, transparent)';
+                  'rgb(from var(--ink-primary) r g b / 0.05)';
               }
             }}
             onMouseLeave={(e) => {
@@ -268,7 +268,7 @@ export function CodexModelPicker({
               style={{
                 fontSize: 'var(--fs-micro)',
                 color: 'var(--ink-muted)',
-                background: 'color-mix(in oklch, var(--bg-raised) 85%, transparent)',
+                background: 'rgb(from var(--bg-raised) r g b / 0.85)',
                 backdropFilter: 'blur(12px)',
               }}
             >
@@ -353,8 +353,8 @@ export function CodexModelPicker({
                           style={{
                             fontSize: 'var(--fs-micro)',
                             color: 'var(--ink-secondary)',
-                            background: 'color-mix(in oklch, var(--ink-primary) 5%, transparent)',
-                            border: '1px solid color-mix(in oklch, var(--ink-primary) 8%, transparent)',
+                            background: 'rgb(from var(--ink-primary) r g b / 0.05)',
+                            border: '1px solid rgb(from var(--ink-primary) r g b / 0.08)',
                           }}
                           title={chip.title}
                         >
@@ -378,7 +378,7 @@ export function CodexModelPicker({
   const searchHeader = (
     <div
       className="flex items-center gap-2 px-4 py-3 border-b"
-      style={{ borderColor: 'color-mix(in oklch, var(--ink-primary) 8%, transparent)' }}
+      style={{ borderColor: 'rgb(from var(--ink-primary) r g b / 0.08)' }}
     >
       <Search className="w-4 h-4 shrink-0" style={{ color: 'var(--ink-muted)' }} />
       <input
@@ -492,7 +492,7 @@ export function CodexModelPicker({
                     <span
                       className="w-10 h-1 rounded-full"
                       style={{
-                        background: 'color-mix(in oklch, var(--ink-primary) 20%, transparent)',
+                        background: 'rgb(from var(--ink-primary) r g b / 0.2)',
                       }}
                     />
                   </div>

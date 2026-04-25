@@ -133,7 +133,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
             <p
               className="font-editorial italic text-[15px] leading-[1.65]"
               style={{
-                color: 'color-mix(in oklch, var(--ink-secondary) 90%, transparent)',
+                color: 'rgb(from var(--ink-secondary) r g b / 0.9)',
                 display: '-webkit-box',
                 WebkitLineClamp: 3,
                 WebkitBoxOrient: 'vertical',
@@ -149,7 +149,7 @@ const ArticleCardBase: React.FC<ArticleCardProps> = ({
         <footer
           className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-5"
           style={{
-            borderTop: '1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent)',
+            borderTop: '1px solid rgb(from var(--ink-primary) r g b / 0.1)',
           }}
         >
           {/* 左:tags(mono,字号 11) */}
