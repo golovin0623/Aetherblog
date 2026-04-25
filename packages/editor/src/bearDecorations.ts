@@ -27,35 +27,35 @@ const ALERT_CONFIG: Record<string, { label: string; color: string; bg: string; b
   info: {
     label: '信息',
     color: 'var(--signal-info)',
-    bg: 'color-mix(in oklch, var(--signal-info) 8%, transparent)',
+    bg: 'rgb(from var(--signal-info) r g b / 0.08)',
     border: 'var(--signal-info)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   },
   note: {
     label: '注意',
     color: 'var(--ink-muted)',
-    bg: 'color-mix(in oklch, var(--ink-muted) 8%, transparent)',
+    bg: 'rgb(from var(--ink-muted) r g b / 0.08)',
     border: 'var(--ink-muted)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>',
   },
   warning: {
     label: '警告',
     color: 'var(--signal-warn)',
-    bg: 'color-mix(in oklch, var(--signal-warn) 8%, transparent)',
+    bg: 'rgb(from var(--signal-warn) r g b / 0.08)',
     border: 'var(--signal-warn)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   },
   danger: {
     label: '危险',
     color: 'var(--signal-danger)',
-    bg: 'color-mix(in oklch, var(--signal-danger) 8%, transparent)',
+    bg: 'rgb(from var(--signal-danger) r g b / 0.08)',
     border: 'var(--signal-danger)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
   },
   tip: {
     label: '提示',
     color: 'var(--signal-success)',
-    bg: 'color-mix(in oklch, var(--signal-success) 8%, transparent)',
+    bg: 'rgb(from var(--signal-success) r g b / 0.08)',
     border: 'var(--signal-success)',
     svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>',
   },
@@ -77,7 +77,7 @@ class HrWidget extends WidgetType {
       height: 1px;
       background: linear-gradient(90deg,
         transparent,
-        color-mix(in oklch, var(--aurora-1, var(--color-primary)) 28%, transparent) 50%,
+        rgb(from var(--aurora-1, var(--color-primary)) r g b / 0.28) 50%,
         transparent);
       margin: 0.8em 0;
       pointer-events: none;
@@ -469,17 +469,17 @@ export function createBearDecorations(theme: string) {
     // Bear 风格样式 —— 全部走 CSS 变量,跟随主色 + 主题自动切换
     EditorView.theme({
       '.cm-bear-codeblock-line': {
-        backgroundColor: 'color-mix(in oklch, var(--ink-muted) 5%, transparent)',
+        backgroundColor: 'rgb(from var(--ink-muted) r g b / 0.05)',
         borderRadius: '0',
       },
       '.cm-bear-blockquote-line': {
-        borderLeft: '2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary)) 45%, transparent)',
+        borderLeft: '2px solid rgb(from var(--aurora-1, var(--color-primary)) r g b / 0.45)',
         paddingLeft: '12px !important',
         color: 'var(--ink-secondary)',
         fontStyle: 'italic',
       },
       '.cm-bear-inline-code': {
-        backgroundColor: 'color-mix(in oklch, var(--aurora-1, var(--color-primary)) 10%, transparent)',
+        backgroundColor: 'rgb(from var(--aurora-1, var(--color-primary)) r g b / 0.1)',
         borderRadius: '4px',
         padding: '1px 5px',
         fontFamily: "'Geist Mono', 'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Fira Code', ui-monospace, monospace",
@@ -490,27 +490,27 @@ export function createBearDecorations(theme: string) {
       '.cm-bear-alert-info': {
         borderLeft: '3px solid var(--signal-info)',
         paddingLeft: '12px !important',
-        backgroundColor: 'color-mix(in oklch, var(--signal-info) 8%, transparent)',
+        backgroundColor: 'rgb(from var(--signal-info) r g b / 0.08)',
       },
       '.cm-bear-alert-note': {
         borderLeft: '3px solid var(--ink-muted)',
         paddingLeft: '12px !important',
-        backgroundColor: 'color-mix(in oklch, var(--ink-muted) 8%, transparent)',
+        backgroundColor: 'rgb(from var(--ink-muted) r g b / 0.08)',
       },
       '.cm-bear-alert-warning': {
         borderLeft: '3px solid var(--signal-warn)',
         paddingLeft: '12px !important',
-        backgroundColor: 'color-mix(in oklch, var(--signal-warn) 8%, transparent)',
+        backgroundColor: 'rgb(from var(--signal-warn) r g b / 0.08)',
       },
       '.cm-bear-alert-danger': {
         borderLeft: '3px solid var(--signal-danger)',
         paddingLeft: '12px !important',
-        backgroundColor: 'color-mix(in oklch, var(--signal-danger) 8%, transparent)',
+        backgroundColor: 'rgb(from var(--signal-danger) r g b / 0.08)',
       },
       '.cm-bear-alert-tip': {
         borderLeft: '3px solid var(--signal-success)',
         paddingLeft: '12px !important',
-        backgroundColor: 'color-mix(in oklch, var(--signal-success) 8%, transparent)',
+        backgroundColor: 'rgb(from var(--signal-success) r g b / 0.08)',
       },
     }, { dark: theme === 'dark' }),
   ];

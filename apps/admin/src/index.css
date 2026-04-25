@@ -30,9 +30,9 @@
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  background: color-mix(in oklch, var(--color-primary, #818cf8) 14%, transparent);
+  background: rgb(from var(--color-primary, #818cf8) r g b / 0.14);
   color: var(--color-primary, #818cf8);
-  border: 1px solid color-mix(in oklch, var(--color-primary, #818cf8) 30%, transparent);
+  border: 1px solid rgb(from var(--color-primary, #818cf8) r g b / 0.3);
   backdrop-filter: blur(10px);
   z-index: 9999;
   pointer-events: none;
@@ -640,7 +640,7 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
 
 /* 代码块(fenced)背景 —— 淡雾质感 + 禁用连字(避免 !=/=> 被合并) */
 .cm-editor .cm-line:has(.cm-code-block-body) {
-  background: color-mix(in oklch, var(--ink-muted) 4%, transparent);
+  background: rgb(from var(--ink-muted) r g b / 0.04);
   font-feature-settings: "calt" 0;
 }
 

@@ -275,7 +275,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         <div className="flex-shrink-0 flex justify-center pt-3 pb-2">
           <div
             className="w-10 h-1 rounded-full"
-            style={{ background: 'color-mix(in oklch, var(--ink-muted) 50%, transparent)' }}
+            style={{ background: 'rgb(from var(--ink-muted) r g b / 0.5)' }}
           />
         </div>
       )}
@@ -334,7 +334,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 <span
                   aria-hidden="true"
                   className="h-px flex-1"
-                  style={{ background: 'color-mix(in oklch, var(--ink-primary) 10%, transparent)' }}
+                  style={{ background: 'rgb(from var(--ink-primary) r g b / 0.1)' }}
                 />
                 <span className="shrink-0">
                   {group.provider.display_name || group.provider.name}
@@ -342,7 +342,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                 <span
                   aria-hidden="true"
                   className="h-px w-4 shrink-0"
-                  style={{ background: 'color-mix(in oklch, var(--ink-primary) 10%, transparent)' }}
+                  style={{ background: 'rgb(from var(--ink-primary) r g b / 0.1)' }}
                 />
               </div>
 
@@ -513,7 +513,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                   exit={{ opacity: 0 }}
                   onClick={() => setIsOpen(false)}
                   className="absolute inset-0 backdrop-blur-sm"
-                  style={{ background: 'color-mix(in oklch, var(--bg-void) 70%, transparent)' }}
+                  style={{ background: 'rgb(from var(--bg-void) r g b / 0.7)' }}
                 />
                 <motion.div
                   initial={{ y: "100%" }}

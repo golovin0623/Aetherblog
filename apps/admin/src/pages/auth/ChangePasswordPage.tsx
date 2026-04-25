@@ -366,8 +366,8 @@ export function ChangePasswordPage() {
                   <div
                     className="px-4 py-3.5 rounded-xl"
                     style={{
-                      background: 'color-mix(in oklch, var(--bg-leaf) 50%, transparent)',
-                      border: '1px solid color-mix(in oklch, var(--ink-primary) 6%, transparent)',
+                      background: 'rgb(from var(--bg-leaf) r g b / 0.5)',
+                      border: '1px solid rgb(from var(--ink-primary) r g b / 0.06)',
                     }}
                   >
                     <p className="font-mono text-[9px] uppercase tracking-[0.24em] text-[var(--ink-muted)] mb-2.5">
@@ -450,8 +450,8 @@ export function ChangePasswordPage() {
           padding: 0.85rem 1rem 0.85rem 2.75rem;
           font-size: 15px;
           color: var(--ink-primary);
-          background: color-mix(in oklch, var(--bg-leaf) 60%, transparent);
-          border: 1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent);
+          background: rgb(from var(--bg-leaf) r g b / 0.6);
+          border: 1px solid rgb(from var(--ink-primary) r g b / 0.1);
           border-radius: 0.75rem;
           transition: border-color var(--dur-quick) var(--ease-out),
                       box-shadow var(--dur-quick) var(--ease-out),
@@ -463,17 +463,17 @@ export function ChangePasswordPage() {
           font-family: var(--font-sans);
         }
         .codex-input:hover {
-          background: color-mix(in oklch, var(--bg-leaf) 72%, transparent);
-          border-color: color-mix(in oklch, var(--ink-primary) 16%, transparent);
+          background: rgb(from var(--bg-leaf) r g b / 0.72);
+          border-color: rgb(from var(--ink-primary) r g b / 0.16);
         }
         .codex-input:focus {
           border-color: color-mix(in oklch, var(--aurora-1) 55%, transparent);
           box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 18%, transparent);
-          background: color-mix(in oklch, var(--bg-leaf) 80%, transparent);
+          background: rgb(from var(--bg-leaf) r g b / 0.8);
         }
         :root.light .codex-input {
-          background: color-mix(in oklch, #ffffff 80%, transparent);
-          border-color: color-mix(in oklch, var(--ink-primary) 14%, transparent);
+          background: rgba(255, 255, 255, 0.8);
+          border-color: rgb(from var(--ink-primary) r g b / 0.14);
         }
         :root.light .codex-input:hover { background: #ffffff; }
         :root.light .codex-input:focus {
@@ -499,7 +499,7 @@ export function ChangePasswordPage() {
           border: 1px solid color-mix(in oklch, var(--aurora-1) 50%, transparent);
           border-radius: 0.75rem;
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 30%, transparent),
+            0 1px 0 inset rgba(255, 255, 255, 0.3),
             0 8px 24px -8px color-mix(in oklch, var(--aurora-1) 50%, transparent);
           transition: transform var(--dur-quick) var(--ease-out),
                       box-shadow var(--dur-quick) var(--ease-out),
@@ -511,18 +511,18 @@ export function ChangePasswordPage() {
           background: linear-gradient(135deg, var(--aurora-3) 0%, var(--aurora-4) 100%);
           border-color: color-mix(in oklch, var(--aurora-3) 55%, transparent);
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 30%, transparent),
+            0 1px 0 inset rgba(255, 255, 255, 0.3),
             0 8px 24px -8px color-mix(in oklch, var(--aurora-3) 55%, transparent);
         }
         .codex-submit-btn:hover:not(:disabled) {
           filter: brightness(1.08);
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 1px 0 inset rgba(255, 255, 255, 0.4),
             0 12px 36px -8px color-mix(in oklch, var(--aurora-1) 65%, transparent);
         }
         .codex-submit-btn[data-first-login="true"]:hover:not(:disabled) {
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 1px 0 inset rgba(255, 255, 255, 0.4),
             0 12px 36px -8px color-mix(in oklch, var(--aurora-3) 70%, transparent);
         }
         .codex-submit-btn:disabled { cursor: not-allowed; }
@@ -595,7 +595,7 @@ function HealthCheck({ ok, label }: { ok: boolean; label: string }) {
       <span
         className="w-1.5 h-1.5 rounded-full transition-all"
         style={{
-          background: ok ? 'var(--signal-success)' : 'color-mix(in oklch, var(--ink-primary) 20%, transparent)',
+          background: ok ? 'var(--signal-success)' : 'rgb(from var(--ink-primary) r g b / 0.2)',
           boxShadow: ok ? '0 0 8px color-mix(in oklch, var(--signal-success) 50%, transparent)' : 'none',
         }}
       />
