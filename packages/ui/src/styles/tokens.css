@@ -334,8 +334,8 @@ html {
 @media (prefers-contrast: more) {
   :root,
   :root.dark {
-    --border-default: color-mix(in oklch, var(--ink-primary) 40%, transparent);
-    --border-subtle: color-mix(in oklch, var(--ink-primary) 28%, transparent);
+    --border-default: rgb(from var(--ink-primary) r g b / 0.40);
+    --border-subtle: rgb(from var(--ink-primary) r g b / 0.28);
   }
 }
 

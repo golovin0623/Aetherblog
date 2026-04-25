@@ -220,8 +220,8 @@ const components: Components = {
       <div
         className="my-2 px-3 py-2 rounded-md border-l-[3px]"
         style={{
-          background: `color-mix(in oklch, ${tokenVar} 10%, transparent)`,
-          borderLeftColor: `color-mix(in oklch, ${tokenVar} 55%, transparent)`,
+          background: `rgb(from ${tokenVar} r g b / 0.1)`,
+          borderLeftColor: `rgb(from ${tokenVar} r g b / 0.55)`,
         }}
       >
         <div className="text-xs font-bold mb-0.5" style={{ color: tokenVar }}>

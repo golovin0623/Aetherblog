@@ -169,8 +169,10 @@ export default function PostsPage() {
     <div className="min-h-screen bg-background text-[var(--text-primary)] selection:bg-primary/30">
       {/* 主要内容 */}
       <main className="max-w-7xl mx-auto px-4 pt-24 pb-24 md:pb-12">
-        {/* 背景环境光 */}
-        <div className="fixed top-0 left-0 right-0 h-[500px] pointer-events-none -z-10">
+        {/* 背景环境光 —— 覆盖整个视口,让上下两区(推荐/作者卡 + 最新发布网格)
+            都坐在同一极光大气层上,避免仅顶部 500px 有冷紫调、下方 ArticleCard
+            被感知为"暖棕色"的对比色错觉 */}
+        <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
           <div
             className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full theme-transition-glow"
             style={{
@@ -183,6 +185,21 @@ export default function PostsPage() {
             style={{
               filter: 'blur(var(--ambient-glow-blur))',
               opacity: 'calc(var(--ambient-glow-opacity) * 0.67)'
+            }}
+          />
+          {/* 下半屏延续同一色系,强度略降,保证 ArticleCard 也获得一致的冷紫 backdrop */}
+          <div
+            className="absolute bottom-[-120px] left-[-5%] w-[700px] h-[500px] bg-primary/10 rounded-full theme-transition-glow"
+            style={{
+              filter: 'blur(var(--ambient-glow-blur))',
+              opacity: 'calc(var(--ambient-glow-opacity) * 0.75)'
+            }}
+          />
+          <div
+            className="absolute bottom-[-100px] right-[5%] w-[600px] h-[400px] bg-accent/10 rounded-full theme-transition-glow"
+            style={{
+              filter: 'blur(var(--ambient-glow-blur))',
+              opacity: 'calc(var(--ambient-glow-opacity) * 0.5)'
             }}
           />
         </div>
