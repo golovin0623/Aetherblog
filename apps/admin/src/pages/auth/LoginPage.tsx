@@ -482,8 +482,8 @@ export function LoginPage() {
           font-size: 15px;
           font-family: var(--font-sans);
           color: var(--ink-primary);
-          background: color-mix(in oklch, var(--bg-leaf) 55%, transparent);
-          border: 1px solid color-mix(in oklch, var(--ink-primary) 10%, transparent);
+          background: rgb(from var(--bg-leaf) r g b / 0.55);
+          border: 1px solid rgb(from var(--ink-primary) r g b / 0.1);
           border-radius: 0.75rem;
           transition: border-color var(--dur-quick) var(--ease-out),
                       box-shadow var(--dur-quick) var(--ease-out),
@@ -491,21 +491,21 @@ export function LoginPage() {
           outline: none;
         }
         .codex-input::placeholder {
-          color: color-mix(in oklch, var(--ink-muted) 70%, transparent);
+          color: rgb(from var(--ink-muted) r g b / 0.7);
           font-family: var(--font-sans);
         }
         .codex-input:hover {
-          background: color-mix(in oklch, var(--bg-leaf) 72%, transparent);
-          border-color: color-mix(in oklch, var(--ink-primary) 16%, transparent);
+          background: rgb(from var(--bg-leaf) r g b / 0.72);
+          border-color: rgb(from var(--ink-primary) r g b / 0.16);
         }
         .codex-input:focus {
           border-color: color-mix(in oklch, var(--aurora-1) 55%, transparent);
           box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 18%, transparent);
-          background: color-mix(in oklch, var(--bg-leaf) 82%, transparent);
+          background: rgb(from var(--bg-leaf) r g b / 0.82);
         }
         :root.light .codex-input {
-          background: color-mix(in oklch, white 82%, transparent);
-          border-color: color-mix(in oklch, var(--ink-primary) 14%, transparent);
+          background: rgba(255, 255, 255, 0.82);
+          border-color: rgb(from var(--ink-primary) r g b / 0.14);
         }
         :root.light .codex-input:hover { background: white; }
         :root.light .codex-input:focus {
@@ -520,16 +520,16 @@ export function LoginPage() {
         .auth-codex-page input:-webkit-autofill:focus,
         .auth-codex-page input:-webkit-autofill:active {
           -webkit-text-fill-color: var(--ink-primary);
-          -webkit-box-shadow: 0 0 0 1000px color-mix(in oklch, var(--bg-leaf) 55%, transparent) inset !important;
-          box-shadow: 0 0 0 1000px color-mix(in oklch, var(--bg-leaf) 55%, transparent) inset !important;
+          -webkit-box-shadow: 0 0 0 1000px rgb(from var(--bg-leaf) r g b / 0.55) inset !important;
+          box-shadow: 0 0 0 1000px rgb(from var(--bg-leaf) r g b / 0.55) inset !important;
           caret-color: var(--aurora-1);
           transition: background-color 5000s ease-in-out 0s;
         }
         :root.light .auth-codex-page input:-webkit-autofill,
         :root.light .auth-codex-page input:-webkit-autofill:hover,
         :root.light .auth-codex-page input:-webkit-autofill:focus {
-          -webkit-box-shadow: 0 0 0 1000px color-mix(in oklch, white 90%, transparent) inset !important;
-          box-shadow: 0 0 0 1000px color-mix(in oklch, white 90%, transparent) inset !important;
+          -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.9) inset !important;
+          box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.9) inset !important;
         }
 
         /* Submit button:aurora-1 → aurora-2 实色渐变 */
@@ -550,7 +550,7 @@ export function LoginPage() {
           border: 1px solid color-mix(in oklch, var(--aurora-1) 50%, transparent);
           border-radius: 0.75rem;
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 40%, transparent),
+            0 1px 0 inset rgba(255, 255, 255, 0.4),
             0 8px 24px -8px color-mix(in oklch, var(--aurora-1) 55%, transparent);
           transition: transform var(--dur-quick) var(--ease-out),
                       box-shadow var(--dur-quick) var(--ease-out),
@@ -560,7 +560,7 @@ export function LoginPage() {
         .codex-submit-btn:hover:not(:disabled) {
           filter: brightness(1.06);
           box-shadow:
-            0 1px 0 inset color-mix(in oklch, white 50%, transparent),
+            0 1px 0 inset rgba(255, 255, 255, 0.5),
             0 14px 36px -8px color-mix(in oklch, var(--aurora-1) 65%, transparent);
         }
         .codex-submit-btn:disabled { cursor: not-allowed; }

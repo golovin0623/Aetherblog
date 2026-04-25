@@ -230,7 +230,7 @@ export default function SiteFooter() {
             className="h-px w-full"
             style={{
               background:
-                'linear-gradient(90deg, transparent 0%, color-mix(in oklch, var(--ink-muted) 28%, transparent) 50%, transparent 100%)',
+                'linear-gradient(90deg, transparent 0%, rgb(from var(--ink-muted) r g b / 0.28) 50%, transparent 100%)',
             }}
           />
 

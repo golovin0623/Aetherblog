@@ -257,20 +257,20 @@ export function MarkdownEditor({
         },
         // 搜索匹配 —— 信号警告色
         '.cm-searchMatch': {
-          backgroundColor: 'color-mix(in oklch, var(--signal-warn) 25%, transparent)',
+          backgroundColor: 'rgb(from var(--signal-warn) r g b / 0.25)',
         },
         '.cm-searchMatch.cm-searchMatch-selected': {
-          backgroundColor: 'color-mix(in oklch, var(--signal-warn) 45%, transparent)',
+          backgroundColor: 'rgb(from var(--signal-warn) r g b / 0.45)',
         },
         // 滚动条(webkit)—— 精致细滚动条
         '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
         '.cm-scroller::-webkit-scrollbar-track': { background: 'transparent' },
         '.cm-scroller::-webkit-scrollbar-thumb': {
-          background: 'color-mix(in oklch, var(--ink-muted) 30%, transparent)',
+          background: 'rgb(from var(--ink-muted) r g b / 0.3)',
           borderRadius: '4px',
         },
         '.cm-scroller::-webkit-scrollbar-thumb:hover': {
-          background: 'color-mix(in oklch, var(--ink-muted) 50%, transparent)',
+          background: 'rgb(from var(--ink-muted) r g b / 0.5)',
         },
         // 折叠 gutter / line fold
         '.cm-foldGutter .cm-gutterElement': { color: 'var(--ink-muted)' },
