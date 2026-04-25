@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🤖 AI 工具实际可用度修复 (2026-04-25)
+
+**症状:** AI 摘要在博客后台被反馈"完全不可用" —— 设定 200 字, 实际经常返回上千字、问答风格、分点小标题, 与摘要语义完全不符。其他 chat 类工具 (tags / titles / polish / outline / translate / qa) 也程度不一地放飞。
+
+**根因:** 三层断裂叠加。
+1. **system/user 拆分时 `{content}` 字面量泄露:** [apps/ai-service/app/services/llm_router.py](apps/ai-service/app/services/llm_router.py) 旧实现把整个 prompt template 当成 system prompt 渲染, 仅排除 `content` 变量。结果 system 消息末尾出现字面量 `{content}`, 模型把它当成"请补全"指令, 紧接 user 中的真实正文继续放飞。
+2. **`max_tokens` 在 env-fallback 路径上为 `None`:** 当 `ai_task_routing` 表为空 (新部署 / 本地 mock) 或管理员 override 模型时, `_resolve_route` / `_resolve_override` 都返回 `max_tokens=None`, LiteLLM 直接转给上游, 模型按上下文窗口上限输出。
+3. **默认 prompt 软约束太弱:** migration 000019 / 000017 的 seed prompt (例如 `请为以下内容生成摘要（{max_length}字以内）：{content}`) 没有禁止问答 / 分点 / 前缀, LLM 把字数当成软建议而非硬约束。
+4. (附带) **`<think>` 检测只识别一个变体:** 仅匹配 `<think>`, Qwen / R1 / 自定义 prompt 用的 `<thinking>` / `<reasoning>` 全部漏过, 推理痕迹直接污染流式输出。
+5. (附带) **`posts.summary VARCHAR(500)` vs `MaxLength` 范围 10-2000 不一致:** 即使 LLM 严格按字数输出, `maxLength=1000` 也会在保存时被 PG 截断报错。
+
+**Fixed:**
+
+- **`apps/ai-service/app/services/llm_router.py`** —— 重写 `_build_messages()` 在 `{content}` 标记处切分模板: head 渲染为 system (含其他占位符替换), tail (如有) 拼到 system 末尾, 真实 content 进 user; 新增模块级 `_TASK_DEFAULT_MAX_TOKENS` 表, env-fallback 路径与 `_resolve_override` 都按 task 名兜底 (summary 600 / tags 200 / titles 300 / polish 4000 / outline 2000 / translate 2000 / qa 2000), 与 migration 000019 seed 默认值一致; `stream_chat_with_think_detection` 切换到正则 `<\s*(think|thinking|reasoning)\s*>` (大小写不敏感, 容忍内部空格) 并基于 `match.start/end()` 切片, 同时把 guard 长度从 8 提升到 `len("</reasoning >") + 4` 以容纳最长闭合标签。
+- **`apps/server-go/migrations/000038_improve_ai_prompts.up.sql` (新)** —— UPDATE 7 个 ai_task_types 默认 prompt 为强约束版本: summary 强制 "只输出一段话 / 不超过 {max_length} 字 / 禁止问答 / 禁止分点 / 禁止前缀"; tags / titles 强制输出 JSON 数组并给示例 (前端 `_parse_tags` / `_parse_titles` 已支持 JSON / 逗号 / 数字列表多路径解析, 这里只是把命中率拉高); polish 禁止增删事实, 篇幅波动 ±15%, 保留 Markdown / 代码 / 链接; outline 输出 Markdown 大纲, 严格按 `{depth}` 控制层级, 给 professional / casual / technical 三种风格定义; translate 保留 Markdown + 专有名词; qa 限制只能基于参考内容回答。配套 `ALTER TABLE posts ALTER COLUMN summary TYPE VARCHAR(2000)` 拉齐 DTO 上限。
+- **`apps/ai-service/tests/test_ai_routes.py`** —— 新增三个 test class: `TestBuildMessages` (5 用例: 占位符不泄露 / 尾部指令保留 / 无模板回退 / 无 content 占位符整体进 user / 代码大括号字面量) · `TestThinkTagRegex` (6 用例: think / thinking / reasoning / 大小写 / 内部空格 / 误伤 lookalike) · `TestDefaultMaxTokens` (2 用例: summary 必有上界 / 7 个 chat 任务全部覆盖)。
+
+**为什么这是"最小够用"修复:**
+
+- 不动 migration 000017 / 000019 (已经被生产部署执行过, 改 SQL 文件会破坏 checksum)。新部署链路: 19 落老 prompt → 38 覆盖为新 prompt; 存量链路: 19 已应用 → 38 直接 UPDATE 落新 prompt。两条路径终态一致。
+- 不动 ai_task_routing 里管理员手动 override 过的 prompt —— 38 只 UPDATE ai_task_types.prompt_template, 用户在 admin AiConfig UI 里改过的提示词 (存于 ai_task_routing.prompt_template, 优先级更高) 不受影响。
+- 前端 `useStreamResponse` 的 `thinkContent` / `content` state 已经是分离的, 推理痕迹本来就不会污染 `result.summary` 等结构化字段; 此次只是把后端漏过的 think 标签真正识别出来, 让推理模型在流式工具页 (AIToolsWorkspace) 也能正常展示思考过程而非把它当正文。
+
 ### 🐛 PostsPage 分页器 · 6 页封顶 bug (2026-04-20)
 
 **症状:** 文章管理页总页数显示"10 / 10 页", 分页按钮却只渲染 `< 1 2 3 4 5 6 >`。
