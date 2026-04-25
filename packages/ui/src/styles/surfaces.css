@@ -23,9 +23,16 @@
 
 /* -----------------------------------------------------------
  * 1 · Leaf —— 紧贴文档流,不飘不反光
+ *
+ * 背景用 `rgb(from … r g b / α)` 而不是 `color-mix(in oklch, …, transparent)`:
+ * 后者把 transparent 视作 oklch(0 0 0 / 0),零色度让 hue 在 mix 时变成
+ * "powerless / none"。当源色色度极低(如 --bg-leaf #12141D，R≈G、B 只略高)
+ * 结果就是 oklch(L C none / α),浏览器把 none 当 hue=0 渲染,产生明显的
+ * 红棕色偏(用户看到的"咖啡色"根因)。改走 sRGB 通道只加 alpha,不再
+ * 经过 OKLCH 插值,色相完全忠于原始 hex。
  * ----------------------------------------------------------- */
 .surface-leaf {
-  background: color-mix(in oklch, var(--bg-leaf) 85%, transparent);
+  background: rgb(from var(--bg-leaf) r g b / 0.85);
   -webkit-backdrop-filter: blur(16px) saturate(120%);
   backdrop-filter: blur(16px) saturate(120%);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -47,7 +54,8 @@
  * 2 · Raised —— 浮于文档之上,上沿高光 + 底部阴影
  * ----------------------------------------------------------- */
 .surface-raised {
-  background: color-mix(in oklch, var(--bg-raised) 80%, transparent);
+  /* 同 .surface-leaf,改走 sRGB 直加 alpha,杜绝 OKLCH hue=none → 棕色偏 */
+  background: rgb(from var(--bg-raised) r g b / 0.80);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
   backdrop-filter: blur(24px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -73,7 +81,8 @@
  * 3 · Overlay —— Modal / 命令面板 / 强模糊 + 极光辉光边
  * ----------------------------------------------------------- */
 .surface-overlay {
-  background: color-mix(in oklch, var(--bg-raised) 70%, transparent);
+  /* 同 surface-leaf/raised:走 sRGB 加 alpha,绕开 OKLCH hue=none → 棕偏 */
+  background: rgb(from var(--bg-raised) r g b / 0.70);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   backdrop-filter: blur(40px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.14);
