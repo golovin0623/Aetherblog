@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, TYPE_CHECKING
@@ -27,6 +28,23 @@ if TYPE_CHECKING:
     from app.services.model_router import ModelRouter, RoutingConfig
 
 logger = logging.getLogger("ai-service")
+
+# Last-resort max_tokens cap when neither the DB routing config nor the task
+# type's ``default_max_tokens`` is set (env-only fallback path). Without this
+# LiteLLM forwards ``None`` to the upstream provider and lets the model run
+# until the context window fills — the root cause of "summary returns 千字
+# 问答" reports. Numbers tuned to roughly match seed defaults in
+# migrations/000019_seed_ai_task_types.up.sql so behaviour matches a fresh
+# install even when the routing table is empty.
+_TASK_DEFAULT_MAX_TOKENS: dict[str, int] = {
+    "summary": 600,
+    "tags": 200,
+    "titles": 300,
+    "polish": 4000,
+    "outline": 2000,
+    "translate": 2000,
+    "qa": 2000,
+}
 
 
 def _normalize_model_parts(model: str | None) -> tuple[str | None, str | None]:
@@ -126,6 +144,7 @@ class LlmRouter:
         model_id: str | None,
         provider_code: str | None,
         user_id: int | None,
+        model_alias: str | None = None,
     ) -> "LlmRouter._ResolvedRoute | None":
         if not model_id:
             return None
@@ -156,7 +175,10 @@ class LlmRouter:
             api_key=credential.api_key,
             api_base=credential.base_url,
             temperature=0.7,
-            max_tokens=None,
+            # User-picked model still must inherit the task's hard ceiling so
+            # an admin "test this model" click can't accidentally trigger an
+            # unbounded 8K-token generation.
+            max_tokens=_TASK_DEFAULT_MAX_TOKENS.get(model_alias or ""),
             prompt_template=None,
             override=True,
         )
@@ -168,7 +190,7 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
     ) -> "LlmRouter._ResolvedRoute":
-        override = await self._resolve_override(model_id, provider_code, user_id)
+        override = await self._resolve_override(model_id, provider_code, user_id, model_alias=model_alias)
         if override:
             return override
 
@@ -204,7 +226,7 @@ class LlmRouter:
             api_key=self.settings.openai_api_key,
             api_base=self.settings.openai_base_url,
             temperature=0.7,
-            max_tokens=None,
+            max_tokens=_TASK_DEFAULT_MAX_TOKENS.get(model_alias),
             prompt_template=None,
             override=False,
         )
@@ -315,6 +337,53 @@ class LlmRouter:
             return {"content": prompt_variables}
         return prompt_variables
 
+    def _build_messages(
+        self,
+        prompt_template: str | None,
+        normalized_variables: dict[str, Any],
+    ) -> list[dict[str, str]]:
+        """Construct the (system, user) message pair from a prompt template.
+
+        The legacy implementation rendered the *entire* template into the
+        system role with ``content`` excluded from the variable dict. Result:
+        any literal ``{content}`` placeholder in the template was preserved
+        verbatim in the system message, so the model literally received
+        ``"...for the article below: {content}"`` followed by an empty user
+        message — which it interpreted as "please write something about
+        ``{content}``", explaining the multi-thousand-character "Q&A style"
+        outputs reported by users.
+
+        This rebuilt version splits the template at ``{content}``: anything
+        before the marker becomes the system instruction (with all *other*
+        placeholders rendered), and the actual content moves to the user
+        message. Trailing template text after ``{content}`` (closing
+        instructions, output schema reminders, etc.) is appended to the
+        system instruction so the model still sees it.
+        """
+        # No template at all — single user message containing the content.
+        if not prompt_template:
+            user_text = str(normalized_variables.get("content", ""))
+            return [{"role": "user", "content": user_text}]
+
+        # No content placeholder — render whole template as system, leave
+        # user empty (rare; caller likely passed a self-contained prompt).
+        if "content" not in normalized_variables or "{content}" not in prompt_template:
+            rendered = self._safe_format(prompt_template, normalized_variables)
+            return [{"role": "user", "content": rendered}]
+
+        head, _, tail = prompt_template.partition("{content}")
+        system_vars = {k: v for k, v in normalized_variables.items() if k != "content"}
+        rendered_head = self._safe_format(head, system_vars).rstrip()
+        rendered_tail = self._safe_format(tail, system_vars).strip()
+        if rendered_tail:
+            system_text = f"{rendered_head}\n\n{rendered_tail}".strip()
+        else:
+            system_text = rendered_head
+        return [
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": str(normalized_variables.get("content", ""))},
+        ]
+
     async def _guard_api_base(self, api_base: str | None) -> None:
         """Reject SSRF attempts via admin-controlled ``api_base``.
 
@@ -354,27 +423,11 @@ class LlmRouter:
 
         prompt_template = custom_prompt or resolved.prompt_template
         normalized_variables = self._normalize_prompt_variables(prompt_variables)
-        prompt = self._render_prompt(
-            template=prompt_template,
-            default_template=normalized_variables.get("content", ""),
-            **normalized_variables
-        )
 
         if self.settings.mock_mode and not resolved.override:
             return f"[mock:{resolved.model}]"
-        
-        # Separate system prompt from user content to mitigate prompt injection.
-        # Render the template with all variables *except* content for the system
-        # message, so placeholders like {max_length} are substituted correctly.
-        if prompt_template and "content" in normalized_variables:
-            system_vars = {k: v for k, v in normalized_variables.items() if k != "content"}
-            rendered_system = self._safe_format(prompt_template, system_vars)
-            messages = [
-                {"role": "system", "content": rendered_system},
-                {"role": "user", "content": normalized_variables.get("content", "")},
-            ]
-        else:
-            messages = [{"role": "user", "content": prompt}]
+
+        messages = self._build_messages(prompt_template, normalized_variables)
 
         # SECURITY (VULN-057): reject SSRF at the admin-controlled api_base.
         await self._guard_api_base(resolved.api_base)
@@ -456,22 +509,7 @@ class LlmRouter:
 
         prompt_template = custom_prompt or resolved.prompt_template
         normalized_variables = self._normalize_prompt_variables(prompt_variables)
-        prompt = self._render_prompt(
-            template=prompt_template,
-            default_template=normalized_variables.get("content", ""),
-            **normalized_variables
-        )
-
-        # Separate system prompt from user content to mitigate prompt injection.
-        if prompt_template and "content" in normalized_variables:
-            system_vars = {k: v for k, v in normalized_variables.items() if k != "content"}
-            rendered_system = self._safe_format(prompt_template, system_vars)
-            messages = [
-                {"role": "system", "content": rendered_system},
-                {"role": "user", "content": normalized_variables.get("content", "")},
-            ]
-        else:
-            messages = [{"role": "user", "content": prompt}]
+        messages = self._build_messages(prompt_template, normalized_variables)
 
         if self.settings.mock_mode and not resolved.override:
             for chunk in ["[", "mock", f":{resolved.model}", "]"]:
@@ -604,6 +642,24 @@ class LlmRouter:
         )
         return embedding
 
+    # Reasoning-trace tag detection.
+    #
+    # Different providers/models wrap their chain-of-thought in different
+    # tags. The legacy detector only knew about ``<think>``; a Qwen / R1
+    # variant emitting ``<thinking>`` or a custom-prompted ``<reasoning>``
+    # block would slip past the filter and the trace would be rendered as
+    # if it were the answer (the "千字问答" symptom on streaming endpoints).
+    #
+    # Tag set is intentionally small — these are the standard reasoning
+    # wrappers in current public models. Whitespace inside the tag and
+    # case variations (``<Think>``, ``<THINK>``) are tolerated.
+    _THINK_OPEN_RE = re.compile(r"<\s*(think|thinking|reasoning)\s*>", re.IGNORECASE)
+    _THINK_CLOSE_RE = re.compile(r"<\s*/\s*(think|thinking|reasoning)\s*>", re.IGNORECASE)
+    # Longest possible close tag (``</thinking>`` / ``</reasoning>`` plus
+    # internal whitespace). We keep this many trailing chars in the buffer
+    # so a tag can't be split across yields.
+    _THINK_TAG_GUARD = len("</reasoning >") + 4
+
     async def stream_chat_with_think_detection(
         self,
         prompt_variables: dict[str, Any] | str,
@@ -613,9 +669,8 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        Stream chat completion with <think> block detection.
-        
+        """Stream chat completion with reasoning-trace block detection.
+
         Yields events in format:
         - {"type": "delta", "content": "...", "isThink": False}
         - {"type": "delta", "content": "...", "isThink": True}
@@ -623,10 +678,8 @@ class LlmRouter:
         """
         in_think = False
         buffer = ""
-        # Minimum chars to keep for tag detection (length of "</think>")
-        # Minimum chars to keep for tag detection (length of "</think>")
-        TAG_BUFFER_SIZE = 8
-        
+        guard = self._THINK_TAG_GUARD
+
         async for chunk in self.stream_chat(
             prompt_variables=prompt_variables,
             model_alias=model_alias,
@@ -636,50 +689,34 @@ class LlmRouter:
             provider_code=provider_code,
         ):
             buffer += chunk
-            
-            # Process buffer incrementally
-            while len(buffer) > TAG_BUFFER_SIZE:
-                if not in_think:
-                    # Look for <think> start
-                    think_start = buffer.find("<think>")
-                    if think_start != -1 and think_start < len(buffer) - TAG_BUFFER_SIZE:
-                        # Yield content before <think>
-                        if think_start > 0:
-                            yield {"type": "delta", "content": buffer[:think_start], "isThink": False}
-                        buffer = buffer[think_start + 7:]  # Skip <think>
-                        in_think = True
-                    elif think_start == -1:
-                        # No <think> found, safe to yield most of buffer
-                        safe_len = len(buffer) - TAG_BUFFER_SIZE
-                        if safe_len > 0:
-                            yield {"type": "delta", "content": buffer[:safe_len], "isThink": False}
-                            buffer = buffer[safe_len:]
-                        break
-                    else:
-                        # <think> found but too close to end, wait for more data
-                        break
-                else:
-                    # Look for </think> end
-                    think_end = buffer.find("</think>")
-                    if think_end != -1 and think_end < len(buffer) - TAG_BUFFER_SIZE:
-                        # Yield think content
-                        if think_end > 0:
-                            yield {"type": "delta", "content": buffer[:think_end], "isThink": True}
-                        buffer = buffer[think_end + 8:]  # Skip </think>
-                        in_think = False
-                    elif think_end == -1:
-                        # No </think> found, safe to yield most of buffer
-                        safe_len = len(buffer) - TAG_BUFFER_SIZE
-                        if safe_len > 0:
-                            yield {"type": "delta", "content": buffer[:safe_len], "isThink": True}
-                            buffer = buffer[safe_len:]
-                        break
-                    else:
-                        # </think> found but too close to end, wait for more data
-                        break
-        
-        # Yield remaining buffer
+
+            # Process buffer incrementally, leaving ``guard`` chars in case a
+            # tag is split across the stream boundary.
+            while len(buffer) > guard:
+                pattern = self._THINK_CLOSE_RE if in_think else self._THINK_OPEN_RE
+                match = pattern.search(buffer)
+                if match and match.end() <= len(buffer) - guard:
+                    head = buffer[: match.start()]
+                    if head:
+                        yield {"type": "delta", "content": head, "isThink": in_think}
+                    buffer = buffer[match.end():]
+                    in_think = not in_think
+                    continue
+                if match is None:
+                    # No tag in sight — yield everything except the trailing
+                    # guard so a tag arriving in the next chunk can still be
+                    # caught.
+                    safe_len = len(buffer) - guard
+                    if safe_len > 0:
+                        yield {"type": "delta", "content": buffer[:safe_len], "isThink": in_think}
+                        buffer = buffer[safe_len:]
+                # Either no match, or match too close to end; wait for more.
+                break
+
+        # Final flush: emit remaining buffer with whatever state we're in.
+        # Drop a dangling ``<think>``-only opener if the model never closed
+        # it (rare but observed) so the user doesn't see a stray "<think>".
         if buffer:
             yield {"type": "delta", "content": buffer, "isThink": in_think}
-        
+
         yield {"type": "done"}
