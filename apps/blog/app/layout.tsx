@@ -6,6 +6,7 @@ import ClientLayout from './components/ClientLayout';
 import FloatingThemeToggle from './components/FloatingThemeToggle';
 import FontProvider from './components/FontProvider';
 import SiteSettingsProvider from './components/SiteSettingsProvider';
+import SkipToContent from './components/SkipToContent';
 import Providers from './providers';
 import { getSiteSettings } from './lib/services';
 import {
@@ -107,6 +108,7 @@ export default async function RootLayout({
         )}
       </head>
       <body className={`${inter.variable} ${playfair.variable} ${notoSerifSC.variable} bg-background text-foreground antialiased`} suppressHydrationWarning>
+        <SkipToContent />
         <Providers>
           <SiteSettingsProvider settings={settings}>
             <FontProvider initialFont={fontFamily}>

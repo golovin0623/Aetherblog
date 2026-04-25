@@ -1,0 +1,3 @@
+## 2024-04-25 - [Accessible Skip to Content Link & Anchor Focus Management]
+**Learning:** Adding a "Skip to Content" link alone is insufficient if the underlying smooth-scrolling anchor navigation (`scrollIntoView`) does not explicitly move keyboard focus to the target element. Screen reader and keyboard users need their focus logically updated, not just visually scrolled.
+**Action:** When intercepting anchor links for smooth scrolling, always add `target.focus({ preventScroll: true })`. If the target element is not natively focusable, temporarily inject `tabIndex="-1"` and remove it on `blur` to keep the DOM clean.
