@@ -25,6 +25,16 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
       if (target) {
         e.preventDefault();
         target.scrollIntoView({ behavior: 'smooth' });
+
+        // 键盘焦点管理：如果目标元素原本不可聚焦，临时赋予 tabIndex 并聚焦它
+        if (!target.hasAttribute('tabindex')) {
+          target.setAttribute('tabindex', '-1');
+          // 失去焦点时移除 tabindex 保持 DOM 干净
+          target.addEventListener('blur', () => {
+            target.removeAttribute('tabindex');
+          }, { once: true });
+        }
+        target.focus({ preventScroll: true });
       }
     };
     document.addEventListener('click', handleAnchorClick);
