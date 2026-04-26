@@ -365,11 +365,21 @@ class LlmRouter:
             user_text = str(normalized_variables.get("content", ""))
             return [{"role": "user", "content": user_text}]
 
-        # No content placeholder — render whole template as system, leave
-        # user empty (rare; caller likely passed a self-contained prompt).
+        # Template doesn't reference ``{content}``: treat the whole template
+        # as a self-contained system instruction and put the actual content
+        # in a separate user message. Without this branch, an admin-authored
+        # custom prompt that just says "你是专业摘要助手, 请直接输出摘要"
+        # (no placeholder) would silently drop ``normalized_variables['content']``
+        # and the model would have nothing to summarise — gemini-code-assist
+        # caught this on the original draft of #517.
         if "content" not in normalized_variables or "{content}" not in prompt_template:
-            rendered = self._safe_format(prompt_template, normalized_variables)
-            return [{"role": "user", "content": rendered}]
+            rendered_system = self._safe_format(prompt_template, normalized_variables).strip()
+            user_text = str(normalized_variables.get("content", ""))
+            messages: list[dict[str, str]] = []
+            if rendered_system:
+                messages.append({"role": "system", "content": rendered_system})
+            messages.append({"role": "user", "content": user_text})
+            return messages
 
         head, _, tail = prompt_template.partition("{content}")
         system_vars = {k: v for k, v in normalized_variables.items() if k != "content"}
@@ -713,10 +723,24 @@ class LlmRouter:
                 # Either no match, or match too close to end; wait for more.
                 break
 
-        # Final flush: emit remaining buffer with whatever state we're in.
-        # Drop a dangling ``<think>``-only opener if the model never closed
-        # it (rare but observed) so the user doesn't see a stray "<think>".
-        if buffer:
-            yield {"type": "delta", "content": buffer, "isThink": in_think}
+        # Final flush: drain whatever survived the trailing ``guard`` window
+        # through the same tag-detection logic as the main loop. The simpler
+        # "yield buffer as-is" form leaks any complete tag that happened to
+        # land in the last ``guard`` chars (e.g. an entire ``<think>`` opener
+        # at end-of-stream) — gemini-code-assist flagged this on #517. We
+        # keep iterating until either no more tags appear or the buffer is
+        # empty so that even multi-tag remnants like ``"<think>x</think>y"``
+        # are handled correctly.
+        while buffer:
+            pattern = self._THINK_CLOSE_RE if in_think else self._THINK_OPEN_RE
+            match = pattern.search(buffer)
+            if match is None:
+                yield {"type": "delta", "content": buffer, "isThink": in_think}
+                break
+            head = buffer[: match.start()]
+            if head:
+                yield {"type": "delta", "content": head, "isThink": in_think}
+            buffer = buffer[match.end():]
+            in_think = not in_think
 
         yield {"type": "done"}
