@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -56,6 +57,18 @@ func main() {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load config")
+	}
+
+	// 应用配置里的最低日志级别。历史实现把字段读进来却没下发到 zerolog，
+	// 默认全局级别是 zerolog.InfoLevel，但 trace 中间件对健康探活降级到
+	// Debug —— 一旦运维 export AETHERBLOG_LOG_LEVEL=debug 排查问题，
+	// docker healthcheck (3s) 就会瞬间淹没业务日志。这里把配置真正写进去，
+	// 同时让运行时的 PUT /v1/admin/system/log-level 也能拿到一致状态。
+	if lvl, perr := zerolog.ParseLevel(strings.ToLower(cfg.Log.Level)); perr == nil {
+		zerolog.SetGlobalLevel(lvl)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		log.Warn().Str("requested", cfg.Log.Level).Msg("unknown log level, falling back to info")
 	}
 
 	// 安全校验：JWT 密钥不得为空

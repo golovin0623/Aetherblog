@@ -27,9 +27,12 @@ COPY --from=builder /app/migrate /app/migrate
 COPY --from=builder /app/config.yaml /app/config.yaml
 COPY --from=builder /app/migrations /app/migrations
 
-# Create non-root user
+# Create non-root user.
+# /app/logs widened to mode 0775 so the shared aetherblog_logs volume stays
+# group-writable for ai-service (also UID 1001 / GID 1001). Mirrors the
+# matching change in apps/ai-service/Dockerfile.
 RUN addgroup -g 1001 appgroup && adduser -u 1001 -G appgroup -D appuser
-RUN chown -R appuser:appgroup /app
+RUN chown -R appuser:appgroup /app && chmod 0775 /app/logs
 
 USER appuser
 
