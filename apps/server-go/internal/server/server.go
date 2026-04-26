@@ -228,6 +228,9 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 		sysMonitorSvc, containerMonitorSvc, logViewerSvc, metricsHistorySvc,
 		s.DB, s.Redis, s.Config,
 	).MountAdmin(systemGroup)
+	// 运行时日志级别调整 —— 同时控制 backend 与 ai-service。
+	// 路由放在 /v1/admin/system/log-level 下,与现有日志查看 API 同源。
+	handler.NewLogLevelHandler(s.Config, aiClient).MountAdmin(systemGroup)
 	handler.NewPostHandler(postSvc, activitySvc).MountAdmin(admin.Group("/posts"))
 	commentRepo := repository.NewCommentRepo(s.DB)
 	commentSvc := service.NewCommentService(commentRepo, postRepo)

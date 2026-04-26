@@ -156,6 +156,22 @@ export interface AppLogFetchResult {
   nextCursor?: string | null;
 }
 
+// ========== 运行时日志级别类型 ==========
+
+export type BackendLogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'panic' | 'disabled' | 'trace';
+export type AiServiceLogLevel = 'debug' | 'info' | 'warning' | 'warn' | 'error' | 'critical';
+
+export interface LogLevelStatus {
+  backend: BackendLogLevel | string;
+  aiService?: AiServiceLogLevel | string;
+  aiServiceError?: string;
+}
+
+export interface LogLevelUpdatePayload {
+  backend?: BackendLogLevel | string;
+  aiService?: AiServiceLogLevel | string;
+}
+
 // ========== 告警类型 ==========
 
 export interface Alert {
@@ -315,8 +331,22 @@ export const systemService = {
   /**
    * 获取日志文件下载 URL
    */
-  getLogDownloadUrl: (level: string = 'ALL') => 
+  getLogDownloadUrl: (level: string = 'ALL') =>
     `/api/v1/admin/system/logs/download?level=${level}`,
+
+  /**
+   * 获取 backend / ai-service 当前运行时日志级别。
+   * 用于 RealtimeLogViewer 的"运行时级别"选择器初始化。
+   * 调整不持久化：进程重启后回到 AETHERBLOG_LOG_LEVEL / AI_LOG_LEVEL。
+   */
+  getLogLevel: () => api.get<R<LogLevelStatus>>('/v1/admin/system/log-level'),
+
+  /**
+   * 在线调整 backend / ai-service 日志级别（无需重启进程）。
+   * 任一字段缺省时对应服务保持原级别。
+   */
+  setLogLevel: (payload: LogLevelUpdatePayload) =>
+    api.put<R<LogLevelStatus>>('/v1/admin/system/log-level', payload),
 };
 
 // ========== 工具函数 ==========
