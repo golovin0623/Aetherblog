@@ -586,3 +586,231 @@ class TestSafeFormat:
         # Missing closing brace — should not crash
         rendered = LlmRouter._safe_format("prefix {content", {"content": "x"})
         assert "{content" in rendered
+
+
+# ─────────────────────── Message construction (system/user split) ────────────
+
+
+def _stub_router() -> LlmRouter:
+    """LlmRouter without the env-fed __init__ so we can poke pure helpers."""
+    obj = LlmRouter.__new__(LlmRouter)
+    return obj
+
+
+class TestBuildMessages:
+    """Regression suite for the system/user split fix.
+
+    The legacy implementation rendered the entire template into the system
+    role with ``content`` excluded from the variable dict, which left the
+    literal ``{content}`` placeholder visible to the model — the root cause
+    of the "summary returns 千字 Q&A" bug. The split must:
+
+    1. Move the actual content to the user message.
+    2. Strip the ``{content}`` marker from the system message.
+    3. Preserve any trailing instructions that appear after ``{content}``.
+    4. Substitute every other placeholder (e.g. ``{max_length}``).
+    """
+
+    def test_content_placeholder_does_not_leak_into_system(self):
+        router = _stub_router()
+        msgs = router._build_messages(
+            "请用一段话总结（不超过 {max_length} 字）：\n{content}",
+            {"content": "今天天气真好", "max_length": 200},
+        )
+        assert msgs[0]["role"] == "system"
+        assert "{content}" not in msgs[0]["content"]
+        assert "不超过 200 字" in msgs[0]["content"]
+        assert msgs[1] == {"role": "user", "content": "今天天气真好"}
+
+    def test_trailing_instructions_after_content_are_preserved(self):
+        router = _stub_router()
+        msgs = router._build_messages(
+            "请生成 {max} 个标签：\n{content}\n\n要求：以 JSON 数组输出",
+            {"content": "示例文章", "max": 5},
+        )
+        sys_text = msgs[0]["content"]
+        assert "请生成 5 个标签" in sys_text
+        assert "JSON 数组" in sys_text
+        assert msgs[1]["content"] == "示例文章"
+
+    def test_no_template_falls_back_to_user_only(self):
+        router = _stub_router()
+        msgs = router._build_messages(None, {"content": "hi"})
+        assert msgs == [{"role": "user", "content": "hi"}]
+
+    def test_template_without_content_marker_keeps_content_in_user(self):
+        """Custom prompt without an explicit ``{content}`` placeholder must
+        still pass the article body to the model — otherwise admin-set
+        prompts like "请直接输出摘要" silently drop the input. (PR #517 review.)
+        """
+        router = _stub_router()
+        msgs = router._build_messages(
+            "你是专业摘要助手, 请直接输出摘要", {"content": "今天的文章正文"}
+        )
+        assert msgs == [
+            {"role": "system", "content": "你是专业摘要助手, 请直接输出摘要"},
+            {"role": "user", "content": "今天的文章正文"},
+        ]
+
+    def test_template_without_content_marker_and_no_content_var(self):
+        # Edge case: no ``content`` variable at all (e.g. outline using
+        # ``topic`` only). System holds the template, user is empty string.
+        router = _stub_router()
+        msgs = router._build_messages("请输出当前时间", {})
+        assert msgs == [
+            {"role": "system", "content": "请输出当前时间"},
+            {"role": "user", "content": ""},
+        ]
+
+    def test_brace_literals_in_content_survive(self):
+        router = _stub_router()
+        weird = "function f() { return { x: 1 }; }"
+        msgs = router._build_messages(
+            "解释代码（{max_length}字内）:\n{content}",
+            {"content": weird, "max_length": 100},
+        )
+        assert msgs[1]["content"] == weird
+        assert "{content}" not in msgs[0]["content"]
+        assert "100字内" in msgs[0]["content"]
+
+
+# ─────────────────────── Reasoning-trace tag detection ───────────────────────
+
+
+class TestThinkTagRegex:
+    """Make sure the broadened tag matcher catches Qwen / R1 / custom variants
+    without accidentally chewing into ordinary prose."""
+
+    def test_matches_canonical_think(self):
+        assert LlmRouter._THINK_OPEN_RE.search("<think>")
+        assert LlmRouter._THINK_CLOSE_RE.search("</think>")
+
+    def test_matches_thinking_variant(self):
+        assert LlmRouter._THINK_OPEN_RE.search("<thinking>")
+        assert LlmRouter._THINK_CLOSE_RE.search("</thinking>")
+
+    def test_matches_reasoning_variant(self):
+        assert LlmRouter._THINK_OPEN_RE.search("<reasoning>")
+        assert LlmRouter._THINK_CLOSE_RE.search("</reasoning>")
+
+    def test_case_insensitive(self):
+        assert LlmRouter._THINK_OPEN_RE.search("<THINK>")
+        assert LlmRouter._THINK_OPEN_RE.search("<Thinking>")
+
+    def test_tolerates_internal_whitespace(self):
+        assert LlmRouter._THINK_OPEN_RE.search("< think >")
+        assert LlmRouter._THINK_CLOSE_RE.search("< / reasoning >")
+
+    def test_does_not_match_lookalikes(self):
+        assert LlmRouter._THINK_OPEN_RE.search("<thanks>") is None
+        assert LlmRouter._THINK_OPEN_RE.search("<thinkable>") is None
+        # Word boundary via ``\s*>`` keeps ``<thinkmore>`` out
+        assert LlmRouter._THINK_OPEN_RE.search("<thinkmore>") is None
+
+
+# ─────────────────────── Default max_tokens fallback table ───────────────────
+
+
+class TestDefaultMaxTokens:
+    """Even when the routing table is empty (env-only fallback), every
+    business task must have a hard upper bound — otherwise LiteLLM forwards
+    ``max_tokens=None`` and the model writes until the context window is
+    full. This caused user-reported "summary returns 千字" output."""
+
+    def test_summary_has_a_cap(self):
+        from app.services.llm_router import _TASK_DEFAULT_MAX_TOKENS
+
+        assert _TASK_DEFAULT_MAX_TOKENS["summary"] > 0
+        assert _TASK_DEFAULT_MAX_TOKENS["summary"] <= 1000
+
+    def test_all_chat_tasks_capped(self):
+        from app.services.llm_router import _TASK_DEFAULT_MAX_TOKENS
+
+        for task in ("summary", "tags", "titles", "polish", "outline", "translate", "qa"):
+            assert task in _TASK_DEFAULT_MAX_TOKENS
+            assert _TASK_DEFAULT_MAX_TOKENS[task] is not None
+            assert _TASK_DEFAULT_MAX_TOKENS[task] > 0
+
+
+# ─────────────────────── Stream tag-detection final flush ────────────────────
+
+
+class TestStreamFinalFlush:
+    """Regression for PR #517 review: tags that land in the trailing
+    ``guard`` window must NOT leak into the final delta event."""
+
+    @pytest.mark.asyncio
+    async def test_dangling_open_tag_at_end_of_stream_is_stripped(self):
+        """Model never closes ``<think>`` (rare but observed). The opener
+        has to be removed; pre-fix code yielded "...回答 <think>思考" verbatim."""
+        from app.services.llm_router import LlmRouter
+
+        router = LlmRouter.__new__(LlmRouter)
+
+        async def fake_stream(**_kwargs):
+            # Whole payload is short enough that the main loop's ``guard``
+            # window keeps the trailing ``<think>...`` parked in the buffer
+            # until end-of-stream.
+            yield "正式答案 "
+            yield "<think>"
+            yield "未闭合的思考"
+
+        # Patch ``stream_chat`` to feed our fake chunks
+        async def fake_iter(**kwargs):
+            async for chunk in fake_stream(**kwargs):
+                yield chunk
+
+        router.stream_chat = fake_iter  # type: ignore[method-assign]
+
+        events: list[dict] = []
+        async for ev in router.stream_chat_with_think_detection(
+            prompt_variables={"content": "x"}, model_alias="summary"
+        ):
+            events.append(ev)
+
+        # Reassemble visible (non-think) text. The literal "<think>"
+        # marker must not appear anywhere — that's the regression.
+        visible = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and not e.get("isThink")
+        )
+        assert "<think>" not in visible
+        assert "正式答案" in visible
+        # The unclosed think section should be flagged isThink=True.
+        thinking = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and e.get("isThink")
+        )
+        assert "未闭合的思考" in thinking
+
+    @pytest.mark.asyncio
+    async def test_complete_tag_pair_in_trailing_window_is_handled(self):
+        """End-of-stream buffer like ``"<think>x</think>y"`` must produce
+        clean think + visible halves, not raw text with literal tags."""
+        from app.services.llm_router import LlmRouter
+
+        router = LlmRouter.__new__(LlmRouter)
+
+        async def fake_iter(**_kwargs):
+            yield "<think>思考</think>结论"
+
+        router.stream_chat = fake_iter  # type: ignore[method-assign]
+
+        events: list[dict] = []
+        async for ev in router.stream_chat_with_think_detection(
+            prompt_variables={"content": "x"}, model_alias="summary"
+        ):
+            events.append(ev)
+
+        visible = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and not e.get("isThink")
+        )
+        thinking = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and e.get("isThink")
+        )
+        assert "<think>" not in visible
+        assert "</think>" not in visible
+        assert "结论" in visible
+        assert "思考" in thinking
