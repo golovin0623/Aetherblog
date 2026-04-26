@@ -638,13 +638,29 @@ class TestBuildMessages:
         msgs = router._build_messages(None, {"content": "hi"})
         assert msgs == [{"role": "user", "content": "hi"}]
 
-    def test_template_without_content_marker_renders_full_into_user(self):
-        # Self-contained template, no separation needed
+    def test_template_without_content_marker_keeps_content_in_user(self):
+        """Custom prompt without an explicit ``{content}`` placeholder must
+        still pass the article body to the model — otherwise admin-set
+        prompts like "请直接输出摘要" silently drop the input. (PR #517 review.)
+        """
         router = _stub_router()
         msgs = router._build_messages(
-            "请输出当前时间", {"content": "ignored"}
+            "你是专业摘要助手, 请直接输出摘要", {"content": "今天的文章正文"}
         )
-        assert msgs == [{"role": "user", "content": "请输出当前时间"}]
+        assert msgs == [
+            {"role": "system", "content": "你是专业摘要助手, 请直接输出摘要"},
+            {"role": "user", "content": "今天的文章正文"},
+        ]
+
+    def test_template_without_content_marker_and_no_content_var(self):
+        # Edge case: no ``content`` variable at all (e.g. outline using
+        # ``topic`` only). System holds the template, user is empty string.
+        router = _stub_router()
+        msgs = router._build_messages("请输出当前时间", {})
+        assert msgs == [
+            {"role": "system", "content": "请输出当前时间"},
+            {"role": "user", "content": ""},
+        ]
 
     def test_brace_literals_in_content_survive(self):
         router = _stub_router()
@@ -714,3 +730,87 @@ class TestDefaultMaxTokens:
             assert task in _TASK_DEFAULT_MAX_TOKENS
             assert _TASK_DEFAULT_MAX_TOKENS[task] is not None
             assert _TASK_DEFAULT_MAX_TOKENS[task] > 0
+
+
+# ─────────────────────── Stream tag-detection final flush ────────────────────
+
+
+class TestStreamFinalFlush:
+    """Regression for PR #517 review: tags that land in the trailing
+    ``guard`` window must NOT leak into the final delta event."""
+
+    @pytest.mark.asyncio
+    async def test_dangling_open_tag_at_end_of_stream_is_stripped(self):
+        """Model never closes ``<think>`` (rare but observed). The opener
+        has to be removed; pre-fix code yielded "...回答 <think>思考" verbatim."""
+        from app.services.llm_router import LlmRouter
+
+        router = LlmRouter.__new__(LlmRouter)
+
+        async def fake_stream(**_kwargs):
+            # Whole payload is short enough that the main loop's ``guard``
+            # window keeps the trailing ``<think>...`` parked in the buffer
+            # until end-of-stream.
+            yield "正式答案 "
+            yield "<think>"
+            yield "未闭合的思考"
+
+        # Patch ``stream_chat`` to feed our fake chunks
+        async def fake_iter(**kwargs):
+            async for chunk in fake_stream(**kwargs):
+                yield chunk
+
+        router.stream_chat = fake_iter  # type: ignore[method-assign]
+
+        events: list[dict] = []
+        async for ev in router.stream_chat_with_think_detection(
+            prompt_variables={"content": "x"}, model_alias="summary"
+        ):
+            events.append(ev)
+
+        # Reassemble visible (non-think) text. The literal "<think>"
+        # marker must not appear anywhere — that's the regression.
+        visible = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and not e.get("isThink")
+        )
+        assert "<think>" not in visible
+        assert "正式答案" in visible
+        # The unclosed think section should be flagged isThink=True.
+        thinking = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and e.get("isThink")
+        )
+        assert "未闭合的思考" in thinking
+
+    @pytest.mark.asyncio
+    async def test_complete_tag_pair_in_trailing_window_is_handled(self):
+        """End-of-stream buffer like ``"<think>x</think>y"`` must produce
+        clean think + visible halves, not raw text with literal tags."""
+        from app.services.llm_router import LlmRouter
+
+        router = LlmRouter.__new__(LlmRouter)
+
+        async def fake_iter(**_kwargs):
+            yield "<think>思考</think>结论"
+
+        router.stream_chat = fake_iter  # type: ignore[method-assign]
+
+        events: list[dict] = []
+        async for ev in router.stream_chat_with_think_detection(
+            prompt_variables={"content": "x"}, model_alias="summary"
+        ):
+            events.append(ev)
+
+        visible = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and not e.get("isThink")
+        )
+        thinking = "".join(
+            e["content"] for e in events
+            if e["type"] == "delta" and e.get("isThink")
+        )
+        assert "<think>" not in visible
+        assert "</think>" not in visible
+        assert "结论" in visible
+        assert "思考" in thinking
