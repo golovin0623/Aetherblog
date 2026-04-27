@@ -42,7 +42,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
 
   const totalPages = Math.max(1, Math.ceil(sortedData.length / PAGE_SIZE));
 
-  // Reset page when data changes to avoid out-of-bounds state
+  // 数据变化时重置页码，避免越界状态
   useEffect(() => {
     setPage(0);
   }, [sortedData.length]);
@@ -84,7 +84,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
     <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[360px] md:h-[360px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">模型调用占比</h3>
       <div className="flex-1 min-h-0 flex flex-col md:flex-row items-center gap-4">
-        {/* Left: enhanced donut chart — 50% width on desktop, full width on mobile */}
+        {/* 左侧：增强环形图 —— 桌面端 50% 宽度，移动端全宽 */}
         <div className="relative shrink-0 w-[200px] h-[200px] md:w-1/2 md:h-full md:max-h-[260px] aspect-square">
           {hasData ? (
             <>
@@ -170,7 +170,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
                   />
                 </PieChart>
               </ResponsiveContainer>
-              {/* Center overlay: total calls — z-index lower than tooltip */}
+              {/* 中心覆盖层：总调用次数 —— z-index 低于 tooltip */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
                 <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
                   总调用
@@ -190,7 +190,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
           )}
         </div>
 
-        {/* Right: paginated model list — 50% width on desktop */}
+        {/* 右侧：分页模型列表 —— 桌面端 50% 宽度 */}
         <div className="w-full md:w-1/2 min-w-0 flex flex-col h-full py-1">
           <div className="flex-1 min-h-0 grid grid-cols-2 md:grid-cols-1 gap-2.5 content-center">
             {visibleModels.length === 0 ? (

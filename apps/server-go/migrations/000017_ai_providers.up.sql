@@ -1,14 +1,14 @@
 -- ============================================================
--- AI Provider Configuration Tables
+-- AI Provider 配置表
 -- ref: §5.1
 -- ============================================================
--- Run by Flyway to create AI config tables
--- Author: AetherBlog Team
--- Date: 2026-01-31
+-- 由 Flyway 执行，用于创建 AI 配置相关表
+-- 作者：AetherBlog 团队
+-- 日期：2026-01-31
 -- ============================================================
 
 -- ============================================================
--- PART 1: AI Providers
+-- 第 1 部分：AI Providers
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_providers (
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_providers_code ON ai_providers(code);
 CREATE INDEX IF NOT EXISTS idx_ai_providers_enabled ON ai_providers(is_enabled);
 
 -- ============================================================
--- PART 2: AI Models
+-- 第 2 部分：AI Models
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_models (
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_models_type ON ai_models(model_type);
 CREATE INDEX IF NOT EXISTS idx_ai_models_enabled ON ai_models(is_enabled);
 
 -- ============================================================
--- PART 3: AI Credentials
+-- 第 3 部分：AI Credentials
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_credentials (
@@ -100,7 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_credentials_user ON ai_credentials(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_credentials_provider ON ai_credentials(provider_id);
 
 -- ============================================================
--- PART 4: AI Task Types
+-- 第 4 部分：AI Task Types
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_task_types (
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS ai_task_types (
 );
 
 -- ============================================================
--- PART 5: AI Task Routing
+-- 第 5 部分：AI Task Routing
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_task_routing (
@@ -150,7 +150,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- PART 6: Triggers for updated_at
+-- 第 6 部分：updated_at 的 trigger
 -- ============================================================
 
 DO $$
@@ -179,7 +179,7 @@ END $$;
 
 -- ============================================================
 -- ============================================================
--- PART 7: Seed Data - Providers
+-- 第 7 部分：种子数据 - Providers
 -- ============================================================
 
 INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url, capabilities, priority) VALUES
@@ -254,7 +254,7 @@ INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url,
 ON CONFLICT (code) DO NOTHING;
 
 -- ============================================================
--- PART 8: Seed Data - Models
+-- 第 8 部分：种子数据 - Models
 -- ============================================================
 
 INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_window, max_output_tokens, input_cost_per_1k, output_cost_per_1k, capabilities, is_enabled) VALUES
@@ -1928,7 +1928,7 @@ ON CONFLICT (provider_id, model_id) DO NOTHING;
 
 
 -- ============================================================
--- PART 9: Seed Data - Task Types
+-- 第 9 部分：种子数据 - Task Types
 -- ============================================================
 
 INSERT INTO ai_task_types (code, name, description, default_model_type, default_temperature, default_max_tokens, prompt_template) VALUES
@@ -1946,7 +1946,7 @@ ON CONFLICT (code) DO UPDATE SET
     name = EXCLUDED.name;
 
 -- ============================================================
--- PART 10: Seed Data - Default Routing
+-- 第 10 部分：种子数据 - 默认路由
 -- ============================================================
 
 INSERT INTO ai_task_routing (user_id, task_type_id, primary_model_id, fallback_model_id, config_override)
@@ -1975,5 +1975,5 @@ ON CONFLICT ON CONSTRAINT uq_ai_task_routing_user_task
 DO NOTHING;
 
 -- ============================================================
--- End of Migration
+-- migration 结束
 -- ============================================================

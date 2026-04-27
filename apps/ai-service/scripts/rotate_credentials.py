@@ -1,45 +1,41 @@
-"""Re-encrypt every stored AI credential with the FIRST key in
-``AI_CREDENTIAL_ENCRYPTION_KEYS``, and optionally repair any routing rows
-that end up pointing at credentials that no longer decrypt.
+"""使用 ``AI_CREDENTIAL_ENCRYPTION_KEYS`` 中的第一个 key 重新加密所有
+已存储的 AI 凭证,并可选修复那些指向无法再解密的凭证的路由行。
 
-Use this during the VULN-056 migration window:
+请在 VULN-056 迁移窗口期使用:
 
-    # 1. Compute the legacy key derived from JWT_SECRET (so MultiFernet can
-    #    decrypt existing rows during the transition).
+    # 1. 计算从 JWT_SECRET 派生的旧 key (这样 MultiFernet 在过渡期
+    #    仍能解密已有行)。
     OLD_KEY=$(python3 -c "from app.services.credential_resolver import _legacy_jwt_derived_key; \
                           import os; print(_legacy_jwt_derived_key(os.environ['JWT_SECRET']).decode())")
 
-    # 2. Generate a fresh primary key.
+    # 2. 生成一把全新的主 key。
     NEW_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
-    # 3. Configure both, new key first.
+    # 3. 同时配置两把,新 key 在前。
     export AI_CREDENTIAL_ENCRYPTION_KEYS="$NEW_KEY,$OLD_KEY"
 
-    # 4. Restart ai-service so it picks up the new keys, then run this script.
+    # 4. 重启 ai-service 让它读到新 key,然后运行本脚本。
     python3 -m scripts.rotate_credentials
 
-    # 5. Drop the legacy key from the env after verification.
+    # 5. 验证完成后从环境变量里删除旧 key。
     export AI_CREDENTIAL_ENCRYPTION_KEYS="$NEW_KEY"
-    # restart ai-service one more time
+    # 再重启一次 ai-service
 
-The script is idempotent: rows already encrypted with the first key are
-re-wrapped (new ciphertext, same plaintext) without losing data.
+本脚本幂等: 已经用第一把 key 加密的行会被重新包装
+(新密文、相同明文),不会丢数据。
 
-Orphaned routing repair (``--repair-orphans``):
-    If any credential row fails to decrypt (because the key that originally
-    encrypted it is no longer present in ``AI_CREDENTIAL_ENCRYPTION_KEYS``),
-    ``ai_task_routing.credential_id`` may still point at it — the routing
-    probe will then log ``"credential probe failed for ...: "`` (empty
-    InvalidToken message), admin UI reports "no credential available", and
-    reindex silently falls back to env defaults.
+孤儿路由修复 (``--repair-orphans``):
+    如果某条凭证行无法解密 (因为最初加密它的 key 已不在
+    ``AI_CREDENTIAL_ENCRYPTION_KEYS`` 中),``ai_task_routing.credential_id``
+    可能仍在指向它 —— 此时路由探针会记录 ``"credential probe failed for ...: "``
+    (InvalidToken 消息为空),管理端 UI 报"no credential available",
+    reindex 会悄悄回退到环境默认值。
 
-    Pass ``--repair-orphans`` to have the script re-attach such routings to
-    the working default/enabled credential for the same provider (or set
-    ``credential_id = NULL`` if no replacement exists — the FK is
-    ``ON DELETE SET NULL`` and the resolver falls back to provider default).
-    Pass ``--delete-dead`` to additionally purge credential rows that can
-    never be decrypted. Both flags are opt-in and destructive; run without
-    them first to preview the impact.
+    传入 ``--repair-orphans`` 可让脚本将这类路由重新挂到同 provider 下
+    可用的默认/启用凭证 (若无可替代则置 ``credential_id = NULL`` ——
+    外键是 ``ON DELETE SET NULL``,resolver 会回退到 provider 默认值)。
+    传入 ``--delete-dead`` 可进一步清除永远无法解密的凭证行。
+    两个 flag 都是显式开启且具破坏性的;请先不带它们跑一遍预览影响。
 """
 
 from __future__ import annotations
@@ -56,8 +52,8 @@ from app.services.credential_resolver import CredentialResolver
 async def _repair_orphan_routings(
     conn: asyncpg.Connection, dead_ids: list[int]
 ) -> tuple[int, int]:
-    """Reattach ai_task_routing rows pointing at dead credentials to a live
-    replacement on the same provider. Returns ``(repaired, set_null)``."""
+    """把指向已失效凭证的 ai_task_routing 行重新挂到同 provider 下
+    可用的替代凭证。返回 ``(repaired, set_null)``。"""
     if not dead_ids:
         return 0, 0
     orphan_rows = await conn.fetch(

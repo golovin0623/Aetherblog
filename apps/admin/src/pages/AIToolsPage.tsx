@@ -86,10 +86,10 @@ export default function AIToolsPage() {
   const [promptConfigs, setPromptConfigs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Handle URL-driven deep links: ?tool=summary&postId=123
-  // - tool: pre-select the tool
-  // - postId: set as target post (triggers refresh from DB in useAiToolTarget)
-  // Consumed once on mount — subsequent URL changes don't clobber user state.
+  // 处理 URL 驱动的深链：?tool=summary&postId=123
+  // - tool：预选工具
+  // - postId：作为目标文章（在 useAiToolTarget 中触发从数据库刷新）
+  // 仅在挂载时消费一次 —— 后续 URL 变化不会覆盖用户状态。
   useEffect(() => {
     const urlTool = searchParams.get('tool');
     const urlPostId = searchParams.get('postId');
@@ -109,10 +109,10 @@ export default function AIToolsPage() {
       mutated = true;
     }
     if (mutated) {
-      // Strip the params so a refresh doesn't re-trigger the flow.
+      // 清除参数，防止刷新时再次触发流程。
       setSearchParams(next, { replace: true });
     }
-    // Intentionally empty dep array: URL params are consumed once on mount only.
+    // 故意使用空依赖数组：URL 参数仅在挂载时消费一次。
   }, []); // eslint-disable-line
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const systemCodes = useMemo(() => SYSTEM_TOOLS.map(t => t.code), []);

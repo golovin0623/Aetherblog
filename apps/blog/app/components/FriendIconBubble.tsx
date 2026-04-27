@@ -131,7 +131,7 @@ const FriendIconBubbleBase: React.FC<FriendIconBubbleProps> = ({
               }}
             />
 
-            {/* 玻璃高光弧 - Apple 风格的球面反射 */}
+            {/* 玻璃高光弧 - Apple 风格球面反射 */}
             <div
               className="absolute inset-0 pointer-events-none z-[2]"
               style={{

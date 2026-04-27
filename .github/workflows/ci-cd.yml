@@ -16,10 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# SECURITY (VULN-137): workflow-level permissions start read-only.
-# Individual jobs that need write scopes (docker push, PR comment) must
-# re-declare the specific permission locally. Prevents compromised Actions
-# from silently abusing GITHUB_TOKEN's default read-write scope.
+# SECURITY (VULN-137): 工作流级权限默认收敛为只读。
+# 需要写权限的单独 job（如 docker push、PR 评论）必须在本地重新声明所需权限。
+# 防止被篡改的 Action 偷偷利用 GITHUB_TOKEN 默认的读写权限。
 permissions:
   contents: read
 
@@ -129,7 +128,7 @@ jobs:
           fetch-depth: 0  # gitleaks 需要全历史来扫每次 diff
 
       - name: Run gitleaks
-        # TODO(supply-chain): replace @v2 with 40-char SHA once baseline CI 稳定 (VULN-136)。
+        # TODO(supply-chain): 待 CI 基线稳定后将 @v2 替换为 40 位 SHA (VULN-136)。
         uses: gitleaks/gitleaks-action@v2
         continue-on-error: true
         env:
@@ -151,7 +150,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Scan backend image
-        # TODO(supply-chain): pin to SHA (VULN-136).
+        # TODO(supply-chain): 钉死到 SHA (VULN-136)。
         # v0.28.0 内嵌 setup-trivy@v0.2.1（已被上游删除 → "unable to find version"）；
         # v0.35.0 用 SHA 钉死 setup-trivy 不再受 tag 移动影响。
         uses: aquasecurity/trivy-action@v0.35.0
@@ -172,9 +171,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Block VERSION=latest in tracked env files
-        # SECURITY (VULN-143): `latest` tags bypass cosign verify and let
-        # malicious pushes land silently. Tracked .env templates / compose
-        # files must pin to SemVer.
+        # SECURITY (VULN-143): `latest` 标签会绕过 cosign 校验，让恶意推送
+        # 静默落地。受版本控制的 .env 模板 / compose 文件必须钉死到 SemVer。
         run: |
           if grep -RnE '^VERSION=latest' --include='.env.example' --include='docker-compose*.yml' .; then
             echo "::error::VERSION=latest is forbidden in tracked config — pin to v\\d+\\.\\d+\\.\\d+"
@@ -212,16 +210,15 @@ jobs:
 
       - name: Validate Docker Compose files
         env:
-          # VULN-117/118/119/120 added `${VAR:?}` enforcement; ci dummies must
-          # cover every newly-required variable or the `config --quiet` pass
-          # fails before compose even renders.
+          # VULN-117/118/119/120 给变量加了 `${VAR:?}` 强校验；CI 占位值必须
+          # 覆盖所有新增的必填变量，否则 `config --quiet` 在 compose 渲染前就会失败。
           POSTGRES_PASSWORD: ci-validate-dummy
           DB_PASSWORD: ci-validate-dummy
           REDIS_PASSWORD: ci-validate-dummy
           JWT_SECRET: ci-validate-dummy
           AI_INTERNAL_SERVICE_TOKEN: ci-validate-dummy-token-minimum-32chars
-          # VULN-056: real Fernet key (generated once). Must decode, not merely
-          # 32 chars of random bytes.
+          # VULN-056: 真实 Fernet 密钥（一次性生成）。必须能成功解码，不能只是
+          # 32 字节的随机字符。
           AI_CREDENTIAL_ENCRYPTION_KEYS: RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI=
         run: |
           docker compose -f docker-compose.yml config --quiet
@@ -253,17 +250,15 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        # SECURITY (VULN-138): PR workflows install with --ignore-scripts so a
-        # malicious dep's postinstall cannot steal GITHUB_TOKEN / secrets on
-        # pull_request runs. Build jobs that run on main push can re-run
-        # install without this flag if a native addon truly needs a build step.
+        # SECURITY (VULN-138): PR 工作流加 --ignore-scripts 安装依赖，避免恶意
+        # 依赖的 postinstall 钩子在 pull_request 运行时窃取 GITHUB_TOKEN / secrets。
+        # 在 main push 上跑的 build job，如果某个原生扩展确实需要构建步骤，可以去掉这个 flag 重装。
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Audit dependencies
-        # SECURITY (VULN-157): surface high+critical npm advisories. We don't
-        # fail the build today — CI output acts as a visibility signal while we
-        # tackle existing advisories; flip to `exit 1` once the known-clean
-        # baseline is established.
+        # SECURITY (VULN-157): 暴露 high + critical 级别的 npm 安全公告。当前
+        # 不阻断构建 —— CI 输出作为可见性信号，等存量公告处理完、确立干净基线后
+        # 再切换为 `exit 1`。
         run: pnpm audit --audit-level=high || echo "::warning::pnpm audit reported issues (non-blocking)"
 
       - name: Lint
@@ -301,9 +296,9 @@ jobs:
         run: go test ./... -v -count=1
 
       - name: Go vulnerability check (govulncheck)
-        # SECURITY (VULN-158): Go's official vuln DB lookup. Non-blocking for
-        # now — warn on known vulns so we see them in PR runs; flip to
-        # `continue-on-error: false` after baseline is clean.
+        # SECURITY (VULN-158): Go 官方漏洞库查询。当前不阻断 —— 已知漏洞仅
+        # 告警，方便在 PR 运行中看到；待基线清理干净后切换为
+        # `continue-on-error: false`。
         continue-on-error: true
         working-directory: apps/server-go
         run: |
@@ -353,8 +348,8 @@ jobs:
           JWT_SECRET: "ci-test-secret"
           AI_INTERNAL_SERVICE_TOKEN: "ci-test-token-minimum-32-characters-long"
           POSTGRES_DSN: "postgresql://test:test@localhost:5432/test_db"
-          # VULN-056: AI service refuses to start without an encryption key set.
-          # Generated once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+          # VULN-056: AI 服务在没有设置加密密钥时拒绝启动。
+          # 一次性生成命令: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
           AI_CREDENTIAL_ENCRYPTION_KEYS: "RyzpKxpEEIQQfvVYPjcrwgOpmRtvhMhqsobGQHTr1WI="
         run: |
           python -c "from app.main import app; print('✅ App imports successfully')"
@@ -614,12 +609,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Build the exact body that will be both signed and sent — signature
-          # must be computed over the byte-for-byte request body (VULN-132 HMAC).
+          # 构造既要签名也要发送的精确报文 —— 签名必须基于请求体按字节
+          # 一致计算（VULN-132 HMAC 要求）。
           body=$(printf '{"services": "%s"}' "$SERVICES")
 
-          # HMAC-SHA256 in hex; awk '{print $NF}' handles both openssl output
-          # styles ("(stdin)= <hex>" vs plain "<hex>").
+          # 输出 HMAC-SHA256 十六进制；awk '{print $NF}' 同时兼容两种 openssl
+          # 输出格式（"(stdin)= <hex>" 与纯 "<hex>"）。
           sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
 
           response_file=$(mktemp)

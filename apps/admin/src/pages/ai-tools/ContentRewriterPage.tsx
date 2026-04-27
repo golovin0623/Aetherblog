@@ -30,7 +30,7 @@ export function ContentRewriterPage() {
         <p className="text-[var(--text-muted)] mt-1">AI 智能改写内容，调整风格和表达方式</p>
       </div>
 
-      {/* Style Selection */}
+      {/* 风格选择 */}
       <div className="flex items-center gap-3">
         <span className="text-sm text-[var(--text-muted)]">改写风格:</span>
         {styles.map((s) => (

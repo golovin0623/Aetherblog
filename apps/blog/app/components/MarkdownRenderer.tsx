@@ -46,14 +46,14 @@ function sanitizeHtml(dirty: string, config: Record<string, unknown>): string {
 // ============================================================================
 // rehype-sanitize 白名单 — 允许博客常用 HTML 属性，阻止 XSS
 // ============================================================================
-// SECURITY (VULN-116): rehype-sanitize already blocks iframe/object/embed/form
-// in the default schema, but we re-assert the allowlist approach (don't
-// spread raw tag lists from user input). Keep tagNames explicit.
+// SECURITY (VULN-116): rehype-sanitize 的默认 schema 已经阻止
+// iframe/object/embed/form，这里重申白名单策略（不要从用户输入展开原始
+// 标签列表）。tagNames 必须显式列出。
 //
-// SECURITY (VULN-170): rehype-sanitize's default allows `data:` URIs on img
-// src. SVG in a data: URL executes inline <script>, so we narrow the protocols
-// list to drop `data:` from `img@src` specifically. This also defends against
-// the old VULN-021 class of payloads that disguise scripts as images.
+// SECURITY (VULN-170): rehype-sanitize 默认在 img src 上允许 `data:` URI。
+// data: URL 形式的 SVG 可以执行内联 <script>，因此这里收窄 protocols 列表，
+// 专门把 `data:` 从 `img@src` 上去除。这同时也防御了 VULN-021 类
+// 把脚本伪装成图片的旧载荷。
 const sanitizeSchema: typeof defaultSchema = {
   ...defaultSchema,
   tagNames: [
@@ -80,7 +80,7 @@ const sanitizeSchema: typeof defaultSchema = {
     // alert-block 自定义元素
     'alert-block': ['data-type', 'data-title'],
   },
-  // VULN-170: `data:` removed from img protocols; only http(s) & blob allowed.
+  // VULN-170: 从 img protocols 中移除 `data:`，仅允许 http(s) 与 blob。
   protocols: {
     ...(defaultSchema.protocols || {}),
     src: ['http', 'https', 'blob'],
@@ -103,7 +103,7 @@ function loadKatexCss() {
   link.rel = 'stylesheet';
   link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.css';
   link.crossOrigin = 'anonymous';
-  // TODO: Add link.integrity = 'sha384-...' for Subresource Integrity (SRI)
+  // TODO: 增加 link.integrity = 'sha384-...' 以启用子资源完整性校验（SRI）
   document.head.appendChild(link);
   katexCssLoaded = true;
   logger.info('[KaTeX] CSS 懒加载完成');
@@ -949,9 +949,8 @@ function createComponents(
 }
 
 const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps) => {
-  // Seed from the module-level singleton so SPA navigation to a second article
-  // after Shiki has already resolved doesn't flash a 1-frame visibility:hidden
-  // before the ready effect runs.
+  // 用模块级单例做初值，避免 Shiki 已 resolve 后 SPA 导航到第二篇文章时，
+  // 在 ready effect 运行前出现 1 帧的 visibility:hidden 闪烁。
   const [highlighter, setHighlighter] = useState<HighlighterCore | null>(highlighterInstance);
   // Shiki 加载结果：pending → 初始态；ready → 高亮器可用；failed → 降级为纯文本
   // 代码块。任何失败（如 CSP 拦截 WASM）都必须走 failed 分支解除 visibility:hidden，
@@ -962,7 +961,7 @@ const MarkdownRendererBase = ({ content, className = '' }: MarkdownRendererProps
 
   // 加载 Shiki highlighter
   useEffect(() => {
-    // Singleton already resolved — skip re-subscribing; initial state is correct.
+    // 单例已 resolve —— 跳过重新订阅；初始状态已经正确。
     if (highlighterInstance) return;
 
     let cancelled = false;

@@ -133,7 +133,7 @@ func (h *MediaTagHandler) TagFile(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
-	// SECURITY (VULN-041): only file uploader / admin may attach tags.
+	// SECURITY (VULN-041): 仅文件上传者 / admin 可以附加标签。
 	if err := h.assertFileOwnership(c, fileID); err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func (h *MediaTagHandler) UntagFile(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的文件ID")
 	}
-	// SECURITY (VULN-041): only file uploader / admin may detach tags.
+	// SECURITY (VULN-041): 仅文件上传者 / admin 可以解除标签。
 	if err := h.assertFileOwnership(c, fileID); err != nil {
 		return err
 	}

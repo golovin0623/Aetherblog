@@ -1,16 +1,16 @@
 -- ============================================================
--- AetherBlog V1.2.0 - Add Missing Site Settings
+-- AetherBlog V1.2.0 - 补充站点设置
 -- ============================================================
 -- Flyway Migration: V1_2__add_missing_settings.sql
--- Description: Add missing settings for frontend SettingsPage
+-- 说明：为前端 SettingsPage 补齐缺失的设置项
 -- ============================================================
 
--- General Settings (missing)
+-- 通用设置（缺失项）
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('site_url', '', 'STRING', 'general', '站点URL')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Appearance Settings
+-- 外观设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('theme_primary_color', '#6366f1', 'STRING', 'appearance', '主色调'),
     ('enable_dark_mode', 'true', 'BOOLEAN', 'appearance', '强制暗黑模式'),
@@ -19,7 +19,7 @@ INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name,
     ('custom_css', '', 'TEXT', 'appearance', '自定义CSS')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- SEO Settings
+-- SEO 设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('seo_robots', 'User-agent: *\nAllow: /', 'TEXT', 'seo', 'Robots.txt内容'),
     ('enable_sitemap', 'true', 'BOOLEAN', 'seo', '启用Sitemap'),
@@ -27,7 +27,7 @@ INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name,
     ('google_analytics_id', '', 'STRING', 'seo', 'Google Analytics ID')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Social Settings
+-- 社交设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('social_github', '', 'STRING', 'social', 'GitHub地址'),
     ('social_twitter', '', 'STRING', 'social', 'Twitter地址'),
@@ -35,7 +35,7 @@ INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name,
     ('social_weibo', '', 'STRING', 'social', '微博地址')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Advanced Settings (missing)
+-- 高级设置（缺失项）
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('enable_registrations', 'false', 'BOOLEAN', 'advanced', '允许用户注册'),
     ('upload_max_size', '10', 'NUMBER', 'advanced', '最大上传大小(MB)')

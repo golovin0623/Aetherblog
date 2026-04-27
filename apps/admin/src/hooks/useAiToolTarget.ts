@@ -68,7 +68,7 @@ const persistTarget = (id: number | null) => {
       window.localStorage.setItem(TARGET_KEY, String(id));
     }
   } catch {
-    /* ignore quota / privacy errors */
+    /* 忽略配额 / 隐私错误 */
   }
 };
 
@@ -103,7 +103,7 @@ export function useAiToolTarget(): AiToolTargetApi {
   const [targetPost, setTargetPost] = useState<Post | null>(null);
   const [recentPosts, setRecentPosts] = useState<PostListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  // Guard against stale responses when the user switches targets rapidly.
+  // 防止用户快速切换目标时收到过期响应。
   const requestSeqRef = useRef(0);
 
   const setTargetPostId = useCallback((id: number | null) => {
@@ -144,7 +144,7 @@ export function useAiToolTarget(): AiToolTargetApi {
         setRecentPosts(res.data.list || []);
       }
     } catch {
-      /* best-effort */
+      /* 尽力执行，失败忽略 */
     }
   }, []);
 
@@ -208,7 +208,7 @@ export function useAiToolTarget(): AiToolTargetApi {
       return false;
     }
 
-    // Case-insensitive dedupe with original casing preserved (first occurrence wins).
+    // 大小写不敏感去重，保留首次出现时的原始大小写。
     // 防止 ["AI", "ai"] 被当作两个不同的标签导致重复创建。
     const seenLower = new Set<string>();
     const normalized: string[] = [];
@@ -301,7 +301,7 @@ export function useAiToolTarget(): AiToolTargetApi {
     }
 
     const existingContent = targetPost.content || '';
-    // Empty-post edge case: 对空文章不添加前导 \n\n，避免新文档一上来就两个空行。
+    // 空文章的边缘情况：对空文章不添加前导 \n\n，避免新文档一上来就两个空行。
     let nextContent: string;
     if (mode === 'replace') {
       nextContent = text;
@@ -350,7 +350,7 @@ export function useAiToolTarget(): AiToolTargetApi {
         return res.data.content || '';
       }
     } catch {
-      /* best-effort */
+      /* 尽力执行，失败忽略 */
     }
     return null;
   }, []);

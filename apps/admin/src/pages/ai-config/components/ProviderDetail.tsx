@@ -306,7 +306,7 @@ export default function ProviderDetail({
                 {/* 配置项列表容器 */}
                 <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
 
-                  {/* 1. API Key Row (Input Style) */}
+                  {/* 1. API Key 行 (输入框样式) */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
                     <div className="space-y-1 md:w-1/3">
                       <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
@@ -345,7 +345,7 @@ export default function ProviderDetail({
                     </div>
                   </div>
 
-                  {/* 2. API Proxy Row (Input Style) */}
+                  {/* 2. API 代理地址行 (输入框样式) */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
                     <div className="space-y-1 md:w-1/3">
                       <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
@@ -370,7 +370,7 @@ export default function ProviderDetail({
                     </div>
                   </div>
 
-                  {/* 3. Connection Check Row */}
+                  {/* 3. 连通性检查行 */}
                   {showChecker && (
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
                       <div className="space-y-1 md:w-1/3">
@@ -432,7 +432,7 @@ export default function ProviderDetail({
           {/* 配置项列表容器 */}
           <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
 
-            {/* 1. API Key Row (Input Style) */}
+            {/* 1. API Key 行 (输入框样式) */}
             <div className="flex items-center justify-between gap-4 p-4">
               <div className="space-y-1 w-1/3">
                 <div className="font-medium text-sm text-[var(--text-primary)]">API Key</div>
@@ -471,7 +471,7 @@ export default function ProviderDetail({
               </div>
             </div>
 
-            {/* 2. API Proxy Row (Input Style) */}
+            {/* 2. API 代理地址行 (输入框样式) */}
             <div className="flex items-center justify-between gap-4 p-4">
               <div className="space-y-1 w-1/3">
                 <div className="font-medium text-sm text-[var(--text-primary)]">API 代理地址</div>
@@ -496,7 +496,7 @@ export default function ProviderDetail({
               </div>
             </div>
 
-            {/* 3. Connection Check Row */}
+            {/* 3. 连通性检查行 */}
             {showChecker && (
               <div className="flex items-center justify-between gap-4 p-4">
                 <div className="space-y-1 w-1/3">

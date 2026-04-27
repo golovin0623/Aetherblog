@@ -36,11 +36,10 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'aetherblog-auth',
-      // SECURITY (VULN-095): persist only the "am I logged in?" bit. The full
-      // user record — including `role` — is re-fetched via /v1/auth/me on app
-      // boot, so a modified localStorage entry cannot silently elevate an
-      // account to ADMIN in the UI. (Backend enforcement is already strict
-      // since VULN-052, but this keeps the UI's surface consistent.)
+      // 安全 (VULN-095)：仅持久化"是否已登录"标志位。完整的用户记录——
+      // 包括 `role`——在应用启动时通过 /v1/auth/me 重新获取，因此被修改
+      // 的 localStorage 条目无法在 UI 中悄悄将账号提权为 ADMIN。（自
+      // VULN-052 起后端已严格校验，此处保证 UI 表层逻辑一致。）
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
       }),

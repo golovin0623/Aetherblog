@@ -27,7 +27,7 @@ class PromptUpdateRequest(BaseModel):
 async def get_all_prompts(
     llm: LlmRouter = Depends(get_llm_router)
 ) -> ApiResponse[list[PromptConfigResponse]]:
-    """Get all prompt configurations."""
+    """获取所有 prompt 配置。"""
     query = """
         SELECT tt.code as task_type, tt.prompt_template as default_prompt, 
                COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt
@@ -56,7 +56,7 @@ async def get_prompt_config(
     task_type: str,
     llm: LlmRouter = Depends(get_llm_router)
 ) -> ApiResponse[PromptConfigResponse]:
-    """Get prompt configuration for a task type."""
+    """获取指定 task type 的 prompt 配置。"""
     
     query = """
         SELECT tt.prompt_template as default_prompt,
@@ -86,7 +86,7 @@ async def update_prompt_config(
     req: PromptUpdateRequest,
     llm: LlmRouter = Depends(get_llm_router)
 ) -> ApiResponse[bool]:
-    """Update prompt configuration for a task type."""
+    """更新指定 task type 的 prompt 配置。"""
     query = """
         SELECT r.config_override
         FROM ai_task_types tt

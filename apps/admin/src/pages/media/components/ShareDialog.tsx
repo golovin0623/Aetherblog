@@ -96,7 +96,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
         onClick={(e) => e.stopPropagation()}
         className="bg-[var(--bg-card)] border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl"
       >
-        {/* Header */}
+        {/* 头部 */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-lg">
@@ -120,9 +120,9 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
         </div>
 
         {!shareLink ? (
-          /* Configuration Form */
+          /* 配置表单 */
           <div className="space-y-4">
-            {/* Access Type */}
+            {/* 访问类型 */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 访问权限
@@ -151,7 +151,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               </div>
             </div>
 
-            {/* Password Protection */}
+            {/* 密码保护 */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)] mb-2">
                 <Lock className="w-4 h-4" />
@@ -175,7 +175,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               </div>
             </div>
 
-            {/* Expiration Date */}
+            {/* 过期时间 */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)] mb-2">
                 <Calendar className="w-4 h-4" />
@@ -189,7 +189,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               />
             </div>
 
-            {/* Max Access Count */}
+            {/* 最大访问次数 */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)] mb-2">
                 <Hash className="w-4 h-4" />
@@ -205,7 +205,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               />
             </div>
 
-            {/* Actions */}
+            {/* 操作按钮 */}
             <div className="flex items-center gap-3 pt-4">
               <Button
                 onClick={handleCreateShare}
@@ -224,9 +224,9 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
             </div>
           </div>
         ) : (
-          /* Share Link Result */
+          /* 分享链接结果 */
           <div className="space-y-4">
-            {/* Success Message */}
+            {/* 成功提示 */}
             <div className="flex items-center gap-3 p-4 bg-status-success-light border border-status-success-border rounded-lg">
               <Check className="w-5 h-5 text-status-success" />
               <div>
@@ -235,7 +235,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               </div>
             </div>
 
-            {/* Share Link */}
+            {/* 分享链接 */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 分享链接
@@ -257,7 +257,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               </div>
             </div>
 
-            {/* Password (if set) */}
+            {/* 密码 (如已设置) */}
             {shareConfig.password && (
               <div>
                 <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
@@ -281,7 +281,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               </div>
             )}
 
-            {/* Share Info */}
+            {/* 分享信息 */}
             <div className="p-4 bg-white/5 rounded-lg space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--text-muted)]">访问权限:</span>
@@ -307,7 +307,7 @@ export function ShareDialog({ fileId, folderId, onClose }: ShareDialogProps) {
               )}
             </div>
 
-            {/* Close Button */}
+            {/* 关闭按钮 */}
             <Button
               onClick={onClose}
               className="w-full"

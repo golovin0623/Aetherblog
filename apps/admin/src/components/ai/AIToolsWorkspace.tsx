@@ -53,7 +53,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   const [showParams, setShowParams] = useState(false);
   const { resolvedTheme } = useTheme();
 
-  // Per-tool params (persisted to localStorage)
+  // 各工具独立参数（持久化到 localStorage）
   const [toolParams, setToolParams] = useToolParams(selectedTool.id);
 
   // 流式状态

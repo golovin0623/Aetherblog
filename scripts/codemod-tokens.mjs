@@ -54,8 +54,8 @@ async function collectFiles(patterns) {
 
 const severityRank = { error: 3, warning: 2, info: 1 };
 const totals = { error: 0, warning: 0, info: 0, filesScanned: 0, filesChanged: 0 };
-const perRule = new Map(); // ruleId -> {count, files:Set, hits:[]}
-const violations = []; // {file, rule, line, snippet}
+const perRule = new Map(); // ruleId -> {count, files:Set, hits:[]} 每条规则的统计
+const violations = []; // {file, rule, line, snippet} 全部违例记录
 
 for (const rule of deprecations.rules) {
   perRule.set(rule.id, { count: 0, files: new Set(), hits: [], severity: rule.severity });
@@ -121,7 +121,7 @@ for (const rule of deprecations.rules) {
   totals.filesScanned += files.length;
 }
 
-// --------- Output ---------
+// --------- 输出 ---------
 if (mode === 'report') {
   console.log(`# Design System Deprecations Report\n`);
   console.log(`- Generated: ${today}`);

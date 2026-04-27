@@ -1,6 +1,6 @@
-# ref: §5.1 - AI Provider and Model definitions
+# ref: §5.1 - AI provider 与 model 定义
 """
-SQLAlchemy models for AI providers and models.
+AI provider 与 model 的 SQLAlchemy 模型。
 """
 from __future__ import annotations
 
@@ -24,12 +24,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
-    """Base class for all models."""
+    """所有 model 的基类。"""
     pass
 
 
 class ApiType(str, Enum):
-    """Supported API types."""
+    """支持的 API 类型。"""
     OPENAI_COMPAT = "openai_compat"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
@@ -38,7 +38,7 @@ class ApiType(str, Enum):
 
 
 class ModelType(str, Enum):
-    """AI model types."""
+    """AI model 类型。"""
     CHAT = "chat"
     EMBEDDING = "embedding"
     IMAGE = "image"
@@ -53,9 +53,9 @@ class ModelType(str, Enum):
 
 class AiProvider(Base):
     """
-    AI Provider definition.
-    
-    Represents an AI service provider like OpenAI, DeepSeek, Qwen, etc.
+    AI provider 定义。
+
+    表示一个 AI 服务 provider,如 OpenAI、DeepSeek、Qwen 等。
     """
     __tablename__ = "ai_providers"
     __table_args__ = (
@@ -78,7 +78,7 @@ class AiProvider(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # 关联关系
     models: Mapped[list["AiModel"]] = relationship("AiModel", back_populates="provider", cascade="all, delete-orphan")
     credentials: Mapped[list["AiCredential"]] = relationship("AiCredential", back_populates="provider")
 
@@ -88,9 +88,9 @@ class AiProvider(Base):
 
 class AiModel(Base):
     """
-    AI Model registration.
-    
-    Represents a specific model from a provider, e.g., gpt-4o, deepseek-chat.
+    AI model 注册。
+
+    表示某个 provider 下的具体 model,例如 gpt-4o、deepseek-chat。
     """
     __tablename__ = "ai_models"
     __table_args__ = (
@@ -114,12 +114,12 @@ class AiModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # 关联关系
     provider: Mapped["AiProvider"] = relationship("AiProvider", back_populates="models")
 
     def __repr__(self) -> str:
         return f"<AiModel(model_id={self.model_id}, provider_id={self.provider_id})>"
 
 
-# Import for relationship resolution
+# 为解析 relationship 而 import
 from app.models.credential import AiCredential  # noqa: E402, F401

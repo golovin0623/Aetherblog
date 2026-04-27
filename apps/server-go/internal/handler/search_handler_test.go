@@ -11,16 +11,16 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
 )
 
-// TestSearchConfigPATCH verifies that PATCH /api/v1/admin/search/config
-// is correctly routed and responds (not 404).
+// TestSearchConfigPATCH 验证 PATCH /api/v1/admin/search/config
+// 路由正确注册并能够响应（不返回 404）。
 func TestSearchConfigPATCH(t *testing.T) {
 	e := testutil.NewEcho()
 
-	// Register routes exactly as in server.go
+	// 按 server.go 中完全相同的方式注册路由
 	api := e.Group("/api")
 	admin := api.Group("/v1/admin", middleware.JWTAuth(testutil.TestJWTSecret))
 
-	// Use a minimal Echo handler to test routing only.
+	// 使用最小化的 Echo handler 仅测试路由是否生效。
 	searchAdmin := admin.Group("/search")
 	searchAdmin.GET("/config", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
@@ -29,7 +29,7 @@ func TestSearchConfigPATCH(t *testing.T) {
 		return c.JSON(http.StatusOK, map[string]string{"status": "patched"})
 	})
 
-	// Test 1: GET /config should work
+	// 测试 1：GET /config 应能正常响应
 	t.Run("GET /api/v1/admin/search/config", func(t *testing.T) {
 		rec := testutil.DoAuthRequest(e, http.MethodGet, "/api/v1/admin/search/config", "", 1)
 		if rec.Code != http.StatusOK {
@@ -37,7 +37,7 @@ func TestSearchConfigPATCH(t *testing.T) {
 		}
 	})
 
-	// Test 2: PATCH /config should work
+	// 测试 2：PATCH /config 应能正常响应
 	t.Run("PATCH /api/v1/admin/search/config", func(t *testing.T) {
 		body := `{"search.keyword_enabled":"true","search.semantic_enabled":"false"}`
 		rec := testutil.DoAuthRequest(e, http.MethodPatch, "/api/v1/admin/search/config", body, 1)
@@ -46,7 +46,7 @@ func TestSearchConfigPATCH(t *testing.T) {
 		}
 	})
 
-	// Test 3: PATCH without auth should 401
+	// 测试 3：未认证的 PATCH 应返回 401
 	t.Run("PATCH /api/v1/admin/search/config no auth", func(t *testing.T) {
 		body := `{"search.keyword_enabled":"true"}`
 		rec := testutil.DoRequest(e, http.MethodPatch, "/api/v1/admin/search/config", body)
@@ -56,16 +56,16 @@ func TestSearchConfigPATCH(t *testing.T) {
 	})
 }
 
-// TestSettingsBatchEndpoint verifies that PATCH /api/v1/admin/settings/batch
-// correctly binds map[string]string and responds with 200 — this is the
-// endpoint that the search config save falls back to.
+// TestSettingsBatchEndpoint 验证 PATCH /api/v1/admin/settings/batch
+// 能正确绑定 map[string]string 并返回 200 —— 该端点是搜索配置保存的
+// 降级回退入口。
 func TestSettingsBatchEndpoint(t *testing.T) {
 	e := testutil.NewEcho()
 
 	api := e.Group("/api")
 	admin := api.Group("/v1/admin", middleware.JWTAuth(testutil.TestJWTSecret))
 
-	// Simulate SiteSettingHandler.BatchUpdate using c.Bind
+	// 使用 c.Bind 模拟 SiteSettingHandler.BatchUpdate 的行为
 	admin.Group("/settings").PATCH("/batch", func(c echo.Context) error {
 		var kv map[string]string
 		if err := c.Bind(&kv); err != nil {
@@ -81,7 +81,7 @@ func TestSettingsBatchEndpoint(t *testing.T) {
 		t.Fatalf("PATCH settings/batch: expected 200, got %d, body: %s", rec.Code, rec.Body.String())
 	}
 
-	// Verify the parsed map matches
+	// 验证解析后的 map 与预期一致
 	var result map[string]string
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse response: %v", err)

@@ -1,6 +1,6 @@
-# ref: §5.1 - Provider API Schemas
+# ref: §5.1 - Provider API schema
 """
-Pydantic schemas for provider API endpoints.
+Provider API 端点对应的 Pydantic schema。
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class ProviderResponse(BaseModel):
-    """Provider information response."""
+    """Provider 信息响应。"""
     id: int
     code: str
     name: str
@@ -27,7 +27,7 @@ class ProviderResponse(BaseModel):
 
 
 class ModelResponse(BaseModel):
-    """Model information response."""
+    """Model 信息响应。"""
     id: int
     provider_id: int
     provider_code: str
@@ -46,7 +46,7 @@ class ModelResponse(BaseModel):
 
 
 class CredentialCreate(BaseModel):
-    """Request to create a credential."""
+    """创建凭证的请求。"""
     provider_code: str
     api_key: str
     name: str | None = None
@@ -56,14 +56,13 @@ class CredentialCreate(BaseModel):
 
 
 class ProviderCreate(BaseModel):
-    """Request to create a provider.
+    """创建 provider 的请求。
 
-    SECURITY (VULN-173): every user-supplied string gets a max length +
-    (where applicable) a character-class constraint. Otherwise an admin can
-    push multi-MB ``description`` values into the DB and balloon every
-    ``/providers`` list response — a cheap DoS angle that also inflates logs.
-    ``code`` is further restricted to kebab/underscore slugs because it drops
-    into URL paths and SQL lookups without further validation.
+    安全 (VULN-173): 每个用户输入的字符串都强制最大长度,
+    (在适用情况下) 还附加字符类约束。否则 admin 可以把数 MB 的 ``description``
+    塞进数据库,把每个 ``/providers`` 列表响应吹到很大 ——
+    既是廉价 DoS 角度,也会让日志膨胀。``code`` 进一步被限制为 kebab/下划线 slug,
+    因为它会被直接拼进 URL path 和 SQL 查询,后续不会再做校验。
     """
     code: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9][a-z0-9_-]{0,49}$")
     name: str = Field(min_length=1, max_length=100)
@@ -79,7 +78,7 @@ class ProviderCreate(BaseModel):
 
 
 class ProviderUpdate(BaseModel):
-    """Request to update a provider."""
+    """更新 provider 的请求。"""
     name: str | None = Field(default=None, min_length=1, max_length=100)
     display_name: str | None = Field(default=None, max_length=200)
     api_type: str | None = Field(default=None, max_length=32)
@@ -93,13 +92,13 @@ class ProviderUpdate(BaseModel):
 
 
 class ProviderBatchToggleRequest(BaseModel):
-    """Batch toggle providers."""
+    """批量切换 provider 启用状态。"""
     ids: list[int]
     enabled: bool
 
 
 class ModelCreate(BaseModel):
-    """Request to create a model."""
+    """创建 model 的请求。"""
     model_id: str = Field(min_length=1, max_length=100)
     display_name: str | None = None
     model_type: str = Field(default="chat")
@@ -115,7 +114,7 @@ class ModelCreate(BaseModel):
 
 
 class ModelUpdate(BaseModel):
-    """Request to update a model."""
+    """更新 model 的请求。"""
     display_name: str | None = None
     model_type: str | None = None
     context_window: int | None = None
@@ -130,18 +129,18 @@ class ModelUpdate(BaseModel):
 
 
 class ModelSyncRequest(BaseModel):
-    """Request to fetch remote models."""
+    """拉取远端 model 列表的请求。"""
     credential_id: int | None = None
 
 
 class ModelSyncResponse(BaseModel):
-    """Response for remote model sync."""
+    """远端 model 同步的响应。"""
     inserted: int
     total: int
 
 
 class ModelBatchToggleRequest(BaseModel):
-    """Batch toggle models."""
+    """批量切换 model 启用状态。"""
     ids: list[int]
     enabled: bool
 
@@ -156,7 +155,7 @@ class ModelSortRequest(BaseModel):
 
 
 class CredentialResponse(BaseModel):
-    """Credential information response (without API key)."""
+    """凭证信息响应 (不含 API key)。"""
     id: int
     name: str | None
     api_key_hint: str | None
@@ -172,19 +171,19 @@ class CredentialResponse(BaseModel):
 
 
 class CredentialTestRequest(BaseModel):
-    """Request to test a credential."""
+    """测试凭证的请求。"""
     model_id: str = Field(default="gpt-5-mini", description="Model to test")
 
 
 class CredentialTestResponse(BaseModel):
-    """Response from credential test."""
+    """凭证测试的响应。"""
     success: bool
     message: str
     latency_ms: float | None = None
 
 
 class TaskTypeResponse(BaseModel):
-    """Task type information."""
+    """任务类型信息。"""
     code: str
     name: str
     description: str | None
@@ -194,7 +193,7 @@ class TaskTypeResponse(BaseModel):
 
 
 class RoutingResponse(BaseModel):
-    """Routing configuration response."""
+    """路由配置响应。"""
     task_type: str
     primary_model: ModelResponse | None
     fallback_model: ModelResponse | None
@@ -208,7 +207,7 @@ class RoutingResponse(BaseModel):
 
 
 class RoutingUpdateRequest(BaseModel):
-    """Request to update routing configuration."""
+    """更新路由配置的请求。"""
     primary_model_id: int | None = None
     fallback_model_id: int | None = None
     credential_id: int | None = None

@@ -9,9 +9,9 @@ EXPECTED_MIGRATION_VERSION="${EXPECTED_MIGRATION_VERSION:-31}"
 GATEWAY_PORT="${GATEWAY_PORT:-7899}"
 GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://127.0.0.1:${GATEWAY_PORT}}"
 MIN_AI_PROVIDER_COUNT="${MIN_AI_PROVIDER_COUNT:-60}"
-# Use a conservative lower bound for seeded builtin models.
-# Raw seed rows can include duplicates by (provider_id, model_id),
-# so the effective reachable count is lower than the raw INSERT row count.
+# 内置模型种子数据使用保守下限阈值。
+# 原始 seed 行可能在 (provider_id, model_id) 上有重复，
+# 所以可达的有效计数低于原始 INSERT 行数。
 MIN_AI_MODEL_COUNT="${MIN_AI_MODEL_COUNT:-1500}"
 ADMIN_BEARER_TOKEN="${ADMIN_BEARER_TOKEN:-}"
 RUNTIME_CHECKS=true
@@ -111,9 +111,9 @@ main() {
       fail "api" "gateway health check failed: $GATEWAY_BASE_URL/health"
     fi
 
-    # Run curl INSIDE the ai-service container (mirrors the docker healthcheck).
-    # Avoids host->container-IP routing assumptions and `hostname -i` returning
-    # multiple space-separated IPs on multi-network containers.
+    # 在 ai-service 容器内执行 curl（与 docker healthcheck 保持一致）。
+    # 避免对 host→容器 IP 路由的隐式假设，也避开多网络容器场景下
+    # `hostname -i` 返回多个空格分隔 IP 的问题。
     #
     # 冷启动窗口：Python 导入 litellm/asyncpg/pgvector + FastAPI lifespan 里
     # asyncpg.create_pool(min_size=1) 首连 + jwt_keys 首次 DB 拉取，整段在慢机

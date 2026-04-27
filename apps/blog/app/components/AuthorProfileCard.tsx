@@ -54,7 +54,7 @@ const extractSocialLinks = (settings: any) => {
     if (settings.github_url) pushIfSafe('GitHub', settings.github_url);
     if (settings.twitter_url) pushIfSafe('Twitter', settings.twitter_url);
     if (settings.author_email) {
-      // mailto: is trusted, bypass sanitizeUrl (which rejects non-http schemes).
+      // mailto: 视为可信协议，绕过 sanitizeUrl（其会拒绝非 http 协议）。
       const email = String(settings.author_email).trim();
       if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         links.push({ platform: 'Email', url: `mailto:${email}`, icon: Mail });

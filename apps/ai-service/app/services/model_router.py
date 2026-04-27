@@ -1,6 +1,6 @@
-# ref: §5.1 - Model Routing Service
+# ref: §5.1 - 模型路由服务（Model Routing Service）
 """
-Service for routing AI requests to appropriate models.
+将 AI 请求路由到合适模型的服务。
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ logger = logging.getLogger("ai-service")
 
 
 def _encode_json(value: Any) -> Any:
-    """Encode JSON field for asyncpg (dict -> str)."""
+    """为 asyncpg 编码 JSON 字段（dict -> str）。"""
     if value is None:
         return None
     if isinstance(value, str):
@@ -47,7 +47,7 @@ def _normalize_user_id(user_id: int | str | None) -> int | None:
 
 @dataclass
 class RoutingConfig:
-    """Complete routing configuration for an AI task."""
+    """单个 AI 任务的完整路由配置。"""
     task_type: str
     model: ModelInfo
     credential: CredentialInfo
@@ -58,10 +58,10 @@ class RoutingConfig:
 
 class ModelRouter:
     """
-    Service for routing AI tasks to appropriate models.
-    
-    Resolves the complete configuration (model + credential + params) for a task.
-    Priority: user-level routing > system default routing > env config.
+    将 AI 任务路由到合适模型的服务。
+
+    解析任务对应的完整配置（模型 + 凭证 + 参数）。
+    优先级：用户级路由 > 系统默认路由 > 环境变量配置。
     """
 
     def __init__(
@@ -80,17 +80,17 @@ class ModelRouter:
         user_id: int | None = None,
     ) -> RoutingConfig | None:
         """
-        Resolve complete routing configuration for a task.
-        
+        解析任务的完整路由配置。
+
         Args:
-            task_type: Task type code (e.g., 'summary', 'tags')
-            user_id: Optional user ID for user-level routing
-            
+            task_type: 任务类型 code（如 'summary'、'tags'）
+            user_id: 可选的用户 ID，用于按用户维度的路由
+
         Returns:
-            RoutingConfig with model, credential, and parameters
+            含 model、credential 与参数的 RoutingConfig
         """
         user_id = _normalize_user_id(user_id)
-        # Query routing config (user-level first, then system default)
+        # 查询路由配置（先匹配用户级，再回落到系统默认）
         query = """
             SELECT r.id, r.config_override, r.credential_id, 
                    COALESCE(r.prompt_template, r.config_override->>'prompt_template') as custom_prompt,
@@ -119,22 +119,22 @@ class ModelRouter:
             logger.warning(f"No routing found for task: {task_type}")
             return None
         
-        # Get model info
+        # 获取模型信息
         primary_model = await self.provider_registry.get_model(
             row["primary_model"], row["primary_provider_code"]
         )
         if not primary_model:
             logger.error(f"Primary model not found: {row['primary_model']}")
             return None
-        
-        # Get fallback model if configured
+
+        # 若配置了 fallback 模型，则一并加载
         fallback_model = None
         if row["fallback_model"]:
             fallback_model = await self.provider_registry.get_model(
                 row["fallback_model"], row["fallback_provider_code"]
             )
-        
-        # Resolve credential
+
+        # 解析凭证
         credential = await self.credential_resolver.get_credential(
             row["primary_provider_code"],
             user_id=user_id,
@@ -143,11 +143,11 @@ class ModelRouter:
         if not credential:
             logger.error(f"No credential found for provider: {row['primary_provider_code']}")
             return None
-        
-        # Resolve prompt
+
+        # 解析 prompt
         prompt_template = row["custom_prompt"] or row["default_prompt"]
-        
-        # Build config
+
+        # 构造 config
         config = {
             "temperature": float(row["default_temperature"]) if row["default_temperature"] else 0.7,
             "max_tokens": row["default_max_tokens"],
@@ -171,14 +171,12 @@ class ModelRouter:
         user_id: int | None = None,
     ) -> dict[str, Any] | None:
         """
-        Return the stored ai_task_routing row ids without resolving credentials.
+        仅返回 ai_task_routing 行中的原始 ID 字段，不解析凭证。
 
-        resolve_routing() returns None the moment credential lookup fails, which
-        made admin GET responses drop a freshly-saved primary_model_id whenever
-        no credential was bound yet — confusing admins into thinking the save
-        didn't persist. This method exposes the raw IDs so the caller can stitch
-        together ModelResponse via provider_registry (which handles pricing
-        derivation) independently from credential validation.
+        resolve_routing() 一旦凭证查找失败就直接返回 None，这会让管理员的
+        GET 响应在尚未绑定凭证时丢掉刚保存的 primary_model_id —— 让管理员
+        以为保存没生效。本方法暴露裸 ID，让调用方可以独立于凭证校验，
+        通过 provider_registry（负责价格派生）拼出 ModelResponse。
         """
         user_id = _normalize_user_id(user_id)
         query = """
@@ -206,7 +204,7 @@ class ModelRouter:
         }
 
     async def list_task_types(self) -> list[dict[str, Any]]:
-        """List all available task types."""
+        """列出所有可用的 task type。"""
         query = """
             SELECT code, name, description, default_model_type, 
                    default_temperature, default_max_tokens
@@ -244,10 +242,10 @@ class ModelRouter:
         user_id: int | None = None,
     ) -> bool:
         """
-        Update routing configuration for a task.
-        
-        If user_id is provided, creates/updates user-level routing.
-        Otherwise updates system default.
+        更新某个 task 的路由配置。
+
+        若传入 user_id，则创建/更新用户级路由；
+        否则更新系统默认行。
         """
         user_id = _normalize_user_id(user_id)
         config_value = _encode_json(config_override if update_config else {})
@@ -293,7 +291,7 @@ class ModelRouter:
         max_tokens: int | None = None,
         prompt_template: str | None = None,
     ) -> int:
-        """Create a new AI task type."""
+        """创建新的 AI task type。"""
         query = """
             INSERT INTO ai_task_types (code, name, description, default_model_type, default_temperature, default_max_tokens, prompt_template)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -305,13 +303,13 @@ class ModelRouter:
             )
 
     async def delete_task_type(self, code: str) -> bool:
-        """Delete an AI task type by code."""
-        # Note: ai_task_routing has FK to ai_task_types.id without ON DELETE CASCADE in migration?
-        # Actually it has REFERENCES ai_task_types(id). 
-        # We might need to delete routing first.
+        """按 code 删除一个 AI task type。"""
+        # 注意：迁移里 ai_task_routing 对 ai_task_types.id 的 FK 是否带
+        # ON DELETE CASCADE？实际上只是 REFERENCES ai_task_types(id)，
+        # 因此需要先删 routing，再删 task type。
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # Delete routings first
+                # 先删除 routing 行
                 await conn.execute(
                     "DELETE FROM ai_task_routing WHERE task_type_id = (SELECT id FROM ai_task_types WHERE code = $1)",
                     code
@@ -329,7 +327,7 @@ class ModelRouter:
         max_tokens: int | None = None,
         prompt_template: str | None = None,
     ) -> bool:
-        """Update an existing AI task type."""
+        """更新已有的 AI task type。"""
         updates = []
         params = []
         idx = 1

@@ -23,7 +23,7 @@ const fadeUp = {
 export default function HeroSection({ isVisible }: Props) {
   return (
     <div className="relative min-h-[80vh] flex flex-col items-center justify-center text-center">
-      {/* Aurora ambient glow */}
+      {/* 极光环境光晕 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-[var(--aurora-1)]/10 rounded-full blur-[120px]" />
         <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-[var(--aurora-4)]/8 rounded-full blur-[100px]" />
@@ -36,12 +36,12 @@ export default function HeroSection({ isVisible }: Props) {
           animate={isVisible ? 'animate' : 'initial'}
           className="space-y-6"
         >
-          {/* Eyebrow */}
+          {/* 上眉文 */}
           <motion.p variants={fadeUp} className="eyebrow">
             AETHERBLOG
           </motion.p>
 
-          {/* Title with aurora gradient + breath (cadence aligned to global 4.8s asymmetric) */}
+          {/* 标题：极光渐变 + 呼吸节奏（与全局 4.8s 非对称节奏对齐） */}
           <motion.h1
             variants={fadeUp}
             className="text-h1 md:text-display font-display font-bold aurora-text"
@@ -53,19 +53,19 @@ export default function HeroSection({ isVisible }: Props) {
             以太之上，思想成形
           </motion.h1>
 
-          {/* Subtitle */}
+          {/* 副标题 */}
           <motion.p variants={fadeUp} className="text-lede md:text-h4 text-[var(--ink-secondary)] max-w-2xl mx-auto">
             AI 驱动的下一代智能博客系统
           </motion.p>
 
-          {/* Body */}
+          {/* 正文 */}
           <motion.p variants={fadeUp} className="text-body text-[var(--ink-muted)] max-w-xl mx-auto">
             7 大核心能力，从创作到发布，重新定义博客体验
           </motion.p>
         </motion.div>
       </HeroParallaxContent>
 
-      {/* Scroll down pulse arrow */}
+      {/* 向下滚动脉冲箭头 */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={isVisible ? { opacity: 1 } : { opacity: 0 }}

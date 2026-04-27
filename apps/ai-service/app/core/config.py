@@ -55,12 +55,11 @@ class Settings(BaseSettings):
     jwt_audience: str | None = Field(default=None, validation_alias="AI_JWT_AUDIENCE")
     internal_service_token: str = Field(..., validation_alias="AI_INTERNAL_SERVICE_TOKEN")
 
-    # SECURITY (VULN-056): credential encryption key MUST be independent of
-    # JWT_SECRET. Stored as a raw string in env (pydantic-settings auto-decodes
-    # ``list`` fields as JSON, which breaks comma-separated values); the parsed
-    # list is exposed via the ``ai_credential_encryption_keys`` property below.
-    # First key is used for new encryption, all keys are tried for decryption
-    # (zero-downtime rotation via MultiFernet). Generate with:
+    # 安全 (VULN-056): 凭证加密密钥必须独立于 JWT_SECRET。
+    # 在环境变量中以原始字符串存储 (pydantic-settings 默认会把 ``list`` 字段当 JSON
+    # 解码，会破坏逗号分隔值)；解析后的 list 通过下方 ``ai_credential_encryption_keys``
+    # 属性暴露。首个 key 用于新数据加密，全部 key 都会尝试用于解密
+    # (借助 MultiFernet 实现零停机轮换)。生成命令：
     #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     ai_credential_encryption_keys_raw: str = Field(
         default="",
@@ -76,7 +75,7 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _pad_b64url(key: str) -> str:
-        """Restore missing base64url '=' padding on a Fernet key.
+        """为 Fernet 密钥补回缺失的 base64url '=' 填充。
 
         一个标准 Fernet 密钥是 32 字节经 urlsafe-base64 编码 —— 完整形态 44 字符、
         末尾带 '=' padding。实际运维里常见的失效场景是 .env 文件 / shell 复制粘贴
@@ -117,7 +116,7 @@ class Settings(BaseSettings):
 
     @property
     def ai_credential_encryption_keys(self) -> list[str]:
-        """Comma-split, validated Fernet keys. First entry encrypts new data.
+        """以逗号切分并通过校验的 Fernet 密钥列表。首个条目用于加密新数据。
 
         返回值已补齐 base64url '=' padding，下游 MultiFernet 可以直接构造。
         """
@@ -129,10 +128,10 @@ class Settings(BaseSettings):
 
     rate_limit_user_per_min: int = Field(default=10, alias="AI_RATE_LIMIT_USER_PER_MIN")
     rate_limit_global_per_min: int = Field(default=100, alias="AI_RATE_LIMIT_GLOBAL_PER_MIN")
-    # SECURITY (VULN-070): when Redis is unreachable, default to deny (503).
-    # Dev/CI can flip this to True via AI_RATE_LIMIT_FAIL_OPEN=true if a Redis
-    # outage must not block AI calls, but production should keep it False so
-    # that rate limiter failures don't silently let wallet-drain attacks through.
+    # 安全 (VULN-070): 当 Redis 不可达时,默认拒绝 (503)。
+    # 开发/CI 环境可以通过 AI_RATE_LIMIT_FAIL_OPEN=true 翻成 True,以便 Redis
+    # 故障时不阻塞 AI 调用;生产环境必须保持 False,避免 rate limiter 失败时
+    # 默默放行,从而让"钱包耗尽型"攻击悄悄成功。
     rate_limit_fail_open: bool = Field(default=False, alias="AI_RATE_LIMIT_FAIL_OPEN")
 
     # 三段式 Redis 配置,跟 Go backend 对齐。优先级:
@@ -223,10 +222,10 @@ class Settings(BaseSettings):
     @field_validator("postgres_dsn", mode="after")
     @classmethod
     def _normalize_postgres_dsn(cls, v: str) -> str:
-        """Strip SQLAlchemy dialect suffixes so raw asyncpg accepts the DSN.
+        """剥除 SQLAlchemy dialect 后缀,让原始 asyncpg 能接受该 DSN。
 
-        start.sh may export ``postgresql+asyncpg://…`` but ``asyncpg.create_pool``
-        only understands ``postgresql://…``.
+        start.sh 可能导出 ``postgresql+asyncpg://…``,但 ``asyncpg.create_pool``
+        只认 ``postgresql://…``。
         """
         return v.replace("postgresql+asyncpg://", "postgresql://")
 
@@ -273,12 +272,11 @@ def get_settings() -> Settings:
 
 
 def _warn_if_prod_jwt_claims_unset(settings: Settings) -> None:
-    """SECURITY (VULN-067): emit a startup warning if `AI_ENV=prod` but
-    `AI_JWT_AUDIENCE` / `AI_JWT_ISSUER` are unset — without those claims
-    audience binding cannot be enforced, and a stolen token from another
-    service using the same ``JWT_SECRET`` becomes usable against this one.
-    We avoid raising to keep rollbacks clean; make `verify_aud` require claim
-    presence explicitly in a follow-up once production envs are populated.
+    """安全 (VULN-067): 当 `AI_ENV=prod` 但 `AI_JWT_AUDIENCE` / `AI_JWT_ISSUER`
+    未设置时,在启动阶段发出警告 —— 缺少这两个 claim 就无法强制 audience 绑定,
+    一旦另一个使用相同 ``JWT_SECRET`` 的服务令牌泄露,就能反过来打这边。
+    这里不抛错以保留回滚的干净度;待生产环境配置齐全后,再在后续工作里把
+    `verify_aud` 显式要求 claim 必须存在。
     """
     if settings.env.lower() != "prod":
         return

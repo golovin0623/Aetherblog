@@ -30,7 +30,7 @@ function FeatureCard({ icon, title, description, className }: FeatureCardProps) 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Spotlight overlay */}
+      {/* 聚光灯覆盖层 */}
       <div
         ref={spotlightRef}
         className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-0"
@@ -38,7 +38,7 @@ function FeatureCard({ icon, title, description, className }: FeatureCardProps) 
         aria-hidden="true"
       />
 
-      {/* Content */}
+      {/* 内容 */}
       <div className="relative z-10">
         <div className="mb-4 text-[var(--aurora-1)]">
           {icon}

@@ -457,7 +457,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   return (
     <div ref={triggerRef} className={cn("relative model-selector-container", className)}>
-      {/* 触发按钮 - 仅显示提供商图标 */}
+      {/* 触发按钮 —— 仅显示供应商图标 */}
       <button
         onClick={() => {
           if (!isOpen && triggerRef.current) {

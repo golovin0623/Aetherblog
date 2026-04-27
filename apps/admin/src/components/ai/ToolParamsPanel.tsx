@@ -59,7 +59,7 @@ export function loadToolParams(toolId: string): ToolParams {
       return { ...fallback, ...parsed };
     }
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
   return fallback;
 }
@@ -69,11 +69,11 @@ function saveToolParams(toolId: string, params: ToolParams) {
   try {
     window.localStorage.setItem(paramsKey(toolId), JSON.stringify(params));
   } catch {
-    /* ignore quota errors */
+    /* 忽略配额错误 */
   }
 }
 
-// ─────────────────────────── UI primitives ───────────────────────────
+// ─────────────────────────── UI 基础元素 ───────────────────────────
 
 function Field({
   label,
@@ -98,7 +98,7 @@ function Field({
 const inputCls =
   'w-full px-3 py-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all';
 
-// ─────────────────────────── Main panel ───────────────────────────
+// ─────────────────────────── 主面板 ───────────────────────────
 
 export function ToolParamsPanel({ toolId, value, onChange }: ToolParamsPanelProps) {
   const set = useCallback(
@@ -260,7 +260,7 @@ export function ToolParamsPanel({ toolId, value, onChange }: ToolParamsPanelProp
 }
 
 /**
- * Convenience hook: 读取并持久化某个工具的参数。
+ * 便捷 hook：读取并持久化某个工具的参数。
  */
 export function useToolParams(toolId: string) {
   const [params, setParams] = useState<ToolParams>(() => loadToolParams(toolId));

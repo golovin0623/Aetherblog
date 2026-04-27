@@ -259,10 +259,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	searchSvc := service.NewSearchService(postRepo, aiClient, settingSvc, s.Redis, internalToken)
 	searchHandler := handler.NewSearchHandler(searchSvc)
 	searchPublic := public.Group("/search")
-	// TODO: These rate limits (30/min for search, 5/min for QA) are hardcoded because
-	// rate limit middleware is initialized at startup before config values from the database
-	// are available. Consider implementing dynamic rate limiting that reads from search config
-	// (search.anon_search_rate_per_min, search.anon_qa_rate_per_min) at request time.
+	// TODO: 此处的限流值（搜索 30/min、问答 5/min）目前是硬编码，因为限流中间件
+	// 在启动阶段就要注册，而那时数据库里的配置还未读出。考虑改为请求时动态读取
+	// search 配置（search.anon_search_rate_per_min、search.anon_qa_rate_per_min）
+	// 实现可调限流。
 	searchPublic.GET("", searchHandler.Search, middleware.RateLimitByIP(s.Redis, "rate:search", 30, time.Minute))
 	searchPublic.GET("/features", searchHandler.Features, middleware.RateLimitByIP(s.Redis, "rate:search:features", 60, time.Minute))
 	searchPublic.GET("/qa", searchHandler.QA, middleware.RateLimitByIP(s.Redis, "rate:qa", 5, time.Minute))

@@ -1,6 +1,6 @@
-# ref: §5.1 - AI Credential management
+# ref: §5.1 - AI 凭证管理
 """
-SQLAlchemy model for AI API credentials.
+AI API 凭证的 SQLAlchemy 模型。
 """
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ if TYPE_CHECKING:
 
 class AiCredential(Base):
     """
-    AI API Credential.
-    
-    Stores encrypted API keys for users/teams.
+    AI API 凭证。
+
+    存储用户/团队的加密 API key。
     """
     __tablename__ = "ai_credentials"
     __table_args__ = (
@@ -30,7 +30,7 @@ class AiCredential(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int | None] = mapped_column(BigInteger)  # Foreign key to users table (in blog DB)
+    user_id: Mapped[int | None] = mapped_column(BigInteger)  # 指向 users 表的外键 (位于 blog 库)
     provider_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ai_providers.id"), nullable=False)
     name: Mapped[str | None] = mapped_column(String(100))
     api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
@@ -44,7 +44,7 @@ class AiCredential(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # 关联关系
     provider: Mapped["AiProvider"] = relationship("AiProvider", back_populates="credentials")
 
     def __repr__(self) -> str:

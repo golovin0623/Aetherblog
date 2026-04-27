@@ -33,7 +33,7 @@ export function DeviceChart({
         <div className="w-24 h-6 bg-[var(--bg-secondary)] rounded animate-pulse mb-4" />
         <div className="h-[340px] flex items-center justify-center">
           <div className="w-48 h-48 rounded-full bg-[var(--bg-secondary)] animate-pulse relative overflow-hidden">
-            {/* Shimmer effect */}
+            {/* 微光效果 */}
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
           </div>
         </div>

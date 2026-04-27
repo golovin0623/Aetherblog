@@ -16,34 +16,34 @@
  *   --aurora-field 全站唯一极光背景几何
  * ============================================================= */
 
-/* ---------- Light (default) ---------- */
+/* ---------- 亮色(默认) ---------- */
 :root,
 :root.light {
-  /* INK —— 亮主题下映射为深墨色 */
+  /* 墨色 —— 亮主题下映射为深墨色 */
   --ink-primary:   #1C1A14;
   --ink-secondary: #4A463E;
   --ink-muted:     #7A7468;
   --ink-subtle:    #C9C3B5;
 
-  /* Obsidian —— 亮主题下映射为米白纸色 */
+  /* 黑曜石背景 —— 亮主题下映射为米白纸色 */
   --bg-void:       #FAF9F6;
   --bg-substrate:  #F4F2EC;
   --bg-leaf:       #FFFFFF;
   --bg-raised:     #FFFFFF;
 
-  /* Aurora —— 保底值(不支持 oklch 相对色的旧浏览器用) */
+  /* 极光色 —— 保底值(不支持 oklch 相对色的旧浏览器用) */
   --aurora-1: #6366F1;
   --aurora-2: #7C6FF1;
   --aurora-3: #8B84F0;
   --aurora-4: #A598EC;
 
-  /* Signal —— 苹果级低饱和,chroma 统一压至 0.12 附近 */
+  /* 信号色 —— 苹果级低饱和,chroma 统一压至 0.12 附近 */
   --signal-info:    oklch(0.58 0.12 235);
   --signal-success: oklch(0.55 0.12 150);
   --signal-warn:    oklch(0.62 0.13 75);
   --signal-danger:  oklch(0.55 0.14 25);
 
-  /* Type Scale */
+  /* 字号阶梯 */
   --fs-micro:   0.6875rem;
   --fs-caption: 0.8125rem;
   --fs-body:    1rem;
@@ -55,13 +55,13 @@
   --fs-h1:      3.5rem;
   --fs-display: clamp(4rem, 8vw, 8.5rem);
 
-  /* Line Height */
+  /* 行高 */
   --lh-tight:   1.1;
   --lh-snug:    1.25;
   --lh-normal:  1.5;
   --lh-relaxed: 1.75;
 
-  /* Motion */
+  /* 动效 */
   --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.87, 0, 0.13, 1);
@@ -70,11 +70,11 @@
   --dur-flow:    520ms;
   --dur-ambient: 1800ms;
 
-  /* Radius (补充) */
+  /* 圆角(补充) */
   --radius-bleed: 2.875rem;
 
   /* -------------------------------------------------------------
-   * Space —— 8px baseline 9 级节奏尺度
+   * 间距 —— 8px baseline 9 级节奏尺度
    * 规范:.claude/design-system/01-tokens.md §3 Spatial Rhythm
    *
    * 所有 padding / margin / gap 都应落在这个阶梯上,不再随手写 p-3、
@@ -97,10 +97,10 @@
   --space-9:  6rem;     /* 96px — 大 section 间 */
   --space-10: 8rem;     /* 128px — Hero / 路由切分 */
 
-  /* Focus Ring */
+  /* 焦点环 */
   --focus-ring: 0 0 0 2px var(--bg-void), 0 0 0 4px var(--aurora-1);
 
-  /* Font Roles —— 指向 next/font 暴露的具体字体变量,缺省降级
+  /* 字体角色 —— 指向 next/font 暴露的具体字体变量,缺省降级
      英文拉丁字符优先 Fraunces 衬线,中文字符浏览器按字形匹配自动回退到中文黑体栈,
      这样 "欢迎来到我的博客" 走中文粗黑体(原项目质感),
      而 "AetherBlog 2026" 走 Fraunces 衬线高级感。 */
@@ -116,7 +116,7 @@
   --font-mono: var(--font-geist-mono),
     'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Aurora Field —— 全站唯一极光几何(亮主题下更淡) */
+  /* 极光场 —— 全站唯一极光几何(亮主题下更淡) */
   --aurora-field:
     radial-gradient(ellipse 80% 60% at 15% 0%,
       color-mix(in oklch, var(--aurora-1) 8%, transparent) 0%,
@@ -126,33 +126,33 @@
       transparent 50%);
 }
 
-/* ---------- Dark ---------- */
+/* ---------- 暗色 ---------- */
 :root.dark {
-  /* INK —— 暗主题下真正的象牙色 */
+  /* 墨色 —— 暗主题下真正的象牙色 */
   --ink-primary:   #F4EFE6;
   --ink-secondary: #B8B3A8;
   --ink-muted:     #6B6862;
   --ink-subtle:    #3A3932;
 
-  /* Obsidian —— 四层深空 */
+  /* 黑曜石背景 —— 四层深空 */
   --bg-void:       #05060A;
   --bg-substrate:  #0B0D14;
   --bg-leaf:       #12141D;
   --bg-raised:     #1A1D28;
 
-  /* Aurora(暗主题下更明亮)—— 保底值 */
+  /* 极光色(暗主题下更明亮)—— 保底值 */
   --aurora-1: #818CF8;
   --aurora-2: #9189F6;
   --aurora-3: #9E87F3;
   --aurora-4: #B0A0EC;
 
-  /* Signal(暗主题下亮度抬高,chroma 仍然压制)*/
+  /* 信号色(暗主题下亮度抬高,chroma 仍然压制)*/
   --signal-info:    oklch(0.72 0.12 235);
   --signal-success: oklch(0.72 0.12 150);
   --signal-warn:    oklch(0.78 0.13 75);
   --signal-danger:  oklch(0.70 0.14 25);
 
-  /* Aurora Field(暗主题下更饱和) */
+  /* 极光场(暗主题下更饱和) */
   --aurora-field:
     radial-gradient(ellipse 80% 60% at 15% 0%,
       color-mix(in oklch, var(--aurora-1) 18%, transparent) 0%,
@@ -161,7 +161,7 @@
       color-mix(in oklch, var(--aurora-4) 8%, transparent) 0%,
       transparent 50%);
 
-  /* Focus ring 适配暗底 */
+  /* 焦点环适配暗底 */
   --focus-ring: 0 0 0 2px var(--bg-void), 0 0 0 4px var(--aurora-1);
 }
 
@@ -236,7 +236,7 @@ html {
   animation: aurora-drift 40s var(--ease-in-out) infinite;
 }
 
-/* Ambient animations(默认注册,按需使用) */
+/* 环境动画(默认注册,按需使用) */
 @keyframes aurora-drift {
   0%, 100% { transform: translate(0, 0) rotate(0); }
   33%      { transform: translate(2%, -1%) rotate(2deg); }
