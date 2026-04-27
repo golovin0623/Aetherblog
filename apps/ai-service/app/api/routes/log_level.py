@@ -73,10 +73,12 @@ async def set_log_level(payload: LogLevelUpdate) -> ApiResponse[LogLevelResponse
         )
     new_level = _VALID_LEVELS[requested]
     logging.getLogger().setLevel(new_level)
-    # Surface the change at the *new* level (or warning, whichever is louder)
-    # so it shows up regardless of how aggressive the new threshold is.
-    log_method = logging.getLogger("ai-service").warning if new_level > logging.INFO else logging.getLogger("ai-service").info
-    log_method(
+    # Log the change at the new level itself (with INFO as the floor) so the
+    # event is visible regardless of how aggressive the new threshold is.
+    # Picking .warning() unconditionally would silently drop the audit line
+    # when the operator just set the root logger to ERROR/CRITICAL.
+    logging.getLogger("ai-service").log(
+        max(logging.INFO, new_level),
         "log_level.changed",
         extra={"data": {"level": requested, "by": "admin-api"}},
     )

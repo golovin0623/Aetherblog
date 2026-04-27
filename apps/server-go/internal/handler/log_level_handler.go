@@ -3,7 +3,7 @@
 //
 // 设计要点：
 //   - 后端通过 zerolog.SetGlobalLevel 在线生效，无需重启进程。
-//   - ai-service 通过 X-Internal-Service token 转发到 POST /v1/admin/log-level/internal，
+//   - ai-service 通过 X-Internal-Service token 转发到 PUT /api/v1/admin/log-level，
 //     由 Python 侧改 root logger 级别。
 //   - 调整不持久化：进程重启后回到 LogConfig.Level（环境变量 / config.yaml）。
 //     生产环境长期变更应该改 AETHERBLOG_LOG_LEVEL 后重启，避免运维和实际状态漂移。
@@ -95,7 +95,9 @@ func (h *LogLevelHandler) Update(c echo.Context) error {
 		}
 		zerolog.SetGlobalLevel(lvl)
 		status.Backend = lvl.String()
-		log.Info().
+		// 用 lvl 自身记录变更事件,避免运维一次性切到 Warn/Error 后这条
+		// 审计行被新级别屏蔽 —— 想知道"是不是真的切过去了"反而看不到。
+		log.WithLevel(lvl).
 			Str("level", lvl.String()).
 			Str("by", "admin-api").
 			Msg("log level changed at runtime")
@@ -139,9 +141,13 @@ func (h *LogLevelHandler) fetchAIServiceLevel(ctx context.Context) (string, erro
 	}
 	defer body.Close()
 
-	raw, _ := io.ReadAll(body)
 	if status >= 400 {
 		return "", &remoteErr{msg: "ai-service responded " + http.StatusText(status)}
+	}
+
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return "", err
 	}
 
 	var payload struct {
@@ -175,7 +181,10 @@ func (h *LogLevelHandler) pushAIServiceLevel(ctx context.Context, level string) 
 	}
 	defer body.Close()
 	if status >= 400 {
-		raw, _ := io.ReadAll(body)
+		raw, readErr := io.ReadAll(body)
+		if readErr != nil {
+			return &remoteErr{msg: "ai-service rejected (status " + http.StatusText(status) + "); reading body failed: " + readErr.Error()}
+		}
 		return &remoteErr{msg: "ai-service rejected: " + string(raw)}
 	}
 	return nil
