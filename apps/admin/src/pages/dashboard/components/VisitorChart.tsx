@@ -51,7 +51,7 @@ export function VisitorChart({
           </div>
         </div>
         <div className="h-[300px] bg-[var(--bg-secondary)] rounded-lg animate-pulse relative overflow-hidden">
-          {/* Shimmer effect */}
+          {/* 微光效果 */}
           <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
         </div>
       </div>

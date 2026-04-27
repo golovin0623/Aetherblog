@@ -18,7 +18,7 @@ export function MobileHeader() {
       </button>
       
       <div className="ml-3 flex items-center gap-2.5">
-        {/* Logo */}
+        {/* 站点 Logo */}
         {siteLogo ? (
           <div className="relative w-7 h-7 rounded-lg overflow-hidden flex-shrink-0 shadow-md shadow-primary/20">
             <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />

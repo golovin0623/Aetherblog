@@ -29,7 +29,7 @@ export function SummaryPage() {
         <p className="text-[var(--text-muted)] mt-1">AI 自动生成文章摘要，支持多种长度</p>
       </div>
 
-      {/* Length Selection */}
+      {/* 长度选择 */}
       <div className="flex items-center gap-4">
         <span className="text-sm text-[var(--text-muted)]">摘要长度:</span>
         {lengthOptions.map((opt) => (

@@ -1,4 +1,4 @@
-# ref: §5.1 - Provider URL helpers
+# ref: §5.1 - Provider URL 辅助函数
 from __future__ import annotations
 
 from typing import Any
@@ -32,12 +32,12 @@ def normalize_api_base(
     extra_config: dict[str, Any] | None,
 ) -> str | None:
     """
-    Normalize API base URL according to provider protocol conventions.
+    按 provider 协议惯例归一化 API base URL。
 
-    Modes:
-    - append_v1: force add /v1 suffix
-    - strip_v1: force remove /v1 suffix
-    - auto (default): openai_compat -> append /v1, anthropic -> strip /v1
+    模式:
+    - append_v1: 强制追加 /v1 后缀
+    - strip_v1: 强制去掉 /v1 后缀
+    - auto (默认): openai_compat -> 追加 /v1,anthropic -> 去掉 /v1
     """
     if not base_url:
         return None
@@ -48,7 +48,7 @@ def normalize_api_base(
     if mode == "strip_v1":
         return _strip_v1_suffix(base_url)
 
-    # auto mode
+    # auto 模式
     if api_type == "openai_compat":
         return _ensure_v1_suffix(base_url)
     if api_type == "anthropic":

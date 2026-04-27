@@ -105,17 +105,17 @@ def test_get_remote_model_fetcher_singleton():
 
 
 # ---------------------------------------------------------------------------
-# VULN-162 — internal service token guard
-# Verify that require_admin_or_internal:
-#   1. rejects requests with no X-Internal-Service header
-#   2. rejects requests with an empty X-Internal-Service header
-#   3. rejects requests with the wrong token value
-# without ever invoking hmac.compare_digest(None, ...).
+# VULN-162 —— 内部服务 token 守卫
+# 验证 require_admin_or_internal 的行为：
+#   1. 缺失 X-Internal-Service header 时拒绝
+#   2. X-Internal-Service header 为空时拒绝
+#   3. token 值错误时拒绝
+# 且全程不会调用 hmac.compare_digest(None, ...)。
 # ---------------------------------------------------------------------------
 
 
 def _make_request(headers: dict[str, str] | None = None) -> Request:
-    """Build a Starlette Request with header/value pairs encoded for ASGI."""
+    """构造一个按 ASGI 形态编码 header 的 Starlette Request。"""
     raw = []
     for k, v in (headers or {}).items():
         raw.append((k.lower().encode("latin-1"), v.encode("latin-1")))
@@ -130,7 +130,7 @@ async def test_require_admin_or_internal_missing_header(monkeypatch):
     request = _make_request(headers={})
     with pytest.raises(HTTPException) as exc:
         await deps_module.require_admin_or_internal(request, None, None)
-    # Falls through to require_admin which requires a JWT — missing token => 401
+    # 会回落到 require_admin，需要 JWT —— 缺失 token 应得 401
     assert exc.value.status_code in (401, 403)
 
 

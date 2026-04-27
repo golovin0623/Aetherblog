@@ -271,7 +271,7 @@ export function MoveDialog({
           onClick={(e) => e.stopPropagation()}
           className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl"
         >
-          {/* Header */}
+          {/* 头部 */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary-lighter dark:bg-primary/10 rounded-lg">
@@ -325,7 +325,7 @@ export function MoveDialog({
             )}
           </div>
 
-          {/* Actions */}
+          {/* 操作按钮 */}
           <div className="flex items-center gap-3">
             <Button
               onClick={handleConfirm}

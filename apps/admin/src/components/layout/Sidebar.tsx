@@ -236,7 +236,7 @@ function SidebarContent({
 
   return (
     <>
-      {/* Logo + 移动端关闭按钮 */}
+      {/* 站点 Logo + 移动端关闭按钮 */}
       <div className={cn(
         "h-14 flex items-center justify-between border-b border-border transition-all duration-300",
         effectiveCollapsed ? "px-4" : "px-3"
@@ -253,7 +253,7 @@ function SidebarContent({
               : 'hover:bg-[var(--bg-card-hover)]'
           )}
         >
-          {/* Logo */}
+          {/* 站点 Logo */}
           {siteLogo ? (
             <div className="relative w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-primary/30">
               <img src={siteLogo} alt="Logo" className="w-full h-full object-contain" />

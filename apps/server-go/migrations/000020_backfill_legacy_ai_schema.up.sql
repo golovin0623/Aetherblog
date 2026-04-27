@@ -1,9 +1,9 @@
 -- ============================================================
--- Backfill legacy AI schema to match current ai-service queries
+-- 回填旧版 AI schema 以匹配当前 ai-service 的查询
 -- ============================================================
 
 -- ------------------------------------------------------------
--- ai_providers: add columns expected by ai-service
+-- ai_providers：添加 ai-service 需要的列
 -- ------------------------------------------------------------
 ALTER TABLE IF EXISTS ai_providers ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
 ALTER TABLE IF EXISTS ai_providers ADD COLUMN IF NOT EXISTS api_type VARCHAR(30) DEFAULT 'openai_compat';
@@ -88,7 +88,7 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------
--- ai_models: add columns expected by ai-service
+-- ai_models：添加 ai-service 需要的列
 -- ------------------------------------------------------------
 ALTER TABLE IF EXISTS ai_models ADD COLUMN IF NOT EXISTS is_enabled BOOLEAN;
 ALTER TABLE IF EXISTS ai_models ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
@@ -169,7 +169,7 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------
--- Missing tables on legacy databases
+-- 旧版数据库缺失的表
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_credentials (
     id SERIAL PRIMARY KEY,
@@ -234,7 +234,7 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------
--- updated_at triggers
+-- updated_at 触发器
 -- ------------------------------------------------------------
 DO $$
 BEGIN

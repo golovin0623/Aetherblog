@@ -20,10 +20,10 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'cravatar.cn' },
       { protocol: 'https', hostname: 'data.golovin.cn' },
       { protocol: 'https', hostname: 'github.com' },
-      // SECURITY (VULN-083): 社交平台图标源（socialLinks.ts 的 PLATFORM_ICON_URLS
+      // 安全性（VULN-083）：社交平台图标源（socialLinks.ts 的 PLATFORM_ICON_URLS
       // 全部指向此域）。保持此处白名单与 PLATFORM_ICON_URLS 的域名同步。
       { protocol: 'https', hostname: 'api.iconify.design' },
-      // 本地开发 — DEV ONLY: localhost entries are excluded in production builds
+      // 本地开发 — 仅 DEV：localhost 条目在生产构建时会被排除
       ...(process.env.NODE_ENV === 'development' ? [
         { protocol: 'http' as const, hostname: 'localhost' },
         { protocol: 'http' as const, hostname: '127.0.0.1' },
@@ -57,17 +57,17 @@ const nextConfig: NextConfig = {
   // 让客户端每次导航都向服务器验证缓存是否过期（304 复用仍然生效）。
   // _next/static 等静态资源不受影响，保持 Next.js 默认的不可变缓存。
   async headers() {
-    // SECURITY (VULN-091): baseline security headers set at Next.js layer so
-    // even direct Next.js access (bypassing the gateway, e.g. on 127.0.0.1:7893)
-    // gets the same minimum protection. Nginx adds stricter CSP/HSTS at the
-    // edge — don't duplicate those here; just ship the non-overlapping basics.
+    // 安全性（VULN-091）：在 Next.js 层设置一组基线安全 header，
+    // 这样即使绕过网关直连 Next.js（例如 127.0.0.1:7893）也能获得
+    // 相同的最低保护。Nginx 会在边缘加更严的 CSP/HSTS——这里不重复，
+    // 只下发互不重叠的基础项。
     const baselineSecurityHeaders = [
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
-      // X-XSS-Protection is disabled by modern browsers — set to 0 explicitly to
-      // avoid triggering the legacy XSS auditor which can itself be abused.
+      // 现代浏览器已禁用 X-XSS-Protection —— 显式设为 0，
+      // 避免触发可能被滥用的旧版 XSS 审计器。
       { key: 'X-XSS-Protection', value: '0' },
     ];
 

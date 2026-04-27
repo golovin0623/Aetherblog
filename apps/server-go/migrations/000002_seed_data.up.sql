@@ -1,14 +1,14 @@
 -- ============================================================
--- AetherBlog V1.1.0 Seed Data
+-- AetherBlog V1.1.0 种子数据
 -- ============================================================
 -- Flyway Migration: V1_1__seed_data.sql
--- Description: Initial site settings and default admin user
+-- 说明：初始化站点设置与默认管理员账户
 -- ============================================================
 
 -- ============================================================
--- DEFAULT ADMIN USER
--- Password: admin123 (BCrypt encoded)
--- MUST CHANGE PASSWORD ON FIRST LOGIN
+-- 默认管理员账户
+-- 密码：admin123（BCrypt 加密）
+-- 首次登录必须修改密码
 -- ============================================================
 INSERT INTO users (username, email, password_hash, nickname, role, status, must_change_password) 
 VALUES (
@@ -22,10 +22,10 @@ VALUES (
 ) ON CONFLICT (username) DO NOTHING;
 
 -- ============================================================
--- SITE SETTINGS
+-- 站点设置
 -- ============================================================
 
--- General Settings
+-- 通用设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('site_name', 'AetherBlog', 'STRING', 'general', '站点名称'),
     ('site_description', '一个优雅的技术博客', 'STRING', 'general', '站点描述'),
@@ -40,7 +40,7 @@ INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name,
     ('welcome_subtitle', '记录技术，分享生活', 'STRING', 'general', '欢迎页副标题')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Author Settings
+-- 作者设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('author_name', 'AetherBlog 博主', 'STRING', 'author', '博主名称'),
     ('author_avatar', '', 'STRING', 'author', '博主头像'),
@@ -50,39 +50,39 @@ INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name,
     ('author_email', '', 'STRING', 'author', '联系邮箱')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Comment Settings
+-- 评论设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('comment_enabled', 'true', 'BOOLEAN', 'comment', '是否启用评论'),
     ('comment_audit', 'true', 'BOOLEAN', 'comment', '评论是否需要审核')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- Storage Settings
+-- 存储设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('storage_type', 'LOCAL', 'STRING', 'storage', '存储类型: LOCAL, MINIO, COS')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- AI Settings
+-- AI 设置
 INSERT INTO site_settings (setting_key, setting_value, setting_type, group_name, description) VALUES
     ('ai_enabled', 'true', 'BOOLEAN', 'ai', '是否启用AI功能'),
     ('ai_provider', 'openai', 'STRING', 'ai', 'AI服务提供商')
 ON CONFLICT (setting_key) DO NOTHING;
 
 -- ============================================================
--- DEFAULT CATEGORY
+-- 默认分类
 -- ============================================================
 INSERT INTO categories (name, slug, description, sort_order)
 VALUES ('默认分类', 'default', '默认分类，存放未归档文章', 0)
 ON CONFLICT (slug) DO NOTHING;
 
 -- ============================================================
--- DEFAULT TAG
+-- 默认标签
 -- ============================================================
 INSERT INTO tags (name, slug, color, post_count)
 VALUES ('Hello World', 'hello-world', 'blue', 1)
 ON CONFLICT (slug) DO NOTHING;
 
 -- ============================================================
--- HELLO WORLD POST
+-- Hello World 文章
 -- ============================================================
 INSERT INTO posts (title, slug, content_markdown, summary, status, view_count, comment_count, like_count, published_at, category_id, author_id)
 SELECT 
@@ -99,7 +99,7 @@ FROM categories c, users u
 WHERE c.slug = 'default' AND u.username = 'admin'
 ON CONFLICT (slug) DO NOTHING;
 
--- Link post to tag
+-- 关联文章与标签
 INSERT INTO post_tags (post_id, tag_id)
 SELECT p.id, t.id
 FROM posts p, tags t
@@ -107,7 +107,7 @@ WHERE p.slug = 'hello-world' AND t.slug = 'hello-world'
 ON CONFLICT DO NOTHING;
 
 -- ============================================================
--- FRIEND LINKS
+-- 友情链接
 -- ============================================================
 INSERT INTO friend_links (name, url, logo, description, theme_color, sort_order, visible) VALUES
     ('Google', 'https://www.google.com', 'https://www.gstatic.com/images/branding/product/2x/googleg_48dp.png', '全球最大的搜索引擎，提供网页、图片、视频等多种搜索服务', '#4285F4', 1, TRUE),

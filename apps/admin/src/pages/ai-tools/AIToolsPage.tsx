@@ -81,7 +81,7 @@ export function AIToolsPage() {
         ))}
       </div>
 
-      {/* Quick Actions */}
+      {/* 快捷操作 */}
       <div className="p-6 rounded-xl bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30">
         <div className="flex items-center gap-4">
           <div className="p-3 rounded-xl bg-primary/30">

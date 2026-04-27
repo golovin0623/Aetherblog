@@ -419,7 +419,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
     }
   }, []);
 
-  // 保存状态到 sessionStorage (Stable callback)
+  // 保存状态到 sessionStorage（稳定回调）
   const saveState = useCallback(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -433,7 +433,7 @@ export const TimelineTree: React.FC<TimelineTreeProps> = ({ archives }) => {
     }
   }, []);
 
-  // 点击文章时保存状态 (Stable callback)
+  // 点击文章时保存状态（稳定回调）
   const handlePostClick = useCallback((postId: string) => {
     saveState();
     if (typeof window !== 'undefined') {

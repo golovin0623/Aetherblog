@@ -1,16 +1,16 @@
-"""Runtime log level control for the ai-service.
+"""ai-service 的运行时日志级别控制。
 
-GET  /api/v1/admin/log-level  → returns the root logger's current level.
-PUT  /api/v1/admin/log-level  → sets the root logger's level on the fly.
+GET  /api/v1/admin/log-level  → 返回 root logger 当前的级别。
+PUT  /api/v1/admin/log-level  → 在线设置 root logger 的级别。
 
-Both endpoints accept either an admin JWT or the X-Internal-Service token
-(see ``app.api.deps.require_admin_or_internal``) so the Go backend can
-proxy admin UI requests through its own ``/v1/admin/system/log-level``
-endpoint without exposing the ai-service directly to the browser.
+两个端点都接受管理员 JWT 或 X-Internal-Service token（参见
+``app.api.deps.require_admin_or_internal``），这样 Go 后端就可以通过自身
+``/v1/admin/system/log-level`` 端点代理管理后台请求，而不必把 ai-service
+直接暴露给浏览器。
 
-The change is in-process and NOT persisted: a container restart returns
-to ``AI_LOG_LEVEL`` from the environment. Long-term changes belong in
-docker-compose / .env, the runtime API is for one-off triage.
+变更只作用于当前进程且不会持久化：容器重启后会回到环境变量中
+``AI_LOG_LEVEL`` 指定的级别。长期修改应改 docker-compose / .env，
+运行时 API 仅用于一次性故障排查。
 """
 
 from __future__ import annotations
@@ -42,11 +42,11 @@ _VALID_LEVELS: dict[str, int] = {
 
 
 class LogLevelResponse(BaseModel):
-    level: str = Field(..., description="Current root logger level (lowercase).")
+    level: str = Field(..., description="当前 root logger 级别（小写）。")
 
 
 class LogLevelUpdate(BaseModel):
-    level: str = Field(..., description="One of debug/info/warning/error/critical.")
+    level: str = Field(..., description="取值之一：debug/info/warning/error/critical。")
 
 
 def _current_level_name() -> str:
@@ -73,10 +73,9 @@ async def set_log_level(payload: LogLevelUpdate) -> ApiResponse[LogLevelResponse
         )
     new_level = _VALID_LEVELS[requested]
     logging.getLogger().setLevel(new_level)
-    # Log the change at the new level itself (with INFO as the floor) so the
-    # event is visible regardless of how aggressive the new threshold is.
-    # Picking .warning() unconditionally would silently drop the audit line
-    # when the operator just set the root logger to ERROR/CRITICAL.
+    # 用新级别本身（以 INFO 为下限）来记录这次变更，保证无论新阈值多严格
+    # 该事件都能可见。如果无脑使用 .warning()，当运维刚把 root logger 调到
+    # ERROR/CRITICAL 时，这条审计日志就会被静默丢弃。
     logging.getLogger("ai-service").log(
         max(logging.INFO, new_level),
         "log_level.changed",

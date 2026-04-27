@@ -9,7 +9,7 @@ interface Props {
 export default function SearchSection({ isVisible }: Props) {
   return (
     <div className="space-y-12">
-      {/* Header */}
+      {/* 头部 */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
@@ -25,7 +25,7 @@ export default function SearchSection({ isVisible }: Props) {
         </p>
       </motion.div>
 
-      {/* Search panel mockup */}
+      {/* 搜索面板示意 */}
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={isVisible ? { opacity: 1, scale: 1 } : {}}
@@ -33,7 +33,7 @@ export default function SearchSection({ isVisible }: Props) {
         className="max-w-2xl mx-auto"
       >
         <div className="surface-raised rounded-2xl border border-[var(--ink-subtle)]/20 overflow-hidden shadow-2xl">
-          {/* Search input */}
+          {/* 搜索输入框 */}
           <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--ink-subtle)]/10">
             <svg
               width="20"
@@ -61,7 +61,7 @@ export default function SearchSection({ isVisible }: Props) {
             </kbd>
           </div>
 
-          {/* Prefix routing hints */}
+          {/* 前缀路由提示 */}
           <div className="px-5 py-3 border-b border-[var(--ink-subtle)]/10 flex gap-4">
             <span className="text-caption text-[var(--ink-muted)]">
               <span className="cmd-chip mr-1.5">&gt;</span>命令
@@ -74,7 +74,7 @@ export default function SearchSection({ isVisible }: Props) {
             </span>
           </div>
 
-          {/* Result skeleton lines */}
+          {/* 结果骨架行 */}
           <div className="p-5 space-y-4">
             {[1, 2, 3].map((i) => (
               <motion.div

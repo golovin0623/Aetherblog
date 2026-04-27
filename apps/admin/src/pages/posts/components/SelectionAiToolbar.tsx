@@ -173,7 +173,7 @@ export function SelectionAiToolbar({ editorViewRef, selectedModelId, selectedPro
         return;
       }
 
-      // ⚡ Bolt: Throttled updateSelection with requestAnimationFrame to prevent synchronous layout thrashing (via coordsAtPos) on high-frequency scroll/resize events.
+      // ⚡ Bolt: 用 requestAnimationFrame 节流 updateSelection，避免在高频 scroll/resize 事件中通过 coordsAtPos 引发同步布局抖动。
       const handleUpdate = () => {
         if (rafRef.current === null) {
           rafRef.current = requestAnimationFrame(() => {

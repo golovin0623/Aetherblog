@@ -284,7 +284,7 @@ export default function ProviderIcon({
     );
   }
 
-  // Fallback: 使用通用图标
+  // 兜底：使用通用图标
   return (
     <div
       className={cn('flex-none', className)}

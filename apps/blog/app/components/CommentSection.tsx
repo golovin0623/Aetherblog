@@ -28,7 +28,7 @@ interface CommentSectionProps {
   settings: SiteSettings;
 }
 
-// 递归评论项组件 - Memoized to prevent re-renders when parent state changes
+// 递归评论项组件 - 使用 memo 防止父组件状态变化时不必要的重渲染
 const CommentItem = memo(function CommentItem({ comment, onReply, depth = 0 }: { comment: Comment, onReply: (c: Comment) => void, depth?: number }) {
   const hasChildren = comment.children && comment.children.length > 0;
   // 深度 0 和 1 默认展开，其他折叠
@@ -226,7 +226,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
       return;
     }
 
-    // #189: noValidate disables browser type="email" check; validate manually
+    // #189: noValidate 关闭浏览器对 type="email" 的校验，这里手动校验
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError('请输入有效的邮箱地址');
       emailInputRef.current?.focus();
@@ -241,11 +241,10 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
 
     setSubmitting(true);
 
-    // SECURITY (VULN-105): strip raw CR (\r) / LF (\n) / DEL / other C0
-    // control chars out of comment fields before submit. These chars enable
-    // header / log injection if the server ever echoes them unescaped; they
-    // also corrupt markdown rendering. Keep real newlines inside content
-    // (\n is allowed in textareas — we only strip \r and C0 except \n / \t).
+    // SECURITY (VULN-105): 提交前剥离评论字段中的 CR (\r) / DEL 及其他 C0
+    // 控制字符。这类字符若被服务端原样回显，可触发 header / 日志注入，
+    // 同时会破坏 markdown 渲染。保留 textarea 中真实的换行（\n 允许保留，
+    // 这里只剥离 \r 与除 \n / \t 以外的 C0 控制字符）。
     const stripCtl = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
     const cleanNickname = stripCtl(nickname).slice(0, 128);
     const cleanEmail = stripCtl(email).slice(0, 256);
@@ -382,8 +381,8 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
                     </button>
                   </div>
 
-                  {/* #190: noValidate lets handleSubmit own all validation logic,
-                      preventing browser-default messages from preempting custom errors */}
+                  {/* #190: noValidate 让所有校验逻辑由 handleSubmit 接管，
+                      避免浏览器默认提示抢在自定义错误之前出现 */}
                   <form noValidate onSubmit={handleSubmit} className="relative z-10 space-y-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="group/input relative">

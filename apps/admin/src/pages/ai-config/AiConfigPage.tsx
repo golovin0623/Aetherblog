@@ -62,10 +62,10 @@ export default function AiConfigPage() {
     [providers, normalizedSelectedCode]
   );
 
-  // Deep-link from ?provider=...&model=... should apply once after providers load.
-  // Previously this effect re-ran on every query refetch, which kept resetting
-  // initialModelSearch back to the URL value — so switching providers or tabs
-  // would reapply a stale filter and render 模型 tab empty.
+  // 来自 ?provider=...&model=... 的深链应在 providers 加载完成后只应用一次。
+  // 此前该 effect 会在每次 query refetch 时重跑，导致 initialModelSearch 被
+  // 重复重置回 URL 值——切换供应商或 tab 时会重新应用已过期的过滤，使
+  // 模型 tab 显示为空白。
   const deepLinkAppliedRef = useRef(false);
   useEffect(() => {
     if (deepLinkAppliedRef.current) return;

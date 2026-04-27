@@ -1,5 +1,5 @@
 /**
- * AI Ghost Text Extension for CodeMirror 6
+ * 用于 CodeMirror 6 的 AI 灰色提示文本（Ghost Text）扩展
  *
  * 功能：
  * 1. 渲染灰色半透明的 AI 建议文本
@@ -31,7 +31,7 @@ export interface GhostTextState {
 /** 设置 Ghost Text 的 Effect */
 export const setGhostTextEffect = StateEffect.define<GhostTextState | null>();
 
-/** Ghost Text State Field */
+/** Ghost Text 状态字段 */
 export const ghostTextState = StateField.define<GhostTextState | null>({
   create: () => null,
   update: (value, tr) => {
@@ -44,7 +44,7 @@ export const ghostTextState = StateField.define<GhostTextState | null>({
   },
 });
 
-// ==================== Ghost Text Widget ====================
+// ==================== Ghost Text 控件（Widget） ====================
 
 class GhostTextWidget extends WidgetType {
   constructor(private suggestion: string) {

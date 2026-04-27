@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""AetherBlog deployment webhook.
+"""AetherBlog 部署 webhook 服务。
 
 SECURITY (VULN-132 / VULN-140):
-  - Authentication is HMAC-SHA256 over the request body using ``WEBHOOK_SECRET``
-    (header ``X-Hub-Signature-256: sha256=<hex>``). Path-as-secret routing was
-    removed.
-  - The default bind address is ``127.0.0.1`` so the only legitimate caller is
-    a fronting reverse proxy (Nginx) that enforces an IP allowlist. Override
-    with ``WEBHOOK_BIND`` for non-default topologies.
-  - The ``services`` field rejects unknown names instead of silently falling
-    back to a full deploy (VULN-140 historical behaviour).
+  - 使用 ``WEBHOOK_SECRET`` 对请求体做 HMAC-SHA256 进行鉴权
+    （头部 ``X-Hub-Signature-256: sha256=<hex>``）。已移除"以路径作为密钥"
+    的旧鉴权方式。
+  - 默认监听地址为 ``127.0.0.1``，唯一合法调用方是前置反向代理 (Nginx)
+    并由它强制 IP 白名单。非默认拓扑可通过 ``WEBHOOK_BIND`` 覆盖。
+  - ``services`` 字段拒绝未知服务名，而不是静默回退到全量部署
+    （VULN-140 的历史行为）。
 
-SECURITY (VULN-134): pair this server with the hardened systemd unit
-``deploy-webhook.service`` (User=webhook + NoNewPrivileges + ProtectSystem).
+SECURITY (VULN-134): 该服务需要配合加固过的 systemd unit
+``deploy-webhook.service`` (User=webhook + NoNewPrivileges + ProtectSystem) 一起使用。
 """
 from __future__ import annotations
 
@@ -56,7 +55,7 @@ def _tail(text: str, lines: int = 20) -> str:
 
 
 def _verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
-    """Constant-time HMAC-SHA256 verification (GitHub-style)."""
+    """常时间 HMAC-SHA256 验签（GitHub 风格）。"""
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     sent_sig = signature_header.split("=", 1)[1].strip()
@@ -67,7 +66,7 @@ def _verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
 
 
 def _parse_services(body: bytes) -> Tuple[str, bool]:
-    """Return (services_string, well_formed). Reject names not in the allowlist."""
+    """返回 (服务名字符串, 是否合法)。拒绝白名单之外的服务名。"""
     if not body:
         return "", True
     try:
@@ -80,7 +79,7 @@ def _parse_services(body: bytes) -> Tuple[str, bool]:
     requested = [s.strip() for s in str(raw).split() if s.strip()]
     invalid = [s for s in requested if s not in ALLOWED_SERVICES]
     if invalid:
-        return "", False  # VULN-140: explicit rejection beats silent full-deploy
+        return "", False  # VULN-140：显式拒绝优于静默回退到全量部署
     return " ".join(requested), True
 
 
@@ -97,7 +96,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:
-        # SECURITY (VULN-132): single canonical path; auth is HMAC, not URL.
+        # SECURITY (VULN-132): 仅保留一条规范路径；鉴权依赖 HMAC，不依赖 URL。
         if self.path != "/deploy":
             self._send(404, "Not Found")
             return
@@ -160,7 +159,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 self._send(500, f"{message}\n{summary}")
                 return
             self._send(500, message)
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover - 兜底防御
             logging.exception("Webhook server internal error")
             self._send(500, "Internal error")
 

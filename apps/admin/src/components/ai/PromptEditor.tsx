@@ -45,7 +45,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
 
   return (
     <div className={cn("flex flex-col h-full min-h-0 bg-[var(--bg-secondary)] relative overflow-hidden", className)}>
-      {/* Header Area */}
+      {/* 头部区域 */}
       <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/30 backdrop-blur-md z-20 flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="p-1.5 sm:p-2 rounded-xl bg-primary text-white border border-[var(--border-default)] flex-shrink-0">
@@ -61,7 +61,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-          {/* View Toggle */}
+          {/* 视图切换 */}
           <button
             onClick={() => setShowDefault(!showDefault)}
             className={cn(
@@ -74,7 +74,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             {showDefault ? 'Exit' : 'Default'}
           </button>
 
-          {/* Save/Reset Actions */}
+          {/* 保存 / 重置操作 */}
           {isDirty && !showDefault && (
             <div className="flex items-center gap-1 sm:gap-1.5 animate-in fade-in slide-in-from-right-4 duration-300">
               <button
@@ -104,7 +104,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         </div>
       </div>
 
-      {/* Editor Body */}
+      {/* 编辑器正文 */}
       <div className="flex-1 relative min-h-0 flex flex-col group/editor overflow-hidden">
         {showDefault ? (
           <div className="flex-1 overflow-y-auto p-3 sm:p-8 bg-[var(--bg-card)]/20 animate-in fade-in zoom-in-95 duration-300 no-scrollbar">
@@ -126,7 +126,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
           </div>
         ) : (
           <div className="flex-1 relative flex flex-col pt-2 sm:pt-4 overflow-hidden">
-            {/* Textarea with gutter feel */}
+            {/* 带 gutter 视觉感的 textarea */}
             <div className="flex-1 px-3 sm:px-8 pb-20 sm:pb-32 overflow-y-auto no-scrollbar">
               <textarea
                 value={prompt}
@@ -141,7 +141,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
           </div>
         )}
 
-        {/* Floating Variable Badge */}
+        {/* 悬浮变量徽章 */}
         {!showDefault && (
           <div className="absolute top-6 right-8 flex flex-col gap-2 pointer-events-none opacity-40 group-focus-within/editor:opacity-10 transition-opacity">
             <div className="px-2 py-1 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[9px] font-mono text-[var(--text-muted)] shadow-sm">
@@ -151,7 +151,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
         )}
       </div>
 
-      {/* Floating Status Badge (Desktop only) - positioned above toolbar */}
+      {/* 悬浮状态徽章（仅桌面端）—— 位于工具栏上方 */}
       <div className="hidden sm:flex absolute bottom-24 left-8 items-center gap-4 px-4 py-2 rounded-2xl bg-[var(--bg-card)]/50 backdrop-blur-md border border-[var(--border-subtle)] shadow-xl z-20 pointer-events-none">
           <div className="flex flex-col">
             <span className="text-[9px] font-black italic text-[var(--text-muted)] uppercase tracking-tighter">Status</span>

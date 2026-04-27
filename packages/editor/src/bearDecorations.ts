@@ -327,7 +327,7 @@ function buildRangeDecorations(view: EditorView, theme: string): DecorationSet {
     },
   });
 
-  // === Alert Block WYSIWYG ===
+  // === Alert Block 所见即所得（WYSIWYG） ===
   // 当光标不在 alert block 范围内时，隐藏 ::: 标记并显示标题 Widget
   const alertBlocks = scanAlertBlocks(view);
   for (const block of alertBlocks) {

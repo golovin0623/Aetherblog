@@ -253,7 +253,7 @@ export function SocialLinksEditor({ value, onChange }: SocialLinksEditorProps) {
           <ChevronDown className={cn("w-4 h-4 transition-transform", showPlatformPicker && "rotate-180")} />
         </button>
 
-        {/* 平台选择器 (Modal) */}
+        {/* 平台选择器（弹层） */}
         {createPortal(
           <AnimatePresence>
             {showPlatformPicker && (

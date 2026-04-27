@@ -30,7 +30,7 @@ const toolIcons = [
 export default function AiSection({ isVisible }: Props) {
   return (
     <div className="space-y-12">
-      {/* Header */}
+      {/* 头部 */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
@@ -46,9 +46,9 @@ export default function AiSection({ isVisible }: Props) {
         </p>
       </motion.div>
 
-      {/* Two-column layout */}
+      {/* 双栏布局 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-        {/* Left: AI stream mockup */}
+        {/* 左侧：AI 流式输出示意 */}
         <motion.div
           variants={slideRight}
           initial="initial"
@@ -65,7 +65,7 @@ export default function AiSection({ isVisible }: Props) {
           <span className="ink-cursor" aria-hidden="true" />
         </motion.div>
 
-        {/* Right: Tool grid */}
+        {/* 右侧：工具网格 */}
         <div className="space-y-8">
           <motion.div
             initial="initial"
@@ -87,7 +87,7 @@ export default function AiSection({ isVisible }: Props) {
             ))}
           </motion.div>
 
-          {/* Counters */}
+          {/* 计数器 */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={isVisible ? { opacity: 1 } : {}}
