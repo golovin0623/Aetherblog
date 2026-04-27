@@ -245,7 +245,7 @@ function CommentSectionBase({ postId, settings }: CommentSectionProps) {
     // 控制字符。这类字符若被服务端原样回显，可触发 header / 日志注入，
     // 同时会破坏 markdown 渲染。保留 textarea 中真实的换行（\n 允许保留，
     // 这里只剥离 \r 与除 \n / \t 以外的 C0 控制字符）。
-    const stripCtl = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    const stripCtl = (s: string) => s.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '');
     const cleanNickname = stripCtl(nickname).slice(0, 128);
     const cleanEmail = stripCtl(email).slice(0, 256);
     const cleanWebsite = stripCtl(website).slice(0, 2048);
