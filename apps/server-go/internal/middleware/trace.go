@@ -13,8 +13,13 @@ import (
 )
 
 // isHealthProbePath 判断 URL 是否属于高频健康探活 / 自检路径。
-// 这类请求在正常状态下没有排查价值，默认降为 Debug 级别；
-// 一旦 4xx/5xx 上面的判断会盖过去，仍然走 Warn/Error 写访问日志。
+// 这类请求在正常状态下没有排查价值；2xx 时直接不落访问日志，
+// 一旦 4xx/5xx 仍按状态码升级到 Warn/Error。
+//
+// 注意：历史实现是"降级到 Debug"，但 docker healthcheck 每 3s 一次、
+// SystemMonitor 每 30s 巡检一次，一旦运维 export LOG_LEVEL=debug 排查
+// 业务问题，访问日志就被这些探活淹没。改为"成功时不落记录"后，
+// 即使切到 Debug 级别也只能看到业务相关的 Debug 行。
 func isHealthProbePath(p string) bool {
 	switch p {
 	case "/api/actuator/health",
@@ -62,14 +67,16 @@ func Trace() echo.MiddlewareFunc {
 			// 根据 HTTP 状态码选择日志级别：5xx 错误、4xx 警告、其余信息。
 			// 健康探活 / liveness 路径（docker healthcheck 每 3s 调一次、
 			// SystemMonitor 巡检 /api/v1/admin/system/health 等）量级非常大，
-			// 成功时降到 Debug 避免把正常业务日志淹没；失败仍按状态码正常告警。
+			// 2xx 直接不落访问日志；失败仍按状态码正常告警。
+			if res.Status < 400 && isHealthProbePath(req.URL.Path) {
+				return err
+			}
+
 			event := log.Info()
 			if res.Status >= 500 {
 				event = log.Error()
 			} else if res.Status >= 400 {
 				event = log.Warn()
-			} else if isHealthProbePath(req.URL.Path) {
-				event = log.Debug()
 			}
 
 			// 输出结构化访问日志，包含追踪 ID、方法、路径、状态码、耗时和客户端 IP

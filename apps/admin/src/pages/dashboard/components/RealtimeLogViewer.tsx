@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
-import { systemService } from '@/services/systemService';
+import { systemService, type LogLevelStatus } from '@/services/systemService';
 import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, Filter, ArrowDown, Download, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -216,6 +216,14 @@ export function RealtimeLogViewer({
 
   const [lastSuccessAt, setLastSuccessAt] = useState<Date | null>(null);
 
+  // 运行时日志级别 —— 与上面的 filterLevel(仅前端展示过滤)严格区分。
+  // 这里改的是 backend(zerolog.SetGlobalLevel) 与 ai-service(root logger
+  // setLevel)的实际"记录"门槛,改 INFO → DEBUG 后 docker logs 才会真的多出
+  // 调试行;改 INFO → WARN 后业务 INFO 行连写都不写,显著降低 IO。
+  const [runtimeLevel, setRuntimeLevel] = useState<LogLevelStatus | null>(null);
+  const [runtimeLevelError, setRuntimeLevelError] = useState<string | null>(null);
+  const [runtimeLevelApplying, setRuntimeLevelApplying] = useState<'backend' | 'aiService' | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fullscreenPanelRef = useRef<HTMLDivElement>(null);
   const fullscreenTriggerRef = useRef<HTMLButtonElement>(null);
@@ -311,6 +319,56 @@ export function RealtimeLogViewer({
       window.clearTimeout(feedbackTimer);
     };
   }, [downloadFeedback]);
+
+  // 仅在使用应用日志(非容器视图)时加载运行时级别 —— 容器日志查看场景下
+  // 这两个 select 没有意义。
+  useEffect(() => {
+    if (!useAppLogs) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await systemService.getLogLevel();
+        if (cancelled) return;
+        if (response?.code === 200 && response.data) {
+          setRuntimeLevel(response.data);
+          setRuntimeLevelError(response.data.aiServiceError || null);
+        } else {
+          setRuntimeLevelError(response?.message || '无法加载运行时日志级别');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : '无法加载运行时日志级别';
+        setRuntimeLevelError(message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [useAppLogs]);
+
+  const applyRuntimeLevel = useCallback(async (target: 'backend' | 'aiService', value: string) => {
+    setRuntimeLevelApplying(target);
+    setRuntimeLevelError(null);
+    try {
+      const payload = target === 'backend' ? { backend: value } : { aiService: value };
+      const response = await systemService.setLogLevel(payload);
+      if (response?.code === 200 && response.data) {
+        setRuntimeLevel(response.data);
+        if (response.data.aiServiceError) {
+          setRuntimeLevelError(response.data.aiServiceError);
+        }
+      } else {
+        setRuntimeLevelError(response?.message || '调整运行时日志级别失败');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '调整运行时日志级别失败';
+      setRuntimeLevelError(message);
+    } finally {
+      setRuntimeLevelApplying(null);
+    }
+  }, []);
 
   // 选中某个容器时,容器视图优先于 backend 聚合日志 —— MonitorPage 只负责
   // 传 containerId,不显式翻转 useAppLogs,所以这里用 containerId 作为唯一
@@ -693,6 +751,50 @@ export function RealtimeLogViewer({
           placeholder="关键字过滤"
           className="h-7 w-36 sm:w-44 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 text-[10px] sm:text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
         />
+
+        {useAppLogs && (
+          <div
+            className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5"
+            title="运行时日志级别 —— 调整 backend / ai-service 实际记录的最低级别;不持久化,重启后回到环境变量。"
+          >
+            <span className="px-1.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+              运行时
+            </span>
+            <select
+              value={(runtimeLevel?.backend || 'info').toLowerCase()}
+              disabled={runtimeLevelApplying === 'backend'}
+              onChange={(e) => void applyRuntimeLevel('backend', e.target.value)}
+              className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pl-1 pr-2"
+              title={`backend 当前级别: ${runtimeLevel?.backend ?? '加载中'}`}
+            >
+              <option value="debug">backend·debug</option>
+              <option value="info">backend·info</option>
+              <option value="warn">backend·warn</option>
+              <option value="error">backend·error</option>
+            </select>
+            <select
+              value={((runtimeLevel?.aiService) || 'info').toLowerCase()}
+              disabled={runtimeLevelApplying === 'aiService' || Boolean(runtimeLevel?.aiServiceError)}
+              onChange={(e) => void applyRuntimeLevel('aiService', e.target.value)}
+              className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pl-1 pr-2 disabled:cursor-not-allowed disabled:opacity-60"
+              title={runtimeLevel?.aiServiceError ? `ai-service 不可达: ${runtimeLevel.aiServiceError}` : `ai-service 当前级别: ${runtimeLevel?.aiService ?? '加载中'}`}
+            >
+              <option value="debug">ai·debug</option>
+              <option value="info">ai·info</option>
+              <option value="warning">ai·warning</option>
+              <option value="error">ai·error</option>
+            </select>
+          </div>
+        )}
+
+        {runtimeLevelError && useAppLogs && (
+          <span
+            className="text-[10px] text-status-warning truncate max-w-[180px]"
+            title={runtimeLevelError}
+          >
+            ⚠ {runtimeLevelError}
+          </span>
+        )}
 
         <button
           type="button"
