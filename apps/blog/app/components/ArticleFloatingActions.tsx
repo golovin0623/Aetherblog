@@ -167,6 +167,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   onClick={() => setIsTocOpen(true)}
                   className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
                   aria-label="打开目录"
+                  title="打开目录"
                 >
                   <List className="w-5 h-5 text-[var(--text-secondary)]" />
                 </button>
@@ -177,6 +178,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   onClick={scrollToTop}
                   className="surface-raised !rounded-full w-[44px] h-[44px] flex items-center justify-center transition-all duration-300 group hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]"
                   aria-label="返回顶部"
+                  title="返回顶部"
                 >
                   <div className="relative flex items-center justify-center w-8 h-8">
                     <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
@@ -290,7 +292,8 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setIsTocOpen((prev) => !prev)}
               className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
-              aria-label="打开目录"
+              aria-label={isTocOpen ? '关闭目录' : '打开目录'}
+              title={isTocOpen ? '关闭目录' : '打开目录'}
             >
               <div className="relative flex items-center justify-center w-10 h-10">
                 <List className="w-5 h-5 text-[var(--text-primary)] group-hover:text-primary transition-colors duration-300" />
@@ -338,6 +341,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                     onClick={() => setIsTocOpen(false)}
                     className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg"
                     aria-label="关闭目录"
+                    title="关闭目录"
                   >
                     <X className="h-4 w-4" />
                   </button>
