@@ -255,6 +255,7 @@ Additional compose files: `docker-compose.dev.yml` (development), `docker-compos
 | ai_handler | `/v1/admin/ai/*` | 9 business endpoints (summary/tags/titles/polish/outline/translate + stream variants + health) + 7 config endpoints (prompts + tasks CRUD) + provider proxy (Any /*) |
 | stats_handler | `/v1/admin/stats/*` | 7 endpoints: dashboard, top-posts, visitor-trend, archives, ai-dashboard, ai-pricing-gaps, ai-cost-archive |
 | system_monitor_handler | `/v1/admin/monitor/*` | 14 endpoints: metrics, storage, health, overview, containers, container logs, logs, log files, log download, network test, history, history stats, history delete, alerts, config |
+| log_level_handler | `/v1/admin/system/log-level` | GET 当前 backend / ai-service 运行时日志级别；PUT `{backend,aiService}` 在线调整 `zerolog.SetGlobalLevel` + ai-service root logger.setLevel（无需重启）。改 INFO→DEBUG 后 docker logs 真的多出调试行；改 INFO→WARN 后业务 INFO 行连写都不写。运行时调整不持久化，进程重启回到 `AETHERBLOG_LOG_LEVEL` / `AI_LOG_LEVEL`。健康探活路径（`/api/actuator/health`、`/api/v1/admin/system/{health,metrics}`、`/health`、`/ready`）2xx 时 *不落访问日志*（从前是降级到 Debug，运维改 DEBUG 排错时仍刷屏）；失败仍按状态码升级到 Warn/Error。Admin 仪表盘日志查看器右上角"运行时"下拉直接联动这两个 select。 |
 | site_handler | `/v1/admin/site/*` | 3 endpoints: info, stats, author |
 | site_setting_handler | `/v1/admin/settings/*` | 5 endpoints: list, group, batch-update, get-by-key, update-by-key |
 | friend_link_handler | `/v1/admin/friends/*` + `/v1/public/*` | 10 endpoints: admin CRUD + batch-delete + toggle-visible + reorder + page; 1 public |

@@ -162,6 +162,18 @@ app.add_middleware(
 app.include_router(router)
 
 
+# Liveness 路径每 10s 由 docker healthcheck / SystemMonitor 调用一次,
+# 业务排查时是噪声。2xx 直接不落访问日志;失败仍按状态码升级到 warning/error。
+# 与 Go 后端 internal/middleware/trace.go::isHealthProbePath 行为对齐。
+_HEALTH_PROBE_PATHS = frozenset({"/health", "/ready"})
+
+
+def _is_health_probe(path: str) -> bool:
+    if path in _HEALTH_PROBE_PATHS:
+        return True
+    return path.endswith("/health") or path.endswith("/ready")
+
+
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     request_id = request.headers.get("X-Request-Id") or str(uuid4())
@@ -170,11 +182,23 @@ async def request_context(request: Request, call_next):
     response = await call_next(request)
     duration_ms = (time.perf_counter() - start) * 1000
     response.headers["X-Request-Id"] = request_id
-    logger.info(
+
+    status_code = response.status_code
+    if status_code < 400 and _is_health_probe(request.url.path):
+        return response
+
+    if status_code >= 500:
+        log_method = logger.error
+    elif status_code >= 400:
+        log_method = logger.warning
+    else:
+        log_method = logger.info
+
+    log_method(
         "request %s %s %s %.2fms",
         request.method,
         request.url.path,
-        response.status_code,
+        status_code,
         duration_ms,
         extra={"traceId": request_id},
     )

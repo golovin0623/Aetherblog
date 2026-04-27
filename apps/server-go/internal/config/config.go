@@ -124,9 +124,13 @@ type MediaConfig struct {
 }
 
 // LogConfig 控制应用日志输出。
+//
+// Level 可在运行时通过 PUT /v1/admin/system/log-level 在线调整（见
+// internal/handler/log_level_handler.go），但此处的初始值仍由 YAML / 环境变量
+// 决定 —— 进程重启后会回到此默认值，运行时调整不持久化。
 type LogConfig struct {
 	Path  string `koanf:"path"`  // 日志文件存储目录（默认："./logs"）
-	Level string `koanf:"level"` // 最低日志级别："debug" | "info" | "warn" | "error"（默认："debug"）
+	Level string `koanf:"level"` // 最低日志级别："debug" | "info" | "warn" | "error"（默认："info"）
 }
 
 // AIConfig 存储外部 FastAPI AI 服务的连接配置。
@@ -296,7 +300,7 @@ func defaultConfig() *Config {
 		},
 		Log: LogConfig{
 			Path:  "./logs",
-			Level: "debug",
+			Level: "info",
 		},
 		AI: AIConfig{
 			BaseURL:              "http://localhost:8000",
