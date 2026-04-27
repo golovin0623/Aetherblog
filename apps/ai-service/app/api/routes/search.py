@@ -93,8 +93,8 @@ async def semantic_search(
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
-    # Resolve to the actual routed model (not the stale env default) so usage
-    # logs / metrics reflect what really ran.
+    # 解析为真实使用的路由模型（而非过期的环境默认值），让用量日志 /
+    # 指标反映实际运行的模型。
     model = await vector_store.llm.resolve_embedding_model_id()
     try:
         results = await vector_store.semantic_search(q, limit)
@@ -163,14 +163,12 @@ async def index_post(
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
     """
-    Index a single post (called by Go backend per post in a batch).
+    为单篇文章建索引（Go 后端在批处理中按篇调用）。
 
-    Important: LiteLLM exceptions (provider 5xx, auth, rate limit) MUST be
-    caught and converted into a structured ApiResponse here. Letting them
-    propagate triggers FastAPI's unhandled_exception path which spits a
-    full ASGI traceback into the logs and returns 500 to Go backend ——
-    which is uglier and harder to diagnose than a clean 502/503/401 with
-    a short error message.
+    重要：LiteLLM 异常（provider 5xx、auth、rate limit）必须在这里捕获并
+    转换为结构化的 ApiResponse。如果直接抛出会触发 FastAPI 的
+    unhandled_exception 路径，向日志吐出完整 ASGI traceback 并向 Go 后端
+    返回 500 —— 这比干净的 502/503/401 + 简短错误消息更难看也更难排查。
     """
     import logging as _logging
 
@@ -183,11 +181,10 @@ async def index_post(
             result = await vector_store.delete_post_embedding(req.postId)
             request_text = str(req.postId)
         else:
-            # SECURITY (VULN-062): require the target post to be PUBLISHED and
-            # not deleted/hidden before indexing. Without this, a bypass of the
-            # internal-service token (or future Go proxy regression) could be
-            # abused to replace existing published-post vectors with malicious
-            # text ("training/retrieval poisoning" via AI search).
+            # SECURITY (VULN-062)：建索引前要求目标文章必须是 PUBLISHED 且
+            # 未被删除/隐藏。否则一旦内部服务 token 被绕过（或未来 Go 代理
+            # 出现回归），攻击者可被滥用以恶意文本替换已发布文章的向量
+            # （通过 AI 搜索实现“训练 / 检索投毒”）。
             async with pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "SELECT id, status, deleted, is_hidden FROM posts WHERE id = $1",
@@ -210,11 +207,11 @@ async def index_post(
             request_text = req.content or ""
         return ApiResponse(data=result)
     except HTTPException as exc:
-        # Preserve original FastAPI exceptions (input validation 4xx, etc.)
+        # 保留原始的 FastAPI 异常（如输入校验 4xx 等）
         error_code = str(exc.detail)[:120]
         raise
     except Exception as exc:
-        # Map LiteLLM / network / DB failures to a stable HTTPException.
+        # 把 LiteLLM / 网络 / DB 失败映射为稳定的 HTTPException。
         # 用 HTTPException 而不是 return ApiResponse —— FastAPI 会自动序列化为
         # 干净的 {detail: "..."} JSON，**HTTP 状态码就是真正的非 200**，Go backend
         # 的 statusCode != http.StatusOK 检查直接对得上，也不会再触发
@@ -292,7 +289,7 @@ async def semantic_search_internal(
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[SemanticSearchData]:
-    """Internal semantic search endpoint for Go backend proxy (requires admin or internal service token)."""
+    """供 Go 后端代理调用的内部语义搜索端点（需要管理员或内部服务 token）。"""
     _enforce_content_limit(q)
     start_time = time.perf_counter()
     error_code = None
@@ -332,17 +329,17 @@ async def qa_search(
     vector_store=Depends(get_vector_store),
     llm_router=Depends(get_llm_router),
 ):
-    """RAG QA endpoint - searches for context then generates an answer via LLM streaming.
-    Requires admin or internal service token since it is proxied from Go backend."""
+    """RAG 问答端点 —— 先做检索拿到上下文，再通过 LLM 流式生成回答。
+    由 Go 后端代理调用，需要管理员或内部服务 token。"""
     import json as _json
     from fastapi.responses import StreamingResponse
 
     _enforce_content_limit(q)
 
-    # Step 1: Semantic search for context
+    # 第 1 步：语义检索得到上下文
     context_results = await vector_store.semantic_search(q, limit=3)
 
-    # Step 2: Build context for RAG
+    # 第 2 步：拼装 RAG 所需的 context
     context_parts = []
     sources = []
     for r in context_results:
@@ -355,7 +352,7 @@ async def qa_search(
 
     context_text = "\n\n---\n\n".join(context_parts) if context_parts else ""
 
-    # Step 3: Stream LLM response using qa task type
+    # 第 3 步：使用 qa task type 流式生成 LLM 回答
     async def generate():
         try:
             async for chunk in llm_router.stream_chat(
@@ -365,7 +362,7 @@ async def qa_search(
                 data = _json.dumps({"type": "delta", "content": chunk}, ensure_ascii=False)
                 yield f"data: {data}\n\n"
 
-            # Send sources
+            # 下发引用来源
             sources_data = _json.dumps({"type": "sources", "sources": sources}, ensure_ascii=False)
             yield f"data: {sources_data}\n\n"
 
@@ -385,17 +382,15 @@ async def index_stats(
     user=Depends(require_admin),
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
-    """Return indexing statistics for the admin dashboard.
+    """返回管理后台仪表盘所需的索引统计。
 
-    Resilience: on legacy deployments where migration 000034 was marked
-    applied but the versioned ``post_embeddings`` schema never materialized
-    (stale ``CREATE TABLE IF NOT EXISTS`` collision with the 000001 chunk
-    table), the ``WHERE status = 'active'`` sub-select raises
-    ``UndefinedColumnError`` and turns the whole admin panel into a 500
-    loop. We split the post-level counts from the vector count so a schema
-    gap only suppresses ``vector_count`` (surfaced as ``0`` with
-    ``schema_ready: false``), keeping the rest of the dashboard usable
-    until migration 000036 runs.
+    韧性说明：在历史部署中，若 migration 000034 已被标记应用、但版本化的
+    ``post_embeddings`` schema 从未真正建出来（``CREATE TABLE IF NOT EXISTS``
+    与 000001 的 chunk 表发生过期冲撞），则 ``WHERE status = 'active'``
+    子查询会抛出 ``UndefinedColumnError``，让整个管理面板陷入 500 循环。
+    这里把文章级计数与向量计数拆开，schema 缺失时只会让 ``vector_count``
+    退化为 ``0`` 并附带 ``schema_ready: false``，从而保证仪表盘其它部分
+    在 migration 000036 跑完前仍然可用。
     """
     async with pool.acquire() as conn:
         post_counts = await conn.fetchrow("""
@@ -414,7 +409,7 @@ async def index_stats(
             )
             vector_count = int(row["c"]) if row else 0
         except (asyncpg.UndefinedColumnError, asyncpg.UndefinedTableError) as exc:
-            # legacy chunk table / missing schema — don't 500 the whole panel.
+            # 旧的 chunk 表 / schema 缺失 —— 不要让整个面板 500。
             schema_ready = False
             logger.warning(
                 "post_embeddings versioned schema missing (%s). "
@@ -442,7 +437,7 @@ async def retry_failed_indexes(
     vector_store=Depends(get_vector_store),
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
-    """Retry embedding for posts with FAILED status using limited concurrency."""
+    """以受控并发重试 FAILED 状态文章的 embedding。"""
     import asyncio
 
     async with pool.acquire() as conn:
@@ -452,7 +447,7 @@ async def retry_failed_indexes(
             "ORDER BY id LIMIT 100"
         )
 
-    sem = asyncio.Semaphore(5)  # max 5 concurrent retry operations
+    sem = asyncio.Semaphore(5)  # 最多 5 个重试任务并发
 
     async def process_one(row):
         async with sem:
@@ -466,7 +461,7 @@ async def retry_failed_indexes(
                 )
                 return True
             except Exception:
-                return False  # upsert_post_embedding already updates embedding_status
+                return False  # upsert_post_embedding 内部已更新 embedding_status
 
     results = await asyncio.gather(*[process_one(row) for row in rows])
     retried = sum(1 for r in results if r)

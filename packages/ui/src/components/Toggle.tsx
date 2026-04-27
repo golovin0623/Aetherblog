@@ -10,11 +10,11 @@ export interface ToggleProps {
 }
 
 /**
- * Standard toggle switch — consistent across all admin pages.
+ * 标准开关切换 —— 在所有管理后台页面保持一致。
  *
- * Sizes:
- *  - sm: 36×20 px  (model cards, compact rows)
- *  - md: 44×24 px  (settings, forms — default)
+ * 尺寸：
+ *  - sm: 36×20 px  (模型卡片、紧凑行)
+ *  - md: 44×24 px  (设置、表单 —— 默认)
  */
 export function Toggle({
   checked,

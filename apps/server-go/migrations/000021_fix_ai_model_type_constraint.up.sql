@@ -1,15 +1,15 @@
 -- ============================================================
--- Fix AI Model Type Constraint
+-- 修复 AI Model Type 约束
 -- ============================================================
--- Add missing model types (stt, realtime, text2video, text2music) to the
--- chk_ai_model_type constraint. This fixes the error when inserting
--- models like whisper-1 (stt type) fetched from remote providers.
+-- 向 chk_ai_model_type constraint 补齐缺失的 model type（stt、realtime、
+-- text2video、text2music）。修复从远程 provider 拉取并插入 whisper-1
+-- 等 stt 类型模型时报错的问题。
 -- ============================================================
 
--- Drop the existing constraint and recreate with all model types
+-- 删除旧 constraint，按完整 model type 列表重建
 DO $$
 BEGIN
-    -- Drop existing constraint if it exists
+    -- 若已存在则删除旧 constraint
     IF EXISTS (
         SELECT 1
         FROM pg_constraint
@@ -19,7 +19,7 @@ BEGIN
         ALTER TABLE ai_models DROP CONSTRAINT chk_ai_model_type;
     END IF;
 
-    -- Add updated constraint with all model types
+    -- 按完整 model type 列表重新添加 constraint
     ALTER TABLE ai_models
         ADD CONSTRAINT chk_ai_model_type CHECK (
             model_type IN (

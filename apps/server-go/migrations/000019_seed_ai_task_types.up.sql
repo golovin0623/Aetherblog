@@ -1,5 +1,5 @@
 -- ============================================================
--- Seeding AI Task Types with Default Prompts
+-- 为 AI Task Types 写入默认 prompt 种子数据
 -- ============================================================
 
 INSERT INTO ai_task_types (code, name, description, default_model_type, default_temperature, default_max_tokens, prompt_template) VALUES
@@ -16,10 +16,10 @@ ON CONFLICT (code) DO UPDATE SET
     name = EXCLUDED.name;
 
 -- ============================================================
--- Seeding System Default Routing
+-- 系统默认路由种子数据
 -- ============================================================
 
--- Insert system default routing (user_id = NULL means system default)
+-- 写入系统默认路由（user_id = NULL 表示系统默认）
 INSERT INTO ai_task_routing (user_id, task_type_id, primary_model_id, fallback_model_id, config_override)
 WITH target_models AS (
     SELECT 

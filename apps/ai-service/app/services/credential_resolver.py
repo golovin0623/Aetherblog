@@ -1,6 +1,6 @@
-# ref: §5.1 - Credential Resolver Service
+# ref: §5.1 - 凭证解析服务（Credential Resolver Service）
 """
-Service for managing and resolving AI API credentials.
+管理与解析 AI API 凭证的服务。
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("ai-service")
 
 
 def _encode_json(value: Any) -> Any:
-    """Encode JSON field for asyncpg (dict -> str)."""
+    """为 asyncpg 编码 JSON 字段（dict -> str）。"""
     if value is None:
         return None
     if isinstance(value, str):
@@ -50,12 +50,12 @@ def _normalize_user_id(user_id: int | str | None) -> int | None:
 
 
 def _legacy_jwt_derived_key(secret: str) -> bytes:
-    """Compute the legacy Fernet key that was derived from JWT_SECRET.
+    """计算曾经从 JWT_SECRET 派生的旧 Fernet key。
 
-    Retained ONLY so the rotation script (scripts/rotate_credentials.py) can
-    seed AI_CREDENTIAL_ENCRYPTION_KEYS with the legacy key as a fallback during
-    the migration window. Production code path no longer uses this — see
-    VULN-056 fix plan in docs/qa/fix-plans/vuln-056-fernet-jwt-key-split.md.
+    仅保留供轮换脚本（scripts/rotate_credentials.py）在迁移窗口内
+    用作 AI_CREDENTIAL_ENCRYPTION_KEYS 的回退种子。生产代码路径已经
+    不再使用 —— 详见 docs/qa/fix-plans/vuln-056-fernet-jwt-key-split.md
+    中的 VULN-056 修复方案。
     """
     key_bytes = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(key_bytes)
@@ -63,12 +63,12 @@ def _legacy_jwt_derived_key(secret: str) -> bytes:
 
 @dataclass
 class CredentialInfo:
-    """Resolved credential information."""
+    """解析后的凭证信息。"""
     id: int
     provider_id: int
     provider_code: str
     api_type: str | None
-    api_key: str  # Decrypted
+    api_key: str  # 已解密
     base_url: str | None
     extra_config: dict[str, Any]
     is_default: bool
@@ -76,41 +76,39 @@ class CredentialInfo:
 
 class CredentialResolver:
     """
-    Service for managing and resolving AI API credentials.
-    
-    Credentials are stored encrypted in the database using Fernet symmetric encryption.
+    管理与解析 AI API 凭证的服务。
+
+    凭证以 Fernet 对称加密的形式存放在数据库中。
     """
 
     def __init__(self, pool: asyncpg.Pool) -> None:
         self.pool = pool
         self.settings = get_settings()
-        # SECURITY (VULN-056): credential encryption uses a dedicated key set
-        # (AI_CREDENTIAL_ENCRYPTION_KEYS), NOT JWT_SECRET. MultiFernet picks the
-        # first key for new encryption and tries every key for decryption,
-        # which lets operators rotate without downtime — see rotation script
-        # in scripts/rotate_credentials.py.
+        # SECURITY (VULN-056)：凭证加密使用专用密钥集合
+        # （AI_CREDENTIAL_ENCRYPTION_KEYS），不再复用 JWT_SECRET。MultiFernet
+        # 会用列表中第一个 key 加密新数据，并依次尝试每个 key 进行解密，
+        # 因此运维可以做不停机轮换 —— 详见 scripts/rotate_credentials.py。
         self._fernet = MultiFernet([
             Fernet(k.encode()) for k in self.settings.ai_credential_encryption_keys
         ])
 
     def encrypt_api_key(self, api_key: str) -> str:
-        """Encrypt an API key for storage (uses the first key in the list)."""
+        """加密 API key 以便落库（使用列表中第一个 key）。"""
         return self._fernet.encrypt(api_key.encode()).decode()
 
     def decrypt_api_key(self, encrypted: str) -> str:
-        """Decrypt an API key from storage (tries every configured key)."""
+        """从存储中解密 API key（依次尝试所有已配置的 key）。"""
         return self._fernet.decrypt(encrypted.encode()).decode()
 
     def reencrypt_api_key(self, encrypted: str) -> str:
-        """Decrypt with any configured key, re-encrypt with the first key.
+        """用任一已配置 key 解密，再用第一个 key 重新加密。
 
-        Used by the offline rotation script (scripts/rotate_credentials.py)
-        when retiring an old encryption key.
+        在离线轮换脚本（scripts/rotate_credentials.py）淘汰旧加密 key 时使用。
         """
         return self._fernet.rotate(encrypted.encode()).decode()
 
     def generate_hint(self, api_key: str) -> str:
-        """Generate a hint for display (e.g., 'sk-abc...xyz')."""
+        """生成用于展示的脱敏提示（例如 'sk-abc...xyz'）。"""
         if len(api_key) <= 12:
             return "********"
         return f"{api_key[:3]}...{api_key[-3:]}"
@@ -125,7 +123,7 @@ class CredentialResolver:
         is_default: bool = False,
         extra_config: dict[str, Any] | None = None,
     ) -> int:
-        """Save a new credential."""
+        """保存一条新凭证。"""
         user_id = _normalize_user_id(user_id)
         encrypted = self.encrypt_api_key(api_key.strip())
         hint = self.generate_hint(api_key.strip())
@@ -139,7 +137,7 @@ class CredentialResolver:
             RETURNING id
         """
         async with self.pool.acquire() as conn:
-            # If setting as default, unset other defaults for this user/provider
+            # 若新凭证设为默认，则取消同一 user/provider 下其它默认项
             if is_default:
                 await conn.execute(
                     """
@@ -173,21 +171,20 @@ class CredentialResolver:
         credential_id: int | None = None,
     ) -> CredentialInfo | None:
         """
-        Resolve credential for a provider.
-        
-        Priority:
-        1. Specific credential_id if provided
-        2. User's default credential for this provider
-        3. Any user credential for this provider
-        4. System default (from environment)
+        为指定 provider 解析凭证。
+
+        优先级：
+        1. 显式传入的 credential_id
+        2. 用户为该 provider 设定的默认凭证
+        3. 用户为该 provider 配置的任意一条凭证
+        4. 系统默认（来自环境变量）
         """
         user_id = _normalize_user_id(user_id)
         if credential_id:
-            # When user_id is None the call comes from a background worker or
-            # the system-default routing probe — trust the credential_id alone
-            # and do not filter by user_id. Otherwise every credential saved
-            # under an admin user_id would be invisible to the indexer and the
-            # SearchConfig page would falsely report "no credential".
+            # 当 user_id 为 None 时，调用方是后台 worker 或系统默认路由探针 ——
+            # 此时仅信任 credential_id，不再按 user_id 过滤。否则所有以管理员
+            # user_id 保存的凭证都会对索引器不可见，SearchConfig 页面会误报
+            # "未配置凭证"。
             base_query = """
                 SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
                        c.api_key_encrypted,
@@ -230,7 +227,7 @@ class CredentialResolver:
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow(query, provider_code)
         else:
-            # Try user's credentials first, then system
+            # 优先匹配用户自己的凭证，再回退到系统级
             query = """
                 SELECT c.id, c.provider_id, p.code as provider_code, p.api_type,
                        c.api_key_encrypted,
@@ -261,11 +258,11 @@ class CredentialResolver:
                 is_default=row["is_default"],
             )
         
-        # Fallback to environment config
+        # 回退到环境变量配置
         return self._get_env_credential(provider_code)
 
     def _get_env_credential(self, provider_code: str) -> CredentialInfo | None:
-        """Get credential from environment variables."""
+        """从环境变量读取凭证。"""
         settings = self.settings
         
         if provider_code == "openai" and settings.openai_api_key:
@@ -294,7 +291,7 @@ class CredentialResolver:
         return None
 
     async def list_credentials(self, user_id: int | None = None) -> list[dict[str, Any]]:
-        """List credentials for a user (without exposing API keys)."""
+        """列出某个用户的凭证（不暴露 API key）。"""
         user_id = _normalize_user_id(user_id)
         query = """
             SELECT c.id, c.name, c.api_key_hint, p.code as provider_code, p.display_name as provider_name,
@@ -322,12 +319,12 @@ class CredentialResolver:
         decrypt_key: bool = False,
     ) -> dict[str, Any] | None:
         """
-        Get a single credential by ID.
-        
+        按 ID 获取单条凭证。
+
         Args:
-            credential_id: The credential ID
-            user_id: The user ID (for access control)
-            decrypt_key: If True, return decrypted API key (for admin reveal feature)
+            credential_id: 凭证 ID
+            user_id: 用户 ID（用于访问控制）
+            decrypt_key: 若为 True，则返回解密后的 API key（供管理员查看真实密钥功能）
         """
         user_id = _normalize_user_id(user_id)
         query = """
@@ -351,17 +348,17 @@ class CredentialResolver:
         if decrypt_key:
             result["api_key"] = self.decrypt_api_key(result["api_key_encrypted"])
         
-        # Remove encrypted key from response
+        # 从响应中移除加密后的 key
         del result["api_key_encrypted"]
-        
+
         return result
 
     async def delete_credential(self, credential_id: int, user_id: int | None = None) -> bool:
-        """Delete a credential, first clearing any routing references."""
+        """删除一条凭证，并先清除路由表中的引用。"""
         user_id = _normalize_user_id(user_id)
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # Clear references in ai_task_routing to avoid FK constraint errors
+                # 先清除 ai_task_routing 中的引用，避免外键约束报错
                 await conn.execute(
                     """
                     UPDATE ai_task_routing
@@ -370,7 +367,7 @@ class CredentialResolver:
                     """,
                     credential_id,
                 )
-                # Now delete the credential
+                # 再删除凭证本体
                 row = await conn.fetchrow(
                     """
                     DELETE FROM ai_credentials 
@@ -383,15 +380,15 @@ class CredentialResolver:
         return row is not None
 
     async def update_last_used(self, credential_id: int, error: str | None = None) -> None:
-        """Update last used timestamp and error."""
+        """更新 last_used 时间戳与错误信息。"""
         query = """
             UPDATE ai_credentials
             SET last_used_at = $1, last_error = $2
             WHERE id = $3
         """
         async with self.pool.acquire() as conn:
-            # Column `last_used_at` is TIMESTAMP (no TZ); asyncpg refuses tz-aware
-            # datetimes ("can't subtract offset-naive and offset-aware"). Compute
-            # an explicit UTC timestamp and strip tzinfo for storage.
+            # `last_used_at` 列类型是 TIMESTAMP（不带时区）；asyncpg 不接受
+            # 带 tz 的 datetime（会报 "can't subtract offset-naive and
+            # offset-aware"）。这里显式生成 UTC 时间并剥除 tzinfo 后写入。
             now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
             await conn.execute(query, now_utc_naive, error, credential_id)

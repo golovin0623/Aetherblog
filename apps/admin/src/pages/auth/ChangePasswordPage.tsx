@@ -85,7 +85,7 @@ export function ChangePasswordPage() {
 
   return (
     <div className="relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
-      {/* Ambient —— 首登场景用 warn 极光 (aurora-3 橙),强调"强制"语境 */}
+      {/* 环境光 —— 首登场景用 warn 极光 (aurora-3 橙),强调"强制"语境 */}
       <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true">
         <div
           className="absolute top-[-25%] left-[-15%] w-[70%] h-[70%] rounded-full blur-[140px] opacity-70"
@@ -270,7 +270,7 @@ export function ChangePasswordPage() {
                   </p>
                 </div>
 
-                {/* First-login warning banner */}
+                {/* 首次登录警告横幅 */}
                 <AnimatePresence>
                   {isFirstLogin && (
                     <motion.div
@@ -301,7 +301,7 @@ export function ChangePasswordPage() {
                   )}
                 </AnimatePresence>
 
-                {/* Error banner */}
+                {/* 错误横幅 */}
                 <AnimatePresence mode="wait">
                   {error && (
                     <motion.div
@@ -362,7 +362,7 @@ export function ChangePasswordPage() {
                     minLength={8}
                   />
 
-                  {/* Password Health panel —— 两条校验信号,命中切到 signal-success */}
+                  {/* 密码健康度面板 —— 两条校验信号,命中切到 signal-success */}
                   <div
                     className="px-4 py-3.5 rounded-xl"
                     style={{
@@ -403,7 +403,7 @@ export function ChangePasswordPage() {
                     )}
                   </motion.button>
 
-                  {/* Return link —— 非首登才显示,避免用户绕过 */}
+                  {/* 返回链接 —— 非首登才显示,避免用户绕过 */}
                   {!isFirstLogin && (
                     <div className="text-center pt-1">
                       <button

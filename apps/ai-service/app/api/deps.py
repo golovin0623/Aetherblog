@@ -42,14 +42,13 @@ def _get_redis() -> Redis:
     global _redis
     if _redis is None:
         settings = get_settings()
-        # Pass REDIS_PASSWORD as an explicit kwarg in addition to the URL merge
-        # done in Settings._merge_redis_password. Two independent paths so a stale
-        # image without the URL validator, or a URL already carrying explicit
-        # userinfo, still ends up AUTH'd. redis-py's from_url treats kwargs as
-        # overrides for URL-parsed params, so when the URL already embeds auth
-        # (parsed.netloc contains "@"), we suppress the kwarg to respect the
-        # operator's explicit choice. Without this NOAUTH fail-closes the rate
-        # limiter and every AI endpoint returns 503.
+        # 除了在 Settings._merge_redis_password 中合并到 URL 之外，还显式以
+        # kwarg 形式传递 REDIS_PASSWORD。两条独立路径并行，确保旧镜像（缺少 URL
+        # 校验器）或已经在 URL 中携带显式 userinfo 的场景下都能完成 AUTH。
+        # redis-py 的 from_url 会将 kwargs 视为对 URL 解析参数的覆盖，所以当
+        # URL 已嵌入认证信息（parsed.netloc 含 "@"）时，我们抑制该 kwarg
+        # 以尊重运维方的显式选择。否则 NOAUTH 会让 rate limiter fail-closed，
+        # 所有 AI 端点都会返回 503。
         from urllib.parse import urlparse
 
         kwargs: dict = {"decode_responses": True}
@@ -169,7 +168,7 @@ async def require_user(
     try:
         claims = decode_token(token)
         return extract_user(claims)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - 防御性
         logger.warning("jwt.invalid", extra={"data": {"error": str(exc), "error_type": type(exc).__name__}})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
@@ -186,19 +185,19 @@ async def require_admin_or_internal(
     authorization: str | None = Header(default=None),
     access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE_NAME),
 ) -> UserClaims | dict:
-    """Allow admin JWT or internal service token for Go backend calls."""
+    """允许管理员 JWT 或来自 Go 后端的内部服务 token。"""
     internal_token = request.headers.get("X-Internal-Service")
     settings = get_settings()
-    # SECURITY (VULN-162): the truthy check on internal_token MUST come before
-    # hmac.compare_digest. Calling compare_digest(None, ...) is undefined across
-    # CPython versions (TypeError on 3.12, silent False on older). Token strength
-    # (>=32 chars) and presence are enforced at startup by Settings._validate_token_strength
-    # in app/core/config.py — keep both layers; do not collapse this guard.
+    # SECURITY (VULN-162)：必须先对 internal_token 做 truthy 判断，再调用
+    # hmac.compare_digest。直接 compare_digest(None, ...) 在不同 CPython 版本
+    # 行为不一致（3.12 抛 TypeError，旧版本静默返回 False）。Token 强度
+    # （>=32 字符）与是否存在已在启动期由 app/core/config.py 中的
+    # Settings._validate_token_strength 校验 —— 保留两层防御，切勿合并此守卫。
     if internal_token and hmac.compare_digest(internal_token, settings.internal_service_token):
-        # Internal service call from Go backend
+        # 来自 Go 后端的内部服务调用
         return UserClaims(user_id="system", role="admin", scopes=None)
 
-    # Fall back to normal admin auth
+    # 回退到普通管理员鉴权
     return await require_admin(
         user=await require_user(
             authorization=authorization,
@@ -223,8 +222,8 @@ async def get_current_user(
     access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE_NAME),
 ) -> dict | None:
     """
-    Optional user extraction - returns None if no valid token.
-    Use for endpoints that work for both authenticated and unauthenticated users.
+    可选的用户提取 —— 没有有效 token 时返回 None。
+    用于同时服务已认证和匿名用户的端点。
     """
     token = _resolve_token(authorization, access_token_cookie)
     if not token:
@@ -243,13 +242,13 @@ async def anonymous_rate_limit(
     user: dict | None = Depends(get_current_user),
     limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> dict | None:
-    """Rate limit for anonymous users (IP-based) or authenticated users."""
+    """对匿名用户（基于 IP）或已认证用户应用速率限制。"""
     endpoint = request.url.path
     await limiter.enforce_global_limit(endpoint)
     if user and user.get("sub"):
         await limiter.enforce_user_limit(str(user["sub"]), endpoint)
     else:
-        # For anonymous users, rate limit by IP
+        # 匿名用户按 IP 进行速率限制
         client_ip = request.client.host if request.client else "unknown"
         await limiter.enforce_user_limit(f"anon:{client_ip}", endpoint)
     return user

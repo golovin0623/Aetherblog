@@ -1,6 +1,6 @@
-# ref: §5.1 - Provider Registry Service
+# ref: §5.1 - 供应商注册服务（Provider Registry Service）
 """
-Service for managing AI providers and models.
+管理 AI provider 与模型的服务。
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ PRICING_UNIT_NAMES = {
 
 
 def _parse_json(value: Any) -> dict[str, Any]:
-    """Parse JSON field - handles both dict and string."""
+    """解析 JSON 字段 —— dict 与字符串两种输入都能处理。"""
     if value is None:
         return {}
     if isinstance(value, dict):
@@ -36,7 +36,7 @@ def _parse_json(value: Any) -> dict[str, Any]:
 
 
 def _encode_json(value: Any) -> Any:
-    """Encode JSON field for asyncpg (dict -> str)."""
+    """为 asyncpg 编码 JSON 字段（dict -> str）。"""
     if value is None:
         return None
     if isinstance(value, str):
@@ -171,7 +171,7 @@ def _sync_model_pricing_capabilities(
 
 @dataclass
 class ProviderInfo:
-    """Provider information."""
+    """provider 信息。"""
     id: int
     code: str
     name: str
@@ -188,7 +188,7 @@ class ProviderInfo:
 
 @dataclass
 class ModelInfo:
-    """Model information."""
+    """模型信息。"""
     id: int
     provider_id: int
     provider_code: str
@@ -208,7 +208,7 @@ class ModelInfo:
 
 class ProviderRegistry:
     """
-    Service for querying AI providers and models from database.
+    从数据库查询 AI provider 与模型的服务。
     """
 
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -250,7 +250,7 @@ class ProviderRegistry:
         )
 
     async def list_providers(self, enabled_only: bool = True) -> list[ProviderInfo]:
-        """List all AI providers."""
+        """列出所有 AI provider。"""
         query = """
             SELECT id, code, name, display_name, api_type, base_url, doc_url, icon,
                    is_enabled, priority, capabilities, config_schema
@@ -280,7 +280,7 @@ class ProviderRegistry:
         ]
 
     async def get_provider(self, code: str) -> ProviderInfo | None:
-        """Get provider by code."""
+        """按 code 查询 provider。"""
         if code in self._provider_cache:
             return self._provider_cache[code]
         
@@ -316,7 +316,7 @@ class ProviderRegistry:
     async def list_models(
         self, provider_code: str | None = None, model_type: str | None = None, enabled_only: bool = True
     ) -> list[ModelInfo]:
-        """List AI models with optional filters."""
+        """按可选过滤条件列出 AI 模型。"""
         query = """
             SELECT m.id, m.provider_id, p.code as provider_code, m.model_id, 
                    m.display_name, m.model_type, m.context_window, m.max_output_tokens,
@@ -338,7 +338,7 @@ class ProviderRegistry:
         return [self._build_model_info(row) for row in rows]
 
     async def get_model(self, model_id: str, provider_code: str | None = None) -> ModelInfo | None:
-        """Get model by model_id."""
+        """按 model_id 查询模型。"""
         cache_key = f"{provider_code or ''}:{model_id}"
         if cache_key in self._model_cache:
             return self._model_cache[cache_key]
@@ -466,15 +466,15 @@ class ProviderRegistry:
         )
 
     async def delete_provider(self, provider_id: int) -> bool:
-        """Delete a provider.
+        """删除一个 provider。
 
-        Cascade behavior:
-        - ai_models: CASCADE deleted (FK with ON DELETE CASCADE)
-        - ai_credentials: CASCADE deleted (FK with ON DELETE CASCADE)
-        - ai_task_routing references: Automatically SET NULL via FK constraints
+        级联行为：
+        - ai_models：被级联删除（FK 配置 ON DELETE CASCADE）
+        - ai_credentials：被级联删除（FK 配置 ON DELETE CASCADE）
+        - ai_task_routing 中的引用：通过外键约束自动 SET NULL
         """
         async with self.pool.acquire() as conn:
-            # Direct delete - FK constraints will handle all cascades and nullifications
+            # 直接 DELETE —— 外键约束会负责所有级联删除与置 NULL
             row = await conn.fetchrow(
                 "DELETE FROM ai_providers WHERE id = $1 RETURNING id",
                 provider_id,
@@ -485,7 +485,7 @@ class ProviderRegistry:
         return False
 
     async def batch_toggle_providers(self, ids: list[int], enabled: bool) -> int:
-        """Batch toggle provider enabled state by ids."""
+        """按 id 批量切换 provider 的启用状态。"""
         if not ids:
             return 0
         query = """
@@ -642,13 +642,13 @@ class ProviderRegistry:
         return self._build_model_info(row)
 
     async def delete_model(self, model_db_id: int) -> bool:
-        """Delete a model.
+        """删除一个模型。
 
-        Note: ai_task_routing references will be automatically SET NULL via FK constraint.
-        No manual cleanup needed.
+        注意：ai_task_routing 中的引用会通过外键约束自动 SET NULL。
+        无需手动清理。
         """
         async with self.pool.acquire() as conn:
-            # Direct delete - FK constraints with ON DELETE SET NULL will handle cleanup
+            # 直接 DELETE —— 带 ON DELETE SET NULL 的外键约束会负责清理
             row = await conn.fetchrow(
                 "DELETE FROM ai_models WHERE id = $1 RETURNING id",
                 model_db_id,
@@ -659,10 +659,10 @@ class ProviderRegistry:
         return False
 
     async def bulk_insert_models(self, provider_code: str, models: list[Any]) -> int:
-        """Bulk insert models (ignore duplicates).
+        """批量插入模型（忽略重复项）。
 
         Returns:
-            int: Actual number of models inserted (excluding duplicates)
+            int: 实际插入的模型数量（不含被 ON CONFLICT 跳过的重复行）
         """
         if not models:
             return 0
@@ -670,7 +670,7 @@ class ProviderRegistry:
         if not provider:
             return 0
 
-        # Use RETURNING to count actual inserts (not skipped by ON CONFLICT)
+        # 利用 RETURNING 统计真正插入的行数（被 ON CONFLICT 跳过的不计入）
         query = """
             INSERT INTO ai_models
                 (provider_id, model_id, display_name, model_type, context_window,
@@ -697,17 +697,17 @@ class ProviderRegistry:
 
         inserted_count = 0
         async with self.pool.acquire() as conn:
-            async with conn.transaction():  # Add transaction protection
+            async with conn.transaction():  # 加事务保护
                 for value_tuple in values:
                     result = await conn.fetchrow(query, *value_tuple)
-                    if result:  # Only count if actually inserted (not skipped by ON CONFLICT)
+                    if result:  # 只有真正插入（未被 ON CONFLICT 跳过）才计数
                         inserted_count += 1
 
         self.clear_cache()
-        return inserted_count  # Return actual inserted count
+        return inserted_count  # 返回实际插入数量
 
     async def delete_models_by_provider(self, provider_code: str, source: str | None = None) -> int:
-        """Delete models for a provider (optionally filtered by source)."""
+        """删除某个 provider 下的模型（可按 source 过滤）。"""
         provider = await self.get_provider(provider_code)
         if not provider:
             return 0
@@ -732,7 +732,7 @@ class ProviderRegistry:
         return len(rows)
 
     async def batch_toggle_models(self, ids: list[int], enabled: bool) -> int:
-        """Batch toggle model enabled state by ids."""
+        """按 id 批量切换模型的启用状态。"""
         if not ids:
             return 0
         query = """
@@ -748,7 +748,7 @@ class ProviderRegistry:
         return len(rows)
 
     async def update_models_sort(self, items: list[dict[str, int]]) -> int:
-        """Update model sort order using capabilities.sort."""
+        """通过 capabilities.sort 更新模型排序。"""
         if not items:
             return 0
         async with self.pool.acquire() as conn:
@@ -808,6 +808,6 @@ class ProviderRegistry:
         return self._build_model_info(row)
 
     def clear_cache(self) -> None:
-        """Clear provider and model caches."""
+        """清空 provider 与模型 cache。"""
         self._provider_cache.clear()
         self._model_cache.clear()

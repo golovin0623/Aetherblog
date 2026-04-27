@@ -1,13 +1,12 @@
-"""SSRF protection: validate that URLs do not resolve to private/internal networks.
+"""SSRF 防护: 校验 URL 不会解析到私有/内网网段。
 
-History:
-- Initial implementation (FINDING-011) covered IPv4 + IPv6 basics.
-- VULN-058: strengthened to reject IPv4-mapped IPv6 (``::ffff:127.0.0.1``) and
-  broadcast addresses. Documented DNS-rebinding as a residual risk requiring
-  network-layer controls.
-- VULN-076: added an async variant (``validate_external_url_async``) that calls
-  ``asyncio.get_running_loop().getaddrinfo`` to avoid blocking the event loop
-  inside the AI service's async request path.
+历史:
+- 初始实现 (FINDING-011) 覆盖 IPv4 + IPv6 基础场景。
+- VULN-058: 加固为拒绝 IPv4-mapped IPv6 (``::ffff:127.0.0.1``) 与广播地址。
+  把 DNS-rebinding 列为需依赖网络层控制的残留风险。
+- VULN-076: 新增 async 版本 (``validate_external_url_async``),
+  调用 ``asyncio.get_running_loop().getaddrinfo``,
+  避免在 AI 服务的 async 请求路径上阻塞事件循环。
 """
 
 from __future__ import annotations
@@ -32,26 +31,26 @@ BLOCKED_NETWORKS = [
     ipaddress.ip_network('172.16.0.0/12'),
     ipaddress.ip_network('192.168.0.0/16'),
     ipaddress.ip_network('169.254.0.0/16'),
-    ipaddress.ip_network('255.255.255.255/32'),  # broadcast
+    ipaddress.ip_network('255.255.255.255/32'),  # 广播地址
     ipaddress.ip_network('::1/128'),
     ipaddress.ip_network('fd00::/8'),
     ipaddress.ip_network('fe80::/10'),
 ]
 
-# Local-dev escape hatch for fake-ip proxies (Clash/Mihomo default
-# ``fake-ip-range: 198.18.0.0/16``). In fake-ip mode the proxy DNS hands back
-# synthetic IPs from RFC2544 benchmark space (198.18/15) that stdlib classifies
-# as ``is_private`` — tripping this guard for genuinely public hostnames.
+# 本地开发用的"逃生开关",针对 fake-ip 代理 (Clash/Mihomo 默认
+# ``fake-ip-range: 198.18.0.0/16``)。在 fake-ip 模式下,代理 DNS 会回写
+# 来自 RFC2544 基准段 (198.18/15) 的合成 IP,标准库会把它们分类为
+# ``is_private`` —— 这会让真正的公网主机名被本守卫误伤。
 #
-# When set, drop the broad ``is_private/is_loopback/is_link_local/is_reserved``
-# heuristic and rely ONLY on the explicit BLOCKED_NETWORKS enumeration above —
-# that list still covers every real SSRF threat: RFC1918 (10/8, 172.16/12,
-# 192.168/16), loopback (127/8 + ::1), link-local incl. AWS/GCP/Azure IMDS
-# (169.254/16), CGNAT (100.64/10), v6 ULA (fd00::/8). What becomes *allowed*
-# is 198.18/15 (fake-ip), 192.0.2/24 / 198.51.100/24 / 203.0.113/24 (TEST-NET
-# doc ranges), 240/4 (class E) — all inert in practice, safe for dev.
+# 该开关开启时,放弃宽泛的 ``is_private/is_loopback/is_link_local/is_reserved``
+# 启发式,仅依赖上方显式枚举的 BLOCKED_NETWORKS ——
+# 该列表依然覆盖所有真实 SSRF 威胁: RFC1918 (10/8, 172.16/12, 192.168/16)、
+# 回环 (127/8 + ::1)、link-local 含 AWS/GCP/Azure IMDS (169.254/16)、
+# CGNAT (100.64/10)、v6 ULA (fd00::/8)。被**允许**的是
+# 198.18/15 (fake-ip)、192.0.2/24 / 198.51.100/24 / 203.0.113/24 (TEST-NET 文档段)、
+# 240/4 (class E) —— 这些在实际中都是惰性段,开发环境用是安全的。
 #
-# MUST remain off in production. Startup logs a warning when enabled.
+# 生产环境**必须**保持关闭。启用时启动日志会输出 warning。
 _ALLOW_RESERVED = os.environ.get(
     "AETHERBLOG_SSRF_ALLOW_RESERVED", ""
 ).strip().lower() in ("1", "true", "yes", "on")
@@ -66,11 +65,10 @@ if _ALLOW_RESERVED:
 
 
 def is_ip_blocked(ip: IPAddress) -> bool:
-    """Check if an IP address is blocked.
+    """检查给定 IP 是否被屏蔽。
 
-    SECURITY (VULN-058): IPv4-mapped IPv6 (``::ffff:127.0.0.1``) must be
-    downgraded to the underlying IPv4 and re-checked, otherwise attackers can
-    bypass the IPv4 blocklist by prefixing with ``::ffff:``.
+    安全 (VULN-058): IPv4-mapped IPv6 (``::ffff:127.0.0.1``) 必须先降级成
+    底层的 IPv4 再重新检查,否则攻击者可以通过加 ``::ffff:`` 前缀绕过 IPv4 黑名单。
     """
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         return is_ip_blocked(ip.ipv4_mapped)
@@ -82,9 +80,9 @@ def is_ip_blocked(ip: IPAddress) -> bool:
 
 
 def validate_external_url(url: str) -> bool:
-    """Synchronous URL validation — use ``validate_external_url_async`` from
-    async code paths (VULN-076). This sync version remains for
-    ``RemoteModelFetcher`` and tooling where blocking is acceptable.
+    """同步 URL 校验 —— 在 async 代码路径上请改用 ``validate_external_url_async``
+    (VULN-076)。这里的同步版本保留给 ``RemoteModelFetcher`` 以及那些
+    阻塞可以接受的工具脚本。
     """
     try:
         parsed = urlparse(url)
@@ -106,12 +104,11 @@ def validate_external_url(url: str) -> bool:
 
 
 async def validate_external_url_async(url: str) -> bool:
-    """Async variant of ``validate_external_url`` for use inside FastAPI /
-    asyncio request paths. Avoids blocking the event loop on DNS (VULN-076).
+    """``validate_external_url`` 的 async 版本,用于 FastAPI /
+    asyncio 请求路径。避免在 DNS 解析时阻塞事件循环 (VULN-076)。
 
-    Note: this is still one-shot resolve + use. DNS rebinding (VULN-058 TOCTOU)
-    is mitigated primarily by the network layer — treat this as one line of
-    defense, not the only one.
+    注意: 仍然是"解析一次然后使用"的形态。DNS rebinding (VULN-058 TOCTOU)
+    主要靠网络层缓解 —— 把本函数视作一道防线,而不是唯一一道。
     """
     try:
         parsed = urlparse(url)

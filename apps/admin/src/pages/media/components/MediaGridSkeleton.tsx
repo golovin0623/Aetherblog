@@ -8,10 +8,10 @@ export function MediaGridSkeleton() {
           key={i} 
           className="group relative aspect-square rounded-2xl overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-subtle)]"
         >
-          {/* Skeleton for the media content */}
+          {/* 媒体内容的骨架占位 */}
           <Skeleton className="w-full h-full bg-[var(--bg-tertiary,var(--bg-secondary))]" />
 
-          {/* Skeleton for the footer/info area */}
+          {/* 底部信息区域的骨架占位 */}
           <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
             <Skeleton className="h-4 w-2/3 bg-[var(--bg-tertiary,var(--bg-secondary))] mb-2 rounded" />
             <div className="flex justify-between items-center">

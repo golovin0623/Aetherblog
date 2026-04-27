@@ -29,6 +29,7 @@ interface UseAiPredictionOptions {
   writingStage?: string;
   debounceMs?: number;           // 防抖延迟（毫秒）
   minCharsToPredict?: number;    // 触发预测的最小字符数
+
   onPredictionAccepted?: (text: string) => void;
   onPredictionRejected?: () => void;
 }

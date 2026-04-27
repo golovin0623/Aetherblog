@@ -9,7 +9,7 @@ client = TestClient(app)
 def test_semantic_search_content_limit():
     settings = get_settings()
 
-    # Mock dependencies
+    # mock 各个依赖
     async def mock_rate_limit():
         return UserClaims(user_id="1", role="user", scopes=[])
 
@@ -40,8 +40,8 @@ def test_semantic_search_content_limit():
     app.dependency_overrides[get_usage_logger] = mock_usage_logger
 
     try:
-        # Create a large payload
-        # Ensure it's significantly larger than the limit
+        # 构造大体量 payload
+        # 确保明显超过上限阈值
         large_q = "a" * (settings.max_input_chars + 100)
 
         response = client.get("/api/v1/search/semantic", params={"q": large_q})

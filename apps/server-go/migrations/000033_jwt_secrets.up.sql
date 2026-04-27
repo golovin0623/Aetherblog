@@ -1,4 +1,4 @@
--- Migration 000033: jwt_secrets registry for scheduled JWT signing key rotation.
+-- migration 000033：用于 JWT 签名密钥定时轮换的 jwt_secrets 注册表。
 --
 -- 背景：VULN-152 的历史 commit 已把一次性 admin JWT 写进 git；即便此次 PR
 -- 已经轮换 JWT_SECRET 一次，只要签名密钥以环境变量方式静态分发，再次泄露只是

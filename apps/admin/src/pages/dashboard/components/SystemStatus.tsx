@@ -159,7 +159,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
         <div className="grid grid-cols-2 gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="space-y-2 animate-pulse relative overflow-hidden">
-              {/* Shimmer effect */}
+              {/* 微光效果 */}
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
               <div className="h-4 bg-[var(--bg-secondary)] rounded" />
               <div className="h-2 bg-[var(--bg-secondary)] rounded" />
@@ -169,7 +169,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-12 bg-[var(--bg-secondary)] rounded-lg animate-pulse relative overflow-hidden">
-              {/* Shimmer effect */}
+              {/* 微光效果 */}
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
             </div>
           ))}
@@ -251,7 +251,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
         </div>
       </div>
 
-      {/* Content area - Scrollable */}
+      {/* 内容区域 - 可滚动 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 pr-1">
         {/* 系统指标 */}
         <div className="grid grid-cols-2 gap-4 mb-6">

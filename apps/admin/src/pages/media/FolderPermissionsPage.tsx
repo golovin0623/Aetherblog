@@ -123,7 +123,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-lg">
@@ -141,7 +141,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
         </Button>
       </div>
 
-      {/* Grant Permission Form */}
+      {/* 授予权限表单 */}
       {isGranting && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
@@ -152,7 +152,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
           <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">授予新权限</h3>
 
           <div className="space-y-4">
-            {/* User ID */}
+            {/* 用户ID */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 用户ID
@@ -166,7 +166,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
               />
             </div>
 
-            {/* Permission Level */}
+            {/* 权限级别 */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 权限级别
@@ -189,7 +189,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
               </div>
             </div>
 
-            {/* Expiration Date */}
+            {/* 过期时间 */}
             <div>
               <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                 过期时间 (可选)
@@ -202,7 +202,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
               />
             </div>
 
-            {/* Actions */}
+            {/* 操作按钮 */}
             <div className="flex items-center gap-3 pt-2">
               <Button onClick={handleGrant} disabled={grantMutation.isPending} className="flex-1">
                 {grantMutation.isPending ? '授予中...' : '授予权限'}
@@ -215,7 +215,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
         </motion.div>
       )}
 
-      {/* Permissions List */}
+      {/* 权限列表 */}
       <div className="space-y-3">
         {permissions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
@@ -233,7 +233,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  {/* User Info */}
+                  {/* 用户信息 */}
                   <div className="p-2 bg-primary/10 rounded-lg">
                     <UserIcon className="w-5 h-5 text-primary" />
                   </div>
@@ -279,7 +279,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* 操作 */}
                 <Button
                   onClick={() => handleRevoke(permission.id)}
                   disabled={revokeMutation.isPending}
@@ -296,7 +296,7 @@ export default function FolderPermissionsPage({ folderId, folderName }: FolderPe
         )}
       </div>
 
-      {/* Info */}
+      {/* 提示信息 */}
       <div className="p-4 bg-status-info-light border border-status-info-border rounded-lg">
         <p className="text-xs text-status-info">
           💡 提示: 权限按层级递增 (VIEW &lt; UPLOAD &lt; EDIT &lt; DELETE &lt; ADMIN),

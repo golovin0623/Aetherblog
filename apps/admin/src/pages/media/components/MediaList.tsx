@@ -59,7 +59,7 @@ export function MediaList({
         <thead>
           <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
             <th className="w-12 px-4 py-3">
-              {/* 全选 logic */}
+              {/* 全选逻辑 */}
               <div className="w-5 h-5 rounded border-2 border-[var(--border-default)]" />
             </th>
             <th className="w-auto px-4 py-3 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">

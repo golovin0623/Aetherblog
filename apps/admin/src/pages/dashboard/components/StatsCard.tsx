@@ -88,13 +88,13 @@ export function StatsCard({
       >
         <div className="flex items-start justify-between">
           <div className="min-w-0 flex-1 w-full pr-4">
-            {/* Title Skeleton */}
+            {/* 标题骨架屏 */}
             <div className="h-5 w-24 bg-[var(--bg-secondary)] rounded-md animate-pulse" />
 
-            {/* Value Skeleton */}
+            {/* 数值骨架屏 */}
             <div className="mt-2 h-8 lg:h-9 w-32 bg-[var(--bg-secondary)] rounded-md animate-pulse" />
 
-            {/* Change/Subtext Skeleton */}
+            {/* 变化值/副文本骨架屏 */}
             {(change !== undefined || changeLabel) && (
               <div className="flex items-center gap-2 mt-3">
                 {change !== undefined && (
@@ -107,7 +107,7 @@ export function StatsCard({
             )}
           </div>
 
-          {/* Icon Skeleton */}
+          {/* 图标骨架屏 */}
           <div className={cn("p-3 rounded-xl shrink-0 animate-pulse", iconColorStyles[color])}>
             <div className="w-5 h-5 opacity-0" />
           </div>

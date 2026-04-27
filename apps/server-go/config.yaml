@@ -1,12 +1,12 @@
 # =============================================================================
-# AetherBlog Development Configuration
+# AetherBlog 开发环境配置
 # =============================================================================
-# WARNING: This file contains DEVELOPMENT DEFAULTS only.
-# In production, ALL sensitive values must be set via environment variables:
-#   - JWT_SECRET (required, min 32 chars)
+# 警告：本文件仅包含开发环境默认值。
+# 在生产环境中，所有敏感值必须通过环境变量设置：
+#   - JWT_SECRET（必填，至少 32 个字符）
 #   - AETHERBLOG_DATABASE_PASSWORD
 #   - REDIS_PASSWORD
-# DO NOT use these values in production deployments.
+# 切勿在生产部署中直接使用此处的值。
 # =============================================================================
 
 server:
@@ -19,7 +19,7 @@ database:
   user: aetherblog
   password: aetherblog123
   dbname: aetherblog
-  sslmode: disable  # DEV ONLY — production should set AETHERBLOG_DATABASE_SSLMODE=require
+  sslmode: disable  # 仅限开发环境 —— 生产环境应设置 AETHERBLOG_DATABASE_SSLMODE=require
   max_open_conns: 20
   max_idle_conns: 5
 
@@ -30,9 +30,9 @@ redis:
   db: 0
 
 jwt:
-  # secret: ""  # REQUIRED: set JWT_SECRET env var (min 32 chars)
+  # secret: ""  # 必填：通过 JWT_SECRET 环境变量设置（至少 32 个字符）
   expiration: 24h
-  refresh_expiration: 168h  # 7 days
+  refresh_expiration: 168h  # 7 天
 
 auth:
   cookie:

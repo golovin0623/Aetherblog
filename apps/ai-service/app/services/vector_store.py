@@ -14,7 +14,7 @@ logger = logging.getLogger("ai-service")
 
 # ref: §2.4.2.5, §4.4 · Plan V3 (migration 000034)
 #
-# Storage model (versioned, blue-green switch):
+# 存储模型（版本化，蓝绿切换）：
 #   - post_embeddings 表按 (post_id, model_id) 唯一，多模型可共存
 #   - embedding 列不锁 dim，HNSW 通过 partial expression 索引按 dim 分桶
 #   - site_settings.search.active_embedding_model 指向当前活跃模型
@@ -258,7 +258,7 @@ class VectorStoreService:
         return {"status": "deleted"}
 
     async def reindex(self) -> dict[str, Any]:
-        """Full reindex with true blue-green model switch.
+        """全量重建索引，且支持真·蓝绿模型切换。
 
         历史方案（被替换）：reindex 一开始就 UPSERT site_settings 指针到新模型，
         导致 semantic_search 的过滤器立刻改看新 model_id——但此时新向量还没

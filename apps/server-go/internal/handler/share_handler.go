@@ -123,7 +123,7 @@ func (h *ShareHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的分享ID")
 	}
-	// SECURITY (VULN-037): only the share creator or admin can update.
+	// SECURITY (VULN-037): 仅分享创建者或 admin 可更新。
 	found, createdBy, err := h.svc.GetCreatedBy(c.Request().Context(), shareID)
 	if err != nil {
 		return response.Error(c, err)
@@ -158,7 +158,7 @@ func (h *ShareHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的分享ID")
 	}
-	// SECURITY (VULN-037): only the share creator or admin can delete.
+	// SECURITY (VULN-037): 仅分享创建者或 admin 可删除。
 	found, createdBy, err := h.svc.GetCreatedBy(c.Request().Context(), shareID)
 	if err != nil {
 		return response.Error(c, err)

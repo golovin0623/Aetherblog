@@ -4,7 +4,7 @@ import { X, Check, Eye, Type } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ============================================================
-// Font Registry - 字体注册表
+// 字体注册表（Font Registry）
 // 扩展说明：后续可扩展为中英文字体搭配组合，每个 FontOption
 // 可增加 latinFamily / cjkFamily 分别指定英文和中文字体。
 // 目前统一配置，不区分中英文。
@@ -154,7 +154,7 @@ export default function FontPickerModal({
             onClick={(e) => e.target === e.currentTarget && onClose()}
           >
             <div className="w-full max-w-lg bg-[var(--bg-popover)] border border-[var(--border-default)] rounded-2xl shadow-2xl overflow-hidden">
-              {/* Header */}
+              {/* 头部 */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
                 <div className="flex items-center gap-2">
                   <Type className="w-5 h-5 text-primary" />
@@ -254,7 +254,7 @@ export default function FontPickerModal({
                 })}
               </div>
 
-              {/* Footer */}
+              {/* 底部 */}
               <div className="px-6 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
                 <p className="text-[10px] text-[var(--text-muted)] text-center">
                   字体通过 Google Fonts 加载 &middot; 保存后对博客前台生效

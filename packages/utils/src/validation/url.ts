@@ -4,12 +4,11 @@
 
 const URL_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
 
-// SECURITY (VULN-090): previous isValidUrl accepted any string that ``new
-// URL()`` could parse — including ``javascript:alert(1)``, ``data:text/html,...``
-// and ``vbscript:...``. Callers used the boolean to gate user-pasted links
-// into <a href>, amounting to an XSS rubber stamp. Restrict to http/https; all
-// other schemes fall through to the legacy-regex path, which only matches
-// typical domain names.
+// 安全（VULN-090）：旧的 isValidUrl 接受任何 ``new URL()`` 能解析的
+// 字符串 —— 包括 ``javascript:alert(1)``、``data:text/html,...``
+// 和 ``vbscript:...``。调用方用此布尔值放行用户粘贴链接到 <a href>，
+// 等同于 XSS 橡皮图章。限制为 http/https；其他协议退到旧正则路径，
+// 后者仅匹配典型域名。
 export function isValidUrl(url: string): boolean {
   if (typeof url !== 'string' || !url) return false;
   try {

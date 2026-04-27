@@ -98,7 +98,7 @@ func (h *PermissionHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的权限ID")
 	}
-	// SECURITY (VULN-038): caller must own the underlying folder.
+	// SECURITY (VULN-038): 调用者必须拥有该权限对应的文件夹。
 	folderID, found, err := h.svc.GetFolderID(c.Request().Context(), permissionID)
 	if err != nil {
 		return response.Error(c, err)
@@ -137,7 +137,7 @@ func (h *PermissionHandler) Revoke(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的权限ID")
 	}
-	// SECURITY (VULN-038): caller must own the underlying folder to revoke.
+	// SECURITY (VULN-038): 调用者必须拥有该权限对应的文件夹方可撤销。
 	folderID, found, err := h.svc.GetFolderID(c.Request().Context(), permissionID)
 	if err != nil {
 		return response.Error(c, err)

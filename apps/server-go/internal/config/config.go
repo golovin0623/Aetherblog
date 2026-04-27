@@ -289,7 +289,7 @@ func defaultConfig() *Config {
 			},
 		},
 		CORS: CORSConfig{
-			AllowedOrigins: []string{}, // Production must set via CORS_ALLOWED_ORIGINS env var
+			AllowedOrigins: []string{}, // 生产环境必须通过 CORS_ALLOWED_ORIGINS 环境变量设置
 		},
 		Upload: UploadConfig{
 			Path:      "./uploads",
@@ -307,7 +307,7 @@ func defaultConfig() *Config {
 			ConnectTimeout:       5 * time.Second,
 			ReadTimeout:          30 * time.Second,
 			StreamReadTimeout:    5 * time.Minute,
-			InternalServiceToken: "", // Must be set via AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN env var
+			InternalServiceToken: "", // 必须通过 AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN 环境变量设置
 		},
 		ES: ESConfig{
 			URIs: []string{"http://localhost:9200"},

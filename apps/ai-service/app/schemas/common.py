@@ -9,7 +9,7 @@ T = TypeVar("T")
 
 class ApiResponse(BaseModel, Generic[T]):
     """
-    Matched with Java AiResponse structure.
+    与 Java 端 AiResponse 结构对齐。
     """
     code: Optional[int] = 200
     message: Optional[str] = "success"

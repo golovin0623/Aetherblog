@@ -90,17 +90,15 @@ export function useStreamResponse(): UseStreamResponseReturn {
     const token = useAuthStore.getState().token;
 
     try {
-      // SECURITY (VULN-085): ``url`` may be absolute (third-party) — an
-      // admin-configured streaming endpoint. Attaching the admin Bearer /
-      // session cookie to a cross-origin host leaks the credential to
-      // whoever controls that host. Detect same-origin; off-origin calls go
-      // credential-less. If auth is required for off-origin, that needs a
-      // dedicated proxy endpoint on our own backend.
+      // 安全 (VULN-085)：``url`` 可能是绝对地址（第三方）——一个由管理员
+      // 配置的流式端点。将 admin Bearer / session cookie 附带到跨域主机会
+      // 把凭证泄露给该主机的控制者。检测是否同源；非同源调用不带凭证。
+      // 若非同源也需要鉴权，应在自己后端设置专用代理端点。
       const sameOrigin = (() => {
         try {
           return new URL(url, window.location.origin).origin === window.location.origin;
         } catch {
-          // Bare relative paths fail URL() — still same-origin.
+          // 纯相对路径在 URL() 中会抛错——仍视为同源。
           return !/^https?:\/\//i.test(url);
         }
       })();

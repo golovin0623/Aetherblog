@@ -1050,7 +1050,7 @@ export function RealtimeLogViewer({
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              {/* Fullscreen compact toolbar */}
+              {/* 全屏紧凑工具栏 */}
               <div className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
                 <div className="px-4 py-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">

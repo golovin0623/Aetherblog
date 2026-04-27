@@ -7,7 +7,7 @@ import type { StreamResult } from '@/hooks/useStreamResponse';
 import type { AiToolTargetApi, ContentApplyMode } from '@/hooks/useAiToolTarget';
 
 /**
- * Dispatch-style renderer: 根据 toolId 选择对应的结构化展示组件。
+ * 分发式渲染器：根据 toolId 选择对应的结构化展示组件。
  * 优先消费 `result`（来自 stream 尾部 `{type:"result"}` 事件），否则回落到
  * 原始 `streamContent` 做客户端解析。
  */
@@ -22,10 +22,10 @@ interface ToolResultRendererProps {
 
 const _LIST_PREFIX_RE = /^(?:\d+[.)、]|[-•*])\s*/;
 const _QUOTE_STRIP_RE = /[\u201c\u201d\u2018\u2019"'`]/g;
-// Characters stripped from the outer edge of each parsed token. Mirrors the
-// Python `_OUTER_STRIP` set in `apps/ai-service/app/api/routes/ai.py` so that
-// malformed LLM output like `[“tag1”, “tag2”]`（smart quotes → json.loads
-// fails → delimiter split path）仍然能得到干净的 `["tag1", "tag2"]` 而不是
+// 从每个解析后的 token 外缘剥除的字符集合。镜像 Python 端
+// `apps/ai-service/app/api/routes/ai.py` 的 `_OUTER_STRIP` 集合，使得
+// 像 `[“tag1”, “tag2”]` 这类畸形 LLM 输出（智能引号 → json.loads 失败 →
+// 走分隔符切分路径）仍然能得到干净的 `["tag1", "tag2"]` 而不是
 // `["[tag1", "tag2]"]`（PR #435 review C13）。
 // 正则字符类中只有 `]` 需要转义；`[` 在字符类内部是字面量。
 const _OUTER_STRIP_RE = /^[\s\u201c\u201d\u2018\u2019"'`[\]【】《》]+|[\s\u201c\u201d\u2018\u2019"'`[\]【】《》]+$/g;
@@ -50,7 +50,7 @@ function fallbackParseList(text: string): string[] {
         if (items.length > 0) return items;
       }
     } catch {
-      /* not JSON — fall through to delimiter split (handles smart-quoted fake-JSON) */
+      /* 非 JSON —— 落到分隔符切分路径（处理智能引号伪 JSON） */
     }
   }
   const parts: string[] = [];
@@ -76,7 +76,7 @@ function fallbackParseTitles(text: string): string[] {
         if (items.length > 0) return items;
       }
     } catch {
-      /* not JSON — fall through to line-split */
+      /* 非 JSON —— 落到按行切分路径 */
     }
   }
   return trimmed
@@ -85,7 +85,7 @@ function fallbackParseTitles(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-// ─────────────────────────── Shared primitives ───────────────────────────
+// ─────────────────────────── 共享基础元素 ───────────────────────────
 
 interface ActionButtonProps {
   label: string;
@@ -126,7 +126,7 @@ function EmptyHint() {
   );
 }
 
-// ─────────────────────────── Summary ───────────────────────────
+// ─────────────────────────── 摘要 ───────────────────────────
 
 function SummaryResult({
   text,
@@ -165,7 +165,7 @@ function SummaryResult({
   );
 }
 
-// ─────────────────────────── Tags ───────────────────────────
+// ─────────────────────────── 标签 ───────────────────────────
 
 function TagsResult({
   tags,
@@ -176,7 +176,7 @@ function TagsResult({
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(tags));
 
-  // Reset selection whenever incoming tags change (re-run the tool).
+  // 入参 tags 变化时（重新执行工具）重置选择状态。
   useEffect(() => {
     setSelected(new Set(tags));
   }, [tags]);
@@ -241,7 +241,7 @@ function TagsResult({
   );
 }
 
-// ─────────────────────────── Titles ───────────────────────────
+// ─────────────────────────── 标题 ───────────────────────────
 
 function TitlesResult({
   titles,
@@ -311,7 +311,7 @@ function TitlesResult({
   );
 }
 
-// ─────────────────────────── Content-level (polish / outline / translate) ───────────────────────────
+// ─────────────────────────── 正文级（润色 / 大纲 / 翻译）───────────────────────────
 
 interface ContentResultProps {
   text: string;
@@ -321,7 +321,7 @@ interface ContentResultProps {
   primaryMode: ContentApplyMode;
   primaryIcon: React.ReactNode;
   /**
-   * Confirm message resolver. 允许 append / replace 两种模式展示不同的警告文案，
+   * 确认提示语解析器。允许 append / replace 两种模式展示不同的警告文案，
    * 避免「大纲 outline 的次要按钮点进来看到的还是追加说明」这类错配
    * （PR #435 review C11）。
    */
@@ -483,7 +483,7 @@ function OutlineResult(props: { text: string; target: AiToolTargetApi; previewTh
   );
 }
 
-// ─────────────────────────── Dispatcher ───────────────────────────
+// ─────────────────────────── 分发器 ───────────────────────────
 
 export function ToolResultRenderer({
   toolId,
@@ -548,7 +548,7 @@ export function ToolResultRenderer({
         />
       );
     default:
-      // Custom / unknown tool — generic markdown preview with copy action.
+      // 自定义 / 未知工具 —— 通用 markdown 预览 + 复制操作。
       return (
         <div className="space-y-4">
           {resolved.text ? (

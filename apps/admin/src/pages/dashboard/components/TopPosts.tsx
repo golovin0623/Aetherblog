@@ -23,7 +23,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-[var(--bg-secondary)] animate-pulse relative overflow-hidden">
-              {/* Shimmer effect */}
+              {/* 微光效果 */}
               <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
               <div className="w-8 h-8 bg-[var(--bg-secondary)] rounded-lg flex-shrink-0" />
               <div className="flex-1 h-4 bg-[var(--bg-secondary)] rounded" />

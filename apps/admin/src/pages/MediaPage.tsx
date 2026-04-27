@@ -773,7 +773,7 @@ export default function MediaPage() {
                 onClick={() => setSelectedMedia(null)}
               />
               
-              {/* Bottom Sheet */}
+              {/* 底部面板 */}
               <motion.div
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}

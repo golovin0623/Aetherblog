@@ -1,1 +1,1 @@
--- Down migration not implemented
+-- 未实现 down migration

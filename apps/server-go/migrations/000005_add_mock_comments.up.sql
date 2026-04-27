@@ -1,5 +1,5 @@
 -- ============================================================
--- AetherBlog V1.3.0 Mock Comments Data
+-- AetherBlog V1.3.0 模拟评论数据
 -- ============================================================
 
 INSERT INTO comments (post_id, nickname, email, content, status, is_admin, like_count, created_at, updated_at)

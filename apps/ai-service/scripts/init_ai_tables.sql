@@ -1,13 +1,13 @@
 -- ============================================================
--- AI Provider Configuration Tables
+-- AI provider 配置表
 -- ============================================================
--- Run this script in the aetherblog database to create AI config tables
--- Author: AetherBlog Team
--- Date: 2026-01-29
+-- 在 aetherblog 数据库中执行本脚本以创建 AI 配置相关表
+-- 作者: AetherBlog Team
+-- 日期: 2026-01-29
 -- ============================================================
 
 -- ============================================================
--- PART 1: AI Providers
+-- 第 1 部分: AI providers
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_providers (
@@ -35,7 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_providers_code ON ai_providers(code);
 CREATE INDEX IF NOT EXISTS idx_ai_providers_enabled ON ai_providers(is_enabled);
 
 -- ============================================================
--- PART 2: AI Models
+-- 第 2 部分: AI models
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_models (
@@ -75,7 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_models_type ON ai_models(model_type);
 CREATE INDEX IF NOT EXISTS idx_ai_models_enabled ON ai_models(is_enabled);
 
 -- ============================================================
--- PART 3: AI Credentials
+-- 第 3 部分: AI 凭证
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_credentials (
@@ -99,7 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_credentials_user ON ai_credentials(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_credentials_provider ON ai_credentials(provider_id);
 
 -- ============================================================
--- PART 4: AI Task Types
+-- 第 4 部分: AI 任务类型
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_task_types (
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS ai_task_types (
 );
 
 -- ============================================================
--- PART 5: AI Task Routing
+-- 第 5 部分: AI 任务路由
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS ai_task_routing (
@@ -148,7 +148,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- PART 6: Triggers for updated_at
+-- 第 6 部分: updated_at 触发器
 -- ============================================================
 
 DO $$
@@ -176,10 +176,10 @@ BEGIN
 END $$;
 
 -- ============================================================
--- PART 7: Seed Data
+-- 第 7 部分: 种子数据
 -- ============================================================
 
--- Insert default providers
+-- 插入默认 provider
 INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url, capabilities, priority) VALUES
     ('openai', 'OpenAI', 'OpenAI', 'openai_compat', 'https://api.openai.com/v1', 'https://platform.openai.com/docs/models', '{"source": "builtin", "description": "OpenAI 是全球领先的人工智能研究机构，其开发的模型如GPT系列推动了自然语言处理的前沿。OpenAI 致力于通过创新和高效的AI解决方案改变多个行业。他们的产品具有显著的性能和经济性，广泛用于研究、商业和创新应用。", "apiKeyUrl": "https://platform.openai.com/api-keys?utm_source=lobehub", "modelsUrl": "https://platform.openai.com/docs/models", "url": "https://openai.com", "settings": {"responseAnimation": "smooth", "showModelFetcher": true, "supportResponsesApi": true}, "checkModel": "gpt-5-nano"}', 1000),
     ('azure', 'Azure OpenAI', 'Azure OpenAI', 'azure', NULL, 'https://learn.microsoft.com/azure/ai-services/openai/concepts/models', '{"source": "builtin", "description": "Azure 提供多种先进的AI模型，包括GPT-3.5和最新的GPT-4系列，支持多种数据类型和复杂任务，致力于安全、可靠和可持续的AI解决方案。", "modelsUrl": "https://learn.microsoft.com/azure/ai-services/openai/concepts/models", "url": "https://azure.microsoft.com", "settings": {"defaultShowBrowserRequest": true, "sdkType": "azure", "showDeployName": true}}', 999),
@@ -251,7 +251,7 @@ INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url,
     ('openai_compat', 'OpenAI Compatible', '兼容接口', 'openai_compat', NULL, NULL, '{"chat": true, "embedding": true}', 10)
 ON CONFLICT (code) DO NOTHING;
 
--- Insert models
+-- 插入 model
 INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_window, max_output_tokens, input_cost_per_1k, output_cost_per_1k, capabilities, is_enabled) VALUES
     -- ai21
     ((SELECT id FROM ai_providers WHERE code = 'ai21'), 'jamba-mini', 'Jamba Mini', 'chat', 256000, NULL, 0.0002, 0.0004, '{"abilities": {"functionCall": true}, "pricing": {"units": [{"name": "textInput", "rate": 0.2, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textOutput", "rate": 0.4, "strategy": "fixed", "unit": "millionTokens"}]}, "released_at": "2025-03-06", "source": "builtin", "maxToken": 256000, "contextWindowTokens": 256000, "description": "在同级别中最高效的模型，兼顾速度与质量，具备更小的体积。", "function_calling": true}', TRUE),
@@ -1923,7 +1923,7 @@ INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_
 ON CONFLICT (provider_id, model_id) DO NOTHING;
 
 
--- Insert task types
+-- 插入任务类型
 INSERT INTO ai_task_types (code, name, description, default_model_type, default_temperature, default_max_tokens, prompt_template) VALUES
     ('summary', '文章摘要', '自动生成文章摘要', 'chat', 0.3, 500, '请为以下内容生成摘要（{max_length}字以内）：\n{content}'),
     ('tags', '标签推荐', '智能推荐文章标签', 'chat', 0.2, 200, '请为以下内容推荐{max_tags}个标签，逗号分隔：\n{content}'),
@@ -1937,7 +1937,7 @@ ON CONFLICT (code) DO UPDATE SET
     description = EXCLUDED.description,
     name = EXCLUDED.name;
 
--- Insert system default routing (user_id = NULL means system default)
+-- 插入系统默认路由 (user_id = NULL 表示系统默认)
 INSERT INTO ai_task_routing (user_id, task_type_id, primary_model_id, fallback_model_id, config_override)
 SELECT 
     NULL,
@@ -1966,5 +1966,5 @@ DO UPDATE SET
     updated_at = CURRENT_TIMESTAMP;
 
 -- ============================================================
--- End of Init Script
+-- 初始化脚本结束
 -- ============================================================

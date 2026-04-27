@@ -1,6 +1,6 @@
 # ref: §5.1 - Provider Management API
 """
-FastAPI routes for AI provider and credential management.
+AI provider 与凭证管理的 FastAPI 路由。
 """
 from __future__ import annotations
 
@@ -54,11 +54,10 @@ from app.services.llm_router import LlmRouter
 logger = logging.getLogger("ai-service")
 
 
-# SECURITY (VULN-066 / VULN-165): LiteLLM and upstream providers can echo back
-# the raw Bearer token or ``sk-...`` API key inside error messages. Any path
-# that surfaces ``str(exc)`` to the caller or writes it to logs MUST go through
-# ``_redact_secrets`` first — a leaked exception body is the classic API-key
-# exfil vector for rate-limit / auth failures.
+# SECURITY (VULN-066 / VULN-165)：LiteLLM 与上游 provider 可能在错误消息中
+# 回显原始 Bearer token 或 ``sk-...`` API key。任何把 ``str(exc)`` 暴露给
+# 调用方或写入日志的路径，都必须先经过 ``_redact_secrets``。泄露异常正文
+# 是 rate-limit / auth 失败场景下经典的 API key 外泄通道。
 _REDACT_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9._\-~+/=]{20,}"),
@@ -77,12 +76,12 @@ def _redact_secrets(msg: str, api_key: Optional[str] = None) -> str:
 
 
 def _assert_header_encodable(api_key: str, base_url: Optional[str]) -> None:
-    """Guard against non-ASCII smart quotes / em-dashes pasted into credentials.
+    """防止用户把含非 ASCII 智能引号 / 长破折号的凭证粘贴进来。
 
-    HTTP headers must be latin-1 encodable and URLs must be ASCII; if the user
-    pasted an api_key or base_url that a word processor autocorrected (em-dash
-    U+2014, curly quotes, full-width colon...), httpx raises a cryptic
-    UnicodeEncodeError deep inside the transport. Surface a clear 400 instead.
+    HTTP 头必须可用 latin-1 编码，URL 必须是 ASCII；如果用户粘贴的 api_key
+    或 base_url 在字处理软件中被自动替换（U+2014 长破折号、弯引号、全角
+    冒号……），httpx 会在传输层深处抛出难以理解的 UnicodeEncodeError。
+    这里在保存阶段就抛出清晰的 400 错误。
     """
     def _first_bad(text: str) -> tuple[int, str] | None:
         for idx, ch in enumerate(text):
@@ -153,7 +152,7 @@ def build_model_response(model) -> ModelResponse:
 
 
 # ============================================================
-# Provider Endpoints
+# Provider 端点
 # ============================================================
 
 @router.get("", response_model=ApiResponse[list[ProviderResponse]])
@@ -161,7 +160,7 @@ async def list_providers(
     enabled_only: bool = True,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """List all AI providers."""
+    """列出所有 AI provider。"""
     providers = await registry.list_providers(enabled_only=enabled_only)
     return ApiResponse(
         data=[
@@ -189,7 +188,7 @@ async def create_provider(
     req: ProviderCreate,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Create a new provider."""
+    """创建新的 provider。"""
     try:
         provider = await registry.create_provider(
             code=req.code,
@@ -223,9 +222,9 @@ async def create_provider(
             ),
         )
     except Exception as exc:
-        # SECURITY (VULN-069): do not echo raw exception text to client — it
-        # may contain internal paths / SQL / secret material captured in the
-        # traceback. Full detail is in logs via logger.exception above.
+        # SECURITY (VULN-069)：不要把原始异常文本回显给客户端 —— 它可能
+        # 包含 traceback 捕获的内部路径 / SQL / 机密素材。详细信息上面已
+        # 通过 logger.exception 记录到日志。
         logger.exception("Failed to create provider", extra={"data": {"error_class": type(exc).__name__}})
         raise HTTPException(status_code=400, detail="Failed to create provider") from exc
 
@@ -235,7 +234,7 @@ async def batch_toggle_providers(
     req: ProviderBatchToggleRequest,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Batch toggle provider enabled state."""
+    """批量切换 provider 的启用状态。"""
     updated = await registry.batch_toggle_providers(req.ids, req.enabled)
     return ApiResponse(data={"updated": updated})
 
@@ -246,7 +245,7 @@ async def update_provider(
     req: ProviderUpdate,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Update provider information."""
+    """更新 provider 信息。"""
     updates = {}
     fields_set = req.model_fields_set
     if "name" in fields_set:
@@ -298,7 +297,7 @@ async def delete_provider(
     provider_id: int,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Delete a provider and its models."""
+    """删除一个 provider 及其下的模型。"""
     deleted = await registry.delete_provider(provider_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Provider not found")
@@ -311,7 +310,7 @@ async def list_provider_models(
     enabled_only: bool = True,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """List models for a provider."""
+    """列出指定 provider 的模型。"""
     models = await registry.list_models(provider_code=provider_code, enabled_only=enabled_only)
     return ApiResponse(
         data=[build_model_response(m) for m in models],
@@ -324,7 +323,7 @@ async def create_model(
     req: ModelCreate,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Create a new model for a provider."""
+    """为指定 provider 创建新模型。"""
     try:
         model = await registry.create_model(
             provider_code=provider_code,
@@ -349,13 +348,13 @@ async def create_model(
     except HTTPException:
         raise
     except Exception as exc:
-        # SECURITY (VULN-069): generic client error, full detail to logs.
+        # SECURITY (VULN-069)：返回通用的客户端错误，详细信息只写入日志。
         logger.exception("Failed to create model", extra={"data": {"error_class": type(exc).__name__}})
         raise HTTPException(status_code=400, detail="Failed to create model") from exc
 
 
 # ============================================================
-# Model Endpoints
+# Model 端点
 # ============================================================
 
 @router.get("/models", response_model=ApiResponse[list[ModelResponse]])
@@ -364,7 +363,7 @@ async def list_all_models(
     enabled_only: bool = True,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """List all models across providers."""
+    """列出全部 provider 下的所有模型。"""
     models = await registry.list_models(model_type=model_type, enabled_only=enabled_only)
     return ApiResponse(
         data=[build_model_response(m) for m in models],
@@ -377,7 +376,7 @@ async def update_model(
     req: ModelUpdate,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Update model information."""
+    """更新模型信息。"""
     updates = {}
     fields_set = req.model_fields_set
     if "display_name" in fields_set:
@@ -419,12 +418,11 @@ async def delete_model(
     registry: ProviderRegistry = Depends(get_provider_registry),
     pool: asyncpg.Pool = Depends(get_pg_pool),
 ):
-    """Delete a model.
+    """删除一个模型。
 
-    Note: Related ai_task_routing entries will have their model references
-    automatically set to NULL via FK constraints.
+    注意：相关 ai_task_routing 中的模型引用会通过外键约束被自动置为 NULL。
     """
-    # Optional: Check and warn if model is in use (for better UX)
+    # 可选：检查模型是否仍被引用，提示更友好的提示信息
     async with pool.acquire() as conn:
         usage_count = await conn.fetchval(
             """
@@ -439,7 +437,7 @@ async def delete_model(
     if not deleted:
         raise HTTPException(status_code=404, detail="Model not found")
 
-    # Info message if model was in use
+    # 若模型曾被引用，给出提示信息
     message = "success"
     if usage_count and usage_count > 0:
         message = f"Model deleted. {usage_count} task routing(s) updated to use default model."
@@ -456,7 +454,7 @@ async def fetch_remote_models(
     registry: ProviderRegistry = Depends(get_provider_registry),
     fetcher: RemoteModelFetcher = Depends(get_remote_model_fetcher),
 ):
-    """Fetch remote model list and insert into database."""
+    """拉取远端模型列表并写入数据库。"""
     provider = await registry.get_provider(provider_code)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
@@ -505,7 +503,7 @@ async def delete_models_by_provider(
     source: str | None = None,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Delete models by provider (optionally remote only)."""
+    """按 provider 删除模型（可选仅删除远端来源的模型）。"""
     deleted = await registry.delete_models_by_provider(provider_code, source=source)
     return ApiResponse(data={"deleted": deleted})
 
@@ -516,7 +514,7 @@ async def batch_toggle_models(
     req: ModelBatchToggleRequest,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Batch toggle model enabled state."""
+    """批量切换模型的启用状态。"""
     updated = await registry.batch_toggle_models(req.ids, req.enabled)
     return ApiResponse(data={"updated": updated})
 
@@ -527,7 +525,7 @@ async def update_model_sort(
     req: ModelSortRequest,
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Update model sort order."""
+    """更新模型排序。"""
     updated = await registry.update_models_sort(
         [{"id": item.id, "sort": item.sort} for item in req.items]
     )
@@ -535,7 +533,7 @@ async def update_model_sort(
 
 
 # ============================================================
-# Credential Endpoints
+# Credential 端点
 # ============================================================
 
 @router.post("/credentials", response_model=ApiResponse[dict[str, int]])
@@ -544,11 +542,11 @@ async def create_credential(
     user: UserClaims = Depends(require_admin),
     resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
-    """Save a new API credential."""
+    """保存新的 API 凭证。"""
     user_id = user.user_id
 
-    # Reject non-ASCII smart quotes / em-dashes at save time so downstream HTTP
-    # calls don't explode with an opaque UnicodeEncodeError later.
+    # 在保存阶段就拒绝非 ASCII 智能引号 / 长破折号，避免下游 HTTP 调用
+    # 抛出难以排查的 UnicodeEncodeError。
     _assert_header_encodable(req.api_key or "", req.base_url_override)
 
     try:
@@ -563,8 +561,8 @@ async def create_credential(
         )
         return ApiResponse(data={"id": cred_id})
     except Exception as e:
-        # SECURITY (VULN-069): don't leak internal exception text (may include
-        # connection strings / SQL fragments); rely on logs for diagnosis.
+        # SECURITY (VULN-069)：不要泄露内部异常文本（可能含连接串 / SQL 片段），
+        # 排障改为依赖日志。
         logger.exception("Failed to save credential", extra={"data": {"error_class": type(e).__name__}})
         raise HTTPException(status_code=400, detail="Failed to save credential") from e
 
@@ -574,7 +572,7 @@ async def list_credentials(
     user: UserClaims = Depends(require_admin),
     resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
-    """List user's credentials."""
+    """列出当前用户的凭证。"""
     user_id = user.user_id
     credentials = await resolver.list_credentials(user_id=user_id)
     return ApiResponse(
@@ -605,10 +603,10 @@ async def reveal_credential(
     resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
     """
-    Reveal the actual API key for a credential.
-    
-    This endpoint returns the decrypted API key for admin users.
-    The key is encrypted in transit via HTTPS.
+    查看凭证对应的真实 API key。
+
+    本端点向管理员返回解密后的 API key。
+    传输过程依赖 HTTPS 进行加密。
     """
     user_id = user.user_id
     try:
@@ -648,7 +646,7 @@ async def delete_credential(
     user: UserClaims = Depends(require_admin),
     resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
-    """Delete a credential."""
+    """删除一条凭证。"""
     user_id = user.user_id
     deleted = await resolver.delete_credential(credential_id, user_id=user_id)
     if not deleted:
@@ -664,11 +662,11 @@ async def test_credential(
     resolver: CredentialResolver = Depends(get_credential_resolver),
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Test a credential by making a simple API call."""
-    # Get credential
+    """通过一次简单的 API 调用来测试凭证可用性。"""
+    # 获取凭证
     try:
         credential = await resolver.get_credential(
-            provider_code="",  # Will be resolved by credential_id
+            provider_code="",  # 将通过 credential_id 解析
             credential_id=credential_id,
             user_id=user.user_id,
         )
@@ -681,37 +679,37 @@ async def test_credential(
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
     
-    # Get provider info
+    # 获取 provider 信息
     provider = await registry.get_provider(credential.provider_code)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
-    
-    # Determine model name with proper prefix for LiteLLM routing
-    # LiteLLM auto-detects providers based on model name prefixes (e.g., gemini-* -> Vertex AI)
-    # We must add explicit prefixes to force correct routing for custom endpoints
+
+    # 为 LiteLLM 路由确定带正确前缀的模型名
+    # LiteLLM 会按模型名前缀自动识别 provider（例如 gemini-* -> Vertex AI），
+    # 因此自定义端点必须显式加前缀以强制正确路由。
     model_name = req.model_id
     if provider.api_type in ("openai_compat", "custom"):
-        # Force OpenAI-compatible protocol
+        # 强制走 OpenAI 兼容协议
         if not model_name.startswith("openai/"):
             model_name = f"openai/{model_name}"
     elif provider.api_type == "azure":
         # Azure OpenAI Service
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
-    # anthropic/google: LiteLLM handles natively with api_key + api_base
-    
-    # SECURITY (VULN-057): even the admin "test" endpoint must not issue
-    # SSRF against internal hosts (IMDS / internal services).
+    # anthropic/google：LiteLLM 通过 api_key + api_base 原生处理
+
+    # SECURITY (VULN-057)：即便是管理员的“测试”端点，也不能向内部主机
+    # 发起 SSRF（IMDS / 内部服务）。
     from app.utils.url_validator import validate_external_url_async
     if credential.base_url and not await validate_external_url_async(credential.base_url):
         raise HTTPException(
             status_code=400,
             detail="Provider base_url resolves to an internal or private network",
         )
-    # Catch non-ASCII smart-quote / em-dash pasted into credential fields —
-    # httpx otherwise fails with an opaque UnicodeEncodeError deep in transport.
+    # 拦截粘贴到凭证字段的非 ASCII 智能引号 / 长破折号 ——
+    # 否则 httpx 会在传输层深处抛出难以解读的 UnicodeEncodeError。
     _assert_header_encodable(credential.api_key, credential.base_url)
-    # Test with a simple completion
+    # 通过一次简单 completion 调用进行测试
     start = time.perf_counter()
     try:
         response = await acompletion(
@@ -722,8 +720,8 @@ async def test_credential(
             max_tokens=5,
         )
         latency_ms = (time.perf_counter() - start) * 1000
-        
-        # Update last used
+
+        # 更新 last_used_at
         await resolver.update_last_used(credential_id, error=None)
         
         return ApiResponse(
@@ -735,12 +733,12 @@ async def test_credential(
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
-        # SECURITY (VULN-066): LiteLLM can put the request's Bearer / sk- key
-        # into the exception body when the upstream returns 401/429 etc.
-        # Redact before both persisting and returning.
+        # SECURITY (VULN-066)：当上游返回 401/429 等错误时，LiteLLM 可能把
+        # 请求中的 Bearer / sk- key 嵌入到异常正文里。无论是持久化还是
+        # 返回客户端，都要先脱敏。
         error_msg = _redact_secrets(str(e), credential.api_key)
 
-        # Update last error
+        # 更新 last_error
         await resolver.update_last_used(credential_id, error=error_msg)
 
         return ApiResponse(
@@ -760,10 +758,10 @@ async def test_embedding_credential(
     resolver: CredentialResolver = Depends(get_credential_resolver),
     registry: ProviderRegistry = Depends(get_provider_registry),
 ):
-    """Test a credential by making an embedding API call."""
+    """通过一次 embedding API 调用来测试凭证。"""
     from litellm import aembedding
 
-    # Get credential
+    # 获取凭证
     try:
         credential = await resolver.get_credential(
             provider_code="",
@@ -779,12 +777,12 @@ async def test_embedding_credential(
     if not credential:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    # Get provider info
+    # 获取 provider 信息
     provider = await registry.get_provider(credential.provider_code)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
-    # Determine model name with proper prefix
+    # 为模型名补全正确前缀
     model_name = req.model_id
     if provider.api_type in ("openai_compat", "custom"):
         if not model_name.startswith("openai/"):
@@ -793,16 +791,16 @@ async def test_embedding_credential(
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
-    # SECURITY (VULN-057): SSRF guard also applies to the embedding test path.
+    # SECURITY (VULN-057)：embedding 测试路径同样需要 SSRF 防护。
     from app.utils.url_validator import validate_external_url_async
     if credential.base_url and not await validate_external_url_async(credential.base_url):
         raise HTTPException(
             status_code=400,
             detail="Provider base_url resolves to an internal or private network",
         )
-    # Catch non-ASCII smart-quote / em-dash pasted into credential fields.
+    # 拦截粘贴到凭证字段中的非 ASCII 智能引号 / 长破折号。
     _assert_header_encodable(credential.api_key, credential.base_url)
-    # Test with embedding
+    # 通过 embedding 调用进行测试
     start = time.perf_counter()
     try:
         response = await aembedding(
@@ -813,10 +811,10 @@ async def test_embedding_credential(
         )
         latency_ms = (time.perf_counter() - start) * 1000
 
-        # Get vector dimension
+        # 获取向量维度
         dimension = len(response.data[0]["embedding"])
 
-        # Update last used
+        # 更新 last_used_at
         await resolver.update_last_used(credential_id, error=None)
 
         return ApiResponse(
@@ -828,8 +826,8 @@ async def test_embedding_credential(
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
-        # SECURITY (VULN-066): redact potential Bearer / sk- tokens leaked in
-        # the upstream 401/429 body before it hits logs or the client.
+        # SECURITY (VULN-066)：在写入日志或返回客户端之前，先脱敏可能在
+        # 上游 401/429 正文中泄露的 Bearer / sk- token。
         error_msg = _redact_secrets(str(e), credential.api_key)
 
         await resolver.update_last_used(credential_id, error=error_msg)
@@ -844,14 +842,14 @@ async def test_embedding_credential(
 
 
 # ============================================================
-# Task Routing Endpoints
+# 任务路由端点
 # ============================================================
 
 @router.get("/tasks", response_model=ApiResponse[list[TaskTypeResponse]])
 async def list_task_types(
     model_router: ModelRouter = Depends(get_model_router),
 ):
-    """List all AI task types."""
+    """列出所有 AI task type。"""
     tasks = await model_router.list_task_types()
     return ApiResponse(
         data=[TaskTypeResponse(**t) for t in tasks],
@@ -888,19 +886,17 @@ async def get_routing(
     provider_registry: ProviderRegistry = Depends(get_provider_registry),
     credential_resolver: CredentialResolver = Depends(get_credential_resolver),
 ):
-    """Get routing configuration for a task type.
+    """获取指定 task type 的路由配置。
 
-    Admin UI (SearchConfig / AI Config) manages *system-default* routing
-    (``user_id IS NULL``), not per-admin overrides. Background workers such as
-    the embedding index job invoke ``llm_router.embed()`` without a user_id,
-    which matches only system-default rows — so the admin UI must read/write
-    the same row to stay in sync with runtime.
+    管理后台 UI（SearchConfig / AI Config）管理的是 *系统默认* 路由
+    （``user_id IS NULL``），并非按管理员维度的覆盖。后台 worker（例如
+    embedding 索引任务）调用 ``llm_router.embed()`` 时不传 user_id，
+    只能命中系统默认行 —— 所以管理后台必须读写同一行才能与运行时保持
+    一致。
 
-    This endpoint intentionally bypasses ``resolve_routing`` (which returns
-    None the moment credential resolution fails) so a freshly-saved
-    ``primary_model_id`` always appears in the UI even before the admin has
-    wired up a credential. Credential status is surfaced separately via
-    ``credential_configured``.
+    本端点有意绕开 ``resolve_routing``（一旦凭证解析失败它就返回 None），
+    这样即便管理员还未配置凭证，刚保存的 ``primary_model_id`` 也能立即
+    在 UI 中可见。凭证配置状态通过 ``credential_configured`` 单独暴露。
     """
     stored = await model_router.get_routing_db(task_type, user_id=None)
 
@@ -951,12 +947,12 @@ async def update_routing(
     llm_router: LlmRouter = Depends(get_llm_router),
     pool: asyncpg.Pool = Depends(get_pg_pool),
 ):
-    """Update routing configuration for a task type.
+    """更新指定 task type 的路由配置。
 
-    Writes to the system-default row (``user_id IS NULL``); see ``get_routing``
-    for rationale. AetherBlog is a single-admin blog where all AI routing is
-    site-wide, so admin-scoped routing rows only cause drift between UI and
-    runtime (which calls ``embed()`` without a user_id).
+    写入系统默认行（``user_id IS NULL``）；理由见 ``get_routing``。
+    AetherBlog 是单管理员博客，所有 AI 路由都是站点级的，因此带 admin
+    维度的路由行只会让 UI 与运行时（调用 ``embed()`` 时不带 user_id）
+    出现状态漂移。
     """
     fields_set = req.model_fields_set
     update_primary = "primary_model_id" in fields_set
@@ -1011,7 +1007,7 @@ async def _sync_active_embedding_pointer(
     llm_router: LlmRouter,
     pool: asyncpg.Pool,
 ) -> None:
-    """Blue-green safe upsert of `site_settings.search.active_embedding_model`."""
+    """以蓝绿安全的方式 upsert `site_settings.search.active_embedding_model`。"""
     new_model_id = await llm_router.resolve_embedding_model_id(user_id=None)
     if not new_model_id:
         return

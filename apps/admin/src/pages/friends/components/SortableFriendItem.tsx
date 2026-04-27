@@ -4,10 +4,9 @@ import { GripVertical, Edit2, Trash2, Eye, EyeOff, ExternalLink } from 'lucide-r
 import { cn } from '@/lib/utils';
 import { FriendLink } from '@/services/friendService';
 
-// SECURITY (VULN-082): friend link URLs come from admin input; previous code
-// dropped them straight into <a href> so a malicious/careless admin could
-// inject ``javascript:`` payloads that fire on hover / click from other admins.
-// Only http(s) URLs pass through; anything else falls back to '#'.
+// SECURITY (VULN-082)：友链 URL 来自管理员输入；此前的代码直接把 URL
+// 塞进 <a href>，恶意或粗心的管理员可注入 ``javascript:`` 等载荷，并在
+// 其他管理员悬停 / 点击时触发。仅放行 http(s) URL；其它一律降级为 '#'。
 function safeExternalHref(url: string | undefined | null): string {
   if (!url || typeof url !== 'string') return '#';
   const trimmed = url.trim();
@@ -59,7 +58,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
       )}
     >
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        {/* Drag Handle */}
+        {/* 拖拽手柄 */}
         <div 
           {...attributes} 
           {...listeners} 
@@ -71,7 +70,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
           <GripVertical className="w-4 h-4" />
         </div>
 
-        {/* Logo/Avatar */}
+        {/* Logo / 头像 */}
         <div className={cn(
           "w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] overflow-hidden shrink-0",
           "flex items-center justify-center transition-transform group-hover:scale-105"
@@ -93,7 +92,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
           )}
         </div>
 
-        {/* Info */}
+        {/* 信息 */}
         <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
           <div className="flex items-center gap-2">
             <h4 className="text-base font-medium text-[var(--text-primary)] truncate leading-none">
@@ -129,7 +128,7 @@ export function SortableFriendItem({ friend, onEdit, onDelete, onToggleVisible }
         </div>
       </div>
 
-      {/* Actions */}
+      {/* 操作 */}
       <div className="flex items-center gap-1 pl-4">
         <button
           onClick={(e) => { e.stopPropagation(); onToggleVisible(); }}

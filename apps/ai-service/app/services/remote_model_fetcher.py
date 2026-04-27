@@ -1,4 +1,4 @@
-# ref: §5.1 - Remote model list fetcher
+# ref: §5.1 - 远程模型列表抓取器（Remote model list fetcher）
 from __future__ import annotations
 
 from dataclasses import dataclass

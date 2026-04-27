@@ -73,7 +73,7 @@ export function LoginPage() {
 
   return (
     <div className="auth-codex-page relative w-full min-h-screen flex bg-[var(--bg-void)] text-[var(--ink-primary)] font-sans overflow-hidden selection:bg-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)]">
-      {/* Ambient 背景:
+      {/* 环境光背景:
           ★ 亮主题:干脆不要 aurora 软色光晕 —— admin 的 --color-primary 是近黑,
             无论怎么 override specificity,渲染到暖米白底上都会是一块"灰污渍"。
             改用:极淡网格 + 底部横向 aurora 渐变线条(参考 /design 分隔)。干净克制。
@@ -98,7 +98,7 @@ export function LoginPage() {
         transition={transition.flow}
         className="hidden lg:flex w-1/2 relative flex-col justify-between p-12"
       >
-        {/* Wordmark —— AetherMark + Fraunces 字标 */}
+        {/* 字标 —— AetherMark + Fraunces 字标 */}
         <div className="relative z-10">
           <div className="inline-flex items-center gap-3.5">
             <span className="aether-mark-wrap" aria-hidden="true">
@@ -201,7 +201,7 @@ export function LoginPage() {
               </p>
             </div>
 
-            {/* Error banner —— signal-danger token,双主题自动 */}
+            {/* 错误横幅 —— signal-danger token,双主题自动 */}
             <AnimatePresence mode="wait">
               {error && (
                 <motion.div
@@ -227,7 +227,7 @@ export function LoginPage() {
             </AnimatePresence>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Username */}
+              {/* 用户名 */}
               <div className="space-y-2">
                 <label htmlFor="username" className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)] px-0.5">
                   Username
@@ -254,7 +254,7 @@ export function LoginPage() {
                 </div>
               </div>
 
-              {/* Password */}
+              {/* 密码 */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-0.5">
                   <label htmlFor="password" className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
@@ -297,7 +297,7 @@ export function LoginPage() {
                 </div>
               </div>
 
-              {/* Submit —— aurora 实心按钮 + 轻微光晕 */}
+              {/* 提交按钮 —— aurora 实心按钮 + 轻微光晕 */}
               <motion.button
                 type="submit"
                 disabled={isLoading}
@@ -322,10 +322,10 @@ export function LoginPage() {
               </motion.button>
             </form>
 
-            {/* Aurora divider */}
+            {/* 极光分隔线 */}
             <div className="aurora-divider" />
 
-            {/* Secure Access section mark */}
+            {/* "Secure Access" 区域标记 */}
             <div className="flex items-center justify-center gap-3">
               <div className="h-px flex-1 bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
               <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--ink-muted)]">§ Secure Access</span>
@@ -357,7 +357,7 @@ export function LoginPage() {
           必须用大号 inset box-shadow hack 伪装成 codex-input 的背景。
           ★ codex-brand-mark:品牌图标盒,aurora-1 纸片玻璃 + 外圈柔光晕,双主题显著. */}
       <style>{`
-        /* Aurora 令牌策略:
+        /* 极光令牌策略:
            ★ 亮主题:不 override,让 tokens.css 的 :root.light OKLCH 派生从
              --color-primary (#18181b) 生成"近黑 + 微小色相偏移"的单色序列,
              与博客头页、admin Dashboard 的单色冷淡审美一致 (/design §2 规范)。
@@ -432,7 +432,7 @@ export function LoginPage() {
         }
         :root.light .codex-ambient-aurora-line { display: block; }
 
-        /* AetherMark:自定义 logo mark 的外层光晕(相对简单,避免每次闪动) */
+        /* AetherMark：品牌图形的外层光晕(相对简单,避免每次闪动) */
         .aether-mark-wrap {
           position: relative;
           display: inline-flex;
@@ -451,7 +451,7 @@ export function LoginPage() {
         }
         :root.light .aether-mark-wrap::before { opacity: 0.5; }
 
-        /* Brand mark:Sparkles 图标盒,带 aurora-1 光晕 */
+        /* 品牌图标盒：Sparkles 图标盒,带 aurora-1 光晕 */
         .codex-brand-mark {
           background: linear-gradient(135deg,
             color-mix(in oklch, var(--aurora-1) 22%, transparent) 0%,
@@ -475,7 +475,7 @@ export function LoginPage() {
             0 6px 18px -6px color-mix(in oklch, var(--aurora-1) 30%, transparent);
         }
 
-        /* Input:codex token 驱动,双主题自适应 */
+        /* 输入框：codex token 驱动,双主题自适应 */
         .codex-input {
           width: 100%;
           padding: 0.9rem 1rem 0.9rem 2.75rem;
@@ -514,7 +514,7 @@ export function LoginPage() {
           box-shadow: 0 0 0 3px color-mix(in oklch, var(--aurora-1) 22%, transparent);
         }
 
-        /* Chrome autofill hijack:大号 inset box-shadow 盖掉浏览器默认蓝紫填充 */
+        /* Chrome 自动填充劫持：大号 inset box-shadow 盖掉浏览器默认蓝紫填充 */
         .auth-codex-page input:-webkit-autofill,
         .auth-codex-page input:-webkit-autofill:hover,
         .auth-codex-page input:-webkit-autofill:focus,
@@ -532,7 +532,7 @@ export function LoginPage() {
           box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.9) inset !important;
         }
 
-        /* Submit button:aurora-1 → aurora-2 实色渐变 */
+        /* 提交按钮：aurora-1 → aurora-2 实色渐变 */
         .codex-submit-btn {
           display: inline-flex;
           width: 100%;

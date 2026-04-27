@@ -318,7 +318,7 @@ func (h *MediaHandler) Update(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// SECURITY (VULN-040): ownership gate before metadata update.
+	// SECURITY (VULN-040): 元数据更新前先校验所有权。
 	if err := h.assertMediaOwnership(c, id); err != nil {
 		return err
 	}
@@ -351,7 +351,7 @@ func (h *MediaHandler) Delete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// SECURITY (VULN-040): ownership gate before soft delete (trash).
+	// SECURITY (VULN-040): 软删除（移入回收站）前先校验所有权。
 	if err := h.assertMediaOwnership(c, id); err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func (h *MediaHandler) Move(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// SECURITY (VULN-040): ownership gate before move.
+	// SECURITY (VULN-040): 移动前先校验所有权。
 	if err := h.assertMediaOwnership(c, id); err != nil {
 		return err
 	}
@@ -405,7 +405,7 @@ func (h *MediaHandler) Restore(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// SECURITY (VULN-040): ownership gate before trash restore.
+	// SECURITY (VULN-040): 从回收站恢复前先校验所有权。
 	if err := h.assertMediaOwnership(c, id); err != nil {
 		return err
 	}
@@ -422,7 +422,7 @@ func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
 	}
-	// SECURITY (VULN-040): ownership gate before irreversible delete.
+	// SECURITY (VULN-040): 不可逆删除前先校验所有权。
 	if err := h.assertMediaOwnership(c, id); err != nil {
 		return err
 	}
@@ -511,7 +511,7 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 	}
 	defer f.Close()
 
-	// Sniff MIME type to prevent uploading dangerous file types
+	// 探测 MIME 类型以防止上传危险文件类型
 	sniffBuf := make([]byte, 512)
 	n, sniffErr := io.ReadAtLeast(f, sniffBuf, 1)
 	if sniffErr != nil && sniffErr != io.ErrUnexpectedEOF {

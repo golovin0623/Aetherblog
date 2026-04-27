@@ -42,7 +42,7 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
 
   return (
     <div className="space-y-12">
-      {/* Header */}
+      {/* 头部 */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
@@ -52,7 +52,7 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
         <p className="eyebrow">ABOUT THE AUTHOR</p>
       </motion.div>
 
-      {/* Author card */}
+      {/* 作者卡片 */}
       <div className="flex flex-col items-center gap-8">
         {/* Avatar：仅阴影层次，无边环/光晕 */}
         <motion.div
@@ -79,7 +79,7 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
           </div>
         </motion.div>
 
-        {/* Name + Bio */}
+        {/* 姓名 + 简介 */}
         <motion.div
           variants={fadeUp}
           initial="initial"
@@ -96,7 +96,7 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
           )}
         </motion.div>
 
-        {/* Stats counters */}
+        {/* 统计计数器 */}
         <motion.div
           initial="initial"
           animate={isVisible ? 'animate' : 'initial'}
@@ -119,7 +119,7 @@ export default function AuthorCTASection({ isVisible, settings, stats }: Props) 
           ))}
         </motion.div>
 
-        {/* CTA Buttons */}
+        {/* CTA 按钮 */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={isVisible ? { opacity: 1, y: 0 } : {}}

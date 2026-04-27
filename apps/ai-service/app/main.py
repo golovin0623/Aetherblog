@@ -29,11 +29,11 @@ logger = logging.getLogger("ai-service")
 
 
 def _redacted_redis_url(url: str) -> str:
-    """Return REDIS_URL with any password in the userinfo segment replaced by ``***``.
+    """返回把 userinfo 段密码替换为 ``***`` 后的 REDIS_URL。
 
-    We only emit this at startup so an on-call engineer can confirm whether the
-    password was merged into the URL (via Settings._merge_redis_password) without
-    leaking the raw secret into logs.
+    仅在启动时输出一次,让 on-call 工程师可以确认密码是否已经被
+    (通过 Settings._merge_redis_password) 合并进 URL,
+    同时避免把原始 secret 泄露到日志里。
     """
     from urllib.parse import urlparse, urlunparse
 
@@ -48,22 +48,22 @@ def _redacted_redis_url(url: str) -> str:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
-# Upper bound for the startup Redis PING. redis-py's default socket_connect_timeout
-# is None (unlimited), so an unreachable Redis would block lifespan() for the full
-# TCP SYN retry window (~2min on Linux) — longer than the ai-service healthcheck
-# start_period, which would mark the container unhealthy for the wrong reason.
-# 3s is plenty for a same-network Redis and tight enough to fail fast.
+# 启动期 Redis PING 的超时上限。redis-py 的默认 socket_connect_timeout
+# 为 None (无限),Redis 不可达时会让 lifespan() 阻塞整个 TCP SYN 重试窗口
+# (Linux 下约 2 分钟) —— 长于 ai-service healthcheck 的 start_period,
+# 会导致容器被错误地判定为 unhealthy。
+# 3 秒对同网段 Redis 完全够用,又紧凑到能快速失败。
 _REDIS_PREFLIGHT_TIMEOUT_SEC = 3.0
 
 
 async def _redis_preflight() -> None:
-    """PING Redis at startup and log a classified failure if unreachable.
+    """启动时对 Redis 进行 PING,失败则按类型记录日志。
 
-    Rate-limit failures fail-closed and return 503 on every AI request
-    (VULN-070), so a misconfigured REDIS_URL / REDIS_PASSWORD silently breaks
-    every admin AI feature until the first user report. Surfacing it in the
-    startup banner gives operators an immediate, actionable signal rather than
-    waiting for ``rate_limit.redis_error_fail_closed`` to fire in production.
+    Rate-limit 走 fail-closed,在每个 AI 请求上都会返回 503 (VULN-070),
+    因此 REDIS_URL / REDIS_PASSWORD 配错会悄悄让所有 admin AI 功能失效,
+    直到第一份用户反馈出现才被发现。在启动 banner 里把问题显式抛出,
+    让运维拿到一个立即可操作的信号,不必等到生产环境里
+    ``rate_limit.redis_error_fail_closed`` 触发。
     """
     try:
         redis = deps_module._get_redis()
@@ -96,21 +96,20 @@ async def _redis_preflight() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm the PG pool early so the JWT key refresher has something to talk to.
-    # If PG isn't reachable yet, start_jwt_key_refresher's initial fetch fails
-    # softly and we fall back to env seed until the refresher's first successful
-    # tick (60s default).
+    # 提前预热 PG pool,这样 JWT key refresher 启动时有目标可对话。
+    # 如果 PG 此时还连不上,start_jwt_key_refresher 的初次拉取会软失败,
+    # 在 refresher 首次成功 tick (默认 60s) 之前我们都靠环境 seed 兜底。
     try:
         pool = await deps_module.get_pg_pool()
         await start_jwt_key_refresher(pool)
     except Exception as exc:
-        # Non-fatal: auth still works with env seed (settings.jwt_secret).
+        # 非致命: 鉴权仍可用环境 seed (settings.jwt_secret) 工作。
         logger.warning("jwt_keys.startup_skipped", extra={"data": {"error": str(exc)}})
 
-    # Non-fatal Redis ping — we deliberately do NOT abort startup on failure.
-    # The service can still serve /health and cached responses; we just want the
-    # misconfig spelled out loudly in the log so it doesn't hide behind the
-    # generic 503 from the rate limiter.
+    # 非致命的 Redis ping —— 这里有意**不**因失败终止启动。
+    # 服务依然能提供 /health 和缓存响应;
+    # 我们只是想把配置错误大声写进日志,
+    # 避免它被 rate limiter 抛出的通用 503 给盖掉。
     await _redis_preflight()
 
     yield
@@ -132,15 +131,14 @@ app = FastAPI(
     openapi_url="/openapi.json" if _docs_url else None,
 )
 
-# SECURITY (VULN-068): tighten CORS. The previous config combined
-# allow_origins=[localhost entries] with allow_methods=["*"] + allow_headers=["*"]
-# + allow_credentials=True — a high-risk shape if the origin list ever grows or
-# is misconfigured. We explicitly enumerate the verbs and headers we actually
-# use; any new header (e.g. X-Internal-Service) must be added intentionally.
+# 安全 (VULN-068): 收紧 CORS。旧配置把 allow_origins=[localhost 条目]
+# 与 allow_methods=["*"] + allow_headers=["*"] + allow_credentials=True 拼在一起 ——
+# 一旦 origin 列表扩张或被配错,这种形态就是高风险的。
+# 这里显式枚举我们真正使用的方法和 header;
+# 任何新 header (例如 X-Internal-Service) 都必须刻意添加。
 #
-# NOTE: allow_headers deliberately does NOT include "X-Internal-Service" so
-# the browser CORS path cannot trigger internal endpoints even if an origin
-# is allow-listed in the future.
+# 注意: allow_headers 故意**不**包含 "X-Internal-Service",
+# 这样即使将来 origin 被 allow-list,浏览器 CORS 路径也无法触发内部 endpoint。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -236,8 +234,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    # extra={"data": {...}} because JSONFormatter only reads record.data;
-    # the older extra={"error": ...} shape was silently dropped.
+    # 用 extra={"data": {...}},因为 JSONFormatter 只读 record.data;
+    # 老的 extra={"error": ...} 形态会被悄悄丢弃。
     logger.exception(
         "unhandled_exception",
         extra={"data": {"error": str(exc), "error_type": type(exc).__name__}},

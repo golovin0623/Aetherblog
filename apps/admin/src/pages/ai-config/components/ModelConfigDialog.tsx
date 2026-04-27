@@ -107,7 +107,7 @@ export default function ModelConfigDialog({
   const updateMutation = useUpdateModel();
   const deleteMutation = useDeleteModel();
 
-  // Check if this embedding model is used in search routing
+  // 检查该 embedding 模型是否被搜索路由使用
   const embeddingRoutingQuery = useQuery({
     queryKey: ['embedding-routing'],
     queryFn: () => aiProviderService.getRouting('embedding'),
@@ -800,7 +800,7 @@ export default function ModelConfigDialog({
           )}
         </div>
 
-        {/* Search routing warning */}
+        {/* 搜索路由警告 */}
         {isUsedBySearch && (
           <div className="mx-5 mb-0 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />

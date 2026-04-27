@@ -12,10 +12,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Note: Code syntax highlighting is now handled by Shiki in MarkdownRenderer */
+/* 注：代码语法高亮现在由 MarkdownRenderer 中的 Shiki 处理 */
 
 /* ========================================
-   Font Override System
+   字体覆盖系统
    当后台设置了非系统默认字体时，通过 CSS 变量
    覆盖全局字体。FontProvider 会动态添加
    .font-override 类和 --font-sans-override 变量。
@@ -39,7 +39,7 @@ html.font-override blockquote, html.font-override a, html.font-override td, html
 }
 
 /* ========================================
-   Theme CSS Variables (Light/Dark)
+   主题 CSS 变量（亮色 / 暗色）
    ======================================== */
 
 /* 亮色主题 (默认) */
@@ -184,7 +184,7 @@ html.font-override blockquote, html.font-override a, html.font-override td, html
   /* === 预览区背景 === */
   --preview-bg: rgba(248, 250, 252, 0.5);
 
-  /* === Alert Blocks (Light) === */
+  /* === 提示块（亮色） === */
   --alert-info-bg: #eff6ff;
   --alert-info-border: #3b82f6;
   --alert-info-icon: #2563eb;
@@ -352,7 +352,7 @@ html.font-override blockquote, html.font-override a, html.font-override td, html
   /* === 预览区背景 === */
   --preview-bg: rgba(0, 0, 0, 0.2);
 
-  /* === Alert Blocks (Dark) === */
+  /* === 提示块（暗色） === */
   --alert-info-bg: rgba(59, 130, 246, 0.1);
   --alert-info-border: #3b82f6;
   --alert-info-icon: #60a5fa;
@@ -531,7 +531,7 @@ body {
 }
 
 /* ========================================
-   Markdown Renderer Styles (Full)
+   Markdown 渲染器样式（完整）
    ======================================== */
 .markdown-body {
   line-height: var(--markdown-line-height);  /* 1.8 */
@@ -1003,7 +1003,7 @@ body {
 
 
 /* ========================================
-   Mini Markdown Preview Styles (Compact)
+   迷你 Markdown 预览样式（紧凑）
    ======================================== */
 .mini-preview {
   color: var(--text-muted);
@@ -1235,7 +1235,7 @@ body {
 
 /* ========================================
 /* ========================================
-   View Transitions API - Theme Switch Animation
+   View Transitions API - 主题切换动画
    圆形扩散/收缩主题切换动画
    ======================================== */
 
@@ -1296,10 +1296,10 @@ html[data-theme-transition="to-dark"]::view-transition-new(mobile-menu-drawer) {
 }
 
 
-/* 
- * 性能优化 (Performance Optimization):
- * 移动端 GPU 无法在进行全屏 clip-path 动画的同时计算高昂的 
- * backdrop-filter (毛玻璃) 和复杂的 box-shadow。
+/*
+ * 性能优化（Performance Optimization）：
+ * 移动端 GPU 无法在进行全屏 clip-path 动画的同时计算高昂的
+ * backdrop-filter（毛玻璃）和复杂的 box-shadow。
  * 避免使用通配符 '*' 选择器，因为它会导致深度的 DOM 样式重排，本身就会引发卡顿。
  * 我们使用属性选择器精确制导移除滤镜和阴影，瞬间释放 GPU 算力！
  */
@@ -1362,7 +1362,7 @@ html[data-theme-transition] .theme-transition-glow {
 }
 
 /* ========================================
-   Hero Primary Button (浏览文章)
+   Hero 主按钮（浏览文章）
    ======================================== */
 
 /* 亮色主题
@@ -1534,21 +1534,21 @@ html[data-theme-transition] .theme-transition-glow {
 }
 
 /* ========================================
-   Hero Scroll Indicator (Mobile - Pure Glass Trail)
+   Hero 滚动指示器（移动端 - 纯玻璃尾迹）
    ======================================== */
 
 .hero-scroll-indicator {
   position: absolute;
   left: 50%;
-  bottom: 124px; /* Maintain 24px gap with the overlap */
+  bottom: 124px; /* 与重叠区保持 24px 间距 */
   transform: translateX(-50%);
   display: flex;
   justify-content: center;
-  align-items: flex-end; /* Runner still flows bottom to top */
-  width: 24px;   /* SVG mask width */
-  height: 48px;  /* SVG mask height */
-  
-  /* Arrows invisible at rest — only the runner glow reveals them */
+  align-items: flex-end; /* 运动光仍然从底部流向顶部 */
+  width: 24px;   /* SVG 蒙版宽度 */
+  height: 48px;  /* SVG 蒙版高度 */
+
+  /* 静态时箭头不可见 —— 只有 runner 光晕扫过时才显形 */
   background: transparent;
   backdrop-filter: none;
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 48'%3E%3Cpath d='M 12 0 L 24 12 L 20 16 L 12 8 L 4 16 L 0 12 Z M 12 16 L 24 28 L 20 32 L 12 24 L 4 32 L 0 28 Z M 12 32 L 24 44 L 20 48 L 12 40 L 4 48 L 0 44 Z' fill='black'/%3E%3C/svg%3E");
@@ -1559,7 +1559,7 @@ html[data-theme-transition] .theme-transition-glow {
   mask-repeat: no-repeat;
   
   cursor: pointer;
-  z-index: 30; /* Stay above stacked page */
+  z-index: 30; /* 保持在堆叠页面之上 */
   filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.1));
 }
 
@@ -1578,7 +1578,7 @@ html[data-theme-transition] .theme-transition-glow {
   top: 0;
   left: 0;
   width: 100%;
-  height: 24px; /* Glow spans 1-2 arrows at a time */
+  height: 24px; /* 光晕一次跨越 1-2 个箭头 */
   border-radius: 9999px;
   background: linear-gradient(
     to bottom,
@@ -1618,13 +1618,13 @@ html[data-theme-transition] .theme-transition-glow {
   }
 }
 
-/* Hide scrollbar for horizontal pagination */
+/* 隐藏横向分页区域的滚动条 */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
 .scrollbar-hide {
   scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  -ms-overflow-style: none; /* IE / Edge */
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1684,7 +1684,7 @@ html[data-nav-type="pop"] .animate-in {
    取消原先 italic + aurora 渐变 + 4.2em 的堆砌。 */
 .markdown-body > p:first-of-type::first-letter {
   font-family: var(--font-editorial);        /* Playfair/Noto Serif —— 更适合 drop cap 锚 */
-  font-size: 3.6em;                           /* = 3 × line-height on fs-reading */
+  font-size: 3.6em;                           /* = 3 × fs-reading 行高 */
   line-height: 1;
   font-weight: 400;                           /* Book/Regular —— 不能 600/700 */
   font-style: normal;                         /* 取消 italic */

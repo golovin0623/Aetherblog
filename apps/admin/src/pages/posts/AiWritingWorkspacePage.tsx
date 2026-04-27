@@ -31,7 +31,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme, useMediaQuery } from '@aetherblog/hooks';
 import { cn } from '@/lib/utils';
 
-// Hook
+// Hook 集合
 import { useWritingWorkflow } from '@/hooks/useWritingWorkflow';
 import { useHistoryManager } from '@/hooks/useHistoryManager';
 import { useAiPrediction } from '@/hooks/useAiPrediction';

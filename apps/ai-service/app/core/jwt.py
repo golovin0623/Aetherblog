@@ -19,22 +19,20 @@ class UserClaims:
 
 
 def _decode_with_hmac(token: str, options: dict[str, Any]) -> dict[str, Any]:
-    """Verify HS256 token against all active rotation keys (VULN-152 follow-up).
+    """用所有处于活跃轮换中的 key 验证 HS256 token (VULN-152 后续工作)。
 
-    Tries each cached key from ``jwt_keys.get_cached_keys()`` — typically
-    ``[current, previous]`` — in order. ``current`` is tried first (hot path).
-    ``previous`` verification only matters during the grace window after a
-    rotation; without it users would get kicked off the moment the Go backend
-    swapped keys.
+    依次尝试 ``jwt_keys.get_cached_keys()`` 缓存中的每个 key —— 通常是
+    ``[current, previous]``。``current`` 先试 (热路径)。
+    ``previous`` 验签仅在轮换之后的宽限窗口内有意义;若没有它,Go 后端一换 key
+    用户就会被立即踢下线。
 
-    Non-signature errors (expired, wrong issuer/audience, bad alg) short-circuit
-    —— no point retrying with another key since the failure is intrinsic to the
-    token, not the signing material.
+    非签名类错误 (过期、issuer/audience 不匹配、alg 错误) 会短路退出 ——
+    再换 key 重试也没用,因为这类失败是 token 本身固有的,而不是签名素材的问题。
     """
     settings = get_settings()
     keys = get_cached_keys()
     if not keys:
-        # Should not happen: get_cached_keys falls back to settings.jwt_secret.
+        # 不应发生: get_cached_keys 会回退到 settings.jwt_secret。
         raise jwt.InvalidKeyError("no JWT keys available")
 
     last_sig_err: Exception | None = None
@@ -51,7 +49,7 @@ def _decode_with_hmac(token: str, options: dict[str, Any]) -> dict[str, Any]:
         except jwt.InvalidSignatureError as err:
             last_sig_err = err
             continue
-    # Exhausted all keys — surface the signature error for logging/debugging.
+    # 所有 key 都试完 —— 把签名错误抛出,便于记录日志/调试。
     raise last_sig_err if last_sig_err else jwt.InvalidTokenError("no key matched")
 
 
