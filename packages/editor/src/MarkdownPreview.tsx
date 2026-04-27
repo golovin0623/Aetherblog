@@ -81,8 +81,8 @@ const nestedFencesExtension: TokenizerExtension & RendererExtension = {
 };
 
 /**
- * 自定义高亮块扩展 (Alert Blocks)
- * 支持格式: :::info{title="xxx"}
+ * 自定义高亮块扩展（Alert Blocks）
+ * 支持格式：:::info{title="xxx"}
  */
 const alertBlockExtension: TokenizerExtension & RendererExtension = {
   name: 'alertBlock',

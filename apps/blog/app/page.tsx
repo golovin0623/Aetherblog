@@ -8,7 +8,7 @@ import StackedParallax from './components/StackedParallax';
 
 export const revalidate = 300; // 首页 5 分钟 ISR (增量静态再生)
 
-// SECURITY (VULN-081): welcome CTA 的 link 来自 site_settings（admin 可写）。
+// 安全性（VULN-081）：welcome CTA 的 link 来自 site_settings（admin 可写）。
 // 若有人把 link 改成 `javascript:alert(1)` 或 `//evil.com`，用户点击就出事。
 // 仅允许站内绝对路径（单 '/' 开头，不能是 '//'）；越界时回落到合理默认。
 function safeInternalHref(raw: string | undefined | null, fallback: string): string {

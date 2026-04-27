@@ -18,7 +18,7 @@ export function FocusModeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // ⌘. or Ctrl+. toggles focus mode
+      // ⌘. 或 Ctrl+. 切换专注模式
       if ((e.metaKey || e.ctrlKey) && e.key === '.') {
         e.preventDefault();
         setIsFocus(v => !v);
@@ -49,7 +49,7 @@ export function FocusModeProvider({ children }: { children: React.ReactNode }) {
 export function useFocusMode(): FocusModeValue {
   const ctx = useContext(FocusModeContext);
   if (!ctx) {
-    // Graceful fallback for components rendered outside provider during hot-reload.
+    // 热更新期间组件渲染在 Provider 之外时的优雅降级。
     return { isFocus: false, toggle: () => {}, enter: () => {}, exit: () => {} };
   }
   return ctx;

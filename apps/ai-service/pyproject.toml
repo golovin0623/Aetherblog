@@ -1,7 +1,7 @@
-# SECURITY (VULN-075): explicit project metadata pins the Python floor +
-# packaging identity. Without ``requires-python`` a fresh clone on 3.9 would
-# install against incompatible dependencies (pydantic-settings 2.x, MultiFernet
-# rotation syntax, pattern-based validators) and crash at import time.
+# 安全 (VULN-075): 显式的项目元数据钉住 Python 最低版本与打包身份。
+# 没有 ``requires-python``,在 3.9 上新克隆的环境会安装不兼容的依赖
+# (pydantic-settings 2.x、MultiFernet 轮换语法、基于 pattern 的 validator),
+# 并在 import 阶段直接崩溃。
 [project]
 name = "aetherblog-ai-service"
 version = "0.1.0"

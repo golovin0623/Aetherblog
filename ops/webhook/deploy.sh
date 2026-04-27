@@ -18,8 +18,8 @@ ROLLBACK_VERSION="${ROLLBACK_VERSION:-}"
 mkdir -p "$(dirname "$LOCK_FILE")"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Use tee to write to both log file and stdout/stderr, so the calling
-# process (webhook_server.py) can capture output for error reporting
+# 用 tee 同时写入日志文件和 stdout/stderr，让调用方进程
+# (webhook_server.py) 也能捕获输出用于错误上报
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "[$(date -Iseconds)] Deployment requested"
@@ -85,9 +85,9 @@ if [ ! -f "$COMPOSE_FILE" ]; then
 fi
 
 if [ -f .env ]; then
-  # SECURITY (VULN-133): never `source` the .env file — that would let any value
-  # like FOO=$(rm -rf /) be evaluated by bash. Instead, parse strict
-  # KEY=VALUE pairs (allowing CAPS and underscores) and export them literally.
+  # SECURITY (VULN-133): 绝不 `source` .env 文件 —— 那会让 FOO=$(rm -rf /)
+  # 这种值被 bash 求值。改为严格解析 KEY=VALUE 对（仅允许大写字母与下划线
+  # 的 KEY），按字面值导出。
   #
   # BUG 修复：原先用 `while IFS='=' read -r k v` 解析。bash 在 IFS 为单一非空白
   # 字符时，会把**行尾的分隔符**当做"空 token"一并吃掉，导致形如
@@ -109,7 +109,7 @@ if [ -f .env ]; then
     k="${line%%=*}"
     v="${line#*=}"
     if [[ "$k" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
-      # strip optional surrounding single/double quotes from value
+      # 去掉值两端可选的单引号/双引号
       v="${v%\"}"
       v="${v#\"}"
       v="${v%\'}"
@@ -144,7 +144,7 @@ echo "[$(date -Iseconds)] Using DOCKER_REGISTRY=$DOCKER_REGISTRY VERSION=$VERSIO
 echo "[$(date -Iseconds)] Validating docker compose config"
 docker compose -f "$COMPOSE_FILE" config --quiet
 
-# Pre-deploy: only static checks (no runtime)
+# 部署前：仅做静态检查（不做运行时检查）
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
   echo "[$(date -Iseconds)] Running preflight (pre-deploy, no runtime checks)"
   "$PREFLIGHT_SCRIPT" --no-runtime || echo "[$(date -Iseconds)] WARN: static preflight failed"
@@ -202,24 +202,22 @@ run_pre_deploy_migrations() {
   # 介入的迁移故障误 heal 成"绿色部署".
   # ----------------------------------------------------------
 
-  # Capture `migrate version` regardless of exit code. golang-migrate v4 returns
-  # exit 0 on dirty states (only `Up()` refuses to advance), but on a truly
-  # fresh install (ErrNilVersion) or transient DB glitch it exits non-zero and
-  # writes to stderr. We still want the text for downstream parsing; gating on
-  # exit code alone would drop a legitimate "version: 34, dirty: true" if a
-  # future migrate version changes its exit convention. 2>&1 folds stderr into
-  # the stream; the `_heal_v34_dirty_if_present` regex is specific enough that
-  # garbage/error text simply won't match and returns 1.
+  # 无论退出码如何都捕获 `migrate version` 的输出。golang-migrate v4 在 dirty
+  # 状态下退出码为 0（仅 `Up()` 拒绝前进），但在真正的全新安装 (ErrNilVersion)
+  # 或瞬时 DB 抖动场景下会以非零码退出并向 stderr 写入。下游解析仍然需要这段文本；
+  # 仅靠退出码判断的话，未来某版 migrate 改了退出约定就会漏掉合法的
+  # "version: 34, dirty: true"。2>&1 将 stderr 合并到主流；
+  # `_heal_v34_dirty_if_present` 的正则足够具体，遇到无关或报错文本会自然不匹配并返回 1。
   _probe_migration_version() {
     docker compose -f "$COMPOSE_FILE" run --rm \
       --entrypoint /app/migrate \
       backend -dir /app/migrations -dsn "$db_dsn" version 2>&1 || true
   }
 
-  # returns 0 if a v34-dirty state was detected **and** successfully force-bumped to 35.
-  # returns 1 for anything else (no dirty / dirty at a different version / force failed).
-  # Caller decides what "not-our-signature" means in context (pre-up: harmless skip,
-  # post-up: surface the underlying migration error).
+  # 当检测到 v34 dirty 状态 **且** 成功 force 到 35 时返回 0；
+  # 其他情况（无 dirty / 不同版本的 dirty / force 失败）返回 1。
+  # 调用方根据上下文判断"非本特征"的语义（pre-up 阶段：无害跳过；
+  # post-up 阶段：暴露底层迁移错误）。
   _heal_v34_dirty_if_present() {
     local out="$1"
     local v d
@@ -238,7 +236,7 @@ run_pre_deploy_migrations() {
     return 1
   }
 
-  # Stage 1: pre-up probe (handles historical v34 dirty carry-over from earlier deploys)
+  # 阶段 1：up 之前的探测（处理早期部署遗留的 v34 dirty 状态）
   local version_out
   version_out=$(_probe_migration_version)
   if [ -n "$version_out" ]; then
@@ -248,7 +246,7 @@ run_pre_deploy_migrations() {
     echo "[$(date -Iseconds)] migration version probe returned empty (likely fresh install with no schema_migrations yet)"
   fi
 
-  # Stage 2: run migrations
+  # 阶段 2：执行迁移
   if docker compose -f "$COMPOSE_FILE" run --rm \
        --entrypoint /app/migrate \
        backend -dir /app/migrations -dsn "$db_dsn" up; then
@@ -256,9 +254,8 @@ run_pre_deploy_migrations() {
     return
   fi
 
-  # Stage 3: up failed — if it landed on the v34 dirty signature (fresh install first
-  # cycle will do exactly this), heal + retry once in the same deploy. Anything else
-  # aborts so real migration bugs aren't silently papered over.
+  # 阶段 3：up 失败 —— 若落到 v34 dirty 特征上（首次 fresh install 会精准命中此场景），
+  # 在同一次部署内自愈并重试一次。其他失败一律中止，避免真实迁移错误被悄悄掩盖。
   echo "[$(date -Iseconds)] WARN: migration up failed; re-probing to check for v34 dirty signature."
   version_out=$(_probe_migration_version)
   if [ -z "$version_out" ]; then
@@ -362,7 +359,7 @@ echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
 
 # ---------------------------------------------------------------------------
-# Post-deploy: full preflight validation (runtime checks)
+# 部署后：完整 preflight 校验（运行时检查）
 # ---------------------------------------------------------------------------
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
   echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"

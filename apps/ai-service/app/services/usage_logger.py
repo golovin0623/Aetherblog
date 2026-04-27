@@ -7,7 +7,7 @@ from app.services.metrics import MetricsStore
 
 logger = logging.getLogger(__name__)
 
-try:  # optional dependency
+try:  # 可选依赖
     import tiktoken
 except Exception:  # pragma: no cover
     tiktoken = None
@@ -165,7 +165,7 @@ class UsageLogger:
                     safe_error_code,
                     safe_request_id,
                 )
-        except Exception as exc:  # pragma: no cover - don't fail request
+        except Exception as exc:  # pragma: no cover - 不要让请求因日志失败而 fail
             error_category = self._classify_error(exc)
             metric_result = {
                 "failure_count": 0,

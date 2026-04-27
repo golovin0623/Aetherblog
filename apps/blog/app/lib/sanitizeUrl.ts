@@ -58,24 +58,24 @@ export function sanitizeUrl(url: string, fallback: string = '#'): string {
   if (!url || typeof url !== 'string') return fallback;
   const trimmed = url.trim();
   if (!trimmed) return fallback;
-  // Allow http and https protocols
+  // 允许 http 与 https 协议
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;
   }
-  // SECURITY (VULN-079): disallow protocol-relative URLs (`//evil.com`). They
-  // inherit the current page's scheme and silently redirect to an arbitrary
-  // host — effectively an open-redirect with the same visual weight as a
-  // "relative" link. If the caller really wants `//cdn.example.com`, they
-  // must spell the scheme out (``https://cdn.example.com``).
+  // 安全性（VULN-079）：禁止协议相对 URL（`//evil.com`）。它们会
+  // 继承当前页面的协议并悄悄跳转到任意主机 —— 实际上等于
+  // 一个 open-redirect，视觉上又跟"相对链接"无异。如果调用方
+  // 确实需要 `//cdn.example.com`，必须显式写出协议
+  // （`https://cdn.example.com`）。
   if (trimmed.startsWith('//')) {
     return fallback;
   }
-  // Allow same-origin relative paths (``/foo``) — they can't escape origin.
+  // 允许同源相对路径（`/foo`）—— 它们无法越过 origin。
   if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
     return trimmed;
   }
-  // Normalize bare domains (e.g. "example.com") — prepend https://
-  // but block dangerous protocols like javascript:, data:, vbscript:
+  // 规范化裸域名（例如 "example.com"）—— 自动加上 https://，
+  // 同时拦截 javascript:、data:、vbscript: 等危险协议
   if (/^[a-zA-Z0-9]/.test(trimmed) && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(trimmed)) {
     return 'https://' + trimmed;
   }

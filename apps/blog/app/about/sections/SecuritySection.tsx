@@ -15,7 +15,7 @@ const securityFeatures = [
 export default function SecuritySection({ isVisible }: Props) {
   return (
     <div className="space-y-12">
-      {/* Header */}
+      {/* 头部 */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
@@ -31,9 +31,9 @@ export default function SecuritySection({ isVisible }: Props) {
         </p>
       </motion.div>
 
-      {/* Shield + features */}
+      {/* 盾牌 + 特性 */}
       <div className="flex flex-col items-center gap-10">
-        {/* Shield icon */}
+        {/* 盾牌图标 */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={isVisible ? { opacity: 1, scale: 1 } : {}}
@@ -63,7 +63,7 @@ export default function SecuritySection({ isVisible }: Props) {
             />
             <path d="M9 12l2 2 4-4" stroke="url(#shield-gradient)" />
           </svg>
-          {/* Glow behind shield */}
+          {/* 盾牌后的光晕 */}
           <div
             className="absolute inset-0 blur-2xl opacity-30"
             style={{ background: 'radial-gradient(circle, var(--aurora-1), transparent 70%)' }}
@@ -71,7 +71,7 @@ export default function SecuritySection({ isVisible }: Props) {
           />
         </motion.div>
 
-        {/* Feature bars */}
+        {/* 特性条 */}
         <motion.div
           initial="initial"
           animate={isVisible ? 'animate' : 'initial'}
@@ -87,7 +87,7 @@ export default function SecuritySection({ isVisible }: Props) {
               }}
               className="flex items-start gap-4 p-4 rounded-xl bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/10"
             >
-              {/* Aurora left stripe */}
+              {/* 极光左侧条纹 */}
               <div
                 className="w-1 self-stretch rounded-full shrink-0"
                 style={{ background: 'linear-gradient(180deg, var(--aurora-1), var(--aurora-4))' }}

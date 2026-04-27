@@ -12,7 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// generateJTI generates a cryptographically random JWT ID.
+// generateJTI 生成一个具备加密强度的随机 JWT ID。
 func generateJTI() string {
 	b := make([]byte, 16)
 	rand.Read(b)

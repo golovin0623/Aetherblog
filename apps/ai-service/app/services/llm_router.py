@@ -1,12 +1,12 @@
-# ref: §2.4.2.5 - LLM Router with Dynamic Configuration
+# ref: §2.4.2.5 - 支持动态配置的 LLM 路由器（LLM Router with Dynamic Configuration）
 """
-LLM Router service with support for dynamic model routing.
+支持动态模型路由的 LLM Router 服务。
 
-This is an enhanced version that supports:
-- Dynamic model routing from database
-- Multiple providers (OpenAI, DeepSeek, Qwen, etc.)
-- Fallback models
-- Per-user configuration
+这是增强版，支持：
+- 来自数据库的动态模型路由
+- 多 provider（OpenAI、DeepSeek、Qwen 等）
+- Fallback 模型
+- 按用户维度的配置
 """
 from __future__ import annotations
 
@@ -29,13 +29,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ai-service")
 
-# Last-resort max_tokens cap when neither the DB routing config nor the task
-# type's ``default_max_tokens`` is set (env-only fallback path). Without this
-# LiteLLM forwards ``None`` to the upstream provider and lets the model run
-# until the context window fills — the root cause of "summary returns 千字
-# 问答" reports. Numbers tuned to roughly match seed defaults in
-# migrations/000019_seed_ai_task_types.up.sql so behaviour matches a fresh
-# install even when the routing table is empty.
+# 当 DB 路由配置与 task type 的 ``default_max_tokens`` 均缺失（仅依赖
+# 环境变量回退路径）时的 max_tokens 兜底上限。没有这一层兜底，LiteLLM
+# 会把 ``None`` 直接转发给上游 provider，模型会一直生成直至填满上下文
+# 窗口 —— 这是“summary 返回千字问答”这类问题的根因。这里的数值大致
+# 对齐 migrations/000019_seed_ai_task_types.up.sql 中的种子默认值，
+# 确保即便 routing 表为空，行为也与全新安装一致。
 _TASK_DEFAULT_MAX_TOKENS: dict[str, int] = {
     "summary": 600,
     "tags": 200,
@@ -58,9 +57,9 @@ def _normalize_model_parts(model: str | None) -> tuple[str | None, str | None]:
 
 class LlmRouter:
     """
-    LLM Router with dynamic configuration support.
-    
-    Falls back to environment config when database routing is not available.
+    支持动态配置的 LLM Router。
+
+    当数据库路由不可用时，会回退到环境变量配置。
     """
 
     def __init__(self, model_router: "ModelRouter | None" = None) -> None:
@@ -68,7 +67,7 @@ class LlmRouter:
         self.model_router = model_router
 
     def resolve_model(self, alias: str) -> str:
-        """Resolve model alias to model name (env-based fallback)."""
+        """将模型别名解析为模型名（基于环境变量的回退）。"""
         mapping = {
             "summary": self.settings.model_summary,
             "tags": self.settings.model_tags,
@@ -83,36 +82,36 @@ class LlmRouter:
     @staticmethod
     def _prefix_model_for_litellm(model_id: str, api_type: str | None) -> str:
         """
-        Apply provider prefix to model name for correct LiteLLM routing.
-        
-        LiteLLM auto-detects providers based on model name prefixes:
-        - gemini-* → Vertex AI (requires Google Cloud SDK)
+        为模型名添加 provider 前缀，确保 LiteLLM 路由正确。
+
+        LiteLLM 会按模型名前缀自动识别 provider：
+        - gemini-* → Vertex AI（需要 Google Cloud SDK）
         - claude-* → Anthropic API
         - gpt-* → OpenAI API
-        
-        For custom API endpoints, we must add explicit prefixes to force the correct routing:
-        - openai_compat/custom: Add 'openai/' prefix to force OpenAI-compatible protocol
-        - azure: Add 'azure/' prefix for Azure OpenAI Service
-        - anthropic: No prefix needed (LiteLLM natively supports Anthropic API)
-        - google: No prefix needed IF using API key auth; Vertex AI needs credentials
+
+        对于自定义 API 端点，必须显式加前缀以强制走正确的路由：
+        - openai_compat/custom：加 'openai/' 前缀，强制走 OpenAI 兼容协议
+        - azure：加 'azure/' 前缀走 Azure OpenAI Service
+        - anthropic：无需前缀（LiteLLM 原生支持 Anthropic API）
+        - google：使用 API key 认证时无需前缀；走 Vertex AI 则需要凭证
         """
         if not api_type:
             return model_id
-            
-        # openai_compat and custom: Force OpenAI-compatible routing
+
+        # openai_compat 与 custom：强制走 OpenAI 兼容路由
         if api_type in ("openai_compat", "custom"):
             if not model_id.startswith("openai/"):
                 return f"openai/{model_id}"
-        
-        # Azure OpenAI: Add azure/ prefix
+
+        # Azure OpenAI：加 azure/ 前缀
         elif api_type == "azure":
             if not model_id.startswith("azure/"):
                 return f"azure/{model_id}"
-        
-        # anthropic: LiteLLM handles claude-* models natively
-        # google: LiteLLM handles gemini-* models natively with api_key
-        # No prefix needed for these - they work with api_key + api_base
-        
+
+        # anthropic：LiteLLM 原生处理 claude-* 模型
+        # google：LiteLLM 原生处理 gemini-* 模型（使用 api_key）
+        # 这两类无需前缀，靠 api_key + api_base 即可工作
+
         return model_id
 
     @dataclass
@@ -131,7 +130,7 @@ class LlmRouter:
         override: bool
 
     async def _get_routing(self, task_type: str, user_id: int | None = None) -> "RoutingConfig | None":
-        """Get routing config from model router if available."""
+        """如可用则从 model router 获取路由配置。"""
         if self.model_router:
             try:
                 return await self.model_router.resolve_routing(task_type, user_id)
@@ -162,7 +161,7 @@ class LlmRouter:
         if not credential:
             raise ValueError("Credential not found for requested provider")
 
-        # Apply provider prefix for correct LiteLLM routing
+        # 加 provider 前缀，确保 LiteLLM 路由正确
         prefixed_model = self._prefix_model_for_litellm(model.model_id, credential.api_type)
 
         return LlmRouter._ResolvedRoute(
@@ -175,9 +174,8 @@ class LlmRouter:
             api_key=credential.api_key,
             api_base=credential.base_url,
             temperature=0.7,
-            # User-picked model still must inherit the task's hard ceiling so
-            # an admin "test this model" click can't accidentally trigger an
-            # unbounded 8K-token generation.
+            # 用户手动指定的模型仍需继承任务的硬上限，避免管理员点
+            # “测试该模型”时不慎触发无上限的 8K-token 生成。
             max_tokens=_TASK_DEFAULT_MAX_TOKENS.get(model_alias or ""),
             prompt_template=None,
             override=True,
@@ -196,7 +194,7 @@ class LlmRouter:
 
         routing = await self._get_routing(model_alias, user_id)
         if routing:
-            # Apply provider prefix for correct LiteLLM routing
+            # 加 provider 前缀，确保 LiteLLM 路由正确
             prefixed_model = self._prefix_model_for_litellm(
                 routing.model.model_id, routing.credential.api_type
             )
@@ -272,19 +270,18 @@ class LlmRouter:
         return resolved.model
 
     def _render_prompt(self, template: str | None, default_template: str, **kwargs) -> str:
-        """Render prompt template with provided variables.
+        """用给定变量渲染 prompt 模板。
 
-        The legacy implementation used :pymeth:`str.format` directly, which is
-        fragile: any literal ``{`` / ``}`` in user content (code snippets, JSON,
-        LaTeX, etc.) would raise ``KeyError`` / ``IndexError`` and the call
-        would fall through to a lossy concatenation fallback. This safe
-        renderer instead substitutes only the known placeholder keys and leaves
-        every other brace untouched, so user content passes through verbatim.
+        旧实现直接调用 :pymeth:`str.format`，非常脆弱：用户内容里任何字面
+        ``{`` / ``}``（代码片段、JSON、LaTeX 等）都会抛出 ``KeyError`` /
+        ``IndexError``，让调用退化到有损的拼接回退。此处的安全渲染器只
+        替换已知的占位符 key，其它所有花括号原样保留，使用户内容能逐字
+        通过。
         """
         tpl = template or default_template
         try:
             return self._safe_format(tpl, kwargs)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - 防御性
             logger.error(
                 "llm_router.prompt_render_failed",
                 extra={"data": {"error": str(exc), "error_type": type(exc).__name__, "template": tpl[:120] if tpl else ""}},
@@ -293,11 +290,11 @@ class LlmRouter:
 
     @staticmethod
     def _safe_format(template: str, variables: dict[str, Any]) -> str:
-        """Token-based template substitution.
+        """基于 token 的模板替换。
 
-        Only replaces ``{name}`` tokens whose ``name`` is a known key in
-        ``variables``. All other braces (including code blocks containing
-        ``{}``, f-string-style literals, JSON payloads, etc.) are preserved.
+        只替换 ``{name}`` 形式的 token，且 ``name`` 必须是 ``variables`` 中
+        的已知 key。其它所有花括号（包括包含 ``{}`` 的代码块、f-string
+        样式字面量、JSON 负载等）都保持原样。
         """
         if not template:
             return ""
@@ -310,21 +307,20 @@ class LlmRouter:
         while i < length:
             ch = template[i]
             if ch == "{":
-                # Find matching closing brace, bail out if missing
+                # 找到配对的右花括号，找不到则保留余下原文退出
                 end = template.find("}", i + 1)
                 if end == -1:
                     result.append(template[i:])
                     break
                 token = template[i + 1 : end]
-                # Only substitute single identifier tokens we know about.
-                # Everything else (format specs, nested dicts, literal content
-                # that happens to contain braces) is left as-is.
+                # 只替换我们已知的单 identifier token。其它内容（format
+                # 描述符、嵌套字典、恰好包含花括号的字面文本）一律保持原样。
                 if token and token.isidentifier() and token in variables:
                     value = variables.get(token)
                     result.append("" if value is None else str(value))
                     i = end + 1
                     continue
-                # Unknown token — keep the literal text verbatim
+                # 未知 token —— 字面保留原文
                 result.append(template[i : end + 1])
                 i = end + 1
             else:
@@ -342,36 +338,31 @@ class LlmRouter:
         prompt_template: str | None,
         normalized_variables: dict[str, Any],
     ) -> list[dict[str, str]]:
-        """Construct the (system, user) message pair from a prompt template.
+        """根据 prompt 模板构造 (system, user) 双消息对。
 
-        The legacy implementation rendered the *entire* template into the
-        system role with ``content`` excluded from the variable dict. Result:
-        any literal ``{content}`` placeholder in the template was preserved
-        verbatim in the system message, so the model literally received
-        ``"...for the article below: {content}"`` followed by an empty user
-        message — which it interpreted as "please write something about
-        ``{content}``", explaining the multi-thousand-character "Q&A style"
-        outputs reported by users.
+        旧实现把 *整段* 模板都渲染进 system 角色，并把 ``content`` 从变量
+        字典中剔除。结果：模板里的字面 ``{content}`` 占位符会在 system
+        消息中被原样保留，模型实际收到的是
+        ``"...for the article below: {content}"`` 加一条空 user 消息 ——
+        它会解读为“请围绕 ``{content}`` 写点什么”，从而生成数千字“问答
+        体”输出，正是用户反馈的典型症状。
 
-        This rebuilt version splits the template at ``{content}``: anything
-        before the marker becomes the system instruction (with all *other*
-        placeholders rendered), and the actual content moves to the user
-        message. Trailing template text after ``{content}`` (closing
-        instructions, output schema reminders, etc.) is appended to the
-        system instruction so the model still sees it.
+        重构后的版本以 ``{content}`` 为分割点：标记之前的内容（已渲染
+        其它占位符）作为 system 指令，真正的内容则放进 user 消息。
+        ``{content}`` 之后的尾部模板文本（结尾指令、输出 schema 提示等）
+        会追加到 system 指令中，确保模型仍能看到。
         """
-        # No template at all — single user message containing the content.
+        # 完全没有模板 —— 单条 user 消息，内容即用户文本。
         if not prompt_template:
             user_text = str(normalized_variables.get("content", ""))
             return [{"role": "user", "content": user_text}]
 
-        # Template doesn't reference ``{content}``: treat the whole template
-        # as a self-contained system instruction and put the actual content
-        # in a separate user message. Without this branch, an admin-authored
-        # custom prompt that just says "你是专业摘要助手, 请直接输出摘要"
-        # (no placeholder) would silently drop ``normalized_variables['content']``
-        # and the model would have nothing to summarise — gemini-code-assist
-        # caught this on the original draft of #517.
+        # 模板不包含 ``{content}``：把整段模板当作自包含的 system 指令，
+        # 把真正的 content 放到独立的 user 消息中。没有这个分支，管理员
+        # 写的形如“你是专业摘要助手，请直接输出摘要”（不带占位符）的
+        # 自定义 prompt 会静默丢弃 ``normalized_variables['content']``，
+        # 模型就没有可以总结的素材 —— gemini-code-assist 在 #517 初稿
+        # 中点出了这个问题。
         if "content" not in normalized_variables or "{content}" not in prompt_template:
             rendered_system = self._safe_format(prompt_template, normalized_variables).strip()
             user_text = str(normalized_variables.get("content", ""))
@@ -395,16 +386,15 @@ class LlmRouter:
         ]
 
     async def _guard_api_base(self, api_base: str | None) -> None:
-        """Reject SSRF attempts via admin-controlled ``api_base``.
+        """拦截通过管理员可控的 ``api_base`` 发起的 SSRF。
 
-        SECURITY (VULN-057): every LiteLLM ``acompletion`` / ``aembedding``
-        call must run this guard before hitting the network. A compromised /
-        coerced admin account would otherwise be able to point ``base_url`` at
-        AWS IMDS or an internal service and exfiltrate via side-channel
-        (response body, error message timing).
+        SECURITY (VULN-057)：每次 LiteLLM ``acompletion`` / ``aembedding``
+        调用进入网络前都必须跑这层守卫。一旦管理员账号被攻破或被胁迫，
+        否则可以把 ``base_url`` 指向 AWS IMDS 或内部服务，借助响应正文
+        / 错误时延等侧信道实施信息外泄。
 
-        Empty / None values are allowed (means "use LiteLLM's built-in
-        default", which is itself a public endpoint).
+        空 / None 视为允许（意味着使用 LiteLLM 内置默认值，这本身就是
+        公网端点）。
         """
         if not api_base:
             return
@@ -423,7 +413,7 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
     ) -> str:
-        """Send a chat completion request with dynamic prompt rendering."""
+        """发起一次 chat completion 调用，并根据需要渲染 prompt 模板。"""
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
@@ -439,7 +429,7 @@ class LlmRouter:
 
         messages = self._build_messages(prompt_template, normalized_variables)
 
-        # SECURITY (VULN-057): reject SSRF at the admin-controlled api_base.
+        # SECURITY (VULN-057)：在管理员可控的 api_base 处拒止 SSRF。
         await self._guard_api_base(resolved.api_base)
         try:
             response = await acompletion(
@@ -453,7 +443,7 @@ class LlmRouter:
             content = response.choices[0].message.content
             return content or ""
         except Exception as e:
-            # Try fallback model if available
+            # 尝试 fallback 模型（若已配置）
             if self.model_router:
                 routing = await self._get_routing(model_alias, user_id)
             else:
@@ -466,7 +456,7 @@ class LlmRouter:
                         fallback_routing.model.model_id,
                         fallback_routing.credential.api_type,
                     )
-                    # SECURITY (VULN-057): guard fallback api_base too.
+                    # SECURITY (VULN-057)：fallback 的 api_base 同样要经过守卫。
                     await self._guard_api_base(fallback_routing.credential.base_url)
                     response = await acompletion(
                         model=fallback_model,
@@ -480,12 +470,12 @@ class LlmRouter:
             raise
 
     async def _get_routing_for_fallback(self, original: "RoutingConfig") -> "RoutingConfig | None":
-        """Get credential for fallback model."""
+        """获取 fallback 模型对应的凭证。"""
         if not original.fallback_model or not self.model_router:
             return None
-        
-        
-        # Get credential for fallback provider
+
+
+        # 取 fallback provider 的凭证
         cred = await self.model_router.credential_resolver.get_credential(
             original.fallback_model.provider_code
         )
@@ -509,7 +499,7 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream chat completion response with dynamic prompt rendering."""
+        """流式返回 chat completion 响应，支持动态 prompt 渲染。"""
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
@@ -527,7 +517,7 @@ class LlmRouter:
                 await asyncio.sleep(0)
             return
 
-        # SECURITY (VULN-057): stream path also needs base_url validation.
+        # SECURITY (VULN-057)：流式路径同样需要校验 base_url。
         await self._guard_api_base(resolved.api_base)
         stream = await acompletion(
             model=resolved.model,
@@ -545,14 +535,13 @@ class LlmRouter:
                 yield content
 
     async def resolve_embedding_model_id(self, user_id: int | None = None) -> str:
-        """Return the bare ``model_id`` that will be used for ``embed()``.
+        """返回 ``embed()`` 实际会使用的纯 ``model_id``。
 
-        Used by callers (vector_store, search routes) that need to **persist**
-        or **log** the model name actually routed to — e.g. ``post_embeddings.model_id``
-        and the ``reindex()`` "model changed → deprecate stale rows" check. Those
-        sites used to hardcode ``settings.model_embedding`` (the env default),
-        which silently diverged from the real model whenever the admin changed
-        the embedding routing in the Search Config UI.
+        被需要 **持久化** 或 **记录** 真实路由模型名的调用方使用（例如
+        vector_store、search 路由）—— 比如写入 ``post_embeddings.model_id``、
+        以及 ``reindex()`` 的“模型变更 → 弃用旧行”判断。这些位置过去硬
+        编码 ``settings.model_embedding``（环境默认值），一旦管理员在
+        Search Config UI 改了 embedding 路由就会与真实模型悄悄背离。
         """
         routing = await self._get_routing("embedding", user_id)
         if routing and routing.model and routing.model.model_id:
@@ -566,11 +555,11 @@ class LlmRouter:
         user_id: int | None = None,
         timeout_sec: int | None = None,
     ) -> list[float]:
-        """Generate embedding for text."""
+        """为文本生成 embedding 向量。"""
         routing = await self._get_routing("embedding", user_id)
 
         if routing:
-            # Apply provider prefix for correct LiteLLM routing (same as chat/stream_chat)
+            # 加 provider 前缀，确保 LiteLLM 路由正确（与 chat/stream_chat 一致）
             model = self._prefix_model_for_litellm(
                 routing.model.model_id, routing.credential.api_type
             )
@@ -611,7 +600,7 @@ class LlmRouter:
             repeats = dim // len(seed) + 1
             return (seed * repeats)[:dim]
 
-        # SECURITY (VULN-057): embedding calls must also validate api_base.
+        # SECURITY (VULN-057)：embedding 调用也必须校验 api_base。
         await self._guard_api_base(api_base)
         start = time.perf_counter()
         try:
@@ -652,22 +641,20 @@ class LlmRouter:
         )
         return embedding
 
-    # Reasoning-trace tag detection.
+    # 推理轨迹（reasoning trace）标签识别。
     #
-    # Different providers/models wrap their chain-of-thought in different
-    # tags. The legacy detector only knew about ``<think>``; a Qwen / R1
-    # variant emitting ``<thinking>`` or a custom-prompted ``<reasoning>``
-    # block would slip past the filter and the trace would be rendered as
-    # if it were the answer (the "千字问答" symptom on streaming endpoints).
+    # 不同 provider / 模型用不同标签包裹其 chain-of-thought。旧检测器
+    # 只识别 ``<think>``；Qwen / R1 变体发出 ``<thinking>``、或自定义
+    # prompt 下的 ``<reasoning>`` 段落都能绕过过滤器，把推理轨迹当作
+    # 答案输出（流式端点上典型的“千字问答”症状）。
     #
-    # Tag set is intentionally small — these are the standard reasoning
-    # wrappers in current public models. Whitespace inside the tag and
-    # case variations (``<Think>``, ``<THINK>``) are tolerated.
+    # 这里有意保持精简的标签集合 —— 它们是当前公开模型中标准的推理
+    # 包裹标签。容忍标签内空白与大小写变体（``<Think>``、``<THINK>``）。
     _THINK_OPEN_RE = re.compile(r"<\s*(think|thinking|reasoning)\s*>", re.IGNORECASE)
     _THINK_CLOSE_RE = re.compile(r"<\s*/\s*(think|thinking|reasoning)\s*>", re.IGNORECASE)
-    # Longest possible close tag (``</thinking>`` / ``</reasoning>`` plus
-    # internal whitespace). We keep this many trailing chars in the buffer
-    # so a tag can't be split across yields.
+    # 最长可能的关闭标签（``</thinking>`` / ``</reasoning>`` 再加上
+    # 标签内空白）。我们在 buffer 末尾保留这么多字符，避免单个标签
+    # 被切断在两次 yield 之间。
     _THINK_TAG_GUARD = len("</reasoning >") + 4
 
     async def stream_chat_with_think_detection(
@@ -679,9 +666,9 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """Stream chat completion with reasoning-trace block detection.
+        """流式 chat completion，附带推理轨迹（reasoning-trace）标签检测。
 
-        Yields events in format:
+        Yields 事件格式：
         - {"type": "delta", "content": "...", "isThink": False}
         - {"type": "delta", "content": "...", "isThink": True}
         - {"type": "done"}
@@ -700,8 +687,8 @@ class LlmRouter:
         ):
             buffer += chunk
 
-            # Process buffer incrementally, leaving ``guard`` chars in case a
-            # tag is split across the stream boundary.
+            # 增量处理 buffer，在末尾保留 ``guard`` 个字符，以防某个
+            # 标签恰好横跨两次流块边界被切断。
             while len(buffer) > guard:
                 pattern = self._THINK_CLOSE_RE if in_think else self._THINK_OPEN_RE
                 match = pattern.search(buffer)
@@ -713,24 +700,21 @@ class LlmRouter:
                     in_think = not in_think
                     continue
                 if match is None:
-                    # No tag in sight — yield everything except the trailing
-                    # guard so a tag arriving in the next chunk can still be
-                    # caught.
+                    # 暂无标签 —— 把除尾部 guard 区以外的内容全部 yield，
+                    # 让下一个 chunk 中可能出现的标签仍有机会被捕获。
                     safe_len = len(buffer) - guard
                     if safe_len > 0:
                         yield {"type": "delta", "content": buffer[:safe_len], "isThink": in_think}
                         buffer = buffer[safe_len:]
-                # Either no match, or match too close to end; wait for more.
+                # 要么没匹配到，要么匹配位置离末尾太近；等待更多数据。
                 break
 
-        # Final flush: drain whatever survived the trailing ``guard`` window
-        # through the same tag-detection logic as the main loop. The simpler
-        # "yield buffer as-is" form leaks any complete tag that happened to
-        # land in the last ``guard`` chars (e.g. an entire ``<think>`` opener
-        # at end-of-stream) — gemini-code-assist flagged this on #517. We
-        # keep iterating until either no more tags appear or the buffer is
-        # empty so that even multi-tag remnants like ``"<think>x</think>y"``
-        # are handled correctly.
+        # 最终冲刷：让落在尾部 ``guard`` 窗口内的内容也走一遍与主循环
+        # 相同的标签检测逻辑。仅仅“原样 yield 剩余 buffer”会泄漏恰好
+        # 落在最后 ``guard`` 区里的完整标签（例如流末尾的整个 ``<think>``
+        # 起始标签）—— gemini-code-assist 在 #517 中点出了这一点。
+        # 这里持续迭代，直到没有更多标签或 buffer 为空，确保
+        # ``"<think>x</think>y"`` 这类多标签残段也能被正确处理。
         while buffer:
             pattern = self._THINK_CLOSE_RE if in_think else self._THINK_OPEN_RE
             match = pattern.search(buffer)

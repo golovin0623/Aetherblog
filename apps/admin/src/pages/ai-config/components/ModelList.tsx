@@ -51,10 +51,9 @@ export default function ModelList({
   variant: _variant = 'default',
 }: ModelListProps) {
   const [activeTab, setActiveTab] = useState<ModelType | 'all'>('all');
-  // Seed the search input from the deep-link `initialSearch` only on first
-  // mount. Subsequent remounts (e.g. mobile tab switcher unmounting this
-  // component) must start clean — otherwise a stale filter re-applies and
-  // the list looks empty.
+  // 仅在首次挂载时用深链参数 `initialSearch` 初始化搜索框。
+  // 后续重新挂载（例如移动端 tab 切换卸载该组件）必须从空开始 ——
+  // 否则陈旧的过滤条件会被重新应用，导致列表看起来为空。
   const [search, setSearch] = useState(initialSearch ?? '');
   const seededRef = useRef(!!initialSearch);
   const [editingModel, setEditingModel] = useState<AiModel | null>(null);

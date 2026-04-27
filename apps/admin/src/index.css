@@ -237,7 +237,7 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Form Elements Base Styles - Ensures theme variables override browser defaults */
+/* 表单元素基础样式 —— 确保主题变量覆盖浏览器默认样式 */
 input,
 textarea,
 select {
@@ -258,7 +258,7 @@ input[type="time"] {
   color: var(--text-primary);
 }
 
-/* Fix for webkit datetime picker icons in light mode */
+/* 修复亮色模式下 webkit 日期时间选择器图标显示 */
 input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: none;
@@ -269,7 +269,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
 }
 
-/* Select dropdown arrow styling */
+/* select 下拉箭头样式 */
 select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
@@ -279,7 +279,7 @@ select {
   padding-right: 2.5rem;
 }
 
-/* Small select variants to prevent arrow overlap on mobile/compact views */
+/* 小尺寸 select 变体 —— 防止移动端/紧凑视图下箭头与文字重叠 */
 select.select-mini {
   padding-left: 0.625rem;
   padding-right: 1.25rem;
@@ -287,7 +287,7 @@ select.select-mini {
   background-size: 1em 1em;
 }
 
-/* Focus states */
+/* 聚焦态样式 */
 input:focus,
 textarea:focus,
 select:focus {
@@ -358,13 +358,13 @@ select:focus {
 
 
 
-/* 精细滚动条 (Apple-like) */
-/* Hide scrollbar for Chrome, Safari and Opera */
+/* 精细滚动条 (Apple 风格) */
+/* 隐藏 Chrome、Safari、Opera 的滚动条 */
 .no-scrollbar::-webkit-scrollbar {
   display: none !important;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
+/* 隐藏 IE、Edge、Firefox 的滚动条 */
 .no-scrollbar {
   -ms-overflow-style: none !important;  /* IE and Edge */
   scrollbar-width: none !important;  /* Firefox */
@@ -388,7 +388,7 @@ select:focus {
   background: var(--scrollbar-thumb-hover);
 }
 
-/* Shimmer loading animation */
+/* Shimmer 闪烁加载动画 */
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
@@ -398,7 +398,7 @@ select:focus {
   }
 }
 
-/* Shimmer utility class for easier reuse */
+/* 便于复用的 Shimmer 工具类 */
 .shimmer-effect {
   position: absolute;
   inset: 0;
@@ -413,7 +413,7 @@ select:focus {
   pointer-events: none;
 }
 
-/* Breathing light animation for model selection hint */
+/* 模型选择提示用的呼吸光晕动画 */
 @keyframes breathing-light {
   0%, 100% {
     border-color: var(--border-default);
@@ -477,12 +477,12 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
   }
 }
 
-/* Exclude backdrop overlays from View Transition to prevent blur flickering during theme switch */
+/* 将 backdrop 遮罩排除出 View Transition —— 避免主题切换时模糊层闪烁 */
 .backdrop-exclude-transition {
   view-transition-name: none !important;
 }
 
-/* Auto-exclude common backdrop patterns from View Transition */
+/* 自动将常见 backdrop 模式排除出 View Transition */
 [class*="backdrop-blur"] {
   view-transition-name: none;
 }

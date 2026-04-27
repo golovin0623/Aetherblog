@@ -19,42 +19,42 @@ interface AboutClientProps {
 export default function AboutClient({ settings, stats }: AboutClientProps) {
   return (
     <main className="relative">
-      {/* S1: Hero - deep */}
+      {/* S1：Hero - 深色 */}
       <ScrollSection className="bg-[var(--bg-void)]" id="hero">
         {(isVisible: boolean) => <HeroSection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S2: Design Philosophy - light */}
+      {/* S2：设计理念 - 浅色 */}
       <ScrollSection className="bg-[var(--bg-substrate)]" id="design">
         {(isVisible: boolean) => <DesignSection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S3: AI Copilot - deep */}
+      {/* S3：AI 协作 - 深色 */}
       <ScrollSection className="bg-[var(--bg-void)]" id="ai">
         {(isVisible: boolean) => <AiSection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S4: Semantic Search - light */}
+      {/* S4：语义搜索 - 浅色 */}
       <ScrollSection className="bg-[var(--bg-substrate)]" id="search">
         {(isVisible: boolean) => <SearchSection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S5: Editor - deep */}
+      {/* S5：编辑器 - 深色 */}
       <ScrollSection className="bg-[var(--bg-void)]" id="editor">
         {(isVisible: boolean) => <EditorSection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S6: Tech Stack - light */}
+      {/* S6：技术栈 - 浅色 */}
       <ScrollSection className="bg-[var(--bg-substrate)]" id="tech">
         {(isVisible: boolean) => <TechStackSection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S7: Security - deep */}
+      {/* S7：安全 - 深色 */}
       <ScrollSection className="bg-[var(--bg-void)]" id="security">
         {(isVisible: boolean) => <SecuritySection isVisible={isVisible} />}
       </ScrollSection>
 
-      {/* S8: Author + CTA - light */}
+      {/* S8：作者 + CTA - 浅色 */}
       <ScrollSection className="bg-[var(--bg-substrate)]" id="author">
         {(isVisible: boolean) => (
           <AuthorCTASection isVisible={isVisible} settings={settings} stats={stats} />

@@ -1,13 +1,13 @@
 -- ============================================================
--- AetherBlog Complete Schema
+-- AetherBlog 完整 Schema
 -- ============================================================
 -- Flyway Migration: V1__init_schema.sql
--- Author: AetherBlog Team
--- Date: 2026-01-06
--- Description: 完整的企业级数据库架构，与设计文档 §2.5 完全对齐
+-- 作者：AetherBlog 团队
+-- 日期：2026-01-06
+-- 说明：完整的企业级数据库架构，与设计文档 §2.5 完全对齐
 -- ============================================================
 
--- Enable extensions
+-- 启用扩展
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS tags (
 CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
 CREATE INDEX IF NOT EXISTS idx_tags_post_count ON tags(post_count DESC);
 
--- 文章表 (核心表)
+-- 文章表（核心表）
 CREATE TABLE IF NOT EXISTS posts (
     id BIGSERIAL PRIMARY KEY,
     title VARCHAR(200) NOT NULL,
@@ -347,7 +347,7 @@ CREATE INDEX IF NOT EXISTS idx_media_files_uploader ON media_files(uploader_id);
 CREATE INDEX IF NOT EXISTS idx_media_files_type ON media_files(file_type);
 CREATE INDEX IF NOT EXISTS idx_media_files_created ON media_files(created_at DESC);
 
--- 附件表 (文章附件/下载)
+-- 附件表（文章附件/下载）
 CREATE TABLE IF NOT EXISTS attachments (
     id BIGSERIAL PRIMARY KEY,
     post_id BIGINT REFERENCES posts(id) ON DELETE SET NULL,
@@ -449,5 +449,5 @@ GROUP BY year, month
 ORDER BY year DESC, month DESC;
 
 -- ============================================================
--- End of Schema
+-- Schema 结束
 -- ============================================================

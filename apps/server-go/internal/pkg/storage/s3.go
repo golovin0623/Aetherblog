@@ -42,8 +42,8 @@ func validateEndpoint(raw string) error {
 			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
 			return true
 		}
-		// 169.254.169.254 is covered by IsLinkLocalUnicast; explicitly also block
-		// the IPv4-mapped form of loopback and AWS IMDSv2 edge cases.
+		// 169.254.169.254 已由 IsLinkLocalUnicast 覆盖；这里再显式阻断
+		// IPv4 映射的 loopback 形式与 AWS IMDSv2 的边缘场景。
 		if ip.Equal(net.IPv4bcast) || ip.Equal(net.ParseIP("169.254.169.254")) {
 			return true
 		}

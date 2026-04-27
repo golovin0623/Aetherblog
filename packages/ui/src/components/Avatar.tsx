@@ -9,10 +9,10 @@ interface AvatarProps {
   className?: string;
 }
 
-// SECURITY (VULN-084): reject avatars that point at dangerous URL schemes.
-// `javascript:` / `vbscript:` load as document context; `data:image/svg+xml`
-// can carry inline scripts. Only allow http(s) absolute URLs, same-origin
-// relative paths, or non-SVG data: URIs.
+// 安全（VULN-084）：拒绝指向危险 URL 协议的头像。
+// `javascript:` / `vbscript:` 会以文档上下文加载；`data:image/svg+xml`
+// 可能携带内联脚本。仅允许 http(s) 绝对 URL、同源
+// 相对路径，或非 SVG 的 data: URI。
 function isSafeAvatarSrc(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();

@@ -126,10 +126,10 @@ export default function BlogHeader() {
 
   const [isVisible, setIsVisible] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  // Optimization: Use useRef for scroll position to avoid re-renders and listener thrashing
+  // 优化：使用 useRef 保存滚动位置，避免重渲染与监听器抖动
   const lastScrollYRef = useRef(0);
 
-  // Stable handlers for search panel using useCallback
+  // 使用 useCallback 为搜索面板提供稳定的回调
   const openSearchPanel = useCallback(() => {
     setIsSearchOpen(true);
   }, []);
@@ -147,7 +147,7 @@ export default function BlogHeader() {
         setIsSearchOpen((prev) => !prev);
       }
 
-      // / 键打开搜索 (如果不是在输入框中)
+      // / 键打开搜索（前提是不在输入框中）
       if (e.key === '/' && !isSearchOpen) {
         const target = e.target as HTMLElement;
         const isTyping =
@@ -213,7 +213,7 @@ export default function BlogHeader() {
     };
   }, [isArticleDetail]);
 
-  // 包装 updateMousePosition：額外处理文章详情页的 hovering 状态
+  // 包装 updateMousePosition：额外处理文章详情页的 hovering 状态
   const wrappedUpdateMousePosition = useCallback((e: React.MouseEvent<HTMLElement>) => {
     updateMousePosition(e);
     if (isArticleDetail) {
@@ -221,14 +221,14 @@ export default function BlogHeader() {
     }
   }, [updateMousePosition, isArticleDetail, setIsHovering]);
 
-  // Use a ref to store the rAF ID to throttle the global mouse move listener
+  // 使用 ref 保存 rAF ID，用于对全局鼠标移动监听做节流
   const globalMouseMoveRafRef = useRef<number | null>(null);
 
   // 全局鼠标监听 - 用于触发显示和重置状态
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
     if (!isArticleDetail) return;
 
-    // Extracted synchronously before rAF
+    // 在进入 rAF 前同步取值
     const clientY = e.clientY;
 
     if (globalMouseMoveRafRef.current === null) {
@@ -308,7 +308,7 @@ export default function BlogHeader() {
           data-testid="blog-header-spotlight"
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            // background is managed by updateMousePosition via ref
+            // background 通过 ref 由 updateMousePosition 管理
             opacity: isHovering || !isArticleDetail ? 'var(--spotlight-opacity)' : 0,
           }}
         />

@@ -218,7 +218,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                 />
 
-                {/* Bottom Sheet 面板 */}
+                {/* 底部抽屉面板 */}
                 <motion.div
                   id="mobile-toc-drawer"
                   initial={{ y: '100%' }}
@@ -227,7 +227,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                   transition={{ type: 'spring', damping: 28, stiffness: 300 }}
                   className="absolute bottom-0 left-0 right-0 max-h-[66vh] bg-[var(--bg-primary)] border-t border-[var(--border-subtle)] rounded-t-3xl shadow-2xl p-6 overflow-hidden flex flex-col"
                 >
-                  {/* Drag Handle */}
+                  {/* 拖动条 */}
                   <div className="flex justify-center mb-4">
                     <div className="w-10 h-1 rounded-full bg-[var(--text-muted)]/30" />
                   </div>

@@ -1,14 +1,14 @@
 -- ============================================================
--- Backfill AI providers/models full builtin seed
+-- 回填 AI providers/models 内置全量种子
 -- 目标：生产环境补齐缺失的默认供应商与模型配置
 -- 说明：复用 V2_11 的 providers + models 全量种子；仅补缺，不覆盖现有数据
 -- 幂等：ON CONFLICT DO NOTHING
 -- ============================================================
 
--- Compatibility guard:
--- Some legacy environments carry an older/incompatible api_type check constraint
--- (e.g. does not allow 'azure'). Normalize legacy alias and recreate constraint
--- before bulk provider seed to avoid Flyway startup failure.
+-- 兼容性守卫：
+-- 某些旧环境仍带有过期/不兼容的 api_type check constraint
+-- （例如不允许 'azure'）。在批量写入 provider 种子之前，先归一化旧别名
+-- 并重建 constraint，避免 Flyway 启动失败。
 DO $$
 BEGIN
     IF EXISTS (
@@ -40,7 +40,7 @@ BEGIN
     END IF;
 END $$;
 
--- Part 1: Providers (full seed from V2_11)
+-- 第 1 部分：Providers（来自 V2_11 的全量种子）
 INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url, capabilities, priority) VALUES
     ('openai', 'OpenAI', 'OpenAI', 'openai_compat', 'https://api.openai.com/v1', 'https://platform.openai.com/docs/models', '{"source": "builtin", "description": "OpenAI 是全球领先的人工智能研究机构，其开发的模型如GPT系列推动了自然语言处理的前沿。OpenAI 致力于通过创新和高效的AI解决方案改变多个行业。他们的产品具有显著的性能和经济性，广泛用于研究、商业和创新应用。", "apiKeyUrl": "https://platform.openai.com/api-keys?utm_source=lobehub", "modelsUrl": "https://platform.openai.com/docs/models", "url": "https://openai.com", "settings": {"responseAnimation": "smooth", "showModelFetcher": true, "supportResponsesApi": true}, "checkModel": "gpt-5-nano"}', 1000),
     ('azure', 'Azure OpenAI', 'Azure OpenAI', 'azure', NULL, 'https://learn.microsoft.com/azure/ai-services/openai/concepts/models', '{"source": "builtin", "description": "Azure 提供多种先进的AI模型，包括GPT-3.5和最新的GPT-4系列，支持多种数据类型和复杂任务，致力于安全、可靠和可持续的AI解决方案。", "modelsUrl": "https://learn.microsoft.com/azure/ai-services/openai/concepts/models", "url": "https://azure.microsoft.com", "settings": {"defaultShowBrowserRequest": true, "sdkType": "azure", "showDeployName": true}}', 999),
@@ -112,7 +112,7 @@ INSERT INTO ai_providers (code, name, display_name, api_type, base_url, doc_url,
     ('openai_compat', 'OpenAI Compatible', '兼容接口', 'openai_compat', NULL, NULL, '{"chat": true, "embedding": true}', 10)
 ON CONFLICT (code) DO NOTHING;
 
--- Part 2: Models (full seed from V2_11)
+-- 第 2 部分：Models（来自 V2_11 的全量种子）
 INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_window, max_output_tokens, input_cost_per_1k, output_cost_per_1k, capabilities, is_enabled) VALUES
     -- ai21
     ((SELECT id FROM ai_providers WHERE code = 'ai21'), 'jamba-mini', 'Jamba Mini', 'chat', 256000, NULL, 0.0002, 0.0004, '{"abilities": {"functionCall": true}, "pricing": {"units": [{"name": "textInput", "rate": 0.2, "strategy": "fixed", "unit": "millionTokens"}, {"name": "textOutput", "rate": 0.4, "strategy": "fixed", "unit": "millionTokens"}]}, "released_at": "2025-03-06", "source": "builtin", "maxToken": 256000, "contextWindowTokens": 256000, "description": "在同级别中最高效的模型，兼顾速度与质量，具备更小的体积。", "function_calling": true}', TRUE),
@@ -1783,5 +1783,5 @@ INSERT INTO ai_models (provider_id, model_id, display_name, model_type, context_
 ON CONFLICT (provider_id, model_id) DO NOTHING;
 
 -- ============================================================
--- End of Migration
+-- migration 结束
 -- ============================================================

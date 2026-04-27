@@ -1,14 +1,13 @@
-"""Regression test for fix/search-status-column-2026-04-19.
+"""fix/search-status-column-2026-04-19 的回归测试。
 
-/api/v1/admin/search/stats used to return 500 whenever the versioned
-post_embeddings schema (migration 000034) was marked applied but the
-actual table still carried the legacy 000001 chunk-shape columns — the
-sub-select ``SELECT COUNT(*) FROM post_embeddings WHERE status = 'active'``
-would raise UndefinedColumnError, blow up the admin search panel, and send
-React Query into a tight retry loop. The handler now traps
-UndefinedColumnError/UndefinedTableError and returns ``vector_count = 0``
-with ``schema_ready: false`` so the panel stays usable while 000036 waits
-for the next migration pass.
+历史上 /api/v1/admin/search/stats 会在以下情况返回 500：版本化的
+post_embeddings schema（migration 000034）被标记为已应用，但实际表
+仍保留 000001 chunk 形态的列 —— 子查询
+``SELECT COUNT(*) FROM post_embeddings WHERE status = 'active'`` 会
+抛出 UndefinedColumnError，让管理后台搜索面板炸开，并把 React Query
+拖入快速重试循环。修复后的 handler 现在会捕获 UndefinedColumnError /
+UndefinedTableError，返回 ``vector_count = 0`` 与
+``schema_ready: false``，从而让面板在等待 000036 下一波迁移时仍然可用。
 """
 from __future__ import annotations
 
@@ -103,7 +102,7 @@ def test_index_stats_missing_status_column_falls_back():
         data = res.json()["data"]
         assert data["vector_count"] == 0
         assert data["schema_ready"] is False
-        # post-level counts still surface so the rest of the panel works
+        # 文章级计数仍能正常返回，保证面板其他部分可用
         assert data["total_posts"] == 100
         assert data["pending_posts"] == 100
     finally:
@@ -133,9 +132,10 @@ def test_index_stats_missing_table_falls_back():
 
 
 def test_index_stats_null_post_counts_does_not_500():
-    """Defensive: 纯聚合 SELECT 应始终返回一行, 但万一 fetchrow 返回 None
-    (连接池被中断等极端情况), dict(None) 会 TypeError 把整个面板连带 500.
-    兜底到全零计数 + schema_ready=True (后者决定于 post_embeddings 查询本身).
+    """防御性：纯聚合 SELECT 理论上必返一行，但万一 fetchrow 返回 None
+    （连接池中途断开等极端情况），dict(None) 会 TypeError 把整个面板
+    带成 500。这里兜底到全零计数 + schema_ready=True
+    （后者由 post_embeddings 查询本身决定）。
     """
     class _NullCountsConn(_FakeConn):
         async def fetchrow(self, query, *args):

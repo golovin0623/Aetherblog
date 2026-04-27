@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { getSiteSettings, getSiteStats } from '@/app/lib/services';
 import AboutClient from './AboutClient';
 
-export const revalidate = 600; // 10 min ISR, aligned with getSiteStats cache
+export const revalidate = 600; // 10 分钟 ISR，与 getSiteStats cache 对齐
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();

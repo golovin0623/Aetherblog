@@ -48,7 +48,7 @@ const MODE_META: Record<SearchMode, { label: string; hint: string }> = {
   ai:      { label: 'ASK',     hint: 'AI 问答(? 前缀)' },
 };
 
-/** Format ISO timestamp to YYYY-MM-DD (UTC to avoid timezone day shift) */
+/** 将 ISO 时间戳格式化为 YYYY-MM-DD（按 UTC，避免时区跨日偏移） */
 function formatDate(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);

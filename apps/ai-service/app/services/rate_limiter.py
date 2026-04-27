@@ -18,16 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 def classify_redis_error(exc: Exception) -> str:
-    """Map a raw Redis exception to a short, operator-friendly category.
+    """将 Redis 原始异常映射为简短、运维友好的分类标签。
 
-    Shows up in the structured log so an on-call engineer can tell at a glance
-    whether the limiter is tripping on AUTH (config drift), network (infra), or
-    a Redis-side error response (e.g. LOADING, BUSY, OOM).
+    标签会出现在结构化日志中，让 on-call 工程师一眼判断限流器是因为
+    AUTH（配置漂移）、网络（基础设施）还是 Redis 服务端错误响应
+    （例如 LOADING、BUSY、OOM）而失败。
     """
     if isinstance(exc, AuthenticationError):
         return "auth"
-    # redis-py raises plain ResponseError for NOAUTH / WRONGPASS when AUTH is not
-    # negotiated ahead of the command; classify those before the generic bucket.
+    # 当命令前没有完成 AUTH 协商时，redis-py 会以普通 ResponseError 抛出
+    # NOAUTH / WRONGPASS；要先于通用兜底分类把这些识别出来。
     if isinstance(exc, ResponseError):
         msg = str(exc).upper()
         if "NOAUTH" in msg or "WRONGPASS" in msg:
@@ -39,9 +39,9 @@ def classify_redis_error(exc: Exception) -> str:
         return "connection"
     return "unknown"
 
-# Atomic rate limit script
-# KEYS[1]: rate limit key
-# ARGV[1]: window seconds
+# 原子化的限流 Lua 脚本
+# KEYS[1]：限流 key
+# ARGV[1]：窗口秒数
 LUA_SCRIPT = """
 local count = redis.call('incr', KEYS[1])
 if tonumber(count) == 1 then
@@ -58,19 +58,18 @@ class RateLimiter:
 
     async def _check(self, key: str, limit: int, window_seconds: int) -> bool:
         try:
-            # Use Lua script for atomic increment-and-expire
-            # keys=[key], args=[window_seconds]
+            # 使用 Lua 脚本原子化地完成 incr 与 expire
+            # keys=[key]，args=[window_seconds]
             current = await self.redis.eval(LUA_SCRIPT, 1, key, str(window_seconds))
             return int(current) <= limit
-        except Exception as exc:  # pragma: no cover - defensive
-            # SECURITY (VULN-070): by default we fail CLOSED so a Redis outage
-            # cannot bypass the limiter and enable wallet-drain on LLM endpoints.
-            # Flip AI_RATE_LIMIT_FAIL_OPEN=true only when infrastructure
-            # reliability is more critical than limit enforcement.
+        except Exception as exc:  # pragma: no cover - 防御性
+            # SECURITY (VULN-070)：默认 fail CLOSED，避免 Redis 故障时限流器
+            # 被绕过，导致 LLM 端点被刷爆账单。仅在“基础设施可用性高于限流
+            # 强制力”的场景下，才将 AI_RATE_LIMIT_FAIL_OPEN=true。
             settings = get_settings()
-            # Use extra={"data": {...}} so JSONFormatter (which reads record.data)
-            # actually surfaces the error detail. The previous extra={"error": ...}
-            # shape was silently discarded, leaving only the bare event name in logs.
+            # 使用 extra={"data": {...}}，让 JSONFormatter（读取 record.data）
+            # 真正把错误细节渲染出来。先前的 extra={"error": ...} 写法会被
+            # 静默丢弃，日志里只剩裸的事件名。
             payload = {
                 "error": str(exc),
                 "error_type": type(exc).__name__,

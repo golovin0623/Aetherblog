@@ -38,7 +38,7 @@ const previewLines = [
 export default function EditorSection({ isVisible }: Props) {
   return (
     <div className="space-y-12">
-      {/* Header */}
+      {/* 头部 */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
@@ -54,7 +54,7 @@ export default function EditorSection({ isVisible }: Props) {
         </p>
       </motion.div>
 
-      {/* Chips */}
+      {/* 标签 */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={isVisible ? { opacity: 1 } : {}}
@@ -66,14 +66,14 @@ export default function EditorSection({ isVisible }: Props) {
         ))}
       </motion.div>
 
-      {/* Split editor mockup */}
+      {/* 分屏编辑器示意 */}
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
         transition={{ delay: 0.3, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
         className="surface-raised rounded-2xl border border-[var(--ink-subtle)]/20 overflow-hidden shadow-2xl"
       >
-        {/* Toolbar */}
+        {/* 工具栏 */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--ink-subtle)]/10 bg-[var(--bg-leaf)]">
           <div className="flex gap-1.5" aria-hidden="true">
             <div className="w-3 h-3 rounded-full bg-[var(--signal-danger)]/60" />
@@ -85,9 +85,9 @@ export default function EditorSection({ isVisible }: Props) {
           <span className="text-micro text-[var(--ink-muted)] font-mono uppercase tracking-wider">Split</span>
         </div>
 
-        {/* Split panes */}
+        {/* 分屏面板 */}
         <div className="grid grid-cols-1 md:grid-cols-2 divide-x divide-[var(--ink-subtle)]/10 min-h-[300px]">
-          {/* Left: Source code */}
+          {/* 左侧：源代码 */}
           <div className="p-4 font-mono text-caption leading-relaxed text-[var(--ink-secondary)] overflow-hidden">
             <motion.div
               initial="initial"
@@ -115,7 +115,7 @@ export default function EditorSection({ isVisible }: Props) {
             </motion.div>
           </div>
 
-          {/* Right: Preview */}
+          {/* 右侧：预览 */}
           <div className="p-4 space-y-2 overflow-hidden bg-[var(--bg-leaf)]">
             <motion.div
               initial="initial"

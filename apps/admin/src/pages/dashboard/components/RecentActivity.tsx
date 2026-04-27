@@ -186,7 +186,7 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
 
       <div className="flex-1 overflow-hidden">
         <div className="space-y-6 relative h-full overflow-y-auto pr-2 pl-10 pt-2">
-          {/* Vertical Line */}
+          {/* 垂直线 */}
           <div className="absolute left-[20px] top-2 bottom-2 w-px bg-[var(--border-subtle)]" />
 
           {activities.map((item) => {
@@ -194,7 +194,7 @@ export function RecentActivity({ loading: externalLoading }: RecentActivityProps
             
             return (
               <div key={item.id} className="relative">
-                {/* Timeline Dot */}
+                {/* 时间轴节点 */}
                 <div className={cn(
                   "absolute left-[-32px] top-1 w-6 h-6 rounded-full border flex items-center justify-center bg-[var(--bg-card)] backdrop-blur-sm z-10",
                   colors.bgColor,

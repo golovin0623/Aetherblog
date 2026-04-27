@@ -1,23 +1,23 @@
 -- ============================================================
--- Activity Events Table
+-- 活动事件表（Activity Events）
 -- ============================================================
 -- Flyway Migration: V2_17__activity_events.sql
--- Author: AetherBlog Team
--- Date: 2026-02-09
--- Description: 活动事件记录表，用于仪表盘"最近动态"展示
+-- 作者：AetherBlog 团队
+-- 日期：2026-02-09
+-- 说明：活动事件记录表，用于仪表盘"最近动态"展示
 -- ============================================================
 
 -- 活动事件表
 CREATE TABLE IF NOT EXISTS activity_events (
     id BIGSERIAL PRIMARY KEY,
-    event_type VARCHAR(50) NOT NULL,           -- 事件类型代码 (如 POST_PUBLISH, COMMENT_NEW)
-    event_category VARCHAR(20) NOT NULL,       -- 事件分类: post/comment/user/system/friend/media/ai
-    title VARCHAR(200) NOT NULL,               -- 事件标题 (展示用)
+    event_type VARCHAR(50) NOT NULL,           -- 事件类型代码（如 POST_PUBLISH、COMMENT_NEW）
+    event_category VARCHAR(20) NOT NULL,       -- 事件分类：post/comment/user/system/friend/media/ai
+    title VARCHAR(200) NOT NULL,               -- 事件标题（展示用）
     description TEXT,                          -- 事件描述/详情
-    metadata JSONB,                            -- 扩展元数据 (如 postId, commentId, fileName 等)
-    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL, -- 触发用户 (可为空，系统事件无用户)
+    metadata JSONB,                            -- 扩展元数据（如 postId、commentId、fileName 等）
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL, -- 触发用户（可为空，系统事件无用户）
     ip VARCHAR(50),                            -- IP 地址
-    status VARCHAR(20) NOT NULL DEFAULT 'INFO', -- 状态: INFO/SUCCESS/WARNING/ERROR
+    status VARCHAR(20) NOT NULL DEFAULT 'INFO', -- 状态：INFO/SUCCESS/WARNING/ERROR
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     CONSTRAINT chk_activity_event_category CHECK (event_category IN ('post', 'comment', 'user', 'system', 'friend', 'media', 'ai')),

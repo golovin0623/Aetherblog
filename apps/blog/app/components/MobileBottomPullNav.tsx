@@ -24,7 +24,7 @@ import {
 } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 
-/* ─── Types ─── */
+/* ─── 类型定义 ─── */
 
 interface PostBrief {
   slug: string;
@@ -38,7 +38,7 @@ interface MobileBottomPullNavProps {
 
 type SnapTarget = 'prev' | 'center' | 'next';
 
-/* ─── Constants ─── */
+/* ─── 常量 ─── */
 
 const DEAD_ZONE = 18;
 const FULL_PULL = 120;
@@ -54,7 +54,7 @@ const SIDE_SPACING = 96;
 const RELEASE_SPRING = { type: 'spring' as const, stiffness: 380, damping: 32, mass: 1 };
 const SNAP_SPRING = { type: 'spring' as const, stiffness: 500, damping: 28 };
 
-/* ─── Helpers ─── */
+/* ─── 辅助函数 ─── */
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -64,10 +64,10 @@ const vibrate = (pattern: number | number[]) => {
   try { navigator.vibrate?.(pattern); } catch { /* noop */ }
 };
 
-/* ─── Component ─── */
+/* ─── 组件 ─── */
 
 function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProps) {
-  // ── Discrete state (low-frequency) ──
+  // ── 离散状态（低频更新）──
   const [active, setActive] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [snappedTo, setSnappedTo] = useState<SnapTarget>('center');
@@ -87,14 +87,14 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   });
   const prevPostRef = useRef(prevPost);
   const nextPostRef = useRef(nextPost);
-  // Ongoing snap-transition spring (so subsequent frames don't interrupt it with direct .set())
+  // 正在进行中的吸附过渡弹簧（避免后续帧用直接 .set() 打断它）
   const snapAnimRef = useRef<AnimationPlaybackControls | null>(null);
 
   useEffect(() => { prevPostRef.current = prevPost; }, [prevPost]);
   useEffect(() => { nextPostRef.current = nextPost; }, [nextPost]);
   useEffect(() => { setMounted(true); }, []);
 
-  // ── Motion values (continuous, direct .set() driven) ──
+  // ── Motion values（连续量，由直接 .set() 驱动）──
   const pullProgress = useMotionValue(0);
   const blobX = useMotionValue(0);
   const blobStretchX = useMotionValue(1);
@@ -105,7 +105,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   const prevIconScale = useMotionValue(0.3);
   const nextIconScale = useMotionValue(0.3);
 
-  // ── Derived (useTransform, source-driven — no React state closure) ──
+  // ── 派生量（useTransform，源驱动 —— 无 React state 闭包）──
   const containerY = useTransform(pullProgress, (p) => lerp(80, 0, easeOut(clamp(p, 0, 1))));
   const containerOpacity = useTransform(pullProgress, (p) => clamp(Math.max(p, 0) * 2.5, 0, 1));
   const overlayOpacity = useTransform(pullProgress, (p) => clamp(Math.max(p, 0) * 1.5, 0, 1));
@@ -122,7 +122,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
   });
   const sideSpreadNeg = useTransform(sideSpread, (s) => -s);
 
-  // ── Helpers ──
+  // ── 辅助函数 ──
   const isAtBottom = useCallback(() => {
     const st = window.scrollY;
     const sh = document.documentElement.scrollHeight;
@@ -140,7 +140,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     }
   }, [router]);
 
-  // ── Mobile detection ──
+  // ── 移动端检测 ──
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 768px)');
     const onChange = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches);
@@ -149,7 +149,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  // ── Touch event handling ──
+  // ── 触摸事件处理 ──
   useEffect(() => {
     if (!isMobile) return;
 
@@ -213,7 +213,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         setIsReady(ready);
       }
 
-      // Snap state machine with hysteresis (strong: exit requires crossing UNSNAP_THRESHOLD)
+      // 带迟滞的吸附状态机（强约束：退出需跨越 UNSNAP_THRESHOLD）
       let snap: SnapTarget = t.prevSnap;
       if (ready && progress > SIDE_APPEAR_THRESHOLD) {
         const hasPrev = !!prevPostRef.current;
@@ -236,14 +236,14 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         setSnappedTo(snap);
       }
 
-      // ── Derive instantaneous side spread (for blob base + icon state-dependent derivations) ──
+      // ── 推导瞬时的两侧展开距离（用于 blob 基准位置 + 与图标状态相关的派生量）──
       const sideP = clamp((progress - SIDE_APPEAR_THRESHOLD) / (1 - SIDE_APPEAR_THRESHOLD), 0, 1);
       const sideEased = easeOut(sideP);
       const spread = sideEased * SIDE_SPACING;
 
       const blobBaseX = snap === 'prev' ? -spread : snap === 'next' ? spread : 0;
 
-      // Sticky drag offset: blob resists leaving the snapped position but lets finger tug it slightly
+      // 黏滞的拖拽偏移：blob 抗拒离开吸附位，但允许手指轻微拖动它
       let dragDist = 0;
       if (ready) {
         if (snap === 'center') dragDist = lateralOffset;
@@ -255,14 +255,14 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       const stretchXTarget = 1 + clamp(stretchFactor, 0, 0.4);
       const stretchYTarget = 1 - clamp(stretchFactor * 0.4, 0, 0.15);
 
-      // State-dependent icon channels — direct write per frame
+      // 与状态相关的图标通道 —— 每帧直接写入
       const prevOpTarget = snap === 'prev' ? 1 : snap === 'center' ? sideEased * 0.5 : 0;
       const nextOpTarget = snap === 'next' ? 1 : snap === 'center' ? sideEased * 0.5 : 0;
       const centerOpTarget = snap === 'center' ? 1 : 0;
       const prevScaleTarget = snap === 'prev' ? 1.2 : 0.3 + 0.7 * sideEased;
       const nextScaleTarget = snap === 'next' ? 1.2 : 0.3 + 0.7 * sideEased;
 
-      // ── Write channels ──
+      // ── 写入各通道 ──
       pullProgress.set(progress);
       blobStretchX.set(stretchXTarget);
       blobStretchY.set(stretchYTarget);
@@ -272,19 +272,19 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       prevIconScale.set(prevScaleTarget);
       nextIconScale.set(nextScaleTarget);
 
-      // blobX: spring-ride snap transitions; direct-set otherwise
+      // blobX：吸附过渡时走弹簧动画；其他情况直接 .set()
       if (snapChanged) {
         snapAnimRef.current?.stop();
         const anim = animate(blobX, blobXTarget, SNAP_SPRING);
         snapAnimRef.current = anim;
         anim.then(() => {
-          // Only null out if THIS animation is still the current one
+          // 仅当此动画仍是当前动画时才置空
           if (snapAnimRef.current === anim) snapAnimRef.current = null;
         });
       } else if (!snapAnimRef.current) {
         blobX.set(blobXTarget);
       }
-      // else: snap spring still running — leave it, it'll catch up within ~250ms
+      // 其他情况：吸附弹簧仍在运行 —— 不打断它，约 250ms 内会跟上
     };
 
     const onTouchEnd = () => {
@@ -294,18 +294,18 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       t.pulling = false;
       t.atBottom = false;
 
-      // Execute navigation immediately (don't wait for spring)
+      // 立即执行导航（不等待弹簧动画结束）
       if (t.wasReady) {
         const target = t.prevSnap;
         vibrate([5, 50, 15]);
         requestAnimationFrame(() => navigate(target));
       }
 
-      // Cancel in-flight snap spring so release takes over
+      // 取消正在进行的吸附弹簧，让释放动画接管
       snapAnimRef.current?.stop();
       snapAnimRef.current = null;
 
-      // Spring-release every channel with its current velocity (framer-motion tracks d/dt from .set() history)
+      // 用各通道当前速度做弹簧释放（framer-motion 会基于 .set() 历史追踪 d/dt）
       const anims = [
         animate(pullProgress, 0, { ...RELEASE_SPRING, velocity: pullProgress.getVelocity() }),
         animate(blobX, 0, { ...RELEASE_SPRING, velocity: blobX.getVelocity() }),
@@ -323,9 +323,9 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       t.wasReady = false;
       t.prevSnap = 'center';
 
-      // Keep overlay mounted until the springs settle, then unmount to stop compositing.
-      // Guard with touchRef.pulling so overlapping gestures (user starts a new pull mid-spring)
-      // don't deactivate the overlay while a pull is still in progress.
+      // 保持遮罩挂载直至弹簧稳定，然后卸载以停止合成层。
+      // 用 touchRef.pulling 做守卫，防止重叠手势（用户在弹簧动画中又开始新一次下拉）
+      // 在拉动仍在进行时让遮罩失活。
       Promise.all(anims).then(() => {
         if (!touchRef.current.pulling) setActive(false);
       });
@@ -367,7 +367,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
       aria-hidden="true"
       style={{ opacity: containerOpacity }}
     >
-      {/* Static-blur overlay — only opacity animates, backdrop-filter stays at 4px */}
+      {/* 静态模糊遮罩 —— 仅 opacity 参与动画，backdrop-filter 始终为 4px */}
       <motion.div
         className="absolute inset-0 bg-black/5 dark:bg-black/20"
         style={{
@@ -378,7 +378,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
         }}
       />
 
-      {/* Navigation container */}
+      {/* 导航容器 */}
       <motion.div
         className="absolute left-1/2 flex flex-col items-center"
         style={{
@@ -388,10 +388,10 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
           willChange: 'transform',
         }}
       >
-        {/* Icon & blob layer */}
+        {/* 图标与 blob 层 */}
         <div className="relative flex items-center justify-center" style={{ height: `${CIRCLE_MAX}px`, width: '100%' }}>
 
-          {/* Unified blob — fixed 56×56, scale + stretch via transform only */}
+          {/* 统一 blob —— 固定 56×56，仅通过 transform 实现缩放与拉伸 */}
           <motion.div
             className="absolute rounded-full pointer-events-none"
             style={{
@@ -410,7 +410,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
             }}
           />
 
-          {/* Prev Icon */}
+          {/* 上一篇图标 */}
           {hasPrev && (
             <motion.div
               className="absolute flex items-center justify-center z-10"
@@ -435,7 +435,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
             </motion.div>
           )}
 
-          {/* Center Icon (Back arrow) */}
+          {/* 中央图标（返回箭头） */}
           <motion.div
             className="absolute flex items-center justify-center z-10"
             style={{
@@ -466,7 +466,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
             </motion.div>
           </motion.div>
 
-          {/* Next Icon */}
+          {/* 下一篇图标 */}
           {hasNext && (
             <motion.div
               className="absolute flex items-center justify-center z-10"
@@ -492,7 +492,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
           )}
         </div>
 
-        {/* Label text */}
+        {/* 标签文案 */}
         <div
           className="mt-1 text-[11px] font-medium whitespace-nowrap"
           style={{
@@ -505,7 +505,7 @@ function MobileBottomPullNavBase({ prevPost, nextPost }: MobileBottomPullNavProp
           {labelText}
         </div>
 
-        {/* Release hint */}
+        {/* 松手提示 */}
         <div
           className="mt-1.5 text-[10px] font-medium"
           style={{

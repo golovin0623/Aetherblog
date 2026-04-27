@@ -22,7 +22,7 @@ CREATE TABLE media_folders (
     owner_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
     visibility VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',
 
-    -- 统计 (缓存)
+    -- 统计（缓存）
     file_count INT NOT NULL DEFAULT 0,
     total_size BIGINT NOT NULL DEFAULT 0,
 

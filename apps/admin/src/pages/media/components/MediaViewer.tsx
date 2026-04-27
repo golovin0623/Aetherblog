@@ -112,8 +112,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   // ====== 移动端轮播滑动状态（仿 Apple Photos 风格）======
   const trackRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const [swipeOffset, setSwipeOffset] = useState(0); // px offset during drag
-  const [isAnimating, setIsAnimating] = useState(false); // spring-snap in progress
+  const [swipeOffset, setSwipeOffset] = useState(0); // 拖拽过程中的像素偏移量
+  const [isAnimating, setIsAnimating] = useState(false); // 弹簧吸附动画进行中
   const directionLocked = useRef<'h' | 'v' | null>(null);
 
   useEffect(() => {

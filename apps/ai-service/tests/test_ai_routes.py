@@ -1,17 +1,17 @@
-"""Unit tests for /api/v1/ai/* business endpoints and stream helpers.
+"""/api/v1/ai/* 业务端点与流式辅助函数的单元测试。
 
-These tests focus on the shape-contracts exposed to the front-end:
+这些用例聚焦于对前端暴露的形态契约：
 
-- Non-stream endpoints must return the documented ``*Data`` payload shape
-  (``SummaryData`` / ``TagsData`` / ``TitlesData`` / ``PolishData`` /
-  ``OutlineData`` / ``TranslateData``).
-- Stream endpoints must emit a terminal ``{type:"result", data:<*Data>}``
-  SSE event in addition to the raw delta tokens — see the 2026-04 "AI 工具箱
-  输出承接" fix (apps/ai-service/app/api/routes/ai.py).
-- Robust parsers (``_parse_tags`` / ``_parse_titles``) must handle JSON
-  arrays, comma / newline separation, numbered lists, Unicode quotes.
-- ``LlmRouter._safe_format`` must not break on user content containing
-  literal ``{`` / ``}`` (Phase 4.1 fix).
+- 非流式端点必须返回文档化的 ``*Data`` payload 形态
+  （``SummaryData`` / ``TagsData`` / ``TitlesData`` / ``PolishData`` /
+  ``OutlineData`` / ``TranslateData``）。
+- 流式端点除了下发原始的 delta token 之外，还必须发出终结的
+  ``{type:"result", data:<*Data>}`` SSE 事件 —— 见 2026-04 “AI 工具箱
+  输出承接” 修复（apps/ai-service/app/api/routes/ai.py）。
+- 健壮的解析器（``_parse_tags`` / ``_parse_titles``）必须能处理 JSON
+  数组、逗号 / 换行分隔、编号列表、Unicode 引号等多种形态。
+- ``LlmRouter._safe_format`` 必须能容忍含字面 ``{`` / ``}`` 的用户内容
+  （Phase 4.1 修复）。
 """
 
 from __future__ import annotations
@@ -42,11 +42,11 @@ from app.services.llm_router import LlmRouter
 from app.services.metrics import MetricsStore
 
 
-# ─────────────────────────── Fakes ───────────────────────────
+# ─────────────────────────── 各种 Fake 对象 ───────────────────────────
 
 
 class FakeCache:
-    """A no-op cache compatible with CacheStore's ``get_json`` / ``set_json``."""
+    """与 CacheStore 的 ``get_json`` / ``set_json`` 接口兼容的空操作 cache。"""
 
     def __init__(self) -> None:
         self.store: dict[str, Any] = {}
@@ -59,7 +59,7 @@ class FakeCache:
 
 
 class FakeUsageLogger:
-    """Swallow ``record`` calls without touching the DB."""
+    """吞掉 ``record`` 调用，避免触达数据库。"""
 
     def __init__(self) -> None:
         self.records: list[dict[str, Any]] = []
@@ -69,7 +69,7 @@ class FakeUsageLogger:
 
 
 class FakeLlm:
-    """Minimal LlmRouter stand-in that returns pre-canned text or stream events."""
+    """精简版 LlmRouter 替身，返回预设文本或预设流式事件。"""
 
     def __init__(
         self,
@@ -100,7 +100,7 @@ class FakeLlm:
 
 
 def _make_request() -> SimpleNamespace:
-    """Fake FastAPI Request object with just enough to satisfy usage logging."""
+    """构造一个最简的伪 FastAPI Request，足以满足 usage logging。"""
     return SimpleNamespace(
         url=SimpleNamespace(path="/api/v1/ai/test"),
         state=SimpleNamespace(request_id="req-test"),
@@ -115,7 +115,7 @@ def _make_metrics() -> MetricsStore:
     return MetricsStore(usage_log_alert_threshold=100, usage_log_sample_limit=10)
 
 
-# ─────────────────────────── Parser helpers ───────────────────────────
+# ─────────────────────────── 解析器辅助 ───────────────────────────
 
 
 class TestParseTags:
@@ -126,7 +126,7 @@ class TestParseTags:
         assert _parse_tags('[\u201cpython\u201d, \u201cai\u201d]') == ["python", "ai"]
 
     def test_strips_hash_prefix(self):
-        # #hashtag style
+        # #hashtag 风格
         assert _parse_tags("#python, #ai, #web") == ["python", "ai", "web"]
 
     def test_chinese_delimiters(self):
@@ -150,7 +150,7 @@ class TestParseTags:
         assert _parse_tags("   \n  ") == []
 
     def test_fallback_on_unparseable(self):
-        # Single plain string should still return a single-item list
+        # 单个普通字符串仍应返回单元素列表
         result = _parse_tags("justonetag")
         assert result == ["justonetag"]
 
@@ -176,7 +176,7 @@ class TestParseTitles:
 
 
 class TestSplitListLegacy:
-    """Ensure legacy ``_split_list`` behavior is preserved for backward compatibility."""
+    """确保旧的 ``_split_list`` 行为得以保留，向后兼容。"""
 
     def test_comma_split(self):
         assert _split_list("a, b, c") == ["a", "b", "c"]
@@ -269,7 +269,7 @@ class TestBuildStreamResultPayload:
         assert payload is not None
         assert payload["translatedContent"] == "Hello, world."
         assert payload["targetLanguage"] == "en"
-        # "自动检测" is normalized to None
+        # "自动检测" 会被归一化为 None
         assert payload["sourceLanguage"] is None
 
     def test_empty_text_returns_none(self):
@@ -295,7 +295,7 @@ class TestBuildStreamResultPayload:
         )
 
 
-# ─────────────────────────── Non-stream business endpoints ───────────────────────────
+# ─────────────────────────── 非流式业务端点 ───────────────────────────
 
 
 @pytest.mark.asyncio
@@ -332,8 +332,8 @@ async def test_tags_endpoint_parses_comma_separated_output():
     )
     assert resp.data is not None
     assert isinstance(resp.data.tags, list)
-    # Note: non-stream endpoint still uses the legacy _split_list, which
-    # yields at most maxTags entries — asserts the truncation behavior.
+    # 注意：非流式端点仍使用旧的 _split_list，最多输出 maxTags 个条目 ——
+    # 这里断言截断行为。
     assert len(resp.data.tags) <= 3
     assert resp.data.tags[0] == "python"
 
@@ -358,7 +358,7 @@ async def test_titles_endpoint_returns_titles_array():
 
 @pytest.mark.asyncio
 async def test_polish_endpoint_does_not_leak_changes_field():
-    """Regression: PolishData.changes was removed in the 2026-04 fix."""
+    """回归测试：PolishData.changes 字段已在 2026-04 修复中移除。"""
     llm = FakeLlm(chat_response="润色后的完整正文")
     req = PolishRequest(content="原文", tone="学术")
     resp = await ai_module.polish(
@@ -371,7 +371,7 @@ async def test_polish_endpoint_does_not_leak_changes_field():
     )
     assert resp.data is not None
     assert resp.data.polishedContent == "润色后的完整正文"
-    # Ensure the `changes` attribute no longer exists on the Pydantic model.
+    # 确认 Pydantic 模型上 `changes` 属性确实已消失。
     assert not hasattr(resp.data, "changes")
 
 
@@ -409,11 +409,11 @@ async def test_translate_endpoint_returns_translated_content():
     assert resp.data.targetLanguage == "en"
 
 
-# ─────────────────────────── Stream helper ───────────────────────────
+# ─────────────────────────── 流式辅助 ───────────────────────────
 
 
 def _parse_sse_events(chunks: list[bytes]) -> list[dict]:
-    """Decode a list of ``data: {...}\\n\\n`` chunks back into dicts."""
+    """把若干 ``data: {...}\\n\\n`` chunk 解码回 dict 列表。"""
     events: list[dict] = []
     for chunk in chunks:
         text = chunk.decode("utf-8").strip()
@@ -429,7 +429,7 @@ def _parse_sse_events(chunks: list[bytes]) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_stream_emits_result_event_before_done_for_tags():
-    """The stream wrapper must emit ``{type:"result"}`` before ``{type:"done"}``."""
+    """流式包装器必须在 ``{type:"done"}`` 之前下发 ``{type:"result"}``。"""
     llm = FakeLlm(
         stream_events=[
             {"type": "delta", "content": "pyth", "isThink": False},
@@ -459,7 +459,7 @@ async def test_stream_emits_result_event_before_done_for_tags():
 
     events = _parse_sse_events(chunks)
     types = [e.get("type") for e in events]
-    # result must precede done
+    # result 必须先于 done
     assert "result" in types, f"No result event in {types}"
     assert "done" in types
     assert types.index("result") < types.index("done")
@@ -472,7 +472,7 @@ async def test_stream_emits_result_event_before_done_for_tags():
 
 @pytest.mark.asyncio
 async def test_stream_skips_think_content_in_result():
-    """Content inside ``<think>`` blocks must NOT contaminate the final result."""
+    """``<think>`` 块内的内容不得污染最终 result。"""
     llm = FakeLlm(
         stream_events=[
             {"type": "delta", "content": "let me think...", "isThink": True},
@@ -501,18 +501,17 @@ async def test_stream_skips_think_content_in_result():
 
     events = _parse_sse_events(chunks)
     result_event = next(e for e in events if e.get("type") == "result")
-    # Only the non-think "final answer" should end up in the summary payload.
+    # 只有非 think 部分的 "final answer" 才应进入 summary payload。
     assert result_event["data"]["summary"] == "final answer"
 
 
 @pytest.mark.asyncio
 async def test_stream_emits_result_even_without_explicit_done():
-    """Some providers close the stream without emitting 'done' — the wrapper
-    must still deliver the structured result."""
+    """部分 provider 不下发 'done' 就关闭流 —— 包装器仍必须交付结构化 result。"""
     llm = FakeLlm(
         stream_events=[
             {"type": "delta", "content": "content", "isThink": False},
-            # No done event
+            # 没有 done 事件
         ]
     )
     chunks: list[bytes] = []
@@ -536,16 +535,16 @@ async def test_stream_emits_result_even_without_explicit_done():
 
     events = _parse_sse_events(chunks)
     types = [e.get("type") for e in events]
-    # Synthetic result + done should be appended after the raw delta
+    # 在原始 delta 之后应被补上合成的 result + done
     assert "result" in types
     assert "done" in types
 
 
-# ─────────────────────────── Safe prompt rendering ───────────────────────────
+# ─────────────────────────── 安全的 prompt 渲染 ───────────────────────────
 
 
 class TestSafeFormat:
-    """Phase 4.1 regression tests: content with literal braces must not crash."""
+    """Phase 4.1 回归测试：含字面花括号的内容不得触发崩溃。"""
 
     def test_preserves_literal_braces_in_content(self):
         template = "请为以下内容生成摘要：\n{content}"
@@ -564,7 +563,7 @@ class TestSafeFormat:
     def test_unknown_placeholder_preserved_verbatim(self):
         template = "Prefix {unknown_key} suffix"
         rendered = LlmRouter._safe_format(template, {"content": "x"})
-        # Unknown placeholder passes through untouched
+        # 未知占位符应原样保留
         assert rendered == "Prefix {unknown_key} suffix"
 
     def test_multiple_substitutions(self):
@@ -583,32 +582,31 @@ class TestSafeFormat:
         assert rendered == "value="
 
     def test_unterminated_brace_preserved(self):
-        # Missing closing brace — should not crash
+        # 缺少闭合花括号 —— 不应崩溃
         rendered = LlmRouter._safe_format("prefix {content", {"content": "x"})
         assert "{content" in rendered
 
 
-# ─────────────────────── Message construction (system/user split) ────────────
+# ─────────────────────── 消息构造（system/user 拆分）───────────────────────
 
 
 def _stub_router() -> LlmRouter:
-    """LlmRouter without the env-fed __init__ so we can poke pure helpers."""
+    """绕过依赖环境变量的 __init__，构造一个纯壳 LlmRouter，用于直接测试纯函数。"""
     obj = LlmRouter.__new__(LlmRouter)
     return obj
 
 
 class TestBuildMessages:
-    """Regression suite for the system/user split fix.
+    """system/user 拆分修复的回归套件。
 
-    The legacy implementation rendered the entire template into the system
-    role with ``content`` excluded from the variable dict, which left the
-    literal ``{content}`` placeholder visible to the model — the root cause
-    of the "summary returns 千字 Q&A" bug. The split must:
+    旧实现把整段模板都渲染进 system 角色，并把 ``content`` 从变量字典中
+    剔除，导致字面量 ``{content}`` 占位符被模型看到 —— 这是“summary 输出
+    千字问答”bug 的根因。修复后的拆分必须：
 
-    1. Move the actual content to the user message.
-    2. Strip the ``{content}`` marker from the system message.
-    3. Preserve any trailing instructions that appear after ``{content}``.
-    4. Substitute every other placeholder (e.g. ``{max_length}``).
+    1. 把真实内容放到 user 消息中。
+    2. 从 system 消息里去掉 ``{content}`` 标记。
+    3. 保留 ``{content}`` 之后的尾部指令。
+    4. 替换其它所有占位符（例如 ``{max_length}``）。
     """
 
     def test_content_placeholder_does_not_leak_into_system(self):
@@ -639,9 +637,9 @@ class TestBuildMessages:
         assert msgs == [{"role": "user", "content": "hi"}]
 
     def test_template_without_content_marker_keeps_content_in_user(self):
-        """Custom prompt without an explicit ``{content}`` placeholder must
-        still pass the article body to the model — otherwise admin-set
-        prompts like "请直接输出摘要" silently drop the input. (PR #517 review.)
+        """没有显式 ``{content}`` 占位符的自定义 prompt 仍必须把文章正文
+        传给模型 —— 否则管理员设置的 “请直接输出摘要” 之类 prompt 会
+        静默丢掉输入。（PR #517 review）
         """
         router = _stub_router()
         msgs = router._build_messages(
@@ -653,8 +651,8 @@ class TestBuildMessages:
         ]
 
     def test_template_without_content_marker_and_no_content_var(self):
-        # Edge case: no ``content`` variable at all (e.g. outline using
-        # ``topic`` only). System holds the template, user is empty string.
+        # 边界场景：完全没有 ``content`` 变量（例如 outline 仅使用 ``topic``）。
+        # system 持有模板，user 为空字符串。
         router = _stub_router()
         msgs = router._build_messages("请输出当前时间", {})
         assert msgs == [
@@ -674,12 +672,12 @@ class TestBuildMessages:
         assert "100字内" in msgs[0]["content"]
 
 
-# ─────────────────────── Reasoning-trace tag detection ───────────────────────
+# ─────────────────────── 推理轨迹标签检测 ───────────────────────
 
 
 class TestThinkTagRegex:
-    """Make sure the broadened tag matcher catches Qwen / R1 / custom variants
-    without accidentally chewing into ordinary prose."""
+    """确保扩展后的标签匹配器能识别 Qwen / R1 / 自定义变体，
+    同时不会误伤普通正文。"""
 
     def test_matches_canonical_think(self):
         assert LlmRouter._THINK_OPEN_RE.search("<think>")
@@ -704,18 +702,18 @@ class TestThinkTagRegex:
     def test_does_not_match_lookalikes(self):
         assert LlmRouter._THINK_OPEN_RE.search("<thanks>") is None
         assert LlmRouter._THINK_OPEN_RE.search("<thinkable>") is None
-        # Word boundary via ``\s*>`` keeps ``<thinkmore>`` out
+        # ``\s*>`` 的边界条件能把 ``<thinkmore>`` 排除在外
         assert LlmRouter._THINK_OPEN_RE.search("<thinkmore>") is None
 
 
-# ─────────────────────── Default max_tokens fallback table ───────────────────
+# ─────────────────────── 默认 max_tokens 兜底表 ───────────────────────
 
 
 class TestDefaultMaxTokens:
-    """Even when the routing table is empty (env-only fallback), every
-    business task must have a hard upper bound — otherwise LiteLLM forwards
-    ``max_tokens=None`` and the model writes until the context window is
-    full. This caused user-reported "summary returns 千字" output."""
+    """即便 routing 表为空（仅环境变量回退），每个业务 task 也必须有硬
+    上限 —— 否则 LiteLLM 会把 ``max_tokens=None`` 直接转发上去，模型
+    会一直写到上下文窗口被填满。这正是用户反馈“summary 输出千字”的
+    根因。"""
 
     def test_summary_has_a_cap(self):
         from app.services.llm_router import _TASK_DEFAULT_MAX_TOKENS
@@ -732,30 +730,29 @@ class TestDefaultMaxTokens:
             assert _TASK_DEFAULT_MAX_TOKENS[task] > 0
 
 
-# ─────────────────────── Stream tag-detection final flush ────────────────────
+# ─────────────────────── 流式标签检测的 final flush ────────────────────
 
 
 class TestStreamFinalFlush:
-    """Regression for PR #517 review: tags that land in the trailing
-    ``guard`` window must NOT leak into the final delta event."""
+    """PR #517 review 回归：落在尾部 ``guard`` 窗口内的标签不得泄漏
+    到最终 delta 事件。"""
 
     @pytest.mark.asyncio
     async def test_dangling_open_tag_at_end_of_stream_is_stripped(self):
-        """Model never closes ``<think>`` (rare but observed). The opener
-        has to be removed; pre-fix code yielded "...回答 <think>思考" verbatim."""
+        """模型未关闭 ``<think>``（少见但出现过）。开标签必须被剥除；
+        修复前代码会原样输出 "...回答 <think>思考"。"""
         from app.services.llm_router import LlmRouter
 
         router = LlmRouter.__new__(LlmRouter)
 
         async def fake_stream(**_kwargs):
-            # Whole payload is short enough that the main loop's ``guard``
-            # window keeps the trailing ``<think>...`` parked in the buffer
-            # until end-of-stream.
+            # 整个 payload 足够短，使得主循环的 ``guard`` 窗口让尾部的
+            # ``<think>...`` 一直停留在 buffer 里，直到流结束。
             yield "正式答案 "
             yield "<think>"
             yield "未闭合的思考"
 
-        # Patch ``stream_chat`` to feed our fake chunks
+        # 用 patch 把 ``stream_chat`` 替换为伪造的 chunk 生成器
         async def fake_iter(**kwargs):
             async for chunk in fake_stream(**kwargs):
                 yield chunk
@@ -768,15 +765,15 @@ class TestStreamFinalFlush:
         ):
             events.append(ev)
 
-        # Reassemble visible (non-think) text. The literal "<think>"
-        # marker must not appear anywhere — that's the regression.
+        # 重组可见（非 think）文本。字面 "<think>" 标记不得在任何位置
+        # 出现 —— 这正是要回归保护的点。
         visible = "".join(
             e["content"] for e in events
             if e["type"] == "delta" and not e.get("isThink")
         )
         assert "<think>" not in visible
         assert "正式答案" in visible
-        # The unclosed think section should be flagged isThink=True.
+        # 未闭合的 think 段应被标记为 isThink=True。
         thinking = "".join(
             e["content"] for e in events
             if e["type"] == "delta" and e.get("isThink")
@@ -785,8 +782,8 @@ class TestStreamFinalFlush:
 
     @pytest.mark.asyncio
     async def test_complete_tag_pair_in_trailing_window_is_handled(self):
-        """End-of-stream buffer like ``"<think>x</think>y"`` must produce
-        clean think + visible halves, not raw text with literal tags."""
+        """末端 buffer 形如 ``"<think>x</think>y"`` 必须产生干净的
+        think + 可见两部分，而不是带原始标签的裸文本。"""
         from app.services.llm_router import LlmRouter
 
         router = LlmRouter.__new__(LlmRouter)

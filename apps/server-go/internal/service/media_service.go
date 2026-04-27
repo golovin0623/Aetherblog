@@ -481,14 +481,14 @@ func detectMimeType(file multipart.File, filename string) (string, error) {
 // 若处理结果为空或为 "." / ".."，返回默认名 "file"。
 func sanitizeFilename(name string) string {
 	base := filepath.Base(name)
-	// Remove null bytes and Unicode control characters
+	// 移除空字节和 Unicode 控制字符
 	base = strings.Map(func(r rune) rune {
-		if r == 0 || r == 0x202E || r == 0x200F || r == 0x200E { // null, RTL override, RLM, LRM
+		if r == 0 || r == 0x202E || r == 0x200F || r == 0x200E { // null、RTL override、RLM、LRM
 			return -1
 		}
 		return r
 	}, base)
-	// Replace all non-safe characters
+	// 替换所有非安全字符
 	reg := regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 	safe := reg.ReplaceAllString(base, "_")
 	if safe == "" || safe == "." || safe == ".." {

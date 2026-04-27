@@ -64,8 +64,8 @@ export const CustomToolModal: React.FC<CustomToolModalProps> = ({
       toast.error('请填写完整信息');
       return;
     }
-    
-    // 简单的代码验证：仅限字母数字和下划线
+
+    // 简单的代码校验：仅允许小写字母、数字和下划线
     if (!/^[a-z0-9_]+$/.test(formData.code)) {
       toast.error('任务标识只能包含小写字母、数字和下划线');
       return;

@@ -1,6 +1,6 @@
-# ref: §5.1 - AI Provider Models
+# ref: §5.1 - AI provider 模型
 """
-SQLAlchemy models for AI provider configuration management.
+用于 AI provider 配置管理的 SQLAlchemy 模型。
 """
 
 from app.models.provider import AiProvider, AiModel

@@ -171,7 +171,7 @@ export function ImageEditor({ fileId, imageUrl, onClose, onSave }: ImageEditorPr
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between p-4 bg-black/50 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-lg">
@@ -198,7 +198,7 @@ export function ImageEditor({ fileId, imageUrl, onClose, onSave }: ImageEditorPr
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* 工具栏 */}
       <div className="flex items-center justify-center gap-2 p-4 bg-black/30 border-b border-white/10">
         <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg">
           <button
@@ -264,7 +264,7 @@ export function ImageEditor({ fileId, imageUrl, onClose, onSave }: ImageEditorPr
         </div>
       </div>
 
-      {/* Canvas Area */}
+      {/* 画布区域 */}
       <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
         <div className="relative">
           {editMode === 'crop' ? (
@@ -302,11 +302,11 @@ export function ImageEditor({ fileId, imageUrl, onClose, onSave }: ImageEditorPr
           )}
         </div>
 
-        {/* Hidden canvas for export */}
+        {/* 用于导出的隐藏 canvas */}
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {/* Info */}
+      {/* 信息栏 */}
       <div className="p-4 bg-black/30 border-t border-white/10">
         <div className="flex items-center justify-center gap-6 text-sm text-white/50">
           <span>旋转: {rotation}°</span>

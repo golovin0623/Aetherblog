@@ -378,7 +378,7 @@ export default function FriendsPage() {
                 onClick={handleCloseForm}
               />
 
-              {/* Bottom Sheet */}
+              {/* 底部面板 */}
               <motion.div
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}

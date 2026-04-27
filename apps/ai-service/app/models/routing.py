@@ -1,6 +1,6 @@
-# ref: §5.1 - AI Task Routing
+# ref: §5.1 - AI 任务路由
 """
-SQLAlchemy models for AI task types and routing configuration.
+AI 任务类型与路由配置的 SQLAlchemy 模型。
 """
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ if TYPE_CHECKING:
 
 class AiTaskType(Base):
     """
-    AI Task Type definition.
-    
-    Defines task types like 'summary', 'tags', 'polish', etc.
+    AI 任务类型定义。
+
+    定义诸如 'summary'、'tags'、'polish' 等任务类型。
     """
     __tablename__ = "ai_task_types"
 
@@ -36,7 +36,7 @@ class AiTaskType(Base):
     prompt_template: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    # Relationships
+    # 关联关系
     routings: Mapped[list["AiTaskRouting"]] = relationship("AiTaskRouting", back_populates="task_type")
 
     def __repr__(self) -> str:
@@ -45,10 +45,10 @@ class AiTaskType(Base):
 
 class AiTaskRouting(Base):
     """
-    AI Task Routing configuration.
-    
-    Maps task types to models with support for user-level overrides.
-    Priority: user_id specified > user_id NULL (system default)
+    AI 任务路由配置。
+
+    把任务类型映射到 model,并支持按用户级别覆盖。
+    优先级: 指定了 user_id > user_id NULL (系统默认)
     """
     __tablename__ = "ai_task_routing"
     __table_args__ = (
@@ -57,7 +57,7 @@ class AiTaskRouting(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int | None] = mapped_column(BigInteger)  # NULL = system default
+    user_id: Mapped[int | None] = mapped_column(BigInteger)  # NULL = 系统默认
     task_type_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ai_task_types.id"), nullable=False)
     primary_model_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("ai_models.id"))
     fallback_model_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("ai_models.id"))
@@ -67,7 +67,7 @@ class AiTaskRouting(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # 关联关系
     task_type: Mapped["AiTaskType"] = relationship("AiTaskType", back_populates="routings")
     primary_model: Mapped["AiModel | None"] = relationship("AiModel", foreign_keys=[primary_model_id])
     fallback_model: Mapped["AiModel | None"] = relationship("AiModel", foreign_keys=[fallback_model_id])

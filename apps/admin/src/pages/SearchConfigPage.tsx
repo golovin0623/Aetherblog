@@ -33,9 +33,9 @@ import {
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
 
-// Toggle imported from @aetherblog/ui
+// Toggle 来自 @aetherblog/ui
 
-// --- Skeleton loaders ---
+// --- 骨架屏加载占位 ---
 function StatSkeleton() {
   return (
     <div className="flex flex-col gap-2 p-4 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] animate-pulse">
@@ -101,7 +101,7 @@ const filterTabs = [
   { key: 'FAILED', label: '失败' },
 ];
 
-// --- Indexing job model ---
+// --- 索引任务模型 ---
 // 进度面板必须按"本次触发的任务"精确范围展示，否则会出现"单篇重建却显示
 // 0/90 全量进度条"这种误导（管理员以为卡住了）。同时要能跨页面导航持久化，
 // 刷新/切换路由回来后台任务仍在跑，进度面板必须还能看到。
@@ -150,7 +150,7 @@ function computeJobProgress(job: IndexingJob, stats: IndexStats) {
   return { done, failedDelta, percent };
 }
 
-// --- Indexing progress panel ---
+// --- 索引进度面板 ---
 function IndexingProgressPanel({
   job,
   stats,
@@ -224,7 +224,7 @@ function IndexingProgressPanel({
           </div>
         </div>
 
-        {/* Progress bar */}
+        {/* 进度条 */}
         <div className="space-y-1.5">
           <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
             <motion.div
@@ -254,7 +254,7 @@ export default function SearchConfigPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // --- Indexing progress state ---
+  // --- 索引进度状态 ---
   // 以 IndexingJob 替代布尔 indexingActive：存本次任务的 kind/jobTotal/baseline，
   // 面板才能按"本次触发范围"展示进度；并写入 localStorage 以便跨导航持久化。
   const [indexingJob, setIndexingJob] = useState<IndexingJob | null>(() => readPersistedJob());
@@ -272,7 +272,7 @@ export default function SearchConfigPage() {
     }
   }, [indexingJob]);
 
-  // Force re-render every second while indexing is active (for elapsed time)
+  // 索引进行时每秒强制重新渲染（用于显示耗时）
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!indexingActive) return;
@@ -286,7 +286,7 @@ export default function SearchConfigPage() {
     queryClient.invalidateQueries({ queryKey: ['search-posts'] });
   }, [queryClient]);
 
-  // --- Data fetching ---
+  // --- 数据获取 ---
   const {
     data: configRes,
     isLoading: configLoading,
@@ -320,7 +320,7 @@ export default function SearchConfigPage() {
   });
   const diagnostics = diagnosticsRes?.data;
 
-  // Fetch enabled providers —— 保留整条数据, 下游 EmbeddingModelPicker 需要
+  // 获取已启用的供应商 —— 保留整条数据, 下游 EmbeddingModelPicker 需要
   // provider.icon / display_name / priority 渲染 Codex 分组头 + 品牌图标.
   const providersQuery = useQuery({
     queryKey: ['ai-providers'],
@@ -335,7 +335,7 @@ export default function SearchConfigPage() {
     [enabledProviders]
   );
 
-  // Fetch embedding models — only from enabled providers
+  // 获取向量化模型 —— 仅来自已启用的供应商
   const embeddingModelsQuery = useQuery({
     queryKey: ['embedding-models', enabledProviderCodes ? Array.from(enabledProviderCodes).sort().join(',') : ''],
     queryFn: () => aiProviderService.listModels(undefined, 'embedding'),
@@ -347,14 +347,14 @@ export default function SearchConfigPage() {
     enabled: providersQuery.isSuccess,
   });
 
-  // Fetch current embedding routing
+  // 获取当前向量化路由配置
   const embeddingRoutingQuery = useQuery({
     queryKey: ['embedding-routing'],
     queryFn: () => aiProviderService.getRouting('embedding'),
     select: (res) => res.data,
   });
 
-  // Fetch all credentials so we can bind the active one to the routing.
+  // 获取所有凭证，便于把激活的那一条绑定到路由上。
   // 必须显式把 credential_id 存进 ai_task_routing，否则 ai-service 在内部服务
   // 无登录态调用时会走 fallback → env openai，用上虚空捏造的 api.openai.com。
   const credentialsQuery = useQuery({
@@ -369,7 +369,7 @@ export default function SearchConfigPage() {
   const [pendingEmbeddingModelId, setPendingEmbeddingModelId] =
     useState<number | null | undefined>(undefined);
 
-  // Mutation to update embedding routing
+  // 更新向量化路由的 mutation
   const updateRoutingMutation = useMutation({
     mutationFn: (modelId: number | null) => {
       // 根据所选模型自动解析对应的 credential_id：
@@ -414,7 +414,7 @@ export default function SearchConfigPage() {
   const config = configRes?.data;
   const stats = statsRes?.data;
 
-  // --- Local form state ---
+  // --- 本地表单状态 ---
   const [formData, setFormData] = useState<Partial<SearchConfig>>({});
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -621,7 +621,7 @@ export default function SearchConfigPage() {
   };
 
   const handleSave = () => {
-    // Map camelCase form keys to search.* database keys
+    // 将 camelCase 表单 key 映射到 search.* 数据库 key
     const fieldToSettingKey: Record<string, string> = {
       keywordEnabled: 'search.keyword_enabled',
       semanticEnabled: 'search.semantic_enabled',
@@ -636,7 +636,7 @@ export default function SearchConfigPage() {
     for (const [key, value] of Object.entries(formData)) {
       const settingKey = fieldToSettingKey[key];
       if (settingKey) {
-        // Boolean values as "true"/"false" strings, numbers as string numbers
+        // 布尔值序列化为 "true"/"false" 字符串，数字序列化为字符串
         payload[settingKey] = String(value);
       }
     }
@@ -659,14 +659,14 @@ export default function SearchConfigPage() {
     }
   };
 
-  // embeddingConfigured requires both a selected model AND a resolvable credential;
-  // otherwise runtime falls back to env defaults.
+  // embeddingConfigured 需要同时具备已选模型与可解析的凭证；
+  // 否则运行时会回退到环境变量默认值。
   const embeddingModelSelected = !!currentRouting?.primary_model;
   const embeddingCredentialReady = currentRouting?.credential_configured !== false;
   const embeddingConfigured = embeddingModelSelected && embeddingCredentialReady;
   const semanticEnabled = formData.semanticEnabled ?? false;
 
-  // --- Full page skeleton ---
+  // --- 全页骨架屏 ---
   if (configLoading && statsLoading && embeddingLoading) {
     return (
       <div className="space-y-6">
@@ -688,7 +688,7 @@ export default function SearchConfigPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
@@ -814,7 +814,7 @@ export default function SearchConfigPage() {
         </motion.div>
       )}
 
-      {/* Cards grid */}
+      {/* 卡片网格 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1: 向量化状态 */}
         <motion.div
@@ -830,7 +830,7 @@ export default function SearchConfigPage() {
             </h2>
           </div>
 
-          {/* Embedding model selector */}
+          {/* 向量化模型选择器 */}
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <label className="text-sm font-medium text-[var(--text-secondary)] shrink-0">
@@ -878,7 +878,7 @@ export default function SearchConfigPage() {
                 </div>
               )}
             </div>
-            {/* Current model details — 显示真正生效的 model_id 和 base_url，
+            {/* 当前模型详情 —— 显示真正生效的 model_id 和 base_url，
                  避免 UI 标签和后端实际调用不一致时出现"我明明选了 large 怎么
                  还是 small"的迷惑场面。base_url 来自 provider 下匹配凭证的
                  base_url_override（与 ai-service 的 credential resolver 同一逻辑）。
@@ -945,7 +945,7 @@ export default function SearchConfigPage() {
             })()}
           </div>
 
-          {/* Index stats */}
+          {/* 索引统计 */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {statsLoading ? (
               <>
@@ -976,7 +976,7 @@ export default function SearchConfigPage() {
             ) : null}
           </div>
 
-          {/* Action buttons */}
+          {/* 操作按钮 */}
           <div className="flex flex-wrap gap-3 pt-1">
             <button
               onClick={() => reindexMutation.mutate()}
@@ -1011,7 +1011,7 @@ export default function SearchConfigPage() {
             </button>
           </div>
 
-          {/* Indexing progress panel */}
+          {/* 索引进度面板 */}
           <AnimatePresence>
             {indexingJob && stats && (
               <IndexingProgressPanel
@@ -1024,7 +1024,7 @@ export default function SearchConfigPage() {
             )}
           </AnimatePresence>
 
-          {/* Post list with per-article indexing */}
+          {/* 文章列表（支持按篇索引） */}
           <div className="border-t border-[var(--border-subtle)] pt-5 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2">
@@ -1032,7 +1032,7 @@ export default function SearchConfigPage() {
                 <span className="text-sm font-bold text-[var(--text-primary)]">文章索引列表</span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Filter tabs */}
+                {/* 筛选 Tab */}
                 <div className="flex rounded-lg border border-[var(--border-subtle)] overflow-hidden">
                   {filterTabs.map((tab) => (
                     <button
@@ -1049,7 +1049,7 @@ export default function SearchConfigPage() {
                     </button>
                   ))}
                 </div>
-                {/* Batch reindex */}
+                {/* 批量重建索引 */}
                 {selected.size > 0 && (
                   <button
                     onClick={() => indexBatchMutation.mutate(Array.from(selected))}
@@ -1067,7 +1067,7 @@ export default function SearchConfigPage() {
               </div>
             </div>
 
-            {/* Table */}
+            {/* 表格 */}
             <div className="rounded-lg border border-[var(--border-subtle)] overflow-x-auto">
               <table className="w-full text-sm min-w-[480px] sm:min-w-0">
                 <thead>
@@ -1152,7 +1152,7 @@ export default function SearchConfigPage() {
               </table>
             </div>
 
-            {/* Pagination */}
+            {/* 分页 */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-1">
                 <span className="text-xs text-[var(--text-muted)]">
@@ -1194,7 +1194,7 @@ export default function SearchConfigPage() {
           </div>
 
           <div className="space-y-4">
-            {/* Keyword search */}
+            {/* 关键词搜索 */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-[var(--text-secondary)]">
@@ -1210,7 +1210,7 @@ export default function SearchConfigPage() {
               />
             </div>
 
-            {/* Semantic search */}
+            {/* 语义搜索 */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-[var(--text-secondary)]">
@@ -1239,7 +1239,7 @@ export default function SearchConfigPage() {
               />
             </div>
 
-            {/* AI QA */}
+            {/* AI 问答 */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-[var(--text-secondary)]">
@@ -1280,7 +1280,7 @@ export default function SearchConfigPage() {
           </div>
 
           <div className="space-y-4">
-            {/* Anon search rate */}
+            {/* 匿名搜索限流 */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-[var(--text-secondary)]">
                 匿名搜索限流 (次/分钟)
@@ -1299,7 +1299,7 @@ export default function SearchConfigPage() {
               />
             </div>
 
-            {/* Anon QA rate */}
+            {/* 匿名问答限流 */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-[var(--text-secondary)]">
                 匿名 QA 限流 (次/分钟)

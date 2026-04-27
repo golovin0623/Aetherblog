@@ -18,8 +18,8 @@ const fadeUp = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
 };
 
-// Module-scope: icon JSX references stay stable across re-renders so
-// React.memo on FeatureCard can actually skip re-renders via shallow compare.
+// 模块级作用域：icon JSX 引用在重渲染间保持稳定，
+// 这样 FeatureCard 上的 React.memo 才能通过浅比较真正跳过重渲染。
 const features = [
   {
     icon: (
@@ -58,7 +58,7 @@ const features = [
 export default function DesignSection({ isVisible }: Props) {
   return (
     <div className="space-y-12">
-      {/* Header */}
+      {/* 头部 */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={isVisible ? { opacity: 1, y: 0 } : {}}
@@ -77,7 +77,7 @@ export default function DesignSection({ isVisible }: Props) {
         </p>
       </motion.div>
 
-      {/* Feature Cards */}
+      {/* 特性卡片 */}
       <motion.div
         variants={stagger}
         initial="initial"

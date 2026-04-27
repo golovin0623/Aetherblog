@@ -304,7 +304,7 @@ export default function ProviderDialog({
               </div>
             )}
 
-            {/* Code */}
+            {/* 代码 */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-[var(--text-muted)]">
                 供应商代码

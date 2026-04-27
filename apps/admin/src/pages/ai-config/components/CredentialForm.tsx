@@ -49,7 +49,7 @@ export default function CredentialForm({
       setName(credential.name || '');
       setIsDefault(credential.is_default);
       setApiPathMode((credential.extra_config?.api_path_mode as ApiPathMode) || 'auto');
-      // API Key 不回显，只显示 hint
+      // API Key 不回显，只显示提示
       setApiKey('');
     }
   }, [credential]);

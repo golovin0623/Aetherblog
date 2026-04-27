@@ -43,9 +43,8 @@ services:
       - ai-service
     networks:
       - aetherblog-network
-    # SECURITY (VULN-123): runtime hardening — disable privilege escalation,
-    # drop all capabilities except those explicitly needed, disallow writes to
-    # the root FS except designated tmpfs paths.
+    # SECURITY (VULN-123): 运行时加固 —— 禁止权限提升，除显式需要的能力外
+    # 全部 drop，禁止写入根文件系统，仅允许写入指定的 tmpfs 路径。
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -54,7 +53,7 @@ services:
       - CHOWN
       - SETUID
       - SETGID
-      - NET_BIND_SERVICE  # required to bind :80
+      - NET_BIND_SERVICE  # 绑定 :80 所必需
     read_only: true
     tmpfs:
       - /tmp:rw,size=16M,mode=1777
@@ -128,9 +127,9 @@ services:
     networks:
       - aetherblog-network
     healthcheck:
-      # SECURITY (VULN-147): use REDISCLI_AUTH env var rather than -a flag.
-      # -a flag leaks the password into `ps auxf` output; REDISCLI_AUTH is
-      # consumed internally by redis-cli without appearing in process args.
+      # SECURITY (VULN-147): 使用 REDISCLI_AUTH 环境变量替代 -a 参数。
+      # -a 参数会把密码泄露到 `ps auxf` 输出；REDISCLI_AUTH 由 redis-cli 内部
+      # 消费，不会出现在进程参数列表里。
       test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping"]
       interval: 10s
       timeout: 5s
@@ -173,7 +172,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       AETHERBLOG_AI_BASE_URL: http://ai-service:8000
       AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
-      # SECURITY (VULN-120): JWT_SECRET required, no silent empty fallback.
+      # SECURITY (VULN-120): JWT_SECRET 必填，禁止空值静默回退。
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET env var is required (min 32 chars)}
       AETHERBLOG_AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AETHERBLOG_AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Strict}
@@ -186,23 +185,23 @@ services:
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
-      # Docker socket is mounted read-only so the admin "容器监控" panel
-      # (apps/server-go/internal/service/container_monitor.go) can call the
-      # Docker API for container list / stats. The handler is gated behind
-      # /v1/admin/monitor/* (admin-only JWT) and only issues GETs.
+      # 以只读方式挂载 Docker socket，让 admin 后台"容器监控"面板
+      # (apps/server-go/internal/service/container_monitor.go) 能调用 Docker
+      # API 拉取容器列表 / 统计指标。该接口受 /v1/admin/monitor/* 保护
+      # (仅管理员 JWT 可访问)，且只执行 GET 请求。
       #
-      # SECURITY TRADEOFF: even a :ro bind of docker.sock grants root-equivalent
-      # access to the host via the Docker daemon API — the ":ro" only blocks
-      # writing to the *socket file* itself, not the API surface. We accept
-      # this for the self-hosted admin-only monitoring use case. For hardened
-      # deployments, swap to a docker-socket-proxy (tecnativa/docker-socket-proxy)
-      # that restricts the API to /containers/json and /containers/*/stats.
+      # 安全权衡说明：即使是 :ro 方式挂载 docker.sock，也通过 Docker daemon
+      # API 暴露了等同 root 的宿主机权限 —— ":ro" 仅防止写入 *socket 文件本身*，
+      # 并不能限制 API 操作面。对于自托管、仅管理员可用的监控场景，我们接受
+      # 这个折中。如需更严格的部署，建议改用 docker-socket-proxy
+      # (tecnativa/docker-socket-proxy) 把 API 限制到 /containers/json 和
+      # /containers/*/stats。
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # The backend image runs as UID 1001 (non-root). /var/run/docker.sock on
-    # the host is typically owned by root:docker (mode 0660), so UID 1001 must
-    # be in the host's docker group to read it. DOCKER_GID must match the
-    # host's docker group — check with: `stat -c '%g' /var/run/docker.sock`.
-    # Default 999 covers Ubuntu/Debian; set DOCKER_GID in .env if different.
+    # backend 镜像以 UID 1001（非 root）运行。宿主机的 /var/run/docker.sock
+    # 通常归属 root:docker（mode 0660），所以 UID 1001 必须加入宿主机的 docker
+    # 组才能读取。DOCKER_GID 必须与宿主机的 docker 组 GID 一致 ——
+    # 用 `stat -c '%g' /var/run/docker.sock` 查询。默认 999 适用于 Ubuntu/Debian；
+    # 若不同，请在 .env 中设置 DOCKER_GID。
     group_add:
       - "${DOCKER_GID:-999}"
     depends_on:
@@ -210,9 +209,9 @@ services:
         condition: service_healthy
     networks:
       - aetherblog-network
-    # SECURITY (VULN-123): Go backend only writes to /app/uploads and /app/logs,
-    # both already mapped to named volumes. Read-only root FS prevents malware
-    # from dropping persistent binaries in / after an exploit.
+    # SECURITY (VULN-123): Go 后端仅写入 /app/uploads 和 /app/logs，
+    # 这两处都已挂到具名卷。根文件系统只读可以防止漏洞被利用后向 / 落下
+    # 持久化的恶意二进制。
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -225,8 +224,8 @@ services:
       interval: 3s
       timeout: 3s
       retries: 3
-      # SECURITY (VULN-150): give the app time to actually boot before the
-      # healthcheck reports failure; 1s was masking crash loops as "healthy yet".
+      # SECURITY (VULN-150): 给应用足够的真正启动时间，再让 healthcheck 报失败；
+      # 此前的 1s 会把崩溃循环掩盖成"暂时还健康"。
       start_period: 30s
     deploy:
       resources:
@@ -256,13 +255,13 @@ services:
       AI_LOG_LEVEL: ${AI_LOG_LEVEL:-info}
       AI_MOCK_MODE: ${AI_MOCK_MODE:-false}
       AI_JWT_MODE: ${AI_JWT_MODE:-HMAC}
-      # SECURITY (VULN-120): JWT_SECRET required, no silent empty fallback.
+      # SECURITY (VULN-120): JWT_SECRET 必填，禁止空值静默回退。
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET env var is required (min 32 chars)}  # AI 服务与后端共用同一个密钥
       AI_JWT_JWKS_URL: ${AI_JWT_JWKS_URL:-}
       AI_JWT_ISSUER: ${AI_JWT_ISSUER:-}
       AI_JWT_AUDIENCE: ${AI_JWT_AUDIENCE:-}
       AI_INTERNAL_SERVICE_TOKEN: ${AI_INTERNAL_SERVICE_TOKEN:?AI_INTERNAL_SERVICE_TOKEN env var is required}
-      # SECURITY (VULN-056): credential encryption key — must be independent of JWT_SECRET.
+      # SECURITY (VULN-056): 凭据加密密钥 —— 必须独立于 JWT_SECRET。
       AI_CREDENTIAL_ENCRYPTION_KEYS: ${AI_CREDENTIAL_ENCRYPTION_KEYS:?AI_CREDENTIAL_ENCRYPTION_KEYS env var is required}
       # 对齐 Go backend 的三段式 Redis 配置,避免 ai-service 只认 REDIS_URL
       # 时出现 "backend 连得上但 ai-service 连不上" 的运维漂移。常见坑:
@@ -273,8 +272,8 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      # Optional 完整 URL override。外部 Redis cluster / rediss:// TLS / sentinel
-      # 场景下可以直接写完整 URL, 此时三段式变量被忽略 (_build_redis_url_from_parts
+      # 可选的完整 URL 覆盖。外部 Redis cluster / rediss:// TLS / sentinel
+      # 场景下可以直接写完整 URL，此时三段式变量被忽略 (_build_redis_url_from_parts
       # 检测到非空 REDIS_URL 就短路返回)。
       REDIS_URL: ${AI_REDIS_URL:-}
       POSTGRES_DSN: postgresql://aetherblog:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/aetherblog
@@ -290,9 +289,9 @@ services:
         condition: service_healthy
     networks:
       - aetherblog-network
-    # SECURITY (VULN-123): same hardening as Go backend. Python needs /tmp for
-    # ephemeral buffers (uvicorn reload isn't in use here; standard tmpfs size
-    # suffices for logs/compilation caches).
+    # SECURITY (VULN-123): 与 Go 后端相同的加固策略。Python 需要 /tmp 用作
+    # 临时缓冲区（这里没有启用 uvicorn reload；标准 tmpfs 大小已足够支撑
+    # 日志/编译缓存）。
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -327,11 +326,10 @@ services:
         - linux/amd64
         - linux/arm64
       args:
-        # SECURITY (VULN-144): bake a relative `/api` path — the production
-        # gateway already proxies /api to the backend, so the client never
-        # sees the internal hostname. Baking `http://backend:8080` into the
-        # bundle would ship that internal DNS name to every visitor's browser
-        # (leaks topology + confuses clients when DNS differs).
+        # SECURITY (VULN-144): 打包成相对路径 `/api` —— 生产网关已经把 /api
+        # 代理到后端，客户端永远看不到内部主机名。如果把 `http://backend:8080`
+        # 烤进打包产物，就会把这个内部 DNS 名暴露给每位访客的浏览器
+        # (既泄露拓扑，又会在客户端 DNS 不同时引发混乱)。
         NEXT_PUBLIC_API_URL: /api
         NEXT_PUBLIC_ADMIN_URL: /admin/
     container_name: aetherblog-blog

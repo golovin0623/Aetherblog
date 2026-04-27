@@ -27,7 +27,7 @@ import { logger } from '@/lib/logger';
 import { format, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
-// ========== Chart Data Helper ==========
+// ========== 图表数据辅助 ==========
 
 interface MergedDataPoint {
   time: string;  // 后端返回的 ISO 字符串
@@ -201,7 +201,7 @@ export function SystemTrends({ className }: { className?: string }) {
           </div>
         </div>
         <div className="flex-1 bg-[var(--bg-secondary)] rounded-xl animate-pulse relative overflow-hidden">
-          {/* Shimmer effect */}
+          {/* 微光效果 */}
           <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-[var(--bg-card-hover)] to-transparent" />
         </div>
       </div>
@@ -230,7 +230,7 @@ export function SystemTrends({ className }: { className?: string }) {
           
           {/* 图例组 */}
           <div className="flex items-center gap-2">
-               {/* CPU */}
+               {/* CPU 图例 */}
                <button 
                  onClick={() => toggleMetric('cpu')}
                  className={cn(
