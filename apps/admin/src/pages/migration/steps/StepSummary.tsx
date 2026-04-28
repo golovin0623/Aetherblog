@@ -78,7 +78,7 @@ export function StepSummary({ state, onRestart }: Props) {
             {createdLinks.map((it, idx) => (
               <li key={idx}>
                 <Link
-                  to={`/posts/edit/${it.postId}`}
+                  to={`/posts/${it.postId}/edit`}
                   className="flex items-center justify-between rounded-lg bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]"
                 >
                   <span className="truncate">{it.title || `#${it.postId}`}</span>

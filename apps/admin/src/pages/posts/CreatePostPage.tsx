@@ -1506,7 +1506,7 @@ export function CreatePostPage() {
           });
           // 如果是新文章，导航到编辑页面
           if (!isEditMode && res.data.id) {
-            setTimeout(() => navigate(`/posts/edit/${res.data.id}`), 1000);
+            setTimeout(() => navigate(`/posts/${res.data.id}/edit`), 1000);
           }
         } else {
           toast.error(res.message || '保存失败');
