@@ -187,19 +187,31 @@ run_pre_deploy_migrations() {
   local db_dsn="postgres://${db_user_enc}:${db_pass_enc}@postgres:5432/${db_name}?sslmode=disable"
 
   # ----------------------------------------------------------
-  # 故障自愈: 000034 (versioned_post_embeddings) 使用 CREATE TABLE IF NOT
-  # EXISTS post_embeddings, 但 000001 里已经建过一张 chunk-版 post_embeddings.
-  # 存量部署和 fresh install 都会命中 —— CREATE TABLE 被静默跳过, 紧随其后
-  # 的 CREATE INDEX ... WHERE dim = 1536 AND status = 'active' 引用旧表不
-  # 存在的列直接崩塌, schema_migrations 被标 dirty, 迁移链卡在 v34.
+  # 故障自愈: 已知"安全可重放"的 dirty 版本表 —— 只有写过 recipe 的版本才会被
+  # 自愈, 其他 dirty 一律中止, 避免把真正需要人工介入的迁移故障误 heal 成
+  # "绿色部署".
   #
-  # 自愈策略: "v34 dirty → force 35" + up, 让 000036 的幂等修复接管重建.
-  # 两阶段触发:
-  #   1) 部署前先探: 若已经 v34 dirty (历史受损实例), 直接 force 35 再 up.
-  #   2) up 若失败: 再探一次, 若这次 up 把 schema 拖到 v34 dirty (首次 fresh
-  #      install 命中 bug 的场景), 同一部署周期内 force 35 + 重试 up 一次.
-  # 只识别 exactly v34 dirty 这一种特征, 不动其他 dirty. 避免把真正需要人工
-  # 介入的迁移故障误 heal 成"绿色部署".
+  # 当前覆盖的 dirty 特征:
+  #   v34 → force 35
+  #     起因: 000034 (versioned_post_embeddings) 使用 CREATE TABLE IF NOT
+  #     EXISTS post_embeddings, 但 000001 已建过 chunk-版同名表; CREATE
+  #     TABLE 被静默跳过后, 紧随其后的 CREATE INDEX ... WHERE dim = 1536
+  #     AND status = 'active' 引用旧表不存在的列直接崩塌, schema_migrations
+  #     被标 dirty. 自愈: force 35 跳过坏掉的 v34, 让 000036 的幂等修复
+  #     重建 schema.
+  #
+  #   v38 → force 37 (本次新增)
+  #     起因: 000038 (improve_ai_prompts) 因 webhook/迁移过程偶发抖动 (网络
+  #     断开 / postgres 重启 / migrate 容器 OOM 等) 在执行中途断开, 留下
+  #     v38 dirty. migration 内容是 7 条 UPDATE ai_task_types + 一条加宽
+  #     ALTER TABLE posts ... VARCHAR(2000), 全部幂等 (UPDATE 重写同行无副
+  #     作用; ALTER COLUMN 加宽 VARCHAR 是 catalog-only 的 O(1) DDL, 已经
+  #     是 2000 时再改无变化). 自愈: force 37 回退到 000038 之前的状态,
+  #     up 重放 000038 即可.
+  #
+  # 两阶段触发 (与 v34 同):
+  #   1) 部署前先探: 已经 dirty 的命中条目立刻 force + 让后续 up 接管.
+  #   2) up 失败后再探: 同一部署周期内允许自愈 + 重试 up 一次.
   # ----------------------------------------------------------
 
   # 无论退出码如何都捕获 `migrate version` 的输出。golang-migrate v4 在 dirty
@@ -207,41 +219,59 @@ run_pre_deploy_migrations() {
   # 或瞬时 DB 抖动场景下会以非零码退出并向 stderr 写入。下游解析仍然需要这段文本；
   # 仅靠退出码判断的话，未来某版 migrate 改了退出约定就会漏掉合法的
   # "version: 34, dirty: true"。2>&1 将 stderr 合并到主流；
-  # `_heal_v34_dirty_if_present` 的正则足够具体，遇到无关或报错文本会自然不匹配并返回 1。
+  # `_try_heal_known_dirty` 的正则足够具体，遇到无关或报错文本会自然不匹配并返回 1。
   _probe_migration_version() {
     docker compose -f "$COMPOSE_FILE" run --rm \
       --entrypoint /app/migrate \
       backend -dir /app/migrations -dsn "$db_dsn" version 2>&1 || true
   }
 
-  # 当检测到 v34 dirty 状态 **且** 成功 force 到 35 时返回 0；
-  # 其他情况（无 dirty / 不同版本的 dirty / force 失败）返回 1。
+  # 当 dirty 版本命中 recipe 表 **且** force 成功时返回 0；
+  # 其他情况（非 dirty / 未登记的版本 / force 失败）返回 1。
   # 调用方根据上下文判断"非本特征"的语义（pre-up 阶段：无害跳过；
   # post-up 阶段：暴露底层迁移错误）。
-  _heal_v34_dirty_if_present() {
+  _try_heal_known_dirty() {
     local out="$1"
     local v d
     v=$(echo "$out" | sed -nE 's/.*version: ([0-9]+).*/\1/p' | head -1)
     d=$(echo "$out" | sed -nE 's/.*dirty: (true|false).*/\1/p' | head -1)
-    if [ "$v" = "34" ] && [ "$d" = "true" ]; then
-      echo "[$(date -Iseconds)] WARN: detected dirty state at migration v34 — matches the known 000034 partial-apply bug. Forcing to v35 so 000036 repair can run."
-      if docker compose -f "$COMPOSE_FILE" run --rm \
-           --entrypoint /app/migrate \
-           backend -dir /app/migrations -dsn "$db_dsn" force 35; then
-        echo "[$(date -Iseconds)] migration force 35 succeeded."
-        return 0
-      fi
-      echo "[$(date -Iseconds)] ERROR: migration force 35 failed"
+    if [ "$d" != "true" ] || [ -z "$v" ]; then
+      return 1
     fi
+
+    local force_to=""
+    local reason=""
+    case "$v" in
+      34)
+        force_to=35
+        reason="matches the known 000034 partial-apply bug; 000036 repair will rebuild schema after force"
+        ;;
+      38)
+        force_to=37
+        reason="000038 (improve_ai_prompts) is fully idempotent (UPDATEs + widening ALTER COLUMN); replay after rewinding to v37 is safe"
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+
+    echo "[$(date -Iseconds)] WARN: detected dirty state at migration v$v — $reason. Forcing to v$force_to."
+    if docker compose -f "$COMPOSE_FILE" run --rm \
+         --entrypoint /app/migrate \
+         backend -dir /app/migrations -dsn "$db_dsn" force "$force_to"; then
+      echo "[$(date -Iseconds)] migration force $force_to succeeded."
+      return 0
+    fi
+    echo "[$(date -Iseconds)] ERROR: migration force $force_to failed"
     return 1
   }
 
-  # 阶段 1：up 之前的探测（处理早期部署遗留的 v34 dirty 状态）
+  # 阶段 1：up 之前的探测（处理早期部署遗留的 dirty 状态）
   local version_out
   version_out=$(_probe_migration_version)
   if [ -n "$version_out" ]; then
     echo "[$(date -Iseconds)] migration state (pre-up): $version_out"
-    _heal_v34_dirty_if_present "$version_out" || true
+    _try_heal_known_dirty "$version_out" || true
   else
     echo "[$(date -Iseconds)] migration version probe returned empty (likely fresh install with no schema_migrations yet)"
   fi
@@ -254,17 +284,17 @@ run_pre_deploy_migrations() {
     return
   fi
 
-  # 阶段 3：up 失败 —— 若落到 v34 dirty 特征上（首次 fresh install 会精准命中此场景），
-  # 在同一次部署内自愈并重试一次。其他失败一律中止，避免真实迁移错误被悄悄掩盖。
-  echo "[$(date -Iseconds)] WARN: migration up failed; re-probing to check for v34 dirty signature."
+  # 阶段 3：up 失败 —— 若落到已登记的 dirty 特征上，在同一次部署内自愈并重试一次。
+  # 其他失败一律中止，避免真实迁移错误被悄悄掩盖。
+  echo "[$(date -Iseconds)] WARN: migration up failed; re-probing to check for known dirty signatures."
   version_out=$(_probe_migration_version)
   if [ -z "$version_out" ]; then
     echo "[$(date -Iseconds)] ERROR: cannot re-probe migration version after failure, aborting deploy"
     exit 1
   fi
   echo "[$(date -Iseconds)] migration state (post-up): $version_out"
-  if _heal_v34_dirty_if_present "$version_out"; then
-    echo "[$(date -Iseconds)] retrying migrate up after v34 dirty heal"
+  if _try_heal_known_dirty "$version_out"; then
+    echo "[$(date -Iseconds)] retrying migrate up after dirty-state heal"
     if docker compose -f "$COMPOSE_FILE" run --rm \
          --entrypoint /app/migrate \
          backend -dir /app/migrations -dsn "$db_dsn" up; then
