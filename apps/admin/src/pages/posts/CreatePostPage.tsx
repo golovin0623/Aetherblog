@@ -1504,9 +1504,9 @@ export function CreatePostPage() {
             markSuccess: true,
             fingerprint: currentFingerprint,
           });
-          // 如果是新文章，导航到编辑页面
+          // 如果是新文章，立即导航到编辑页面，避免延迟期间重复点击造成多次创建
           if (!isEditMode && res.data.id) {
-            setTimeout(() => navigate(`/posts/${res.data.id}/edit`), 1000);
+            navigate(`/posts/${res.data.id}/edit`);
           }
         } else {
           toast.error(res.message || '保存失败');
