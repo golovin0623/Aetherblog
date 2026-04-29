@@ -632,9 +632,65 @@ class TestBuildMessages:
         assert msgs[1]["content"] == "示例文章"
 
     def test_no_template_falls_back_to_user_only(self):
+        # task_alias=None 时 (例如 admin/未知任务), 仍走旧逻辑发单条 user 消息,
+        # 但 _build_messages 内部会落 ERROR 日志方便排查。
         router = _stub_router()
         msgs = router._build_messages(None, {"content": "hi"})
         assert msgs == [{"role": "user", "content": "hi"}]
+
+    def test_no_template_uses_task_fallback_system_prompt_for_summary(self):
+        """SUMMARY-LONGER-THAN-SOURCE 回归锁: prompt_template 为空但 task
+        是已知业务任务时, 必须用 _TASK_FALLBACK_SYSTEM_PROMPT 兜底, 不能
+        把文章裸发出去当聊天问句。"""
+        router = _stub_router()
+        msgs = router._build_messages(None, {"content": "今天的文章正文"}, task_alias="summary")
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "system"
+        assert "摘要" in msgs[0]["content"]
+        assert "200 字以内" in msgs[0]["content"]
+        assert msgs[1] == {"role": "user", "content": "今天的文章正文"}
+
+    def test_no_template_uses_task_fallback_for_each_known_task(self):
+        """所有已知业务任务都必须有 fallback prompt, 防止任何一类 AI 工具
+        在 routing/task_types 表为空时退化为裸发模式。"""
+        router = _stub_router()
+        for task_alias in ("summary", "tags", "titles", "polish", "outline", "translate", "qa"):
+            msgs = router._build_messages(None, {"content": "x"}, task_alias=task_alias)
+            assert msgs[0]["role"] == "system", f"{task_alias} 缺失 system 消息"
+            assert msgs[0]["content"].strip(), f"{task_alias} 的 fallback prompt 为空"
+            assert msgs[1] == {"role": "user", "content": "x"}, f"{task_alias} 未把内容放到 user 消息"
+
+
+class TestMaskSecret:
+    """凭证脱敏: 调用日志里只能出现尾 4 位, 严禁泄露明文 api_key。"""
+
+    def test_short_secret_fully_masked(self):
+        assert LlmRouter._mask_secret("abc") == "****"
+
+    def test_long_secret_keeps_tail_only(self):
+        # 典型 OpenAI key 形如 sk-...XXXX, 必须只露尾 4 位
+        assert LlmRouter._mask_secret("sk-1234567890ABCDEF") == "****CDEF"
+
+    def test_empty_secret_returns_empty(self):
+        assert LlmRouter._mask_secret("") == ""
+        assert LlmRouter._mask_secret(None) == ""
+
+
+class TestSummarizeMessages:
+    """请求审计日志的 messages 缩略行为: 截断长 content, 保留 char_total。"""
+
+    def test_short_content_passes_through(self):
+        msgs = [{"role": "user", "content": "hi"}]
+        out = LlmRouter._summarize_messages(msgs, snippet_chars=100)
+        assert out == [{"role": "user", "char_total": 2, "content_snippet": "hi"}]
+
+    def test_long_content_truncated_with_total_preserved(self):
+        long_text = "x" * 1500
+        msgs = [{"role": "user", "content": long_text}]
+        out = LlmRouter._summarize_messages(msgs, snippet_chars=400)
+        assert out[0]["char_total"] == 1500
+        assert len(out[0]["content_snippet"]) == 400
+        assert out[0]["truncated"] is True
 
     def test_template_without_content_marker_keeps_content_in_user(self):
         """没有显式 ``{content}`` 占位符的自定义 prompt 仍必须把文章正文

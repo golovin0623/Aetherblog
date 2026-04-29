@@ -45,6 +45,50 @@ _TASK_DEFAULT_MAX_TOKENS: dict[str, int] = {
     "qa": 2000,
 }
 
+# 当 ``ai_task_routing`` / ``ai_task_types`` 都查不到 prompt_template 时
+# 使用的最后一道 system prompt 防线。覆盖以下故障场景：
+#   1. 用户在 admin UI 选了 modelId（命中 _resolve_override 路径）
+#      但任务路由表里没显式 routing；
+#   2. ai_task_types 表为空（迁移未应用 / 行被手动删除）；
+#   3. 任意能让 prompt_template = None 的回退路径。
+# 没有这一层，模型会收到 *只有用户文章* 的单条 user 消息，把它当聊天
+# 问句作答 —— 这是“493 字正文 → 1494 字带 ### 小标题的扩写”一类怪
+# 输出的真正根因。文案故意写得简短保守，宁可让模型产出朴素结果，
+# 也绝不允许它跑偏成多段问答。
+_TASK_FALLBACK_SYSTEM_PROMPT: dict[str, str] = {
+    "summary": (
+        "你是一名严谨的中文摘要助手。请阅读用户提供的文章, "
+        "用一段连贯的中文段落总结核心要点, 字数严格控制在 200 字以内, "
+        "不得分点, 不得加任何小标题, 不得使用问答形式, "
+        "不得复述原文标题或加 '本文'/'摘要:' 之类前缀。"
+    ),
+    "tags": (
+        "你是标签生成助手。读取用户文章, 仅输出一个 JSON 数组, "
+        "包含 3-8 个最贴切的中文标签字符串, 不要任何其它文字、解释或代码块标记。"
+    ),
+    "titles": (
+        "你是标题建议助手。读取用户文章, 仅输出一个 JSON 数组, "
+        "包含 3-5 条候选中文标题, 每条不超过 30 字, "
+        "不要任何其它文字、解释或代码块标记。"
+    ),
+    "polish": (
+        "你是中文润色助手。请只调整用户文章的表达流畅度、错别字与语序, "
+        "禁止改动原文事实、删减段落或新增内容, 直接输出润色后的全文。"
+    ),
+    "outline": (
+        "你是大纲生成助手。读取用户文章, 输出一个层次清晰的中文 Markdown 大纲, "
+        "使用 ## / ### 标记, 不要写正文段落。"
+    ),
+    "translate": (
+        "你是翻译助手。请把用户提供的内容忠实翻译为目标语言, "
+        "保留原始 Markdown 结构与专有名词, 不要新增解释或评论。"
+    ),
+    "qa": (
+        "你是问答助手, 只能基于用户提供的参考内容作答。"
+        "若参考内容不足以作答, 直接说明'参考内容中未提供该信息', 不要编造。"
+    ),
+}
+
 
 def _normalize_model_parts(model: str | None) -> tuple[str | None, str | None]:
     if not model:
@@ -138,6 +182,45 @@ class LlmRouter:
                 logger.warning(f"Failed to get routing from DB, using env config: {e}")
         return None
 
+    async def _load_task_type_prompt(self, task_alias: str | None) -> str | None:
+        """从 ``ai_task_types`` 单独取 prompt_template, 给 override / 回退路径使用。
+
+        SUMMARY-LONGER-THAN-SOURCE BUGFIX:
+        ``_resolve_override`` 与 ``_resolve_route`` 的环境变量回退分支历史
+        上把 ``prompt_template`` 写死成 ``None``。一旦命中 (例如管理员在
+        UI 选了一个自定义模型, 携带 ``modelId``), ``_build_messages``
+        就会拿到 ``None`` 模板, 把整篇文章作为单条 user 消息裸发出去,
+        模型把它当聊天问句回答 -- 真实事故里 493 字正文产出 1494 字带
+        ``### 1.`` ``### 2.`` 小标题的扩写, 完全不像摘要。
+
+        修复策略: 只要任务别名在已知业务任务列表里, 就额外查一次
+        ``ai_task_types.prompt_template`` (migration 000019 创建, 000038
+        重写) 作为这条路径的 system 指令。仍然失败时让 ``_build_messages``
+        走 ``_TASK_FALLBACK_SYSTEM_PROMPT`` 的最终防线。
+        """
+        if not task_alias:
+            return None
+        if not self.model_router or not getattr(self.model_router, "pool", None):
+            return None
+        try:
+            async with self.model_router.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT prompt_template FROM ai_task_types WHERE code = $1",
+                    task_alias,
+                )
+        except Exception as exc:
+            logger.warning(
+                "llm_router.task_type_prompt_lookup_failed",
+                extra={"data": {"task_alias": task_alias, "error": str(exc)}},
+            )
+            return None
+        if not row:
+            return None
+        template = row["prompt_template"]
+        if isinstance(template, str) and template.strip():
+            return template
+        return None
+
     async def _resolve_override(
         self,
         model_id: str | None,
@@ -164,6 +247,10 @@ class LlmRouter:
         # 加 provider 前缀，确保 LiteLLM 路由正确
         prefixed_model = self._prefix_model_for_litellm(model.model_id, credential.api_type)
 
+        # SUMMARY-LONGER-THAN-SOURCE BUGFIX: 用户手动选模型时, 必须
+        # 继承任务自带的 system prompt, 否则文章会裸发给模型当聊天问句。
+        override_prompt_template = await self._load_task_type_prompt(model_alias)
+
         return LlmRouter._ResolvedRoute(
             model=prefixed_model,
             provider_code=model.provider_code,
@@ -177,7 +264,7 @@ class LlmRouter:
             # 用户手动指定的模型仍需继承任务的硬上限，避免管理员点
             # “测试该模型”时不慎触发无上限的 8K-token 生成。
             max_tokens=_TASK_DEFAULT_MAX_TOKENS.get(model_alias or ""),
-            prompt_template=None,
+            prompt_template=override_prompt_template,
             override=True,
         )
 
@@ -214,6 +301,9 @@ class LlmRouter:
             )
 
         provider_code, model_id = _normalize_model_parts(self.resolve_model(model_alias))
+        # 同样地: 即便 routing 表为空, 也要从 ai_task_types 取 prompt 兜底,
+        # 避免环境变量回退路径退化成"裸发文章"。
+        fallback_prompt_template = await self._load_task_type_prompt(model_alias)
         return LlmRouter._ResolvedRoute(
             model=self.resolve_model(model_alias),
             provider_code=provider_code,
@@ -225,7 +315,7 @@ class LlmRouter:
             api_base=self.settings.openai_base_url,
             temperature=0.7,
             max_tokens=_TASK_DEFAULT_MAX_TOKENS.get(model_alias),
-            prompt_template=None,
+            prompt_template=fallback_prompt_template,
             override=False,
         )
 
@@ -289,6 +379,89 @@ class LlmRouter:
             return f"{tpl}\n\nContext: {kwargs}"
 
     @staticmethod
+    def _mask_secret(value: str | None) -> str:
+        """对凭证 / API key 做尾部 4 位保留的脱敏, 满足审计可定位但不泄露明文。"""
+        if not value:
+            return ""
+        if len(value) <= 4:
+            return "****"
+        return f"****{value[-4:]}"
+
+    @staticmethod
+    def _summarize_messages(messages: list[dict[str, str]], snippet_chars: int = 800) -> list[dict[str, Any]]:
+        """缩略 messages 数组用于日志, 截断每条 content 防止日志爆炸。
+
+        默认保留每条消息前 ``snippet_chars`` 个字符 (含 system 指令完整上限,
+        约 800 字足以放下任意 task 的 system prompt; user 文章则会被截断,
+        附 char_total 用于核对)。
+        """
+        out: list[dict[str, Any]] = []
+        for m in messages:
+            content = m.get("content", "") or ""
+            char_total = len(content)
+            snippet = content[:snippet_chars]
+            entry: dict[str, Any] = {
+                "role": m.get("role", ""),
+                "char_total": char_total,
+                "content_snippet": snippet,
+            }
+            if char_total > snippet_chars:
+                entry["truncated"] = True
+            out.append(entry)
+        return out
+
+    def _log_chat_request(
+        self,
+        *,
+        task_alias: str,
+        resolved: "LlmRouter._ResolvedRoute",
+        messages: list[dict[str, str]],
+        prompt_template_used: str | None,
+        custom_prompt: str | None,
+        stream: bool,
+    ) -> None:
+        """以 INFO 级别打印完整 LLM 调用报文, 便于线上"实际发了什么"的审计。
+
+        SUMMARY-LONGER-THAN-SOURCE 排查需求: 用户从手机点"生成摘要"后,
+        以前没法知道实际发到模型的 system / user 报文是什么、有没有 prompt、
+        max_tokens 几何 -- 整条链路全靠猜。这里把关键参数 + messages 缩略
+        (脱敏 api_key) 打到 docker logs。运维要详查时可在 admin 系统设置
+        把 ai-service 的 root logger 调到 DEBUG 拿到 full payload。
+
+        敏感字段处理:
+          * api_key 调用 _mask_secret 仅保留尾 4 位
+          * messages 每条 content 截断至 800 字符 (system prompt 通常 <500 字),
+            并标 truncated=True / char_total
+        """
+        try:
+            logger.info(
+                "llm_router.chat_request",
+                extra={
+                    "data": {
+                        "task_alias": task_alias,
+                        "model": resolved.model,
+                        "provider_code": resolved.provider_code,
+                        "model_id": resolved.model_id,
+                        "api_base": resolved.api_base or "",
+                        "api_key_masked": self._mask_secret(resolved.api_key),
+                        "temperature": resolved.temperature,
+                        "max_tokens": resolved.max_tokens,
+                        "stream": stream,
+                        "override": resolved.override,
+                        "prompt_source": (
+                            "custom" if custom_prompt else (
+                                "resolved" if prompt_template_used else "fallback_or_none"
+                            )
+                        ),
+                        "prompt_template_chars": len(prompt_template_used or ""),
+                        "messages": self._summarize_messages(messages),
+                    }
+                },
+            )
+        except Exception as exc:  # pragma: no cover - 防御性: 日志失败不能影响主流程
+            logger.warning("llm_router.chat_request_log_failed", extra={"data": {"error": str(exc)}})
+
+    @staticmethod
     def _safe_format(template: str, variables: dict[str, Any]) -> str:
         """基于 token 的模板替换。
 
@@ -337,6 +510,7 @@ class LlmRouter:
         self,
         prompt_template: str | None,
         normalized_variables: dict[str, Any],
+        task_alias: str | None = None,
     ) -> list[dict[str, str]]:
         """根据 prompt 模板构造 (system, user) 双消息对。
 
@@ -351,9 +525,35 @@ class LlmRouter:
         其它占位符）作为 system 指令，真正的内容则放进 user 消息。
         ``{content}`` 之后的尾部模板文本（结尾指令、输出 schema 提示等）
         会追加到 system 指令中，确保模型仍能看到。
+
+        ``task_alias`` 用于在 ``prompt_template`` 缺失时按 task 取出
+        ``_TASK_FALLBACK_SYSTEM_PROMPT`` 中预置的最小约束 system prompt,
+        避免静默回退到“裸发文章”行为。
         """
-        # 完全没有模板 —— 单条 user 消息，内容即用户文本。
+        # 完全没有模板 —— 不再静默退化为单条 user 消息 (会让模型把文章当聊天问句作答)。
+        # 先尝试用 task 兜底 prompt; 若仍无 (例如 admin/未知 task), 才退到旧逻辑,
+        # 但记 ERROR 让运维能在 docker logs 里看到问题。
         if not prompt_template:
+            fallback_prompt = _TASK_FALLBACK_SYSTEM_PROMPT.get(task_alias or "")
+            if fallback_prompt:
+                logger.error(
+                    "llm_router.prompt_template_missing_using_fallback",
+                    extra={
+                        "data": {
+                            "task_alias": task_alias,
+                            "reason": "ai_task_routing/ai_task_types lookup returned empty; using built-in fallback system prompt",
+                        }
+                    },
+                )
+                user_text = str(normalized_variables.get("content", ""))
+                return [
+                    {"role": "system", "content": fallback_prompt},
+                    {"role": "user", "content": user_text},
+                ]
+            logger.error(
+                "llm_router.prompt_template_missing_no_fallback",
+                extra={"data": {"task_alias": task_alias}},
+            )
             user_text = str(normalized_variables.get("content", ""))
             return [{"role": "user", "content": user_text}]
 
@@ -427,7 +627,19 @@ class LlmRouter:
         if self.settings.mock_mode and not resolved.override:
             return f"[mock:{resolved.model}]"
 
-        messages = self._build_messages(prompt_template, normalized_variables)
+        messages = self._build_messages(prompt_template, normalized_variables, task_alias=model_alias)
+
+        # SUMMARY-LONGER-THAN-SOURCE 排查需求: 调用前打印完整请求报文
+        # (脱敏 api_key, 截断 message content), 让线上"实际发出去的是什么"
+        # 可见, 不再是黑盒。
+        self._log_chat_request(
+            task_alias=model_alias,
+            resolved=resolved,
+            messages=messages,
+            prompt_template_used=prompt_template,
+            custom_prompt=custom_prompt,
+            stream=False,
+        )
 
         # SECURITY (VULN-057)：在管理员可控的 api_base 处拒止 SSRF。
         await self._guard_api_base(resolved.api_base)
@@ -441,6 +653,18 @@ class LlmRouter:
                 max_tokens=resolved.max_tokens,
             )
             content = response.choices[0].message.content
+            logger.info(
+                "llm_router.chat_response",
+                extra={
+                    "data": {
+                        "task_alias": model_alias,
+                        "model": resolved.model,
+                        "response_chars": len(content or ""),
+                        "response_snippet": (content or "")[:400],
+                        "max_tokens": resolved.max_tokens,
+                    }
+                },
+            )
             return content or ""
         except Exception as e:
             # 尝试 fallback 模型（若已配置）
@@ -509,13 +733,23 @@ class LlmRouter:
 
         prompt_template = custom_prompt or resolved.prompt_template
         normalized_variables = self._normalize_prompt_variables(prompt_variables)
-        messages = self._build_messages(prompt_template, normalized_variables)
+        messages = self._build_messages(prompt_template, normalized_variables, task_alias=model_alias)
 
         if self.settings.mock_mode and not resolved.override:
             for chunk in ["[", "mock", f":{resolved.model}", "]"]:
                 yield chunk
                 await asyncio.sleep(0)
             return
+
+        # 流式路径同样落审计日志, 与同步分支保持一致。
+        self._log_chat_request(
+            task_alias=model_alias,
+            resolved=resolved,
+            messages=messages,
+            prompt_template_used=prompt_template,
+            custom_prompt=custom_prompt,
+            stream=True,
+        )
 
         # SECURITY (VULN-057)：流式路径同样需要校验 base_url。
         await self._guard_api_base(resolved.api_base)
