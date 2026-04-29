@@ -15,6 +15,8 @@ SECURITY (VULN-134): 该服务需要配合加固过的 systemd unit
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import hmac
 import http.server
@@ -23,7 +25,7 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Optional, Tuple
+from typing import Iterator, Optional, Tuple
 
 
 def _resolve_secret() -> bytes:
@@ -52,6 +54,9 @@ DEPLOY_GIT_REF = os.environ.get("DEPLOY_GIT_REF", "origin/main")
 SKIP_GIT_SYNC = os.environ.get("SKIP_GIT_SYNC", "false").lower() == "true"
 GIT_FETCH_TIMEOUT = int(os.environ.get("GIT_FETCH_TIMEOUT", "120"))
 GIT_RESET_TIMEOUT = int(os.environ.get("GIT_RESET_TIMEOUT", "60"))
+# 与 deploy.sh 共享同一把 flock —— sync 与手动 `bash deploy.sh` 之间互斥,
+# 避免两个 git fetch+reset 并发踩 .git/index.lock.
+LOCK_FILE = os.environ.get("LOCK_FILE", "/var/lock/aetherblog-deploy.lock")
 
 # 允许的服务名白名单
 ALLOWED_SERVICES = {"backend", "ai-service", "blog", "admin", "gateway"}
@@ -74,7 +79,8 @@ def _sync_repo() -> Tuple[bool, str]:
         return True, "SKIP_GIT_SYNC=true, skipping repo sync"
     if not os.path.isdir(os.path.join(PROJECT_DIR, ".git")):
         return True, f"PROJECT_DIR={PROJECT_DIR} is not a git repo, skipping sync"
-    fetch_ref = DEPLOY_GIT_REF.removeprefix("origin/") or "main"
+    # str.removeprefix 是 Python 3.9+, 这里用 slice 表达式兼容到 3.6 (Ubuntu 20.04 默认 3.8).
+    fetch_ref = (DEPLOY_GIT_REF[7:] if DEPLOY_GIT_REF.startswith("origin/") else DEPLOY_GIT_REF) or "main"
     try:
         subprocess.run(
             ["git", "fetch", "--quiet", "--tags", "origin", fetch_ref],
@@ -94,6 +100,28 @@ def _sync_repo() -> Tuple[bool, str]:
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         return False, f"git sync failed (exit {exc.returncode}): {stderr or exc.cmd}"
+
+
+@contextlib.contextmanager
+def _deploy_lock() -> Iterator[None]:
+    """持有 deploy.sh 用的同一把 flock 完成 sync, 然后**立即释放**, 让随后
+    spawn 出来的 deploy.sh 自己重新 acquire.
+
+    *为什么不持有跨 subprocess 整段* —— deploy.sh 顶部 `exec 200>$LOCK_FILE`
+    会在 bash 里另开一个 fd 然后 `flock 200` 申请同一把锁; flock 是按
+    open-file-description 互斥, 父进程持有期间, 子 bash 拿不到锁会死锁.
+    所以释放窗口是必要的. 中间那个微秒级窗口里就算插进来一次手动 deploy,
+    它会先跑完, 我们再跑, flock 的串行语义不变, 没有正确性问题.
+    """
+    fd = os.open(LOCK_FILE, os.O_WRONLY | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _tail(text: str, lines: int = 20) -> str:
@@ -175,7 +203,16 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         # 先 sync 后 invoke deploy.sh: 让 deploy.sh 自身的修改在当前部署内立即
         # 生效。如果 sync 失败，直接 abort —— 既不能拉到新 deploy.sh, 也不该
         # 用磁盘上可能已经损坏的旧版本继续。
-        sync_ok, sync_msg = _sync_repo()
+        # _deploy_lock() 持有 deploy.sh 用的同一把 flock 防止与手动 `bash deploy.sh`
+        # 并发踩 .git/index.lock; 出 with 块自动释放, 让随后 spawn 的 deploy.sh
+        # 重新 acquire (见 _deploy_lock 文档字符串).
+        try:
+            with _deploy_lock():
+                sync_ok, sync_msg = _sync_repo()
+        except OSError as exc:
+            logging.error("Failed to acquire deploy lock for sync: %s", exc)
+            self._send(500, f"Lock acquisition failed: {exc}")
+            return
         if not sync_ok:
             logging.error("Repo sync failed before deploy: %s", sync_msg)
             self._send(500, f"Repo sync failed: {sync_msg}")
