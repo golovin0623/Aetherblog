@@ -58,6 +58,7 @@ const ScrollToTopBase = () => {
         isVisible ? 'md:opacity-100 md:translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
       }`}
       aria-label="返回顶部"
+      title="返回顶部"
       tabIndex={isVisible ? 0 : -1}
     >
       <div className="relative flex items-center justify-center w-10 h-10">

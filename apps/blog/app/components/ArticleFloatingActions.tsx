@@ -291,6 +291,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
               onClick={() => setIsTocOpen((prev) => !prev)}
               className="surface-raised !rounded-full fixed bottom-24 right-8 z-50 p-2 transition-all duration-300 group hover:scale-110 active:scale-95 hidden md:flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
               aria-label="打开目录"
+              title="打开目录"
             >
               <div className="relative flex items-center justify-center w-10 h-10">
                 <List className="w-5 h-5 text-[var(--text-primary)] group-hover:text-primary transition-colors duration-300" />
@@ -338,6 +339,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
                     onClick={() => setIsTocOpen(false)}
                     className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:rounded-lg"
                     aria-label="关闭目录"
+                    title="关闭目录"
                   >
                     <X className="h-4 w-4" />
                   </button>
