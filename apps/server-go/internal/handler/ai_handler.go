@@ -578,7 +578,10 @@ func (h *AiHandler) mapStatusToError(c echo.Context, statusCode int, message str
 	case statusCode == http.StatusTooManyRequests:
 		return response.FailCodeMsg(c, response.TooManyRequests.Code, "AI 服务请求过于频繁，请稍后重试")
 	case statusCode == http.StatusGatewayTimeout || statusCode == http.StatusRequestTimeout:
-		return response.FailCodeMsg(c, response.GatewayTimeout.Code, "AI 服务请求超时")
+		if msg == "" {
+			msg = "AI 服务请求超时"
+		}
+		return response.FailCodeMsg(c, response.GatewayTimeout.Code, msg)
 	case statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable:
 		if msg == "" {
 			msg = "AI 上游模型服务不可用"
