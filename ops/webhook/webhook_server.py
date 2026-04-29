@@ -44,8 +44,56 @@ BIND_HOST = os.environ.get("WEBHOOK_BIND", "127.0.0.1")
 DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/var/lib/aetherblog/webhook/deploy.sh")
 DEPLOY_TIMEOUT = int(os.environ.get("DEPLOY_TIMEOUT", "900"))
 
+# Repo sync 配置 —— 由 webhook 在 invoke deploy.sh **之前**完成 fetch + reset.
+# 这样无论 deploy.sh 怎么改, 下一次部署立刻用新版本; 避免历史"首部署用旧
+# in-memory bash 文本, 改动要等下次部署才生效"的死结. 详见 ops/webhook/README.md.
+PROJECT_DIR = os.environ.get("PROJECT_DIR", "/root/Aetherblog")
+DEPLOY_GIT_REF = os.environ.get("DEPLOY_GIT_REF", "origin/main")
+SKIP_GIT_SYNC = os.environ.get("SKIP_GIT_SYNC", "false").lower() == "true"
+GIT_FETCH_TIMEOUT = int(os.environ.get("GIT_FETCH_TIMEOUT", "120"))
+GIT_RESET_TIMEOUT = int(os.environ.get("GIT_RESET_TIMEOUT", "60"))
+
 # 允许的服务名白名单
 ALLOWED_SERVICES = {"backend", "ai-service", "blog", "admin", "gateway"}
+
+
+def _sync_repo() -> Tuple[bool, str]:
+    """在 invoke deploy.sh 之前把仓库 hard-reset 到 ``DEPLOY_GIT_REF``。
+
+    返回 ``(ok, message)``。失败时调用方应当返回 5xx; 成功时把消息写到 info 日志.
+
+    *为什么不放到 deploy.sh 里* —— deploy.sh 顶部 ``exec > >(tee ...)`` 与
+    后续 ``exec 200>$LOCK_FILE`` 共同导致 deploy.sh 不能在 sync 之后安全地
+    re-exec 自己 (会出现双 tee / fd200 锁混乱 / 死锁). 历史上为了规避死锁,
+    deploy.sh 内部 sync 写入磁盘但仍用 in-memory 旧文本跑完本次部署 —— 任何
+    deploy.sh 自身的修改都要"牺牲"一次部署才能生效, 是反复出现 bug 的源头
+    (PR #521 v38 dirty heal 上线后第一次 incremental 部署就吞掉了新 heal).
+    把 sync 提前到 webhook 这层, deploy.sh 在被 spawn 时就已经是新版.
+    """
+    if SKIP_GIT_SYNC:
+        return True, "SKIP_GIT_SYNC=true, skipping repo sync"
+    if not os.path.isdir(os.path.join(PROJECT_DIR, ".git")):
+        return True, f"PROJECT_DIR={PROJECT_DIR} is not a git repo, skipping sync"
+    fetch_ref = DEPLOY_GIT_REF.removeprefix("origin/") or "main"
+    try:
+        subprocess.run(
+            ["git", "fetch", "--quiet", "--tags", "origin", fetch_ref],
+            cwd=PROJECT_DIR, check=True, timeout=GIT_FETCH_TIMEOUT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        # FETCH_HEAD 比 origin/$ref 更可靠: 调用方可能传 DEPLOY_GIT_REF=main
+        # (无 origin/ 前缀), 这种情况下 reset 到本地 main 落不到刚 fetch 的提交.
+        subprocess.run(
+            ["git", "reset", "--hard", "FETCH_HEAD"],
+            cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        return True, f"Repo synced to FETCH_HEAD of {fetch_ref}"
+    except subprocess.TimeoutExpired as exc:
+        return False, f"git sync timed out: {exc.cmd}"
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        return False, f"git sync failed (exit {exc.returncode}): {stderr or exc.cmd}"
 
 
 def _tail(text: str, lines: int = 20) -> str:
@@ -123,6 +171,19 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         else:
             env["DEPLOY_MODE"] = "full"
             logging.info("Webhook accepted, full deploy (no services specified)")
+
+        # 先 sync 后 invoke deploy.sh: 让 deploy.sh 自身的修改在当前部署内立即
+        # 生效。如果 sync 失败，直接 abort —— 既不能拉到新 deploy.sh, 也不该
+        # 用磁盘上可能已经损坏的旧版本继续。
+        sync_ok, sync_msg = _sync_repo()
+        if not sync_ok:
+            logging.error("Repo sync failed before deploy: %s", sync_msg)
+            self._send(500, f"Repo sync failed: {sync_msg}")
+            return
+        logging.info(sync_msg)
+        # deploy.sh 仍保留它自己的 sync 逻辑作为直接调用 (非 webhook) 时的
+        # fallback；这里通过 env 关闭它, 避免 webhook 路径下做两遍 fetch+reset.
+        env["SKIP_GIT_SYNC"] = "true"
 
         try:
             result = subprocess.run(
