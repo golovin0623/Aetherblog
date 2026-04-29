@@ -98,7 +98,8 @@ func TestAiHandler_HandleClientError504ReturnsGatewayTimeoutNot429(t *testing.T)
 }
 
 // TestAiHandler_MapStatusToError504ReturnsGatewayTimeout 锁死另一条路径：
-// 上游 AI 服务直接回 504/408 时，业务码也必须是 504，不能再被吞成 500。
+// 上游 AI 服务直接回 504/408 时，业务码也必须是 504，不能再被吞成 500，
+// 且上游携带的具体错误消息必须被保留（与 502/503 分支一致），不能被默认文案覆盖。
 func TestAiHandler_MapStatusToError504ReturnsGatewayTimeout(t *testing.T) {
 	h := &AiHandler{}
 	e := handlertest.NewEcho()
@@ -120,5 +121,30 @@ func TestAiHandler_MapStatusToError504ReturnsGatewayTimeout(t *testing.T) {
 	}
 	if resp.Code != 504 {
 		t.Fatalf("expected business code 504, got %d", resp.Code)
+	}
+	if resp.Message != "upstream LLM timeout" {
+		t.Fatalf("expected upstream message preserved, got %q", resp.Message)
+	}
+}
+
+// TestAiHandler_MapStatusToError504FallsBackToDefaultWhenMessageEmpty 验证：
+// 上游 504/408 不带 body 时，使用默认中文文案兜底，避免前端拿到空字符串。
+func TestAiHandler_MapStatusToError504FallsBackToDefaultWhenMessageEmpty(t *testing.T) {
+	h := &AiHandler{}
+	e := handlertest.NewEcho()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/ai/summary", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.mapStatusToError(c, http.StatusGatewayTimeout, ""); err != nil {
+		t.Fatalf("mapStatusToError returned error: %v", err)
+	}
+
+	resp, err := handlertest.ParseResponse(rec)
+	if err != nil {
+		t.Fatalf("ParseResponse failed: %v", err)
+	}
+	if resp.Message != "AI 服务请求超时" {
+		t.Fatalf("expected default fallback message, got %q", resp.Message)
 	}
 }
