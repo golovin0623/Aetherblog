@@ -545,11 +545,14 @@ func (h *AiHandler) parseAndRespond(c echo.Context, body io.ReadCloser, statusCo
 }
 
 // handleClientError 将 AIClientError 转换为对应的响应格式。
+// 注意：本地 HTTP 客户端层面的超时（DeadlineExceeded / net.Error.Timeout）
+// 在 ai_client 中被包装为 StatusCode=504。这里必须映射成 GatewayTimeout 业务码，
+// 而不是 TooManyRequests —— 后者会让前端误显示"请求过于频繁"，掩盖真实超时。
 func (h *AiHandler) handleClientError(c echo.Context, err error) error {
 	if clientErr, ok := err.(*service.AIClientError); ok {
 		switch clientErr.StatusCode {
 		case http.StatusGatewayTimeout:
-			return response.FailCodeMsg(c, response.TooManyRequests.Code, clientErr.Message)
+			return response.FailCodeMsg(c, response.GatewayTimeout.Code, clientErr.Message)
 		default:
 			return response.Fail(c, clientErr.Message)
 		}
@@ -575,7 +578,7 @@ func (h *AiHandler) mapStatusToError(c echo.Context, statusCode int, message str
 	case statusCode == http.StatusTooManyRequests:
 		return response.FailCodeMsg(c, response.TooManyRequests.Code, "AI 服务请求过于频繁，请稍后重试")
 	case statusCode == http.StatusGatewayTimeout || statusCode == http.StatusRequestTimeout:
-		return response.FailCodeMsg(c, response.InternalError.Code, "AI 服务请求超时")
+		return response.FailCodeMsg(c, response.GatewayTimeout.Code, "AI 服务请求超时")
 	case statusCode == http.StatusBadGateway || statusCode == http.StatusServiceUnavailable:
 		if msg == "" {
 			msg = "AI 上游模型服务不可用"
