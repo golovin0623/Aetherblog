@@ -24,7 +24,22 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
       const target = document.getElementById(id);
       if (target) {
         e.preventDefault();
-        target.scrollIntoView({ behavior: 'smooth' });
+        // 尊重用户的减少运动偏好 —— 前庭功能障碍/恐动症用户跳转改为瞬时
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        target.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+
+        // 键盘焦点管理：滚动后把焦点移到目标元素，避免 Tab 焦点回到页面顶部
+        // 不可聚焦的目标临时挂 tabIndex="-1"，blur 后清理保持 DOM 干净
+        const hadTabIndex = target.hasAttribute('tabindex');
+        if (!hadTabIndex) {
+          target.setAttribute('tabindex', '-1');
+          target.addEventListener(
+            'blur',
+            () => target.removeAttribute('tabindex'),
+            { once: true },
+          );
+        }
+        target.focus({ preventScroll: true });
       }
     };
     document.addEventListener('click', handleAnchorClick);
