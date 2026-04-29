@@ -297,7 +297,7 @@ const MobileMenu = memo(function MobileMenu() {
                     href={link.href}
                     onClick={(e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) handleLinkClick(link.key); }}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer ${isActive
+                    className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] ${isActive
                       ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]'
                       : 'text-black dark:text-[var(--ink-secondary)] hover:text-black dark:hover:text-[var(--ink-primary)] hover:bg-black/5 dark:hover:bg-[var(--bg-card-hover)]'
                       }`}

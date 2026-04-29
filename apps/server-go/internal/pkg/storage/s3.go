@@ -164,6 +164,9 @@ func (s *S3Storage) Upload(ctx context.Context, key string, r io.Reader, size in
 
 // Delete 删除 S3 存储桶中指定 key 对应的对象。
 func (s *S3Storage) Delete(ctx context.Context, key string) error {
+	if err := validateS3Key(key); err != nil {
+		return fmt.Errorf("s3 delete object: %w", err)
+	}
 	input := &s3.DeleteObjectInput{
 		Bucket: aws.String(s.cfg.Bucket),
 		Key:    aws.String(key),
