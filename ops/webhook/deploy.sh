@@ -200,14 +200,18 @@ run_pre_deploy_migrations() {
   #     被标 dirty. 自愈: force 35 跳过坏掉的 v34, 让 000036 的幂等修复
   #     重建 schema.
   #
-  #   v38 → force 37 (本次新增)
-  #     起因: 000038 (improve_ai_prompts) 因 webhook/迁移过程偶发抖动 (网络
-  #     断开 / postgres 重启 / migrate 容器 OOM 等) 在执行中途断开, 留下
-  #     v38 dirty. migration 内容是 7 条 UPDATE ai_task_types + 一条加宽
-  #     ALTER TABLE posts ... VARCHAR(2000), 全部幂等 (UPDATE 重写同行无副
-  #     作用; ALTER COLUMN 加宽 VARCHAR 是 catalog-only 的 O(1) DDL, 已经
-  #     是 2000 时再改无变化). 自愈: force 37 回退到 000038 之前的状态,
-  #     up 重放 000038 即可.
+  #   v38 → force 38 (000039 接管真正的修复)
+  #     起因: 000038 (improve_ai_prompts) 末尾的 ALTER TABLE posts ALTER
+  #     COLUMN summary TYPE VARCHAR(2000) 在所有真实部署上都会撞死 ——
+  #     v_published_posts (000001:428) 用 SELECT p.* 引用了 posts.summary,
+  #     PostgreSQL 报 0A000 "cannot alter type of a column used by a view
+  #     or rule". golang-migrate 默认事务里跑整个 migration, ALTER 失败时
+  #     连同前面 7 条 UPDATE ai_task_types 一起回滚. v38 dirty 实例上
+  #     ai_task_types.prompt_template 仍是 000019 旧版, posts.summary 仍是
+  #     VARCHAR(500). PR #521 当初的 "force 37 + 重放 038" 是基于"038 全幂等"
+  #     的错误判断, 重放还会撞同一个 view 依赖. 改为 force 38 让 migrate
+  #     认为 38 已应用, 跳到 039 来执行 DROP VIEW + 重做 7 条 UPDATE +
+  #     ALTER + recreate VIEW 的完整修复.
   #
   # 两阶段触发 (与 v34 同):
   #   1) 部署前先探: 已经 dirty 的命中条目立刻 force + 让后续 up 接管.
@@ -247,8 +251,8 @@ run_pre_deploy_migrations() {
         reason="matches the known 000034 partial-apply bug; 000036 repair will rebuild schema after force"
         ;;
       38)
-        force_to=37
-        reason="000038 (improve_ai_prompts) is fully idempotent (UPDATEs + widening ALTER COLUMN); replay after rewinding to v37 is safe"
+        force_to=38
+        reason="000038 ALTER COLUMN fails on view dependency (v_published_posts); 000039 contains the real fix (DROP VIEW + redo UPDATEs + ALTER + recreate VIEW). Force 38 so 039 takes over."
         ;;
       *)
         return 1
