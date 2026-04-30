@@ -615,15 +615,16 @@ HMAC-SHA256 signed POST /deploy
    │
    ▼
 webhook_server.py  (ops/webhook/)
-   │ verify → fork deploy.sh → 202
+   ├─ verify HMAC + parse services allowlist
+   ├─ flock /var/lock/aetherblog-deploy.lock + git fetch + reset --hard FETCH_HEAD  ← code pulled here (PR #525)
+   ├─ release flock, fork deploy.sh with env["SKIP_GIT_SYNC"]="true"
    ▼
 deploy.sh  (ops/webhook/)
-   ├─ flock  /var/lock/aetherblog-deploy.lock
-   ├─ git fetch + reset --hard FETCH_HEAD   ← code pulled here
-   ├─ self-reexec (if deploy.sh itself changed)
+   ├─ flock /var/lock/aetherblog-deploy.lock
+   ├─ skip internal git sync (already done at webhook layer); fallback path retained for direct `bash deploy.sh` invocation
    ├─ strict KEY=VALUE .env parser (NOT source, NOT IFS='=')
    ├─ compose pull
-   ├─ pre-deploy migration (compose run --rm)
+   ├─ pre-deploy migration (compose run --rm + dirty self-heal table)
    └─ compose up -d   (full / incremental / canary / rollback)
    ▼
 ops/release/preflight.sh
