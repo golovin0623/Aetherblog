@@ -780,16 +780,9 @@ body {
   margin: 0.25em 0;
 }
 
-.markdown-body blockquote {
-  border-left: 3px solid var(--markdown-border-quote);  /* 从 4px 减少 */
-  padding-left: 1em;
-  margin: 1em 0;
-  color: var(--text-secondary);  /* 从 var(--text-muted) 提亮 */
-  background: var(--markdown-bg-quote);
-  padding: 0.5em 1em;  /* 添加垂直内边距 */
-  border-radius: 0 4px 4px 0;  /* 添加圆角 */
-  font-style: normal;  /* 移除斜体 */
-}
+/* blockquote 基础排版规则统一在 Round 4 区段(下方 1796 行起)定义,
+   避免出现两条同选择器互相覆盖、`font-style` 一会 normal 一会 italic
+   的伪冲突。 */
 
 .markdown-body a {
   color: var(--color-primary);
@@ -1793,20 +1786,28 @@ html[data-nav-type="pop"] .animate-in {
   opacity: 0.6;
 }
 
-/* blockquote —— 斜体引语 + 装饰引号 */
+/* blockquote —— 斜体引语 + 装饰引号
+   注意:`::before` 必须完全画在 blockquote 盒模型内,因为 Round 5 给
+   `.markdown-body > :not(:first-child)` 加了 `content-visibility: auto`,
+   它隐含 `contain: paint`,会硬切任何溢出到盒外的伪元素(top/left 负值会被裁掉
+   只剩底部一截)。所以这里 padding-left 留出装饰引号所需的轨道,top/left 全部
+   取正值,让 `"` 字符整体落在 padding 区内。 */
 .markdown-body blockquote {
   position: relative;
   font-style: italic;
-  padding-left: 1.5em;
+  margin: 1em 0;
+  padding: 0.75em 1em 0.75em 2.4em;
   color: var(--text-secondary);
+  background: var(--markdown-bg-quote);
   border-left: 2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 40%, transparent);
+  border-radius: 0 4px 4px 0;
 }
 .markdown-body blockquote::before {
   content: '"';
   position: absolute;
-  left: -0.15em;
-  top: -0.3em;
-  font-size: 3em;
+  left: 0.45em;
+  top: 0.1em;
+  font-size: 2.4em;
   line-height: 1;
   color: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 35%, transparent);
   font-family: Georgia, 'Times New Roman', serif;
