@@ -25,6 +25,7 @@ import pytest
 from app.api.routes import ai as ai_module
 from app.api.routes.ai import (
     _build_stream_result_payload,
+    _filter_tags,
     _parse_tags,
     _parse_titles,
     _split_list,
@@ -186,6 +187,29 @@ class TestSplitListLegacy:
 
     def test_fallback(self):
         assert _split_list("") == [""]
+
+
+class TestFilterTags:
+    """LLM 偶尔把整句话当成标签输出，``_filter_tags`` 兜底丢弃过长项。"""
+
+    def test_drops_overly_long_tag(self):
+        result = _filter_tags(
+            ["机器学习", "向量数据库", "这是一段被错误当作标签返回的完整句子超过十六字"]
+        )
+        assert result == ["机器学习", "向量数据库"]
+
+    def test_dedupes_case_insensitively(self):
+        assert _filter_tags(["Python", "python", "AI", "ai"]) == ["Python", "AI"]
+
+    def test_keeps_reasonable_english_phrases(self):
+        # 16 字符以内的双词英文标签应保留
+        assert _filter_tags(["machine learning", "rag"]) == ["machine learning", "rag"]
+
+    def test_falls_back_to_truncated_when_all_filtered(self):
+        # 所有 tag 都超长时不能直接清空，否则前端误判提取失败
+        result = _filter_tags(["这是一个非常非常非常非常长的标签文本超过限制了"])
+        assert len(result) == 1
+        assert len(result[0]) <= 16
 
 
 # ─────────────────────────── _build_stream_result_payload ───────────────────────────

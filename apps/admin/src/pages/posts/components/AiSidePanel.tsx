@@ -97,11 +97,13 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
 
     const canRun = useMemo(() => content.trim().length > 0, [content]);
 
-    const runAction = useCallback(async (action: AiPanelAction) => {
+    const runAction = useCallback(async (action: AiPanelAction, options?: { regenerate?: boolean }) => {
       if (!canRun) {
         toast.error('请先输入文章内容');
         return;
       }
+
+      const bypassCache = options?.regenerate === true;
 
       setActiveAction(action);
       setLoadingAction(action);
@@ -118,7 +120,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
           // 显式传 maxLength: 不传时 ai-service DTO 默认 200, 但前端不传会让
           // {max_length} 占位符在 prompt 中失去能见度。这里固定 200 字与
           // ai_task_types 的种子默认对齐, 后续可在 UI 加输入控件让用户调。
-          const res = await aiService.generateSummary({ content, maxLength: 200, ...modelPayload });
+          const res = await aiService.generateSummary({ content, maxLength: 200, bypassCache, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.summary });
           } else {
@@ -127,7 +129,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'tags') {
-          const res = await aiService.extractTags({ content, maxTags: 6, ...modelPayload });
+          const res = await aiService.extractTags({ content, maxTags: 6, bypassCache, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'tags', tags: res.data.tags });
           } else {
@@ -136,7 +138,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'titles') {
-          const res = await aiService.suggestTitles({ content, maxTitles: 6, ...modelPayload });
+          const res = await aiService.suggestTitles({ content, maxTitles: 6, bypassCache, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'titles', titles: res.data.titles });
           } else {
@@ -145,7 +147,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'polish') {
-          const res = await aiService.polishContent({ content, tone: '专业', ...modelPayload });
+          const res = await aiService.polishContent({ content, tone: '专业', bypassCache, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.polishedContent });
           } else {
@@ -155,7 +157,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
 
         if (action === 'outline') {
           const topic = title.trim() || content.trim().slice(0, 100);
-          const res = await aiService.generateOutline({ topic, existingContent: content, depth: 2, style: 'professional', ...modelPayload });
+          const res = await aiService.generateOutline({ topic, existingContent: content, depth: 2, style: 'professional', bypassCache, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.outline });
           } else {
@@ -164,7 +166,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'translate') {
-          const res = await aiService.translateContent({ content, targetLanguage, ...modelPayload });
+          const res = await aiService.translateContent({ content, targetLanguage, bypassCache, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.translatedContent });
           } else {
@@ -179,7 +181,16 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
       }
     }, [canRun, content, title, targetLanguage, selectedModelId, selectedProviderCode]);
 
-    useImperativeHandle(ref, () => ({ runAction }));
+    useImperativeHandle(ref, () => ({ runAction: (action: AiPanelAction) => runAction(action) }));
+
+    const regenerateCurrent = useCallback(() => {
+      if (!result) return;
+      const action: AiPanelAction =
+        result.type === 'tags' ? 'tags'
+        : result.type === 'titles' ? 'titles'
+        : result.action;
+      runAction(action, { regenerate: true });
+    }, [result, runAction]);
 
     const copyResult = useCallback(async () => {
       if (!result || result.type !== 'text') return;
@@ -334,6 +345,14 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
                   {copied ? <Check className="w-3.5 h-3.5 text-status-success" /> : <Copy className="w-3.5 h-3.5" />}
                   {copied ? '已复制' : '复制'}
                 </button>
+                <button
+                  onClick={regenerateCurrent}
+                  disabled={loadingAction !== null}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  重新生成
+                </button>
                 {result.action === 'summary' && (
                   <button
                     onClick={() => onUpdateSummary(result.text)}
@@ -391,6 +410,14 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
                   <PlusCircle className="w-3.5 h-3.5" />
                   追加标签
                 </button>
+                <button
+                  onClick={regenerateCurrent}
+                  disabled={loadingAction !== null}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  重新生成
+                </button>
               </div>
             </div>
           )}
@@ -408,6 +435,16 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
                     {index + 1}. {item}
                   </button>
                 ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={regenerateCurrent}
+                  disabled={loadingAction !== null}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  重新生成
+                </button>
               </div>
             </div>
           )}
