@@ -1793,20 +1793,25 @@ html[data-nav-type="pop"] .animate-in {
   opacity: 0.6;
 }
 
-/* blockquote —— 斜体引语 + 装饰引号 */
+/* blockquote —— 斜体引语 + 装饰引号
+   注意:`::before` 必须完全画在 blockquote 盒模型内,因为 Round 5 给
+   `.markdown-body > :not(:first-child)` 加了 `content-visibility: auto`,
+   它隐含 `contain: paint`,会硬切任何溢出到盒外的伪元素(top/left 负值会被裁掉
+   只剩底部一截)。所以这里 padding-left 留出装饰引号所需的轨道,top/left 全部
+   取正值,让 `"` 字符整体落在 padding 区内。 */
 .markdown-body blockquote {
   position: relative;
   font-style: italic;
-  padding-left: 1.5em;
+  padding: 0.75em 1em 0.75em 2.4em;
   color: var(--text-secondary);
   border-left: 2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 40%, transparent);
 }
 .markdown-body blockquote::before {
   content: '"';
   position: absolute;
-  left: -0.15em;
-  top: -0.3em;
-  font-size: 3em;
+  left: 0.45em;
+  top: 0.1em;
+  font-size: 2.4em;
   line-height: 1;
   color: color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 35%, transparent);
   font-family: Georgia, 'Times New Roman', serif;
