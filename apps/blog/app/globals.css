@@ -780,16 +780,9 @@ body {
   margin: 0.25em 0;
 }
 
-.markdown-body blockquote {
-  border-left: 3px solid var(--markdown-border-quote);  /* 从 4px 减少 */
-  padding-left: 1em;
-  margin: 1em 0;
-  color: var(--text-secondary);  /* 从 var(--text-muted) 提亮 */
-  background: var(--markdown-bg-quote);
-  padding: 0.5em 1em;  /* 添加垂直内边距 */
-  border-radius: 0 4px 4px 0;  /* 添加圆角 */
-  font-style: normal;  /* 移除斜体 */
-}
+/* blockquote 基础排版规则统一在 Round 4 区段(下方 1796 行起)定义,
+   避免出现两条同选择器互相覆盖、`font-style` 一会 normal 一会 italic
+   的伪冲突。 */
 
 .markdown-body a {
   color: var(--color-primary);
@@ -1802,9 +1795,12 @@ html[data-nav-type="pop"] .animate-in {
 .markdown-body blockquote {
   position: relative;
   font-style: italic;
+  margin: 1em 0;
   padding: 0.75em 1em 0.75em 2.4em;
   color: var(--text-secondary);
+  background: var(--markdown-bg-quote);
   border-left: 2px solid color-mix(in oklch, var(--aurora-1, var(--color-primary, #818CF8)) 40%, transparent);
+  border-radius: 0 4px 4px 0;
 }
 .markdown-body blockquote::before {
   content: '"';
