@@ -104,6 +104,46 @@ def _parse_tags(text: str) -> list[str]:
     return collected or _split_list(text)
 
 
+# 标签必须是"短词"，prompt 已经写了 2-6 汉字 / ≤3 英文单词，但 LLM 偶尔会
+# 把整句话当成一个标签返回（"机器学习是 AI 的子集"）。这里做后处理兜底:
+# - 长度超过 _MAX_TAG_CHARS 的直接丢弃（一个 CJK 字符在 Python str 中是 1 长度,
+#   16 = 16 汉字上限，"machine learning"/"vector database" 这类双词英文也安全在内）
+# - 大小写无关去重，保持首次出现的原大小写
+# - 全部被过滤掉时回退到截断，避免返回空数组让前端误以为提取失败
+_MAX_TAG_CHARS = 16
+
+
+def _filter_tags(tags: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in tags:
+        tag = (raw or "").strip()
+        if not tag:
+            continue
+        key = tag.lower()
+        if key in seen:
+            continue
+        if len(tag) > _MAX_TAG_CHARS:
+            continue
+        seen.add(key)
+        cleaned.append(tag)
+    if cleaned:
+        return cleaned
+    fallback: list[str] = []
+    seen.clear()
+    for raw in tags:
+        tag = (raw or "").strip()
+        if not tag:
+            continue
+        truncated = tag[:_MAX_TAG_CHARS]
+        key = truncated.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        fallback.append(truncated)
+    return fallback
+
+
 def _parse_titles(text: str) -> list[str]:
     """健壮的标题解析器：处理编号/项目符号列表与 JSON 数组。"""
     text = (text or "").strip()
@@ -159,7 +199,7 @@ def _build_stream_result_payload(
                 max_tags = int(prompt_variables.get("max_tags", 5) or 5)
             except (TypeError, ValueError):
                 max_tags = 5
-            tags = _parse_tags(text)[:max_tags]
+            tags = _filter_tags(_parse_tags(text))[:max_tags]
             data = TagsData(tags=tags, model=model or None)
             return data.model_dump()
 
@@ -355,7 +395,7 @@ async def summary(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate:
+        if req.promptTemplate or req.bypassCache:
             cache_key = None
         else:
             cache_key = (
@@ -538,7 +578,7 @@ async def tags(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate:
+        if req.promptTemplate or req.bypassCache:
             cache_key = None
         else:
             cache_key = (
@@ -577,7 +617,7 @@ async def tags(
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
         data = TagsData(
-            tags=_split_list(response_text)[: req.maxTags],
+            tags=_filter_tags(_parse_tags(response_text))[: req.maxTags],
             model=model,
             tokensUsed=tokens_used,
             latencyMs=latency_ms
@@ -643,7 +683,7 @@ async def titles(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate:
+        if req.promptTemplate or req.bypassCache:
             cache_key = None
         else:
             cache_key = (
@@ -920,7 +960,7 @@ async def translate(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate:
+        if req.promptTemplate or req.bypassCache:
             cache_key = None
         else:
             cache_key = (

@@ -61,6 +61,7 @@ export interface SummaryRequest {
   promptVersion?: string;
   modelId?: string;
   providerCode?: string;
+  bypassCache?: boolean;
 }
 
 export interface TagsRequest {
@@ -71,6 +72,7 @@ export interface TagsRequest {
   promptVersion?: string;
   modelId?: string;
   providerCode?: string;
+  bypassCache?: boolean;
 }
 
 export interface TitlesRequest {
@@ -83,6 +85,7 @@ export interface TitlesRequest {
   promptVersion?: string;
   modelId?: string;
   providerCode?: string;
+  bypassCache?: boolean;
 }
 
 export interface PolishRequest {
@@ -95,6 +98,7 @@ export interface PolishRequest {
   promptVersion?: string;
   modelId?: string;
   providerCode?: string;
+  bypassCache?: boolean;
 }
 
 export interface OutlineRequest {
@@ -108,6 +112,7 @@ export interface OutlineRequest {
   promptVersion?: string;
   modelId?: string;
   providerCode?: string;
+  bypassCache?: boolean;
 }
 
 export interface TranslateRequest {
@@ -119,6 +124,7 @@ export interface TranslateRequest {
   promptVersion?: string;
   modelId?: string;
   providerCode?: string;
+  bypassCache?: boolean;
 }
 
 // ==================== 响应类型 ====================
