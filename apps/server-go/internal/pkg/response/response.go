@@ -54,6 +54,8 @@ var (
 	TooManyRequests  = ResultCode{429, "请求过于频繁"}
 	// InternalError 服务器内部错误（500）
 	InternalError    = ResultCode{500, "服务器内部错误"}
+	// GatewayTimeout 上游服务请求超时（504），用于 AI 服务等长耗时上游
+	GatewayTimeout   = ResultCode{504, "上游服务请求超时"}
 
 	// 业务错误码（1xxx 段）
 	// ParamMiss 缺少必要参数（1001）
@@ -102,6 +104,8 @@ func defaultCategoryForCode(code int) string {
 		return "business_error"
 	case code == TooManyRequests.Code:
 		return "too_many_requests"
+	case code == GatewayTimeout.Code:
+		return "upstream_timeout"
 	case code >= 500:
 		return "internal_error"
 	default:
@@ -195,6 +199,8 @@ func httpStatusFor(code int) int {
 		return http.StatusNotFound
 	case 429:
 		return http.StatusTooManyRequests
+	case 504:
+		return http.StatusGatewayTimeout
 	default:
 		// Java 端对大多数业务错误返回 HTTP 200，此处保持一致
 		return http.StatusOK

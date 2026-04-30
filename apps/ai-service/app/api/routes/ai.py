@@ -398,6 +398,28 @@ async def summary(
             model_id=req.modelId,
             provider_code=req.providerCode,
         )
+        # SUMMARY-LONGER-THAN-SOURCE 兜底: 任何模型都可能无视 max_tokens
+        # / system prompt 里的字数硬约束 (典型场景: OpenAI 兼容代理 / 国产
+        # 中转把 max_tokens 当建议甚至完全忽略)。在落库与回包前以 1.5x
+        # maxLength 为软上限做一次截断, 并落 WARNING 让用户能在日志里看到
+        # "模型超 N 字, 已截断"。截断后保留段尾省略号, 提示前端这是被裁过的。
+        original_chars = len(response_text)
+        soft_cap = max(int(req.maxLength * 1.5), req.maxLength + 50)
+        if original_chars > soft_cap:
+            logger.warning(
+                "ai.summary_output_oversize_truncated",
+                extra={
+                    "data": {
+                        "user_id": user.user_id,
+                        "model": model,
+                        "max_length_requested": req.maxLength,
+                        "soft_cap": soft_cap,
+                        "actual_chars": original_chars,
+                        "overflow_ratio": round(original_chars / max(req.maxLength, 1), 2),
+                    }
+                },
+            )
+            response_text = response_text[: req.maxLength].rstrip() + "…"
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
         data = SummaryData(
