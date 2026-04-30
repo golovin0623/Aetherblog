@@ -115,7 +115,10 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
 
       try {
         if (action === 'summary') {
-          const res = await aiService.generateSummary({ content, ...modelPayload });
+          // 显式传 maxLength: 不传时 ai-service DTO 默认 200, 但前端不传会让
+          // {max_length} 占位符在 prompt 中失去能见度。这里固定 200 字与
+          // ai_task_types 的种子默认对齐, 后续可在 UI 加输入控件让用户调。
+          const res = await aiService.generateSummary({ content, maxLength: 200, ...modelPayload });
           if (res.code === 200 && res.data) {
             setResult({ type: 'text', action, text: res.data.summary });
           } else {
