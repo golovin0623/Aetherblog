@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useState, type ComponentType } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type ComponentType } from 'react';
 import { motion } from 'framer-motion';
 import {
   Sparkles,
@@ -13,12 +13,16 @@ import {
   Check,
   Replace,
   PlusCircle,
+  Minus,
+  ArrowRight,
 } from 'lucide-react';
 import { aiService } from '@/services/aiService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { computeTagDiff } from '@/lib/aiToolDiff';
 import { ModelSelector } from '@/components/ai/ModelSelector';
 import { useEditorStore } from '@/stores/editorStore';
+import { ApplyPreviewModal, type PreviewToolKind, type PreviewApplyMode } from '@/components/ai/ApplyPreviewModal';
 
 export type AiPanelAction = 'summary' | 'tags' | 'titles' | 'polish' | 'outline' | 'translate';
 
@@ -31,6 +35,14 @@ interface AiSidePanelProps {
   content: string;
   title: string;
   summary: string;
+  /** 文章当前已选标签名（用于"应用前 / 应用后"差量预览）。大小写敏感保留首次出现拼写。 */
+  currentTagNames: string[];
+  /**
+   * 应用前预览 modal 的主题 —— 受控传入。父组件 `CreatePostPage` 持有
+   * `useTheme().resolvedTheme`，主题切换时会重渲染本组件，让预览主题与
+   * 应用主题保持同步（修复历史上 `useState` 一次性快照导致的脱节问题）。
+   */
+  previewTheme: 'light' | 'dark';
   selectedModelId?: string;
   selectedProviderCode?: string;
   onModelChange: (modelId: string, providerCode: string) => void;
@@ -40,6 +52,43 @@ interface AiSidePanelProps {
   onUpdateSummary: (summary: string) => void;
   onUpdateTitle: (title: string) => void;
   onApplyTags: (tags: string[], mode: 'replace' | 'append') => Promise<void>;
+}
+
+/** 单行差量：保留 / 新增 / 移除 三色 chip */
+function TagDiffRow({
+  label,
+  tags,
+  tone,
+  icon,
+}: {
+  label: string;
+  tags: string[];
+  tone: 'neutral' | 'add' | 'remove';
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[var(--ink-muted)]">
+        {icon}
+        {label}（{tags.length}）
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((t) => (
+          <span
+            key={t}
+            className={cn(
+              'inline-flex items-center px-2 py-0.5 text-[11px] rounded-full border',
+              tone === 'add' && 'bg-[color-mix(in_oklch,var(--signal-success)_14%,transparent)] text-[var(--signal-success)] border-[color-mix(in_oklch,var(--signal-success)_28%,transparent)]',
+              tone === 'remove' && 'bg-[color-mix(in_oklch,var(--signal-danger)_12%,transparent)] text-[var(--signal-danger)] border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] line-through opacity-80',
+              tone === 'neutral' && 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-subtle)]',
+            )}
+          >
+            {t}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 type AiPanelResult =
@@ -74,6 +123,8 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
     content,
     title,
     summary,
+    currentTagNames,
+    previewTheme,
     selectedModelId,
     selectedProviderCode,
     onModelChange,
@@ -89,6 +140,16 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
     const [activeAction, setActiveAction] = useState<AiPanelAction>('summary');
     const [targetLanguage, setTargetLanguage] = useState('en');
     const [copied, setCopied] = useState(false);
+    /** 当前 tag 工具结果中被勾选的标签名（小写键） */
+    const [selectedTagKeys, setSelectedTagKeys] = useState<Set<string>>(new Set());
+    /** 用户拟定的应用模式 —— 决定差量预览展示的最终列表形态 */
+    const [tagApplyMode, setTagApplyMode] = useState<'replace' | 'append'>('append');
+    /** 长文本（润色 / 翻译 / 大纲）应用前的 modal 预览状态 */
+    const [pendingApply, setPendingApply] = useState<{
+      tool: PreviewToolKind;
+      mode: PreviewApplyMode;
+      next: string;
+    } | null>(null);
 
     const enableSelectionAi = useEditorStore((state) => state.enableSelectionAi);
     const setEnableSelectionAi = useEditorStore((state) => state.setEnableSelectionAi);
@@ -183,6 +244,16 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
 
     useImperativeHandle(ref, () => ({ runAction: (action: AiPanelAction) => runAction(action) }));
 
+    // tags 结果变化时（重新生成 / 切换工具）默认全选所有推荐标签 —— 与
+    // ToolResultRenderer.TagsResult 行为一致, 保持两个触点心智模型相同。
+    useEffect(() => {
+      if (result?.type === 'tags') {
+        setSelectedTagKeys(new Set(result.tags.map((t) => t.toLowerCase())));
+      } else {
+        setSelectedTagKeys(new Set());
+      }
+    }, [result]);
+
     const regenerateCurrent = useCallback(() => {
       if (!result) return;
       const action: AiPanelAction =
@@ -231,7 +302,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         )}>
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[var(--aurora-1)] shadow-[0_0_8px_color-mix(in_oklch,var(--aurora-1)_60%,transparent)]" />
-            <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-primary)]">AI 写作面板</span>
+            <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-[var(--ink-primary)]">AI 工具箱</span>
           </div>
           <div className="flex items-center gap-2">
             <ModelSelector
@@ -337,6 +408,34 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
               <div className="text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed bg-[var(--bg-secondary)]/70 border border-[var(--border-subtle)] rounded-lg p-3 max-h-64 overflow-auto">
                 {result.text}
               </div>
+
+              {/* summary 工具：把"应用前 / 应用后"两段并列展示，避免一键写入后看不出差异 */}
+              {result.action === 'summary' && (
+                <div className="space-y-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/40 p-3">
+                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    <FileText className="w-3 h-3" />
+                    应用预览
+                  </div>
+                  <div className="grid gap-2">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-muted)] mb-1">当前摘要</div>
+                      <div className="text-xs leading-relaxed text-[var(--text-secondary)] line-clamp-3">
+                        {summary.trim() ? summary : <span className="italic text-[var(--text-muted)]">（空，应用后将首次写入）</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-[var(--aurora-1)]">
+                      <ArrowRight className="w-3 h-3" />
+                      <span className="font-mono text-[10px] uppercase tracking-wider">应用后</span>
+                    </div>
+                    <div>
+                      <div className="text-xs leading-relaxed text-[var(--text-primary)] line-clamp-3">
+                        {result.text}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={copyResult}
@@ -362,69 +461,190 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
                     写入摘要
                   </button>
                 )}
-                {result.action === 'polish' || result.action === 'translate' ? (
+                {/* 长文本应用：先打开预览 modal（diff/split/render），用户确认后再写入 */}
+                {result.action === 'polish' && (
                   <button
-                    onClick={() => onReplaceContent(result.text)}
+                    onClick={() => setPendingApply({ tool: 'polish', mode: 'replace', next: result.text })}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
                   >
                     <Replace className="w-3.5 h-3.5" />
-                    替换正文
+                    替换正文（预览）
                   </button>
-                ) : (
+                )}
+                {result.action === 'translate' && (
                   <button
-                    onClick={() => onInsertText(`\n\n${result.text}\n`)}
+                    onClick={() => setPendingApply({ tool: 'translate', mode: 'replace', next: result.text })}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
+                  >
+                    <Replace className="w-3.5 h-3.5" />
+                    替换正文（预览）
+                  </button>
+                )}
+                {result.action === 'outline' && (
+                  <button
+                    onClick={() => setPendingApply({ tool: 'outline', mode: 'append', next: result.text })}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
                   >
                     <PlusCircle className="w-3.5 h-3.5" />
-                    插入正文
+                    插入正文（预览）
                   </button>
                 )}
               </div>
             </div>
           )}
 
-          {!loadingAction && result?.type === 'tags' && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                {result.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2.5 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/30"
+          {!loadingAction && result?.type === 'tags' && (() => {
+            // 选中的标签名（保留 AI 输出的原始拼写, 仅使用 lowercase 做 set 比较）
+            const selectedNames = result.tags.filter((t) => selectedTagKeys.has(t.toLowerCase()));
+            const diff = computeTagDiff(currentTagNames, selectedNames, tagApplyMode);
+
+            const toggleTagKey = (key: string) => {
+              setSelectedTagKeys((prev) => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                return next;
+              });
+            };
+
+            const apply = async () => {
+              if (selectedNames.length === 0) {
+                toast.error('请至少勾选一个标签');
+                return;
+              }
+              await onApplyTags(selectedNames, tagApplyMode);
+            };
+
+            return (
+              <div className="space-y-3">
+                {/* AI 推荐标签：可勾选 / 取消勾选 */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                      AI 推荐 · 已选 {selectedNames.length} / {result.tags.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {result.tags.map((tag) => {
+                      const key = tag.toLowerCase();
+                      const isOn = selectedTagKeys.has(key);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleTagKey(key)}
+                          className={cn(
+                            'inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border transition-all active:scale-95',
+                            isOn
+                              ? 'bg-primary/10 text-primary border-primary/40'
+                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-subtle)] line-through opacity-60 hover:opacity-100',
+                          )}
+                        >
+                          {isOn ? <Check className="w-3 h-3" /> : <Hash className="w-3 h-3" />}
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 模式切换 */}
+                <div className="flex bg-[var(--bg-secondary)] rounded-lg p-1 gap-1">
+                  {([
+                    { key: 'append' as const, label: '追加', icon: PlusCircle },
+                    { key: 'replace' as const, label: '替换', icon: Replace },
+                  ]).map(({ key, label, icon: Icon }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTagApplyMode(key)}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors',
+                        tagApplyMode === key
+                          ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-sm'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]',
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 集合差量预览：保留 / 新增 / 移除（替换模式才会真删，追加模式仅做信息提示） */}
+                <div className="space-y-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/40 p-3">
+                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                    <ArrowRight className="w-3 h-3" />
+                    应用后预览（共 {diff.finalList.length} 个标签）
+                  </div>
+                  {diff.keep.length > 0 && (
+                    <TagDiffRow
+                      label="保留"
+                      tags={diff.keep}
+                      tone="neutral"
+                      icon={<Check className="w-3 h-3" />}
+                    />
+                  )}
+                  {diff.add.length > 0 && (
+                    <TagDiffRow
+                      label="新增"
+                      tags={diff.add}
+                      tone="add"
+                      icon={<PlusCircle className="w-3 h-3" />}
+                    />
+                  )}
+                  {tagApplyMode === 'replace' && diff.remove.length > 0 && (
+                    <TagDiffRow
+                      label="移除"
+                      tags={diff.remove}
+                      tone="remove"
+                      icon={<Minus className="w-3 h-3" />}
+                    />
+                  )}
+                  {tagApplyMode === 'append' && diff.remove.length > 0 && (
+                    <div className="text-[10px] text-[var(--ink-muted)] italic">
+                      追加模式不会移除当前文章已有的 {diff.remove.length} 个标签
+                    </div>
+                  )}
+                  {diff.finalList.length === 0 && (
+                    <div className="text-[10px] text-[var(--ink-muted)] italic">
+                      没有可应用的标签
+                    </div>
+                  )}
+                </div>
+
+                {/* 主操作 */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={apply}
+                    disabled={selectedNames.length === 0}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    #{tag}
-                  </span>
-                ))}
+                    {tagApplyMode === 'replace' ? <Replace className="w-3.5 h-3.5" /> : <PlusCircle className="w-3.5 h-3.5" />}
+                    {tagApplyMode === 'replace' ? '替换为已选' : '追加已选'}
+                  </button>
+                  <button
+                    onClick={regenerateCurrent}
+                    disabled={loadingAction !== null}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    重新生成
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => onApplyTags(result.tags, 'replace')}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
-                >
-                  <Hash className="w-3.5 h-3.5" />
-                  替换标签
-                </button>
-                <button
-                  onClick={() => onApplyTags(result.tags, 'append')}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)]"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  追加标签
-                </button>
-                <button
-                  onClick={regenerateCurrent}
-                  disabled={loadingAction !== null}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  重新生成
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {!loadingAction && result?.type === 'titles' && (
             <div className="space-y-3">
-              <div className="text-xs text-[var(--text-muted)]">点击标题即可替换当前标题</div>
+              <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/40 p-3 space-y-1">
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">当前标题</div>
+                <div className="text-xs text-[var(--text-secondary)] truncate">
+                  {title.trim() || <span className="italic text-[var(--text-muted)]">（空）</span>}
+                </div>
+                <div className="text-[10px] text-[var(--ink-muted)] italic mt-1">点击下方标题即可替换</div>
+              </div>
               <div className="space-y-2">
                 {result.titles.map((item, index) => (
                   <button
@@ -449,6 +669,27 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
             </div>
           )}
         </div>
+
+        {/* 长文本应用预览：润色 = word-diff，翻译 = split-view，大纲 = 渲染整篇 */}
+        <ApplyPreviewModal
+          isOpen={pendingApply !== null}
+          tool={pendingApply?.tool ?? 'polish'}
+          mode={pendingApply?.mode ?? 'replace'}
+          currentContent={content}
+          nextContent={pendingApply?.next ?? ''}
+          targetLanguage={pendingApply?.tool === 'translate' ? targetLanguage : undefined}
+          previewTheme={previewTheme}
+          onCancel={() => setPendingApply(null)}
+          onConfirm={async () => {
+            if (!pendingApply) return;
+            if (pendingApply.tool === 'outline' && pendingApply.mode === 'append') {
+              onInsertText(`\n\n${pendingApply.next}\n`);
+            } else {
+              onReplaceContent(pendingApply.next);
+            }
+            setPendingApply(null);
+          }}
+        />
       </motion.div>
     );
   }
