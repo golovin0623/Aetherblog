@@ -277,21 +277,37 @@ export function useAiToolTarget(): AiToolTargetApi {
         }
 
         // 批量并行创建缺失的标签；网络较慢时比串行快 N 倍。
+        // 失败项必须显式上报 toast —— 否则用户会以为"全部应用成功"但实际
+        // 部分新标签未挂上 (例如 rate limit / unique 冲突 / 离线)。
         if (missingNames.length > 0) {
           const createResults = await Promise.all(
             missingNames.map((name) =>
               tagService
                 .create({ name })
-                .catch((err): { code: number; message?: string; data?: undefined } => ({
+                .then((res) => ({ ...res, name }))
+                .catch((err): { code: number; message?: string; data?: undefined; name: string } => ({
                   code: -1,
-                  message: err?.message,
+                  message: err?.message || '请求失败',
+                  name,
                 })),
             ),
           );
+          const failedCreates: { name: string; message?: string }[] = [];
           for (const createRes of createResults) {
             if (createRes.code === 200 && createRes.data) {
               resolvedIds.push(createRes.data.id);
+            } else {
+              failedCreates.push({ name: createRes.name, message: createRes.message });
             }
+          }
+          if (failedCreates.length > 0) {
+            // 单条 vs 多条不同的展示密度。聚合在一行避免 toast 队列被淹没。
+            const head = failedCreates.slice(0, 3).map((f) => f.name).join('、');
+            const moreSuffix = failedCreates.length > 3 ? ` 等 ${failedCreates.length} 项` : '';
+            const reason = failedCreates[0].message;
+            toast.error(
+              `部分标签创建失败: ${head}${moreSuffix}${reason ? ` (${reason})` : ''}`,
+            );
           }
         }
       }
