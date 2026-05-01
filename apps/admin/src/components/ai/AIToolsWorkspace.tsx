@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ArrowUpRight, Code, FileText, CheckCircle2, Square, Sliders, ChevronDown, ChevronRight, Download, Check, Search, Loader2, X as XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -63,12 +64,43 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   const debouncedTargetSearch = useDebounce(targetSearch, 300);
   const targetDropdownRef = useRef<HTMLDivElement>(null);
   const targetSearchInputRef = useRef<HTMLInputElement>(null);
+  const targetMenuRef = useRef<HTMLDivElement>(null);
+  const [targetTriggerRect, setTargetTriggerRect] = useState<DOMRect | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
-  // 点击外部关闭目标文章下拉
+  // 移动端断点检测 —— 与 ModelSelector 一致使用 768px
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // dropdown 打开时同步触发器位置；窗口尺寸变化也跟随更新（避免 resize/旋转后菜单错位）
+  useEffect(() => {
+    if (!showTargetDropdown) return;
+    const updateRect = () => {
+      if (targetDropdownRef.current) {
+        setTargetTriggerRect(targetDropdownRef.current.getBoundingClientRect());
+      }
+    };
+    updateRect();
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, true);
+    return () => {
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+    };
+  }, [showTargetDropdown]);
+
+  // 点击外部关闭目标文章下拉 —— Portal 渲染后菜单不在 trigger DOM 树内，需同时排除 menuRef
   useEffect(() => {
     if (!showTargetDropdown) return;
     const onMouseDown = (e: MouseEvent) => {
-      if (targetDropdownRef.current && !targetDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inTrigger = targetDropdownRef.current?.contains(target);
+      const inMenu = targetMenuRef.current?.contains(target);
+      if (!inTrigger && !inMenu) {
         setShowTargetDropdown(false);
       }
     };
@@ -288,6 +320,125 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
 
   const hasContent = streamContent.length > 0 || thinkContent.length > 0;
   const previewTheme = resolvedTheme === 'dark' ? 'dark' : 'light';
+
+  // 目标文章下拉菜单主体（供桌面端 popover 与移动端 bottom sheet 共用）
+  const renderTargetMenuBody = () => (
+    <>
+      {/* 搜索框 */}
+      <div className="relative p-2 border-b border-[var(--border-subtle)] shrink-0">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)] pointer-events-none" />
+        <input
+          ref={targetSearchInputRef}
+          type="text"
+          value={targetSearch}
+          onChange={(e) => setTargetSearch(e.target.value)}
+          placeholder="搜索文章标题…"
+          className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        />
+        {targetSearch && (
+          <button
+            type="button"
+            onClick={() => setTargetSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label="清空搜索"
+          >
+            <XIcon className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {/* 选项列表 */}
+      <div className="flex-1 max-h-56 md:max-h-72 overflow-auto py-1">
+        {/* 清除选项 */}
+        <button
+          type="button"
+          onClick={() => {
+            target.setTargetPostId(null);
+            setShowTargetDropdown(false);
+          }}
+          className={cn(
+            'w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-3 transition-colors',
+            !target.targetPostId
+              ? 'bg-primary/10 text-primary font-medium'
+              : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
+          )}
+        >
+          <span>— 无目标文章 —</span>
+          {!target.targetPostId && <Check className="w-3.5 h-3.5 shrink-0" />}
+        </button>
+
+        {/* 列表分组头：搜索时显示「搜索结果」+ 总数；否则「全部文章」+ 总数 */}
+        {targetTotal > 0 && (
+          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium flex items-center justify-between">
+            <span>{debouncedTargetSearch.trim() ? '搜索结果' : '全部文章'}</span>
+            <span className="font-mono normal-case tracking-normal">{targetTotal}</span>
+          </div>
+        )}
+
+        {targetLoading && (
+          <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-[var(--text-muted)]">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {debouncedTargetSearch.trim() ? '搜索中…' : '加载中…'}
+          </div>
+        )}
+        {!targetLoading && targetPostOptions.length === 0 && (
+          <div className="px-3 py-6 text-center text-xs text-[var(--text-muted)]">
+            {debouncedTargetSearch.trim() ? '未找到匹配文章' : '暂无文章'}
+          </div>
+        )}
+
+        {!targetLoading &&
+          targetPostOptions.map((p) => {
+            const isSelected = p.id === target.targetPostId;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  target.setTargetPostId(p.id);
+                  setShowTargetDropdown(false);
+                }}
+                className={cn(
+                  'w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-3 transition-colors',
+                  isSelected
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+                )}
+              >
+                <span className="truncate">{p.title || `#${p.id}`}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
+              </button>
+            );
+          })}
+      </div>
+
+      {/* 分页栏 —— 多于一页时显示 */}
+      {targetTotalPages > 1 && (
+        <div className="flex items-center justify-between px-3 py-2 border-t border-[var(--border-subtle)] shrink-0 bg-[var(--bg-secondary)]/40">
+          <button
+            type="button"
+            onClick={() => setTargetPageNum((n) => Math.max(1, n - 1))}
+            disabled={targetPageNum === 1 || targetLoading}
+            className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            上一页
+          </button>
+          <span className="text-[10px] text-[var(--text-muted)] font-mono tnum">
+            {targetPageNum} / {targetTotalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTargetPageNum((n) => Math.min(targetTotalPages, n + 1))}
+            disabled={targetPageNum >= targetTotalPages || targetLoading}
+            className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            下一页
+          </button>
+        </div>
+      )}
+    </>
+  );
+
   const previewStyles = `${markdownPreviewStyles}
 .markdown-preview a { text-decoration: none; }
 .markdown-preview a:hover { text-decoration: none; }
@@ -547,12 +698,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-700 -z-10 pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-status-success/5 rounded-full blur-3xl group-hover:bg-status-success-light transition-colors duration-700 -z-10 pointer-events-none" />
 
-        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm gap-3">
+        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex flex-col md:flex-row md:items-center md:justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="p-1.5 md:p-2 rounded-lg bg-black text-white dark:bg-white dark:text-black transition-colors flex-shrink-0">
               <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent truncate">生成结果</h2>
               <div className="flex items-center gap-1 mt-0.5 min-w-0">
                 <span className="w-1 h-1 rounded-full bg-status-success animate-pulse flex-shrink-0" />
@@ -565,15 +716,20 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 md:flex-shrink-0 min-w-0 w-full md:w-auto">
              {/* 目标文章选择器 —— 自定义 dropdown 替代原生 <select>，避免浏览器原生菜单样式割裂 */}
-             <div ref={targetDropdownRef} className="relative">
+             <div ref={targetDropdownRef} className="relative flex-1 md:flex-none min-w-0">
                <button
                  type="button"
-                 onClick={() => setShowTargetDropdown((v) => !v)}
+                 onClick={() => {
+                   if (!showTargetDropdown && targetDropdownRef.current) {
+                     setTargetTriggerRect(targetDropdownRef.current.getBoundingClientRect());
+                   }
+                   setShowTargetDropdown((v) => !v);
+                 }}
                  title="选择应用目标文章"
                  className={cn(
-                   'max-w-[160px] md:max-w-[220px] w-[160px] md:w-[220px] text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30',
+                   'w-full md:w-[220px] md:max-w-[220px] text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30',
                    'flex items-center justify-between gap-2 hover:bg-[var(--bg-card-hover)] transition-colors',
                    showTargetDropdown && 'ring-2 ring-primary/30 border-primary',
                  )}
@@ -588,130 +744,59 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                    )}
                  />
                </button>
+             {createPortal(
                <AnimatePresence>
                  {showTargetDropdown && (
-                   <motion.div
-                     initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                     transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                     className="absolute right-0 top-full mt-2 z-30 w-[320px] rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
-                   >
-                     {/* 搜索框 */}
-                     <div className="relative p-2 border-b border-[var(--border-subtle)] shrink-0">
-                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)] pointer-events-none" />
-                       <input
-                         ref={targetSearchInputRef}
-                         type="text"
-                         value={targetSearch}
-                         onChange={(e) => setTargetSearch(e.target.value)}
-                         placeholder="搜索文章标题…"
-                         className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                   isMobile ? (
+                     // 移动端：底部面板（Bottom Sheet），与 ModelSelector 保持一致
+                     <div className="fixed inset-0 z-[9999] flex flex-col justify-end">
+                       <motion.div
+                         initial={{ opacity: 0 }}
+                         animate={{ opacity: 1 }}
+                         exit={{ opacity: 0 }}
+                         onClick={() => setShowTargetDropdown(false)}
+                         className="absolute inset-0 backdrop-blur-sm"
+                         style={{ background: 'rgb(from var(--bg-void) r g b / 0.7)' }}
                        />
-                       {targetSearch && (
-                         <button
-                           type="button"
-                           onClick={() => setTargetSearch('')}
-                           className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                           aria-label="清空搜索"
-                         >
-                           <XIcon className="w-3 h-3" />
-                         </button>
-                       )}
-                     </div>
-
-                     {/* 选项列表 */}
-                     <div className="max-h-72 overflow-auto py-1">
-                       {/* 清除选项 */}
-                       <button
-                         type="button"
-                         onClick={() => {
-                           target.setTargetPostId(null);
-                           setShowTargetDropdown(false);
-                         }}
-                         className={cn(
-                           'w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-3 transition-colors',
-                           !target.targetPostId
-                             ? 'bg-primary/10 text-primary font-medium'
-                             : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
-                         )}
+                       <motion.div
+                         ref={targetMenuRef}
+                         initial={{ y: '100%' }}
+                         animate={{ y: 0 }}
+                         exit={{ y: '100%' }}
+                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                         className="relative z-10 max-h-[66vh] flex flex-col rounded-t-2xl border-t border-x border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl overflow-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]"
                        >
-                         <span>— 无目标文章 —</span>
-                         {!target.targetPostId && <Check className="w-3.5 h-3.5 shrink-0" />}
-                       </button>
-
-                       {/* 列表分组头：搜索时显示「搜索结果」+ 总数；否则「全部文章」+ 总数 */}
-                       {targetTotal > 0 && (
-                         <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium flex items-center justify-between">
-                           <span>{debouncedTargetSearch.trim() ? '搜索结果' : '全部文章'}</span>
-                           <span className="font-mono normal-case tracking-normal">{targetTotal}</span>
+                         {/* 顶部把手 */}
+                         <div className="flex justify-center pt-2 pb-1 shrink-0">
+                           <div className="w-10 h-1 rounded-full bg-[var(--border-default)]" />
                          </div>
-                       )}
-
-                       {targetLoading && (
-                         <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-[var(--text-muted)]">
-                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                           {debouncedTargetSearch.trim() ? '搜索中…' : '加载中…'}
-                         </div>
-                       )}
-                       {!targetLoading && targetPostOptions.length === 0 && (
-                         <div className="px-3 py-6 text-center text-xs text-[var(--text-muted)]">
-                           {debouncedTargetSearch.trim() ? '未找到匹配文章' : '暂无文章'}
-                         </div>
-                       )}
-
-                       {!targetLoading &&
-                         targetPostOptions.map((p) => {
-                           const isSelected = p.id === target.targetPostId;
-                           return (
-                             <button
-                               key={p.id}
-                               type="button"
-                               onClick={() => {
-                                 target.setTargetPostId(p.id);
-                                 setShowTargetDropdown(false);
-                               }}
-                               className={cn(
-                                 'w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-3 transition-colors',
-                                 isSelected
-                                   ? 'bg-primary/10 text-primary font-medium'
-                                   : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
-                               )}
-                             >
-                               <span className="truncate">{p.title || `#${p.id}`}</span>
-                               {isSelected && <Check className="w-3.5 h-3.5 shrink-0" />}
-                             </button>
-                           );
-                         })}
+                         {renderTargetMenuBody()}
+                       </motion.div>
                      </div>
-
-                     {/* 分页栏 —— 多于一页时显示 */}
-                     {targetTotalPages > 1 && (
-                       <div className="flex items-center justify-between px-3 py-2 border-t border-[var(--border-subtle)] shrink-0 bg-[var(--bg-secondary)]/40">
-                         <button
-                           type="button"
-                           onClick={() => setTargetPageNum((n) => Math.max(1, n - 1))}
-                           disabled={targetPageNum === 1 || targetLoading}
-                           className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed rounded transition-colors"
-                         >
-                           上一页
-                         </button>
-                         <span className="text-[10px] text-[var(--text-muted)] font-mono tnum">
-                           {targetPageNum} / {targetTotalPages}
-                         </span>
-                         <button
-                           type="button"
-                           onClick={() => setTargetPageNum((n) => Math.min(targetTotalPages, n + 1))}
-                           disabled={targetPageNum >= targetTotalPages || targetLoading}
-                           className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed rounded transition-colors"
-                         >
-                           下一页
-                         </button>
-                       </div>
-                     )}
-                   </motion.div>
+                   ) : (
+                     // 桌面端：基于 trigger 位置的 fixed 浮层（脱离父级 overflow-hidden）
+                     <motion.div
+                       ref={targetMenuRef}
+                       initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                       animate={{ opacity: 1, y: 0, scale: 1 }}
+                       exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                       transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                       style={{
+                         position: 'fixed',
+                         top: targetTriggerRect ? targetTriggerRect.bottom + 8 : 0,
+                         left: targetTriggerRect ? targetTriggerRect.right - 320 : 0,
+                         width: 320,
+                         zIndex: 9999,
+                       }}
+                       className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+                     >
+                       {renderTargetMenuBody()}
+                     </motion.div>
+                   )
                  )}
-               </AnimatePresence>
+               </AnimatePresence>,
+               document.body,
+             )}
              </div>
 
              <div className={cn(
