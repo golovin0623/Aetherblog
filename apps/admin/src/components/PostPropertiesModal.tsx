@@ -437,7 +437,9 @@ export function PostPropertiesModal({
         ...(summaryProviderCode ? { providerCode: summaryProviderCode } : {}),
       });
       if (res.code === 200 && res.data?.summary) {
-        setFormData((prev) => ({ ...prev, summary: res.data!.summary.slice(0, 200) }));
+        // 与 posts.summary VARCHAR(2000) 及后端 DTO max=2000 对齐：模型偶尔超出 maxLength 时
+        // 不再硬截，按 2000 兜底防止超过 DB 列宽（ai-service 已限制 maxLength<=2000）
+        setFormData((prev) => ({ ...prev, summary: res.data!.summary.slice(0, 2000) }));
         toast.success('摘要已生成');
       } else {
         toast.error(res.message || '生成摘要失败');
@@ -746,11 +748,11 @@ export function PostPropertiesModal({
               onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
               className={cn(inputClass, 'resize-none leading-relaxed')}
               rows={4}
-              maxLength={200}
-              placeholder="留空将在文章列表自动截取正文前 140 字作为预览。建议 200 字内。"
+              maxLength={2000}
+              placeholder="留空将在文章列表自动截取正文前 140 字作为预览。建议 200 字以内，最多 2000 字。"
             />
             <div className="text-xs text-[var(--text-muted)] mt-1.5 text-right font-mono tnum">
-              {(formData.summary || '').length} / 200
+              {(formData.summary || '').length} / 2000
             </div>
           </div>
 

@@ -324,7 +324,7 @@ export function EditorSettingsPanel({
         <div className="pt-3 space-y-2">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-[var(--text-muted)]">
-              {summary.length} / 200 字符
+              {summary.length} / 2000 字符
             </span>
             <button
               type="button"
@@ -338,8 +338,8 @@ export function EditorSettingsPanel({
             rows={4}
             value={summary}
             onChange={e => onSummaryChange(e.target.value)}
-            maxLength={200}
-            placeholder="文章摘要，为空将自动截取前200字..."
+            maxLength={2000}
+            placeholder="文章摘要，建议 200 字以内，最多 2000 字。留空将自动截取正文前 200 字..."
             className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:border-primary/50"
           />
         </div>
