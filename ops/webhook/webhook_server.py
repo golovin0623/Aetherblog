@@ -18,8 +18,14 @@ DEPLOYMENT NOTE (VULN-134 历史尾巴): 仓库历史里有一版 systemd 加固
 没有端到端落地. 当前生产仍是 ``User=root`` + 直跑仓库符号链接的姿态.
 想做加固请单独提 PR 配合仓库迁出 /root/. 详见 ops/webhook/README.md.
 """
-from __future__ import annotations
-
+# 兼容 Python 3.6+ (CentOS 7 / RHEL 7 默认装的 /usr/bin/python3 是 3.6.8).
+# 这意味着不能用:
+#   - from __future__ import annotations  (3.7+)
+#   - f"{x=}"  (3.8+)
+#   - 海象运算符 :=  (3.8+)
+#   - list[str] / dict[str, str] 内置泛型  (3.9+)  → 用 typing.List/Dict
+#   - str.removeprefix / removesuffix  (3.9+)  → 用 slice 表达式
+# 所有类型注解必须用 typing 模块, 不要直接用 lowercase generics.
 import contextlib
 import fcntl
 import hashlib
