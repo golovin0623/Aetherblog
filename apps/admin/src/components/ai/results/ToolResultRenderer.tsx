@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { StreamResult } from '@/hooks/useStreamResponse';
 import type { AiToolTargetApi, ContentApplyMode } from '@/hooks/useAiToolTarget';
 import { ApplyPreviewModal, type PreviewToolKind } from '@/components/ai/ApplyPreviewModal';
+import { computeTagDiff } from '@/lib/aiToolDiff';
 
 /**
  * 分发式渲染器：根据 toolId 选择对应的结构化展示组件。
@@ -230,28 +231,6 @@ function TagDiffRow({
   );
 }
 
-/** AiSidePanel.computeTagDiff 在工具箱里的复制 —— 两边语义保持一致。 */
-function computeTagDiff(
-  current: string[],
-  selected: string[],
-  mode: 'replace' | 'append',
-): { keep: string[]; add: string[]; remove: string[]; finalList: string[] } {
-  const currentMap = new Map(current.map((t) => [t.toLowerCase(), t]));
-  const selectedMap = new Map(selected.map((t) => [t.toLowerCase(), t]));
-  const keep: string[] = [];
-  const add: string[] = [];
-  const remove: string[] = [];
-  for (const [k, name] of selectedMap) {
-    if (currentMap.has(k)) keep.push(currentMap.get(k)!);
-    else add.push(name);
-  }
-  for (const [k, name] of currentMap) {
-    if (!selectedMap.has(k)) remove.push(name);
-  }
-  const finalList =
-    mode === 'replace' ? [...keep, ...add] : [...current, ...add];
-  return { keep, add, remove, finalList };
-}
 
 // ─────────────────────────── 标签 ───────────────────────────
 
