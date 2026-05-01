@@ -252,30 +252,56 @@ def _parse_tags_structured(
         seen.add(key)
         suggestions.append(cleaned)
 
+    # 顺次尝试三种 JSON 候选 (针对 LLM 常见的输出形态):
+    #   1. 原始 text —— 模型严格遵循 prompt 直接吐出 JSON 对象;
+    #   2. 剥除 ```json ... ``` / ``` ... ``` 围栏后的内容 —— 推理类模型容易
+    #      自作主张包一层 Markdown 代码块;
+    #   3. 从首个 ``{`` 到最后一个 ``}`` 的子串 —— 模型有时给一段解释正文
+    #      然后才贴 JSON; 用最外层括号子串能兜住"前后裹胶水文本"的形态。
+    # 按顺序使用第一个成功 parse 出 dict 的候选,避免逐字尝试导致歧义。
     structured_ok = False
-    if text.startswith("{"):
+    json_candidates: list[str] = []
+    json_candidates.append(text)
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        fenced = fence_match.group(1).strip()
+        if fenced and fenced not in json_candidates:
+            json_candidates.append(fenced)
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        substr = text[first_brace : last_brace + 1].strip()
+        if substr and substr not in json_candidates:
+            json_candidates.append(substr)
+
+    for candidate in json_candidates:
+        if not candidate.startswith("{"):
+            continue
         try:
-            parsed = json.loads(text)
-            if isinstance(parsed, dict):
-                raw_matches = parsed.get("matches") or []
-                raw_suggestions = parsed.get("suggestions") or []
-                if isinstance(raw_matches, list):
-                    for item in raw_matches:
-                        if isinstance(item, dict):
-                            name = item.get("name") or item.get("tag") or ""
-                            reason = item.get("reason") or item.get("why") or None
-                            _push_match(str(name), str(reason) if reason else None)
-                        elif isinstance(item, str):
-                            _push_match(item)
-                if isinstance(raw_suggestions, list):
-                    for item in raw_suggestions:
-                        if isinstance(item, str):
-                            _push_suggestion(item)
-                        elif isinstance(item, dict):
-                            _push_suggestion(str(item.get("name") or ""))
-                structured_ok = bool(matches) or bool(suggestions)
+            parsed = json.loads(candidate)
         except (json.JSONDecodeError, ValueError):
-            structured_ok = False
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        raw_matches = parsed.get("matches") or []
+        raw_suggestions = parsed.get("suggestions") or []
+        if isinstance(raw_matches, list):
+            for item in raw_matches:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("tag") or ""
+                    reason = item.get("reason") or item.get("why") or None
+                    _push_match(str(name), str(reason) if reason else None)
+                elif isinstance(item, str):
+                    _push_match(item)
+        if isinstance(raw_suggestions, list):
+            for item in raw_suggestions:
+                if isinstance(item, str):
+                    _push_suggestion(item)
+                elif isinstance(item, dict):
+                    _push_suggestion(str(item.get("name") or ""))
+        structured_ok = bool(matches) or bool(suggestions)
+        if structured_ok:
+            break
 
     if not structured_ok:
         # 旧格式 / 模型不听话 → 用旧解析器抽取扁平数组,按已知集合分桶
