@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### ✨ AI 标签工具 · 现有标签库感知 + 双段选择 UX (2026-05-01)
+
+**背景:** 旧版 AI Tagger 只会基于内容"凭空"生成标签字符串, 完全不知道站点已有哪些标签 —— 经常把"人工智能"重新生成成"AI", 让用户手动改标签 / 接受重复。本次让 AI Tagger 升级为"先复用, 再补新建"的双段输出模式, 并把"复用 vs 创建"的应用副作用在 UI 上可视化分离。
+
+**Changed:**
+
+- **`apps/ai-service/app/schemas/ai.py`** —— `TagsRequest` 新增可选 `existingTags: list[ExistingTagHint]` (上限 200, 每项 `{name, postCount}`), 让前端把站点标签库 (按 postCount 降序截断) 作为提示传入。`TagsData` 新增 `matches: list[TagMatch]` (`name + postCount + reason?`) 与 `suggestions: list[str]` 两段; 同时保留 `tags: list[str]` 扁平合并视图给老客户端零改动兼容。
+- **`apps/ai-service/app/api/routes/ai.py`** —— 新增 `_format_existing_tags_block` (按热度排序渲染, 空库渲染为 `(无)`)、`_existing_tags_signature` (差异化缓存 key)、`_parse_tags_structured` 四级降级解析 (严格 `{matches, suggestions}` JSON → 扁平数组兜底 → 幻觉 match 自动降级为 suggestion → match 名字归一到现有库的规范大小写)、`_truncate_tag_payload` (总长截断时优先保留 matches), `_build_existing_lookup` (大小写无关 lookup)。`/tags` 与 `/tags/stream` 都接入新 prompt 变量, 缓存 key 加入 existing_tags 签名防止陈旧分桶, 流式 `_build_stream_result_payload` 走同一套结构化分桶, 确保流式与同步契约一致。
+- **`apps/server-go/migrations/000040_tags_existing_aware_prompt`** —— 重写 `ai_task_types` 中 `tags` 任务的默认 prompt: 接受新增 `{existing_tags}` 占位符, 强制要求模型输出 `{"matches": [{"name", "reason"?}], "suggestions": [...]}` JSON 对象, matches 必须严格命中现有库, 库为空时全部输出在 suggestions。down 迁移还原到 000038 的扁平 JSON 数组形态。
+- **`apps/ai-service/app/services/llm_router.py`** —— `_TASK_FALLBACK_SYSTEM_PROMPT['tags']` 同步升级到双段输出形态, 让"DB 路由表为空 / 管理员 override 后模板缺失"的兜底路径也产出新契约, 避免新前端 + 兜底链路组合时拿到旧扁平输出。
+- **`apps/admin/src/services/aiService.ts`** —— `TagsRequest` 新增 `existingTags`, `TagsResponse` 新增 `matches?` / `suggestions?`, 新增 `ExistingTagHint` / `TagMatchResponse` 类型导出。
+- **`apps/admin/src/lib/aiToolDiff.ts`** —— 新增 `computeTagPlan` 4-bucket 计划函数 (keep / linkExisting / createNew / remove), 与旧 `computeTagDiff` 并存, 让"复用现有"和"创建新建议"在 UI 上可视分离。
+- **`apps/admin/src/hooks/useAiToolTarget.ts`** —— `applyTags` 接受 `string[] | {name, tagId?}[]` 两种输入形态; `tagId` 已知时跳过整张标签列表查询, 直接落地, 把"100% matches 命中"路径降为零额外网络往返。
+- **`apps/admin/src/components/ai/results/ToolResultRenderer.tsx`** —— `TagsResult` 完全重写为四段式: ① 匹配现有标签 (aurora-1 调, 显示 postCount 徽标 + 匹配理由 tooltip); ② AI 新建议 (signal-success 调, 显示"新建"徽标 + "应用时创建"hint); ③ 添加更多 (从现有库手动搜索 + 加入 AI 漏掉的标签, 受 50 条上限保护, picker 内置去重); ④ 4-bucket 应用计划预览 (保留 / 复用现有 / 新建 / 移除) 取代原 3-bucket。客户端二次校验把"AI 声称匹配但当前库查无"的项降级回 suggestion, 与后端防幻觉策略对齐。
+- **`apps/admin/src/components/ai/AIToolsWorkspace.tsx`** —— 切到 `tags` 工具时主动拉取一次标签库 (5 分钟会话内缓存), 运行 prompt 时按 postCount 降序截断到 200 项随请求体下发; 应用后通过 `onTagsLibraryChange` 回调刷新, 让下次再生成时新创建的标签能进 matches 而非 suggestions。
+- **`apps/admin/src/pages/posts/components/AiSidePanel.tsx` + `CreatePostPage.tsx`** —— 文章编辑器侧边面板的 AI 标签工具同步接入 `existingTagsForAi`, 直接复用页面已有的 `tags` 状态, 零额外请求即享受"优先复用"语义 (UI 自身仍读 `result.tags` 扁平视图, 应用时由 `useAiToolTarget.applyTags` 兜底"按名查找现有→缺失则创建"语义)。
+
+**Why "matches + suggestions" 分两段而不是 confidence 评分排序:** 评分对用户决策的边际价值低 (用户最关心的是"应用副作用是什么"); 分两段同时把"零成本复用 vs 创建新标签"的副作用清晰可视化, 与 4-bucket 应用计划在视觉上闭环。
+
+**Why "添加更多" picker 不做 Levenshtein 模糊搜索:** 用户的标签库通常 <200 项, 子串匹配 (`includes`) 已经足够; AI 才是真正做语义匹配的层 (它有 LLM 上下文)。Levenshtein 会让 `machinelearning` / `machine_learning` / `machine-learning` 在 picker 中互相纠缠, 反而劣化体验。
+
 ### 🐛 AI 写作面板 · 标题渲染脏数据 + 上下文上限过低 (2026-05-01)
 
 **症状 (移动端真机回归):**

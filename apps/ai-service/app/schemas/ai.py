@@ -34,6 +34,25 @@ class SummaryRequest(BaseModel):
     bypassCache: bool = False
 
 
+class ExistingTagHint(BaseModel):
+    """已有标签提示。前端在请求生成标签时携带,让 AI 优先复用而非新建。
+
+    `name` 是标签人类可读名;`postCount` 是该标签关联的文章数,用于在 prompt 中
+    按热度排序展示给模型,也用于前端 UI 渲染时的"热门度"徽标。
+    """
+
+    name: str = Field(..., min_length=1, max_length=64)
+    postCount: int = Field(default=0, ge=0)
+
+
+class TagMatch(BaseModel):
+    """AI 命中的"现有标签"。`reason` 是模型可选给出的一句话匹配理由。"""
+
+    name: str
+    postCount: int = 0
+    reason: Optional[str] = None
+
+
 class TagsRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=100000)
     maxTags: int = Field(default=5, ge=1, le=20)
@@ -42,6 +61,10 @@ class TagsRequest(BaseModel):
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
     bypassCache: bool = False
+    # 现有标签库提示。可选;为空时退化为旧行为 (纯新建议)。
+    # 上限 200 项是 prompt 体积 + token 成本的工程取舍:典型博客标签数 < 100,
+    # 极端情况下也能容纳大型站点的高频段。前端按 postCount DESC 截断。
+    existingTags: list[ExistingTagHint] = Field(default_factory=list, max_length=200)
 
 
 class TitlesRequest(BaseModel):
@@ -119,7 +142,18 @@ class SummaryData(BaseModel):
 
 
 class TagsData(BaseModel):
+    """标签生成结果。
+
+    - ``tags``:    扁平字符串数组,匹配 + 新建议合并 (保留旧契约,旧客户端不动)。
+    - ``matches``: 命中现有标签的结构化列表 (含 ``postCount`` / ``reason``)。
+    - ``suggestions``: 现有标签库未覆盖,需要新建的标签名。
+
+    新客户端应优先消费 ``matches`` / ``suggestions``;``tags`` 仅作向后兼容。
+    """
+
     tags: list[str]
+    matches: list[TagMatch] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
     model: Optional[str] = None
     tokensUsed: Optional[int] = None
     latencyMs: Optional[int] = None

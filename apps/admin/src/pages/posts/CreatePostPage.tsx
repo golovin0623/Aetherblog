@@ -2737,6 +2737,7 @@ export function CreatePostPage() {
               onUpdateSummary={setSummary}
               onUpdateTitle={setTitle}
               onApplyTags={applyAiTags}
+              existingTagsForAi={tags.map((t) => ({ name: t.name, postCount: t.postCount || 0 }))}
             />
           )}
         </AnimatePresence>
@@ -3069,6 +3070,7 @@ export function CreatePostPage() {
                 onUpdateSummary={setSummary}
                 onUpdateTitle={setTitle}
                 onApplyTags={applyAiTags}
+                existingTagsForAi={tags.map((t) => ({ name: t.name, postCount: t.postCount || 0 }))}
               />
             </div>
           </>
