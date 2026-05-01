@@ -36,9 +36,11 @@ Environment=WEBHOOK_BIND=0.0.0.0
 Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
 
-# Override PYTHON_BIN per host. 当前生产装 pyenv, 直接指向 3.9.9 解释器.
-# 系统 python3 可用的话改成 /usr/bin/python3 即可.
-Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
+# PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
+# 当前生产装了 pyenv, 安装步骤里用 systemctl edit 覆盖成
+#   Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
+# 任何升级 Python 版本 / 切换发行版的人, 改这一行不动 ExecStart.
+Environment=PYTHON_BIN=/usr/bin/python3
 ExecStart=${PYTHON_BIN} /root/Aetherblog/webhook/webhook_server.py
 Restart=always
 RestartSec=3

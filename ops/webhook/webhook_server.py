@@ -48,7 +48,13 @@ def _resolve_secret() -> bytes:
 WEBHOOK_SECRET = _resolve_secret()
 PORT = int(os.environ.get("WEBHOOK_PORT", "7868"))
 BIND_HOST = os.environ.get("WEBHOOK_BIND", "127.0.0.1")
-DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/root/Aetherblog/webhook/deploy.sh")
+DEPLOY_SCRIPT = os.environ.get(
+    "DEPLOY_SCRIPT",
+    # 默认走"跟 webhook_server.py 同目录的 deploy.sh", 让仓库布局和服务器
+    # 软链接布局都自动匹配, 不再硬编码 /root/Aetherblog/... 的特定生产路径.
+    # 生产 systemd unit 里仍可用 Environment=DEPLOY_SCRIPT=... 显式覆盖.
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy.sh"),
+)
 DEPLOY_TIMEOUT = int(os.environ.get("DEPLOY_TIMEOUT", "900"))
 
 # Repo sync 配置 —— 由 webhook 在 invoke deploy.sh **之前**完成 fetch + reset.

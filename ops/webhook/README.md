@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | 运行用户 | `root` | 接受当前姿态，未上 unprivileged user |
 | 工作目录 | `/root/Aetherblog/webhook` → 软链接到 `/root/Aetherblog/ops/webhook` | git pull 后自动同步 |
-| Python 解释器 | `/root/.pyenv/versions/3.9.9/bin/python3` | 通过 `PYTHON_BIN` 环境变量, 改解释器只需改这一行 |
+| Python 解释器 | 仓库默认 `/usr/bin/python3`，**当前生产** `systemctl edit` 覆盖为 `/root/.pyenv/versions/3.9.9/bin/python3`（pyenv） | 通过 `Environment=PYTHON_BIN=...` 调整，无需改 ExecStart |
 | 监听地址 | `0.0.0.0:7868` | **公网可见**, 安全靠 HMAC-SHA256 + 32 字节 secret 兜底 |
 | WEBHOOK_SECRET | systemd unit 内联 (sed 替换 placeholder) | 不走 EnvironmentFile |
 | 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
@@ -24,33 +24,34 @@
 
 ## Repo sync 顺序
 
-代码热更新链路：
+代码热更新链路（webhook 路径，PR #525 之后）：
 
 ```
 GitHub Actions push to main
   → webhook (HTTP POST /deploy)
-  → webhook_server.py spawn deploy.sh
-  → deploy.sh 内部 `git fetch + reset --hard FETCH_HEAD` (写到 /root/Aetherblog)
-  → 同时也覆盖 /root/Aetherblog/ops/webhook/{deploy.sh, webhook_server.py}
-  → 由于软链接, /root/Aetherblog/webhook/* 也即时同步
+  → webhook_server.py 在 spawn deploy.sh **之前** 完成 git fetch + reset --hard FETCH_HEAD
+    （此时 /root/Aetherblog/ 全量更新, ops/webhook/{deploy.sh, webhook_server.py} 也已写盘）
+  → webhook_server.py 通过 env["SKIP_GIT_SYNC"]="true" spawn deploy.sh
+  → bash 加载 deploy.sh 时直接读盘上最新版本
+  → deploy.sh 内部 sync 被 env 跳过 (作为直接 `bash deploy.sh` 时的 fallback 保留)
   → docker compose pull + 数据库迁移 + up -d
 ```
 
-### 边界
+### 边界（webhook 路径）
 
 | 改动 | 何时生效 |
 | --- | --- |
-| `apps/server-go/migrations/*.sql` | 当次部署 (镜像里有就跑) |
-| `apps/<server-go|ai-service|blog|admin>/**` | 当次部署 (CI 重建镜像 → docker pull) |
-| `ops/webhook/deploy.sh` | **下一次**部署 (本次 git sync 写盘, 但当前 bash 进程已加载旧文本; 详见下方"sacrificial first deploy") |
+| `apps/server-go/migrations/*.sql` | 当次部署（镜像里有就跑） |
+| `apps/<server-go\|ai-service\|blog\|admin>/**` | 当次部署（CI 重建镜像 → docker pull） |
+| `ops/webhook/deploy.sh` | **当次部署**（webhook 层先 sync，bash 加载的就是新版） |
 | `ops/webhook/webhook_server.py` | 需要 `systemctl restart deploy-webhook.service` 才生效 |
 | `ops/webhook/deploy-webhook.service` | 需要 `cp` 到 `/etc/systemd/system/` + `systemctl daemon-reload + restart` 才生效 |
 
-### Sacrificial first deploy 现象
+### Sacrificial first deploy 现象（仅限直接调用 deploy.sh，**不影响 webhook 路径**）
 
-`deploy.sh` 顶部 `exec > >(tee ...)` + `flock 200` 与 process substitution 叠加, 无法在 sync 之后安全 re-exec 自己（会触发 fd 200 锁混乱 / flock 死锁）. 所以代码选择"sync 写盘 + 用旧 in-memory bash 文本跑完本次部署"——任何 `deploy.sh` 自身的修改都需要"牺牲"一次部署才能生效. 这是已知行为, 不是 bug.
+如果你**绕过 webhook 直接 `bash deploy.sh`**（手动跑 / cron 调度等），deploy.sh 的内部 git sync 会被启用。但 deploy.sh 顶部 `exec > >(tee ...)` + `exec 200>$LOCK_FILE` + `flock 200` 与 process substitution 叠加，无法在 sync 之后安全 re-exec 自己（会触发 fd 200 锁混乱 / flock 死锁）。所以代码选择"sync 写盘 + 用旧 in-memory bash 文本跑完本次部署"——**直接调用路径**下，任何 `deploy.sh` 自身的修改都需要"牺牲"一次部署才能生效。
 
-如果某个 PR 改了 `deploy.sh` 自愈逻辑或 migration 路径相关的部分, **第一次合并后部署可能仍按旧逻辑跑**, 第二次部署才用新版. 平时无感, 出问题时记得这一条.
+webhook 路径**不受此限制**——webhook_server.py 在 spawn deploy.sh 之前已经完成 git sync，deploy.sh 进程加载的就是磁盘上的新版本。这也是 PR #525 把 sync 提前到 webhook 层的根本动因。
 
 ## 部署模式
 
