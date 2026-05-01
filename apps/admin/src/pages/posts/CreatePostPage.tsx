@@ -2726,6 +2726,7 @@ export function CreatePostPage() {
               content={content}
               title={title}
               summary={summary}
+              currentTagNames={selectedTags.map((t) => t.name)}
               selectedModelId={aiModelId}
               selectedProviderCode={aiProviderCode}
               onModelChange={handleModelChange}
@@ -3056,6 +3057,7 @@ export function CreatePostPage() {
                 content={content}
                 title={title}
                 summary={summary}
+                currentTagNames={selectedTags.map((t) => t.name)}
                 selectedModelId={aiModelId}
                 selectedProviderCode={aiProviderCode}
                 onModelChange={handleModelChange}
