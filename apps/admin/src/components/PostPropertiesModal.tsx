@@ -25,7 +25,7 @@ import { Category } from '@/services/categoryService';
 import { Tag } from '@/services/tagService';
 import { X, Calendar, Eye, EyeOff, Loader2, Search, Hash, Lock, Globe, Trash2, ChevronLeft, ChevronRight, ChevronDown, Clock, Check, Plus, Minus, Sparkles, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, POST_SUMMARY_PLACEHOLDER } from '@/lib/utils';
 import { getTagColor } from '@/lib/tagColor';
 import ModelSelector from '@/components/ai/ModelSelector';
 import { aiService } from '@/services/aiService';
@@ -749,7 +749,7 @@ export function PostPropertiesModal({
               className={cn(inputClass, 'resize-none leading-relaxed')}
               rows={4}
               maxLength={2000}
-              placeholder="留空将在文章列表自动截取正文前 140 字作为预览。建议 200 字以内，最多 2000 字。"
+              placeholder={POST_SUMMARY_PLACEHOLDER}
             />
             <div className="text-xs text-[var(--text-muted)] mt-1.5 text-right font-mono tnum">
               {(formData.summary || '').length} / 2000
