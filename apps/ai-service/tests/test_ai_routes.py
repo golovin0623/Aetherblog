@@ -175,6 +175,26 @@ class TestParseTitles:
     def test_empty(self):
         assert _parse_titles("") == []
 
+    def test_degenerate_inputs_return_empty(self):
+        # 退化输入：JSON 字面字符 / 仅分隔符 / 仅编号前缀。历史实现会回退到
+        # ``_split_list``，把这些当成有效标题返回（``["[]"]`` / ``[","]`` /
+        # ``["1.", "2.", "3."]``），引入与本 PR 修复同类的脏数据。新实现
+        # 在 collected 为空时返回 ``[]``，才是正确语义。
+        assert _parse_titles("[]") == []
+        assert _parse_titles(",") == []
+        assert _parse_titles("1.\n2.\n3.") == []
+
+
+class TestParseTagsDegenerate:
+    """与 ``_parse_titles`` 同理: 退化输入应返回 ``[]`` 而非脏 token。"""
+
+    def test_empty_brackets(self):
+        assert _parse_tags("[]") == []
+
+    def test_only_separators(self):
+        assert _parse_tags(",") == []
+        assert _parse_tags("，；; 、") == []
+
 
 class TestSplitListLegacy:
     """确保旧的 ``_split_list`` 行为得以保留，向后兼容。"""
@@ -410,6 +430,36 @@ async def test_titles_endpoint_returns_titles_array():
     assert resp.data is not None
     assert isinstance(resp.data.titles, list)
     assert len(resp.data.titles) >= 1
+
+
+@pytest.mark.asyncio
+async def test_titles_endpoint_strips_json_array_brackets():
+    """回归：migration 000038 后 prompt 引导 LLM 输出 JSON 数组,
+    非流式端点必须用 ``_parse_titles`` 解析,而不是 ``_split_list`` ——
+    否则会被逗号切成 ``["t1"`` / ``"t2"`` / ``"t3"]`` 这种残留括号引号
+    的脏数据,前端就会渲染成 `1. ["xxx"  2. "yyy"  ...  6. "zzz"]`。"""
+    llm = FakeLlm(
+        chat_response='["阿里云百炼 Coding Plan 快速上手指南", "如何获取百炼 API Key 并开始使用?", "Claude Code 与 Codex 的百炼接入说明"]'
+    )
+    req = TitlesRequest(content="正文示例", maxTitles=6)
+    resp = await ai_module.titles(
+        req=req,
+        request=_make_request(),
+        user=_make_user(),
+        cache=FakeCache(),
+        llm=llm,
+        metrics=_make_metrics(),
+        usage_logger=FakeUsageLogger(),
+    )
+    assert resp.data is not None
+    assert resp.data.titles == [
+        "阿里云百炼 Coding Plan 快速上手指南",
+        "如何获取百炼 API Key 并开始使用?",
+        "Claude Code 与 Codex 的百炼接入说明",
+    ]
+    # 任何一条都不应残留 JSON 字面字符
+    for t in resp.data.titles:
+        assert "[" not in t and "]" not in t and '"' not in t
 
 
 @pytest.mark.asyncio
