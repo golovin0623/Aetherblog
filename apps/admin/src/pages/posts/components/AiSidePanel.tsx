@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ModelSelector } from '@/components/ai/ModelSelector';
 import { useEditorStore } from '@/stores/editorStore';
+import { ApplyPreviewModal, type PreviewToolKind, type PreviewApplyMode } from '@/components/ai/ApplyPreviewModal';
 
 export type AiPanelAction = 'summary' | 'tags' | 'titles' | 'polish' | 'outline' | 'translate';
 
@@ -174,6 +175,18 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
     const [selectedTagKeys, setSelectedTagKeys] = useState<Set<string>>(new Set());
     /** 用户拟定的应用模式 —— 决定差量预览展示的最终列表形态 */
     const [tagApplyMode, setTagApplyMode] = useState<'replace' | 'append'>('append');
+    /** 长文本（润色 / 翻译 / 大纲）应用前的 modal 预览状态 */
+    const [pendingApply, setPendingApply] = useState<{
+      tool: PreviewToolKind;
+      mode: PreviewApplyMode;
+      next: string;
+    } | null>(null);
+
+    const detectPreviewTheme = (): 'light' | 'dark' => {
+      if (typeof window === 'undefined') return 'dark';
+      return document.documentElement.classList.contains('light') ? 'light' : 'dark';
+    };
+    const [previewTheme] = useState<'light' | 'dark'>(detectPreviewTheme());
 
     const enableSelectionAi = useEditorStore((state) => state.enableSelectionAi);
     const setEnableSelectionAi = useEditorStore((state) => state.setEnableSelectionAi);
@@ -485,21 +498,32 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
                     写入摘要
                   </button>
                 )}
-                {result.action === 'polish' || result.action === 'translate' ? (
+                {/* 长文本应用：先打开预览 modal（diff/split/render），用户确认后再写入 */}
+                {result.action === 'polish' && (
                   <button
-                    onClick={() => onReplaceContent(result.text)}
+                    onClick={() => setPendingApply({ tool: 'polish', mode: 'replace', next: result.text })}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
                   >
                     <Replace className="w-3.5 h-3.5" />
-                    替换正文
+                    替换正文（预览）
                   </button>
-                ) : (
+                )}
+                {result.action === 'translate' && (
                   <button
-                    onClick={() => onInsertText(`\n\n${result.text}\n`)}
+                    onClick={() => setPendingApply({ tool: 'translate', mode: 'replace', next: result.text })}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
+                  >
+                    <Replace className="w-3.5 h-3.5" />
+                    替换正文（预览）
+                  </button>
+                )}
+                {result.action === 'outline' && (
+                  <button
+                    onClick={() => setPendingApply({ tool: 'outline', mode: 'append', next: result.text })}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-primary text-white hover:bg-primary/90"
                   >
                     <PlusCircle className="w-3.5 h-3.5" />
-                    插入正文
+                    插入正文（预览）
                   </button>
                 )}
               </div>
@@ -682,6 +706,27 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
             </div>
           )}
         </div>
+
+        {/* 长文本应用预览：润色 = word-diff，翻译 = split-view，大纲 = 渲染整篇 */}
+        <ApplyPreviewModal
+          isOpen={pendingApply !== null}
+          tool={pendingApply?.tool ?? 'polish'}
+          mode={pendingApply?.mode ?? 'replace'}
+          currentContent={content}
+          nextContent={pendingApply?.next ?? ''}
+          targetLanguage={pendingApply?.tool === 'translate' ? targetLanguage : undefined}
+          previewTheme={previewTheme}
+          onCancel={() => setPendingApply(null)}
+          onConfirm={async () => {
+            if (!pendingApply) return;
+            if (pendingApply.tool === 'outline' && pendingApply.mode === 'append') {
+              onInsertText(`\n\n${pendingApply.next}\n`);
+            } else {
+              onReplaceContent(pendingApply.next);
+            }
+            setPendingApply(null);
+          }}
+        />
       </motion.div>
     );
   }
