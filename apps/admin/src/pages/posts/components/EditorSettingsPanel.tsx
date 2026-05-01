@@ -10,7 +10,7 @@ import {
   ChevronDown, ChevronUp, Folder, Tag, Image, FileText,
   Plus, X, Search, Loader2, Sparkles
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, POST_SUMMARY_PLACEHOLDER } from '@/lib/utils';
 import { Category } from '@/services/categoryService';
 import { Tag as TagType } from '@/services/tagService';
 
@@ -339,7 +339,7 @@ export function EditorSettingsPanel({
             value={summary}
             onChange={e => onSummaryChange(e.target.value)}
             maxLength={2000}
-            placeholder="文章摘要，建议 200 字以内，最多 2000 字。留空将自动截取正文前 200 字..."
+            placeholder={POST_SUMMARY_PLACEHOLDER}
             className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none focus:border-primary/50"
           />
         </div>
