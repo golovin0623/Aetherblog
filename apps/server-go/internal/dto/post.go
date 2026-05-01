@@ -6,7 +6,7 @@ import "time"
 type CreatePostRequest struct {
 	Title        string     `json:"title"      validate:"required,max=200"` // 文章标题，最多 200 个字符（必填）
 	Content      string     `json:"content"    validate:"required"`          // 文章正文内容（必填）
-	Summary      *string    `json:"summary"    validate:"omitempty,max=500"` // 文章摘要，最多 500 个字符（可选）
+	Summary      *string    `json:"summary"    validate:"omitempty,max=2000"` // 文章摘要，最多 2000 个字符（与 posts.summary VARCHAR(2000) 一致，可选）
 	CoverImage   *string    `json:"coverImage"`                              // 封面图片 URL（可选）
 	CategoryID   *int64     `json:"categoryId"`                              // 所属分类 ID（可选）
 	TagIDs       []int64    `json:"tagIds"`                                  // 文章标签 ID 列表（可选）
@@ -24,7 +24,7 @@ type CreatePostRequest struct {
 // 用于局部更新文章属性，所有字段均为可选（omitempty）。
 type UpdatePostPropertiesRequest struct {
 	Title        *string    `json:"title"        validate:"omitempty,max=200"` // 文章标题（可选）
-	Summary      *string    `json:"summary"      validate:"omitempty,max=500"` // 文章摘要（可选）
+	Summary      *string    `json:"summary"      validate:"omitempty,max=2000"` // 文章摘要，最多 2000 个字符（与 posts.summary VARCHAR(2000) 一致，可选）
 	CoverImage   *string    `json:"coverImage"`                                // 封面图片 URL（可选）
 	CategoryID   *int64     `json:"categoryId"`                                // 所属分类 ID（可选）
 	TagIDs       []int64    `json:"tagIds"`                                    // 文章标签 ID 列表（可选）
