@@ -145,7 +145,13 @@ def _filter_tags(tags: list[str]) -> list[str]:
 
 
 def _parse_titles(text: str) -> list[str]:
-    """健壮的标题解析器：处理编号/项目符号列表与 JSON 数组。"""
+    """健壮的标题解析器：处理 JSON 数组、编号/项目符号列表与分隔符回退。
+
+    LLM 在 prompt (migration 000038) 引导下应返回 JSON 数组；这里要兜住
+    各种降级输出形式。注意单行多标题会按 `,；;` 切分 —— 标题里偶尔出现
+    的逗号会被误切，但这是与 `_parse_tags` 一致的兜底策略，远好过把整个
+    JSON 数组当成一条标题渲染（会出现 `["t1", "t2"]` 残留括号）。
+    """
     text = (text or "").strip()
     if not text:
         return []
@@ -162,9 +168,12 @@ def _parse_titles(text: str) -> list[str]:
     collected: list[str] = []
     for raw_line in text.splitlines():
         line = _LIST_PREFIX_RE.sub("", raw_line.strip())
-        cleaned = _strip_token(line)
-        if cleaned:
-            collected.append(cleaned)
+        if not line:
+            continue
+        for piece in re.split(r"[,，;；]", line):
+            cleaned = _strip_token(piece)
+            if cleaned:
+                collected.append(cleaned)
     return collected or _split_list(text)
 
 
@@ -246,10 +255,11 @@ def _build_stream_result_payload(
 
 
 def _enforce_content_limit(content: str) -> None:
-    if len(content) > settings.max_input_chars:
+    size = len(content)
+    if size > settings.max_input_chars:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="Content too large",
+            detail=f"Content too large: {size} chars exceeds {settings.max_input_chars} limit",
         )
 
 
@@ -727,7 +737,7 @@ async def titles(
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
         data = TitlesData(
-            titles=_split_list(response_text)[: req.maxTitles],
+            titles=_parse_titles(response_text)[: req.maxTitles],
             model=model,
             tokensUsed=tokens_used,
             latencyMs=latency_ms

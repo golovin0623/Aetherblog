@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🐛 AI 写作面板 · 标题渲染脏数据 + 上下文上限过低 (2026-05-01)
+
+**症状 (移动端真机回归):**
+1. AI 写作面板"标题建议"渲染成 `1. ["阿里云百炼 Coding Plan 快速上手指南"` / `2. "如何获取百炼 API Key 并开始使用?"` / `... 6. "Claude Code 与 Codex 的百炼接入说明"]` —— 每一项都残留 JSON 数组的方括号或外层引号, 点击替换标题时连标点一起灌进文章标题。
+2. 一篇 27222 字的中长博文, 任意 AI 工具按钮 (摘要 / 标签 / 标题 / 润色 / 大纲 / 翻译) 点击后立刻弹出 toast "Content too large", 完全无法生成。
+
+**根因:**
+1. **`/api/v1/ai/titles` 非流式端点用 `_split_list` 解析:** [apps/ai-service/app/api/routes/ai.py:730](apps/ai-service/app/api/routes/ai.py#L730) 旧代码 `titles=_split_list(response_text)`。但 migration 000038 已经把 prompt 改成"输出 JSON 数组" —— LLM 现在返回 `["t1", "t2", ...]`, `_split_list` 只是按逗号粗暴切, 不剥离 `[]"` 外层符号, 直接把 JSON 数组切成 `["t1"`, `"t2"`, `..."tN]"`。流式端点 (`_build_stream_result_payload`) 和 tags 同名端点 (用 `_parse_tags` + `_filter_tags`) 早就走对路径, 只有这一条非流式 titles 漏修。
+2. **`max_input_chars=20000` 默认上限过低:** [apps/ai-service/app/core/config.py:251](apps/ai-service/app/core/config.py#L251) 旧默认 20000 字符。这是 GPT-3.5 时代的保守值, 当前 GPT-5 / Claude 4.x 上下文窗口 ≥ 200K tokens (中英混排约 600K 字符), 卡 20K 完全没意义, 反而把"中长技术博客"挡在工具门外。
+3. (附带) **`_parse_titles` 不会按逗号切单行:** 历史遗留版本只覆盖 JSON / 编号 / 项目符号 / 换行四条路径, LLM 偶发在单行回写 `标题一, 标题二, 标题三` 时会被当成单条标题。`_parse_tags` 一直是切逗号的, 只是 `_parse_titles` 漏了。
+
+**Fixed:**
+
+- **`apps/ai-service/app/api/routes/ai.py`** —— `titles()` 非流式端点 `_split_list(response_text)` → `_parse_titles(response_text)`, 与流式端点对齐, JSON 数组优先解析 + Unicode 引号 + 方括号外层剥除。同时扩展 `_parse_titles` 在每个 line 上对 `[,，;；]` 做切分, 兜住 LLM 单行回写多个标题的退化形态 (与 `_parse_tags` 一致)。
+- **`apps/ai-service/app/core/config.py`** —— `max_input_chars` 默认值 `20000` → `120000` (~40K tokens), 中长博文 (3 万字级) 不再被无端拒绝, 仍能拦住明显异常的滥用。生产环境可继续通过 `AI_MAX_INPUT_CHARS` env 覆盖。
+- **`apps/ai-service/app/api/routes/{ai,search}.py`** —— `_enforce_content_limit` 错误详情从空洞的 `"Content too large"` 改成 `"Content too large: {size} chars exceeds {limit} limit"`, 让用户在 toast 上能看到当前字数和实际上限, 配合 admin axios 错误透传链路自然展示。
+- **`apps/ai-service/tests/test_ai_routes.py`** —— 新增 `test_titles_endpoint_strips_json_array_brackets` 回归: 模拟 LLM 输出 `["t1", "t2", "t3"]`, 断言响应 `data.titles` 等于 `["t1", "t2", "t3"]` 而不是 `['["t1"', '"t2"', '"t3"]']`, 同时断言每条不含 `[]"` 任一字符。
+- **`apps/ai-service/tests/test_search_limit.py`** —— `test_semantic_search_content_limit` 加 `monkeypatch` 把 `settings.max_input_chars` 临时压到 1024, 避免 12 万字符级别的 GET 查询撞到 httpx `MAX_URL_LENGTH` (这是测试环境约束, 不是产品行为)。
+
+**为什么 `_parse_titles` 加逗号切分不会破坏含逗号的合法标题:** prompt (migration 000038) 已经强制 LLM 输出 JSON 数组, JSON 路径优先, 含逗号的标题在数组中是被引号包裹的字符串字面量, `json.loads` 会保留逗号; 只有当 LLM 退化到非 JSON / 非编号 / 非换行的单行输出时才走逗号切分, 那种场景下含逗号的标题被切是可接受的代价 (远好过把整个 JSON 数组渲染成单条带括号的脏数据)。`tags` 端点早就这么做了。
+
 ### 🤖 AI 工具实际可用度修复 (2026-04-25)
 
 **症状:** AI 摘要在博客后台被反馈"完全不可用" —— 设定 200 字, 实际经常返回上千字、问答风格、分点小标题, 与摘要语义完全不符。其他 chat 类工具 (tags / titles / polish / outline / translate / qa) 也程度不一地放飞。
