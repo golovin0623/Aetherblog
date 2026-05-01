@@ -395,14 +395,17 @@ async def summary(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate or req.bypassCache:
+        if req.promptTemplate:
             cache_key = None
         else:
             cache_key = (
                 f"ai:summary:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
                 f"{_prompt_version(req.promptVersion)}:{req.maxLength}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 强制走 LLM, 但保留 SET, 这样陈旧缓存会被
+        # 新结果覆盖, 后续不带 bypassCache 的普通请求不会再命中"用户已经不
+        # 满意的那次输出"。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True
@@ -578,14 +581,15 @@ async def tags(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate or req.bypassCache:
+        if req.promptTemplate:
             cache_key = None
         else:
             cache_key = (
                 f"ai:tags:{hash_content(req.content)}:{model}:"
                 f"{_prompt_version(req.promptVersion)}:{req.maxTags}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True
@@ -683,14 +687,15 @@ async def titles(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate or req.bypassCache:
+        if req.promptTemplate:
             cache_key = None
         else:
             cache_key = (
                 f"ai:titles:{hash_content(req.content)}:{model}:"
                 f"{_prompt_version(req.promptVersion)}:{req.maxTitles}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True
@@ -960,14 +965,15 @@ async def translate(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        if req.promptTemplate or req.bypassCache:
+        if req.promptTemplate:
             cache_key = None
         else:
             cache_key = (
                 f"ai:translate:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
                 f"{_prompt_version(req.promptVersion)}:{req.targetLanguage}:{req.sourceLanguage or 'auto'}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True

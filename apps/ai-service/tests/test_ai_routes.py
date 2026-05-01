@@ -356,10 +356,42 @@ async def test_tags_endpoint_parses_comma_separated_output():
     )
     assert resp.data is not None
     assert isinstance(resp.data.tags, list)
-    # 注意：非流式端点仍使用旧的 _split_list，最多输出 maxTags 个条目 ——
-    # 这里断言截断行为。
+    # 非流式端点已切到 _filter_tags(_parse_tags(...)), 长度 ≤ maxTags 且首项保持顺序
     assert len(resp.data.tags) <= 3
     assert resp.data.tags[0] == "python"
+
+
+@pytest.mark.asyncio
+async def test_tags_bypass_cache_skips_get_but_overwrites_set():
+    """bypassCache=true 时跳过缓存读, 但新结果必须写回, 否则陈旧条目仍会
+    被后续不带 bypassCache 的请求命中 (gemini-code-assist 评审建议)。"""
+    cache = FakeCache()
+    cache.store["preloaded"] = {"tags": ["stale"], "model": "fake/gpt-test"}
+    # 先用一次正常调用让端点写入它真正使用的 cache_key
+    seed_llm = FakeLlm(chat_response="stale1, stale2, stale3")
+    seed_req = TagsRequest(content="文章 X", maxTags=3)
+    await ai_module.tags(
+        req=seed_req, request=_make_request(), user=_make_user(),
+        cache=cache, llm=seed_llm,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    # 锁定刚才那个真实 key (排除手动 preloaded)
+    real_keys = [k for k in cache.store if k != "preloaded"]
+    assert len(real_keys) == 1
+    real_key = real_keys[0]
+    assert cache.store[real_key]["tags"] == ["stale1", "stale2", "stale3"]
+
+    # 同样 content + maxTags, bypassCache=true: 跳过 GET, 拿到 fresh 结果, 同时覆盖缓存
+    fresh_llm = FakeLlm(chat_response="fresh1, fresh2, fresh3")
+    fresh_req = TagsRequest(content="文章 X", maxTags=3, bypassCache=True)
+    resp = await ai_module.tags(
+        req=fresh_req, request=_make_request(), user=_make_user(),
+        cache=cache, llm=fresh_llm,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert resp.data.tags == ["fresh1", "fresh2", "fresh3"]
+    # 最关键的一条: 缓存已被新结果覆盖
+    assert cache.store[real_key]["tags"] == ["fresh1", "fresh2", "fresh3"]
 
 
 @pytest.mark.asyncio
