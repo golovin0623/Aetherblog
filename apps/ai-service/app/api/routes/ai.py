@@ -101,7 +101,10 @@ def _parse_tags(text: str) -> list[str]:
             cleaned = _strip_token(piece)
             if cleaned:
                 collected.append(cleaned)
-    return collected or _split_list(text)
+    # 不回退到 `_split_list(text)` —— 它不剥离引号/方括号,会把 `"[]"` /
+    # `","` / `"1.\n2.\n3."` 这类只剩分隔符或 JSON 字面字符的退化输入当成
+    # 有效标签返回。collected 为空时返回 `[]` 才是正确语义。
+    return collected
 
 
 # 标签必须是"短词"，prompt 已经写了 2-6 汉字 / ≤3 英文单词，但 LLM 偶尔会
@@ -174,7 +177,10 @@ def _parse_titles(text: str) -> list[str]:
             cleaned = _strip_token(piece)
             if cleaned:
                 collected.append(cleaned)
-    return collected or _split_list(text)
+    # 与 `_parse_tags` 同理: 不回退到 `_split_list`, 它不剥离 `[]"`,
+    # 会把 `"[]"` / `","` 等退化输入当成有效标题返回。collected 为空时
+    # 返回 `[]` 才是正确语义。
+    return collected
 
 
 def _build_stream_result_payload(

@@ -175,6 +175,26 @@ class TestParseTitles:
     def test_empty(self):
         assert _parse_titles("") == []
 
+    def test_degenerate_inputs_return_empty(self):
+        # 退化输入：JSON 字面字符 / 仅分隔符 / 仅编号前缀。历史实现会回退到
+        # ``_split_list``，把这些当成有效标题返回（``["[]"]`` / ``[","]`` /
+        # ``["1.", "2.", "3."]``），引入与本 PR 修复同类的脏数据。新实现
+        # 在 collected 为空时返回 ``[]``，才是正确语义。
+        assert _parse_titles("[]") == []
+        assert _parse_titles(",") == []
+        assert _parse_titles("1.\n2.\n3.") == []
+
+
+class TestParseTagsDegenerate:
+    """与 ``_parse_titles`` 同理: 退化输入应返回 ``[]`` 而非脏 token。"""
+
+    def test_empty_brackets(self):
+        assert _parse_tags("[]") == []
+
+    def test_only_separators(self):
+        assert _parse_tags(",") == []
+        assert _parse_tags("，；; 、") == []
+
 
 class TestSplitListLegacy:
     """确保旧的 ``_split_list`` 行为得以保留，向后兼容。"""
