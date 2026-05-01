@@ -31,10 +31,11 @@ settings = get_settings()
 
 
 def _enforce_content_limit(content: str) -> None:
-    if len(content) > settings.max_input_chars:
+    size = len(content)
+    if size > settings.max_input_chars:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="Content too large",
+            detail=f"Content too large: {size} chars exceeds {settings.max_input_chars} limit",
         )
 
 

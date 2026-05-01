@@ -6,8 +6,12 @@ from app.core.jwt import UserClaims
 
 client = TestClient(app)
 
-def test_semantic_search_content_limit():
+def test_semantic_search_content_limit(monkeypatch):
     settings = get_settings()
+    # 把上限临时压到 1024 字符,既能验证 413 触发,又不会撞到 httpx 客户端
+    # 默认的 MAX_URL_LENGTH (现代 LLM 上下文允许 12 万字符级别 GET 查询会
+    # 在测试客户端层面被拒)。
+    monkeypatch.setattr(settings, "max_input_chars", 1024)
 
     # mock 各个依赖
     async def mock_rate_limit():
