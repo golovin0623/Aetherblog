@@ -152,6 +152,94 @@ check_dependencies() {
     echo -e "${GREEN}✅ 依赖检查通过${NC}"
 }
 
+# 读取 .env 中某个 KEY 的当前值（仅匹配行首 KEY=...，不展开变量）
+get_env_field() {
+    local key=$1
+    grep -E "^${key}=" "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2-
+}
+
+# 跨平台 sed -i：GNU sed 用 "-i"，BSD/macOS sed 用 "-i ''"
+sed_inplace() {
+    if sed --version >/dev/null 2>&1; then
+        sed -i "$@"
+    else
+        sed -i '' "$@"
+    fi
+}
+
+# 如果 .env 中 KEY 当前为空（或不存在），就把它就地设置为 VALUE。
+# 已经有非空值时不会覆盖，保护用户手填的密钥。
+bootstrap_secret_field() {
+    local key=$1
+    local value=$2
+    local current
+    current=$(get_env_field "$key")
+    if [ -n "$current" ]; then
+        return 0
+    fi
+    if grep -qE "^${key}=" "$PROJECT_ROOT/.env" 2>/dev/null; then
+        # base64 不含 "|"，用作 sed 分隔符避免转义
+        sed_inplace "s|^${key}=.*|${key}=${value}|" "$PROJECT_ROOT/.env"
+    else
+        echo "${key}=${value}" >> "$PROJECT_ROOT/.env"
+    fi
+    echo -e "${GREEN}   ✅ 已自动生成 ${key}${NC}"
+}
+
+# 自动 bootstrap 缺失的 env 文件（首次启动友好）
+# 1) 根 .env 缺失 → 从 .env.example 拷贝
+# 2) .env 中关键密钥字段为空 → 就地生成强密钥（JWT/内部令牌/Fernet）
+# 3) apps/{blog,admin}/.env.local 缺失 → 从同目录 .env.local.example 拷贝
+bootstrap_env() {
+    echo -e "${YELLOW}[准备] 校准环境配置...${NC}"
+
+    if [ ! -f "$PROJECT_ROOT/.env" ]; then
+        if [ ! -f "$PROJECT_ROOT/.env.example" ]; then
+            echo -e "${RED}❌ 既无 .env 也无 .env.example，无法 bootstrap${NC}" >&2
+            exit 1
+        fi
+        cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
+        echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
+    fi
+
+    # JWT 签名启动 seed
+    bootstrap_secret_field "JWT_SECRET" "$(openssl rand -base64 48 | tr -d '\n')"
+
+    # Go ↔ AI 内部服务令牌（两个变量必须取相同值）
+    if [ -z "$(get_env_field AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN)" ] || [ -z "$(get_env_field AI_INTERNAL_SERVICE_TOKEN)" ]; then
+        local _itoken
+        _itoken=$(openssl rand -base64 48 | tr -d '\n')
+        bootstrap_secret_field "AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN" "$_itoken"
+        bootstrap_secret_field "AI_INTERNAL_SERVICE_TOKEN" "$_itoken"
+    fi
+
+    # AI Provider Key 加密用 Fernet 密钥（32B base64url + padding）
+    if [ -z "$(get_env_field AI_CREDENTIAL_ENCRYPTION_KEYS)" ]; then
+        local _fkey=""
+        if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+            _fkey=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
+        fi
+        if [ -z "$_fkey" ]; then
+            # Python cryptography 可能未装；回退到等价的 32B base64url + 单 = 填充
+            _fkey="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
+        fi
+        bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$_fkey"
+    fi
+
+    # 前端 .env.local
+    local app
+    for app in blog admin; do
+        local target="$PROJECT_ROOT/apps/$app/.env.local"
+        local template="$PROJECT_ROOT/apps/$app/.env.local.example"
+        if [ ! -f "$target" ] && [ -f "$template" ]; then
+            cp "$template" "$target"
+            echo -e "${GREEN}   ✅ 已为 $app 创建 .env.local${NC}"
+        fi
+    done
+
+    echo -e "${GREEN}✅ 环境配置就绪${NC}"
+}
+
 # 记录启动失败的服务
 record_failure() {
     local name=$1
@@ -887,6 +975,7 @@ show_status() {
 main() {
     acquire_lock
     check_dependencies
+    bootstrap_env
     start_middleware
     install_deps
     start_backend

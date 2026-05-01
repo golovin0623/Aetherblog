@@ -72,6 +72,17 @@ docker compose down
 
 ### One-Command Startup
 
+> ⚠️ **首次启动 = `./start.sh --gateway`，无需任何手动准备**
+>
+> `start.sh` 在 `main()` 调用 `bootstrap_env`（位于脚本前部，紧挨 `check_dependencies`），会自动：
+> - 缺失 `.env` → 从 `.env.example` 拷贝；
+> - `.env` 中 `JWT_SECRET` / `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` / `AI_INTERNAL_SERVICE_TOKEN` / `AI_CREDENTIAL_ENCRYPTION_KEYS` 任一为空 → 用 `openssl rand -base64 48` / cryptography Fernet 就地生成（已有非空值时不会覆盖，保护用户手填的密钥）；
+> - 缺失 `apps/blog/.env.local` 或 `apps/admin/.env.local` → 从同目录 `.env.local.example` 拷贝。
+>
+> `.env.example` 默认值（`POSTGRES_PASSWORD=aetherblog123` / `REDIS_HOST=localhost` / `REDIS_PASSWORD=aetherblog_dev` / `AUTH_COOKIE_SECURE=false`）已对齐 `docker-compose.yml` 中间件容器和本机 HTTP 调试链路。生产部署需按 `.env.example` 注释里 `[PROD]` 标签逐字段替换。
+>
+> **新人/AI 接手已存在的"半坏" `.env`**：直接 `mv .env .env.bak && ./start.sh --gateway` 让脚本重建是最快的修复，比挨字段比对靠谱。
+>
 > ⚠️ **本地启动 / 重启验证一律走网关模式 `./start.sh --gateway`**
 > 直连模式（`./start.sh`）不会拉起 nginx 容器，用户无法通过 `http://localhost:7899` 验证路由、跨域、SSE 透传等真实链路。除非用户明确要求"直连"或只调试单个服务，否则默认 `--gateway`。
 

@@ -50,7 +50,6 @@ __pycache__/
 .pids/backend.pid
 .pids/blog.pid
 .kilocode/rules/code-rule.md
-apps/blog/.env.local.example
 
 # GitHub Actions secrets (local testing)
 .secrets
