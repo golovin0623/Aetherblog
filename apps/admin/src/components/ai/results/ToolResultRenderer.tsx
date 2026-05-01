@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Check, Copy, FileText, Languages, ListPlus, Minus, PenLine, PlusCircle, Replace, Sparkles, Tag, Type } from 'lucide-react';
 import { MarkdownPreview } from '@aetherblog/editor';
-import { ConfirmModal } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
 import type { StreamResult } from '@/hooks/useStreamResponse';
 import type { AiToolTargetApi, ContentApplyMode } from '@/hooks/useAiToolTarget';
+import { ApplyPreviewModal, type PreviewToolKind } from '@/components/ai/ApplyPreviewModal';
 
 /**
  * 分发式渲染器：根据 toolId 选择对应的结构化展示组件。
@@ -488,40 +488,41 @@ interface ContentResultProps {
   text: string;
   target: AiToolTargetApi;
   previewTheme: 'light' | 'dark';
+  /** 决定 ApplyPreviewModal 的预览形态：润色用 word-diff，翻译用 split-view，大纲用全篇渲染 */
+  toolKind: PreviewToolKind;
   primaryLabel: string;
   primaryMode: ContentApplyMode;
   primaryIcon: React.ReactNode;
-  /**
-   * 确认提示语解析器。允许 append / replace 两种模式展示不同的警告文案，
-   * 避免「大纲 outline 的次要按钮点进来看到的还是追加说明」这类错配
-   * （PR #435 review C11）。
-   */
-  confirmMessage: string | ((mode: ContentApplyMode) => string);
   secondaryLabel?: string;
   secondaryMode?: ContentApplyMode;
   copyLabel: string;
   headerBadge?: React.ReactNode;
+  targetLanguage?: string;
 }
 
 function ContentApplyBlock({
   text,
   target,
   previewTheme,
+  toolKind,
   primaryLabel,
   primaryMode,
   primaryIcon,
-  confirmMessage,
   secondaryLabel,
   secondaryMode,
   copyLabel,
   headerBadge,
+  targetLanguage,
 }: ContentResultProps) {
   const [pendingMode, setPendingMode] = useState<ContentApplyMode | null>(null);
 
   if (!text.trim()) return <EmptyHint />;
 
+  const currentContent = target.targetPost?.content || '';
+  const hasTarget = target.targetPostId !== null;
+
   const trigger = (mode: ContentApplyMode) => {
-    if (target.targetPostId === null) {
+    if (!hasTarget) {
       target.copyToClipboard(text, copyLabel);
       return;
     }
@@ -534,13 +535,6 @@ function ContentApplyBlock({
       setPendingMode(null);
     }
   };
-
-  const resolvedConfirmMessage =
-    typeof confirmMessage === 'function'
-      ? pendingMode
-        ? confirmMessage(pendingMode)
-        : ''
-      : confirmMessage;
 
   return (
     <div className="space-y-4">
@@ -557,15 +551,15 @@ function ContentApplyBlock({
           icon={primaryIcon}
           variant="primary"
           onClick={() => trigger(primaryMode)}
-          disabled={target.targetPostId === null}
-          title={target.targetPostId === null ? '请先选择目标文章' : undefined}
+          disabled={!hasTarget}
+          title={!hasTarget ? '请先选择目标文章' : undefined}
         />
         {secondaryLabel && secondaryMode && (
           <ActionButton
             label={secondaryLabel}
             icon={<ListPlus className="w-3.5 h-3.5" />}
             onClick={() => trigger(secondaryMode)}
-            disabled={target.targetPostId === null}
+            disabled={!hasTarget}
           />
         )}
         <ActionButton
@@ -575,13 +569,14 @@ function ContentApplyBlock({
         />
       </div>
 
-      <ConfirmModal
+      <ApplyPreviewModal
         isOpen={pendingMode !== null}
-        title={pendingMode === 'replace' ? '替换文章正文' : '追加到文章末尾'}
-        message={resolvedConfirmMessage}
-        confirmText={pendingMode === 'replace' ? '替换' : '追加'}
-        cancelText="取消"
-        variant={pendingMode === 'replace' ? 'danger' : 'warning'}
+        tool={toolKind}
+        mode={pendingMode ?? primaryMode}
+        currentContent={currentContent}
+        nextContent={text}
+        targetLanguage={targetLanguage}
+        previewTheme={previewTheme}
         onConfirm={confirm}
         onCancel={() => setPendingMode(null)}
       />
@@ -593,10 +588,10 @@ function PolishResult(props: { text: string; target: AiToolTargetApi; previewThe
   return (
     <ContentApplyBlock
       {...props}
+      toolKind="polish"
       primaryLabel="替换文章正文"
       primaryMode="replace"
       primaryIcon={<PenLine className="w-3.5 h-3.5" />}
-      confirmMessage="将使用润色后的文本替换目标文章的当前正文，此操作不可撤销，请确认。"
       copyLabel="润色结果"
     />
   );
@@ -618,10 +613,11 @@ function TranslateResult({
       text={text}
       target={target}
       previewTheme={previewTheme}
+      toolKind="translate"
       primaryLabel="替换文章正文"
       primaryMode="replace"
       primaryIcon={<Languages className="w-3.5 h-3.5" />}
-      confirmMessage={`将使用 ${targetLanguage || '翻译后'} 的文本替换目标文章的当前正文，请确认。`}
+      targetLanguage={targetLanguage}
       copyLabel="翻译结果"
       headerBadge={
         targetLanguage ? (
@@ -639,16 +635,12 @@ function OutlineResult(props: { text: string; target: AiToolTargetApi; previewTh
   return (
     <ContentApplyBlock
       {...props}
+      toolKind="outline"
       primaryLabel="追加到文章末尾"
       primaryMode="append"
       primaryIcon={<ListPlus className="w-3.5 h-3.5" />}
       secondaryLabel="替换正文"
       secondaryMode="replace"
-      confirmMessage={(mode) =>
-        mode === 'replace'
-          ? '将使用生成的大纲完全替换目标文章的当前正文，此操作不可撤销，请确认。'
-          : '将把大纲内容追加到目标文章末尾，请确认。'
-      }
       copyLabel="大纲"
     />
   );
