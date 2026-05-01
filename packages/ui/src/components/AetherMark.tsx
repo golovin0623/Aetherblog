@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useId, type CSSProperties } from 'react';
 
 export interface AetherMarkProps {
   size?: number;
@@ -8,12 +8,6 @@ export interface AetherMarkProps {
   title?: string;
 }
 
-let uidCounter = 0;
-function nextUid() {
-  uidCounter += 1;
-  return `aether-mark-grad-${uidCounter}`;
-}
-
 export function AetherMark({
   size = 28,
   className,
@@ -21,7 +15,8 @@ export function AetherMark({
   withGlow = false,
   title,
 }: AetherMarkProps) {
-  const uid = nextUid();
+  const reactId = useId();
+  const uid = `aether-mark-grad-${reactId.replace(/:/g, '')}`;
 
   const svg = (
     <svg

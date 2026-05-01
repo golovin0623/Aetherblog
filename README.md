@@ -120,31 +120,50 @@ AetherBlog/
 
 - Node.js ≥ 20 · pnpm ≥ 9
 - **Go 1.24+**
+- **Python 3.11+**（AI 服务运行时；若装了 `cryptography` 包，启动脚本会用它生成 Fernet 密钥，否则自动回退到 openssl）
 - Docker & Docker Compose
+- `openssl`、`curl`（macOS / 主流 Linux 发行版均自带）
 
-### 一键启动
+### 一键启动（首次也只需一行）
 
 ```bash
-# 克隆项目
 git clone https://github.com/golovin0623/AetherBlog.git
 cd AetherBlog
-
-# 安装前端依赖
 pnpm install
-
-# 启动开发环境（含中间件）
-./start.sh --with-middleware
+./start.sh --gateway --with-middleware
 ```
+
+`./start.sh` 在首次运行时会**自动完成所有环境准备**，无需手动 `cp` 任何模板：
+
+- `.env` 不存在 → 从 `.env.example` 拷贝；
+- `.env` 中 `JWT_SECRET` / `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` / `AI_INTERNAL_SERVICE_TOKEN` / `AI_CREDENTIAL_ENCRYPTION_KEYS` 为空 → 用 `openssl` / Fernet 就地生成强密钥；
+- `apps/blog/.env.local` / `apps/admin/.env.local` 不存在 → 从同目录 `.env.local.example` 拷贝；
+- 中间件容器（PostgreSQL / Redis）尚未启动 → 通过 `docker compose up` 拉起，且 `.env.example` 默认值已对齐 `docker-compose.yml` 中固定的容器密码（`aetherblog123` / `aetherblog_dev`）。
+
+> 之前手动改过 `.env` 但跑不起来？最干净的修复是：`mv .env .env.bak && ./start.sh --gateway` 让脚本重建。
 
 启动后访问：
 
-| 服务 | 地址 |
-|------|------|
-| 📝 博客前台 | http://localhost:3000 |
-| ⚙️ 管理后台 | http://localhost:5173 |
-| 🔧 后端 API | http://localhost:8080/api |
+| 入口 | 地址 | 说明 |
+|------|------|------|
+| 🌐 **统一网关** | **http://localhost:7899** | 推荐入口；`/`→博客 · `/admin/`→后台 · `/api/`→后端 |
+| 📝 博客前台 | http://localhost:3000 | 直连 Next dev server（仅调试单服务时用） |
+| ⚙️ 管理后台 | http://localhost:5173 | 直连 Vite dev server |
+| 🔧 后端 API | http://localhost:8080/api | 直连 Go 后端 |
+| 🤖 AI 服务 | http://localhost:8000 | 直连 FastAPI |
 
 > 默认管理员：`admin` / `admin123`（首次登录后请修改密码）
+
+### 启动模式速查
+
+| 命令 | 适用场景 |
+|------|---------|
+| `./start.sh --gateway` | **推荐**。开发网关模式，走 Nginx :7899，与生产路由一致；保留热更新 |
+| `./start.sh` | 直连模式，仅调试单一服务时使用，不会拉起 Nginx |
+| `./start.sh --prod` | 生产模式（编译产物 + 网关），需提前替换 `.env` 中的密钥与密码 |
+| `./stop.sh` | 停止应用进程，保留中间件容器 |
+| `./stop.sh --all` | 同时停掉中间件 |
+| `./stop.sh --force` | 含全局清理（杀掉残留 node 进程） |
 
 更多启动选项和分步说明请参考 [开发指南](./docs/development.md)。
 
