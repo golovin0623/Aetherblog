@@ -1,5 +1,88 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/**
+ * 与项目设计系统一致的轻量 select。
+ * 替代原生 <select>，避免浏览器原生 dropdown 与项目 surface/aurora 风格割裂。
+ */
+function StyledSelect<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (v: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+  const current = options.find((o) => o.value === value);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'w-full px-3 py-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all',
+          'flex items-center justify-between gap-2 cursor-pointer hover:bg-[var(--bg-card-hover)]',
+          open && 'ring-2 ring-primary/30 border-primary',
+        )}
+      >
+        <span className="truncate">{current?.label ?? value}</span>
+        <ChevronDown
+          className={cn(
+            'w-4 h-4 text-[var(--text-muted)] transition-transform shrink-0',
+            open && 'rotate-180 text-primary',
+          )}
+        />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.96 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute left-0 right-0 top-full mt-2 z-30 max-h-64 overflow-auto rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl py-1"
+          >
+            {options.map((o) => {
+              const selected = o.value === value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-3 transition-colors',
+                    selected
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+                  )}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {selected && <Check className="w-4 h-4 shrink-0" />}
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 /**
  * 工具参数面板：按工具类型渲染对应的参数控件。
@@ -226,17 +309,11 @@ export function ToolParamsPanel({ toolId, value, onChange }: ToolParamsPanelProp
       return (
         <div className="space-y-4">
           <Field label="目标语言">
-            <select
-              className={inputCls}
+            <StyledSelect
               value={String(value.targetLanguage ?? 'en')}
-              onChange={(e) => set({ targetLanguage: e.target.value })}
-            >
-              {TRANSLATE_LANGUAGES.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.label}
-                </option>
-              ))}
-            </select>
+              options={TRANSLATE_LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))}
+              onChange={(v) => set({ targetLanguage: v })}
+            />
           </Field>
           <Field label="源语言（可选）" hint="留空 = 自动检测">
             <input

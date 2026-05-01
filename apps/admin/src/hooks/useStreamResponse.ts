@@ -87,7 +87,6 @@ export function useStreamResponse(): UseStreamResponseReturn {
     setIsLoading(true);
     
     abortControllerRef.current = new AbortController();
-    const token = useAuthStore.getState().token;
 
     try {
       // 安全 (VULN-085)：``url`` 可能是绝对地址（第三方）——一个由管理员
@@ -103,23 +102,32 @@ export function useStreamResponse(): UseStreamResponseReturn {
         }
       })();
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+      // 把 requestInit 构建挪到闭包里：每次发起 fetch 都重读 useAuthStore.token，
+      // 保证 401 → refresh → 重试时不会复用已经失效的 Bearer 头。原先实现
+      // 在 401 之前就把 headers.Authorization 钉死成旧 token，刷新后重发
+      // 用同一份 headers，FastAPI 优先读 Authorization，旧 token 再次被拒，
+      // 表现就是"第一次报错、第二次直接成功"——其实是同一段 stale 头被
+      // 复用了两次，第二次点击因为店里 token 已被其他 axios 调用刷新才偶然
+      // 走了 cookie 路径。
+      const buildRequestInit = (signal: AbortSignal): RequestInit => {
+        const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (token && sameOrigin) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+        return {
+          method: 'POST',
+          headers,
+          credentials: sameOrigin ? 'include' : 'omit',
+          body: JSON.stringify(body),
+          signal,
+        };
       };
 
-      if (token && sameOrigin) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const requestInit: RequestInit = {
-        method: 'POST',
-        headers,
-        credentials: sameOrigin ? 'include' : 'omit',
-        body: JSON.stringify(body),
-        signal: abortControllerRef.current.signal,
-      };
-
-      const executeStreamRequest = () => fetch(url, requestInit);
+      const executeStreamRequest = () =>
+        fetch(url, buildRequestInit(abortControllerRef.current!.signal));
 
       let response = await executeStreamRequest();
 
@@ -130,6 +138,8 @@ export function useStreamResponse(): UseStreamResponseReturn {
         });
 
         if (refreshResponse.ok) {
+          // 重建 requestInit：buildRequestInit 会重读 store，新签发的
+          // ab_access_token cookie 也由 fetch 自动携带。
           response = await executeStreamRequest();
         }
       }

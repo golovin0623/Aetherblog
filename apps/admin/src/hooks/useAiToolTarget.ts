@@ -139,6 +139,9 @@ export function useAiToolTarget(): AiToolTargetApi {
 
   const refreshRecentPosts = useCallback(async () => {
     try {
+      // 仅作 dropdown 打开瞬间的快速 fallback；真正的分页/搜索由消费方
+      // (AIToolsWorkspace 目标文章下拉) 自管，按需调 postService.getList
+      // 翻任意页。
       const res = await postService.getList({ pageNum: 1, pageSize: 20 });
       if (res.code === 200 && res.data) {
         setRecentPosts(res.data.list || []);

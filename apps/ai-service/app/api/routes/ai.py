@@ -1099,6 +1099,12 @@ async def _stream_with_think_detection(
     本包装器还会累积非 think 文本，并在最后下发一个 ``result`` 事件，承载与
     对应非流式端点形态一致的结构化 payload。这样前端就能直接把输出应用到
     文章中，无需再次解析文本。
+
+    **首字节前的透明重试**：调用首次失败但还没 yield 过任何 delta 时，等
+    一小段（~600ms 抖动）后再尝试一次。覆盖冷启动 LiteLLM 客户端 / provider
+    临时握手失败 / DB pool 第一次取连接的瞬时抖动 —— 这些是"第一次点击报错、
+    第二次直接成功"的典型源头。一旦已经 yield 过 delta 再切换会让前端拿到
+    破损 SSE，不再重试。
     """
     response_chars = 0
     error_code = None
@@ -1108,6 +1114,10 @@ async def _stream_with_think_detection(
     # 这会带来明显延迟（PR #435 review C6）。
     full_text_chunks: list[str] = []
     result_emitted = False
+    delta_emitted = False
+    # 透明重试只在"首字节前失败"时触发；最多 1 次。
+    max_attempts = 2
+    last_exc: Exception | None = None
 
     def _make_sse(event: dict) -> bytes:
         return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
@@ -1129,42 +1139,78 @@ async def _stream_with_think_detection(
         return _make_sse({"type": "result", "data": payload})
 
     try:
-        async for event in llm.stream_chat_with_think_detection(
-            prompt_variables=prompt_variables,
-            model_alias=model_alias,
-            user_id=user_id,
-            custom_prompt=custom_prompt,
-            model_id=model_id,
-            provider_code=provider_code,
-        ):
-            event_type = event.get("type")
+        for attempt in range(1, max_attempts + 1):
+            try:
+                async for event in llm.stream_chat_with_think_detection(
+                    prompt_variables=prompt_variables,
+                    model_alias=model_alias,
+                    user_id=user_id,
+                    custom_prompt=custom_prompt,
+                    model_id=model_id,
+                    provider_code=provider_code,
+                ):
+                    event_type = event.get("type")
 
-            if event_type == "delta":
-                content = event.get("content", "") or ""
-                response_chars += len(content)
-                if not event.get("isThink"):
-                    full_text_chunks.append(content)
-                yield _make_sse(event)
-            elif event_type == "done":
-                # 在 done 标记前下发结构化 result，这样前端能在一次提交中
-                # 落定最终形态。
-                result_line = await _maybe_emit_result()
-                if result_line is not None:
-                    yield result_line
-                yield _make_sse(event)
-            else:
-                # 透传未知事件 / 错误事件
-                yield _make_sse(event)
+                    if event_type == "delta":
+                        content = event.get("content", "") or ""
+                        response_chars += len(content)
+                        if not event.get("isThink"):
+                            full_text_chunks.append(content)
+                        delta_emitted = True
+                        yield _make_sse(event)
+                    elif event_type == "done":
+                        # 在 done 标记前下发结构化 result，这样前端能在一次提交中
+                        # 落定最终形态。
+                        result_line = await _maybe_emit_result()
+                        if result_line is not None:
+                            yield result_line
+                        yield _make_sse(event)
+                    else:
+                        # 透传未知事件 / 错误事件
+                        yield _make_sse(event)
 
-            await asyncio.sleep(0)
+                    await asyncio.sleep(0)
 
-        # 部分 provider 关闭流时不会显式发送 ``done`` 事件。需要确保此种
-        # 情况下结构化 result 仍能下发。
-        if not result_emitted:
-            result_line = await _maybe_emit_result()
-            if result_line is not None:
-                yield result_line
-            yield _make_sse({"type": "done"})
+                # 部分 provider 关闭流时不会显式发送 ``done`` 事件。需要确保此种
+                # 情况下结构化 result 仍能下发。
+                if not result_emitted:
+                    result_line = await _maybe_emit_result()
+                    if result_line is not None:
+                        yield result_line
+                    yield _make_sse({"type": "done"})
+                # 流正常结束 —— 跳出重试循环。
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                # 已经 yield 过 delta -> 中途失败，切到 error SSE，不重试，
+                # 否则前端会看到两段拼接错乱的内容。
+                if delta_emitted:
+                    raise
+                # 还没产出任何字节 -> 还有重试机会就再试一次（包括 fallback
+                # 走完后 stream_chat 仍失败的情形）。
+                if attempt < max_attempts:
+                    logger.warning(
+                        "ai.stream_first_byte_failed_retrying",
+                        extra={
+                            "data": {
+                                "task_type": model_alias,
+                                "model": model,
+                                "user_id": user_id,
+                                "attempt": attempt,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        },
+                    )
+                    # 600ms 退避，足够 LiteLLM / provider 重置握手状态，又不
+                    # 至于让用户感觉卡顿（首字节预算通常 1-3 秒）。
+                    await asyncio.sleep(0.6)
+                    continue
+                raise
+
+        # 重试用完仍失败：往 except 走。
+        if last_exc is not None:
+            raise last_exc
     except Exception as exc:
         _status_code, detail = _normalize_generation_error(exc)
         error_code = detail

@@ -112,6 +112,15 @@ async def lifespan(app: FastAPI):
     # 避免它被 rate limiter 抛出的通用 503 给盖掉。
     await _redis_preflight()
 
+    # 预热核心服务，消除"第一次点击 AI 工具报错、第二次成功"的冷启动抖动。
+    # 原因：deps 中 provider_registry / credential_resolver / model_router /
+    # llm_router / usage_logger 都是惰性创建。首次请求会同步触发它们的链式
+    # 初始化（DB 查询 + Fernet key 解析 + LiteLLM 客户端首次握手），叠加
+    # provider 的 TLS 握手，任意一环 200ms 抖动都会被外层 SSE 当成 fail。
+    # 这里在 lifespan 阶段把它们一次性建好；任何一个失败都软降级（保持
+    # lazy 路径作为兜底），不阻塞启动。
+    await _prewarm_core_services()
+
     yield
 
     await stop_jwt_key_refresher()
@@ -119,6 +128,36 @@ async def lifespan(app: FastAPI):
         await deps_module._redis.close()
     if deps_module._pg_pool is not None:
         await deps_module._pg_pool.close()
+
+
+async def _prewarm_core_services() -> None:
+    """在 lifespan 中预初始化所有 AI 路径会用到的全局 services。
+
+    单一职责：减少首请求延迟与抖动。任何一个初始化失败都只 ``warning`` 不抛，
+    保持 deps 中 ``get_xxx()`` 的 lazy 兜底路径作为最后防线。
+    """
+    prewarm_targets = [
+        ("provider_registry", deps_module.get_provider_registry),
+        ("credential_resolver", deps_module.get_credential_resolver),
+        ("model_router", deps_module.get_model_router),
+        ("llm_router", deps_module.get_llm_router),
+        ("usage_logger", deps_module.get_usage_logger),
+    ]
+    for name, factory in prewarm_targets:
+        try:
+            await factory()
+        except Exception as exc:
+            logger.warning(
+                "ai_service.prewarm_failed",
+                extra={
+                    "data": {
+                        "service": name,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                },
+            )
+            continue
+    logger.info("ai_service.prewarm_done")
 
 
 _docs_url = "/docs" if settings.env == "dev" else None

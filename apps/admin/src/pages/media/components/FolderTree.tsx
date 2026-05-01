@@ -400,7 +400,7 @@ function DraggableFolderNode({
           'group relative flex items-center rounded-xl cursor-pointer transition-[background-color,color] duration-200',
           isCompact ? 'gap-2 px-2 py-2.5 min-h-[44px]' : 'gap-2.5 px-2.5 py-2',
           selected
-            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
+            ? 'bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-[var(--ink-primary)] font-medium'
             : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
           (isOver || isDropOver) && 'ring-2 ring-[var(--aurora-1)] ring-offset-2 ring-offset-[var(--bg-leaf,var(--bg-card))] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]',
           isDragging && 'opacity-40'
@@ -418,12 +418,13 @@ function DraggableFolderNode({
         onTouchCancel={cancelLongPress}
         onTouchMove={cancelLongPress}
       >
-        {/* 选中态左侧极光指示条 */}
+        {/* 选中态左侧极光指示条
+            - left-1 让指示条退到 rounded-xl 圆角内部，避免越界
+            - 不用 motion.span+layoutId 做 shared layout：在重复点击同一文件夹 /
+              其他兄弟项触发重渲染时，layoutId 会让动画"飞走"后不再回来，
+              用户体感为「光带消失」。普通 span 静态稳定。 */}
         {selected && (
-          <motion.span
-            layoutId="folder-active-indicator"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[var(--aurora-1)]"
-          />
+          <span className="absolute left-1 top-2 bottom-2 w-[2.5px] rounded-full bg-[var(--aurora-1)]" />
         )}
 
         {/* 拖拽手柄 —— 触屏/紧凑模式隐藏(手指无法稳妥拖拽 16px 区域) */}
@@ -617,18 +618,16 @@ function DroppableFolderNode({
         'group relative flex items-center rounded-xl cursor-pointer transition-[background-color,color] duration-200',
         isCompact ? 'gap-2 px-3 py-2.5 min-h-[44px]' : 'gap-2.5 px-3 py-2',
         selected
-          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--ink-primary)]'
+          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-[var(--ink-primary)] font-medium'
           : 'text-[var(--ink-secondary,var(--text-muted))] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
         (isOver || isDropOver) && 'ring-2 ring-[var(--aurora-1)] ring-offset-2 ring-offset-[var(--bg-leaf,var(--bg-card))] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
       )}
       onClick={onSelect}
     >
-      {/* 选中态左侧极光指示条 */}
+      {/* 选中态左侧极光指示条 —— 与 DraggableFolderNode 保持一致：
+          left-1 退到圆角内、静态 span 避免 framer-motion layoutId 边界 bug */}
       {selected && (
-        <motion.span
-          layoutId="folder-active-indicator"
-          className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-[var(--aurora-1)]"
-        />
+        <span className="absolute left-1 top-2 bottom-2 w-[2.5px] rounded-full bg-[var(--aurora-1)]" />
       )}
 
       {/* 文件夹图标 */}
