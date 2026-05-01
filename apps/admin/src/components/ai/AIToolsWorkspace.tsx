@@ -14,6 +14,7 @@ import { useTheme, useDebounce } from '@/hooks';
 import { ThinkingBlock } from './ThinkingBlock';
 import { markdownPreviewStyles } from '@aetherblog/editor';
 import { postService, type PostListItem } from '@/services/postService';
+import { tagService, type Tag } from '@/services/tagService';
 
 interface Tool {
   id: string;
@@ -153,6 +154,30 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
   // 各工具独立参数（持久化到 localStorage）
   const [toolParams, setToolParams] = useToolParams(selectedTool.id);
 
+  // 现有标签库 —— 由 tags 工具用作 prompt 上下文 + 渲染时计算 4-bucket plan。
+  // 仅在 tags 工具激活时主动拉取一次，其它工具不需要。
+  const [existingTags, setExistingTags] = useState<Tag[]>([]);
+  const [existingTagsLoadedAt, setExistingTagsLoadedAt] = useState(0);
+  const refreshExistingTags = useCallback(async () => {
+    try {
+      const res = await tagService.getList();
+      if (res.code === 200 && res.data) {
+        setExistingTags(res.data);
+        setExistingTagsLoadedAt(Date.now());
+      }
+    } catch {
+      /* 失败则保留旧列表; AI 仍能调,只是少了上下文 */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedTool.id !== 'tags') return;
+    // 切到 tagger 时刷新, 避免管理员刚在另一个标签页改了标签库 -> 这边还旧。
+    // 但避免在同一会话内反复抖动: 5 分钟内不重复拉。
+    if (Date.now() - existingTagsLoadedAt < 5 * 60 * 1000) return;
+    refreshExistingTags();
+  }, [selectedTool.id, existingTagsLoadedAt, refreshExistingTags]);
+
   // 流式状态
   const {
     content: streamContent,
@@ -209,6 +234,18 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         break;
       case 'tags':
         reqData.maxTags = Number(toolParams.maxTags ?? 5);
+        // 把现有标签库 (按 postCount 降序截断) 喂给 AI, 让它优先 matches 而非
+        // suggestions。后端会在 prompt 中渲染为可读列表; 空数组 == 旧行为。
+        // 截断到 200 是 prompt 体积 + token 成本 + 后端 max_length 校验的硬上限。
+        if (existingTags.length > 0) {
+          const sorted = [...existingTags].sort(
+            (a, b) => (b.postCount || 0) - (a.postCount || 0),
+          );
+          reqData.existingTags = sorted.slice(0, 200).map((t) => ({
+            name: t.name,
+            postCount: t.postCount || 0,
+          }));
+        }
         break;
       case 'titles':
         reqData.maxTitles = Number(toolParams.maxTitles ?? 5);
@@ -240,7 +277,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
     } catch {
       toast.error('流式请求失败');
     }
-  }, [input, selectedModelId, selectedProviderCode, selectedTool.id, promptConfig?.custom_prompt, stream, toolParams]);
+  }, [input, selectedModelId, selectedProviderCode, selectedTool.id, promptConfig?.custom_prompt, stream, toolParams, existingTags]);
 
   // 从目标文章导入正文到输入框
   const handleImportFromTarget = useCallback(() => {
@@ -785,6 +822,8 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                       result={streamResult}
                       target={target}
                       previewTheme={previewTheme}
+                      existingTags={existingTags}
+                      onTagsLibraryChange={refreshExistingTags}
                     />
                   )
                 ) : (
