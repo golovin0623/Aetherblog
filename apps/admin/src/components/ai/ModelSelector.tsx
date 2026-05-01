@@ -357,6 +357,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                   return (
                     <button
                       key={model.id}
+                      type="button"
                       onClick={() => handleSelect(model, group.provider)}
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors duration-150",
@@ -459,6 +460,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     <div ref={triggerRef} className={cn("relative model-selector-container", className)}>
       {/* 触发按钮 —— 仅显示供应商图标 */}
       <button
+        type="button"
         onClick={() => {
           if (!isOpen && triggerRef.current) {
             setTriggerRect(triggerRef.current.getBoundingClientRect());
