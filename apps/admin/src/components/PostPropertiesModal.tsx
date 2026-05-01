@@ -1,20 +1,21 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  format, 
-  addMonths, 
-  subMonths, 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  isSameMonth, 
-  isSameDay, 
-  isToday, 
-  set, 
-  parseISO, 
-  getHours, 
-  getMinutes 
+import { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  format,
+  addMonths,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  isToday,
+  set,
+  parseISO,
+  getHours,
+  getMinutes
 } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { Modal } from '@aetherblog/ui';
@@ -22,7 +23,7 @@ import { Post } from '@/services/postService';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { Category } from '@/services/categoryService';
 import { Tag } from '@/services/tagService';
-import { X, Calendar, Eye, EyeOff, Loader2, Search, Hash, Lock, Globe, Trash2, ChevronLeft, ChevronRight, Clock, Check, Plus, Minus } from 'lucide-react';
+import { X, Calendar, Eye, EyeOff, Loader2, Search, Hash, Lock, Globe, Trash2, ChevronLeft, ChevronRight, ChevronDown, Clock, Check, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { getTagColor } from '@/lib/tagColor';
@@ -51,18 +52,44 @@ export function PostPropertiesModal({
   const [tagSearch, setTagSearch] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [clearPassword, setClearPassword] = useState(false);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部时关闭日期选择器
+  // 点击外部时关闭浮层（日期选择器 / 分类下拉）
+  // 日期 popover 走 portal 渲染到 body，DOM 不再是 datePickerRef 的子节点，
+  // 必须额外检查 [data-datepicker-popover] attr 才能避免点到 popover 自身瞬间闭合
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
-        setShowDatePicker(false);
+      const target = event.target as Node;
+      if (datePickerRef.current && !datePickerRef.current.contains(target)) {
+        const inPortal =
+          target instanceof Element && target.closest('[data-datepicker-popover]');
+        if (!inPortal) {
+          setShowDatePicker(false);
+        }
+      }
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(target)) {
+        setShowCategoryDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // 日期 popover 用 fixed + 一次性计算位置，外部容器滚动 / 视口 resize 后会与
+  // trigger 错位。简单的对策：发生这两类事件时直接关闭 popover，由用户重新打开
+  // 一次重算。capture phase 监听滚动捕获 modal 内部滚动容器的事件。
+  useEffect(() => {
+    if (!showDatePicker) return;
+    const close = () => setShowDatePicker(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [showDatePicker]);
 
   // 直接从 Post 初始化表单数据 - 所有数据均可用
   useEffect(() => {
@@ -133,16 +160,47 @@ export function PostPropertiesModal({
   );
 
   // --- 自定义日期选择器组件 ---
-  const DatePickerPopover = ({ 
-    value, 
-    onChange 
-  }: { 
-    value: string | undefined; 
-    onChange: (date: string) => void 
+  const DatePickerPopover = ({
+    value,
+    onChange
+  }: {
+    value: string | undefined;
+    onChange: (date: string) => void
   }) => {
     const [viewDate, setViewDate] = useState(value ? new Date(value) : new Date());
     const [showTimeSelect, setShowTimeSelect] = useState(false);
-    
+    const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({
+      position: 'fixed',
+      visibility: 'hidden',  // 第一帧不可见，避免初始 (0,0) 闪烁
+      zIndex: 60,
+    });
+
+    // 计算 popover 位置：根据 trigger 位置 + 视口剩余空间智能选择上 / 下展开
+    useLayoutEffect(() => {
+      if (!datePickerRef.current) return;
+      const rect = datePickerRef.current.getBoundingClientRect();
+      const POPOVER_HEIGHT = 380; // 大致估算：日历视图高度
+      const POPOVER_WIDTH = 280;
+      const GAP = 8;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const placeAbove = spaceBelow < POPOVER_HEIGHT + GAP && spaceAbove > spaceBelow;
+
+      let left = rect.left;
+      // 防止右溢出视口（trigger 离右边缘太近时左移对齐）
+      if (left + POPOVER_WIDTH > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - POPOVER_WIDTH - 8);
+      }
+
+      const top = placeAbove ? rect.top - POPOVER_HEIGHT - GAP : rect.bottom + GAP;
+      setPopoverStyle({
+        position: 'fixed',
+        top,
+        left,
+        zIndex: 60,
+      });
+    }, []);
+
     const selectedDate = useMemo(() => value ? new Date(value) : null, [value]);
     
     const days = useMemo(() => {
@@ -175,12 +233,14 @@ export function PostPropertiesModal({
       onChange(updated.toISOString());
     };
 
-    return (
+    return createPortal(
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        data-datepicker-popover
+        initial={{ opacity: 0, scale: 0.95, y: 4 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="absolute bottom-full left-0 mb-2 w-[280px] bg-[var(--bg-popover)] backdrop-blur-xl border border-[var(--border-default)] rounded-2xl shadow-2xl z-[60] overflow-hidden"
+        exit={{ opacity: 0, scale: 0.95, y: 4 }}
+        style={popoverStyle}
+        className="w-[280px] bg-[var(--bg-popover)] backdrop-blur-xl border border-[var(--border-default)] rounded-2xl shadow-2xl overflow-hidden"
       >
         {!showTimeSelect ? (
           <div className="p-4">
@@ -335,7 +395,8 @@ export function PostPropertiesModal({
             </button>
           </div>
         )}
-      </motion.div>
+      </motion.div>,
+      document.body
     );
   };
 
@@ -373,6 +434,22 @@ export function PostPropertiesModal({
               required
               placeholder="请输入文章标题"
             />
+          </div>
+
+          {/* 摘要 */}
+          <div>
+            <label className={labelClass}>摘要</label>
+            <textarea
+              value={formData.summary || ''}
+              onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
+              className={cn(inputClass, 'resize-none leading-relaxed')}
+              rows={4}
+              maxLength={2000}
+              placeholder="可留空。会在文章列表 / SEO 元数据中显示，建议 200 字内。"
+            />
+            <div className="text-xs text-[var(--text-muted)] mt-1.5 text-right font-mono tnum">
+              {(formData.summary || '').length} / 2000
+            </div>
           </div>
 
           {/* 作者 - 只读 */}
@@ -464,28 +541,67 @@ export function PostPropertiesModal({
           </div>
 
           {/* 分类 */}
-          <div>
+          <div ref={categoryDropdownRef} className="relative">
             <label className={labelClass}>
               <span className="text-status-danger">*</span> 分类
             </label>
-            <div className="relative">
-              <select
-                value={formData.categoryId || ''}
-                onChange={(e) => setFormData({ ...formData, categoryId: Number(e.target.value) })}
-                className={`${inputClass} appearance-none cursor-pointer`}
-                required
-              >
-                <option value="">请选择分类</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowCategoryDropdown((v) => !v)}
+              className={cn(
+                inputClass,
+                'flex items-center justify-between cursor-pointer text-left',
+                showCategoryDropdown && 'ring-2 ring-primary/50 border-primary',
+              )}
+            >
+              <span className={formData.categoryId ? '' : 'text-[var(--text-muted)]'}>
+                {categories.find((c) => c.id === formData.categoryId)?.name || '请选择分类'}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'w-4 h-4 text-[var(--text-muted)] transition-transform shrink-0',
+                  showCategoryDropdown && 'rotate-180 text-primary',
+                )}
+              />
+            </button>
+            <AnimatePresence>
+              {showCategoryDropdown && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                  transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute left-0 right-0 top-full mt-2 z-30 max-h-64 overflow-auto rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl py-1"
+                >
+                  {categories.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-[var(--text-muted)] text-center">暂无分类</div>
+                  ) : (
+                    categories.map((cat) => {
+                      const selected = cat.id === formData.categoryId;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, categoryId: cat.id });
+                            setShowCategoryDropdown(false);
+                          }}
+                          className={cn(
+                            'w-full px-4 py-2 text-left text-sm transition-colors flex items-center justify-between gap-3',
+                            selected
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]',
+                          )}
+                        >
+                          <span className="truncate">{cat.name}</span>
+                          {selected && <Check className="w-4 h-4 shrink-0" />}
+                        </button>
+                      );
+                    })
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* 日期与置顶组 */}

@@ -56,9 +56,15 @@ import { TrashDialog } from './media/components/TrashDialog';
 import { MediaGridSkeleton as MediaSkeletonGrid, MediaListSkeleton, FolderTreeSkeleton } from '@/components/skeletons/MediaSkeleton';
 import { useMediaKeyboardShortcuts } from '@/hooks/useMediaKeyboardShortcuts';
 import { Pagination } from '@/components/common/Pagination';
+import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import type { MediaFolder } from '@aetherblog/types';
+
+type PendingConfirm =
+  | { kind: 'trash-file'; id: number; onSuccess?: () => void }
+  | { kind: 'delete-folder'; folderId: number }
+  | { kind: 'batch-trash'; ids: number[] };
 
 type ViewMode = 'grid' | 'list';
 type FilterType = 'ALL' | MediaType;
@@ -117,6 +123,9 @@ export default function MediaPage() {
 
   // @ref 移动端文件夹抽屉状态
   const [showMobileFolders, setShowMobileFolders] = useState(false);
+
+  // 删除确认弹窗状态（统一一个 ConfirmModal，按 kind 区分文案与回调）
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   // 文件夹面板可调整宽度
   const [folderPanelWidth, setFolderPanelWidth] = useState(288);
@@ -227,39 +236,7 @@ export default function MediaPage() {
 
   // 删除确认处理 - 支持传入回调
   const handleDeleteConfirm = (id: number, onSuccess?: () => void) => {
-    toast.custom((t) => (
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
-            <Trash2 className="w-5 h-5 text-status-danger" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">移入回收站？</h3>
-            <p className="text-xs text-[var(--text-muted)] mb-4">
-              文件将移入回收站，可在回收站中恢复或彻底删除。
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  deleteMutation.mutate(id);
-                  toast.dismiss(t);
-                  onSuccess?.();
-                }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    ), { duration: 5000 });
+    setPendingConfirm({ kind: 'trash-file', id, onSuccess });
   };
 
   const currentItems = data?.list || [];
@@ -390,47 +367,20 @@ export default function MediaPage() {
   };
 
   const handleDeleteFolder = (folderId: number) => {
-    toast.custom((t) => (
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
-            <Trash2 className="w-5 h-5 text-status-danger" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">删除文件夹？</h3>
-            <p className="text-xs text-[var(--text-muted)] mb-4">
-              此操作将删除文件夹及其所有子文件夹和文件，无法撤销。
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    await folderService.delete(folderId);
-                    queryClient.invalidateQueries({ queryKey: ['folders'] });
-                    if (currentFolderId === folderId) {
-                      setCurrentFolderId(undefined);
-                    }
-                    toast.success('文件夹已删除');
-                  } catch (error) {
-                    toast.error('删除失败');
-                  }
-                  toast.dismiss(t);
-                }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    ), { duration: 5000 });
+    setPendingConfirm({ kind: 'delete-folder', folderId });
+  };
+
+  const performDeleteFolder = async (folderId: number) => {
+    try {
+      await folderService.delete(folderId);
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      if (currentFolderId === folderId) {
+        setCurrentFolderId(undefined);
+      }
+      toast.success('文件夹已删除');
+    } catch (error) {
+      toast.error('删除失败');
+    }
   };
 
   const handleMoveFolder = (folderId: number, _targetParentId?: number) => {
@@ -893,40 +843,7 @@ export default function MediaPage() {
 
                 <button
                   onClick={() => {
-                    const count = selectedIds.size;
-                    const ids = Array.from(selectedIds);
-                    toast.custom((t) => (
-                      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
-                        <div className="flex items-start gap-4">
-                          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
-                            <Trash2 className="w-5 h-5 text-status-danger" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">批量移入回收站?</h3>
-                            <p className="text-xs text-[var(--text-muted)] mb-4">
-                              选中的 {count} 个文件将移入回收站，可在回收站中恢复或彻底删除。
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => toast.dismiss(t)}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-                              >
-                                取消
-                              </button>
-                              <button
-                                onClick={() => {
-                                  batchDeleteMutation.mutate(ids);
-                                  toast.dismiss(t);
-                                }}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
-                              >
-                                确认删除
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ), { duration: 5000 });
+                    setPendingConfirm({ kind: 'batch-trash', ids: Array.from(selectedIds) });
                   }}
                   title="批量删除"
                   aria-label="批量删除"
@@ -1091,6 +1008,40 @@ export default function MediaPage() {
           }}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!pendingConfirm}
+        variant="danger"
+        title={
+          pendingConfirm?.kind === 'delete-folder'
+            ? '删除文件夹？'
+            : pendingConfirm?.kind === 'batch-trash'
+              ? '批量移入回收站？'
+              : '移入回收站？'
+        }
+        message={
+          pendingConfirm?.kind === 'delete-folder'
+            ? '此操作将删除文件夹及其所有子文件夹和文件，无法撤销。'
+            : pendingConfirm?.kind === 'batch-trash'
+              ? `选中的 ${pendingConfirm.ids.length} 个文件将移入回收站，可在回收站中恢复或彻底删除。`
+              : '文件将移入回收站，可在回收站中恢复或彻底删除。'
+        }
+        confirmText={pendingConfirm?.kind === 'delete-folder' ? '确认删除' : '确认删除'}
+        cancelText="取消"
+        onConfirm={() => {
+          if (!pendingConfirm) return;
+          if (pendingConfirm.kind === 'trash-file') {
+            deleteMutation.mutate(pendingConfirm.id);
+            pendingConfirm.onSuccess?.();
+          } else if (pendingConfirm.kind === 'delete-folder') {
+            performDeleteFolder(pendingConfirm.folderId);
+          } else if (pendingConfirm.kind === 'batch-trash') {
+            batchDeleteMutation.mutate(pendingConfirm.ids);
+          }
+          setPendingConfirm(null);
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </div>
   );
 }

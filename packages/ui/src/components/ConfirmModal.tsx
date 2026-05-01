@@ -14,6 +14,11 @@ interface ConfirmModalProps {
   secondaryText?: string;
   onSecondary?: () => void;
   variant?: 'danger' | 'warning' | 'info';
+  /**
+   * 自定义 z-index 数值。默认 50，与项目 modal 层级一致。
+   * 在父级是高 z-index 的 dialog（如 TrashDialog z-9999）时，传 10000+ 以覆盖父级。
+   */
+  zIndex?: number;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -27,6 +32,7 @@ export function ConfirmModal({
   secondaryText,
   onSecondary,
   variant = 'danger',
+  zIndex = 50,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -62,7 +68,7 @@ export function ConfirmModal({
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex }}>
           {/* 背景遮罩 */}
           <motion.div
             initial={{ opacity: 0 }}

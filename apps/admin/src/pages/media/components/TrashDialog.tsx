@@ -11,7 +11,6 @@ import {
   Trash2,
   RotateCcw,
   X,
-  AlertTriangle,
   Image as ImageIcon,
   Video as VideoIcon,
   Music as MusicIcon,
@@ -24,6 +23,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { mediaService, getMediaUrl } from '@/services/mediaService';
+import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { formatFileSize, formatRelativeTime } from '@aetherblog/utils';
 
@@ -31,6 +31,11 @@ interface TrashDialogProps {
   open: boolean;
   onClose: () => void;
 }
+
+type TrashConfirm =
+  | { kind: 'permanent-delete'; id: number }
+  | { kind: 'empty-trash' }
+  | { kind: 'batch-permanent-delete'; ids: number[] };
 
 const getFileIcon = (fileType: string) => {
   switch (fileType) {
@@ -50,6 +55,7 @@ const getFileIcon = (fileType: string) => {
 export function TrashDialog({ open, onClose }: TrashDialogProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
+  const [pendingConfirm, setPendingConfirm] = useState<TrashConfirm | null>(null);
   const queryClient = useQueryClient();
 
   // 获取回收站列表
@@ -153,111 +159,35 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
   }, [selectedIds.size, trashItems]);
 
   const handlePermanentDelete = (id: number) => {
-    toast.custom((t) => (
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-status-danger" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">彻底删除？</h3>
-            <p className="text-xs text-[var(--text-muted)] mb-4">
-              此操作无法撤销，文件将被永久删除。
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  permanentDeleteMutation.mutate(id);
-                  toast.dismiss(t);
-                }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    ), { duration: 5000 });
+    setPendingConfirm({ kind: 'permanent-delete', id });
   };
 
   const handleEmptyTrash = () => {
-    toast.custom((t) => (
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-status-danger" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">清空回收站？</h3>
-            <p className="text-xs text-[var(--text-muted)] mb-4">
-              此操作将永久删除回收站中的所有 {totalItems} 个文件，无法撤销。
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  emptyTrashMutation.mutate();
-                  toast.dismiss(t);
-                }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
-              >
-                清空回收站
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    ), { duration: 5000 });
+    setPendingConfirm({ kind: 'empty-trash' });
   };
 
   const handleBatchPermanentDelete = () => {
-    const count = selectedIds.size;
-    const ids = Array.from(selectedIds);
-    toast.custom((t) => (
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] dark:border-white/10 rounded-xl p-4 shadow-2xl w-80">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-status-danger-light dark:bg-status-danger-light rounded-lg shrink-0">
-            <AlertTriangle className="w-5 h-5 text-status-danger" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] dark:text-white mb-1">批量彻底删除？</h3>
-            <p className="text-xs text-[var(--text-muted)] mb-4">
-              确定要永久删除选中的 {count} 个文件吗？此操作无法撤销。
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => toast.dismiss(t)}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-tertiary)] hover:text-[var(--text-primary)] dark:hover:text-white bg-[var(--bg-secondary)] dark:bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] dark:hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  batchPermanentDeleteMutation.mutate(ids);
-                  toast.dismiss(t);
-                }}
-                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-status-danger hover:bg-status-danger rounded-lg transition-colors"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    ), { duration: 5000 });
+    setPendingConfirm({ kind: 'batch-permanent-delete', ids: Array.from(selectedIds) });
   };
+
+  const confirmCopy = (() => {
+    if (!pendingConfirm) return { title: '', message: '', confirmText: '确认' };
+    if (pendingConfirm.kind === 'permanent-delete') {
+      return { title: '彻底删除？', message: '此操作无法撤销，文件将被永久删除。', confirmText: '确认删除' };
+    }
+    if (pendingConfirm.kind === 'empty-trash') {
+      return {
+        title: '清空回收站？',
+        message: `此操作将永久删除回收站中的所有 ${totalItems} 个文件，无法撤销。`,
+        confirmText: '清空回收站',
+      };
+    }
+    return {
+      title: '批量彻底删除？',
+      message: `确定要永久删除选中的 ${pendingConfirm.ids.length} 个文件吗？此操作无法撤销。`,
+      confirmText: '确认删除',
+    };
+  })();
 
   if (!open) return null;
 
@@ -280,7 +210,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-            className="relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col bg-[var(--bg-card)] rounded-2xl border border-[var(--border-default)] dark:border-white/10 shadow-2xl overflow-hidden"
+            className="surface-overlay relative w-full max-w-[900px] h-full max-h-[700px] flex flex-col !rounded-2xl overflow-hidden"
           >
             {/* 头部 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-default)] dark:border-white/10 shrink-0">
@@ -397,7 +327,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           'flex items-center gap-4 p-3 rounded-xl border transition-all',
                           isSelected
                             ? 'bg-primary/5 border-primary/30'
-                            : 'bg-[var(--bg-secondary)] dark:bg-white/5 border-[var(--border-default)] dark:border-white/10 hover:bg-[var(--bg-secondary)] dark:hover:bg-white/10'
+                            : 'surface-leaf hover:bg-[var(--bg-card-hover)]'
                         )}
                       >
                         {/* 选择框 */}
@@ -408,16 +338,18 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           className="w-4 h-4 rounded border-[var(--border-default)] text-primary focus:ring-primary shrink-0"
                         />
 
-                        {/* 缩略图/图标 */}
-                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-[var(--bg-tertiary)] dark:bg-white/10 shrink-0 flex items-center justify-center">
-                          {item.fileType === 'IMAGE' ? (
+                        {/* 缩略图/图标 —— 默认底层显示 file-type icon；图片加载成功时覆盖；失败回退 icon */}
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-[var(--bg-tertiary)] dark:bg-white/10 shrink-0 flex items-center justify-center relative">
+                          <Icon className="w-6 h-6 text-[var(--text-muted)]" />
+                          {item.fileType === 'IMAGE' && (
                             <img
                               src={getMediaUrl(item.fileUrl)}
-                              alt={item.originalName}
-                              className="w-full h-full object-cover"
+                              alt=""
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
                             />
-                          ) : (
-                            <Icon className="w-6 h-6 text-[var(--text-muted)]" />
                           )}
                         </div>
 
@@ -490,6 +422,28 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
           </motion.div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!pendingConfirm}
+        variant="danger"
+        title={confirmCopy.title}
+        message={confirmCopy.message}
+        confirmText={confirmCopy.confirmText}
+        cancelText="取消"
+        zIndex={10000}
+        onConfirm={() => {
+          if (!pendingConfirm) return;
+          if (pendingConfirm.kind === 'permanent-delete') {
+            permanentDeleteMutation.mutate(pendingConfirm.id);
+          } else if (pendingConfirm.kind === 'empty-trash') {
+            emptyTrashMutation.mutate();
+          } else if (pendingConfirm.kind === 'batch-permanent-delete') {
+            batchPermanentDeleteMutation.mutate(pendingConfirm.ids);
+          }
+          setPendingConfirm(null);
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </AnimatePresence>
   );
 

@@ -723,7 +723,15 @@ class LlmRouter:
         model_id: str | None = None,
         provider_code: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        """流式返回 chat completion 响应，支持动态 prompt 渲染。"""
+        """流式返回 chat completion 响应，支持动态 prompt 渲染。
+
+        与 ``chat`` 对齐的 fallback 语义：若 primary provider 在 **第一个 token
+        到达之前** 就失败（典型场景：provider 5xx、TLS 握手抖动、key 失效、
+        冷启动 LiteLLM 客户端），且任务在 ``ai_task_routing`` 中配置了
+        ``fallback_model``，则透明切到 fallback 重试一次。一旦已经 yield 过
+        chunk，再切换会产出半截破损的 SSE 流，因此 mid-stream 失败 **不重试**，
+        直接抛给上层做 SSE error。
+        """
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
@@ -753,20 +761,79 @@ class LlmRouter:
 
         # SECURITY (VULN-057)：流式路径同样需要校验 base_url。
         await self._guard_api_base(resolved.api_base)
-        stream = await acompletion(
-            model=resolved.model,
-            messages=messages,
-            api_key=resolved.api_key,
-            api_base=resolved.api_base,
-            temperature=resolved.temperature,
-            max_tokens=resolved.max_tokens,
-            stream=True,
-        )
-        async for part in stream:
-            delta = part.choices[0].delta
-            content = getattr(delta, "content", None)
-            if content:
-                yield content
+
+        first_chunk_emitted = False
+        try:
+            stream = await acompletion(
+                model=resolved.model,
+                messages=messages,
+                api_key=resolved.api_key,
+                api_base=resolved.api_base,
+                temperature=resolved.temperature,
+                max_tokens=resolved.max_tokens,
+                stream=True,
+            )
+            async for part in stream:
+                delta = part.choices[0].delta
+                content = getattr(delta, "content", None)
+                if content:
+                    first_chunk_emitted = True
+                    yield content
+            return
+        except Exception as primary_exc:
+            # 已经 yield 过 chunk → 切换会破坏前端已经渲染的部分，直接抛给
+            # 上层；上层会发 SSE error 终止流。
+            if first_chunk_emitted:
+                raise
+
+            # 从 ai_task_routing 取 primary 的原始 routing，看看有没有配置
+            # fallback_model；override（用户级模型覆盖）路径上 routing 可能
+            # 为 None，那时跳过 fallback。
+            routing = None
+            if self.model_router and not resolved.override:
+                try:
+                    routing = await self._get_routing(model_alias, user_id)
+                except Exception:
+                    routing = None
+
+            if not routing or not routing.fallback_model:
+                raise
+
+            fallback_routing = await self._get_routing_for_fallback(routing)
+            if not fallback_routing:
+                raise
+
+            fallback_model = self._prefix_model_for_litellm(
+                fallback_routing.model.model_id,
+                fallback_routing.credential.api_type,
+            )
+            logger.warning(
+                "llm_router.stream_primary_failed_using_fallback",
+                extra={
+                    "data": {
+                        "task_alias": model_alias,
+                        "primary_model": resolved.model,
+                        "fallback_model": fallback_model,
+                        "error": f"{type(primary_exc).__name__}: {primary_exc}",
+                    }
+                },
+            )
+            # SECURITY (VULN-057)：fallback 的 api_base 同样要经过守卫。
+            await self._guard_api_base(fallback_routing.credential.base_url)
+            fallback_stream = await acompletion(
+                model=fallback_model,
+                messages=messages,
+                api_key=fallback_routing.credential.api_key,
+                api_base=fallback_routing.credential.base_url,
+                temperature=resolved.temperature,
+                max_tokens=resolved.max_tokens,
+                stream=True,
+            )
+            async for part in fallback_stream:
+                delta = part.choices[0].delta
+                content = getattr(delta, "content", None)
+                if content:
+                    yield content
 
     async def resolve_embedding_model_id(self, user_id: int | None = None) -> str:
         """返回 ``embed()`` 实际会使用的纯 ``model_id``。
