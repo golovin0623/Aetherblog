@@ -547,12 +547,12 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors duration-700 -z-10 pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-status-success/5 rounded-full blur-3xl group-hover:bg-status-success-light transition-colors duration-700 -z-10 pointer-events-none" />
 
-        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm gap-3">
+        <div className="p-4 md:p-6 md:pb-4 border-b border-[var(--border-subtle)] flex flex-col md:flex-row md:items-center md:justify-between flex-shrink-0 z-10 bg-[var(--bg-card)]/80 backdrop-blur-sm gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="p-1.5 md:p-2 rounded-lg bg-black text-white dark:bg-white dark:text-black transition-colors flex-shrink-0">
               <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="text-sm md:text-lg font-bold tracking-tight bg-gradient-to-r from-[var(--text-primary)] via-[var(--text-primary)] to-[var(--text-muted)] bg-clip-text text-transparent truncate">生成结果</h2>
               <div className="flex items-center gap-1 mt-0.5 min-w-0">
                 <span className="w-1 h-1 rounded-full bg-status-success animate-pulse flex-shrink-0" />
@@ -565,15 +565,15 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 md:flex-shrink-0 min-w-0 w-full md:w-auto">
              {/* 目标文章选择器 —— 自定义 dropdown 替代原生 <select>，避免浏览器原生菜单样式割裂 */}
-             <div ref={targetDropdownRef} className="relative">
+             <div ref={targetDropdownRef} className="relative flex-1 md:flex-none min-w-0">
                <button
                  type="button"
                  onClick={() => setShowTargetDropdown((v) => !v)}
                  title="选择应用目标文章"
                  className={cn(
-                   'max-w-[160px] md:max-w-[220px] w-[160px] md:w-[220px] text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30',
+                   'w-full md:w-[220px] md:max-w-[220px] text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/30',
                    'flex items-center justify-between gap-2 hover:bg-[var(--bg-card-hover)] transition-colors',
                    showTargetDropdown && 'ring-2 ring-primary/30 border-primary',
                  )}
@@ -595,7 +595,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                      animate={{ opacity: 1, y: 0, scale: 1 }}
                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
                      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                     className="absolute right-0 top-full mt-2 z-30 w-[320px] rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
+                     className="absolute left-0 right-0 md:left-auto md:right-0 md:w-[320px] top-full mt-2 z-30 rounded-xl border border-[var(--border-default)] bg-[var(--bg-popover)] shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden"
                    >
                      {/* 搜索框 */}
                      <div className="relative p-2 border-b border-[var(--border-subtle)] shrink-0">
@@ -621,7 +621,7 @@ export const AIToolsWorkspace: React.FC<AIToolsWorkspaceProps> = ({
                      </div>
 
                      {/* 选项列表 */}
-                     <div className="max-h-72 overflow-auto py-1">
+                     <div className="max-h-56 md:max-h-72 overflow-auto py-1">
                        {/* 清除选项 */}
                        <button
                          type="button"
