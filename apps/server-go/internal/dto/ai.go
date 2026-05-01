@@ -25,7 +25,7 @@ type SummaryRequest struct {
 	PromptTemplate string `json:"promptTemplate,omitempty"`    // 自定义提示词模板（可选）
 	ModelID        string `json:"modelId,omitempty"`           // 模型 ID（可选，用户级覆盖）
 	ProviderCode   string `json:"providerCode,omitempty"`      // AI 服务提供商代码（可选，用户级覆盖）
-	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过 Redis 缓存，强制重新调用 LLM（"重新生成"按钮）
+	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过缓存 GET 强制重调 LLM；新结果仍会写回缓存以覆盖陈旧条目（"重新生成"按钮）
 }
 
 // TagsRequest 是 AI 标签推荐接口的请求 DTO。
@@ -36,7 +36,7 @@ type TagsRequest struct {
 	PromptTemplate string `json:"promptTemplate,omitempty"`    // 自定义提示词模板（可选）
 	ModelID        string `json:"modelId,omitempty"`           // 模型 ID（可选）
 	ProviderCode   string `json:"providerCode,omitempty"`      // AI 服务提供商代码（可选）
-	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过 Redis 缓存，强制重新调用 LLM
+	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过缓存 GET 强制重调 LLM；新结果仍会写回缓存以覆盖陈旧条目
 }
 
 // TitlesRequest 是 AI 标题推荐接口的请求 DTO。
@@ -47,7 +47,7 @@ type TitlesRequest struct {
 	PromptTemplate string `json:"promptTemplate,omitempty"`    // 自定义提示词模板（可选）
 	ModelID        string `json:"modelId,omitempty"`           // 模型 ID（可选）
 	ProviderCode   string `json:"providerCode,omitempty"`      // AI 服务提供商代码（可选）
-	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过 Redis 缓存，强制重新调用 LLM
+	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过缓存 GET 强制重调 LLM；新结果仍会写回缓存以覆盖陈旧条目
 }
 
 // PolishRequest 是 AI 内容润色接口的请求 DTO。
@@ -84,7 +84,7 @@ type TranslateRequest struct {
 	PromptTemplate string `json:"promptTemplate,omitempty"`    // 自定义提示词模板（可选）
 	ModelID        string `json:"modelId,omitempty"`           // 模型 ID（可选）
 	ProviderCode   string `json:"providerCode,omitempty"`      // AI 服务提供商代码（可选）
-	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过 Redis 缓存，强制重新调用 LLM
+	BypassCache    bool   `json:"bypassCache,omitempty"`       // true 时跳过缓存 GET 强制重调 LLM；新结果仍会写回缓存以覆盖陈旧条目
 }
 
 // PromptUpdateRequest 是更新 AI 提示词模板的请求 DTO。
