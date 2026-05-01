@@ -104,6 +104,46 @@ def _parse_tags(text: str) -> list[str]:
     return collected or _split_list(text)
 
 
+# 标签必须是"短词"，prompt 已经写了 2-6 汉字 / ≤3 英文单词，但 LLM 偶尔会
+# 把整句话当成一个标签返回（"机器学习是 AI 的子集"）。这里做后处理兜底:
+# - 长度超过 _MAX_TAG_CHARS 的直接丢弃（一个 CJK 字符在 Python str 中是 1 长度,
+#   16 = 16 汉字上限，"machine learning"/"vector database" 这类双词英文也安全在内）
+# - 大小写无关去重，保持首次出现的原大小写
+# - 全部被过滤掉时回退到截断，避免返回空数组让前端误以为提取失败
+_MAX_TAG_CHARS = 16
+
+
+def _filter_tags(tags: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in tags:
+        tag = (raw or "").strip()
+        if not tag:
+            continue
+        key = tag.lower()
+        if key in seen:
+            continue
+        if len(tag) > _MAX_TAG_CHARS:
+            continue
+        seen.add(key)
+        cleaned.append(tag)
+    if cleaned:
+        return cleaned
+    fallback: list[str] = []
+    seen.clear()
+    for raw in tags:
+        tag = (raw or "").strip()
+        if not tag:
+            continue
+        truncated = tag[:_MAX_TAG_CHARS]
+        key = truncated.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        fallback.append(truncated)
+    return fallback
+
+
 def _parse_titles(text: str) -> list[str]:
     """健壮的标题解析器：处理编号/项目符号列表与 JSON 数组。"""
     text = (text or "").strip()
@@ -159,7 +199,7 @@ def _build_stream_result_payload(
                 max_tags = int(prompt_variables.get("max_tags", 5) or 5)
             except (TypeError, ValueError):
                 max_tags = 5
-            tags = _parse_tags(text)[:max_tags]
+            tags = _filter_tags(_parse_tags(text))[:max_tags]
             data = TagsData(tags=tags, model=model or None)
             return data.model_dump()
 
@@ -362,7 +402,10 @@ async def summary(
                 f"ai:summary:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
                 f"{_prompt_version(req.promptVersion)}:{req.maxLength}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 强制走 LLM, 但保留 SET, 这样陈旧缓存会被
+        # 新结果覆盖, 后续不带 bypassCache 的普通请求不会再命中"用户已经不
+        # 满意的那次输出"。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True
@@ -545,7 +588,8 @@ async def tags(
                 f"ai:tags:{hash_content(req.content)}:{model}:"
                 f"{_prompt_version(req.promptVersion)}:{req.maxTags}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True
@@ -577,7 +621,7 @@ async def tags(
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
         data = TagsData(
-            tags=_split_list(response_text)[: req.maxTags],
+            tags=_filter_tags(_parse_tags(response_text))[: req.maxTags],
             model=model,
             tokensUsed=tokens_used,
             latencyMs=latency_ms
@@ -650,7 +694,8 @@ async def titles(
                 f"ai:titles:{hash_content(req.content)}:{model}:"
                 f"{_prompt_version(req.promptVersion)}:{req.maxTitles}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True
@@ -927,7 +972,8 @@ async def translate(
                 f"ai:translate:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
                 f"{_prompt_version(req.promptVersion)}:{req.targetLanguage}:{req.sourceLanguage or 'auto'}:{user.user_id}"
             )
-        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key else None
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
         if cached_data:
             try:
                 cached = True

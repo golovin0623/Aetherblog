@@ -31,6 +31,7 @@ class SummaryRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    bypassCache: bool = False
 
 
 class TagsRequest(BaseModel):
@@ -40,6 +41,7 @@ class TagsRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    bypassCache: bool = False
 
 
 class TitlesRequest(BaseModel):
@@ -49,6 +51,7 @@ class TitlesRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    bypassCache: bool = False
     model_config = ConfigDict(populate_by_name=True)
 
     @model_validator(mode="before")
@@ -69,6 +72,7 @@ class PolishRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    bypassCache: bool = False
     model_config = ConfigDict(populate_by_name=True)
 
     @model_validator(mode="before")
@@ -97,6 +101,7 @@ class OutlineRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    bypassCache: bool = False
 
     @model_validator(mode="after")
     def validate_topic_or_content(self):
@@ -157,6 +162,7 @@ class TranslateRequest(BaseModel):
     promptTemplate: Optional[str] = None
     modelId: Optional[str] = None
     providerCode: Optional[str] = None
+    bypassCache: bool = False
 
 
 class TranslateData(BaseModel):
