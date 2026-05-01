@@ -248,7 +248,11 @@ class Settings(BaseSettings):
     model_outline: str = Field(default="gpt-5-mini", alias="MODEL_OUTLINE")
     model_translate: str = Field(default="gpt-5-mini", alias="MODEL_TRANSLATE")
     model_embedding: str = Field(default="text-embedding-3-small", alias="MODEL_EMBEDDING")
-    max_input_chars: int = Field(default=20000, alias="AI_MAX_INPUT_CHARS")
+    # 单次 AI / 搜索请求接受的最大字符数。原值 20000 对中长博文（≥3 万字）
+    # 直接 413，远低于现代 LLM 上下文（GPT-5 / Claude 4.x ≥ 200K tokens，
+    # 中英混排约 3 字 / token 即 600K 字符）。120000 字符≈40K tokens，
+    # 既覆盖常见博文上限又留有余量，仍能拦住明显异常的滥用。
+    max_input_chars: int = Field(default=120000, alias="AI_MAX_INPUT_CHARS")
 
     @field_validator("jwt_jwks_url", "jwt_issuer", "jwt_audience", mode="before")
     @classmethod

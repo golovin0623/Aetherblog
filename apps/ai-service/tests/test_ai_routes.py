@@ -413,6 +413,36 @@ async def test_titles_endpoint_returns_titles_array():
 
 
 @pytest.mark.asyncio
+async def test_titles_endpoint_strips_json_array_brackets():
+    """回归：migration 000038 后 prompt 引导 LLM 输出 JSON 数组,
+    非流式端点必须用 ``_parse_titles`` 解析,而不是 ``_split_list`` ——
+    否则会被逗号切成 ``["t1"`` / ``"t2"`` / ``"t3"]`` 这种残留括号引号
+    的脏数据,前端就会渲染成 `1. ["xxx"  2. "yyy"  ...  6. "zzz"]`。"""
+    llm = FakeLlm(
+        chat_response='["阿里云百炼 Coding Plan 快速上手指南", "如何获取百炼 API Key 并开始使用?", "Claude Code 与 Codex 的百炼接入说明"]'
+    )
+    req = TitlesRequest(content="正文示例", maxTitles=6)
+    resp = await ai_module.titles(
+        req=req,
+        request=_make_request(),
+        user=_make_user(),
+        cache=FakeCache(),
+        llm=llm,
+        metrics=_make_metrics(),
+        usage_logger=FakeUsageLogger(),
+    )
+    assert resp.data is not None
+    assert resp.data.titles == [
+        "阿里云百炼 Coding Plan 快速上手指南",
+        "如何获取百炼 API Key 并开始使用?",
+        "Claude Code 与 Codex 的百炼接入说明",
+    ]
+    # 任何一条都不应残留 JSON 字面字符
+    for t in resp.data.titles:
+        assert "[" not in t and "]" not in t and '"' not in t
+
+
+@pytest.mark.asyncio
 async def test_polish_endpoint_does_not_leak_changes_field():
     """回归测试：PolishData.changes 字段已在 2026-04 修复中移除。"""
     llm = FakeLlm(chat_response="润色后的完整正文")
