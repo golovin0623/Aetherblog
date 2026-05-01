@@ -23,10 +23,13 @@ import { Post } from '@/services/postService';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { Category } from '@/services/categoryService';
 import { Tag } from '@/services/tagService';
-import { X, Calendar, Eye, EyeOff, Loader2, Search, Hash, Lock, Globe, Trash2, ChevronLeft, ChevronRight, ChevronDown, Clock, Check, Plus, Minus } from 'lucide-react';
+import { X, Calendar, Eye, EyeOff, Loader2, Search, Hash, Lock, Globe, Trash2, ChevronLeft, ChevronRight, ChevronDown, Clock, Check, Plus, Minus, Sparkles, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { getTagColor } from '@/lib/tagColor';
+import ModelSelector from '@/components/ai/ModelSelector';
+import { aiService } from '@/services/aiService';
+import { toast } from 'sonner';
 
 interface PostPropertiesModalProps {
   isOpen: boolean;
@@ -53,6 +56,9 @@ export function PostPropertiesModal({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [clearPassword, setClearPassword] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryModelId, setSummaryModelId] = useState<string>('');
+  const [summaryProviderCode, setSummaryProviderCode] = useState<string>('');
   const datePickerRef = useRef<HTMLDivElement>(null);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -415,6 +421,34 @@ export function PostPropertiesModal({
   const inputClass = "w-full px-4 py-2.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all hover:bg-[var(--bg-card-hover)]";
   const labelClass = "block text-sm font-medium text-[var(--text-secondary)] mb-2 flex items-center gap-1.5";
 
+  // AI 生成摘要 —— 用 post.content 调 ai-service，结果直接写入 formData.summary
+  const handleGenerateSummary = async () => {
+    const content = (post?.content || '').trim();
+    if (!content) {
+      toast.error('文章正文为空，无法生成摘要');
+      return;
+    }
+    setSummarizing(true);
+    try {
+      const res = await aiService.generateSummary({
+        content,
+        maxLength: 200,
+        ...(summaryModelId ? { modelId: summaryModelId } : {}),
+        ...(summaryProviderCode ? { providerCode: summaryProviderCode } : {}),
+      });
+      if (res.code === 200 && res.data?.summary) {
+        setFormData((prev) => ({ ...prev, summary: res.data!.summary.slice(0, 200) }));
+        toast.success('摘要已生成');
+      } else {
+        toast.error(res.message || '生成摘要失败');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || '生成摘要失败');
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" title="修改信息">
       <form onSubmit={handleSubmit} className="flex flex-col h-[75vh]">
@@ -434,22 +468,6 @@ export function PostPropertiesModal({
               required
               placeholder="请输入文章标题"
             />
-          </div>
-
-          {/* 摘要 */}
-          <div>
-            <label className={labelClass}>摘要</label>
-            <textarea
-              value={formData.summary || ''}
-              onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
-              className={cn(inputClass, 'resize-none leading-relaxed')}
-              rows={4}
-              maxLength={2000}
-              placeholder="可留空。会在文章列表 / SEO 元数据中显示，建议 200 字内。"
-            />
-            <div className="text-xs text-[var(--text-muted)] mt-1.5 text-right font-mono tnum">
-              {(formData.summary || '').length} / 2000
-            </div>
           </div>
 
           {/* 作者 - 只读 */}
@@ -682,6 +700,58 @@ export function PostPropertiesModal({
               placeholder="默认使用文章ID"
               className={inputClass}
             />
+          </div>
+
+          {/* 摘要 */}
+          <div>
+            <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+              <label className="text-sm font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" /> 摘要
+              </label>
+              <div className="flex items-center gap-2">
+                <ModelSelector
+                  value={summaryModelId}
+                  onChange={(modelId, provider) => {
+                    setSummaryModelId(modelId);
+                    setSummaryProviderCode(provider);
+                  }}
+                  selectedProviderCode={summaryProviderCode}
+                  modelType="chat"
+                  className="w-[160px]"
+                  triggerClassName="h-8 text-xs rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)]"
+                  menuPlacement="top"
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateSummary}
+                  disabled={summarizing}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all',
+                    'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                  )}
+                  title={summaryModelId ? '使用所选模型生成' : '使用默认模型生成'}
+                >
+                  {summarizing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  AI 生成
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={formData.summary || ''}
+              onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
+              className={cn(inputClass, 'resize-none leading-relaxed')}
+              rows={4}
+              maxLength={200}
+              placeholder="留空将在文章列表自动截取正文前 140 字作为预览。建议 200 字内。"
+            />
+            <div className="text-xs text-[var(--text-muted)] mt-1.5 text-right font-mono tnum">
+              {(formData.summary || '').length} / 200
+            </div>
           </div>
 
           {/* 扩展：高级可见性 */}
