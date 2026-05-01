@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, FileText, Languages, ListPlus, PenLine, Sparkles, Tag, Type } from 'lucide-react';
+import { ArrowRight, Check, Copy, FileText, Languages, ListPlus, Minus, PenLine, PlusCircle, Replace, Sparkles, Tag, Type } from 'lucide-react';
 import { MarkdownPreview } from '@aetherblog/editor';
 import { ConfirmModal } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
@@ -138,6 +138,9 @@ function SummaryResult({
   previewTheme: 'light' | 'dark';
 }) {
   if (!text.trim()) return <EmptyHint />;
+  const currentSummary = target.targetPost?.summary || '';
+  const hasTarget = target.targetPostId !== null;
+
   return (
     <div className="space-y-4">
       <MarkdownPreview
@@ -146,14 +149,39 @@ function SummaryResult({
         theme={previewTheme}
         style={{ fontSize: '15px', color: 'var(--text-primary)' }}
       />
+
+      {hasTarget && (
+        <div className="space-y-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 p-3">
+          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+            <FileText className="w-3 h-3" />
+            应用预览
+          </div>
+          <div className="grid gap-2">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1">当前摘要</div>
+              <div className="text-xs leading-relaxed text-[var(--text-secondary)] line-clamp-3">
+                {currentSummary.trim() ? currentSummary : <span className="italic text-[var(--text-muted)]">（空，应用后将首次写入）</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-primary">
+              <ArrowRight className="w-3 h-3" />
+              <span className="font-mono text-[10px] uppercase tracking-wider">应用后</span>
+            </div>
+            <div>
+              <div className="text-xs leading-relaxed text-[var(--text-primary)] line-clamp-3">{text}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border-subtle)]">
         <ActionButton
           label="设为文章摘要"
           icon={<FileText className="w-3.5 h-3.5" />}
           variant="primary"
           onClick={() => target.applySummary(text)}
-          disabled={target.targetPostId === null}
-          title={target.targetPostId === null ? '请先选择目标文章' : undefined}
+          disabled={!hasTarget}
+          title={!hasTarget ? '请先选择目标文章' : undefined}
         />
         <ActionButton
           label="复制"
@@ -165,6 +193,66 @@ function SummaryResult({
   );
 }
 
+/** 单行差量：保留 / 新增 / 移除（与 AiSidePanel 同语义、不同 chrome） */
+function TagDiffRow({
+  label,
+  tags,
+  tone,
+  icon,
+}: {
+  label: string;
+  tags: string[];
+  tone: 'neutral' | 'add' | 'remove';
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
+        {icon}
+        {label}（{tags.length}）
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((t) => (
+          <span
+            key={t}
+            className={cn(
+              'inline-flex items-center px-2 py-0.5 text-[11px] rounded-full border',
+              tone === 'add' && 'bg-[color-mix(in_oklch,var(--signal-success)_14%,transparent)] text-[var(--signal-success)] border-[color-mix(in_oklch,var(--signal-success)_28%,transparent)]',
+              tone === 'remove' && 'bg-[color-mix(in_oklch,var(--signal-danger)_12%,transparent)] text-[var(--signal-danger)] border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)] line-through opacity-80',
+              tone === 'neutral' && 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-subtle)]',
+            )}
+          >
+            {t}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** AiSidePanel.computeTagDiff 在工具箱里的复制 —— 两边语义保持一致。 */
+function computeTagDiff(
+  current: string[],
+  selected: string[],
+  mode: 'replace' | 'append',
+): { keep: string[]; add: string[]; remove: string[]; finalList: string[] } {
+  const currentMap = new Map(current.map((t) => [t.toLowerCase(), t]));
+  const selectedMap = new Map(selected.map((t) => [t.toLowerCase(), t]));
+  const keep: string[] = [];
+  const add: string[] = [];
+  const remove: string[] = [];
+  for (const [k, name] of selectedMap) {
+    if (currentMap.has(k)) keep.push(currentMap.get(k)!);
+    else add.push(name);
+  }
+  for (const [k, name] of currentMap) {
+    if (!selectedMap.has(k)) remove.push(name);
+  }
+  const finalList =
+    mode === 'replace' ? [...keep, ...add] : [...current, ...add];
+  return { keep, add, remove, finalList };
+}
+
 // ─────────────────────────── 标签 ───────────────────────────
 
 function TagsResult({
@@ -174,62 +262,122 @@ function TagsResult({
   tags: string[];
   target: AiToolTargetApi;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(tags));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(tags.map((t) => t.toLowerCase())));
+  const [mode, setMode] = useState<'replace' | 'append'>('append');
 
   // 入参 tags 变化时（重新执行工具）重置选择状态。
   useEffect(() => {
-    setSelected(new Set(tags));
+    setSelected(new Set(tags.map((t) => t.toLowerCase())));
   }, [tags]);
 
   if (tags.length === 0) return <EmptyHint />;
 
   const toggle = (tag: string) => {
+    const key = tag.toLowerCase();
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(tag)) next.delete(tag);
-      else next.add(tag);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
-  const selectedList = tags.filter((t) => selected.has(t));
+  const selectedList = tags.filter((t) => selected.has(t.toLowerCase()));
+  const currentTagNames = (target.targetPost?.tags || []).map((t) => t.name);
+  const diff = computeTagDiff(currentTagNames, selectedList, mode);
+  const hasTarget = target.targetPostId !== null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {tags.map((tag) => {
-          const isOn = selected.has(tag);
-          return (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => toggle(tag)}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border active:scale-95',
-                isOn
-                  ? 'bg-primary/10 text-primary border-primary/40 shadow-sm'
-                  : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]',
-              )}
-            >
-              {isOn && <Check className="w-3 h-3" />}
-              <Tag className="w-3 h-3" />
-              {tag}
-            </button>
-          );
-        })}
+      {/* AI 推荐 chips —— toggle 选择 */}
+      <div>
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] mb-2">
+          <Tag className="w-3 h-3" />
+          AI 推荐 · 已选 {selectedList.length} / {tags.length}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {tags.map((tag) => {
+            const isOn = selected.has(tag.toLowerCase());
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => toggle(tag)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border active:scale-95',
+                  isOn
+                    ? 'bg-primary/10 text-primary border-primary/40 shadow-sm'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] line-through opacity-60',
+                )}
+              >
+                {isOn && <Check className="w-3 h-3" />}
+                <Tag className="w-3 h-3" />
+                {tag}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* 模式切换 + 应用后差量预览（必须有 target 才能算 diff） */}
+      {hasTarget && (
+        <div className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 p-3">
+          <div className="flex bg-[var(--bg-card)] rounded-lg p-1 gap-1">
+            {([
+              { key: 'append' as const, label: '追加', icon: PlusCircle },
+              { key: 'replace' as const, label: '替换', icon: Replace },
+            ]).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMode(key)}
+                className={cn(
+                  'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors',
+                  mode === key
+                    ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-sm'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]',
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+              <ArrowRight className="w-3 h-3" />
+              应用后预览（共 {diff.finalList.length} 个）
+            </div>
+            {diff.keep.length > 0 && (
+              <TagDiffRow label="保留" tags={diff.keep} tone="neutral" icon={<Check className="w-3 h-3" />} />
+            )}
+            {diff.add.length > 0 && (
+              <TagDiffRow label="新增" tags={diff.add} tone="add" icon={<PlusCircle className="w-3 h-3" />} />
+            )}
+            {mode === 'replace' && diff.remove.length > 0 && (
+              <TagDiffRow label="移除" tags={diff.remove} tone="remove" icon={<Minus className="w-3 h-3" />} />
+            )}
+            {mode === 'append' && diff.remove.length > 0 && (
+              <div className="text-[10px] text-[var(--text-muted)] italic">
+                追加模式不会移除当前文章已有的 {diff.remove.length} 个标签
+              </div>
+            )}
+            {diff.finalList.length === 0 && (
+              <div className="text-[10px] text-[var(--text-muted)] italic">没有可应用的标签</div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border-subtle)]">
-        <span className="text-[10px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
-          已选 {selectedList.length} / {tags.length}
-        </span>
-        <div className="flex-1" />
         <ActionButton
-          label="追加到文章标签"
-          icon={<ListPlus className="w-3.5 h-3.5" />}
+          label={mode === 'replace' ? '替换为已选' : '追加到文章标签'}
+          icon={mode === 'replace' ? <Replace className="w-3.5 h-3.5" /> : <ListPlus className="w-3.5 h-3.5" />}
           variant="primary"
-          onClick={() => target.applyTags(selectedList)}
-          disabled={target.targetPostId === null || selectedList.length === 0}
-          title={target.targetPostId === null ? '请先选择目标文章' : undefined}
+          onClick={() => target.applyTags(selectedList, mode)}
+          disabled={!hasTarget || selectedList.length === 0}
+          title={!hasTarget ? '请先选择目标文章' : undefined}
         />
         <ActionButton
           label="复制"
@@ -257,9 +405,32 @@ function TitlesResult({
   }, [titles]);
 
   if (titles.length === 0) return <EmptyHint />;
+  const currentTitle = target.targetPost?.title || '';
+  const hasTarget = target.targetPostId !== null;
 
   return (
     <div className="space-y-3">
+      {hasTarget && (
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)]/50 p-3 space-y-2">
+          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">
+            <Type className="w-3 h-3" />
+            应用预览
+          </div>
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] mb-1">当前标题</div>
+            <div className="text-xs text-[var(--text-secondary)] truncate">
+              {currentTitle.trim() || <span className="italic text-[var(--text-muted)]">（空）</span>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-primary">
+            <ArrowRight className="w-3 h-3" />
+            <span className="font-mono text-[10px] uppercase tracking-wider">应用后</span>
+          </div>
+          <div className="text-xs text-[var(--text-primary)] truncate">
+            {selected ?? <span className="italic text-[var(--text-muted)]">未选择</span>}
+          </div>
+        </div>
+      )}
       <ul className="space-y-2">
         {titles.map((title, idx) => {
           const isOn = selected === title;

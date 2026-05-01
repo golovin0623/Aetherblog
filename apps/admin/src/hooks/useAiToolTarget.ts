@@ -22,6 +22,7 @@ import { toast } from 'sonner';
  */
 
 export type ContentApplyMode = 'replace' | 'append';
+export type TagApplyMode = 'replace' | 'append';
 
 export interface AiToolTargetApi {
   targetPostId: number | null;
@@ -34,7 +35,12 @@ export interface AiToolTargetApi {
 
   applySummary: (summary: string) => Promise<boolean>;
   applyTitle: (title: string) => Promise<boolean>;
-  applyTags: (tagNames: string[]) => Promise<boolean>;
+  /**
+   * 应用标签到目标文章。
+   *   `append`（默认）：与现有标签合并（去重）；
+   *   `replace`：用 tagNames 完全替换，未列出的现有标签会被移除。
+   */
+  applyTags: (tagNames: string[], mode?: TagApplyMode) => Promise<boolean>;
   applyContent: (text: string, mode: ContentApplyMode) => Promise<boolean>;
 
   copyToClipboard: (text: string, label?: string) => Promise<void>;
@@ -203,7 +209,7 @@ export function useAiToolTarget(): AiToolTargetApi {
     }
   }, [requireTarget, refreshTarget]);
 
-  const applyTags = useCallback(async (tagNames: string[]) => {
+  const applyTags = useCallback(async (tagNames: string[], mode: TagApplyMode = 'append') => {
     const id = requireTarget();
     if (id === null) return false;
     if (!targetPost) {
@@ -269,21 +275,29 @@ export function useAiToolTarget(): AiToolTargetApi {
         }
       }
 
-      if (resolvedIds.length === 0) {
+      if (resolvedIds.length === 0 && mode === 'append') {
+        // replace 模式允许把标签清空（resolvedIds 为空 → tagIds 也为空）
         toast.error('标签解析失败');
         return false;
       }
 
       const existingIds = (targetPost.tags || []).map((t) => t.id);
-      const merged = Array.from(new Set([...existingIds, ...resolvedIds]));
-      const res = await postService.updateProperties(id, { tagIds: merged });
+      const nextIds =
+        mode === 'replace'
+          ? Array.from(new Set(resolvedIds))
+          : Array.from(new Set([...existingIds, ...resolvedIds]));
+      const res = await postService.updateProperties(id, { tagIds: nextIds });
       if (res.code === 200) {
-        const addedCount = merged.length - existingIds.length;
-        toast.success(
-          addedCount > 0
-            ? `已追加 ${addedCount} 个标签到文章`
-            : '所选标签已存在于文章中',
-        );
+        if (mode === 'replace') {
+          toast.success(`已替换为 ${nextIds.length} 个标签`);
+        } else {
+          const addedCount = nextIds.length - existingIds.length;
+          toast.success(
+            addedCount > 0
+              ? `已追加 ${addedCount} 个标签到文章`
+              : '所选标签已存在于文章中',
+          );
+        }
         await refreshTarget();
         return true;
       }
