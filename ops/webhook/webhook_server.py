@@ -5,16 +5,27 @@ SECURITY (VULN-132 / VULN-140):
   - 使用 ``WEBHOOK_SECRET`` 对请求体做 HMAC-SHA256 进行鉴权
     （头部 ``X-Hub-Signature-256: sha256=<hex>``）。已移除"以路径作为密钥"
     的旧鉴权方式。
-  - 默认监听地址为 ``127.0.0.1``，唯一合法调用方是前置反向代理 (Nginx)
-    并由它强制 IP 白名单。非默认拓扑可通过 ``WEBHOOK_BIND`` 覆盖。
+  - 代码默认监听 ``127.0.0.1``。生产 systemd unit 显式覆盖为 ``0.0.0.0``
+    （HMAC 兜底, 但仍属于较宽姿态）。想换成 nginx 前置 + 127.0.0.1, 在
+    ``deploy-webhook.service`` 里改 ``Environment=WEBHOOK_BIND`` 即可.
   - ``services`` 字段拒绝未知服务名，而不是静默回退到全量部署
     （VULN-140 的历史行为）。
 
-SECURITY (VULN-134): 该服务需要配合加固过的 systemd unit
-``deploy-webhook.service`` (User=webhook + NoNewPrivileges + ProtectSystem) 一起使用。
+DEPLOYMENT NOTE (VULN-134 历史尾巴): 仓库历史里有一版 systemd 加固设计
+(``User=webhook`` 无特权用户 + ``ProtectSystem=strict`` + ``ProtectHome=true``
++ 独立工作目录 ``/var/lib/aetherblog/webhook``), 来自 PR #459. 但跟
+``PROJECT_DIR=/root/Aetherblog`` 默认值有冲突 (ProtectHome 禁止读 /root),
+没有端到端落地. 当前生产仍是 ``User=root`` + 直跑仓库符号链接的姿态.
+想做加固请单独提 PR 配合仓库迁出 /root/. 详见 ops/webhook/README.md.
 """
-from __future__ import annotations
-
+# 兼容 Python 3.6+ (CentOS 7 / RHEL 7 默认装的 /usr/bin/python3 是 3.6.8).
+# 这意味着不能用:
+#   - from __future__ import annotations  (3.7+)
+#   - f"{x=}"  (3.8+)
+#   - 海象运算符 :=  (3.8+)
+#   - list[str] / dict[str, str] 内置泛型  (3.9+)  → 用 typing.List/Dict
+#   - str.removeprefix / removesuffix  (3.9+)  → 用 slice 表达式
+# 所有类型注解必须用 typing 模块, 不要直接用 lowercase generics.
 import contextlib
 import fcntl
 import hashlib
@@ -43,7 +54,13 @@ def _resolve_secret() -> bytes:
 WEBHOOK_SECRET = _resolve_secret()
 PORT = int(os.environ.get("WEBHOOK_PORT", "7868"))
 BIND_HOST = os.environ.get("WEBHOOK_BIND", "127.0.0.1")
-DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/var/lib/aetherblog/webhook/deploy.sh")
+DEPLOY_SCRIPT = os.environ.get(
+    "DEPLOY_SCRIPT",
+    # 默认走"跟 webhook_server.py 同目录的 deploy.sh", 让仓库布局和服务器
+    # 软链接布局都自动匹配, 不再硬编码 /root/Aetherblog/... 的特定生产路径.
+    # 生产 systemd unit 里仍可用 Environment=DEPLOY_SCRIPT=... 显式覆盖.
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy.sh"),
+)
 DEPLOY_TIMEOUT = int(os.environ.get("DEPLOY_TIMEOUT", "900"))
 
 # Repo sync 配置 —— 由 webhook 在 invoke deploy.sh **之前**完成 fetch + reset.
