@@ -19,6 +19,7 @@ import {
 import { aiService } from '@/services/aiService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { computeTagDiff } from '@/lib/aiToolDiff';
 import { ModelSelector } from '@/components/ai/ModelSelector';
 import { useEditorStore } from '@/stores/editorStore';
 import { ApplyPreviewModal, type PreviewToolKind, type PreviewApplyMode } from '@/components/ai/ApplyPreviewModal';
@@ -36,6 +37,12 @@ interface AiSidePanelProps {
   summary: string;
   /** 文章当前已选标签名（用于"应用前 / 应用后"差量预览）。大小写敏感保留首次出现拼写。 */
   currentTagNames: string[];
+  /**
+   * 应用前预览 modal 的主题 —— 受控传入。父组件 `CreatePostPage` 持有
+   * `useTheme().resolvedTheme`，主题切换时会重渲染本组件，让预览主题与
+   * 应用主题保持同步（修复历史上 `useState` 一次性快照导致的脱节问题）。
+   */
+  previewTheme: 'light' | 'dark';
   selectedModelId?: string;
   selectedProviderCode?: string;
   onModelChange: (modelId: string, providerCode: string) => void;
@@ -84,45 +91,6 @@ function TagDiffRow({
   );
 }
 
-/**
- * 标签集合差量：把 AI 推荐的"已选"集合和文章当前标签合并，分出
- *   keep      —— 文章已有 ∩ 选中（追加模式不变；替换模式作为"保留"项）
- *   add       —— 选中但文章没有（两种模式都新增）
- *   remove    —— 文章已有但未选中（仅替换模式才会真的移除；追加模式仅作为"未涉及"提示）
- *   finalList —— 应用后的最终标签列表（按 mode 计算）
- *
- * 大小写不敏感比较，但保留各自原始拼写。
- */
-function computeTagDiff(
-  current: string[],
-  selected: string[],
-  mode: 'replace' | 'append',
-): { keep: string[]; add: string[]; remove: string[]; finalList: string[] } {
-  const currentMap = new Map(current.map((t) => [t.toLowerCase(), t]));
-  const selectedMap = new Map(selected.map((t) => [t.toLowerCase(), t]));
-
-  const keep: string[] = [];
-  const add: string[] = [];
-  const remove: string[] = [];
-
-  for (const [k, name] of selectedMap) {
-    if (currentMap.has(k)) keep.push(currentMap.get(k)!);
-    else add.push(name);
-  }
-  for (const [k, name] of currentMap) {
-    if (!selectedMap.has(k)) remove.push(name);
-  }
-
-  let finalList: string[];
-  if (mode === 'replace') {
-    finalList = [...keep, ...add];
-  } else {
-    // append: 不动既有，仅在末尾追加新增项
-    finalList = [...current, ...add];
-  }
-  return { keep, add, remove, finalList };
-}
-
 type AiPanelResult =
   | { type: 'text'; action: AiPanelAction; text: string }
   | { type: 'tags'; tags: string[] }
@@ -156,6 +124,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
     title,
     summary,
     currentTagNames,
+    previewTheme,
     selectedModelId,
     selectedProviderCode,
     onModelChange,
@@ -181,12 +150,6 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
       mode: PreviewApplyMode;
       next: string;
     } | null>(null);
-
-    const detectPreviewTheme = (): 'light' | 'dark' => {
-      if (typeof window === 'undefined') return 'dark';
-      return document.documentElement.classList.contains('light') ? 'light' : 'dark';
-    };
-    const [previewTheme] = useState<'light' | 'dark'>(detectPreviewTheme());
 
     const enableSelectionAi = useEditorStore((state) => state.enableSelectionAi);
     const setEnableSelectionAi = useEditorStore((state) => state.setEnableSelectionAi);

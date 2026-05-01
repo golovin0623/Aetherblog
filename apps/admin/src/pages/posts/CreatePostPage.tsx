@@ -2727,6 +2727,7 @@ export function CreatePostPage() {
               title={title}
               summary={summary}
               currentTagNames={selectedTags.map((t) => t.name)}
+              previewTheme={resolvedTheme}
               selectedModelId={aiModelId}
               selectedProviderCode={aiProviderCode}
               onModelChange={handleModelChange}
@@ -3058,6 +3059,7 @@ export function CreatePostPage() {
                 title={title}
                 summary={summary}
                 currentTagNames={selectedTags.map((t) => t.name)}
+                previewTheme={resolvedTheme}
                 selectedModelId={aiModelId}
                 selectedProviderCode={aiProviderCode}
                 onModelChange={handleModelChange}
