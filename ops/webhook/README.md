@@ -15,6 +15,7 @@
 | 运行用户 | `root` | 接受当前姿态，未上 unprivileged user |
 | 工作目录 | `/root/Aetherblog/webhook` → 软链接到 `/root/Aetherblog/ops/webhook` | git pull 后自动同步 |
 | Python 解释器 | 仓库默认 `/usr/bin/python3`，**当前生产** `systemctl edit` 覆盖为 `/root/.pyenv/versions/3.9.9/bin/python3`（pyenv） | 通过 `Environment=PYTHON_BIN=...` 调整，无需改 ExecStart |
+| Python 最低版本 | **3.6** (CentOS 7 / RHEL 7 系统默认就是这个版本) | `webhook_server.py` 顶部注释列了不能用的 3.7+ 语法; 改这个文件时盯一下别误用 `from __future__ import annotations` / 海象运算符 / 内置泛型 |
 | 监听地址 | `0.0.0.0:7868` | **公网可见**, 安全靠 HMAC-SHA256 + 32 字节 secret 兜底 |
 | WEBHOOK_SECRET | systemd unit 内联 (sed 替换 placeholder) | 不走 EnvironmentFile |
 | 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
