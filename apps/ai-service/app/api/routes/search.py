@@ -355,17 +355,26 @@ async def qa_search(
 
     # 第 3 步：使用 qa task type 流式生成 LLM 回答
     async def generate():
+        accumulated_answer = ""
         try:
             async for chunk in llm_router.stream_chat(
                 prompt_variables={"context": context_text, "query": q},
                 model_alias="qa",
             ):
+                accumulated_answer += chunk
                 data = _json.dumps({"type": "delta", "content": chunk}, ensure_ascii=False)
                 yield f"data: {data}\n\n"
 
-            # 下发引用来源
+            # 下发引用来源 (向后兼容: blog SearchPanel 旧消费者识别此自定义事件)
             sources_data = _json.dumps({"type": "sources", "sources": sources}, ensure_ascii=False)
             yield f"data: {sources_data}\n\n"
+
+            # 标准 result event (与 ai.py 其他任务对齐, 让通用 useStreamResponse 消费者能直接接入)
+            result_data = _json.dumps(
+                {"type": "result", "data": {"answer": accumulated_answer, "sources": sources}},
+                ensure_ascii=False,
+            )
+            yield f"data: {result_data}\n\n"
 
             yield 'data: {"type": "done"}\n\n'
         except Exception as exc:
