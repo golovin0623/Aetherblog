@@ -178,7 +178,11 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	authSvc := service.NewAuthService(userRepo, s.Redis)
 	sessionSvc := service.NewSessionService(s.Redis, s.Config.JWT.Expiration, s.Config.JWT.RefreshExpiration)
 	authGroup := api.Group("/v1/auth")
-	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config, activitySvc, s.JWTKeys)
+	// jwtRepo 在 New() 里也实例化过用于 jwtkeys.Store 启动,这里另起一个新的
+	// thin wrapper 实例 —— Repo 无内部状态,实例化是 O(1)。AuthHandler 用它来
+	// 暴露 GET /admin/auth/jwt-secret-meta 给管理 UI 拉时间戳元数据。
+	jwtSecretRepo := repository.NewJWTSecretRepo(s.DB)
+	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config, activitySvc, s.JWTKeys, jwtSecretRepo)
 	// 所有鉴权中间件走 JWT Store 版本，支持 current+previous 双 key 验证。
 	authMW := middleware.JWTAuthWithStore(s.JWTKeys)
 	// 按路由挂载速率限制
