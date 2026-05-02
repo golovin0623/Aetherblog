@@ -9,4 +9,5 @@ export * from './ContainerStatus';
 export * from './RealtimeLogViewer';
 export * from './AiUsageTrendChart';
 export * from './AiModelDistributionChart';
+export * from './AiTaskDistributionChart';
 export * from './AiUsageRecordsTable';
