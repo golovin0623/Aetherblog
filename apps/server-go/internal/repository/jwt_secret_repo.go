@@ -148,6 +148,50 @@ func (r *JWTSecretRepo) Rotate(ctx context.Context, newSecret string, grace time
 	return id, nil
 }
 
+// JWTSecretMeta 是面向管理 UI 暴露的 jwt_secrets 安全元数据。
+// 故意省略 secret_value —— 这条结构永远不应回传任何秘密内容,只回传时间戳。
+type JWTSecretMeta struct {
+	CurrentPromotedAt time.Time  `json:"currentPromotedAt"`
+	PreviousDemotedAt *time.Time `json:"previousDemotedAt,omitempty"`
+	PreviousRetiresAt *time.Time `json:"previousRetiresAt,omitempty"`
+}
+
+// GetMeta 返回 current 与 previous (若存在) 的关键时间戳, 不返回任何秘密。
+// 给管理后台 "JWT 密钥轮换" UI 使用 —— 让管理员能看到上次晋升时间 + 旧密钥
+// 还能验签到何时, 不必去翻 docker logs 或 SQL。
+func (r *JWTSecretRepo) GetMeta(ctx context.Context) (*JWTSecretMeta, error) {
+	rows, err := r.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	meta := &JWTSecretMeta{}
+	var hasCurrent bool
+	for _, row := range rows {
+		switch row.Status {
+		case JWTSecretCurrent:
+			if row.PromotedAt.Valid {
+				meta.CurrentPromotedAt = row.PromotedAt.Time
+			} else {
+				meta.CurrentPromotedAt = row.CreatedAt
+			}
+			hasCurrent = true
+		case JWTSecretPrevious:
+			if row.DemotedAt.Valid {
+				t := row.DemotedAt.Time
+				meta.PreviousDemotedAt = &t
+			}
+			if row.RetiresAt.Valid {
+				t := row.RetiresAt.Time
+				meta.PreviousRetiresAt = &t
+			}
+		}
+	}
+	if !hasCurrent {
+		return nil, ErrNoCurrentSecret
+	}
+	return meta, nil
+}
+
 // PurgeExpiredPrevious 把已到 retires_at 的 previous 行标为 retired。
 // 轮换 goroutine 每次 tick 调用一次，保证 Verifiers() 不再返回已经越界的 key。
 func (r *JWTSecretRepo) PurgeExpiredPrevious(ctx context.Context) (int64, error) {

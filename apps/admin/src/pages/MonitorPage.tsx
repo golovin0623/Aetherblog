@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { 
-  SystemTrends, 
-  SystemStatus, 
-  ContainerStatus, 
-  RealtimeLogViewer 
+import {
+  SystemTrends,
+  SystemStatus,
+  ContainerStatus,
+  RealtimeLogViewer
 } from './dashboard/components';
+import { JwtRotationCard } from '@/components/security/JwtRotationCard';
 
 export default function MonitorPage() {
   // 容器日志状态
@@ -35,21 +36,24 @@ export default function MonitorPage() {
       {/* 第二行：日志与容器状态 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2">
-          <RealtimeLogViewer 
+          <RealtimeLogViewer
             containerId={selectedContainer.id}
             containerName={selectedContainer.name}
             className="h-[500px]"
           />
         </div>
         <div className="lg:col-span-1">
-          <ContainerStatus 
+          <ContainerStatus
             refreshInterval={30}
             onSelectContainer={handleContainerSelect}
             selectedId={selectedContainer.id}
-            className="h-[500px]" 
+            className="h-[500px]"
           />
         </div>
       </div>
+
+      {/* 第三行：安全 —— JWT 签名密钥轮换 */}
+      <JwtRotationCard />
     </div>
   );
 }

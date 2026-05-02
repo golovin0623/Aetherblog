@@ -21,6 +21,7 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtkeys"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/jwtutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
+	"github.com/golovin0623/aetherblog-server/internal/repository"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
@@ -33,6 +34,9 @@ type AuthHandler struct {
 	// jwtKeys 是 DB 管理的轮换密钥 Store；Login 等端点通过 jwtKeys.Current()
 	// 签名，JWTAuth 中间件通过 jwtKeys.Verifiers() 支持 current+previous 双 key 验证。
 	jwtKeys *jwtkeys.Store
+	// jwtRepo 仅给管理 UI 拉密钥轮换元数据 (晋升时间 / 宽限期到期等),
+	// 不参与签发/验签热路径。可为 nil (旧调用方兼容),GET 元数据端点会返回 503。
+	jwtRepo *repository.JWTSecretRepo
 }
 
 // NewAuthHandler 创建一个 AuthHandler，注入所需的 Service 和配置依赖。
@@ -42,6 +46,7 @@ func NewAuthHandler(
 	cfg *config.Config,
 	activitySvc *service.ActivityService,
 	jwtKeys *jwtkeys.Store,
+	jwtRepo *repository.JWTSecretRepo,
 ) *AuthHandler {
 	return &AuthHandler{
 		auth:        auth,
@@ -49,6 +54,7 @@ func NewAuthHandler(
 		cfg:         cfg,
 		activitySvc: activitySvc,
 		jwtKeys:     jwtKeys,
+		jwtRepo:     jwtRepo,
 	}
 }
 
@@ -69,12 +75,52 @@ func (h *AuthHandler) Mount(g *echo.Group) {
 
 // MountAdmin 注册只限管理员调用的认证相关端点：
 //
-//	POST /v1/admin/auth/rotate-jwt-secret  手动触发 JWT 签名密钥轮换
+//	GET  /v1/admin/auth/jwt-secret-meta     拉取当前/上一密钥的安全元数据 (无 secret_value)
+//	POST /v1/admin/auth/rotate-jwt-secret   手动触发 JWT 签名密钥轮换
 //
-// 该端点的用途：泄露疑似发生时（例如 VULN-152 那种历史 commit 里带 token
-// 的事故）立刻发起一次计划外轮换，不必等下一个定时 tick。
+// 这两个端点用于配合管理后台 "JWT 密钥轮换" 卡片:
+//   - GET 让管理员看到上次晋升时间、自动轮换间隔、上一密钥宽限期到何时;
+//   - POST 在泄露疑似发生 (例如 VULN-152 那种历史 commit 带 token 的事故) 时
+//     立刻发起一次计划外轮换,不必等下一个定时 tick 或 SSH 上去敲 SQL。
 func (h *AuthHandler) MountAdmin(g *echo.Group) {
+	g.GET("/jwt-secret-meta", h.GetJWTSecretMeta)
 	g.POST("/rotate-jwt-secret", h.RotateJWTSecret)
+}
+
+// GetJWTSecretMeta 处理 GET /v1/admin/auth/jwt-secret-meta。
+// 仅返回时间戳与配置间隔,**永不**返回 secret_value 本身。
+func (h *AuthHandler) GetJWTSecretMeta(c echo.Context) error {
+	if h.jwtRepo == nil {
+		return response.FailWith(c, response.InternalError, "JWT 元数据不可用 (未注入 jwtRepo)")
+	}
+	meta, err := h.jwtRepo.GetMeta(c.Request().Context())
+	if err != nil {
+		log.Error().Err(err).Msg("get jwt secret meta failed")
+		return response.FailWith(c, response.InternalError, "查询失败")
+	}
+	rotationDays := int(h.cfg.JWT.RotationInterval / (24 * time.Hour))
+	if rotationDays < 1 {
+		rotationDays = 1
+	}
+	graceHours := int(h.cfg.JWT.PreviousGrace / time.Hour)
+	if graceHours < 1 {
+		graceHours = 1
+	}
+	return response.OK(c, map[string]any{
+		"currentPromotedAt":    meta.CurrentPromotedAt.UTC().Format(time.RFC3339),
+		"previousDemotedAt":    formatNullableTime(meta.PreviousDemotedAt),
+		"previousRetiresAt":    formatNullableTime(meta.PreviousRetiresAt),
+		"rotationIntervalDays": rotationDays,
+		"previousGraceHours":   graceHours,
+	})
+}
+
+// formatNullableTime 把 *time.Time 转成 RFC3339 字符串或 nil (前端见到 null 即可隐藏对应行)。
+func formatNullableTime(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // RotateJWTSecret 处理 POST /v1/admin/auth/rotate-jwt-secret。
@@ -118,8 +164,8 @@ func (h *AuthHandler) RotateJWTSecret(c echo.Context) error {
 	}
 
 	return response.OK(c, map[string]any{
-		"rotated_at":           time.Now().UTC().Format(time.RFC3339),
-		"previous_grace_hours": int(grace / time.Hour),
+		"rotatedAt":          time.Now().UTC().Format(time.RFC3339),
+		"previousGraceHours": int(grace / time.Hour),
 	})
 }
 
