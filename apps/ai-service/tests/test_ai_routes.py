@@ -471,6 +471,7 @@ async def test_polish_endpoint_does_not_leak_changes_field():
         req=req,
         request=_make_request(),
         user=_make_user(),
+        cache=FakeCache(),
         llm=llm,
         metrics=_make_metrics(),
         usage_logger=FakeUsageLogger(),
@@ -482,6 +483,50 @@ async def test_polish_endpoint_does_not_leak_changes_field():
 
 
 @pytest.mark.asyncio
+async def test_polish_caches_result_and_serves_from_cache_on_repeat():
+    """polish 任务必须挂上 Redis 缓存 (审计 §1.2 / §4.2)。同样
+    content + tone + model 第二次调用应直接命中缓存而不再触达 LLM,
+    避免迭代修文反复烧 token。"""
+    cache = FakeCache()
+    llm1 = FakeLlm(chat_response="第一次润色结果")
+    req1 = PolishRequest(content="原稿正文", tone="学术")
+    await ai_module.polish(
+        req=req1, request=_make_request(), user=_make_user(),
+        cache=cache, llm=llm1,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(llm1.chat_calls) == 1, "第一次必须触达 LLM"
+    assert len(cache.store) == 1, "第一次必须落盘到缓存"
+
+    # 第二次同样请求 —— LLM 不应被再次调用
+    llm2 = FakeLlm(chat_response="不应被使用的二次响应")
+    req2 = PolishRequest(content="原稿正文", tone="学术")
+    resp2 = await ai_module.polish(
+        req=req2, request=_make_request(), user=_make_user(),
+        cache=cache, llm=llm2,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(llm2.chat_calls) == 0, "缓存命中, LLM 不应被触达"
+    assert resp2.data.polishedContent == "第一次润色结果"
+
+
+@pytest.mark.asyncio
+async def test_polish_skips_cache_when_custom_prompt():
+    """custom prompt 让输入空间组合爆炸,命中率极低且容易缓存到一次性
+    实验结果。带 promptTemplate 必须跳过缓存读写。"""
+    cache = FakeCache()
+    llm = FakeLlm(chat_response="实验性 prompt 输出")
+    req = PolishRequest(content="原稿", tone="正式", promptTemplate="实验 prompt {{content}}")
+    await ai_module.polish(
+        req=req, request=_make_request(), user=_make_user(),
+        cache=cache, llm=llm,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(llm.chat_calls) == 1
+    assert len(cache.store) == 0, "custom prompt 不应写缓存"
+
+
+@pytest.mark.asyncio
 async def test_outline_endpoint_returns_markdown_text():
     llm = FakeLlm(chat_response="# 第一章\n## 1.1 背景\n## 1.2 目标")
     req = OutlineRequest(topic="如何写好代码", depth=2, style="professional")
@@ -489,12 +534,79 @@ async def test_outline_endpoint_returns_markdown_text():
         req=req,
         request=_make_request(),
         user=_make_user(),
+        cache=FakeCache(),
         llm=llm,
         metrics=_make_metrics(),
         usage_logger=FakeUsageLogger(),
     )
     assert resp.data is not None
     assert "第一章" in resp.data.outline
+
+
+@pytest.mark.asyncio
+async def test_outline_caches_result_with_topic_depth_style_signature():
+    """outline 缓存键必须区分 topic / depth / style / existingContent;
+    任一变化都应当 miss, 否则会拿到错误深度或风格的旧大纲。"""
+    cache = FakeCache()
+    llm1 = FakeLlm(chat_response="# Topic A 深度 2 大纲")
+    await ai_module.outline(
+        req=OutlineRequest(topic="Topic A", depth=2, style="professional"),
+        request=_make_request(), user=_make_user(),
+        cache=cache, llm=llm1,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(llm1.chat_calls) == 1
+    assert len(cache.store) == 1
+
+    # 同 topic + 同 depth + 同 style → 缓存命中
+    llm2 = FakeLlm(chat_response="不应使用的二次响应")
+    resp2 = await ai_module.outline(
+        req=OutlineRequest(topic="Topic A", depth=2, style="professional"),
+        request=_make_request(), user=_make_user(),
+        cache=cache, llm=llm2,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(llm2.chat_calls) == 0
+    assert "Topic A 深度 2 大纲" in resp2.data.outline
+
+    # depth 改变 → 必须 miss, 不能拿到 depth=2 的陈旧结果
+    llm3 = FakeLlm(chat_response="# Topic A 深度 3 全新大纲")
+    resp3 = await ai_module.outline(
+        req=OutlineRequest(topic="Topic A", depth=3, style="professional"),
+        request=_make_request(), user=_make_user(),
+        cache=cache, llm=llm3,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(llm3.chat_calls) == 1, "depth 变化必须重新生成"
+    assert "深度 3" in resp3.data.outline
+
+
+@pytest.mark.asyncio
+async def test_outline_bypass_cache_overwrites_stale_entry():
+    """与 tags / summary 一致: bypassCache=true 跳过 GET 但保留 SET,
+    确保陈旧缓存被新结果覆盖。"""
+    cache = FakeCache()
+    seed_llm = FakeLlm(chat_response="# 陈旧大纲")
+    await ai_module.outline(
+        req=OutlineRequest(topic="主题", depth=2, style="professional"),
+        request=_make_request(), user=_make_user(),
+        cache=cache, llm=seed_llm,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(cache.store) == 1
+    [seeded_key] = list(cache.store.keys())
+
+    fresh_llm = FakeLlm(chat_response="# 全新大纲")
+    resp = await ai_module.outline(
+        req=OutlineRequest(topic="主题", depth=2, style="professional", bypassCache=True),
+        request=_make_request(), user=_make_user(),
+        cache=cache, llm=fresh_llm,
+        metrics=_make_metrics(), usage_logger=FakeUsageLogger(),
+    )
+    assert len(fresh_llm.chat_calls) == 1
+    assert "全新大纲" in resp.data.outline
+    # 缓存被覆盖 —— 不再返回陈旧版本
+    assert "全新大纲" in cache.store[seeded_key]["outline"]
 
 
 @pytest.mark.asyncio
