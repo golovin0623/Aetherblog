@@ -430,7 +430,7 @@ export default function MediaPage() {
             onClick={() => setTrashDialogOpen(true)}
             className="relative p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             title="回收站"
-            aria-label="回收站"
+            aria-label={trashCount > 0 ? '回收站，' + (trashCount > 99 ? '超过 99' : trashCount) + ' 个项目' : '回收站'}
           >
             <Trash2 className="w-5 h-5" />
             {trashCount > 0 && (
