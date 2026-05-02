@@ -253,6 +253,11 @@ class Settings(BaseSettings):
     # 中英混排约 3 字 / token 即 600K 字符）。120000 字符≈40K tokens，
     # 既覆盖常见博文上限又留有余量，仍能拦住明显异常的滥用。
     max_input_chars: int = Field(default=120000, alias="AI_MAX_INPUT_CHARS")
+    # Embedding 模型单次调用的 token 上限。OpenAI text-embedding-3-{small,large}
+    # 和 ada-002 的硬上限都是 8192 token；这里默认 8000 留 192 token 安全余量
+    # 应对各 provider 计数差异（特殊标记、归一化等）。超过则在 LlmRouter.embed()
+    # 中按 cl100k_base 截断到此预算，避免整篇文章 ``embed.failed`` 反复重建仍失败。
+    embedding_max_tokens: int = Field(default=8000, alias="AI_EMBEDDING_MAX_TOKENS")
 
     @field_validator("jwt_jwks_url", "jwt_issuer", "jwt_audience", mode="before")
     @classmethod
