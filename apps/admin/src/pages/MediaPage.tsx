@@ -422,7 +422,7 @@ export default function MediaPage() {
             onClick={() => setShowShortcuts(true)}
             className="p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             title="键盘快捷键 (⌘ /)"
-            aria-label="键盘快捷键 (⌘ /)"
+            aria-label="键盘快捷键"
           >
             <Keyboard className="w-5 h-5" />
           </button>
