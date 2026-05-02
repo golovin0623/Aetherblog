@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,13 +12,23 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	echomw "github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
 
 	"github.com/golovin0623/aetherblog-server/internal/config"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/ctxutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
+
+// providerProxyBodyLimit 限制 /providers/* 写操作请求体上限。
+// 这些端点的负载是 provider/model/credential/路由 配置 JSON,正常 < 10KB;
+// 5MB 给图片/批量 import 类未来扩展留余量,同时阻止 admin token 被滥用做
+// OOM-DoS (审计 §4.1.1)。AI 生成端点 (summary/tags/...) 不在此限制内,
+// 它们的 body 由 ai-service 侧 _enforce_content_limit 控制。
+const providerProxyBodyLimit = "5M"
 
 // aiResponse 是 FastAPI AI 服务返回的标准响应信封结构。
 type aiResponse struct {
@@ -27,15 +38,26 @@ type aiResponse struct {
 	Message   string          `json:"message,omitempty"`
 }
 
+// activityRecorder 是 *service.ActivityService 的 Create 子集接口。
+// 用接口而非具体类型让 handler 在单测里能注入 fake recorder; 生产链路
+// *service.ActivityService 隐式满足该接口,无需适配器。
+type activityRecorder interface {
+	Create(ctx context.Context, e *model.ActivityEvent) error
+}
+
 // AiHandler 负责将 AI 请求代理转发至外部 FastAPI 服务。
 type AiHandler struct {
-	client *service.AIClient
+	client      *service.AIClient
+	activitySvc activityRecorder
 }
 
 // NewAiHandler 根据配置创建一个新的 AiHandler，内部使用配置好的 HTTP 客户端。
-func NewAiHandler(cfg *config.Config) *AiHandler {
+// 传入 activitySvc 后,/providers/* 写操作会写入 activity_events 表用于事后审计;
+// nil 时跳过审计但不阻塞主流程,兼容旧调用方与无审计开关的场景。
+func NewAiHandler(cfg *config.Config, activitySvc activityRecorder) *AiHandler {
 	return &AiHandler{
-		client: service.NewAIClient(cfg.AI),
+		client:      service.NewAIClient(cfg.AI),
+		activitySvc: activitySvc,
 	}
 }
 
@@ -68,10 +90,14 @@ func (h *AiHandler) Mount(g *echo.Group) {
 
 // MountProviders 为 /providers/* 下的所有路由注册通配符代理。
 // 这些请求将被转发至 FastAPI AI 服务，由其管理提供商、模型、凭证和路由。
+//
+// 安全：在路由层应用 5MB body limit (审计 §4.1.1),防止 admin token 被滥用做
+// OOM-DoS。Echo 的 BodyLimit 触发时返回 413，由 Echo 错误处理器统一映射。
 func (h *AiHandler) MountProviders(g *echo.Group) {
+	bodyLimit := echomw.BodyLimit(providerProxyBodyLimit)
 	// 通配符捕获：任意方法、/providers 下的任意子路径
-	g.Any("", h.ProxyProviders)
-	g.Any("/*", h.ProxyProviders)
+	g.Any("", h.ProxyProviders, bodyLimit)
+	g.Any("/*", h.ProxyProviders, bodyLimit)
 }
 
 // ProxyProviders 将 AI 提供商管理请求转发至 FastAPI AI 服务。
@@ -120,9 +146,11 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 
 	method := c.Request().Method
 
+	// 分发到具体代理；err 与最终响应状态都用于事后审计。
+	var err error
 	switch method {
 	case http.MethodGet:
-		return h.proxyGet(c, targetPath)
+		err = h.proxyGet(c, targetPath)
 	case http.MethodDelete:
 		// DELETE 请求可能携带或不携带请求体；转发查询参数
 		queryString := c.QueryString()
@@ -130,10 +158,51 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 		if queryString != "" {
 			fullPath = targetPath + "?" + queryString
 		}
-		return h.proxySyncRequest(c, http.MethodDelete, fullPath)
+		err = h.proxySyncRequest(c, http.MethodDelete, fullPath)
 	default:
 		// POST、PUT、PATCH — 携带请求体转发
-		return h.proxySyncRequest(c, method, targetPath)
+		err = h.proxySyncRequest(c, method, targetPath)
+	}
+
+	// 审计 §4.1.1：写操作必须可追溯。GET 是只读查询，不产生审计记录。
+	// 写操作(包括失败)都登记，借助 activity_events 把"谁改了什么"沉淀到 DB。
+	if method != http.MethodGet {
+		h.recordProviderProxyActivity(c, method, encodedSubPath)
+	}
+	return err
+}
+
+// recordProviderProxyActivity 把一次 /providers/* 写操作写入 activity_events，
+// 失败仅 log.Warn 不阻塞主代理流程。Description 同时记下子路径与 HTTP
+// 状态码，方便事后定位"管理员 X 在 T 时间向 /providers/credentials/Y 发了 PUT
+// 失败 HTTP 401"这种细节。
+func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath string) {
+	if h.activitySvc == nil {
+		return
+	}
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	ip := c.RealIP()
+	evtCat := "ai"
+	respStatus := c.Response().Status
+	statusText := "SUCCESS"
+	if respStatus >= 400 {
+		statusText = "FAILED"
+	}
+	desc := fmt.Sprintf("%s /providers%s → HTTP %d", method, subPath, respStatus)
+	evt := &model.ActivityEvent{
+		EventType:     "ai.provider_proxy_write",
+		EventCategory: &evtCat,
+		Title:         fmt.Sprintf("AI 提供商代理 %s %s", method, subPath),
+		Description:   &desc,
+		UserID:        userID,
+		IP:            &ip,
+		Status:        &statusText,
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), evt); err != nil {
+		log.Warn().Err(err).Msg("record AI provider proxy activity failed")
 	}
 }
 
