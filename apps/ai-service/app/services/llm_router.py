@@ -669,19 +669,33 @@ class LlmRouter:
                 },
             )
             return content or ""
-        except Exception as e:
-            # 尝试 fallback 模型（若已配置）
-            if self.model_router:
-                routing = await self._get_routing(model_alias, user_id)
-            else:
-                routing = None
+        except Exception as primary_exc:
+            # 尝试 fallback 模型（若已配置）。override 路径 (用户在 UI 显式
+            # 选了 modelId) 不走 fallback —— 那时管理员是在故意压测特定模型,
+            # 静默切换会破坏"测试该模型"的意图。
+            routing = None
+            if self.model_router and not resolved.override:
+                try:
+                    routing = await self._get_routing(model_alias, user_id)
+                except Exception:
+                    routing = None
             if routing and routing.fallback_model:
-                logger.warning(f"Primary model failed, trying fallback: {e}")
                 fallback_routing = await self._get_routing_for_fallback(routing)
                 if fallback_routing:
                     fallback_model = self._prefix_model_for_litellm(
                         fallback_routing.model.model_id,
                         fallback_routing.credential.api_type,
+                    )
+                    logger.warning(
+                        "llm_router.chat_primary_failed_using_fallback",
+                        extra={
+                            "data": {
+                                "task_alias": model_alias,
+                                "primary_model": resolved.model,
+                                "fallback_model": fallback_model,
+                                "error": f"{type(primary_exc).__name__}: {primary_exc}",
+                            }
+                        },
                     )
                     # SECURITY (VULN-057)：fallback 的 api_base 同样要经过守卫。
                     await self._guard_api_base(fallback_routing.credential.base_url)
