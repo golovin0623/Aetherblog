@@ -518,13 +518,41 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                   <div className="h-4 bg-[var(--bg-secondary)] rounded animate-pulse w-3/4" />
                 </div>
               ) : aiAnswer && (
-                <p className="ai-stream text-[var(--text-secondary)] text-sm leading-relaxed">
-                  {aiAnswer.answer}
-                  {/* 流式光标 —— 末尾闪烁的极光块,提示 AI 正在生成 */}
-                  {isAiLoading === false && aiAnswer.answer && (
-                    <span className="ink-cursor" aria-hidden="true" />
+                <>
+                  <p className="ai-stream text-[var(--text-secondary)] text-sm leading-relaxed">
+                    {aiAnswer.answer}
+                    {/* 流式光标 —— 末尾闪烁的极光块,提示 AI 正在生成 */}
+                    {isAiLoading === false && aiAnswer.answer && (
+                      <span className="ink-cursor" aria-hidden="true" />
+                    )}
+                  </p>
+                  {/* 参考来源 —— RAG 上下文文章列表, 点击跳转 */}
+                  {aiAnswer.sources && aiAnswer.sources.length > 0 && (
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                        参考来源
+                      </div>
+                      <ul className="space-y-1">
+                        {aiAnswer.sources.map((source) => (
+                          <li key={source.slug}>
+                            <a
+                              href={`/posts/${source.slug}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                router.push(`/posts/${source.slug}`);
+                                onClose();
+                              }}
+                              className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--aurora-1)] transition-colors"
+                            >
+                              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-[var(--text-muted)]" />
+                              <span className="truncate">{source.title}</span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                </p>
+                </>
               )}
             </div>
           )}

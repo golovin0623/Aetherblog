@@ -72,7 +72,6 @@ packages/**/src/**/*.jpeg
 packages/**/src/**/*.gif
 packages/**/src/**/*.webp
 .pids/ai-service.pid
-apps/ai-service/tests/**
 issues/**
 plan/**
 
