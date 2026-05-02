@@ -38,6 +38,12 @@ interface AiSidePanelProps {
   /** 文章当前已选标签名（用于"应用前 / 应用后"差量预览）。大小写敏感保留首次出现拼写。 */
   currentTagNames: string[];
   /**
+   * 全站现有标签库 (用于 AI 生成时优先复用)。可选 —— 不传退化为旧行为
+   * (只产新标签建议)。父组件 `CreatePostPage` 已经持有 `tags` 状态,
+   * 直接 prop 透传即可,无需重复请求。
+   */
+  existingTagsForAi?: { name: string; postCount: number }[];
+  /**
    * 应用前预览 modal 的主题 —— 受控传入。父组件 `CreatePostPage` 持有
    * `useTheme().resolvedTheme`，主题切换时会重渲染本组件，让预览主题与
    * 应用主题保持同步（修复历史上 `useState` 一次性快照导致的脱节问题）。
@@ -134,6 +140,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
     onUpdateSummary,
     onUpdateTitle,
     onApplyTags,
+    existingTagsForAi,
   }, ref) => {
     const [loadingAction, setLoadingAction] = useState<AiPanelAction | null>(null);
     const [result, setResult] = useState<AiPanelResult | null>(null);
@@ -190,7 +197,21 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
         }
 
         if (action === 'tags') {
-          const res = await aiService.extractTags({ content, maxTags: 6, bypassCache, ...modelPayload });
+          // existingTagsForAi 让 ai-service 优先复用现有标签 (matches),
+          // 仅在覆盖不到时才补新建议 (suggestions)。这里只消费 res.data.tags
+          // 的扁平合并视图 —— 旧 UX 不区分两种来源, 但应用时 useAiToolTarget
+          // 仍会做"按名查找现有→缺失则创建"的兜底, 行为正确。
+          const trimmedExisting = (existingTagsForAi || [])
+            .filter((t) => t.name?.trim())
+            .sort((a, b) => (b.postCount || 0) - (a.postCount || 0))
+            .slice(0, 200);
+          const res = await aiService.extractTags({
+            content,
+            maxTags: 6,
+            bypassCache,
+            ...modelPayload,
+            ...(trimmedExisting.length > 0 ? { existingTags: trimmedExisting } : {}),
+          });
           if (res.code === 200 && res.data) {
             setResult({ type: 'tags', tags: res.data.tags });
           } else {
@@ -240,7 +261,7 @@ export const AiSidePanel = forwardRef<AiSidePanelHandle, AiSidePanelProps>(
       } finally {
         setLoadingAction(null);
       }
-    }, [canRun, content, title, targetLanguage, selectedModelId, selectedProviderCode]);
+    }, [canRun, content, title, targetLanguage, selectedModelId, selectedProviderCode, existingTagsForAi]);
 
     useImperativeHandle(ref, () => ({ runAction: (action: AiPanelAction) => runAction(action) }));
 
