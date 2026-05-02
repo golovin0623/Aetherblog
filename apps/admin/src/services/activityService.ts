@@ -27,9 +27,19 @@ export interface ActivityEvent {
  * 活动事件查询参数
  */
 export interface ActivityQueryParams {
+  /** 事件分类（event_category 列, 如 'post' / 'comment' / 'system'） */
   category?: string;
+  /** 精确事件类型（event_type 列, 如 'post.create' / 'post.update'） */
+  eventType?: string;
+  /** 状态：INFO / SUCCESS / WARNING / ERROR */
   status?: string;
+  /** title / description 模糊匹配关键词 */
+  search?: string;
+  /** 触发用户 ID */
+  userId?: number;
+  /** 起始时间，YYYY-MM-DD 或 RFC3339 */
   startTime?: string;
+  /** 结束时间，YYYY-MM-DD 或 RFC3339 */
   endTime?: string;
   pageNum?: number;
   pageSize?: number;
@@ -53,12 +63,15 @@ class ActivityService {
   async getActivities(params: ActivityQueryParams = {}): Promise<R<PageResult<ActivityEvent>>> {
     const searchParams = new URLSearchParams();
     if (params.category) searchParams.append('category', params.category);
+    if (params.eventType) searchParams.append('eventType', params.eventType);
     if (params.status) searchParams.append('status', params.status);
+    if (params.search) searchParams.append('search', params.search);
+    if (params.userId) searchParams.append('userId', String(params.userId));
     if (params.startTime) searchParams.append('startTime', params.startTime);
     if (params.endTime) searchParams.append('endTime', params.endTime);
     if (params.pageNum) searchParams.append('pageNum', String(params.pageNum));
     if (params.pageSize) searchParams.append('pageSize', String(params.pageSize));
-    
+
     const query = searchParams.toString();
     return api.get<R<PageResult<ActivityEvent>>>(`/v1/admin/activities${query ? `?${query}` : ''}`);
   }
