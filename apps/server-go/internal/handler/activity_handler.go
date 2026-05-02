@@ -2,6 +2,8 @@ package handler
 
 import (
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -36,20 +38,49 @@ func (h *ActivityHandler) Recent(c echo.Context) error {
 	return response.OK(c, vos)
 }
 
-// List 处理 GET /api/v1/admin/activities?eventType=&status=&pageNum=1&pageSize=20 请求，
-// 支持按事件类型和状态过滤，返回分页活动日志列表。
+// List 处理 GET /api/v1/admin/activities 请求，支持以下查询参数：
+//   - category   按事件分类过滤（event_category 列, 如 "post"/"comment"/"system"）
+//   - eventType  按精确事件类型过滤（event_type 列, 如 "post.create"）
+//   - status     按状态过滤（INFO/SUCCESS/WARNING/ERROR）
+//   - search     在 title / description 上做模糊匹配
+//   - userId     限定触发用户
+//   - startTime / endTime  RFC3339 时间区间限定 created_at
+//   - pageNum / pageSize   分页参数
 func (h *ActivityHandler) List(c echo.Context) error {
 	p := pagination.ParseWithDefaults(c, 1, 20)
+
+	category := c.QueryParam("category")
 	eventType := c.QueryParam("eventType")
-	// 同时兼容旧的 category 参数名
-	if eventType == "" {
-		eventType = c.QueryParam("category")
-	}
+
 	f := repository.ActivityFilter{
+		Category:  category,
 		EventType: eventType,
-		Status:    c.QueryParam("status"),
+		Status:    strings.ToUpper(strings.TrimSpace(c.QueryParam("status"))),
+		Search:    strings.TrimSpace(c.QueryParam("search")),
 		Params:    p,
 	}
+
+	if uidStr := c.QueryParam("userId"); uidStr != "" {
+		if uid, err := strconv.ParseInt(uidStr, 10, 64); err == nil && uid > 0 {
+			f.UserID = uid
+		}
+	}
+	if v := strings.TrimSpace(c.QueryParam("startTime")); v != "" {
+		if t := parseFlexibleTime(v); t != nil {
+			f.StartTime = *t
+		}
+	}
+	if v := strings.TrimSpace(c.QueryParam("endTime")); v != "" {
+		if t := parseFlexibleTime(v); t != nil {
+			// 仅日期格式时把 23:59:59.999999999 作为区间右端点，避免漏掉当天活动
+			tt := *t
+			if tt.Hour() == 0 && tt.Minute() == 0 && tt.Second() == 0 && len(v) <= 10 {
+				tt = tt.Add(24*time.Hour - time.Nanosecond)
+			}
+			f.EndTime = tt
+		}
+	}
+
 	pr, err := h.svc.GetForAdmin(c.Request().Context(), f)
 	if err != nil {
 		return response.Error(c, err)

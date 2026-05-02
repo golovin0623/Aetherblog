@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -16,11 +17,21 @@ import (
 const activityColumns = `id, event_type, event_category, title, description, user_id, ip, status, created_at`
 
 // ActivityFilter 持有管理端活动记录分页列表的可选过滤条件。
+// 任意字段为零值时对应过滤条件不生效。
 type ActivityFilter struct {
-	// EventType 按事件类型过滤，为空时不过滤
+	// Category 按事件分类过滤（event_category 列, 例如 "post"/"comment"）
+	Category string
+	// EventType 按精确事件类型过滤（event_type 列, 例如 "post.create"）
 	EventType string
-	// Status 按状态过滤，为空时不过滤
+	// Status 按状态过滤（INFO/SUCCESS/WARNING/ERROR）
 	Status string
+	// Search 在 title / description 上做不区分大小写的模糊匹配
+	Search string
+	// UserID 限定触发用户（>0 时生效）
+	UserID int64
+	// StartTime / EndTime 限定 created_at 区间（任一为零值时不生效）
+	StartTime time.Time
+	EndTime   time.Time
 	pagination.Params
 }
 
@@ -41,9 +52,9 @@ func (r *ActivityRepo) FindRecent(ctx context.Context, limit int) ([]model.Activ
 }
 
 // FindForAdmin 从 activity_events 表中返回带可选过滤条件的分页活动事件列表，同时返回符合条件的总记录数。
-// f.EventType 和 f.Status 为空时对应过滤条件不生效。
+// 过滤条件来自 ActivityFilter，任一字段为零值时该过滤项不生效。
 func (r *ActivityRepo) FindForAdmin(ctx context.Context, f ActivityFilter) ([]model.ActivityEvent, int64, error) {
-	where, args := buildActivityWhere(f.EventType, f.Status)
+	where, args := buildActivityWhere(f)
 
 	// 先查符合条件的总数
 	var total int64
@@ -88,9 +99,9 @@ func (r *ActivityRepo) Create(ctx context.Context, a *model.ActivityEvent) error
 	return err
 }
 
-// buildActivityWhere 根据 eventType 和 status 动态构建 WHERE 子句及对应的参数列表。
-// 若两者均为空，则返回空字符串和空参数切片，表示无过滤条件。
-func buildActivityWhere(eventType, status string) (string, []any) {
+// buildActivityWhere 根据 ActivityFilter 动态构建 WHERE 子句及对应的参数列表。
+// 任一字段为零值时对应过滤条件不生效；所有过滤为空时返回空字符串和空参数切片。
+func buildActivityWhere(f ActivityFilter) (string, []any) {
 	clauses := []string{}
 	args := []any{}
 	n := 1
@@ -101,14 +112,39 @@ func buildActivityWhere(eventType, status string) (string, []any) {
 		n++
 		return s
 	}
-	if eventType != "" {
-		clauses = append(clauses, "event_type = "+placeholder(eventType))
+	if f.Category != "" {
+		clauses = append(clauses, "event_category = "+placeholder(f.Category))
 	}
-	if status != "" {
-		clauses = append(clauses, "status = "+placeholder(status))
+	if f.EventType != "" {
+		clauses = append(clauses, "event_type = "+placeholder(f.EventType))
+	}
+	if f.Status != "" {
+		clauses = append(clauses, "status = "+placeholder(f.Status))
+	}
+	if f.UserID > 0 {
+		clauses = append(clauses, "user_id = "+placeholder(f.UserID))
+	}
+	if f.Search != "" {
+		// ILIKE 跨 title / description 做不区分大小写的模糊匹配
+		pattern := "%" + escapeLike(f.Search) + "%"
+		ph := placeholder(pattern)
+		clauses = append(clauses,
+			"(title ILIKE "+ph+" OR description ILIKE "+ph+")")
+	}
+	if !f.StartTime.IsZero() {
+		clauses = append(clauses, "created_at >= "+placeholder(f.StartTime))
+	}
+	if !f.EndTime.IsZero() {
+		clauses = append(clauses, "created_at <= "+placeholder(f.EndTime))
 	}
 	if len(clauses) == 0 {
 		return "", args
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+// escapeLike 转义 PostgreSQL ILIKE 模式中的特殊字符，避免用户输入触发通配符匹配。
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
 }
