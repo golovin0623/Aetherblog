@@ -71,6 +71,18 @@ export interface MoveFolderRequest {
   targetParentId?: number;
 }
 
+/**
+ * 存储类型(后端 storage_type 列;LOCAL 走本地磁盘,其余走 S3 兼容协议)
+ * @ref 对象存储 rollout - Phase 1
+ */
+export type StorageType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
+
+/**
+ * 备份/同步状态(主文件 vs default provider 的镜像状态)
+ * @ref 对象存储 rollout - Phase 4
+ */
+export type SyncStatus = 'NONE' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
+
 export interface Media {
   id: number;
   name: string;
@@ -85,6 +97,15 @@ export interface Media {
   alt?: string;
   folderId?: number; // @ref 媒体库深度优化方案 - Phase 1
   createdAt: string;
+  // @ref 对象存储 rollout - Phase 1
+  storageType?: StorageType;
+  storageProviderId?: number;
+  cdnUrl?: string;
+  // @ref 对象存储 rollout - Phase 4
+  syncStatus?: SyncStatus;
+  backupProviderId?: number;
+  backupUrl?: string;
+  backupAt?: string;
 }
 
 export interface UploadResult {
@@ -147,8 +168,9 @@ export interface MediaFileTag {
 /**
  * 存储提供商类型
  * @ref 媒体库深度优化方案 - Phase 3
+ * @ref 对象存储 rollout - Phase 1: R2 加入(后端 factory.go 早已支持,只是没暴露)
  */
-export type StorageProviderType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS';
+export type StorageProviderType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
 
 /**
  * 存储提供商

@@ -120,6 +120,28 @@ func AssertOwnership(c echo.Context, ownerID *int64) error {
 	return nil
 }
 
+// LoginUserSnapshot 是 service 层用于做 ownership 校验的轻量快照,
+// 与 jwtutil.LoginUser 解耦,避免 service 层依赖 echo / JWT 包。
+//
+// handler 层取出 LoginUser 后调 SnapshotFromContext 转换成 snapshot 再传给 service。
+type LoginUserSnapshot struct {
+	UserID  int64
+	IsAdmin bool
+}
+
+// SnapshotFromContext 从 echo.Context 中提取 LoginUser 并构造 snapshot。
+// 未登录返回 nil(service 层应据此返回 unauthorized,但通常 handler 层 JWT 中间件已拦下)。
+func SnapshotFromContext(c echo.Context) *LoginUserSnapshot {
+	lu := GetLoginUser(c)
+	if lu == nil {
+		return nil
+	}
+	return &LoginUserSnapshot{
+		UserID:  lu.UserID,
+		IsAdmin: strings.ToLower(lu.Role) == "admin",
+	}
+}
+
 // RequireRole 返回一个中间件，检查已认证用户是否具有指定角色之一。
 // 必须在 JWTAuth 之后使用，确保 LoginUser 已存入上下文。
 func RequireRole(roles ...string) echo.MiddlewareFunc {

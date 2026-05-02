@@ -27,6 +27,7 @@ type Config struct {
 	CORS     CORSConfig     `koanf:"cors"`           // 跨域允许来源列表
 	Upload   UploadConfig   `koanf:"upload"`         // 本地文件上传目录及 URL 前缀
 	Media    MediaConfig    `koanf:"media"`          // 媒体管理配置（垃圾桶清理）
+	Sync     SyncConfig     `koanf:"sync"`           // 媒体同步备份 worker 配置 (Phase 4)
 	Log      LogConfig      `koanf:"log"`            // 日志输出路径及最低级别
 	AI       AIConfig       `koanf:"ai"`             // 外部 FastAPI AI 服务配置
 	ES       ESConfig       `koanf:"elasticsearch"`  // Elasticsearch 节点地址列表
@@ -121,6 +122,19 @@ type UploadConfig struct {
 // MediaConfig 控制媒体管理行为。
 type MediaConfig struct {
 	TrashCleanupDays int `koanf:"trash_cleanup_days"` // 移入垃圾桶的媒体文件在永久删除前的保留天数（默认：120）
+}
+
+// SyncConfig 控制媒体同步备份 worker (Phase 4)。
+//
+// AutoEnabled=false 时 worker 启动但只响应手动 API 触发(避免意外云上传费用);
+// =true 时按 PollIntervalSec 周期扫 PENDING job。
+type SyncConfig struct {
+	AutoEnabled     bool `koanf:"auto_enabled"`      // 是否自动启动后台备份(默认 false)
+	Concurrency     int  `koanf:"concurrency"`       // 单批次内的并发上传数(默认 3)
+	BatchSize       int  `koanf:"batch_size"`        // 每次拣表的最大 job 数(默认 50)
+	RatePerSecond   int  `koanf:"rate_per_second"`   // 每秒处理上限,防止灌爆云存储(默认 5)
+	MaxAttempt      int  `koanf:"max_attempt"`       // 单 job 最大重试次数(默认 3)
+	PollIntervalSec int  `koanf:"poll_interval_sec"` // 轮询间隔秒(默认 10)
 }
 
 // LogConfig 控制应用日志输出。
@@ -297,6 +311,14 @@ func defaultConfig() *Config {
 		},
 		Media: MediaConfig{
 			TrashCleanupDays: 120,
+		},
+		Sync: SyncConfig{
+			AutoEnabled:     false,
+			Concurrency:     3,
+			BatchSize:       50,
+			RatePerSecond:   5,
+			MaxAttempt:      3,
+			PollIntervalSec: 10,
 		},
 		Log: LogConfig{
 			Path:  "./logs",

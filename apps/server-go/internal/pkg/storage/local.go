@@ -94,3 +94,110 @@ func (s *LocalStorage) GetURL(key string) string {
 
 // Type 返回存储类型标识符 "LOCAL"。
 func (s *LocalStorage) Type() string { return "LOCAL" }
+
+// Get 读取本地文件,返回 ReadCloser + 文件大小 + MIME 类型。
+// MIME 类型按扩展名启发(LOCAL 不存元数据,只能这么算)。
+func (s *LocalStorage) Get(_ context.Context, key string) (io.ReadCloser, int64, string, error) {
+	path, err := getSafePath(s.basePath, key)
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("get safe path: %w", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, 0, "", err
+	}
+	mime := guessMimeFromExt(filepath.Ext(key))
+	return f, stat.Size(), mime, nil
+}
+
+// List 走 filepath.WalkDir 列出 prefix 下文件。token 表示上次扫描结束位置(此处用 lexicographic 起点)。
+// 大目录不建议长时间用 LOCAL List;Phase 5 主要面向 S3 兼容存储,LOCAL 仅作完整性兜底。
+func (s *LocalStorage) List(_ context.Context, prefix, continuationToken string, limit int) ([]ObjectInfo, string, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	root := s.basePath
+	if prefix != "" {
+		root = filepath.Join(s.basePath, prefix)
+	}
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+
+	var (
+		objects = make([]ObjectInfo, 0, limit)
+		nextTok string
+		started = continuationToken == ""
+	)
+	walkErr := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(s.basePath, p)
+		if rerr != nil {
+			return nil
+		}
+		key := filepath.ToSlash(rel)
+		if !started {
+			if key == continuationToken {
+				started = true
+			}
+			return nil
+		}
+		if len(objects) >= limit {
+			nextTok = key
+			return filepath.SkipAll
+		}
+		info, ierr := d.Info()
+		if ierr != nil {
+			return nil
+		}
+		objects = append(objects, ObjectInfo{
+			Key:          key,
+			Size:         info.Size(),
+			LastModified: info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
+		})
+		return nil
+	})
+	if walkErr != nil && walkErr != filepath.SkipAll {
+		return nil, "", walkErr
+	}
+	return objects, nextTok, nil
+}
+
+// guessMimeFromExt 是 LOCAL 后端 Get 的辅助函数 — 不依赖 net/http(避免循环依赖)。
+func guessMimeFromExt(ext string) string {
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".pdf":
+		return "application/pdf"
+	case ".mp4":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".mp3":
+		return "audio/mpeg"
+	default:
+		return "application/octet-stream"
+	}
+}

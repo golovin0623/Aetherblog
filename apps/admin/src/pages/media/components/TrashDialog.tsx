@@ -26,6 +26,7 @@ import { mediaService, getMediaUrl } from '@/services/mediaService';
 import { ConfirmModal } from '@aetherblog/ui';
 import { toast } from 'sonner';
 import { formatFileSize, formatRelativeTime } from '@aetherblog/utils';
+import { DeleteMediaConfirmModal } from '@/components/media/DeleteMediaConfirmModal';
 
 interface TrashDialogProps {
   open: boolean;
@@ -100,9 +101,10 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
     },
   });
 
-  // 彻底删除单个文件
+  // 彻底删除单个文件 — Phase 3: 接受 deleteCloud 选项
   const permanentDeleteMutation = useMutation({
-    mutationFn: (id: number) => mediaService.permanentDelete(id),
+    mutationFn: ({ id, deleteCloud }: { id: number; deleteCloud: boolean }) =>
+      mediaService.permanentDelete(id, { deleteCloud }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['media', 'trash'] });
       queryClient.invalidateQueries({ queryKey: ['media', 'trash', 'count'] });
@@ -113,14 +115,20 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
     },
   });
 
-  // 批量彻底删除
+  // 批量彻底删除 — Phase 3: 接受 deleteCloud 选项;部分失败时提示 failedIds
   const batchPermanentDeleteMutation = useMutation({
-    mutationFn: (ids: number[]) => mediaService.batchPermanentDelete(ids),
-    onSuccess: () => {
+    mutationFn: ({ ids, deleteCloud }: { ids: number[]; deleteCloud: boolean }) =>
+      mediaService.batchPermanentDelete(ids, { deleteCloud }),
+    onSuccess: (resp) => {
       queryClient.invalidateQueries({ queryKey: ['media', 'trash'] });
       queryClient.invalidateQueries({ queryKey: ['media', 'trash', 'count'] });
       setSelectedIds(new Set());
-      toast.success('批量删除成功');
+      const failedIds = (resp?.data as { failedIds?: number[] } | undefined)?.failedIds;
+      if (failedIds && failedIds.length > 0) {
+        toast.warning(`已清 catalog,但 ${failedIds.length} 个文件后端删除失败 (id: ${failedIds.join(', ')}),建议手动检查云端`);
+      } else {
+        toast.success('批量删除成功');
+      }
     },
     onError: () => {
       toast.error('批量删除失败');
@@ -423,8 +431,41 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
         </div>
       )}
 
+      {/* 永久删除/批量删除走新的 DeleteMediaConfirmModal,带 deleteCloud 选项 */}
+      {pendingConfirm && pendingConfirm.kind !== 'empty-trash' && (
+        <DeleteMediaConfirmModal
+          isOpen
+          title={confirmCopy.title}
+          message={confirmCopy.message}
+          itemCount={pendingConfirm.kind === 'permanent-delete' ? 1 : pendingConfirm.ids.length}
+          hasCloudItems={(() => {
+            if (pendingConfirm.kind === 'permanent-delete') {
+              const item = trashItems.find((m: { id: number }) => m.id === pendingConfirm.id);
+              return !!item && (item as { storageType?: string }).storageType !== 'LOCAL';
+            }
+            return pendingConfirm.ids.some((id) => {
+              const item = trashItems.find((m: { id: number }) => m.id === id);
+              return !!item && (item as { storageType?: string }).storageType !== 'LOCAL';
+            });
+          })()}
+          hasBackup={false}
+          onConfirm={({ deleteCloud }) => {
+            if (pendingConfirm.kind === 'permanent-delete') {
+              permanentDeleteMutation.mutate({ id: pendingConfirm.id, deleteCloud });
+            } else {
+              batchPermanentDeleteMutation.mutate({ ids: pendingConfirm.ids, deleteCloud });
+            }
+            setPendingConfirm(null);
+          }}
+          onCancel={() => setPendingConfirm(null)}
+        />
+      )}
+
+      {/* 清空回收站仍走 ConfirmModal — 它没有"是否清云端"的二元选择,
+          因为后端 EmptyTrash 已经默认连云一起删(整批分组按 provider 清干净),
+          要保留云端原件得先把对应文件 restore 出回收站再操作 */}
       <ConfirmModal
-        isOpen={!!pendingConfirm}
+        isOpen={!!pendingConfirm && pendingConfirm.kind === 'empty-trash'}
         variant="danger"
         title={confirmCopy.title}
         message={confirmCopy.message}
@@ -432,14 +473,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
         cancelText="取消"
         zIndex={10000}
         onConfirm={() => {
-          if (!pendingConfirm) return;
-          if (pendingConfirm.kind === 'permanent-delete') {
-            permanentDeleteMutation.mutate(pendingConfirm.id);
-          } else if (pendingConfirm.kind === 'empty-trash') {
-            emptyTrashMutation.mutate();
-          } else if (pendingConfirm.kind === 'batch-permanent-delete') {
-            batchPermanentDeleteMutation.mutate(pendingConfirm.ids);
-          }
+          emptyTrashMutation.mutate();
           setPendingConfirm(null);
         }}
         onCancel={() => setPendingConfirm(null)}

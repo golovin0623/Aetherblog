@@ -34,6 +34,11 @@ import { TagManager } from './TagManager';
 import { ShareDialog } from './ShareDialog';
 import { ImageEditor } from './ImageEditor';
 import { VersionHistory } from './VersionHistory';
+import { StorageBadge } from './StorageBadge';
+import { useMutation } from '@tanstack/react-query';
+import { storageSyncService } from '@/services/storageSyncService';
+import { toast } from 'sonner';
+import { CloudUpload, RefreshCcw, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 
 interface MediaDetailProps {
   item: MediaItem;
@@ -69,7 +74,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 
   const handleCopyUrl = async () => {
     if (media?.fileUrl) {
-      const fullUrl = getMediaUrl(media.fileUrl);
+      const fullUrl = getMediaUrl(media);
       await navigator.clipboard.writeText(fullUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -79,7 +84,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
   const handleDownload = () => {
     if (media) {
       const link = document.createElement('a');
-      link.href = getMediaUrl(media.fileUrl);
+      link.href = getMediaUrl(media);
       link.download = media.originalName;
       link.click();
     }
@@ -87,7 +92,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
 
   const handleOpenInNewTab = () => {
     if (media) {
-      window.open(getMediaUrl(media.fileUrl), '_blank');
+      window.open(getMediaUrl(media), '_blank');
     }
   };
 
@@ -287,6 +292,11 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
                   </button>
                 </div>
               </div>
+
+              {/* 存储信息分组 — 对象存储 rollout - Phase 3 + Phase 4 */}
+              {media.storageType && (
+                <StorageInfoSection media={media} />
+              )}
             </motion.div>
           )}
 
@@ -380,5 +390,111 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * StorageInfoSection - 详情页"存储信息"分组
+ *  - 显示主文件 storage type / 完整 URL
+ *  - 显示备份 sync status / backup URL / 时间
+ *  - 提供"立即同步到云" / "重试同步" 操作
+ * @ref 对象存储 rollout - Phase 3 + Phase 4
+ */
+function StorageInfoSection({ media }: { media: MediaItem }) {
+  const syncMutation = useMutation({
+    mutationFn: () => storageSyncService.syncOne(media.id),
+    onSuccess: () => {
+      toast.success('已加入备份队列');
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => {
+      toast.error(e.response?.data?.msg || '加入备份失败');
+    },
+  });
+
+  const status = media.syncStatus || 'NONE';
+  const canSync = status === 'NONE' || status === 'FAILED';
+  const canRetry = status === 'FAILED';
+
+  return (
+    <div className="rounded-xl bg-[var(--bg-secondary)]/30 dark:bg-white/[0.02] border border-black/5 dark:border-white/10 p-3 space-y-2.5">
+      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">存储信息</p>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-[var(--text-secondary)]">存储位置</span>
+        <StorageBadge type={media.storageType} size="md" />
+      </div>
+      {media.cdnUrl && (
+        <div>
+          <p className="text-[10px] text-[var(--text-muted)] mb-1">访问 URL</p>
+          <a
+            href={media.cdnUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block text-xs font-mono text-primary hover:underline break-all"
+          >
+            {media.cdnUrl}
+          </a>
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-[var(--text-secondary)]">备份状态</span>
+        <SyncStatusPill status={status} />
+      </div>
+      {media.backupUrl && (
+        <div>
+          <p className="text-[10px] text-[var(--text-muted)] mb-1">备份位置</p>
+          <a
+            href={media.backupUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 text-xs font-mono text-[var(--text-secondary)] hover:text-primary hover:underline break-all"
+          >
+            {media.backupUrl}
+            <ExternalLinkIcon className="w-3 h-3 shrink-0" />
+          </a>
+        </div>
+      )}
+      {media.backupAt && (
+        <p className="text-[10px] text-[var(--text-muted)]">
+          最后备份: {format(new Date(media.backupAt), 'yyyy-MM-dd HH:mm:ss')}
+        </p>
+      )}
+      {(canSync || canRetry) && (
+        <button
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending}
+          className={cn(
+            'w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+            canRetry
+              ? 'bg-status-warning/15 text-status-warning hover:bg-status-warning/25'
+              : 'bg-primary/15 text-primary hover:bg-primary/25',
+            syncMutation.isPending && 'opacity-60 cursor-not-allowed'
+          )}
+        >
+          {canRetry ? <RefreshCcw className="w-3.5 h-3.5" /> : <CloudUpload className="w-3.5 h-3.5" />}
+          {syncMutation.isPending ? '提交中...' : canRetry ? '重试同步' : '立即同步到云'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * SyncStatusPill - 主文件 vs default provider 的镜像状态徽章
+ * @ref 对象存储 rollout - Phase 3 (UI 占位) / Phase 4 (后端实装)
+ */
+function SyncStatusPill({ status }: { status: NonNullable<MediaItem['syncStatus']> }) {
+  const config: Record<typeof status, { label: string; tint: string }> = {
+    NONE: { label: '无需备份', tint: 'bg-zinc-500/15 text-zinc-300' },
+    PENDING: { label: '待同步', tint: 'bg-amber-500/15 text-amber-400' },
+    SYNCING: { label: '同步中', tint: 'bg-blue-500/15 text-blue-400' },
+    SYNCED: { label: '已备份', tint: 'bg-green-500/15 text-green-400' },
+    FAILED: { label: '失败', tint: 'bg-red-500/15 text-red-400' },
+  };
+  const c = config[status];
+  return (
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium', c.tint)}>
+      {c.label}
+    </span>
   );
 }

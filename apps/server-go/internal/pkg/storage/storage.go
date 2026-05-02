@@ -22,4 +22,27 @@ type Storage interface {
 
 	// Type 返回存储类型标识符（如 LOCAL、S3、MINIO 等）。
 	Type() string
+
+	// Get 读取指定 key 的对象内容,返回 ReadCloser、字节数和 MIME 类型。
+	// 调用方负责 Close 返回的 reader。
+	// 用于 Phase 4 同步备份(本地读 → 云端写)和 Phase 5 反向导入。
+	Get(ctx context.Context, key string) (io.ReadCloser, int64, string, error)
+}
+
+// ObjectInfo 描述单个对象的轻量元数据(供 List 使用)。
+// @ref 对象存储 rollout - Phase 5
+type ObjectInfo struct {
+	Key          string
+	Size         int64
+	LastModified string // RFC3339;不直接用 time.Time 避免跨 provider 时区差异
+	ETag         string
+	ContentType  string
+}
+
+// Lister 是 Storage 的可选扩展接口,实现"列出 bucket 下指定 prefix 的对象"。
+// 不是所有 Storage 都强制要求实现 List(LOCAL 兜底实现, S3 系实现);故拆出来方便接口分层。
+//
+// nextToken 用于分页;首次调用传空字符串,后续传上一次返回的 token,直到返回 ""。
+type Lister interface {
+	List(ctx context.Context, prefix, continuationToken string, limit int) (objects []ObjectInfo, nextToken string, err error)
 }
