@@ -118,6 +118,7 @@ func (s *SearchService) UpdateSearchConfig(ctx context.Context, kv map[string]st
 type DiagnosticsResponse struct {
 	Config          dto.SearchConfig          `json:"config"`
 	ActiveEmbedding ActiveEmbeddingInfo       `json:"activeEmbedding"`
+	ActiveProfile   ActiveProfileInfo         `json:"activeProfile"`
 	AIClient        AIClientStatus            `json:"aiClient"`
 	Fallback        SearchFallbackDescription `json:"fallback"`
 }
@@ -125,9 +126,20 @@ type DiagnosticsResponse struct {
 // ActiveEmbeddingInfo 反映 site_settings.search.active_embedding_model 当前值。
 // source="site_settings" 表示已显式写入；source="unset" 表示没配过，
 // 此时 ai-service 会 fallback 到 llm_router 解析出的模型。
+//
+// 兼容性说明：该字段在 migration 000041 引入 search profiles 后变成"指针的镜像"，
+// 真正的活跃配置以 ActiveProfile 为准；保留此字段是为了让旧版 admin UI 不破。
 type ActiveEmbeddingInfo struct {
 	ModelID string `json:"modelId"`
 	Source  string `json:"source"`
+}
+
+// ActiveProfileInfo 反映 site_settings.search.active_profile_code 当前值。
+// 完整的 profile 详情（chunker/size/overlap）由 ai-service 的
+// /v1/admin/search/profiles 端点提供，admin UI 可按 code 二次拉取。
+type ActiveProfileInfo struct {
+	Code   string `json:"code"`
+	Source string `json:"source"`
 }
 
 // AIClientStatus 反映 Go backend 侧是否持有 AI 服务客户端。
@@ -157,6 +169,15 @@ func (s *SearchService) GetDiagnostics(ctx context.Context) DiagnosticsResponse 
 	}
 	if active.ModelID == "" {
 		active.Source = "unset"
+	}
+
+	activeProfileCode, _ := s.settingSvc.GetValue(ctx, "search.active_profile_code")
+	profileInfo := ActiveProfileInfo{
+		Code:   strings.TrimSpace(activeProfileCode),
+		Source: "site_settings",
+	}
+	if profileInfo.Code == "" {
+		profileInfo.Source = "unset"
 	}
 
 	ai := AIClientStatus{Configured: s.aiClient != nil}
@@ -192,6 +213,7 @@ func (s *SearchService) GetDiagnostics(ctx context.Context) DiagnosticsResponse 
 	return DiagnosticsResponse{
 		Config:          cfg,
 		ActiveEmbedding: active,
+		ActiveProfile:   profileInfo,
 		AIClient:        ai,
 		Fallback:        fb,
 	}

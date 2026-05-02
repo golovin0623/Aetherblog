@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import ai, health, log_level, metrics, search, providers, prompts, tasks
+from app.api.routes import ai, health, log_level, metrics, profiles, search, providers, prompts, tasks
 
 
 router = APIRouter()
 router.include_router(health.router)
 router.include_router(ai.router)
 router.include_router(search.router)
+router.include_router(profiles.router)
 router.include_router(metrics.router)
 router.include_router(providers.router)
 router.include_router(prompts.router)

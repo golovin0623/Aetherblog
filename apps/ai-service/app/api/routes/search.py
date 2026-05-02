@@ -123,16 +123,79 @@ async def semantic_search(
 async def reindex(
     request: Request,
     req: ReindexRequest,
+    profileCode: str | None = Query(default=None, description="目标 profile code；不传则用当前 active profile"),
     user=Depends(require_admin_or_internal),
     vector_store=Depends(get_vector_store),
+    pool=Depends(get_pg_pool),
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[dict]:
+    """全量 reindex。
+
+    profileCode=None: 使用当前 active profile（同 chunker / 同 model 的纯刷新）。
+    profileCode=<code>: 指向 shadow profile，用于蓝绿切换；写入 status='shadow' 行，
+        全部成功后调用方需另行 POST /v1/admin/search/profiles/{code}/activate 翻转指针。
+    """
     start_time = time.perf_counter()
     error_code = None
     model = await vector_store.llm.resolve_embedding_model_id()
     try:
-        result = await vector_store.reindex()
+        if profileCode:
+            # 蓝绿模式：把目标 profile 当成 shadow 写
+            profile = await vector_store._fetch_profile_by_code(profileCode)
+            if not profile:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Profile '{profileCode}' 不存在",
+                )
+            if profile.status == "deprecated":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Profile '{profileCode}' 已被弃用，无法重建索引",
+                )
+            target_status = "active" if profile.status == "active" else "shadow"
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT id, title, slug, content_markdown FROM posts "
+                    "WHERE deleted = FALSE AND status = 'PUBLISHED' "
+                    "ORDER BY id ASC"
+                )
+            indexed = 0
+            failed = 0
+            for row in rows:
+                try:
+                    await vector_store.upsert_post_embedding(
+                        post_id=row["id"],
+                        title=row["title"],
+                        slug=row["slug"],
+                        content=row["content_markdown"] or "",
+                        metadata={"status": "PUBLISHED"},
+                        profile=profile,
+                        target_status=target_status,
+                    )
+                    indexed += 1
+                except Exception as exc:
+                    failed += 1
+                    import logging as _lg
+                    _lg.getLogger("ai-service").warning(
+                        "reindex.profile_post_failed",
+                        extra={"data": {
+                            "post_id": row["id"],
+                            "profile": profile.code,
+                            "target_status": target_status,
+                            "error": str(exc)[:200],
+                        }},
+                    )
+            result = {
+                "status": "completed" if failed == 0 else "partial",
+                "indexed": indexed,
+                "failed": failed,
+                "profile": profile.code,
+                "model_id": profile.model_id,
+                "target_status": target_status,
+            }
+        else:
+            result = await vector_store.reindex()
         return ApiResponse(data=result)
     except Exception as exc:
         error_code = str(exc)
@@ -402,19 +465,49 @@ async def index_stats(
                 (SELECT COUNT(*) FROM posts WHERE deleted = false AND status = 'PUBLISHED' AND embedding_status = 'PENDING') AS pending_posts
         """)
 
+        # vector_count = active profile 下的 chunk 总数（旧 UI 字段保留兼容）
+        # vector_post_count = active profile 下覆盖到的文档数（新 UI 文案用）
         vector_count = 0
+        vector_post_count = 0
+        active_profile: dict | None = None
         schema_ready = True
         try:
-            row = await conn.fetchrow(
-                "SELECT COUNT(*) AS c FROM post_embeddings WHERE status = 'active'"
+            profile_row = await conn.fetchrow(
+                """
+                SELECT id, code, name, model_id, chunker_kind,
+                       chunk_size_tokens, chunk_overlap_tokens
+                FROM search_profiles WHERE status = 'active' LIMIT 1
+                """
             )
-            vector_count = int(row["c"]) if row else 0
+            if profile_row:
+                active_profile = {
+                    "id": profile_row["id"],
+                    "code": profile_row["code"],
+                    "name": profile_row["name"],
+                    "modelId": profile_row["model_id"],
+                    "chunkerKind": profile_row["chunker_kind"],
+                    "chunkSizeTokens": profile_row["chunk_size_tokens"],
+                    "chunkOverlapTokens": profile_row["chunk_overlap_tokens"],
+                }
+                row = await conn.fetchrow(
+                    """
+                    SELECT
+                        COUNT(*) AS chunk_count,
+                        COUNT(DISTINCT post_id) AS post_count
+                    FROM post_embeddings
+                    WHERE profile_id = $1 AND status = 'active'
+                    """,
+                    profile_row["id"],
+                )
+                if row:
+                    vector_count = int(row["chunk_count"] or 0)
+                    vector_post_count = int(row["post_count"] or 0)
         except (asyncpg.UndefinedColumnError, asyncpg.UndefinedTableError) as exc:
-            # 旧的 chunk 表 / schema 缺失 —— 不要让整个面板 500。
+            # 旧的 chunk 表 / schema 缺失（migration 000041 未跑） —— 不要让整个面板 500。
             schema_ready = False
             logger.warning(
-                "post_embeddings versioned schema missing (%s). "
-                "Returning vector_count=0 until migration 000036 repairs it.",
+                "post_embeddings or search_profiles schema missing (%s). "
+                "Returning zero counts until migration 000041 applies.",
                 exc.__class__.__name__,
             )
 
@@ -428,6 +521,8 @@ async def index_stats(
         "pending_posts": 0,
     }
     payload["vector_count"] = vector_count
+    payload["vector_post_count"] = vector_post_count
+    payload["active_profile"] = active_profile
     payload["schema_ready"] = schema_ready
     return ApiResponse(data=payload)
 

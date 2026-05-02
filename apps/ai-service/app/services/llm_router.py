@@ -24,11 +24,6 @@ from litellm import acompletion, aembedding
 from app.core.config import get_settings
 from app.utils.url_validator import validate_external_url_async
 
-try:  # 可选依赖：tiktoken 仅用于 embedding 输入精确计数与截断
-    import tiktoken as _tiktoken
-except Exception:  # pragma: no cover - 容错环境无 tiktoken
-    _tiktoken = None
-
 if TYPE_CHECKING:
     from app.services.model_router import ModelRouter, RoutingConfig
 
@@ -843,50 +838,6 @@ class LlmRouter:
                 if content:
                     yield content
 
-    @staticmethod
-    def _truncate_for_embedding(text: str, max_tokens: int) -> tuple[str, int, int]:
-        """把 embedding 输入截断到 ``max_tokens`` token 以内。
-
-        OpenAI ``text-embedding-3-{small,large}`` / ``text-embedding-ada-002``
-        的硬上限都是 8192 token；超出会直接 400 BadRequest 让整篇文章
-        ``embed.failed``。常见博文字符长度 → token 转换在 cl100k_base 下：
-        中文 ≈ 1.4 字符/token，英文 ≈ 4 字符/token，混排约 2-3 字符/token。
-        一篇 2 万+ 字符的中文长文很容易撞墙。
-
-        返回 ``(truncated_text, original_tokens, truncated_tokens)``。
-        ``max_tokens<=0`` 视为关闭截断（no-op），用于灵活配置/测试。
-
-        当 tiktoken 不可用时退化到 **1 字符/token** 估算 —— cl100k_base
-        下许多 CJK 单字（如"我""是""的"）就是 1 token，所以 1:1 才是
-        真正"最悲观"的安全下界，能保证截断后绝不超 ``max_tokens``。
-        fallback 路径极少触发（tiktoken 是 litellm 的传递依赖）；宁可
-        在 no-tiktoken 环境下过度裁剪英文，也别让错放过的长文继续
-        ``embed.failed``。
-        """
-        if not text or max_tokens <= 0:
-            return text, 0, 0
-
-        if _tiktoken is None:
-            approx_tokens = len(text)
-            if approx_tokens <= max_tokens:
-                return text, approx_tokens, approx_tokens
-            return text[:max_tokens], approx_tokens, max_tokens
-
-        try:
-            encoding = _tiktoken.get_encoding("cl100k_base")
-        except Exception:  # pragma: no cover - 缺数据文件时退化
-            approx_tokens = len(text)
-            if approx_tokens <= max_tokens:
-                return text, approx_tokens, approx_tokens
-            return text[:max_tokens], approx_tokens, max_tokens
-
-        token_ids = encoding.encode(text)
-        original_tokens = len(token_ids)
-        if original_tokens <= max_tokens:
-            return text, original_tokens, original_tokens
-        truncated_text = encoding.decode(token_ids[:max_tokens])
-        return truncated_text, original_tokens, max_tokens
-
     async def resolve_embedding_model_id(self, user_id: int | None = None) -> str:
         """返回 ``embed()`` 实际会使用的纯 ``model_id``。
 
@@ -953,28 +904,6 @@ class LlmRouter:
             repeats = dim // len(seed) + 1
             return (seed * repeats)[:dim]
 
-        # 截断超长输入到 embedding_max_tokens 以内。OpenAI 系列 embedding
-        # 模型上限 8192 token，超出会被 provider 直接 400 拒掉让整篇文章
-        # ``embed.failed``（即使一次次"重建"仍卡在同一篇）。这里在网络
-        # 调用前用 cl100k_base 精确计数并裁剪，保证长博文也能成功索引；
-        # 截断时发 warning 让运维能定位丢失了多少尾部内容。
-        # 直接使用配置值（pydantic 已声明 int）；``<= 0`` 由 helper 视为
-        # no-op，运维可通过 AI_EMBEDDING_MAX_TOKENS=0 显式关闭截断。
-        max_tokens = self.settings.embedding_max_tokens
-        truncated_text, original_tokens, sent_tokens = self._truncate_for_embedding(
-            text, max_tokens
-        )
-        if original_tokens > max_tokens:
-            logger.warning(
-                "embed.truncated",
-                extra={"data": {
-                    **log_ctx,
-                    "original_tokens": original_tokens,
-                    "truncated_tokens": sent_tokens,
-                    "max_tokens": max_tokens,
-                }},
-            )
-
         # SECURITY (VULN-057)：embedding 调用也必须校验 api_base。
         await self._guard_api_base(api_base)
         start = time.perf_counter()
@@ -983,10 +912,15 @@ class LlmRouter:
             # 使用调用方传入的 timeout_sec（通常来自 search.index_post_timeout_sec
             # 搜索配置，默认 180s），保证和 Go backend 的 per-post context 对齐。
             # num_retries=0：避免 LiteLLM 自己多次重试导致总耗时成倍放大。
+            #
+            # 注意：调用方（``vector_store.upsert_post_embedding``）已经按 search
+            # profile 配置把内容切分成 ≤ chunk_size_tokens 的 chunks。embed() 不
+            # 再做截断 —— provider 上限保护交由 chunker 上游处理，避免双层裁剪
+            # 让单篇文章的尾部内容静默丢失。
             effective_timeout = timeout_sec if (timeout_sec and timeout_sec > 0) else 180
             response = await aembedding(
                 model=model,
-                input=[truncated_text],
+                input=[text],
                 api_key=api_key,
                 api_base=api_base,
                 timeout=effective_timeout,
