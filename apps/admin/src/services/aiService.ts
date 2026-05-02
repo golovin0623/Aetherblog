@@ -64,6 +64,14 @@ export interface SummaryRequest {
   bypassCache?: boolean;
 }
 
+/**
+ * 提示给 AI 的"现有标签"。后端用它生成"优先复用,再补新建"的标签建议。
+ */
+export interface ExistingTagHint {
+  name: string;
+  postCount: number;
+}
+
 export interface TagsRequest {
   content: string;
   maxTags?: number;
@@ -73,6 +81,11 @@ export interface TagsRequest {
   modelId?: string;
   providerCode?: string;
   bypassCache?: boolean;
+  /**
+   * 可选: 现有标签库提示。提供后, AI 会优先在 matches 中复用, 仅在确实需要时
+   * 才在 suggestions 中新建。建议按 postCount 降序截断到前 200 个。
+   */
+  existingTags?: ExistingTagHint[];
 }
 
 export interface TitlesRequest {
@@ -136,8 +149,25 @@ export interface SummaryResponse {
   latencyMs?: number;
 }
 
+/**
+ * AI 命中的"现有标签"。`reason` 是模型可选给出的一句话理由。
+ */
+export interface TagMatchResponse {
+  name: string;
+  postCount: number;
+  reason?: string | null;
+}
+
 export interface TagsResponse {
+  /**
+   * 扁平字符串数组 (= matches 名字 + suggestions, 旧客户端兼容用)。
+   * 新客户端请优先消费 ``matches`` / ``suggestions``。
+   */
   tags: string[];
+  /** 命中现有标签 (含 postCount 与可选匹配理由)。 */
+  matches?: TagMatchResponse[];
+  /** 现有标签库未覆盖, 需要新建的标签名。 */
+  suggestions?: string[];
   model?: string;
   tokensUsed?: number;
   latencyMs?: number;

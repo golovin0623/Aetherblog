@@ -19,12 +19,14 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.schemas.ai import (
+    ExistingTagHint,
     OutlineData,
     OutlineRequest,
     PolishData,
     PolishRequest,
     SummaryData,
     SummaryRequest,
+    TagMatch,
     TagsData,
     TagsRequest,
     TitlesData,
@@ -147,6 +149,209 @@ def _filter_tags(tags: list[str]) -> list[str]:
     return fallback
 
 
+def _format_existing_tags_block(existing_tags: list[ExistingTagHint]) -> str:
+    """把现有标签提示渲染成给 LLM 的 prompt 片段。
+
+    格式: 每行 ``- 标签名 (n篇)``,按 ``postCount`` 降序。空列表返回明确的
+    ``(无)`` 占位 —— 这样 prompt 里 ``{existing_tags}`` 不会变成裸空行,
+    模型看到的指令完整且无歧义。
+    """
+    if not existing_tags:
+        return "(无)"
+    sorted_tags = sorted(
+        existing_tags,
+        key=lambda t: (-t.postCount, t.name.lower()),
+    )
+    lines: list[str] = []
+    for hint in sorted_tags:
+        name = (hint.name or "").strip()
+        if not name:
+            continue
+        if hint.postCount > 0:
+            lines.append(f"- {name} ({hint.postCount}篇)")
+        else:
+            lines.append(f"- {name}")
+    return "\n".join(lines) if lines else "(无)"
+
+
+def _existing_tags_signature(existing_tags: list[ExistingTagHint]) -> str:
+    """生成现有标签集合的稳定签名,用于差异化缓存 key。
+
+    标签库变动 (新建/删除标签) 会令该签名变化,从而绕过陈旧缓存。同一站点
+    短期内反复请求同一篇文章则命中缓存,规避 LLM 调用成本。
+    """
+    if not existing_tags:
+        return "none"
+    names = sorted({(t.name or "").strip().lower() for t in existing_tags if (t.name or "").strip()})
+    if not names:
+        return "none"
+    return hash_content("\n".join(names))
+
+
+def _parse_tags_structured(
+    text: str,
+    existing_lookup: dict[str, ExistingTagHint],
+) -> tuple[list[TagMatch], list[str]]:
+    """解析新版结构化输出 ``{matches: [...], suggestions: [...]}``。
+
+    优雅降级链:
+    1. 模型严格遵循新格式 → 直接拆分 matches / suggestions。
+    2. 模型返回扁平数组 (旧格式 / 未升级 prompt) → 全部走兜底分桶:存在于
+       ``existing_lookup`` 的进 matches,其余进 suggestions。
+    3. 模型返回 ``{matches: [...]}`` 但 matches 是字符串数组 → 也接受,以
+       字符串形式构建 ``TagMatch``。
+    4. 任何"声称匹配但其实不在标签库"的项被降级为 suggestion (防幻觉)。
+    """
+    text = (text or "").strip()
+    if not text:
+        return [], []
+
+    matches: list[TagMatch] = []
+    suggestions: list[str] = []
+    seen: set[str] = set()  # 大小写无关去重 (跨 matches+suggestions)
+
+    def _push_match(name: str, reason: str | None = None) -> None:
+        cleaned = _strip_token(str(name))
+        if not cleaned:
+            return
+        key = cleaned.lower()
+        if key in seen:
+            return
+        if len(cleaned) > _MAX_TAG_CHARS:
+            return
+        hint = existing_lookup.get(key)
+        if hint is None:
+            # 防幻觉:声称匹配但不在标签库中 → 降级为 suggestion
+            seen.add(key)
+            suggestions.append(cleaned)
+            return
+        seen.add(key)
+        matches.append(
+            TagMatch(
+                name=hint.name,
+                postCount=hint.postCount,
+                reason=(reason or "").strip() or None,
+            )
+        )
+
+    def _push_suggestion(name: str) -> None:
+        cleaned = _strip_token(str(name))
+        if not cleaned:
+            return
+        key = cleaned.lower()
+        if key in seen:
+            return
+        if len(cleaned) > _MAX_TAG_CHARS:
+            return
+        # 模型把现有标签放进 suggestions → 自动归一到 matches,避免重复创建
+        hint = existing_lookup.get(key)
+        if hint is not None:
+            seen.add(key)
+            matches.append(TagMatch(name=hint.name, postCount=hint.postCount))
+            return
+        seen.add(key)
+        suggestions.append(cleaned)
+
+    # 顺次尝试三种 JSON 候选 (针对 LLM 常见的输出形态):
+    #   1. 原始 text —— 模型严格遵循 prompt 直接吐出 JSON 对象;
+    #   2. 剥除 ```json ... ``` / ``` ... ``` 围栏后的内容 —— 推理类模型容易
+    #      自作主张包一层 Markdown 代码块;
+    #   3. 从首个 ``{`` 到最后一个 ``}`` 的子串 —— 模型有时给一段解释正文
+    #      然后才贴 JSON; 用最外层括号子串能兜住"前后裹胶水文本"的形态。
+    # 按顺序使用第一个成功 parse 出 dict 的候选,避免逐字尝试导致歧义。
+    structured_ok = False
+    json_candidates: list[str] = []
+    json_candidates.append(text)
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        fenced = fence_match.group(1).strip()
+        if fenced and fenced not in json_candidates:
+            json_candidates.append(fenced)
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        substr = text[first_brace : last_brace + 1].strip()
+        if substr and substr not in json_candidates:
+            json_candidates.append(substr)
+
+    for candidate in json_candidates:
+        if not candidate.startswith("{"):
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        raw_matches = parsed.get("matches") or []
+        raw_suggestions = parsed.get("suggestions") or []
+        if isinstance(raw_matches, list):
+            for item in raw_matches:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("tag") or ""
+                    reason = item.get("reason") or item.get("why") or None
+                    _push_match(str(name), str(reason) if reason else None)
+                elif isinstance(item, str):
+                    _push_match(item)
+        if isinstance(raw_suggestions, list):
+            for item in raw_suggestions:
+                if isinstance(item, str):
+                    _push_suggestion(item)
+                elif isinstance(item, dict):
+                    _push_suggestion(str(item.get("name") or ""))
+        structured_ok = bool(matches) or bool(suggestions)
+        if structured_ok:
+            break
+
+    if not structured_ok:
+        # 旧格式 / 模型不听话 → 用旧解析器抽取扁平数组,按已知集合分桶
+        flat = _filter_tags(_parse_tags(text))
+        for tag in flat:
+            key = tag.lower()
+            if key in seen:
+                continue
+            hint = existing_lookup.get(key)
+            if hint is not None:
+                seen.add(key)
+                matches.append(TagMatch(name=hint.name, postCount=hint.postCount))
+            else:
+                seen.add(key)
+                suggestions.append(tag)
+
+    return matches, suggestions
+
+
+def _build_existing_lookup(existing_tags: list[ExistingTagHint]) -> dict[str, ExistingTagHint]:
+    """构造大小写不敏感的 name → hint 字典。重名以首次出现为准。"""
+    lookup: dict[str, ExistingTagHint] = {}
+    for hint in existing_tags or []:
+        name = (hint.name or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key not in lookup:
+            lookup[key] = hint
+    return lookup
+
+
+def _truncate_tag_payload(
+    matches: list[TagMatch],
+    suggestions: list[str],
+    max_tags: int,
+) -> tuple[list[TagMatch], list[str]]:
+    """将 (matches, suggestions) 联合截断到 ``max_tags`` 总数,优先保留 matches。
+
+    根据 prompt 引导,模型应当先输出最贴切的现有标签,再补新建议。我们尊重
+    这个顺序 —— 总数超额时优先削掉 suggestions 末端,让 matches 完整保留。
+    """
+    if max_tags <= 0:
+        return [], []
+    if len(matches) >= max_tags:
+        return matches[:max_tags], []
+    remaining = max_tags - len(matches)
+    return matches, suggestions[:remaining]
+
+
 def _parse_titles(text: str) -> list[str]:
     """健壮的标题解析器：处理 JSON 数组、编号/项目符号列表与分隔符回退。
 
@@ -214,8 +419,16 @@ def _build_stream_result_payload(
                 max_tags = int(prompt_variables.get("max_tags", 5) or 5)
             except (TypeError, ValueError):
                 max_tags = 5
-            tags = _filter_tags(_parse_tags(text))[:max_tags]
-            data = TagsData(tags=tags, model=model or None)
+            existing_lookup = extras.get("existing_lookup") or {}
+            matches, suggestions = _parse_tags_structured(text, existing_lookup)
+            matches, suggestions = _truncate_tag_payload(matches, suggestions, max_tags)
+            flat_tags = [m.name for m in matches] + list(suggestions)
+            data = TagsData(
+                tags=flat_tags,
+                matches=matches,
+                suggestions=suggestions,
+                model=model or None,
+            )
             return data.model_dump()
 
         if task_type == "titles":
@@ -596,13 +809,19 @@ async def tags(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    existing_lookup = _build_existing_lookup(req.existingTags)
+    existing_signature = _existing_tags_signature(req.existingTags)
+
     try:
         if req.promptTemplate:
             cache_key = None
         else:
+            # 缓存 key 包含现有标签签名: 标签库变化 (新建/删除标签) 时签名变,
+            # 旧缓存命不中 → 重新调 LLM,避免拿着陈旧的"匹配/建议"分桶结果。
             cache_key = (
                 f"ai:tags:{hash_content(req.content)}:{model}:"
-                f"{_prompt_version(req.promptVersion)}:{req.maxTags}:{user.user_id}"
+                f"{_prompt_version(req.promptVersion)}:{req.maxTags}:"
+                f"{existing_signature}:{user.user_id}"
             )
         # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
         cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
@@ -624,7 +843,11 @@ async def tags(
 
         prompt_variables = {
             "content": req.content,
-            "max_tags": req.maxTags
+            "max_tags": req.maxTags,
+            # 现有标签库渲染为可读列表 (按 postCount 降序)。Prompt 模板里
+            # 用 `{existing_tags}` 占位;空列表会显示 "(无)" —— 避免出现裸
+            # 空行让模型困惑。
+            "existing_tags": _format_existing_tags_block(req.existingTags),
         }
         response_text = await llm.chat(
             prompt_variables=prompt_variables,
@@ -636,11 +859,16 @@ async def tags(
         )
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
+        matches, suggestions = _parse_tags_structured(response_text, existing_lookup)
+        matches, suggestions = _truncate_tag_payload(matches, suggestions, req.maxTags)
+        flat_tags = [m.name for m in matches] + list(suggestions)
         data = TagsData(
-            tags=_filter_tags(_parse_tags(response_text))[: req.maxTags],
+            tags=flat_tags,
+            matches=matches,
+            suggestions=suggestions,
             model=model,
             tokensUsed=tokens_used,
-            latencyMs=latency_ms
+            latencyMs=latency_ms,
         )
         if cache_key:
             await _safe_cache_set_json(cache, cache_key, data.model_dump(), TAGS_TTL)
@@ -1262,12 +1490,20 @@ async def tags_stream(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     
-    prompt_variables = {"content": req.content, "max_tags": req.maxTags}
+    prompt_variables = {
+        "content": req.content,
+        "max_tags": req.maxTags,
+        "existing_tags": _format_existing_tags_block(req.existingTags),
+    }
+    # 把现有标签字典传给 ``_build_stream_result_payload``,
+    # 让流式终稿和非流式 ``/tags`` 走同一套结构化分桶逻辑。
+    result_extras = {"existing_lookup": _build_existing_lookup(req.existingTags)}
     return StreamingResponse(
         _stream_with_think_detection(
             request, llm, prompt_variables, "tags", user.user_id,
             req.promptTemplate, req.modelId, req.providerCode,
-            model, usage_context, metrics, usage_logger, start_time, req.content
+            model, usage_context, metrics, usage_logger, start_time, req.content,
+            result_extras=result_extras,
         ),
         media_type="text/event-stream",
         headers={
