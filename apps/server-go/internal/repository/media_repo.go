@@ -15,9 +15,12 @@ import (
 
 // mediaColumns 列举 model.MediaFile 中已映射的 media_files 表字段，
 // 故意排除 JSONB 类型的 exif_data 和 ai_labels 列，以避免反序列化问题。
+//
+// Phase 4: 增加 sync_status / backup_* 列以支持同步备份机制。
 const mediaColumns = `id, filename, original_name, file_path, file_url, file_size, mime_type, file_type,
 	storage_type, width, height, alt_text, uploader_id, created_at, folder_id,
-	storage_provider_id, cdn_url, blurhash, current_version, is_archived, archived_at, archived_by, deleted, deleted_at`
+	storage_provider_id, cdn_url, blurhash, current_version, is_archived, archived_at, archived_by, deleted, deleted_at,
+	sync_status, backup_provider_id, backup_url, backup_at, backup_error`
 
 // MediaRepo 负责对 media_files 表进行数据访问操作。
 type MediaRepo struct{ db *sqlx.DB }
@@ -36,6 +39,38 @@ func (r *MediaRepo) FindByID(ctx context.Context, id int64) (*model.MediaFile, e
 		return nil, err
 	}
 	return &m, nil
+}
+
+// FindManyByIDs 批量按主键加载媒体文件,返回 ID->Record 映射。
+// 不存在的 ID 不出现在 map 中。供 PermanentDeleteBatch / EmptyTrash 在 service 层
+// 做 ownership 校验 + 按 storage_provider_id 分组删存储后端。
+func (r *MediaRepo) FindManyByIDs(ctx context.Context, ids []int64) (map[int64]model.MediaFile, error) {
+	if len(ids) == 0 {
+		return map[int64]model.MediaFile{}, nil
+	}
+	query, args, err := sqlx.In(`SELECT `+mediaColumns+` FROM media_files WHERE id IN (?)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	query = r.db.Rebind(query)
+
+	var ms []model.MediaFile
+	if err := r.db.SelectContext(ctx, &ms, query, args...); err != nil {
+		return nil, err
+	}
+	out := make(map[int64]model.MediaFile, len(ms))
+	for _, m := range ms {
+		out[m.ID] = m
+	}
+	return out, nil
+}
+
+// FindAllInTrash 返回所有 deleted=true 的媒体文件,供 EmptyTrash 在 service 层
+// 按 storage_provider_id 分组删除存储后端文件后再批量 DELETE 数据库行。
+func (r *MediaRepo) FindAllInTrash(ctx context.Context) ([]model.MediaFile, error) {
+	var ms []model.MediaFile
+	err := r.db.SelectContext(ctx, &ms, `SELECT `+mediaColumns+` FROM media_files WHERE deleted=true`)
+	return ms, err
 }
 
 // MediaFilter 持有管理端媒体文件列表的可选过滤参数。
@@ -257,5 +292,77 @@ func (r *MediaRepo) EmptyTrash(ctx context.Context) error {
 func (r *MediaRepo) UpdateFileContent(ctx context.Context, id int64, filePath, fileURL string, fileSize int64, currentVersion int) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE media_files SET file_path=$1, file_url=$2, file_size=$3, current_version=$4 WHERE id=$5`,
 		filePath, fileURL, fileSize, currentVersion, id)
+	return err
+}
+
+// UpdateFileContentV2 是 UpdateFileContent 的扩展版本,额外更新 cdn_url。
+// 对象存储 rollout - 遗留 4: UploadContent 走 mediaSvc.UpdateContent 时使用。
+func (r *MediaRepo) UpdateFileContentV2(ctx context.Context, id int64, filePath, fileURL string, fileSize int64, currentVersion int, cdnURL string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE media_files
+		SET file_path=$1, file_url=$2, file_size=$3, current_version=$4, cdn_url=$5
+		WHERE id=$6`,
+		filePath, fileURL, fileSize, currentVersion, cdnURL, id)
+	return err
+}
+
+// SetSyncStatus 单独更新某条记录的 sync_status (Phase 4)。errMsg 为空时清空 backup_error。
+// 返回 RowsAffected 让调用方判断是否记录存在。
+func (r *MediaRepo) SetSyncStatus(ctx context.Context, id int64, status, errMsg string) (int64, error) {
+	if errMsg == "" {
+		res, err := r.db.ExecContext(ctx, `UPDATE media_files SET sync_status=$1, backup_error=NULL WHERE id=$2`, status, id)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+	res, err := r.db.ExecContext(ctx, `UPDATE media_files SET sync_status=$1, backup_error=$2 WHERE id=$3`, status, errMsg, id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// MediaVariant 是 media_variants 表的简化视图(只含管理流程需要的字段)。
+type MediaVariant struct {
+	ID          int64  `db:"id"`
+	MediaFileID int64  `db:"media_file_id"`
+	VariantType string `db:"variant_type"`
+	FilePath    string `db:"file_path"`
+	FileURL     string `db:"file_url"`
+}
+
+// UpsertVariant 把指定 mediaKey 对应主文件的 THUMBNAIL variant 写入 media_variants。
+// mediaKey 是主文件的存储 key(file_path 字段),Phase 1 上传流程刚把主文件落库时
+// id 还没回填,所以走"按 file_path 反查 media_file_id"路径。失败不阻塞主上传。
+func (r *MediaRepo) UpsertVariant(ctx context.Context, mediaKey, thumbKey, thumbURL string, thumbSize int64, providerID *int64) error {
+	var mediaID int64
+	if err := r.db.QueryRowContext(ctx, `SELECT id FROM media_files WHERE file_path=$1 ORDER BY id DESC LIMIT 1`, mediaKey).Scan(&mediaID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// 主文件还没落库或已被删除;静默退出。
+			return nil
+		}
+		return err
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO media_variants (media_file_id, variant_type, file_path, file_url, file_size, storage_provider_id)
+		VALUES ($1, 'THUMBNAIL', $2, $3, $4, $5)
+		ON CONFLICT (media_file_id, variant_type) DO UPDATE
+		  SET file_path = EXCLUDED.file_path, file_url = EXCLUDED.file_url, file_size = EXCLUDED.file_size, storage_provider_id = EXCLUDED.storage_provider_id`,
+		mediaID, thumbKey, thumbURL, thumbSize, providerID)
+	return err
+}
+
+// ListVariants 返回指定 media_file_id 的所有 variant 行。
+func (r *MediaRepo) ListVariants(ctx context.Context, mediaID int64) ([]MediaVariant, error) {
+	var vs []MediaVariant
+	err := r.db.SelectContext(ctx, &vs, `SELECT id, media_file_id, variant_type, file_path, file_url FROM media_variants WHERE media_file_id=$1`, mediaID)
+	return vs, err
+}
+
+// DeleteVariantsByMediaID 删除指定 media_file_id 的所有 variant 行。
+// 物理 DELETE 后由 ON DELETE CASCADE 处理依赖,等价于主文件删除时的连带清理。
+func (r *MediaRepo) DeleteVariantsByMediaID(ctx context.Context, mediaID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM media_variants WHERE media_file_id=$1`, mediaID)
 	return err
 }

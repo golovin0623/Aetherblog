@@ -14,14 +14,16 @@ import (
 //
 // 若 providerType 不受支持，则返回错误。
 func NewFromConfig(providerType, configJSON string) (Storage, error) {
-	switch strings.ToUpper(providerType) {
+	upper := strings.ToUpper(providerType)
+	switch upper {
 	case "LOCAL":
 		// 本地存储需要在 server.go 中通过 basePath/baseURL 参数直接构造，
 		// 不支持通过通用工厂方法创建
 		return nil, fmt.Errorf("local storage must be created with NewLocalStorage")
 	case "S3", "MINIO", "R2", "COS", "OSS":
 		// S3 兼容存储（包括 MinIO、Cloudflare R2、腾讯 COS、阿里 OSS）
-		return NewS3Storage(configJSON)
+		// 透传上游 providerType 给 Storage.Type(),确保 media_files.storage_type 正确
+		return NewS3Storage(configJSON, upper)
 	default:
 		return nil, fmt.Errorf("unsupported storage provider type: %s", providerType)
 	}

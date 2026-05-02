@@ -3,21 +3,35 @@ package dto
 import "time"
 
 // MediaFileVO 是媒体文件信息的响应视图对象（View Object）。
+//
+// Phase 1 新增字段(对象存储 rollout):
+//   - StorageProviderID:文件落在哪个 provider(LOCAL provider 也带 ID)。
+//   - CdnURL:完整可访问 URL,前端永远读这个字段(LOCAL=/api/uploads/{key},S3/COS=云端 URL)。
+//
+// Phase 4 备份相关字段(SyncStatus / BackupProviderID / BackupURL / BackupAt)在 Phase 1
+// 暂未持久化,先以指针 + omitempty 占位,Phase 4 migration 落地后填充。
 type MediaFileVO struct {
-	ID           int64      `json:"id"`                    // 媒体文件唯一 ID
-	Filename     string     `json:"filename"`              // 系统存储文件名（经过处理，可能与原始名称不同）
-	OriginalName string     `json:"originalName"`          // 上传时的原始文件名
-	FileURL      string     `json:"fileUrl"`               // 文件可访问的完整 URL
-	FileSize     int64      `json:"fileSize"`              // 文件大小（字节）
-	MimeType     *string    `json:"mimeType,omitempty"`    // 文件 MIME 类型（如 image/jpeg，可为空）
-	FileType     string     `json:"fileType"`              // 文件类型分类（如 IMAGE/VIDEO/AUDIO/DOCUMENT/OTHER）
-	StorageType  string     `json:"storageType"`           // 存储类型（如 LOCAL/S3/MINIO/OSS/COS）
-	Width        *int       `json:"width,omitempty"`       // 图片宽度（像素，非图片类型为空）
-	Height       *int       `json:"height,omitempty"`      // 图片高度（像素，非图片类型为空）
-	AltText      *string    `json:"altText,omitempty"`     // 图片 alt 替代文字（可为空）
-	FolderID     *int64     `json:"folderId,omitempty"`    // 所属文件夹 ID（可为空，表示根目录）
-	Deleted      bool       `json:"deleted"`               // 是否已软删除
-	CreatedAt    *time.Time `json:"createdAt"`             // 上传时间
+	ID                int64      `json:"id"`                          // 媒体文件唯一 ID
+	Filename          string     `json:"filename"`                    // 系统存储文件名（经过处理，可能与原始名称不同）
+	OriginalName      string     `json:"originalName"`                // 上传时的原始文件名
+	FileURL           string     `json:"fileUrl"`                     // 文件可访问的完整 URL
+	FileSize          int64      `json:"fileSize"`                    // 文件大小（字节）
+	MimeType          *string    `json:"mimeType,omitempty"`          // 文件 MIME 类型（如 image/jpeg，可为空）
+	FileType          string     `json:"fileType"`                    // 文件类型分类（如 IMAGE/VIDEO/AUDIO/DOCUMENT/OTHER）
+	StorageType       string     `json:"storageType"`                 // 存储类型（如 LOCAL/S3/MINIO/OSS/COS/R2）
+	StorageProviderID *int64     `json:"storageProviderId,omitempty"` // 存储提供商 ID(可为空,LOCAL 默认 provider 也会有 ID)
+	CdnURL            string     `json:"cdnUrl,omitempty"`            // 完整可访问 URL(LOCAL=/api/uploads/{key},S3/COS=云端公开 URL)
+	Width             *int       `json:"width,omitempty"`             // 图片宽度（像素，非图片类型为空）
+	Height            *int       `json:"height,omitempty"`            // 图片高度（像素，非图片类型为空）
+	AltText           *string    `json:"altText,omitempty"`           // 图片 alt 替代文字（可为空）
+	FolderID          *int64     `json:"folderId,omitempty"`          // 所属文件夹 ID（可为空，表示根目录）
+	Deleted           bool       `json:"deleted"`                     // 是否已软删除
+	CreatedAt         *time.Time `json:"createdAt"`                   // 上传时间
+	// Phase 4 占位
+	SyncStatus        string     `json:"syncStatus,omitempty"`        // 备份状态(NONE/PENDING/SYNCING/SYNCED/FAILED),Phase 4 才填
+	BackupProviderID  *int64     `json:"backupProviderId,omitempty"`  // 备份目标 provider,Phase 4 才填
+	BackupURL         string     `json:"backupUrl,omitempty"`         // 备份后的完整 URL,Phase 4 才填
+	BackupAt          *time.Time `json:"backupAt,omitempty"`          // 最近备份成功时间,Phase 4 才填
 }
 
 // UpdateMediaRequest 是更新媒体文件元数据的请求体 DTO。
@@ -105,12 +119,14 @@ type StorageProviderVO struct {
 }
 
 // StorageProviderRequest 是创建或更新存储提供商配置的请求体 DTO。
+//
+// Phase 1 R2 一致性: ProviderType 枚举加入 R2,与 factory.go 现有支持对齐。
 type StorageProviderRequest struct {
-	Name         string `json:"name"         validate:"required,max=100"`                         // 存储提供商名称，最多 100 个字符（必填）
-	ProviderType string `json:"providerType" validate:"required,oneof=LOCAL S3 MINIO OSS COS"` // 提供商类型（必填，枚举值：LOCAL/S3/MINIO/OSS/COS）
-	ConfigJSON   string `json:"configJson"   validate:"required"`                              // 提供商配置的 JSON 字符串（必填）
-	IsEnabled    bool   `json:"isEnabled"`                                                     // 是否启用
-	Priority     int    `json:"priority"`                                                      // 优先级
+	Name         string `json:"name"         validate:"required,max=100"`                            // 存储提供商名称，最多 100 个字符（必填）
+	ProviderType string `json:"providerType" validate:"required,oneof=LOCAL S3 MINIO OSS COS R2"`   // 提供商类型（必填，枚举值：LOCAL/S3/MINIO/OSS/COS/R2）
+	ConfigJSON   string `json:"configJson"   validate:"required"`                                  // 提供商配置的 JSON 字符串（必填）
+	IsEnabled    bool   `json:"isEnabled"`                                                         // 是否启用
+	Priority     int    `json:"priority"`                                                          // 优先级
 }
 
 // --- 媒体标签 ---

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,15 +11,24 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/imgproc"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 )
+
+// maxThumbnailMemorySize 限制了"S3 模式下从 reader 读完整图片到内存生成缩略图"
+// 的图片体积上限。超过该上限的图片只读 header 算 width/height,跳过缩略图生成,
+// 避免高并发上传时 OOM。
+const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
 
 // allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、可执行文件等危险类型。
 //
@@ -87,21 +97,125 @@ var allowedMimeTypes = map[string]bool{
 }
 
 // MediaService 管理媒体文件上传和生命周期（软删除/恢复/彻底删除）的业务逻辑。
+//
+// 字段语义:
+//   - localStore: 本地存储后端,作为 default 未配置或 default=LOCAL 时的兜底。
+//   - providerRepo: 用于查 default provider / 按 ID 反查 provider 配置。
+//   - uploadDir: 本地存储根目录,LOCAL 模式下用于读文件算尺寸 + 生成缩略图。
+//   - storeCache: 解析过的非 LOCAL Storage 实例缓存(避免每次上传都重建 S3 client)。
+//     key=providerID, 失效条件: 配置 update / delete (调用方需调 InvalidateProvider 清缓存)。
+//
+// 旧的 (repo, store, uploadDir) 构造已被替换 — server.go 必须传 providerRepo。
 type MediaService struct {
-	repo      *repository.MediaRepo
-	store     storage.Storage
-	uploadDir string // 本地存储根路径，用于上传后读取文件以生成缩略图
+	repo         *repository.MediaRepo
+	localStore   storage.Storage
+	providerRepo *repository.StorageProviderRepo
+	uploadDir    string
+
+	storeCache   map[int64]storage.Storage
+	storeCacheMu sync.RWMutex
 }
 
-// NewMediaService 使用给定的仓储、存储后端和本地上传目录创建 MediaService 实例。
-func NewMediaService(repo *repository.MediaRepo, store storage.Storage, uploadDir string) *MediaService {
-	return &MediaService{repo: repo, store: store, uploadDir: uploadDir}
+// NewMediaService 创建 MediaService 实例。
+//   - repo: media_files 仓储。
+//   - localStore: 兜底用本地存储(始终存在)。
+//   - providerRepo: storage_providers 仓储,用于按 default / 按 ID 解析后端。
+//   - uploadDir: 本地上传根目录。
+func NewMediaService(repo *repository.MediaRepo, localStore storage.Storage, providerRepo *repository.StorageProviderRepo, uploadDir string) *MediaService {
+	return &MediaService{
+		repo:         repo,
+		localStore:   localStore,
+		providerRepo: providerRepo,
+		uploadDir:    uploadDir,
+		storeCache:   make(map[int64]storage.Storage),
+	}
 }
 
-// Upload 将 multipart 文件保存到存储后端，提取图片尺寸，并创建数据库记录。
-// 存储键格式：{年}/{月}/{毫秒时间戳}_{安全文件名}。
-// 对于图片文件（本地存储模式）：同步提取宽高，异步生成 300px 宽缩略图。
-// 错误场景：文件打开失败、存储上传失败、数据库记录创建失败。
+// InvalidateProvider 清除指定 provider 的 storage 解析缓存。
+// 调用方:storage_provider_handler 在 Update/Delete 后必须调用,否则旧 client 仍在用旧凭证。
+func (s *MediaService) InvalidateProvider(providerID int64) {
+	s.storeCacheMu.Lock()
+	defer s.storeCacheMu.Unlock()
+	delete(s.storeCache, providerID)
+}
+
+// resolveStore 按需把 providerID 转成对应的 Storage 实例。
+//   - providerID == nil  → 用 default provider(LOCAL → localStore;非 LOCAL → S3 client)。
+//   - providerID != nil  → 按 ID 反查(用于历史记录的 PermanentDelete 删对应后端)。
+//
+// 同时返回该次解析对应的 provider 元数据,供调用方读取 ProviderType 写入 media_files。
+// 若 providerID 指向 LOCAL provider 或为空且 default 是 LOCAL,会返回 (localStore, &p, nil),
+// 其中 p.ProviderType="LOCAL"。providerID 指向不存在的记录时返回 (nil, nil, error)。
+func (s *MediaService) resolveStore(ctx context.Context, providerID *int64) (storage.Storage, *model.StorageProvider, error) {
+	if s.providerRepo == nil {
+		// 缺 providerRepo (旧测试代码) 直接走 localStore
+		return s.localStore, nil, nil
+	}
+
+	var p *model.StorageProvider
+	var err error
+	if providerID == nil {
+		p, err = s.providerRepo.FindDefault(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("find default provider: %w", err)
+		}
+		if p == nil {
+			// 没有配置 default,回退到 localStore(向后兼容)
+			return s.localStore, nil, nil
+		}
+	} else {
+		p, err = s.providerRepo.FindByID(ctx, *providerID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("find provider %d: %w", *providerID, err)
+		}
+		if p == nil {
+			// 历史记录指向已删 provider — 文件孤儿,回退本地兜底
+			log.Warn().Int64("provider_id", *providerID).Msg("storage provider not found, falling back to local store")
+			return s.localStore, nil, nil
+		}
+	}
+
+	if strings.EqualFold(p.ProviderType, "LOCAL") {
+		return s.localStore, p, nil
+	}
+
+	// 非 LOCAL 走缓存
+	s.storeCacheMu.RLock()
+	cached, ok := s.storeCache[p.ID]
+	s.storeCacheMu.RUnlock()
+	if ok {
+		return cached, p, nil
+	}
+
+	store, err := storage.NewFromConfig(p.ProviderType, p.ConfigJSON)
+	if err != nil {
+		return nil, p, fmt.Errorf("init storage backend (%s): %w", p.ProviderType, err)
+	}
+
+	s.storeCacheMu.Lock()
+	s.storeCache[p.ID] = store
+	s.storeCacheMu.Unlock()
+	return store, p, nil
+}
+
+// resolveStoreForMedia 按 media 记录上的 storage_provider_id 反查对应 store。
+// 历史 storage_provider_id IS NULL 的记录走 localStore(VULN-fix 安全升级:不影响存量数据)。
+func (s *MediaService) resolveStoreForMedia(ctx context.Context, m *model.MediaFile) (storage.Storage, *model.StorageProvider, error) {
+	return s.resolveStore(ctx, m.StorageProviderID)
+}
+
+// Upload 将 multipart 文件保存到 default storage provider 配置的后端,提取图片尺寸,并创建数据库记录。
+// 存储键格式: {年}/{月}/{毫秒时间戳}_{安全文件名}。
+//
+// 行为变化(Phase 1):
+//  1. 先 resolveStore(ctx, nil) 拿当前 default provider — 若 default=LOCAL 走 localStore,
+//     否则走对应 S3/COS/OSS/MINIO/R2 client。
+//  2. media_files 写入 storage_provider_id / storage_type / file_url(=key) / cdn_url(完整可访问 URL)。
+//  3. 图片缩略图:LOCAL 模式按老逻辑读磁盘;非 LOCAL 模式 — 把上传 buffer 留一份在内存,
+//     先算 width/height,再生成 thumb bytes 上传到同 provider 的 thumbnails/{key}。
+//     体积 > maxThumbnailMemorySize 的图片只读 header 算尺寸,跳过 thumb(防 OOM)。
+//
+// 错误场景: 文件打开失败、存储上传失败、数据库记录创建失败。
 func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, uploaderID *int64, folderID *int64) (*dto.MediaFileVO, error) {
 	f, err := fh.Open()
 	if err != nil {
@@ -143,12 +257,35 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 
 	fileType := classifyFileType(mimeType)
 
+	// 解析 default provider — 决定本次上传去哪个后端
+	store, provider, err := s.resolveStore(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	// 构建存储键：{年}/{月}/{毫秒时间戳}_{安全文件名}
 	now := time.Now()
 	safeName := sanitizeFilename(fh.Filename)
 	key := fmt.Sprintf("%d/%02d/%d_%s", now.Year(), now.Month(), now.UnixMilli(), safeName)
 
-	url, err := s.store.Upload(ctx, key, f, fh.Size, mimeType)
+	// 非 LOCAL provider 在上传前先把图片 buffer 缓存一份到内存,
+	// 用于 PutObject 之后 in-process 算 width/height + 生成 thumb,避免再 GetObject 拉回。
+	// 体积 > maxThumbnailMemorySize 时退化为流式上传(算不出尺寸),由 IsImage 判定决定。
+	var imgBuf []byte
+	isImg := imgproc.IsImage(mimeType)
+	storageType := store.Type()
+	useReaderForImg := isImg && !strings.EqualFold(storageType, "LOCAL") && fh.Size > 0 && fh.Size <= maxThumbnailMemorySize
+	var uploadBody io.Reader = f
+	if useReaderForImg {
+		buf, rerr := io.ReadAll(f)
+		if rerr != nil {
+			return nil, fmt.Errorf("read image into buffer: %w", rerr)
+		}
+		imgBuf = buf
+		uploadBody = bytes.NewReader(buf)
+	}
+
+	publicURL, err := store.Upload(ctx, key, uploadBody, fh.Size, mimeType)
 	if err != nil {
 		return nil, err
 	}
@@ -157,30 +294,46 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 		Filename:     safeName,
 		OriginalName: fh.Filename,
 		FilePath:     key,
-		FileURL:      url,
-		FileSize:     fh.Size,
-		MimeType:     &mimeType,
-		FileType:     fileType,
-		StorageType:  s.store.Type(),
-		UploaderID:   uploaderID,
-		FolderID:     folderID,
+		// file_url 存相对 key,后续切 provider 仍可用;cdn_url 存当前完整可访问 URL,前端永远读 cdn_url。
+		FileURL:     key,
+		FileSize:    fh.Size,
+		MimeType:    &mimeType,
+		FileType:    fileType,
+		StorageType: storageType,
+		UploaderID:  uploaderID,
+		FolderID:    folderID,
+		CdnURL:      &publicURL,
+	}
+	if provider != nil {
+		pid := provider.ID
+		m.StorageProviderID = &pid
 	}
 
-	// 仅对本地存储模式下的图片文件提取尺寸并生成缩略图
-	if imgproc.IsImage(mimeType) {
-		if localStore, ok := s.store.(*storage.LocalStorage); ok {
-			_ = localStore // 仅作类型断言，实际通过 uploadDir 路径访问文件
+	// 提取尺寸 + 生成缩略图
+	if isImg {
+		if strings.EqualFold(storageType, "LOCAL") {
+			// LOCAL 路径仍走老逻辑:读磁盘 + 异步落盘
 			localPath := filepath.Join(s.uploadDir, key)
-			if w, h, err := imgproc.GetDimensions(localPath); err == nil {
+			if w, h, derr := imgproc.GetDimensions(localPath); derr == nil {
 				m.Width = &w
 				m.Height = &h
-				// 异步生成缩略图，避免阻塞上传响应
 				go func() {
 					thumbKey := "thumbnails/" + key
 					thumbPath := filepath.Join(s.uploadDir, thumbKey)
-					_ = imgproc.GenerateThumbnail(localPath, thumbPath, 300)
+					if terr := imgproc.GenerateThumbnail(localPath, thumbPath, 300); terr != nil {
+						log.Warn().Err(terr).Str("key", key).Msg("local thumbnail generation failed")
+					}
 				}()
 			}
+		} else if useReaderForImg && len(imgBuf) > 0 {
+			// 远程 provider:复用 imgBuf 算尺寸 + 生成 thumb 后上传到同 provider
+			if w, h, derr := imgproc.GetDimensionsFromReader(bytes.NewReader(imgBuf)); derr == nil {
+				m.Width = &w
+				m.Height = &h
+			} else {
+				log.Warn().Err(derr).Str("key", key).Msg("remote image dimension probe failed")
+			}
+			s.uploadRemoteThumbnailAsync(store, key, mimeType, imgBuf, provider)
 		}
 	}
 
@@ -190,6 +343,122 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 
 	vo := toMediaFileVO(*m)
 	return &vo, nil
+}
+
+// UpdateContentParams 是 MediaService.UpdateContent 的参数集。
+type UpdateContentParams struct {
+	MediaID   int64
+	NewBody   io.Reader // 新内容,UpdateContent 内部消费(可能读两次,如果是 Seeker)
+	NewSize   int64
+	Filename  string // 用于 MIME / extension 嗅探
+	CreatedBy *int64
+}
+
+// UpdateContent 替换某条媒体的二进制内容(图片编辑器保存场景)。
+//
+// 行为:
+//   1. 按 media.StorageProviderID 反查源 store(主文件所在 provider)。
+//   2. 在同一 provider 上写新 key:{年}/{月}/{毫秒时间戳}_edited{ext}。
+//   3. 更新 media_files 的 file_path/file_url/file_size/current_version + cdn_url
+//      (cdn_url 末尾追加 ?v={current_version} 自动让 CDN 缓存失效)。
+//   4. 旧 key 不立即删 — 保留给 version_history 服务做版本回滚。
+//
+// 缩略图: 远程 provider 模式下不重新生成(避免读取大文件回内存);LOCAL 模式同样跳过,
+// 因为 thumbnails/* 是按主文件 key 命名的,新 key 与缩略图脱节,thumbnails 重生成
+// 留到下个用户访问该图片时按需触发(目前未实装,本次仅修复主文件更新)。
+func (s *MediaService) UpdateContent(ctx context.Context, params UpdateContentParams) (*dto.MediaFileVO, error) {
+	media, err := s.repo.FindByID(ctx, params.MediaID)
+	if err != nil {
+		return nil, err
+	}
+	if media == nil {
+		return nil, errors.New("media not found")
+	}
+
+	store, _, err := s.resolveStoreForMedia(ctx, media)
+	if err != nil {
+		return nil, err
+	}
+
+	// 嗅探 MIME (前 512 字节,适用于 image/jpeg 等)
+	sniffBuf := make([]byte, 512)
+	if seeker, ok := params.NewBody.(io.Seeker); ok {
+		n, _ := io.ReadFull(params.NewBody, sniffBuf)
+		_, _ = seeker.Seek(0, io.SeekStart)
+		sniffBuf = sniffBuf[:n]
+	}
+	detectedMime := http.DetectContentType(sniffBuf)
+	if detectedMime == "application/octet-stream" || detectedMime == "application/zip" {
+		if guessed := guessMimeType(params.Filename); guessed != "application/octet-stream" {
+			detectedMime = guessed
+		}
+	}
+	if !allowedMimeTypes[detectedMime] {
+		return nil, fmt.Errorf("不允许上传该文件类型: %s", detectedMime)
+	}
+
+	// 构造新 key
+	now := time.Now()
+	ext := filepath.Ext(params.Filename)
+	if ext == "" {
+		ext = filepath.Ext(media.Filename)
+	}
+	newKey := fmt.Sprintf("%d/%02d/%d_edited%s", now.Year(), now.Month(), now.UnixMilli(), ext)
+
+	// 写到同一 provider
+	publicURL, err := store.Upload(ctx, newKey, params.NewBody, params.NewSize, detectedMime)
+	if err != nil {
+		return nil, fmt.Errorf("upload edited content: %w", err)
+	}
+
+	newVersion := media.CurrentVersion + 1
+	// cdn_url 末尾追加 ?v={version} 让 CDN 缓存自动失效;若 publicURL 已含 query,改用 &
+	cdnURL := publicURL
+	if strings.Contains(cdnURL, "?") {
+		cdnURL = fmt.Sprintf("%s&v=%d", cdnURL, newVersion)
+	} else {
+		cdnURL = fmt.Sprintf("%s?v=%d", cdnURL, newVersion)
+	}
+
+	if err := s.repo.UpdateFileContentV2(ctx, params.MediaID, newKey, newKey, params.NewSize, newVersion, cdnURL); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, params.MediaID)
+}
+
+// uploadRemoteThumbnailAsync 异步把缩略图上传到 store 上 thumbnails/{key},
+// 并写入 media_variants 表 (variant_type=THUMBNAIL,storage_provider_id 同主文件)。
+//
+// 失败只 log,不阻塞主流程也不让上传请求失败。
+func (s *MediaService) uploadRemoteThumbnailAsync(store storage.Storage, mainKey, mimeType string, src []byte, provider *model.StorageProvider) {
+	go func() {
+		ctx := context.Background()
+		thumbBytes, err := imgproc.GenerateThumbnailFromReader(bytes.NewReader(src), 300, imgproc.FormatFromMime(mimeType))
+		if err != nil {
+			log.Warn().Err(err).Str("key", mainKey).Msg("remote thumbnail generation failed")
+			return
+		}
+		thumbKey := "thumbnails/" + mainKey
+		thumbMime := "image/jpeg"
+		if format := imgproc.FormatFromMime(mimeType); format != "jpeg" {
+			thumbMime = "image/" + format
+		}
+		thumbURL, err := store.Upload(ctx, thumbKey, bytes.NewReader(thumbBytes), int64(len(thumbBytes)), thumbMime)
+		if err != nil {
+			log.Warn().Err(err).Str("thumb_key", thumbKey).Msg("remote thumbnail upload failed")
+			return
+		}
+		// 记录到 media_variants 表(provider_id 与主文件一致)
+		var providerID *int64
+		if provider != nil {
+			pid := provider.ID
+			providerID = &pid
+		}
+		if err := s.repo.UpsertVariant(ctx, mainKey, thumbKey, thumbURL, int64(len(thumbBytes)), providerID); err != nil {
+			log.Warn().Err(err).Str("thumb_key", thumbKey).Msg("media_variants insert failed")
+		}
+	}()
 }
 
 // GetForAdmin 返回支持多条件过滤的分页媒体文件列表，供管理后台媒体管理页使用。
@@ -285,8 +554,19 @@ func (s *MediaService) RestoreBatch(ctx context.Context, ids []int64) error {
 }
 
 // PermanentDelete 从存储后端删除文件，并彻底移除数据库记录，不可恢复。
-// 错误场景：文件记录不存在。存储删除失败时静默忽略，仍删除数据库记录。
+// Phase 1 修复:按 m.StorageProviderID 反查对应 store 删除(原实现写死 s.store 在 S3
+// 模式下永远删本地不存在的路径,留下大量孤儿文件)。
+//
+// 错误场景: 文件记录不存在;存储删除失败时返回错误并保留 DB 行,避免 catalog/后端
+// 状态分裂(老实现的"静默忽略"被刻意改成"必须显式忽略" — 上层若想跳过云端删除应走
+// PermanentDeleteWithOptions(deleteCloud=false))。
 func (s *MediaService) PermanentDelete(ctx context.Context, id int64) error {
+	return s.PermanentDeleteWithOptions(ctx, id, true)
+}
+
+// PermanentDeleteWithOptions 是 PermanentDelete 的可控版本: deleteCloud=false 仅清 DB
+// 行(后端文件保留),用于"管理员只想擦 catalog 但保留云端原件"的场景。
+func (s *MediaService) PermanentDeleteWithOptions(ctx context.Context, id int64, deleteCloud bool) error {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
@@ -294,19 +574,165 @@ func (s *MediaService) PermanentDelete(ctx context.Context, id int64) error {
 	if m == nil {
 		return errors.New("文件不存在")
 	}
-	// 先删除存储后端文件（失败时静默忽略，保证数据库记录被清除）
-	_ = s.store.Delete(ctx, m.FilePath)
+	if deleteCloud {
+		store, _, rerr := s.resolveStoreForMedia(ctx, m)
+		if rerr != nil {
+			log.Warn().Err(rerr).Int64("id", id).Msg("resolve storage failed, skipping backend delete")
+		} else if store != nil {
+			if derr := store.Delete(ctx, m.FilePath); derr != nil {
+				// 后端删除失败 — 不阻塞 DB 清理,但记录日志便于运维补漏
+				log.Warn().Err(derr).Int64("id", id).Str("path", m.FilePath).Msg("backend delete failed")
+			}
+			// 同步删除缩略图 variant
+			s.deleteVariantsBackend(ctx, store, id)
+		}
+	}
 	return s.repo.PermanentDelete(ctx, id)
 }
 
-// PermanentDeleteBatch 批量彻底删除多个媒体文件的数据库记录（不删除存储后端文件）。
-func (s *MediaService) PermanentDeleteBatch(ctx context.Context, ids []int64) error {
-	return s.repo.PermanentDeleteBatch(ctx, ids)
+// PermanentDeleteBatch 批量彻底删除媒体文件。
+// Phase 1 安全修复(VULN):
+//  1. 在 service 层做 ownership 校验 — 把每条记录按 uploader_id 与 actor 对照,
+//     非 admin 又非 owner 的记录直接拒绝(整批失败,避免攻击者构造 ID 列表越权)。
+//  2. 按 storage_provider_id 分组,逐 provider 删后端,清掉孤儿文件。
+//  3. 删除失败的 ID 仍在 failedIDs 中,但成功的部分已落库(返回错误时调用方可读 failed)。
+//
+// actor=nil 表示绕过 ownership 校验(供后台/系统任务使用)。
+func (s *MediaService) PermanentDeleteBatch(ctx context.Context, ids []int64, actor *middleware.LoginUserSnapshot) ([]int64, error) {
+	return s.PermanentDeleteBatchWithOptions(ctx, ids, actor, true)
 }
 
-// EmptyTrash 永久删除所有软删除（回收站中）的媒体文件数据库记录。
+// PermanentDeleteBatchWithOptions 是 PermanentDeleteBatch 的可控版本,deleteCloud=false 时
+// 跳过对存储后端的删除调用(只清 catalog)。
+//
+// 返回 (failedIDs, err):
+//   - err != nil 表示整批被中止(典型: ownership 失败)。
+//   - err == nil 但 failedIDs 非空 → 部分文件后端删除失败,DB 已清理。
+func (s *MediaService) PermanentDeleteBatchWithOptions(ctx context.Context, ids []int64, actor *middleware.LoginUserSnapshot, deleteCloud bool) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	records, err := s.repo.FindManyByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	// ownership 校验 — non-admin 必须是每条 record 的 owner;匿名上传只允许 admin 处理。
+	if actor != nil && !actor.IsAdmin {
+		for _, id := range ids {
+			m, ok := records[id]
+			if !ok {
+				// 不存在的 ID,直接返回 forbidden 防止 ID 探测
+				return nil, errors.New("无权操作他人资源")
+			}
+			if m.UploaderID == nil || *m.UploaderID != actor.UserID {
+				return nil, errors.New("无权操作他人资源")
+			}
+		}
+	}
+
+	failed := make([]int64, 0)
+	if deleteCloud {
+		// 按 provider 分组,逐 provider 删后端
+		byProvider := make(map[int64][]model.MediaFile) // 0 = local/unset
+		for _, m := range records {
+			pid := int64(0)
+			if m.StorageProviderID != nil {
+				pid = *m.StorageProviderID
+			}
+			byProvider[pid] = append(byProvider[pid], m)
+		}
+
+		for pid, group := range byProvider {
+			var store storage.Storage
+			var resolveErr error
+			if pid == 0 {
+				store = s.localStore
+			} else {
+				p := pid
+				store, _, resolveErr = s.resolveStore(ctx, &p)
+			}
+			if resolveErr != nil {
+				log.Warn().Err(resolveErr).Int64("provider_id", pid).Msg("batch delete: resolve store failed, recording all as failed")
+				for _, m := range group {
+					failed = append(failed, m.ID)
+				}
+				continue
+			}
+			for _, m := range group {
+				if derr := store.Delete(ctx, m.FilePath); derr != nil {
+					log.Warn().Err(derr).Int64("id", m.ID).Msg("batch delete: backend delete failed")
+					failed = append(failed, m.ID)
+				}
+				s.deleteVariantsBackend(ctx, store, m.ID)
+			}
+		}
+	}
+
+	if err := s.repo.PermanentDeleteBatch(ctx, ids); err != nil {
+		return failed, err
+	}
+	return failed, nil
+}
+
+// EmptyTrash 永久删除所有软删除(回收站中)的媒体文件,先按 provider 分组删后端,再清表。
+// Phase 1 修复:原实现只清 DB 行,导致回收站清空后云端文件成孤儿。
 func (s *MediaService) EmptyTrash(ctx context.Context) error {
+	all, err := s.repo.FindAllInTrash(ctx)
+	if err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		return s.repo.EmptyTrash(ctx)
+	}
+	// 按 provider 分组
+	byProvider := make(map[int64][]model.MediaFile)
+	for _, m := range all {
+		pid := int64(0)
+		if m.StorageProviderID != nil {
+			pid = *m.StorageProviderID
+		}
+		byProvider[pid] = append(byProvider[pid], m)
+	}
+	for pid, group := range byProvider {
+		var store storage.Storage
+		if pid == 0 {
+			store = s.localStore
+		} else {
+			p := pid
+			st, _, rerr := s.resolveStore(ctx, &p)
+			if rerr != nil {
+				log.Warn().Err(rerr).Int64("provider_id", pid).Msg("empty trash: resolve store failed")
+				continue
+			}
+			store = st
+		}
+		for _, m := range group {
+			if derr := store.Delete(ctx, m.FilePath); derr != nil {
+				log.Warn().Err(derr).Int64("id", m.ID).Msg("empty trash: backend delete failed")
+			}
+			s.deleteVariantsBackend(ctx, store, m.ID)
+		}
+	}
 	return s.repo.EmptyTrash(ctx)
+}
+
+// deleteVariantsBackend 清掉指定 mediaID 的所有 variants 在后端的对应文件,以及 media_variants 行。
+// 用 store 是因为 variants 与主文件存在同一 provider(Phase 1 约束),不需要再反查 provider。
+func (s *MediaService) deleteVariantsBackend(ctx context.Context, store storage.Storage, mediaID int64) {
+	variants, err := s.repo.ListVariants(ctx, mediaID)
+	if err != nil {
+		log.Warn().Err(err).Int64("media_id", mediaID).Msg("list variants failed")
+		return
+	}
+	for _, v := range variants {
+		if derr := store.Delete(ctx, v.FilePath); derr != nil {
+			log.Warn().Err(derr).Int64("media_id", mediaID).Str("variant_path", v.FilePath).Msg("variant backend delete failed")
+		}
+	}
+	if derr := s.repo.DeleteVariantsByMediaID(ctx, mediaID); derr != nil {
+		log.Warn().Err(derr).Int64("media_id", mediaID).Msg("variant rows delete failed")
+	}
 }
 
 // GetTrashCount 返回当前回收站中软删除媒体文件的数量。
@@ -317,23 +743,39 @@ func (s *MediaService) GetTrashCount(ctx context.Context) (int64, error) {
 // --- 内部辅助函数 ---
 
 // toMediaFileVO 将单个 model.MediaFile 转换为 dto.MediaFileVO。
+//
+// Phase 1 增补:除原字段外,把 storage_provider_id / cdn_url 暴露给前端。前端 mediaService.ts
+// 的 getMediaUrl 优先读 cdnUrl,空时回落 fileUrl(LOCAL 仍走 /api/uploads/前缀)。
+//
+// Phase 4 增补:暴露 sync_status / backup_* 字段。
 func toMediaFileVO(m model.MediaFile) dto.MediaFileVO {
-	return dto.MediaFileVO{
-		ID:           m.ID,
-		Filename:     m.Filename,
-		OriginalName: m.OriginalName,
-		FileURL:      m.FileURL,
-		FileSize:     m.FileSize,
-		MimeType:     m.MimeType,
-		FileType:     m.FileType,
-		StorageType:  m.StorageType,
-		Width:        m.Width,
-		Height:       m.Height,
-		AltText:      m.AltText,
-		FolderID:     m.FolderID,
-		Deleted:      m.Deleted,
-		CreatedAt:    m.CreatedAt,
+	vo := dto.MediaFileVO{
+		ID:                m.ID,
+		Filename:          m.Filename,
+		OriginalName:      m.OriginalName,
+		FileURL:           m.FileURL,
+		FileSize:          m.FileSize,
+		MimeType:          m.MimeType,
+		FileType:          m.FileType,
+		StorageType:       m.StorageType,
+		Width:             m.Width,
+		Height:            m.Height,
+		AltText:           m.AltText,
+		FolderID:          m.FolderID,
+		Deleted:           m.Deleted,
+		CreatedAt:         m.CreatedAt,
+		StorageProviderID: m.StorageProviderID,
+		SyncStatus:        m.SyncStatus,
+		BackupProviderID:  m.BackupProviderID,
+		BackupAt:          m.BackupAt,
 	}
+	if m.CdnURL != nil {
+		vo.CdnURL = *m.CdnURL
+	}
+	if m.BackupURL != nil {
+		vo.BackupURL = *m.BackupURL
+	}
+	return vo
 }
 
 // classifyFileType 根据 MIME 类型将文件归类为 IMAGE/VIDEO/AUDIO/DOCUMENT/OTHER。

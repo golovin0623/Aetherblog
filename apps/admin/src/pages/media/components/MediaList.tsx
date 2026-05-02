@@ -8,6 +8,7 @@ import { Image, Video, Music, FileText, Download, Trash2, Eye, Link2, FolderInpu
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
 import { format } from 'date-fns';
+import { StorageBadge } from './StorageBadge';
 
 interface MediaListProps {
   items: MediaItem[];
@@ -84,7 +85,7 @@ export function MediaList({
             const Icon = typeIcons[item.fileType] || FileText;
             const isSidebarSelected = selectedId === item.id;
             const isBatchSelected = selectedIds.has(item.id);
-            const fullUrl = getMediaUrl(item.fileUrl);
+            const fullUrl = getMediaUrl(item);
 
             return (
               <tr
@@ -121,9 +122,13 @@ export function MediaList({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-sm text-[var(--text-secondary)]">
-                    {typeLabels[item.fileType] || item.fileType}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-[var(--text-secondary)]">
+                      {typeLabels[item.fileType] || item.fileType}
+                    </span>
+                    {/* Phase 3 存储徽章 */}
+                    {item.storageType && <StorageBadge type={item.storageType} size="sm" />}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
                   {formatFileSize(item.fileSize)}

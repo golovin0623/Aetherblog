@@ -4,10 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -16,25 +13,23 @@ import (
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
-	"github.com/golovin0623/aetherblog-server/internal/pkg/storage"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
 
 // MediaHandler 负责处理媒体文件的上传、列表、回收站及版本管理接口。
-// 版本相关依赖（versionSvc、store、mediaRepo）为可选项，
-// 使用 UploadContent 接口前须先调用 SetVersionDeps 进行注入。
+//
+// versionSvc / mediaRepo 为可选项,UploadContent 端点用来在保存编辑前先做版本快照。
+// 不再需要直接持有 storage.Storage 字段(早期实现的字段 — UploadContent 写死 localStore
+// 在 S3 模式下会失效);现走 service.MediaService.UpdateContent 自动按 provider 解析。
 type MediaHandler struct {
 	svc         *service.MediaService
-	versionSvc  *service.VersionService // 可选；UploadContent 接口所必需
-	store       storage.Storage          // 可选；UploadContent 接口所必需
-	uploadDir   string                   // 本地上传根目录
-	mediaRepo   *repository.MediaRepo    // 可选；UploadContent 接口所必需
+	versionSvc  *service.VersionService // 可选;UploadContent 用来写版本快照(没注入时不写快照仍可保存)
+	mediaRepo   *repository.MediaRepo   // 可选;UploadContent 用来读旧记录给版本快照
 	activitySvc *service.ActivityService
 }
 
 // NewMediaHandler 创建一个仅含核心 MediaService 的 MediaHandler 实例。
-// 如需启用带版本控制的文件内容替换功能，请调用 SetVersionDeps 注入相关依赖。
 func NewMediaHandler(svc *service.MediaService, activitySvc *service.ActivityService) *MediaHandler {
 	return &MediaHandler{svc: svc, activitySvc: activitySvc}
 }
@@ -56,11 +51,11 @@ func (h *MediaHandler) assertMediaOwnership(c echo.Context, mediaID int64) error
 	return middleware.AssertOwnership(c, uploaderID)
 }
 
-// SetVersionDeps 注入版本相关的可选依赖，以启用文件内容上传功能。
-func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, store storage.Storage, uploadDir string, mediaRepo *repository.MediaRepo) {
+// SetVersionDeps 注入版本相关的可选依赖,启用 UploadContent 写快照能力。
+//
+// 不传也能用 UploadContent — 但保存前的版本快照会被跳过。
+func (h *MediaHandler) SetVersionDeps(versionSvc *service.VersionService, mediaRepo *repository.MediaRepo) {
 	h.versionSvc = versionSvc
-	h.store = store
-	h.uploadDir = uploadDir
 	h.mediaRepo = mediaRepo
 }
 
@@ -273,13 +268,25 @@ func (h *MediaHandler) BatchRestore(c echo.Context) error {
 
 // PermanentDeleteBatch 处理 DELETE /admin/media/trash/batch-permanent 请求，
 // 不可逆地彻底删除回收站中的多个文件。
+//
+// SECURITY (VULN, Phase 1): 在 service 层做 ownership 校验,非 admin 用户只能批量
+// 永久删除自己上传的文件。failedIDs 表示后端删除失败但 DB 已清理的文件,前端可在
+// "管理员手动清理"流程里据此告警。
+//
+// Phase 3 query: ?deleteCloud=false → 仅清 DB 行(后端文件保留)。
 func (h *MediaHandler) PermanentDeleteBatch(c echo.Context) error {
 	ids, err := bindIDs(c)
 	if err != nil {
 		return err
 	}
-	if err := h.svc.PermanentDeleteBatch(c.Request().Context(), ids); err != nil {
-		return response.Error(c, err)
+	deleteCloud := c.QueryParam("deleteCloud") != "false"
+	actor := middleware.SnapshotFromContext(c)
+	failed, err := h.svc.PermanentDeleteBatchWithOptions(c.Request().Context(), ids, actor, deleteCloud)
+	if err != nil {
+		return response.FailWith(c, response.Forbidden, err.Error())
+	}
+	if len(failed) > 0 {
+		return response.OK(c, map[string]any{"failedIds": failed})
 	}
 	return response.OKEmpty(c)
 }
@@ -417,6 +424,9 @@ func (h *MediaHandler) Restore(c echo.Context) error {
 
 // PermanentDelete 处理 DELETE /admin/media/:id/permanent 请求，
 // 不可逆地彻底删除单个文件。
+//
+// Phase 3 query: ?deleteCloud=false → 仅清 DB 行,后端文件保留(适合"先抢救云端原件"流程)。
+// 默认 true (与历史行为一致 — 后端 + DB 一并清除)。
 func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -426,7 +436,8 @@ func (h *MediaHandler) PermanentDelete(c echo.Context) error {
 	if err := h.assertMediaOwnership(c, id); err != nil {
 		return err
 	}
-	if err := h.svc.PermanentDelete(c.Request().Context(), id); err != nil {
+	deleteCloud := c.QueryParam("deleteCloud") != "false"
+	if err := h.svc.PermanentDeleteWithOptions(c.Request().Context(), id, deleteCloud); err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
 	return response.OKEmpty(c)
@@ -456,14 +467,16 @@ func (h *MediaHandler) recordMediaActivity(c echo.Context, eventType, title, des
 }
 
 // UploadContent 处理 POST /admin/media/:id/content 请求。
-// 替换文件的二进制内容：先对当前文件生成版本快照，
-// 再将新内容上传至存储，最后更新数据库中的路径、URL、大小和版本号。
-// 使用前需确保已调用 SetVersionDeps 注入相关依赖。
+//
+// 替换文件的二进制内容(图片编辑器保存场景):
+//   1. 校验 ownership;
+//   2. 若 versionSvc 已注入,先把当前版本快照写入 media_versions(用于版本回滚);
+//   3. 调 MediaService.UpdateContent 走对应 provider 上传新内容 + 更新 catalog。
+//
+// 关键修复(遗留 4):原实现写死 h.store(只在 LOCAL 可用,云模式静默失效),且
+// h.store 一直未被 server.go 注入 → 端点之前一直返回 "版本服务未配置"。
+// 现走 svc.UpdateContent 自动按 storage_provider_id 解析。
 func (h *MediaHandler) UploadContent(c echo.Context) error {
-	if h.versionSvc == nil || h.store == nil || h.mediaRepo == nil {
-		return response.FailWith(c, response.InternalError, "版本服务未配置")
-	}
-
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "无效的ID")
@@ -484,69 +497,47 @@ func (h *MediaHandler) UploadContent(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	// 获取当前文件记录
-	existing, err := h.mediaRepo.FindByID(ctx, id)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	if existing == nil {
-		return response.FailWith(c, response.NotFound, "文件不存在")
+	// 写版本快照(可选 — versionSvc 没注入时跳过)
+	if h.versionSvc != nil && h.mediaRepo != nil {
+		existing, err := h.mediaRepo.FindByID(ctx, id)
+		if err != nil {
+			return response.Error(c, err)
+		}
+		if existing == nil {
+			return response.FailWith(c, response.NotFound, "文件不存在")
+		}
+		lu := middleware.GetLoginUser(c)
+		var createdBy *int64
+		if lu != nil {
+			createdBy = &lu.UserID
+		}
+		desc := "编辑前自动保存"
+		if err := h.versionSvc.CreateVersionFromFile(ctx, existing, desc, createdBy); err != nil {
+			return response.Error(c, err)
+		}
 	}
 
-	// 替换前先保存当前版本快照
-	lu := middleware.GetLoginUser(c)
-	var createdBy *int64
-	if lu != nil {
-		createdBy = &lu.UserID
-	}
-	desc := "编辑前自动保存"
-	if err := h.versionSvc.CreateVersionFromFile(ctx, existing, desc, createdBy); err != nil {
-		return response.Error(c, err)
-	}
-
-	// 上传新文件内容
 	f, err := fh.Open()
 	if err != nil {
 		return response.Error(c, err)
 	}
 	defer f.Close()
 
-	// 探测 MIME 类型以防止上传危险文件类型
-	sniffBuf := make([]byte, 512)
-	n, sniffErr := io.ReadAtLeast(f, sniffBuf, 1)
-	if sniffErr != nil && sniffErr != io.ErrUnexpectedEOF {
-		return response.Error(c, sniffErr)
-	}
-	detectedMime := http.DetectContentType(sniffBuf[:n])
-	if seeker, ok := f.(io.Seeker); ok {
-		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-			return response.Error(c, fmt.Errorf("failed to reset file reader after MIME detection: %w", err))
-		}
+	lu := middleware.GetLoginUser(c)
+	var createdBy *int64
+	if lu != nil {
+		createdBy = &lu.UserID
 	}
 
-	now := time.Now()
-	ext := filepath.Ext(fh.Filename)
-	if ext == "" {
-		// 若新文件无扩展名，则沿用原文件扩展名
-		ext = filepath.Ext(existing.Filename)
-	}
-	key := fmt.Sprintf("%d/%02d/%d_edited%s", now.Year(), now.Month(), now.UnixMilli(), ext)
-
-	url, err := h.store.Upload(ctx, key, f, fh.Size, detectedMime)
+	vo, err := h.svc.UpdateContent(ctx, service.UpdateContentParams{
+		MediaID:   id,
+		NewBody:   f,
+		NewSize:   fh.Size,
+		Filename:  fh.Filename,
+		CreatedBy: createdBy,
+	})
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, "文件上传失败: "+err.Error())
-	}
-
-	// 更新数据库文件记录（路径、URL、大小、版本号）
-	newVersion := existing.CurrentVersion + 1
-	if err := h.mediaRepo.UpdateFileContent(ctx, id, key, url, fh.Size, newVersion); err != nil {
-		return response.Error(c, err)
-	}
-
-	// 返回更新后的文件信息
-	vo, err := h.svc.GetByID(ctx, id)
-	if err != nil {
-		return response.Error(c, err)
 	}
 	return response.OK(c, vo)
 }

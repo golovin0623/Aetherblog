@@ -25,6 +25,7 @@ const AiConfigPage = lazy(() => import('./pages/ai-config/AiConfigPage'));
 const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
 const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
+const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage'));
 
 // 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -82,6 +83,7 @@ function App() {
               <Route path="posts/ai-writing/:id" element={<AiWritingWorkspacePage />} />
               <Route path="media" element={<MediaPage />} />
               <Route path="media/folder/:folderId/permissions" element={<FolderPermissionsWrapper />} />
+              <Route path="storage/explorer" element={<CloudExplorerPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="comments" element={<CommentsPage />} />
               <Route path="friends" element={<FriendsPage />} />
