@@ -1,71 +1,136 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
 
 from app.core.config import get_settings
+from app.services.chunker import Chunk, split as chunk_split
 from app.services.llm_router import LlmRouter
 
 logger = logging.getLogger("ai-service")
 
 
-# ref: §2.4.2.5, §4.4 · Plan V3 (migration 000034)
+# ref: §2.4.2.5, §4.4 · Plan V3 (migrations 000034 + 000041)
 #
-# 存储模型（版本化，蓝绿切换）：
-#   - post_embeddings 表按 (post_id, model_id) 唯一，多模型可共存
+# 存储模型（profile 化，多 chunk，蓝绿切换）：
+#   - search_profiles 表存"完整索引配置单元"：(model + chunker + chunk_size + overlap)
+#   - post_embeddings 按 (post_id, profile_id, chunk_index) 唯一，多 chunk × 多 profile 共存
 #   - embedding 列不锁 dim，HNSW 通过 partial expression 索引按 dim 分桶
-#   - site_settings.search.active_embedding_model 指向当前活跃模型
-#   - 换模型 reindex = 先把新 embeddings 以 status='shadow' 写进新列，全部
-#     完成后用一条事务同时做三件事：shadow→active / 旧 active→deprecated /
-#     翻转 site_settings 指针。搜索流量在翻转前永远落在旧模型上，翻转后
-#     原子落到新模型上——任何时刻都有一组完整的 active 行可查。
+#   - site_settings.search.active_profile_code 指向当前活跃 profile
+#   - 换 profile reindex = 新 profile 以 status='shadow' 写新行，全部完成后用一条
+#     事务同时做四件事：
+#       (a) 新 profile shadow→active
+#       (b) 同一 profile 下 post_embeddings 行 shadow→active
+#       (c) 旧 profile→deprecated（含表 + 旧 post_embeddings 行）
+#       (d) 翻转 site_settings.search.active_profile_code
+#     搜索流量在翻转前永远落在旧 profile，翻转后原子落到新 profile。
+
+
+@dataclass
+class SearchProfile:
+    """从 search_profiles 表读出来的活跃配置快照。"""
+
+    id: int
+    code: str
+    name: str
+    description: str | None
+    model_id: str
+    chunker_kind: str
+    chunk_size_tokens: int
+    chunk_overlap_tokens: int
+    status: str
+
+
 class VectorStoreService:
     def __init__(self, pool, llm: LlmRouter) -> None:
         self.pool = pool
         self.llm = llm
         self.settings = get_settings()
+        # 单文档 reindex 内的 chunk 并发上限。embedding API 通常容量充足，
+        # 但限制在 5 是为了不打爆中转网关（OneAPI / LiteLLM proxy 的并发账户）。
+        self._chunk_concurrency = 5
 
-    async def _read_active_model_setting(self) -> str | None:
-        """从 site_settings 读活跃模型指针，未设置时返回 None。"""
+    # ============================================================
+    # Profile resolution
+    # ============================================================
+
+    async def _read_active_profile_code(self) -> str | None:
+        """从 site_settings 读 active_profile_code，未配返回 None。"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT setting_value FROM site_settings "
-                "WHERE setting_key = 'search.active_embedding_model'"
+                "WHERE setting_key = 'search.active_profile_code'"
             )
         if row and row["setting_value"]:
             return row["setting_value"].strip()
         return None
 
-    async def _get_active_embedding_model(self) -> str:
-        """读 site_settings.search.active_embedding_model；缺省回退到 llm 路由。
+    async def _fetch_profile_by_code(self, code: str) -> SearchProfile | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, code, name, description, model_id, chunker_kind,
+                       chunk_size_tokens, chunk_overlap_tokens, status
+                FROM search_profiles WHERE code = $1
+                """,
+                code,
+            )
+        if not row:
+            return None
+        return SearchProfile(**dict(row))
+
+    async def _fetch_profile_by_status_active(self) -> SearchProfile | None:
+        """Fallback：当 active_profile_code 未配时，按 status='active' 取 profile。"""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, code, name, description, model_id, chunker_kind,
+                       chunk_size_tokens, chunk_overlap_tokens, status
+                FROM search_profiles WHERE status = 'active' LIMIT 1
+                """
+            )
+        if not row:
+            return None
+        return SearchProfile(**dict(row))
+
+    async def get_active_profile(self) -> SearchProfile:
+        """读当前活跃 profile。
 
         来源优先级：
-          1) site_settings 里 admin 明确写入的活跃模型（蓝绿切换的权威指针）
-          2) llm_router 解析的 embedding 路由（仅首次部署时 site_settings 未
-             写入的 bootstrap 场景使用）
+          1) site_settings.search.active_profile_code 指针
+          2) search_profiles 表里 status='active' 的行（兜底）
+          3) 抛 503 让上游知道还没有可用 profile
         """
-        value = await self._read_active_model_setting()
-        if value:
-            return value
-        return await self.llm.resolve_embedding_model_id()
-
-    async def _upsert_active_model_setting(self, model: str) -> None:
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO site_settings
-                    (setting_key, setting_value, setting_type, group_name, description)
-                VALUES ('search.active_embedding_model', $1, 'STRING', 'search',
-                    '当前活跃的 embedding 模型 ID')
-                ON CONFLICT (setting_key) DO UPDATE
-                SET setting_value = EXCLUDED.setting_value,
-                    updated_at = NOW()
-                """,
-                model,
+        code = await self._read_active_profile_code()
+        if code:
+            profile = await self._fetch_profile_by_code(code)
+            if profile and profile.status == "active":
+                return profile
+            # 指针指向了不存在 / 非 active 的 profile —— 按 status 兜底
+            logger.warning(
+                "active_profile.code_dangling",
+                extra={"data": {"code": code, "found": profile is not None}},
             )
+        profile = await self._fetch_profile_by_status_active()
+        if profile:
+            return profile
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Search Profile 未配置：search_profiles 表里没有 status='active' 的 profile，"
+                "且 site_settings.search.active_profile_code 未指向有效 profile。"
+                "请在搜索配置中创建 profile 或检查 migration 000041 是否成功。"
+            ),
+        )
+
+    # ============================================================
+    # Search (read path) —— 多 chunk 召回 + 文档级聚合
+    # ============================================================
 
     async def semantic_search(self, query: str, limit: int) -> list[dict[str, Any]]:
         embedding = await self.llm.embed(query)
@@ -73,8 +138,7 @@ class VectorStoreService:
         # Defensive: `llm.embed()` 理论上不应返回空向量，但 provider 异常
         # (上游 500/empty body 被 LiteLLM 吞掉) 或模型路由配错都会让我们
         # 拿到 []。不拦住的话 f"::vector({dim})" 会拼出 ::vector(0)，
-        # pgvector 把它当语法错误抛 InvalidTextRepresentation，上层只看到
-        # 500 没有可执行错误信息。
+        # pgvector 把它当语法错误抛 InvalidTextRepresentation。
         if dim <= 0:
             raise HTTPException(
                 status_code=503,
@@ -83,47 +147,71 @@ class VectorStoreService:
                     "请检查搜索配置里的活跃 embedding 模型与上游供应商连通性。"
                 ),
             )
-        active_model = await self._get_active_embedding_model()
-        # pgvector 的 hnsw 对 `vector` 类型限 2000 维 —— text-embedding-3-large
-        # 的 3072 维超过这个阈值, migration 000036 对 dim > 2000 的分区用 halfvec
-        # (float16, hnsw 最大 4000 维). planner 只有在 ORDER BY / WHERE 的 cast
-        # 精确匹配索引表达式时才会选中 partial HNSW, 所以 3072 查询要同步 cast
-        # 成 halfvec; 1536 / 768 等小维仍走 vector.
+        profile = await self.get_active_profile()
+        # pgvector 的 hnsw 对 ``vector`` 类型限 2000 维 —— text-embedding-3-large
+        # 的 3072 维超过这个阈值, 走 halfvec (float16, hnsw 最大 4000 维)。
+        # planner 只有在 ORDER BY / WHERE 的 cast 精确匹配索引表达式时才会
+        # 选中 partial HNSW，所以 3072 查询要同步 cast 成 halfvec; 1536 / 768 等
+        # 小维仍走 vector。
         cast_type = "halfvec" if dim > 2000 else "vector"
-        # 直接查 post_embeddings 替代旧的 search_similar_posts SQL 函数——
-        # 函数签名和调用点已经漂移过一次，改表后一并清掉。
+        # 候选窗口：先取 top-N chunks，再聚合到文档级。窗口太小会漏召回（同
+        # 一篇文章的多个相关 chunks 互相竞争），太大会增加 ranker 延迟。
+        # 经验值：limit*5 上限 200，足够覆盖博客检索场景。
+        candidate_limit = min(max(limit * 5, 50), 200)
         # SECURITY (VULN-060): 仍然显式过滤 deleted/status/password/is_hidden，
-        # 保证公共语义搜索不会泄漏草稿/隐藏/密码保护的内容（snippet 可能暴露
-        # 120+ 字符敏感文本）。
+        # 保证公共语义搜索不会泄漏草稿/隐藏/密码保护的内容。
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 f"""
+                WITH candidate_chunks AS (
+                    SELECT
+                        pe.post_id,
+                        pe.chunk_index,
+                        pe.chunk_text,
+                        1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
+                    FROM post_embeddings pe
+                    WHERE pe.profile_id = $2
+                      AND pe.status = 'active'
+                      AND pe.dim = $3
+                    ORDER BY pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
+                    LIMIT $4
+                ),
+                ranked AS (
+                    SELECT
+                        cc.post_id,
+                        MAX(cc.similarity) AS similarity,
+                        (array_agg(cc.chunk_text ORDER BY cc.similarity DESC NULLS LAST))[1] AS top_chunk_text
+                    FROM candidate_chunks cc
+                    GROUP BY cc.post_id
+                )
                 SELECT
-                    pe.post_id,
+                    r.post_id,
                     p.title,
                     p.slug,
-                    COALESCE(p.content_markdown, '') AS content,
-                    1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
-                FROM post_embeddings pe
-                JOIN posts p ON p.id = pe.post_id
-                WHERE pe.model_id = $2
-                  AND pe.status = 'active'
-                  AND pe.dim = $3
-                  AND p.deleted = FALSE
+                    COALESCE(r.top_chunk_text, p.content_markdown, '') AS content,
+                    r.similarity
+                FROM ranked r
+                JOIN posts p ON p.id = r.post_id
+                WHERE p.deleted = FALSE
                   AND p.status = 'PUBLISHED'
                   AND p.password IS NULL
                   AND p.is_hidden = FALSE
-                  AND 1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) >= $4
-                ORDER BY pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})
-                LIMIT $5
+                  AND r.similarity >= $5
+                ORDER BY r.similarity DESC
+                LIMIT $6
                 """,
                 embedding,
-                active_model,
+                profile.id,
                 dim,
+                candidate_limit,
                 self.settings.search_threshold,
                 limit,
             )
         return [self._row_to_result(row, query) for row in rows]
+
+    # ============================================================
+    # Index (write path) —— chunk + 多向量写入
+    # ============================================================
 
     async def upsert_post_embedding(
         self,
@@ -133,21 +221,73 @@ class VectorStoreService:
         content: str,
         metadata: dict[str, Any],
         timeout_sec: int | None = None,
+        profile: SearchProfile | None = None,
+        target_status: str = "active",
     ) -> dict[str, Any]:
-        # 观测点：把一次索引切成 embed / db_write 两段计时，
-        # 出问题时能从日志直接判断瓶颈在向量生成还是 pgvector 写入。
-        # 注意：项目的 JSONFormatter 只识别 extra={"data": {...}}，裸字段会被丢弃。
+        """对单篇文章按 profile 配置切片 + embed + upsert。
+
+        ``profile=None``：使用 active profile（普通同模型 reindex / 单篇 retry）。
+        ``profile=<shadow_profile>``：用于蓝绿切换的 shadow 写入；调用方负责
+        在所有文章成功后翻转 status / 指针。
+
+        ``target_status``：写入新行时的 status 列值。普通索引走 'active'，
+        蓝绿写 shadow 时走 'shadow'。
+        """
+        profile = profile or await self.get_active_profile()
         content_len = len(content or "")
+
+        # ---- 切片
+        chunks: list[Chunk] = chunk_split(
+            content or "",
+            chunker_kind=profile.chunker_kind,
+            chunk_size_tokens=profile.chunk_size_tokens,
+            chunk_overlap_tokens=profile.chunk_overlap_tokens,
+        )
+        # 空文档（极少见，比如标题文章）：不调用 embedding API，直接标 INDEXED。
+        # 历史 bug：旧实现把空内容也送给 embedding，部分 provider 会拒绝。
+        if not chunks:
+            async with self.pool.acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        "DELETE FROM post_embeddings WHERE post_id = $1 AND profile_id = $2",
+                        post_id,
+                        profile.id,
+                    )
+                    await conn.execute(
+                        "UPDATE posts SET embedding_status = 'INDEXED' WHERE id = $1",
+                        post_id,
+                    )
+            logger.info(
+                "upsert.empty_content",
+                extra={"data": {"post_id": post_id, "profile": profile.code}},
+            )
+            return {
+                "status": "indexed",
+                "profile": profile.code,
+                "model_id": profile.model_id,
+                "chunks": 0,
+            }
+
+        # ---- 并发 embed 每个 chunk
         embed_start = time.perf_counter()
+        semaphore = asyncio.Semaphore(self._chunk_concurrency)
+
+        async def embed_chunk(c: Chunk) -> tuple[Chunk, list[float]]:
+            async with semaphore:
+                vec = await self.llm.embed(c.text, timeout_sec=timeout_sec)
+                return c, vec
+
         try:
-            embedding = await self.llm.embed(content, timeout_sec=timeout_sec)
+            embed_results = await asyncio.gather(*(embed_chunk(c) for c in chunks))
         except Exception:
             embed_ms = (time.perf_counter() - embed_start) * 1000
             logger.warning(
                 "upsert.embed_failed",
                 extra={"data": {
                     "post_id": post_id,
+                    "profile": profile.code,
                     "content_len": content_len,
+                    "chunks": len(chunks),
                     "embed_ms": round(embed_ms, 2),
                 }},
             )
@@ -155,68 +295,77 @@ class VectorStoreService:
             raise
         embed_ms = (time.perf_counter() - embed_start) * 1000
 
-        db_start = time.perf_counter()
-        # 记录 embed() 实际路由到的模型——reindex 的 "model changed → deprecate"
-        # 判断依赖这里写对，不能用 env 默认。
-        model_id = await self.llm.resolve_embedding_model_id()
-        dim = len(embedding) if embedding else 0
-        if dim <= 0:
+        # ---- 校验维度统一
+        first_dim = len(embed_results[0][1]) if embed_results else 0
+        if first_dim <= 0:
             await self._mark_post_failed(post_id)
             raise ValueError(f"embedding returned empty vector for post {post_id}")
+        for c, vec in embed_results:
+            if len(vec) != first_dim:
+                await self._mark_post_failed(post_id)
+                raise ValueError(
+                    f"chunk #{c.index} dim={len(vec)} differs from chunk #0 dim={first_dim}; "
+                    "embedding model returned mixed-dim vectors"
+                )
 
+        # ---- 单事务：DELETE 旧行 + INSERT 全部新 chunks
+        db_start = time.perf_counter()
         try:
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
-                    # 新活跃行：upsert 到 (post_id, model_id)
+                    # 删旧行（同 profile 下，不论新 chunk 数比旧多还是少都干净）
                     await conn.execute(
+                        "DELETE FROM post_embeddings WHERE post_id = $1 AND profile_id = $2",
+                        post_id,
+                        profile.id,
+                    )
+                    # 批量 INSERT 新 chunks
+                    rows_to_insert = [
+                        (
+                            post_id,
+                            profile.id,
+                            profile.model_id,
+                            first_dim,
+                            vec,
+                            target_status,
+                            c.index,
+                            c.text,
+                        )
+                        for c, vec in embed_results
+                    ]
+                    await conn.executemany(
                         """
                         INSERT INTO post_embeddings
-                            (post_id, model_id, dim, embedding, status, indexed_at)
-                        VALUES ($1, $2, $3, $4, 'active', NOW())
-                        ON CONFLICT (post_id, model_id) DO UPDATE
-                        SET embedding = EXCLUDED.embedding,
-                            dim = EXCLUDED.dim,
-                            status = 'active',
-                            indexed_at = NOW()
+                            (post_id, profile_id, model_id, dim, embedding, status, chunk_index, chunk_text, indexed_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
                         """,
-                        post_id,
-                        model_id,
-                        dim,
-                        embedding,
+                        rows_to_insert,
                     )
-                    # 把同一 post 下其他 model_id 的 active 降级为 deprecated，
-                    # 保证每 post 在任一时刻只有一个 active 向量——语义搜索
-                    # 的过滤器 (model_id = active_model AND status='active')
-                    # 不会撞到多行。
-                    await conn.execute(
-                        """
-                        UPDATE post_embeddings
-                        SET status = 'deprecated'
-                        WHERE post_id = $1 AND model_id <> $2 AND status = 'active'
-                        """,
-                        post_id,
-                        model_id,
-                    )
-                    await conn.execute(
-                        "UPDATE posts SET embedding_status = 'INDEXED' WHERE id = $1",
-                        post_id,
-                    )
+                    # 蓝绿写 shadow 时，posts.embedding_status 不变（仍按 active profile 视角）。
+                    # 普通 active 写入 → 标 INDEXED。
+                    if target_status == "active":
+                        await conn.execute(
+                            "UPDATE posts SET embedding_status = 'INDEXED' WHERE id = $1",
+                            post_id,
+                        )
         except Exception:
-            # SILENT-FAILURE FIX：DB 写入失败（例如 dim 校验失败、连接抖动、
-            # 唯一约束冲突）也必须把 post 标 FAILED，否则前端 stats 只看到
-            # pending_posts > 0 就永远显示"索引进行中"。
+            # SILENT-FAILURE FIX：DB 写入失败也必须把 post 标 FAILED，否则前端
+            # stats 看到 pending_posts > 0 永远卡在"索引进行中"。
             db_ms = (time.perf_counter() - db_start) * 1000
             logger.warning(
                 "upsert.db_write_failed",
                 extra={"data": {
                     "post_id": post_id,
-                    "model_id": model_id,
-                    "dim": dim,
+                    "profile": profile.code,
+                    "model_id": profile.model_id,
+                    "dim": first_dim,
+                    "chunks": len(chunks),
                     "db_ms": round(db_ms, 2),
                     "embed_ms": round(embed_ms, 2),
                 }},
             )
-            await self._mark_post_failed(post_id)
+            if target_status == "active":
+                await self._mark_post_failed(post_id)
             raise
         db_ms = (time.perf_counter() - db_start) * 1000
 
@@ -224,14 +373,23 @@ class VectorStoreService:
             "upsert.ok",
             extra={"data": {
                 "post_id": post_id,
+                "profile": profile.code,
                 "content_len": content_len,
+                "chunks": len(chunks),
                 "embed_ms": round(embed_ms, 2),
                 "db_ms": round(db_ms, 2),
-                "vector_dim": dim,
-                "model_id": model_id,
+                "vector_dim": first_dim,
+                "model_id": profile.model_id,
+                "target_status": target_status,
             }},
         )
-        return {"status": "indexed", "model_id": model_id, "dim": dim}
+        return {
+            "status": "indexed",
+            "profile": profile.code,
+            "model_id": profile.model_id,
+            "dim": first_dim,
+            "chunks": len(chunks),
+        }
 
     async def _mark_post_failed(self, post_id: int) -> None:
         """尽力把 post 标 FAILED；此方法本身再挂也吞掉（只打 warning）。"""
@@ -250,37 +408,26 @@ class VectorStoreService:
     async def delete_post_embedding(self, post_id: int) -> dict[str, Any]:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                await conn.execute("DELETE FROM post_embeddings WHERE post_id = $1", post_id)
+                # 删所有 profile 下的 chunks（删文章了，没必要保留蓝绿 shadow）
+                await conn.execute(
+                    "DELETE FROM post_embeddings WHERE post_id = $1", post_id
+                )
                 await conn.execute(
                     "UPDATE posts SET embedding_status = 'PENDING' WHERE id = $1",
                     post_id,
                 )
         return {"status": "deleted"}
 
+    # ============================================================
+    # Reindex —— 在当前 active profile 下重建所有文章
+    # ============================================================
+    #
+    # profile 切换的真·蓝绿编排在 profiles.py 路由的 activate 流程里，
+    # 见 activate_profile()。这里的 reindex() 仅负责"用当前 active profile
+    # 重建所有文章"——同模型 / 同 chunker 配置下的纯刷新。
+
     async def reindex(self) -> dict[str, Any]:
-        """全量重建索引，且支持真·蓝绿模型切换。
-
-        历史方案（被替换）：reindex 一开始就 UPSERT site_settings 指针到新模型，
-        导致 semantic_search 的过滤器立刻改看新 model_id——但此时新向量还没
-        写入，搜索返回空，整个 reindex 窗口（数分钟~数小时）期间语义搜索全挂。
-
-        蓝绿方案（当前）：
-          1) 读 site_settings 里"上一次活跃模型"作为 previous_active
-          2) 若 previous_active 与 router_model 相同 → 同模型 refresh，走旧
-             的 active 路径（仅重算 embedding，无切换窗口）
-          3) 若不同 → 真·蓝绿切换：
-             a. 把所有文章新 embedding 以 status='shadow' 写入 (post_id,
-                router_model) 新行。过程中搜索继续命中旧 model 的 active 行，
-                零空窗
-             b. 全部成功 → 一条事务内同时 (i) shadow→active (ii) 旧 active→
-                deprecated (iii) 翻转 site_settings 指针 (iv) 成功文章的
-                posts.embedding_status = INDEXED。搜索流量原子切换到新模型
-             c. 任一文章失败 → 不翻转。旧模型继续服务搜索，shadow 行保留，
-                admin 修完上游再触发 reindex 即可完成切换
-        """
-        router_model = await self.llm.resolve_embedding_model_id()
-        previous_active = await self._read_active_model_setting()
-
+        profile = await self.get_active_profile()
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT id, title, slug, content_markdown "
@@ -289,26 +436,6 @@ class VectorStoreService:
                 "ORDER BY id ASC"
             )
 
-        # Bootstrap / 同模型路径：不需要蓝绿切换，直接走 active upsert。
-        # previous_active is None: 从未配置过指针（首次部署 / 数据迁移后），
-        # 写入指针并用标准 upsert 走一遍即可。
-        is_model_switch = (
-            previous_active is not None and previous_active != router_model
-        )
-        if not is_model_switch:
-            if previous_active is None:
-                await self._upsert_active_model_setting(router_model)
-            return await self._reindex_in_place(rows, router_model)
-
-        # 真·蓝绿切换
-        return await self._reindex_blue_green(rows, router_model, previous_active)
-
-    async def _reindex_in_place(
-        self,
-        rows: list[Any],
-        active_model: str,
-    ) -> dict[str, Any]:
-        """同模型 reindex——直接走 upsert_post_embedding，无切换窗口。"""
         total = 0
         failed = 0
         for row in rows:
@@ -319,169 +446,31 @@ class VectorStoreService:
                     slug=row["slug"],
                     content=row["content_markdown"] or "",
                     metadata={"status": "PUBLISHED"},
+                    profile=profile,
+                    target_status="active",
                 )
                 total += 1
             except Exception as exc:
                 failed += 1
                 logger.warning(
-                    "reindex.in_place.post_failed",
-                    extra={"data": {"post_id": row["id"], "error": str(exc)[:200]}},
+                    "reindex.post_failed",
+                    extra={"data": {
+                        "post_id": row["id"],
+                        "profile": profile.code,
+                        "error": str(exc)[:200],
+                    }},
                 )
         return {
-            "status": "completed",
+            "status": "completed" if failed == 0 else "partial",
             "indexed": total,
             "failed": failed,
-            "active_model": active_model,
+            "active_profile": profile.code,
+            "model_id": profile.model_id,
         }
 
-    async def _reindex_blue_green(
-        self,
-        rows: list[Any],
-        router_model: str,
-        previous_active: str,
-    ) -> dict[str, Any]:
-        """蓝绿切换：shadow 写入全部成功后一次事务翻转指针。"""
-        logger.info(
-            "reindex.blue_green.start",
-            extra={"data": {
-                "previous_active": previous_active,
-                "router_model": router_model,
-                "total_posts": len(rows),
-            }},
-        )
-
-        succeeded_ids: list[int] = []
-        failed_ids: list[int] = []
-
-        for row in rows:
-            post_id = row["id"]
-            content = row["content_markdown"] or ""
-            embed_start = time.perf_counter()
-            try:
-                embedding = await self.llm.embed(content)
-                dim = len(embedding) if embedding else 0
-                if dim <= 0:
-                    raise ValueError(
-                        f"embedding returned empty vector for post {post_id}"
-                    )
-                async with self.pool.acquire() as conn:
-                    await conn.execute(
-                        """
-                        INSERT INTO post_embeddings
-                            (post_id, model_id, dim, embedding, status, indexed_at)
-                        VALUES ($1, $2, $3, $4, 'shadow', NOW())
-                        ON CONFLICT (post_id, model_id) DO UPDATE
-                        SET embedding = EXCLUDED.embedding,
-                            dim = EXCLUDED.dim,
-                            status = 'shadow',
-                            indexed_at = NOW()
-                        """,
-                        post_id,
-                        router_model,
-                        dim,
-                        embedding,
-                    )
-                succeeded_ids.append(post_id)
-                logger.debug(
-                    "reindex.blue_green.post_shadow_ok",
-                    extra={"data": {
-                        "post_id": post_id,
-                        "dim": dim,
-                        "embed_ms": round((time.perf_counter() - embed_start) * 1000, 2),
-                    }},
-                )
-            except Exception as exc:
-                failed_ids.append(post_id)
-                logger.warning(
-                    "reindex.blue_green.post_failed",
-                    extra={"data": {
-                        "post_id": post_id,
-                        "error": str(exc)[:200],
-                        "embed_ms": round((time.perf_counter() - embed_start) * 1000, 2),
-                    }},
-                )
-
-        # 任一失败：保留 shadow 行，不翻转指针。旧模型继续服务搜索。
-        if failed_ids:
-            logger.warning(
-                "reindex.blue_green.flip_aborted",
-                extra={"data": {
-                    "succeeded": len(succeeded_ids),
-                    "failed": len(failed_ids),
-                    "first_failed_ids": failed_ids[:10],
-                }},
-            )
-            return {
-                "status": "partial",
-                "indexed": len(succeeded_ids),
-                "failed": len(failed_ids),
-                "active_model": previous_active,
-                "pending_model": router_model,
-                "pending_flip": True,
-                "message": (
-                    f"{len(failed_ids)} 篇文章在新模型 {router_model} 下 embedding 失败。"
-                    f"搜索仍由旧模型 {previous_active} 提供服务，修复上游后再次触发"
-                    "'全量重建索引'即可完成切换。"
-                ),
-            }
-
-        # 全部成功 → 原子翻转
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    """
-                    UPDATE post_embeddings
-                    SET status = 'active'
-                    WHERE model_id = $1 AND status = 'shadow'
-                    """,
-                    router_model,
-                )
-                await conn.execute(
-                    """
-                    UPDATE post_embeddings
-                    SET status = 'deprecated'
-                    WHERE model_id <> $1 AND status = 'active'
-                    """,
-                    router_model,
-                )
-                await conn.execute(
-                    """
-                    INSERT INTO site_settings
-                        (setting_key, setting_value, setting_type, group_name, description)
-                    VALUES ('search.active_embedding_model', $1, 'STRING', 'search',
-                        '当前活跃的 embedding 模型 ID')
-                    ON CONFLICT (setting_key) DO UPDATE
-                    SET setting_value = EXCLUDED.setting_value,
-                        updated_at = NOW()
-                    """,
-                    router_model,
-                )
-                await conn.execute(
-                    """
-                    UPDATE posts
-                    SET embedding_status = 'INDEXED'
-                    WHERE deleted = FALSE
-                      AND status = 'PUBLISHED'
-                      AND embedding_status <> 'INDEXED'
-                    """,
-                )
-
-        logger.info(
-            "reindex.blue_green.flipped",
-            extra={"data": {
-                "previous_active": previous_active,
-                "router_model": router_model,
-                "indexed": len(succeeded_ids),
-            }},
-        )
-        # GC：deprecated 行由外部 cron 在 30 天回滚窗口后清理
-        return {
-            "status": "completed",
-            "indexed": len(succeeded_ids),
-            "failed": 0,
-            "active_model": router_model,
-            "previous_model": previous_active,
-        }
+    # ============================================================
+    # 结果格式化
+    # ============================================================
 
     def _row_to_result(self, row: Any, query: str) -> dict[str, Any]:
         content = row["content"] or ""
