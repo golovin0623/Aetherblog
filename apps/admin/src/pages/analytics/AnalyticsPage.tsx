@@ -4,6 +4,7 @@ import { Cpu, DollarSign, Clock, Loader2, Repeat2, CheckCircle2 } from 'lucide-r
 import { StatsCard } from '../dashboard/components/StatsCard';
 import {
   AiModelDistributionChart,
+  AiTaskDistributionChart,
   AiUsageTrendChart,
   AiUsageRecordsTable,
 } from '../dashboard/components';
@@ -296,14 +297,18 @@ export function AnalyticsPage() {
           <Loader2 className="w-8 h-8 text-primary animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2">
-            <AiUsageTrendChart data={data.trend} loading={loading} />
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="xl:col-span-2">
+              <AiUsageTrendChart data={data.trend} loading={loading} />
+            </div>
+            <div>
+              <AiModelDistributionChart data={data.modelDistribution} loading={loading} />
+            </div>
           </div>
-          <div>
-            <AiModelDistributionChart data={data.modelDistribution} loading={loading} />
-          </div>
-        </div>
+          {/* P1.2: 任务费用下钻 — 让运营可立刻看出"哪个工具最贵 / ROI 最低" */}
+          <AiTaskDistributionChart data={data.taskDistribution} loading={loading} />
+        </>
       )}
 
       <AiUsageRecordsTable
