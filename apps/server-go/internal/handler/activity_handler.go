@@ -3,6 +3,7 @@ package handler
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -71,10 +72,10 @@ func (h *ActivityHandler) List(c echo.Context) error {
 	}
 	if v := strings.TrimSpace(c.QueryParam("endTime")); v != "" {
 		if t := parseFlexibleTime(v); t != nil {
-			// 仅日期格式时把 23:59:59 作为区间右端点，避免漏掉当天活动
+			// 仅日期格式时把 23:59:59.999999999 作为区间右端点，避免漏掉当天活动
 			tt := *t
 			if tt.Hour() == 0 && tt.Minute() == 0 && tt.Second() == 0 && len(v) <= 10 {
-				tt = tt.Add(24*3600*1e9 - 1)
+				tt = tt.Add(24*time.Hour - time.Nanosecond)
 			}
 			f.EndTime = tt
 		}
