@@ -98,6 +98,76 @@ systemctl status deploy-webhook --no-pager
 
 CI 用 HMAC-SHA256 给请求体签名, 头部 `X-Hub-Signature-256: sha256=<hex>`. 详见 `.github/workflows/ci-cd.yml` 的 deploy job.
 
+## Webhook Secret 轮换
+
+触发条件:
+
+- secret 被贴到聊天、日志、工单或截图里。
+- 怀疑 GitHub Actions Secret / systemd unit 被泄露。
+- 例行安全轮换。
+
+轮换原则:
+
+- 生成 32 字节随机 secret, hex 后为 64 个字符。
+- 同一个新值必须同时更新服务器 systemd 与 GitHub Actions Secret。
+- 不要把新 secret 写入仓库、聊天记录或明文运维文档。
+
+```bash
+# 1) 在服务器生成新 secret
+NEW_SECRET="$(openssl rand -hex 32)"
+echo "$NEW_SECRET"
+
+# 2) 替换 systemd unit 里的 WEBHOOK_SECRET
+cp /etc/systemd/system/deploy-webhook.service \
+  /etc/systemd/system/deploy-webhook.service.bak.$(date +%Y%m%d%H%M%S)
+
+sed -i -E \
+  "s/^Environment=WEBHOOK_SECRET=.*/Environment=WEBHOOK_SECRET=${NEW_SECRET}/" \
+  /etc/systemd/system/deploy-webhook.service
+
+systemctl daemon-reload
+systemctl restart deploy-webhook.service
+
+# 3) 本机未签名探测: 应快速返回 401 Invalid signature
+curl --noproxy '*' -i --max-time 5 -X POST http://127.0.0.1:7868/deploy
+
+# 4) 签名探测: 使用非法服务名, 应返回 400 Invalid services field, 不会触发部署
+body='{"services": "__probe__"}'
+sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$NEW_SECRET" -hex | awk '{print $NF}')
+printf '%s' "$body" | curl --noproxy '*' -i --max-time 5 -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Hub-Signature-256: sha256=$sig" \
+  --data-binary @- \
+  http://127.0.0.1:7868/deploy
+
+# 5) 更新 GitHub Secret 后, 再清理当前 shell 里的敏感变量
+# unset NEW_SECRET body sig
+```
+
+第 5 步前, 在 GitHub 仓库页面更新同一个值:
+
+```
+Settings → Secrets and variables → Actions
+→ DEPLOY_WEBHOOK_SECRET → Update
+```
+
+如果当前机器已登录 `gh`, 也可以用命令更新:
+
+```bash
+printf '%s' "$NEW_SECRET" | gh secret set DEPLOY_WEBHOOK_SECRET \
+  --repo golovin0623/Aetherblog \
+  --body-file -
+```
+
+同时确认 `DEPLOY_WEBHOOK_URL` 仍为 `http://<your-server-ip>:7868/deploy`。不要填
+`:7869`, 不要填 gateway/blog 域名, 也不要把 secret 放进 URL 路径。
+
+GitHub 更新完成并确认后, 再清理当前 shell 里的敏感变量:
+
+```bash
+unset NEW_SECRET body sig
+```
+
 ## 验证
 
 ```bash
@@ -105,12 +175,13 @@ CI 用 HMAC-SHA256 给请求体签名, 头部 `X-Hub-Signature-256: sha256=<hex>
 curl --noproxy '*' -i -X POST http://127.0.0.1:7868/deploy
 
 # 用真 secret 触发增量部署
-WEBHOOK_SECRET=<your-secret>
+WEBHOOK_SECRET=<64-hex-secret>
 body='{"services": "backend gateway"}'
 sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
-curl --noproxy '*' -i -X POST -H "Content-Type: application/json" \
+printf '%s' "$body" | curl --noproxy '*' -i -X POST \
+  -H "Content-Type: application/json" \
   -H "X-Hub-Signature-256: sha256=$sig" \
-  --data-raw "$body" \
+  --data-binary @- \
   http://127.0.0.1:7868/deploy
 
 # 查看 webhook 服务日志
