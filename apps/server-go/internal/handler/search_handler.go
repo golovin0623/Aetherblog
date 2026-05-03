@@ -496,7 +496,18 @@ func (h *SearchHandler) proxyProfileStream(
 	c echo.Context, method, targetPath string, headers map[string]string,
 ) error {
 	if !h.reindexing.CompareAndSwap(false, true) {
-		return response.Fail(c, "索引任务正在进行中，请等待完成或取消后重试")
+		// 故意不用 response.Fail —— 它返回 HTTP 200 + 失败 envelope，符合 Java 端
+		// 既有约定。但本端点的消费者 (apps/admin/src/hooks/useReindexStream.ts)
+		// 是 fetch + SSE reader，``if (!res.ok)`` 判定为错误的唯一信号是
+		// HTTP 状态码 ——  200 envelope 会让它继续读 body 当 SSE 帧解析，
+		// 找不到 ``data:`` 行 → stream 无声结束 → ProfileActivationFlow 卡在
+		// "reindexing" 步永不退出 (codex P1, PR #557 review)。
+		// 这里用 409 + 同形 envelope，envelope 让 admin UI 错误解析器拿到 message，
+		// 409 让 SSE consumer 正确进入 error 分支。
+		return c.JSON(http.StatusConflict, response.R{
+			Code:    http.StatusConflict,
+			Message: "索引任务正在进行中，请等待完成或取消后重试",
+		})
 	}
 	// SSE 走的是同步阻塞（当前 goroutine 即任务 goroutine），所以这里直接绑定
 	// 当前 request 的 ctx cancel —— Cancel 端点调用 cancelActiveJob() 会触发
