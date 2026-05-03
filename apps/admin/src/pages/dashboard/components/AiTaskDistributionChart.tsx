@@ -97,7 +97,7 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
 
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[360px] md:h-[360px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px]">
         <div className="h-6 w-44 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
         <div className="space-y-3">
           {[0, 1, 2, 3].map((i) => (
@@ -115,7 +115,7 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
   const hasData = sortedData.length > 0 && totalCost > 0;
 
   return (
-    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[360px] md:h-[360px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px] flex flex-col">
       <div className="flex items-baseline justify-between mb-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">任务费用分布</h3>
         <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)] font-mono">

@@ -17,7 +17,7 @@ interface AiUsageTrendChartProps {
 export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartProps) {
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[360px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[360px]">
         <div className="h-6 w-36 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
         <div className="h-[280px] bg-[var(--bg-secondary)] rounded animate-pulse" />
       </div>
@@ -25,7 +25,7 @@ export function AiUsageTrendChart({ data, loading = false }: AiUsageTrendChartPr
   }
 
   return (
-    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[360px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[360px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">AI 调用趋势</h3>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">

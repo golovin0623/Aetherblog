@@ -1,5 +1,5 @@
 import { CheckCircle2, Filter, Search, XCircle } from 'lucide-react';
-import { DataTable } from '@/components/common';
+import { DataTable, StyledSelect } from '@/components/common';
 import { cn } from '@/lib/utils';
 import type { AiCallRecord } from '@/services/analyticsService';
 
@@ -164,9 +164,23 @@ export function AiUsageRecordsTable({
     },
   ];
 
+  const taskSelectOptions = [
+    { value: '', label: '全部任务' },
+    ...taskOptions.map(task => ({ value: task, label: formatTask(task) })),
+  ];
+  const modelSelectOptions = [
+    { value: '', label: '全部模型' },
+    ...modelOptions.map(model => ({ value: model, label: model })),
+  ];
+  const successSelectOptions = [
+    { value: 'all', label: '全部' },
+    { value: 'success', label: '仅成功' },
+    { value: 'failed', label: '仅失败' },
+  ];
+
   return (
     <div className="space-y-4">
-      <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col gap-3">
+      <div className="surface-leaf surface-dashboard-card p-4 rounded-xl flex flex-col gap-3">
         <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <Filter className="w-4 h-4" />
           <span>调用记录筛选</span>
@@ -175,43 +189,32 @@ export function AiUsageRecordsTable({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs text-[var(--text-muted)]">任务类型</span>
-            <select
+            <StyledSelect
               value={selectedTaskType || ''}
-              onChange={(e) => onTaskTypeChange(e.target.value)}
-              className="h-9 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] px-3 text-sm text-[var(--text-primary)]"
-            >
-              <option value="">全部任务</option>
-              {taskOptions.map(task => (
-                <option key={task} value={task}>{formatTask(task)}</option>
-              ))}
-            </select>
+              onChange={onTaskTypeChange}
+              options={taskSelectOptions}
+              ariaLabel="任务类型"
+            />
           </label>
 
           <label className="flex flex-col gap-1.5">
             <span className="text-xs text-[var(--text-muted)]">模型</span>
-            <select
+            <StyledSelect
               value={selectedModelId || ''}
-              onChange={(e) => onModelIdChange(e.target.value)}
-              className="h-9 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] px-3 text-sm text-[var(--text-primary)]"
-            >
-              <option value="">全部模型</option>
-              {modelOptions.map(model => (
-                <option key={model} value={model}>{model}</option>
-              ))}
-            </select>
+              onChange={onModelIdChange}
+              options={modelSelectOptions}
+              ariaLabel="模型"
+            />
           </label>
 
           <label className="flex flex-col gap-1.5">
             <span className="text-xs text-[var(--text-muted)]">调用结果</span>
-            <select
+            <StyledSelect
               value={selectedSuccess}
-              onChange={(e) => onSuccessChange(e.target.value as 'all' | 'success' | 'failed')}
-              className="h-9 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] px-3 text-sm text-[var(--text-primary)]"
-            >
-              <option value="all">全部</option>
-              <option value="success">仅成功</option>
-              <option value="failed">仅失败</option>
-            </select>
+              onChange={(nextValue) => onSuccessChange(nextValue as 'all' | 'success' | 'failed')}
+              options={successSelectOptions}
+              ariaLabel="调用结果"
+            />
           </label>
 
           <label className="flex flex-col gap-1.5">

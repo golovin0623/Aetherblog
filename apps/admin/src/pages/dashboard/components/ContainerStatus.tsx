@@ -137,10 +137,10 @@ function ContainerCard({
       animate={{ opacity: 1, y: 0 }}
       onClick={onClick}
       className={cn(
-        "p-3 rounded-lg border transition-all cursor-pointer",
+        "surface-leaf surface-dashboard-card p-3 rounded-lg transition-all cursor-pointer",
         isSelected 
-          ? "bg-primary/10 border-primary/30" 
-          : "bg-[var(--bg-card)] border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--bg-card-hover)]"
+          ? "!border-primary/30 ring-1 ring-primary/10"
+          : "hover:!border-[var(--border-default)]"
       )}
     >
       <div className="flex items-center gap-3">
@@ -298,7 +298,7 @@ export function ContainerStatus({
 
   // 始终渲染主结构，在内部处理加载状态
   return (
-    <div className={cn("rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col min-h-0", className)}>
+    <div className={cn("surface-leaf surface-dashboard-card rounded-xl flex flex-col min-h-0", className)}>
       {/* 头部 - 始终显示 */}
       <div className="p-4 sm:p-6 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -333,7 +333,7 @@ export function ContainerStatus({
         {loading && !data ? (
           // 骨架屏列表
           [1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center gap-3">
+            <div key={i} className="surface-leaf surface-dashboard-card p-3 rounded-lg flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-[var(--bg-secondary)] animate-pulse shrink-0" />
               <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex justify-between">

@@ -4,6 +4,7 @@ import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, F
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
+import { StyledSelect } from '@/components/common';
 
 interface RealtimeLogViewerProps {
   containerId?: string | null;
@@ -37,6 +38,33 @@ type LogViewAction =
   | { type: 'SET_PAUSED'; paused: boolean; reason?: LogPauseReason | null }
   | { type: 'ENTER_FULLSCREEN' }
   | { type: 'EXIT_FULLSCREEN' };
+
+const LOG_LEVEL_SELECT_OPTIONS = [
+  { value: 'ALL', label: '全部日志' },
+  { value: 'INFO', label: 'INFO' },
+  { value: 'WARN', label: 'WARN' },
+  { value: 'ERROR', label: 'ERROR' },
+  { value: 'DEBUG', label: 'DEBUG' },
+];
+
+const QUICK_LEVEL_OPTIONS = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
+
+const BACKEND_RUNTIME_LEVEL_OPTIONS = [
+  { value: 'debug', label: 'backend·debug' },
+  { value: 'info', label: 'backend·info' },
+  { value: 'warn', label: 'backend·warn' },
+  { value: 'error', label: 'backend·error' },
+];
+
+const AI_RUNTIME_LEVEL_OPTIONS = [
+  { value: 'debug', label: 'ai·debug' },
+  { value: 'info', label: 'ai·info' },
+  { value: 'warning', label: 'ai·warning' },
+  { value: 'error', label: 'ai·error' },
+];
+
+const COMPACT_SELECT_FOCUS_CLASS =
+  'focus-visible:!ring-1 focus-visible:!ring-primary/30 focus-visible:!ring-offset-1 focus-visible:!ring-offset-[var(--bg-card)]';
 
 const INITIAL_LOG_VIEW_STATE: LogViewState = {
   lifecycle: 'idle',
@@ -641,7 +669,7 @@ export function RealtimeLogViewer({
 
   if (!useAppLogs && !containerId) {
     return (
-      <div className={cn('rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col items-center justify-center text-[var(--text-muted)] h-full min-h-[400px]', className)}>
+      <div className={cn('surface-leaf surface-dashboard-card rounded-xl flex flex-col items-center justify-center text-[var(--text-muted)] h-full min-h-[400px]', className)}>
         <Terminal className="w-12 h-12 mb-4 opacity-20" />
         <p className="text-sm">请点击左侧容器列表查看日志</p>
       </div>
@@ -669,7 +697,6 @@ export function RealtimeLogViewer({
   const statusLabel = statusLabelMap[viewState.lifecycle];
   const statusClassName = statusClassMap[viewState.lifecycle];
   const pauseReasonLabel = viewState.pauseReason === 'hidden' ? '页面隐藏自动暂停' : '手动暂停';
-  const quickLevelOptions = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
   const isRawDownloadDisabled = exporting || isLoading;
   const isViewExportDisabled = exporting || visibleLogs.length === 0;
   const downloadFeedbackTone =
@@ -700,26 +727,25 @@ export function RealtimeLogViewer({
 
         <div className="flex items-center gap-1 bg-[var(--bg-card)] rounded p-0.5 border border-[var(--border-subtle)]">
           <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
-          <select
+          <StyledSelect
             value={filterLevel}
-            onChange={(e) => {
-              const nextLevel = e.target.value;
+            onChange={(nextLevel) => {
               preserveScrollContext(() => {
                 setFilterLevel(nextLevel);
               });
             }}
-            className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pr-6 pl-1"
-          >
-            <option value="ALL">全部日志</option>
-            <option value="INFO">INFO</option>
-            <option value="WARN">WARN</option>
-            <option value="ERROR">ERROR</option>
-            <option value="DEBUG">DEBUG</option>
-          </select>
+            options={LOG_LEVEL_SELECT_OPTIONS}
+            ariaLabel="日志级别过滤"
+            buttonClassName={cn(
+              '!h-6 !min-w-[96px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
+              COMPACT_SELECT_FOCUS_CLASS,
+            )}
+            menuClassName="!max-h-56"
+          />
         </div>
 
         <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5">
-          {quickLevelOptions.map((levelOption) => (
+          {QUICK_LEVEL_OPTIONS.map((levelOption) => (
             <button
               key={levelOption}
               type="button"
@@ -760,30 +786,30 @@ export function RealtimeLogViewer({
             <span className="px-1.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
               运行时
             </span>
-            <select
+            <StyledSelect
               value={(runtimeLevel?.backend || 'info').toLowerCase()}
               disabled={runtimeLevelApplying === 'backend'}
-              onChange={(e) => void applyRuntimeLevel('backend', e.target.value)}
-              className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pl-1 pr-2"
-              title={`backend 当前级别: ${runtimeLevel?.backend ?? '加载中'}`}
-            >
-              <option value="debug">backend·debug</option>
-              <option value="info">backend·info</option>
-              <option value="warn">backend·warn</option>
-              <option value="error">backend·error</option>
-            </select>
-            <select
+              onChange={(nextLevel) => void applyRuntimeLevel('backend', nextLevel)}
+              options={BACKEND_RUNTIME_LEVEL_OPTIONS}
+              ariaLabel={`backend 当前级别: ${runtimeLevel?.backend ?? '加载中'}`}
+              buttonClassName={cn(
+                '!h-6 !min-w-[112px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
+                COMPACT_SELECT_FOCUS_CLASS,
+              )}
+              menuClassName="!max-h-56"
+            />
+            <StyledSelect
               value={((runtimeLevel?.aiService) || 'info').toLowerCase()}
               disabled={runtimeLevelApplying === 'aiService' || Boolean(runtimeLevel?.aiServiceError)}
-              onChange={(e) => void applyRuntimeLevel('aiService', e.target.value)}
-              className="bg-transparent text-[10px] sm:text-xs text-[var(--text-secondary)] border-none focus:ring-0 cursor-pointer py-1 pl-1 pr-2 disabled:cursor-not-allowed disabled:opacity-60"
-              title={runtimeLevel?.aiServiceError ? `ai-service 不可达: ${runtimeLevel.aiServiceError}` : `ai-service 当前级别: ${runtimeLevel?.aiService ?? '加载中'}`}
-            >
-              <option value="debug">ai·debug</option>
-              <option value="info">ai·info</option>
-              <option value="warning">ai·warning</option>
-              <option value="error">ai·error</option>
-            </select>
+              onChange={(nextLevel) => void applyRuntimeLevel('aiService', nextLevel)}
+              options={AI_RUNTIME_LEVEL_OPTIONS}
+              ariaLabel={runtimeLevel?.aiServiceError ? `ai-service 不可达: ${runtimeLevel.aiServiceError}` : `ai-service 当前级别: ${runtimeLevel?.aiService ?? '加载中'}`}
+              buttonClassName={cn(
+                '!h-6 !min-w-[92px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
+                COMPACT_SELECT_FOCUS_CLASS,
+              )}
+              menuClassName="!max-h-56"
+            />
           </div>
         )}
 
@@ -999,7 +1025,7 @@ export function RealtimeLogViewer({
 
   const renderEmbeddedContent = () => (
     <>
-      <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)] shrink-0">
+      <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-leaf)] shrink-0">
         <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
             <Terminal className="w-4 h-4 text-primary shrink-0" />
@@ -1113,7 +1139,7 @@ export function RealtimeLogViewer({
 
       {!isFullScreen && (
         <div className={cn(
-          'rounded-xl border border-[var(--border-subtle)] flex flex-col overflow-hidden transition-all duration-300 bg-[var(--bg-card)] h-full min-h-[400px]',
+          'surface-leaf surface-dashboard-card rounded-xl flex flex-col overflow-hidden transition-all duration-300 h-full min-h-[400px]',
           className
         )}>
           {renderEmbeddedContent()}
