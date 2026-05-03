@@ -37,6 +37,36 @@ const GROUP_LABEL: Record<Exclude<ResultGroup, 'all'>, string> = {
 
 const GROUP_ORDER: ResultGroup[] = ['post', 'media', 'category', 'tag', 'all'];
 
+// 模块级单例: 分类 / 标签是站点级稳定数据 (变更频次远低于本会话长度), 缓存到
+// 整个 admin app 生命周期, 让移动 / 桌面双 SidebarContent 实例 + 反复打开关闭
+// palette 都共用同一份, 避免每次都 getList(). taxonomyPromise 兜住并发首调
+// 的竞态, 命中缓存后直接走 Promise.resolve 同步路径.
+type TaxonomyData = { categories: Category[]; tags: Tag[] };
+let taxonomyCache: TaxonomyData | null = null;
+let taxonomyPromise: Promise<TaxonomyData> | null = null;
+
+function loadTaxonomy(): Promise<TaxonomyData> {
+  if (taxonomyCache) return Promise.resolve(taxonomyCache);
+  if (!taxonomyPromise) {
+    taxonomyPromise = (async () => {
+      const [c, t] = await Promise.allSettled([
+        categoryService.getList(),
+        tagService.getList(),
+      ]);
+      const result: TaxonomyData = {
+        categories:
+          c.status === 'fulfilled' && c.value.code === 200 ? c.value.data : [],
+        tags:
+          t.status === 'fulfilled' && t.value.code === 200 ? t.value.data : [],
+      };
+      taxonomyCache = result;
+      taxonomyPromise = null;
+      return result;
+    })();
+  }
+  return taxonomyPromise;
+}
+
 export function SidebarSearchPalette({
   query,
   isOpen,
@@ -97,28 +127,26 @@ export function SidebarSearchPalette({
     return () => clearTimeout(t);
   }, [query]);
 
-  // 分类/标签全量列表 (体量小, 一次加载, 本地过滤)
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled([categoryService.getList(), tagService.getList()])
-      .then(([c, t]) => {
-        if (cancelled) return;
-        if (c.status === 'fulfilled' && c.value.code === 200) {
-          setAllCategories(c.value.data);
-        }
-        if (t.status === 'fulfilled' && t.value.code === 200) {
-          setAllTags(t.value.data);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // 派生可见性: 只有锚点真正在视口中的实例才发请求 —— 移动 / 桌面双 SidebarContent
   // 同时 mount, 共享同一个 query, 不 gate 会导致每次 keystroke 双倍后端调用.
   // 用 boolean 派生 (而不是 pos 对象) 防止 resize 导致 pos 引用变化触发 refetch.
   const isVisible = isOpen && pos !== null;
+
+  // 分类/标签全量列表 (体量小, 本地过滤). 两点优化:
+  // 1. isVisible 门: 永远没打开 palette 的用户不发请求.
+  // 2. loadTaxonomy 模块级单例: 移动 / 桌面双 instance 同时变可见也只发一次.
+  useEffect(() => {
+    if (!isVisible) return;
+    let cancelled = false;
+    loadTaxonomy().then(({ categories, tags }) => {
+      if (cancelled) return;
+      setAllCategories(categories);
+      setAllTags(tags);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isVisible]);
 
   // 文章 / 媒体: 后端搜索, 各通道独立失败不连坐
   useEffect(() => {
