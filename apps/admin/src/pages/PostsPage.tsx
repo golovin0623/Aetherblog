@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown,
   ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock, Eye,
@@ -32,6 +32,19 @@ const VIEW_COUNT_PRESETS: Array<{ value: string; label: string; min?: number; ma
 
 export default function PostsPage() {
   const navigate = useNavigate();
+  // 尊重系统 prefers-reduced-motion；下面的 motion.div 共用这套 transition 预设。
+  // CSS 侧（shimmer / scroll-smooth）已由 tokens.css 的全局 reduce 媒体查询接管。
+  const reduceMotion = useReducedMotion();
+  const heightTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.26, ease: [0.16, 1, 0.3, 1] as const };
+  const chipTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const };
+  const tabSpring = reduceMotion
+    ? { duration: 0 }
+    : { type: 'spring' as const, stiffness: 320, damping: 30 };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [posts, setPosts] = useState<PostListItem[]>([]);
@@ -54,32 +67,39 @@ export default function PostsPage() {
     endDate: '',
     hidden: undefined as boolean | undefined,
   });
-  // UI 派生：浏览量预设 / 日期范围 ——
-  // 内部 filters 形状不变（backend 接受 min/maxViewCount + start/endDate），
-  // UI 控件用 preset / range 包装一层，更易理解。
-  const [viewCountPreset, setViewCountPreset] = useState<string>('');
-  const [dateRange, setDateRange] = useState<DateRangeValue>({ startTime: '', endTime: '' });
+  // UI 派生：浏览量预设 / 日期范围 —— 单一来源是 filters，
+  // 控件读取走 useMemo 派生，写入直接 setFilters，避免
+  // useEffect → setFilters 的 cascade 引发 fetchPosts 多次触发。
+  const viewCountPreset = useMemo(() => {
+    const p = VIEW_COUNT_PRESETS.find(
+      (preset) => preset.min === filters.minViewCount && preset.max === filters.maxViewCount,
+    );
+    return p?.value ?? '';
+  }, [filters.minViewCount, filters.maxViewCount]);
 
-  // preset → filters.min/maxViewCount
-  useEffect(() => {
-    if (viewCountPreset === '') {
-      setFilters(f => ({ ...f, minViewCount: undefined, maxViewCount: undefined }));
+  const dateRange: DateRangeValue = useMemo(
+    () => ({ startTime: filters.startDate, endTime: filters.endDate }),
+    [filters.startDate, filters.endDate],
+  );
+
+  const handleViewCountPresetChange = useCallback((next: string) => {
+    if (!next) {
+      setFilters((f) => ({ ...f, minViewCount: undefined, maxViewCount: undefined }));
       return;
     }
-    const preset = VIEW_COUNT_PRESETS.find(p => p.value === viewCountPreset);
+    const preset = VIEW_COUNT_PRESETS.find((p) => p.value === next);
     if (preset) {
-      setFilters(f => ({ ...f, minViewCount: preset.min, maxViewCount: preset.max }));
+      setFilters((f) => ({ ...f, minViewCount: preset.min, maxViewCount: preset.max }));
     }
-  }, [viewCountPreset]);
+  }, []);
 
-  // dateRange → filters.start/endDate
-  useEffect(() => {
-    setFilters(f => ({
+  const handleDateRangeChange = useCallback((next: DateRangeValue) => {
+    setFilters((f) => ({
       ...f,
-      startDate: dateRange.startTime || '',
-      endDate: dateRange.endTime || '',
+      startDate: next.startTime || '',
+      endDate: next.endTime || '',
     }));
-  }, [dateRange.startTime, dateRange.endTime]);
+  }, []);
 
   // 操作确认状态
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -360,7 +380,8 @@ export default function PostsPage() {
       icon: BarChart3,
       label: '浏览',
       value: preset?.label ?? viewCountPreset,
-      onRemove: () => setViewCountPreset(''),
+      onRemove: () =>
+        setFilters((f) => ({ ...f, minViewCount: undefined, maxViewCount: undefined })),
     });
   }
   if (dateRange.startTime || dateRange.endTime) {
@@ -376,7 +397,7 @@ export default function PostsPage() {
       icon: FileText,
       label: '日期',
       value,
-      onRemove: () => setDateRange({ startTime: '', endTime: '' }),
+      onRemove: () => setFilters((f) => ({ ...f, startDate: '', endDate: '' })),
     });
   }
   if (filters.hidden === true) {
@@ -398,8 +419,17 @@ export default function PostsPage() {
   }
 
   const activeFilterCount = activeChips.length;
+  // 空态判断 —— 把 status segmented 也算入"有筛选"。
+  // chip strip / 角标仍只看 activeFilterCount（避免与 status tab 重复展示），
+  // 但空态消息要根据是否有"任何筛选"来分支：
+  //   - 切到"已发布"且子集为空 ⇒ "当前筛选条件下没有文章"（提供清空 CTA）
+  //   - 真正全空      ⇒ "还没有任何文章"（提供创建 CTA）
+  const hasAnyFilter = activeFilterCount > 0 || activeStatus !== undefined;
 
-  const resetAllFilters = () => {
+  const resetAllFilters = useCallback(() => {
+    // 单次 atomic 重置 —— viewCountPreset / dateRange 是 useMemo 派生，
+    // 随 filters 自动归零；activeStatus 也清，避免「全部清空」之后
+    // status tab 还停在「已发布」造成结果集仍然受限。
     setFilters({
       categoryId: undefined,
       tagId: undefined,
@@ -409,10 +439,9 @@ export default function PostsPage() {
       endDate: '',
       hidden: undefined,
     });
-    setViewCountPreset('');
-    setDateRange({ startTime: '', endTime: '' });
     setSearchQuery('');
-  };
+    setActiveStatus(undefined);
+  }, []);
 
   return (
     <div className="flex flex-col">
@@ -495,7 +524,7 @@ export default function PostsPage() {
                   <motion.div
                     layoutId="activeStatusTab"
                     className="absolute inset-0 bg-[var(--color-primary)] rounded-full"
-                    transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                    transition={tabSpring}
                   />
                 )}
                 <span className="relative z-10">{tab.label}</span>
@@ -576,7 +605,7 @@ export default function PostsPage() {
           <Filter className="w-4 h-4" />
           <span>高级筛选</span>
           {activeFilterCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-mono font-semibold bg-[var(--aurora-1)] text-[var(--bg-void)]">
+            <span className="tnum inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-mono font-semibold bg-[var(--aurora-1)] text-[var(--bg-void)]">
               {activeFilterCount}
             </span>
           )}
@@ -592,7 +621,7 @@ export default function PostsPage() {
             initial={{ opacity: 0, height: 0, marginBottom: 0 }}
             animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
             exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            transition={heightTransition}
             className="overflow-visible"
           >
             <div className="surface-leaf rounded-xl p-4">
@@ -635,7 +664,7 @@ export default function PostsPage() {
                   </label>
                   <Select
                     value={viewCountPreset}
-                    onValueChange={setViewCountPreset}
+                    onValueChange={handleViewCountPresetChange}
                     options={viewCountOptions}
                     placeholder="全部浏览量"
                     prefix={<BarChart3 />}
@@ -649,7 +678,7 @@ export default function PostsPage() {
                   </label>
                   <DateRangePicker
                     value={dateRange}
-                    onChange={setDateRange}
+                    onChange={handleDateRangeChange}
                     placeholder="选择时间范围"
                     ariaLabel="发布时间筛选"
                   />
@@ -667,11 +696,11 @@ export default function PostsPage() {
             initial={{ opacity: 0, height: 0, marginBottom: 0 }}
             animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
             exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            transition={heightTransition}
             className="overflow-hidden"
           >
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+              <span className="tnum text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
                 已应用 {activeFilterCount}
               </span>
               <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
@@ -684,7 +713,7 @@ export default function PostsPage() {
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                      transition={chipTransition}
                       className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-xs"
                     >
                       <Icon className="w-3 h-3 text-[var(--aurora-1)] shrink-0" />
@@ -797,20 +826,20 @@ export default function PostsPage() {
                 className="text-center py-20 px-6"
               >
                 <div className="w-16 h-16 mx-auto mb-4 inline-flex items-center justify-center rounded-2xl bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]">
-                  {activeFilterCount > 0
+                  {hasAnyFilter
                     ? <Search className="w-8 h-8 text-[var(--aurora-1)]" />
                     : <FileText className="w-8 h-8 text-[var(--aurora-1)]" />}
                 </div>
                 <h3 className="font-display text-lg text-[var(--ink-primary)] mb-1">
-                  {activeFilterCount > 0 ? '当前筛选条件下没有文章' : '还没有任何文章'}
+                  {hasAnyFilter ? '当前筛选条件下没有文章' : '还没有任何文章'}
                 </h3>
                 <p className="text-sm text-[var(--ink-muted)] max-w-sm mx-auto">
-                  {activeFilterCount > 0
+                  {hasAnyFilter
                     ? '尝试清空当前筛选，或者换个关键字搜索'
                     : '从一篇空白文章开始，或者让 AI 协同写作帮你打草稿'}
                 </p>
                 <div className="mt-5 flex items-center justify-center gap-2 flex-wrap">
-                  {activeFilterCount > 0 ? (
+                  {hasAnyFilter ? (
                     <button
                       type="button"
                       onClick={resetAllFilters}
