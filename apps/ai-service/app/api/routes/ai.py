@@ -47,6 +47,11 @@ logger = logging.getLogger("ai-service")
 SUMMARY_TTL = 60 * 60 * 24
 TAGS_TTL = 60 * 60 * 24
 TITLES_TTL = 60 * 60
+# Polish / Outline 是迭代型创作 (用户改完原文经常立刻重打磨, 改完调子再改一版),
+# 用 1h TTL 让"同一内容 + 同一参数"短期内复用结果以降本, 又避免长期缓存
+# 让用户陷入"已经被自己 iterate 过去"的陈旧输出。
+POLISH_TTL = 60 * 60
+OUTLINE_TTL = 60 * 60
 
 settings = get_settings()
 
@@ -1013,12 +1018,15 @@ async def polish(
     req: PolishRequest,
     request: Request,
     user=Depends(rate_limit),
+    cache=Depends(get_cache),
     llm=Depends(get_llm_router),
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[PolishData]:
     _enforce_content_limit(req.content)
     start_time = time.perf_counter()
+    cached = False
+    response_text = ""
     error_code = None
     model = ""
     usage_context: dict[str, str | float | None] = {}
@@ -1032,9 +1040,37 @@ async def polish(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    response_text = ""
 
     try:
+        # custom prompt 不进缓存: 自定义 prompt 让输入空间组合爆炸, 命中率
+        # 极低且容易缓存到一次性的 prompt 实验结果。
+        if req.promptTemplate:
+            cache_key = None
+        else:
+            cache_key = (
+                f"ai:polish:{hash_content(req.content)}:{model}:{req.providerCode or 'default'}:"
+                f"{_prompt_version(req.promptVersion)}:{req.tone or '专业'}:{user.user_id}"
+            )
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目, 与 summary 一致)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
+        if cached_data:
+            try:
+                cached = True
+                response_text = cached_data.get("polishedContent", "")
+                latency_ms = cached_data.get("latencyMs") or int((time.perf_counter() - start_time) * 1000)
+                tokens_used = cached_data.get("tokensUsed") or (estimate_tokens(req.content) + estimate_tokens(response_text))
+                cached_model = cached_data.get("model") or model
+                return ApiResponse(data=PolishData(
+                    polishedContent=response_text,
+                    model=cached_model,
+                    tokensUsed=tokens_used,
+                    latencyMs=latency_ms,
+                ))
+            except Exception as exc:  # pragma: no cover - 防御性
+                cached = False
+                response_text = ""
+                logger.warning("ai.cache_payload_invalid", extra={"key": cache_key, "error": str(exc)})
+
         prompt_variables = {
             "content": req.content,
             "tone": req.tone or "专业"
@@ -1049,13 +1085,15 @@ async def polish(
         )
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
-        return ApiResponse(data=PolishData(
+        data = PolishData(
             polishedContent=response_text,
-            changes=None,
             model=model,
             tokensUsed=tokens_used,
             latencyMs=latency_ms,
-        ))
+        )
+        if cache_key:
+            await _safe_cache_set_json(cache, cache_key, data.model_dump(), POLISH_TTL)
+        return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
         raise
@@ -1080,7 +1118,7 @@ async def polish(
             response_text=response_text,
             start_time=start_time,
             success=error_code is None,
-            cached=False,
+            cached=cached,
             error_code=error_code,
         )
 
@@ -1090,11 +1128,14 @@ async def outline(
     req: OutlineRequest,
     request: Request,
     user=Depends(rate_limit),
+    cache=Depends(get_cache),
     llm=Depends(get_llm_router),
     metrics=Depends(get_metrics),
     usage_logger=Depends(get_usage_logger),
 ) -> ApiResponse[OutlineData]:
     start_time = time.perf_counter()
+    cached = False
+    response_text = ""
     error_code = None
     model = ""
     usage_context: dict[str, str | float | None] = {}
@@ -1108,10 +1149,39 @@ async def outline(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    response_text = ""
     topic = req.topic or req.content or ""
 
     try:
+        # 缓存 key 含 topic / depth / style / 现有上下文哈希;custom prompt 不缓存。
+        if req.promptTemplate:
+            cache_key = None
+        else:
+            existing_sig = hash_content(req.existingContent) if req.existingContent else "none"
+            cache_key = (
+                f"ai:outline:{hash_content(topic)}:{model}:{req.providerCode or 'default'}:"
+                f"{_prompt_version(req.promptVersion)}:{req.depth}:{req.style}:{existing_sig}:{user.user_id}"
+            )
+        # bypassCache=true: 跳过 GET 但保留 SET (覆盖陈旧条目)。
+        cached_data = await _safe_cache_get_json(cache, cache_key) if cache_key and not req.bypassCache else None
+        if cached_data:
+            try:
+                cached = True
+                response_text = cached_data.get("outline", "")
+                latency_ms = cached_data.get("latencyMs") or int((time.perf_counter() - start_time) * 1000)
+                tokens_used = cached_data.get("tokensUsed") or (estimate_tokens(topic) + estimate_tokens(response_text))
+                cached_model = cached_data.get("model") or model
+                return ApiResponse(data=OutlineData(
+                    outline=response_text,
+                    characterCount=len(response_text),
+                    model=cached_model,
+                    tokensUsed=tokens_used,
+                    latencyMs=latency_ms,
+                ))
+            except Exception as exc:  # pragma: no cover - 防御性
+                cached = False
+                response_text = ""
+                logger.warning("ai.cache_payload_invalid", extra={"key": cache_key, "error": str(exc)})
+
         # SECURITY (VULN-061)：existingContent 由攻击者可控（用户在编辑器里
         # 输入），此前却被直接拼到 SYSTEM prompt 中 —— 这是教科书级的
         # prompt 注入面（"忽略此前的指令……"）。将其包裹在带显式标签的
@@ -1141,13 +1211,16 @@ async def outline(
         )
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         tokens_used = estimate_tokens(topic) + estimate_tokens(response_text)
-        return ApiResponse(data=OutlineData(
+        data = OutlineData(
             outline=response_text,
             characterCount=len(response_text),
             model=model,
             tokensUsed=tokens_used,
-            latencyMs=latency_ms
-        ))
+            latencyMs=latency_ms,
+        )
+        if cache_key:
+            await _safe_cache_set_json(cache, cache_key, data.model_dump(), OUTLINE_TTL)
+        return ApiResponse(data=data)
     except HTTPException as exc:
         error_code = str(exc.detail)
         raise
@@ -1172,7 +1245,7 @@ async def outline(
             response_text=response_text,
             start_time=start_time,
             success=error_code is None,
-            cached=False,
+            cached=cached,
             error_code=error_code,
         )
 
