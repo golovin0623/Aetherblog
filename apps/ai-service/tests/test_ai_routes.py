@@ -708,15 +708,13 @@ async def test_stream_emits_result_event_before_done_for_outline():
     async for chunk in _stream_with_think_detection(
         request=_make_request(),
         llm=llm,
-        # outline 端点把 topic 渲染进 prompt 但 _build_stream_result_payload
-        # 不需要它 — 只看 full_text。这里照 ai.py:1583 的 outline_stream 形态
-        # 传一份完整 vars 让任何意外引用都不会 KeyError。
+        # outline_stream 与非流式 outline 一样, 将 existingContent 包装进
+        # context; _build_stream_result_payload 当前只看 full_text。
         prompt_variables={
-            "content": "AI 入门",
             "topic": "AI 入门",
             "depth": 2,
             "style": "professional",
-            "existing_content": "",
+            "context": "",
         },
         model_alias="outline",
         user_id="user-1",
@@ -733,6 +731,11 @@ async def test_stream_emits_result_event_before_done_for_outline():
         chunks.append(chunk)
 
     events = _parse_sse_events(chunks)
+    types = [e.get("type") for e in events]
+    assert "result" in types, f"No result event in {types}"
+    assert "done" in types
+    assert types.index("result") < types.index("done")
+
     result_event = next(e for e in events if e.get("type") == "result")
     data = result_event["data"]
     # OutlineData 形态: {outline, characterCount, model}
@@ -779,6 +782,11 @@ async def test_stream_emits_result_event_before_done_for_translate():
         chunks.append(chunk)
 
     events = _parse_sse_events(chunks)
+    types = [e.get("type") for e in events]
+    assert "result" in types, f"No result event in {types}"
+    assert "done" in types
+    assert types.index("result") < types.index("done")
+
     result_event = next(e for e in events if e.get("type") == "result")
     data = result_event["data"]
     # TranslateData 形态: {translatedContent, sourceLanguage, targetLanguage, model}
