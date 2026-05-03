@@ -538,13 +538,85 @@ async def index_stats(
 
 @router.post("/api/v1/admin/search/retry-failed")
 async def retry_failed_indexes(
+    profileCode: str | None = Query(
+        default=None,
+        description=(
+            "可选 profile code。不传走 active profile + embedding_status='FAILED' 旧逻辑；"
+            "传则补齐 'shadow / active 行缺失' 的文章（用于 profile 蓝绿切换前的覆盖修复）。"
+        ),
+    ),
     user=Depends(require_admin),
     vector_store=Depends(get_vector_store),
     pool=Depends(get_pg_pool),
 ) -> ApiResponse[dict]:
-    """以受控并发重试 FAILED 状态文章的 embedding。"""
+    """以受控并发重试索引失败 / 覆盖缺失的文章。
+
+    两种模式：
+
+    - **profileCode=None**（兼容旧客户端）：
+      用 active profile 重试 ``embedding_status='FAILED'`` 的文章。
+    - **profileCode=<code>**（profile 蓝绿切换前的覆盖修复）：
+      列出该 profile 下没有 active 或 shadow 行的 post，按目标 profile 的
+      ``status``（active → 'active'，否则 'shadow'）补写。补完才能 activate。
+    """
     import asyncio
 
+    if profileCode:
+        # Profile-scoped 模式：补齐覆盖缺口
+        profile = await vector_store._fetch_profile_by_code(profileCode)
+        if not profile:
+            raise HTTPException(404, f"Profile '{profileCode}' 不存在")
+        if profile.status == "deprecated":
+            raise HTTPException(
+                400, f"Profile '{profileCode}' 已弃用，无法重试"
+            )
+        target_status = "active" if profile.status == "active" else "shadow"
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT p.id, p.title, p.slug, p.content_markdown
+                FROM posts p
+                WHERE p.deleted = FALSE
+                  AND p.status = 'PUBLISHED'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM post_embeddings pe
+                      WHERE pe.post_id = p.id
+                        AND pe.profile_id = $1
+                        AND pe.status IN ('active', 'shadow')
+                  )
+                ORDER BY p.id
+                LIMIT 100
+                """,
+                profile.id,
+            )
+        sem = asyncio.Semaphore(5)
+
+        async def process_one_scoped(row):
+            async with sem:
+                try:
+                    await vector_store.upsert_post_embedding(
+                        post_id=row["id"],
+                        title=row["title"],
+                        slug=row["slug"],
+                        content=row["content_markdown"] or "",
+                        metadata={},
+                        profile=profile,
+                        target_status=target_status,
+                    )
+                    return True
+                except Exception:
+                    return False
+
+        results = await asyncio.gather(*[process_one_scoped(r) for r in rows])
+        retried = sum(1 for r in results if r)
+        return ApiResponse(data={
+            "retried": retried,
+            "total_missing": len(rows),
+            "profile": profile.code,
+            "target_status": target_status,
+        })
+
+    # 旧逻辑：active profile + embedding_status='FAILED'
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, title, slug, content_markdown FROM posts "
