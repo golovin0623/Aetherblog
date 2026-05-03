@@ -18,7 +18,6 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.githubusercontent.com' },
       { protocol: 'https', hostname: '*.gravatar.com' },
       { protocol: 'https', hostname: 'cravatar.cn' },
-      { protocol: 'https', hostname: 'cdn.example.com' },
       { protocol: 'https', hostname: 'github.com' },
       // 安全性（VULN-083）：社交平台图标源（socialLinks.ts 的 PLATFORM_ICON_URLS
       // 全部指向此域）。保持此处白名单与 PLATFORM_ICON_URLS 的域名同步。
