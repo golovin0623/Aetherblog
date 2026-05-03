@@ -16,9 +16,8 @@ PR 把 Exception 改成更窄的类型) 都可能让 fallback 变成"摆设"。
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -121,6 +120,7 @@ def _wire_router(
     fake_model_router.pool = None  # _load_task_type_prompt 看到 pool=None 直接返回
 
     router = LlmRouter(model_router=fake_model_router)
+    router.settings.mock_mode = False
 
     async def fake_resolve_route(*_args: Any, **_kwargs: Any) -> LlmRouter._ResolvedRoute:
         return _make_resolved(override=resolved_override)
@@ -223,6 +223,27 @@ async def test_chat_does_not_fall_back_when_user_override(monkeypatch: pytest.Mo
     assert len(call_log) == 1
 
 
+@pytest.mark.asyncio
+async def test_chat_raises_primary_when_fallback_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """fallback credential 查询失败时, 不应淹没原始 primary 异常。"""
+    primary = _make_model("gpt-primary")
+    fallback = _make_model("gpt-fallback")
+    cred = _make_credential()
+    routing = _make_routing(primary=primary, fallback=fallback, credential=cred)
+    router = _wire_router(monkeypatch, routing=routing, fallback_credential=cred)
+    router.model_router.credential_resolver.get_credential = AsyncMock(
+        side_effect=RuntimeError("fallback credential db down")
+    )
+
+    async def fake_acompletion(**_kwargs: Any) -> Any:
+        raise RuntimeError("primary boom")
+
+    monkeypatch.setattr(llm_router_module, "acompletion", fake_acompletion)
+
+    with pytest.raises(RuntimeError, match="primary boom"):
+        await router.chat("hello", model_alias="summary")
+
+
 # ============================================================
 # stream_chat() 路径
 # ============================================================
@@ -319,6 +340,30 @@ async def test_stream_chat_raises_when_no_fallback_configured(monkeypatch: pytes
     cred = _make_credential()
     routing = _make_routing(primary=primary, fallback=None, credential=cred)
     router = _wire_router(monkeypatch, routing=routing)
+
+    async def fake_acompletion(**_kwargs: Any) -> Any:
+        raise RuntimeError("stream boom")
+
+    monkeypatch.setattr(llm_router_module, "acompletion", fake_acompletion)
+
+    with pytest.raises(RuntimeError, match="stream boom"):
+        async for _ in router.stream_chat("hello", model_alias="summary"):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_raises_primary_when_fallback_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """stream 起手失败后若 fallback 凭证查询也失败, 应抛回 primary 异常。"""
+    primary = _make_model("gpt-primary")
+    fallback = _make_model("gpt-fallback")
+    cred = _make_credential()
+    routing = _make_routing(primary=primary, fallback=fallback, credential=cred)
+    router = _wire_router(monkeypatch, routing=routing, fallback_credential=cred)
+    router.model_router.credential_resolver.get_credential = AsyncMock(
+        side_effect=RuntimeError("fallback credential db down")
+    )
 
     async def fake_acompletion(**_kwargs: Any) -> Any:
         raise RuntimeError("stream boom")
