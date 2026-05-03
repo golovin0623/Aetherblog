@@ -1,841 +1,187 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> 给 Claude Code 的工作指令。**本文件只放「不读会做错」的稳定铁律**与**子文档导航**；操作手册、API 表、迁移历史、故障速查全部按主题拆到 `.claude/docs/` 子文档，按需 Read。
+>
+> 版本对齐基线：2026-05-03（migrations 000043 / 24 个后端 handler / Aether Codex Round 5）。
 
-## Project Overview
+---
 
-**AetherBlog** is an intelligent blog system combining AI capabilities with modern web technologies. It follows a "Cognitive Elegance" design philosophy inspired by high-end SaaS products (Linear, Raycast) and atmospheric web design (Vercel).
+## 0. 子文档导航 — 何时读哪份
 
-**Tech Stack:**
-- Frontend: React 19.0.0, Next.js 15.1.3 (blog), Vite 6.0.6 (admin), TypeScript 5.7.2
-- Backend: Go 1.24.1, Echo v4.15.1
-- AI: 独立 AI 服务 (FastAPI + LiteLLM)
-- Database: PostgreSQL 17 with pgvector
-- Cache: Redis 7
-- Search: PostgreSQL tsvector (keyword) + pgvector (semantic)
+| 触发场景 | 必读文档 |
+| --- | --- |
+| 启动 / 重启服务 / 改 `.env` / 移动端真机调试 | `.claude/docs/startup-and-env.md` |
+| 改 JWT、对象存储、AI 服务、运行时日志、VanBlog 迁入 | `.claude/docs/backend-runtime.md` |
+| 新增 / 修改 API 端点；前端找不到后端入口 | `.claude/docs/api-handlers.md` + `apps/server-go/internal/server/router.go` |
+| 写新 migration；排查 `schema_migrations dirty` | `.claude/docs/database-migrations.md` |
+| 准备发版；改 Docker / Nginx / CI/CD webhook | `.claude/docs/deployment-cicd.md`（速查） + `docs/deployment.md`（详细） |
+| 服务起不来 / 健康检查失败 / 端口冲突 / 构建报错 | `.claude/docs/troubleshooting.md` |
+| 升级依赖 / 查依赖版本 / 看仓库结构全景 | `.claude/docs/dependencies-and-stack.md` |
+| 任何 UI 工作（组件 / 页面 / 样式） | `.claude/design-system/00-manifesto.md` → `07-migration.md`；活样板 `apps/blog/app/{design,about}/` |
+| 设计系统升级历史回溯 | `.claude/design-system/history.md` |
+| 处理 legacy（已废弃）颜色 / glass / 渐变 | `.claude/design-system/legacy-cognitive-elegance.md` |
 
-## Development Commands
+> **原则：** 读最相关的 1-2 份，不要一次性 Read 全部 —— 这个分层就是为了节省上下文。
 
-### Frontend (pnpm workspace)
+---
+
+## 1. 项目概览
+
+**AetherBlog** —— AI 增强的现代博客系统，遵循「Cognitive Elegance」→「Aether Codex」演进的设计哲学。
+
+| 层 | 技术 |
+| --- | --- |
+| Blog 前端 | Next.js 15.1.3 + React 19 + TypeScript 5.7 |
+| Admin 前端 | Vite 6 + React 19 + TypeScript 5.7 |
+| Backend | Go 1.24.1 + Echo v4 |
+| AI 服务 | Python FastAPI + LiteLLM（独立进程） |
+| 存储 | PostgreSQL 17（pgvector） + Redis 7 |
+| 检索 | tsvector（关键词） + pgvector（语义） |
+
+详细版本与仓库结构 → `.claude/docs/dependencies-and-stack.md`。
+
+---
+
+## 2. 启动一行命令（红线）
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Development
-pnpm dev:blog          # Start blog frontend (Next.js) on :3000
-pnpm dev:admin         # Start admin dashboard (Vite) on :5173
-pnpm dev               # Alias for dev:admin
-
-# Build
-pnpm build             # Build all packages
-pnpm build:blog        # Build blog only
-pnpm build:admin       # Build admin only
-
-# Linting
-pnpm lint              # Lint all packages
-
-# Clean
-pnpm clean             # Remove all node_modules and build artifacts
+./start.sh --gateway        # 本地默认 / 验证用
+./stop.sh [--all]
 ```
 
-### Backend (Go)
-
-```bash
-cd apps/server-go
-
-# Build
-go build ./...
-
-# Run
-go run ./cmd/server
-
-# Run tests
-go test ./... -v
-
-# Run with live reload (if air installed)
-air
-```
-
-### Docker & Infrastructure
-
-```bash
-# Start middleware only (PostgreSQL, Redis)
-docker compose up -d
-
-# View middleware logs
-docker compose logs -f
-
-# Stop middleware
-docker compose down
-```
-
-### One-Command Startup
-
-> ⚠️ **首次启动 = `./start.sh --gateway`，无需任何手动准备**
+> ⚠️ **本地启动 / 重启验证一律走 `--gateway`** —— 直连模式不会拉起 nginx，无法验证路由 / CORS / SSE 透传等真实链路。
 >
-> `start.sh` 在 `main()` 调用 `bootstrap_env`（位于脚本前部，紧挨 `check_dependencies`），会自动：
-> - 缺失 `.env` → 从 `.env.example` 拷贝；
-> - `.env` 中 `JWT_SECRET` / `AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN` / `AI_INTERNAL_SERVICE_TOKEN` / `AI_CREDENTIAL_ENCRYPTION_KEYS` 任一为空 → 用 `openssl rand -base64 48` / cryptography Fernet 就地生成（已有非空值时不会覆盖，保护用户手填的密钥）；
-> - 缺失 `apps/blog/.env.local` 或 `apps/admin/.env.local` → 从同目录 `.env.local.example` 拷贝。
+> 网关入口：`http://localhost:7899`（`/`→blog · `/admin/`→admin · `/api/`→backend · `/api/v1/ai/`→ai-service）。
 >
-> `.env.example` 默认值（`POSTGRES_PASSWORD=aetherblog123` / `REDIS_HOST=localhost` / `REDIS_PASSWORD=aetherblog_dev` / `AUTH_COOKIE_SECURE=false`）已对齐 `docker-compose.yml` 中间件容器和本机 HTTP 调试链路。生产部署需按 `.env.example` 注释里 `[PROD]` 标签逐字段替换。
->
-> **新人/AI 接手已存在的"半坏" `.env`**：直接 `mv .env .env.bak && ./start.sh --gateway` 让脚本重建是最快的修复，比挨字段比对靠谱。
->
-> ⚠️ **本地启动 / 重启验证一律走网关模式 `./start.sh --gateway`**
-> 直连模式（`./start.sh`）不会拉起 nginx 容器，用户无法通过 `http://localhost:7899` 验证路由、跨域、SSE 透传等真实链路。除非用户明确要求"直连"或只调试单个服务，否则默认 `--gateway`。
+> `start.sh` 的 `bootstrap_env()` 自动准备 `.env` 与各 `.env.local` —— 接手坏掉的 `.env` 直接 `mv .env .env.bak && ./start.sh --gateway` 重建。
 
-```bash
-# 默认本地启动（推荐 / 验证用）
-./start.sh --gateway
+完整启动 / 环境 / 移动端调试 / 远程 inspect → `.claude/docs/startup-and-env.md`。
 
-# 仅调试单个服务时使用（无网关，直连端口）
-./start.sh
+---
 
-# Production mode (unified gateway entry :7899)
-./start.sh --prod
+## 3. 关键铁律
 
-# Stop application services (keep middleware running)
-./stop.sh
+### 3.1 前端依赖管理
 
-# Stop everything including middleware
-./stop.sh --all
-```
+- 每个 `packages/*` 子目录**必须**在自己的 `package.json` 声明所有依赖 —— 不从根或其他包继承。
+- 新增 import 时立即在该包 `package.json` 加依赖，再 `pnpm install`。
+- root `pnpm.overrides` 锁定 `@codemirror/state@6.5.4` / `@codemirror/view@6.26.0`（避免多版本冲突）。
+- 必需：Node ≥ 20.0.0、pnpm ≥ 9.0.0（`packageManager: pnpm@9.15.0`）。
 
-**Gateway 模式 URL（默认验证入口）:**
-- 统一入口: http://localhost:7899
-  - `/` → 博客前台
-  - `/admin/` → 管理后台
-  - `/api/` → 后端 API
-  - `/api/v1/ai/` → AI 服务（SSE 已配 `X-Accel-Buffering: no`）
+### 3.2 TypeScript 配置
 
-**直连模式 URL（仅单服务调试时）:**
-- Blog: http://localhost:3000
-- Admin: http://localhost:5173
-- Backend API: http://localhost:8080/api
-- AI Service: http://localhost:8000
+- 根 `tsconfig.json` 用 project references。
+- 每个 `packages/*` **必须**有完整独立的 `tsconfig.json`（模板见 `.agent/rules/code-structure.md` §8.1）。
 
-**Production mode URL:**
-- Gateway: http://localhost:7899 (routes to all services)
+### 3.3 Workspace 包导入
 
-## Architecture
-
-### Monorepo Structure
-
-```
-AetherBlog/
-├── .agent/rules/      # AI agent behavior rules and design docs
-├── .github/workflows/ # CI/CD pipelines (ci-cd.yml, quick-build.yml)
-├── apps/
-│   ├── blog/          # Next.js 15 blog frontend
-│   ├── admin/         # Vite + React 19 admin dashboard
-│   ├── ai-service/    # 🤖 External AI service (FastAPI + LiteLLM)
-│   └── server-go/     # Go backend (Echo framework)
-│       ├── cmd/server/          # Entry point (main.go)
-│       ├── cmd/migrate/         # Database migration tool
-│       └── internal/            # Application packages (see Backend Package Structure)
-├── docs/              # Architecture, deployment, and development guides
-├── nginx/             # Gateway configs (nginx.conf, nginx.dev.conf)
-├── ops/               # Operational scripts and configs
-├── packages/          # Shared frontend packages
-│   ├── ui/            # Shared UI components (Button, Card, Modal, Toast, etc.)
-│   ├── hooks/         # Shared React hooks (useDebounce, useTheme, etc.)
-│   ├── types/         # TypeScript type definitions (models/, api/, ai/)
-│   ├── utils/         # Utility functions (format/, helpers/, validation/, url/)
-│   └── editor/        # Markdown editor component (CodeMirror-based)
-├── scripts/           # Build and utility scripts
-└── 系统需求企划书及详细设计.md  # Master design document (~22k lines)
-```
-
-### Backend Package Structure
-
-```
-apps/server-go/
-├── cmd/server/          # Entry point (main.go)
-├── cmd/migrate/         # Database migration tool
-├── internal/
-│   ├── config/          # Configuration (koanf)
-│   ├── server/          # HTTP server init & route registration
-│   ├── handler/         # HTTP handlers (24 handler modules)
-│   ├── service/         # Business logic
-│   ├── repository/      # Database access
-│   ├── model/           # Data models
-│   ├── dto/             # Request/Response DTOs
-│   ├── middleware/       # JWT, CORS, rate limit
-│   └── pkg/             # Shared utilities (pagination, response, JWT, image, storage)
-└── migrations/          # SQL migration files (32 migrations)
-```
-
-### Frontend Package System
-
-**Workspace packages** (use `workspace:*` protocol):
-- `@aetherblog/ui` - UI components (15 exported): `Button`, `Card`, `Input`, `Modal`, `ConfirmModal`, `Toast`, `Avatar`, `Badge`, `Tag`, `Skeleton`, `Dropdown`, `Tooltip`, `Textarea`, `Toggle` + `cn` utility (clsx + tailwind-merge)
-- `@aetherblog/hooks` - Shared hooks (16 exported): `useDebounce`, `useThrottle`, `useCopyToClipboard`, `useLocalStorage`, `useSessionStorage`, `useAsync`, `useMediaQuery`, `useClickOutside`, `useScrollLock`, `useIntersectionObserver`, `useKeyPress`, `useWindowSize`, `usePrevious`, `useToggle`, `useScrollPosition`, `useTheme` + `ThemeToggle` component
-- `@aetherblog/types` - TypeScript types organized under `api/` (request, response, error), `models/` (post, user, comment, media, friendLink), `ai/` (prompt, completion)
-- `@aetherblog/utils` - Utilities organized under: `format/` (date, number, string, duration formatters), `url/` (query string, slug, UrlBuilder), `storage/` (IndexedDB wrapper), `helpers/` (deepClone, retry, omit, pick, uuid, nanoid, sleep), `validation/` (email, URL, password), `color.ts` (hex/rgb/hsl conversion, theme CSS variable generation)
-- `@aetherblog/editor` - Markdown editor (CodeMirror-based): `MarkdownEditor`, `MarkdownPreview`, `EditorWithPreview`, `UploadProgress`, `ImageSizePopover` + hooks (`useEditorCommands`, `useTableCommands`, `useImageUpload`)
-
-**Import pattern:**
 ```typescript
 import { Button, Card, cn } from '@aetherblog/ui';
 import { useDebounce } from '@aetherblog/hooks';
 import type { Post } from '@aetherblog/types';
-import { formatDate, slugify } from '@aetherblog/utils';
+import { formatDate } from '@aetherblog/utils';
 ```
 
-**CRITICAL: Dependency Management**
-- Each `packages/*` subdirectory MUST declare ALL dependencies in its own `package.json`
-- Dependencies are NOT inherited from root or other packages
-- When adding new imports, immediately add the dependency to that package's `package.json`
-- Run `pnpm install` after adding dependencies
-- **pnpm overrides** in root `package.json` pin `@codemirror/state@6.5.4` and `@codemirror/view@6.26.0` to avoid version conflicts
-- Required: Node >= 20.0.0, pnpm >= 9.0.0 (`packageManager: pnpm@9.15.0`)
+完整导出清单 → `.claude/docs/dependencies-and-stack.md` §5。
 
-**CRITICAL: TypeScript Configuration**
-- A root `tsconfig.json` exists with project references (`apps/admin`, `apps/blog`, `packages/editor`, `packages/types`, `packages/ui`)
-- Each `packages/*` subdirectory MUST have a complete standalone `tsconfig.json`
-- Use the standard template from `.agent/rules/code-structure.md` §8.1
+### 3.4 设计系统六硬规则（Aether Codex）
 
-### Infrastructure Services (docker-compose.yml)
+> 任何 UI 工作前**先看** `apps/blog/app/design/`（活样板）+ `apps/blog/app/about/`（Apple-grade 落地参考）。完整规范 → `.claude/design-system/`。
 
-| Service | Image | Container | Port |
-|---------|-------|-----------|------|
-| PostgreSQL | `pgvector/pgvector:pg17` | `aetherblog-postgres` | 5432 |
-| Redis | `redis:7-alpine` | `aetherblog-redis` | 6379 |
+1. **不要发明新颜色。** 只组合 `--ink-*` / `--bg-{void,substrate,leaf,raised}` / `--aurora-1..4` / `--signal-{success,warn,danger,info}`。Aurora 着色用 `color-mix(in oklch, var(--aurora-N) X%, transparent)`。
+2. **不要手写玻璃效果。** 用 `.surface-leaf`（95% 卡片）/ `.surface-raised`（侧栏 / sticky）/ `.surface-overlay`（modal / auth）/ `.surface-luminous`（每页 ≤1 张签名卡）。`[data-interactive]` 提供 aurora hover stripe。
+3. **不要绕过排版阶梯。** 标题 `.font-display`（Fraunces）；italic lede `.font-editorial`（Instrument Serif）；标签 / caption `.font-mono`（Geist Mono）+ `tracking-[0.2em] uppercase`。字号从 `--fs-micro..display`（9 阶）取。
+4. **不要写裸 bezier / spring 数值。** 从 `@aetherblog/ui` 导入 `{ spring, transition, variants, stagger }`。短交互 `transition.quick`（260ms）、入场 `spring.soft`、按钮按下 `spring.precise`。
+5. **不要在 Codex 已迁移的表面写 `dark:` 变体。** Token 通过 `:root.light` 自动翻转。新颜色须加到 `tokens.css`，不要 inline。
+6. **新增组件 / 页面前先看 `/design` 与 `/about`。** 找不到对应模式 → 设计规范该升级，**不是**你该即兴发挥。
 
-Additional compose files: `docker-compose.dev.yml` (development), `docker-compose.prod.yml` (full production stack with gateway).
+### 3.5 共享组件位置
 
-**对象存储(Object Storage,2026-05 全链路打通):**
-- admin `/settings` → "存储管理" tab 配置 LOCAL / S3 / MinIO / OSS / COS / R2 各 provider,带 endpoint 预设按钮(腾讯云 / 阿里云 / R2 等区域)。
-- set-default 后**新上传的文件自动入云** — `media_files.storage_provider_id` / `storage_type` / `cdn_url` 落库,前端 `getMediaUrl(item)` 优先读 `cdnUrl`(LOCAL 仍走 `/api/uploads/`)。
-- **存量本地文件用"备份到云"按钮入云**(媒体页右上角云图标 → SyncDialog) — 后端 `SyncService` worker 仿 `SearchService.IndexBatchPosts` 的 atomic.Bool + DB 状态机模式,按 `cfg.Sync.PollIntervalSec` 周期拣 `media_sync_jobs.status='PENDING'` 批次,errgroup 并发 + 限速,失败 < `MaxAttempt` 自动重试,达上限标 FAILED。
-- **反向管理云端**(admin 侧栏 "云端浏览" → `CloudExplorerPage`) — 调 `Storage.List` 走 ListObjectsV2(S3/COS/OSS/MinIO/R2 兼容)、`LocalStorage.List` 走 filepath.WalkDir,反查 catalog 后区分 IN_CATALOG / ORPHAN,孤儿可一键导入或从云端删除;catalog 中的 key 拒绝在云端浏览器删,必须走媒体管理删除路径(防止 catalog 状态分裂)。
-- **永久删除新增 deleteCloud 选项**(`DeleteMediaConfirmModal`):默认勾选"删除存储后端",取消时仅清 catalog;`PermanentDeleteBatch` 在 service 层做 ownership 校验(VULN 修复 — 早期实现可越权删别人的文件),按 `storage_provider_id` 分组逐 provider 删后端,孤儿文件不再产生。
-- 关键文件: `apps/server-go/internal/service/{media_service.go,sync_service.go,storage_provider_service.go}`、`internal/pkg/storage/{storage.go,local.go,s3.go,factory.go}`、`internal/pkg/cryptkey/{fernet.go,keystore.go}`(Go 端 Fernet,与 ai-service 二进制兼容)、`internal/handler/{media_handler.go,sync_handler.go,storage_provider_handler.go}`、migrations 000042(R2 + media_variants.storage_provider_id) / 000043(sync_status + media_sync_jobs)。
-- **Secret 加密**: `storage_providers.config_json` 在 Repo 层用 Fernet (复用 `AI_CREDENTIAL_ENCRYPTION_KEYS`) 加密,落库格式 `enc:v1:gAAAA...`。启动时自动迁移 legacy 明文行 (`MigrateLegacyToEncrypted`)。Python ai-service 与 Go 端二进制兼容(MultiFernet 轮换语义、urlsafe-base64 padding 容错)。
-- **大文件流式 multipart**: S3Storage.Upload 在 size ≥ 16MB 时自动切到 `aws-sdk-go-v2/feature/s3/manager.Uploader` (8MB/片,4 并发);小文件继续走 PutObject。SyncService 读源 → 写目标全程不读到内存,reader 直接桥接。
-- **UploadContent 修复**: 历史实现 (handler 写死 localStore 且 SetVersionDeps 从未被调用) 在 S3 模式下不可用。现走 `MediaService.UpdateContent` 自动按 storage_provider_id 解析,cdn_url 自动追加 `?v={version}` 让 CDN 缓存失效。
+- **必须放 `packages/ui`：** 所有 UI 组件、跨 app 复用的组件。
+- **仅放 `apps/`：** 页面、布局、业务专属组件。
+- **禁止：** 在 `apps/admin` 或 `apps/blog` 重造 UI 组件；使用浏览器原生 `confirm` / `alert`（用共享 Modal）。
 
-### Backend Version Pinning
+### 3.6 加载体验
 
-| Dependency | Version | Notes |
-|-----------|---------|-------|
-| Go | 1.24.1 | Language version |
-| Echo | v4.15.1 | HTTP framework |
-| lib/pq | v1.12.0 | PostgreSQL driver |
-| sqlx | v1.4.0 | Database helper |
-| go-redis/v9 | v9.18.0 | Redis client |
-| golang-jwt/jwt/v5 | v5.3.1 | JWT handling |
-| golang-migrate/v4 | v4.19.1 | DB migrations |
-| zerolog | v1.35.0 | Structured logging |
-| validator/v10 | v10.30.1 | Input validation |
-| golang.org/x/crypto | v0.46.0 | Cryptography |
-| golang.org/x/sync | v0.19.0 | Concurrency utilities |
-| imaging | v1.6.2 | Image processing |
-| koanf/v2 | v2.3.4 | Configuration |
-| aws-sdk-go-v2 | v1.41.5 | AWS SDK core |
-| aws-sdk-go-v2/service/s3 | v1.97.3 | S3-compatible storage |
+- **禁止** spinner（无论全屏或局部）。
+- **必须**用与最终布局匹配的骨架屏 + shimmer/pulse；目标零延迟感知。
 
-**Frontend Key Versions:**
+### 3.7 Legacy token 迁移立场
 
-| Package | Admin | Blog |
-|---------|-------|------|
-| react | 19.0.0 | 19.0.0 |
-| next | - | 15.1.3 |
-| vite | 6.0.6 | - |
-| typescript | 5.7.2 | 5.7.2 |
-| tailwindcss | 3.4.17 | 3.4.17 |
-| @tanstack/react-query | 5.62.8 | 5.62.8 |
-| react-router-dom | 7.1.1 | - |
-| zustand | 5.0.2 | - |
-| framer-motion | 11.15.0 | 11.15.0 |
-| recharts | 2.15.0 | - |
-| zod | 4.3.5 | - |
-| @lobehub/icons | 4.1.0 | - |
-| react-hook-form | 7.70.0 | - |
-| sonner | 2.0.7 | - |
-| shiki | - | 1.1.0 |
-| mermaid | - | 11.12.2 |
-| katex | - | 0.16.27 |
-| react-markdown | - | 10.1.0 |
+`--text-*` / `--bg-primary` / `bg-white/5` / `border-white/10` / `status-danger-light` / 品牌渐变等已废弃但**未删除**（sunset 2026-07-17，见 `deprecations.json`）。修改 legacy 组件时须**在同一 commit 迁移到 Codex** —— 不留半 Codex 半 legacy。`pnpm design-system:check` 暴露违规（当前基线 0 error / 449 warning / 2173 info）。
 
-## API Structure
+---
 
-### Backend API Endpoints (24 Handler Modules)
+## 4. 命名约定
 
-| Handler | Prefix | Key Endpoints |
-|---------|--------|---------------|
-| auth_handler | `/v1/auth/*` + `/v1/admin/auth/*` | POST /login, /register, /refresh, /logout; GET /me; POST /change-password; PUT /profile, /avatar; **admin-only:** POST /rotate-jwt-secret (手动触发 JWT 签名密钥轮换) |
-| post_handler | `/v1/admin/posts/*` + `/v1/public/posts/*` | Admin CRUD + publish + auto-save + properties patch; 5 public routes + password verify |
-| comment_handler | `/v1/admin/comments/*` + `/v1/public/*` | 12 admin routes (incl. batch approve/delete) + 2 public routes (list + submit with rate limit) |
-| media_handler | `/v1/admin/media/*` | 18 routes: upload (single + batch), list, stats, batch-move, trash management, CRUD, content update |
-| folder_handler | `/v1/admin/folders/*` | 7 routes: tree, CRUD, children, move |
-| permission_handler | `/v1/admin/folders/*/permissions` | 4 routes: folder permission management |
-| category_handler | `/v1/admin/categories/*` + `/v1/public/*` | 6 routes |
-| tag_handler | `/v1/admin/tags/*` + `/v1/public/*` | 5 routes |
-| ai_handler | `/v1/admin/ai/*` | 9 business endpoints (summary/tags/titles/polish/outline/translate + stream variants + health) + 7 config endpoints (prompts + tasks CRUD) + provider proxy (Any /*) |
-| stats_handler | `/v1/admin/stats/*` | 7 endpoints: dashboard, top-posts, visitor-trend, archives, ai-dashboard, ai-pricing-gaps, ai-cost-archive |
-| system_monitor_handler | `/v1/admin/monitor/*` | 14 endpoints: metrics, storage, health, overview, containers, container logs, logs, log files, log download, network test, history, history stats, history delete, alerts, config |
-| log_level_handler | `/v1/admin/system/log-level` | GET 当前 backend / ai-service 运行时日志级别；PUT `{backend,aiService}` 在线调整 `zerolog.SetGlobalLevel` + ai-service root logger.setLevel（无需重启）。改 INFO→DEBUG 后 docker logs 真的多出调试行；改 INFO→WARN 后业务 INFO 行连写都不写。运行时调整不持久化，进程重启回到 `AETHERBLOG_LOG_LEVEL` / `AI_LOG_LEVEL`。健康探活路径（`/api/actuator/health`、`/api/v1/admin/system/{health,metrics}`、`/health`、`/ready`）2xx 时 *不落访问日志*（从前是降级到 Debug，运维改 DEBUG 排错时仍刷屏）；失败仍按状态码升级到 Warn/Error。Admin 仪表盘日志查看器右上角"运行时"下拉直接联动这两个 select。 |
-| site_handler | `/v1/admin/site/*` | 3 endpoints: info, stats, author |
-| site_setting_handler | `/v1/admin/settings/*` | 5 endpoints: list, group, batch-update, get-by-key, update-by-key |
-| friend_link_handler | `/v1/admin/friends/*` + `/v1/public/*` | 10 endpoints: admin CRUD + batch-delete + toggle-visible + reorder + page; 1 public |
-| activity_handler | `/v1/admin/activities/*` | 3 endpoints: recent, list, by-user |
-| storage_provider_handler | `/v1/admin/storage/*` | 11 endpoints: list, default, CRUD, set-default, test, **objects(list)**, **import**, **objects(delete)** — 后三个为 Phase 5 云端浏览/反向导入 |
-| sync_handler | `/v1/admin/storage/sync/*` + `/v1/admin/media/:id/sync` | 5 endpoints: start (入队 + 启 worker), cancel (优雅停), status (workers + counts), failed (列出失败 job), retry (重置 PENDING); 单文件入口 POST /admin/media/:id/sync |
-| archive_handler | `/v1/public/archives/*` | 2 endpoints: list, stats |
-| migration_handler | `/v1/admin/migrations/vanblog/*` | 3 endpoints: `POST /analyze` (dry-run → AnalysisReport), `POST /import/stream` (NDJSON/SSE 流式执行), `POST /import?mode=dry-run\|execute` (兼容旧客户端)。500MB 上限，source_key = `vanblog:<id>` + 双读兼容 `vanblog:<title>` 历史格式；支持 skip / overwrite / rename 三种冲突策略；分类/标签批量预加载 + 多行 VALUES INSERT 消灭 N+1；`SET LOCAL app.preserve_updated_at=true` 让 VanBlog 原始 createdAt/updatedAt 落库（依赖 migration 000028 触发器） |
-| media_tag_handler | `/v1/admin/media-tags/*` | 9 endpoints: tags CRUD + popular + search + batch; file-tag association (list, add, remove) |
-| system_handler | `/v1/system/*` | GET /system/time |
-| visitor_handler | `/v1/admin/visitors/*` | 2 endpoints: create, today |
-| version_handler | `/v1/admin/versions/*` | 3 endpoints: list by file, restore, delete |
-| search_handler | `/v1/public/search/*` + `/v1/admin/search/*` | GET search (hybrid/keyword/semantic), GET qa (SSE), config CRUD, stats, reindex, retry-failed, embedding-status |
-| share_handler | `/v1/admin/shares/*` | 5 endpoints: create file share, create folder share, get file shares, update share, delete share |
+**前端：** Page 组件 `PascalCase + Page`（`DashboardPage.tsx`）；普通组件 `PascalCase`；hooks `use + camelCase`；services `camelCase + Service`；stores `camelCase + Store`；types `PascalCase`。
 
-**Database Migrations:** 43 total, latest `000043` (add_media_sync — Phase 4 同步备份字段 + media_sync_jobs 表). 000042 (align_storage_provider_types) 把 storage_providers.provider_type 与 media_files.storage_type CHECK 约束扩展到 R2(原本只允许 LOCAL/S3/MINIO/OSS/COS,但 factory.go 早就接受 R2,造成创建 R2 provider / 上传 R2 文件失败 — VULN-fix);同时给 media_variants 加 storage_provider_id,缩略图与主文件保持同源。
-000029: add_font_family_setting, 000030: add_ai_cost_archives, 000031: search_config (site_settings seed for search feature), 000032: search_index_timeout, 000033: jwt_secrets (DB-managed 定时轮换签名密钥，status: current/previous/retired), 000034: versioned_post_embeddings (post_vectors 废弃 → post_embeddings 版本化存储；变长 vector 列 + partial HNSW 按 dim × status=active 分桶；site_settings.search.active_embedding_model 作为活跃模型指针；换模型 = INSERT 新行 + 翻转指针，不动 schema), 000035: fix_legacy_post_embeddings (000034 在存量部署上 CREATE TABLE IF NOT EXISTS 静默跳过导致 schema 半成品的第一轮修复), 000036: post_embeddings_repair (等价于 000035 的幂等修复; 配合 deploy.sh 对 "v34 dirty → force 35" 的自愈, 确保无论迁移链是否被 dirty 卡住都能落到版本化 schema), 000037: heal_active_embedding_pointer (治愈 000034/000036 seed 默认值 'text-embedding-3-small' 与实际 `ai_task_routing.embedding` 背离导致 `site_settings.search.active_embedding_model` 变孤儿指针的存量问题; 指针无匹配 active 行时对齐到 `post_embeddings` 里行数最多的模型, 全空则清空让 ai-service 走 `llm_router` fallback; 配合 `providers.update_routing` 的蓝绿安全同步钩子确保路由与指针一致), 000038: improve_ai_prompts (重写 7 个 ai_task_types 默认 prompt 为强约束版本：summary 强制单段不分点不问答、tags/titles 输出 JSON 数组、polish 禁止改事实只调表达、outline 严格按 {depth}/{style} 输出 Markdown、translate 保留 Markdown 与专有名词、qa 限制只能基于参考内容. 同时试图把 `posts.summary` 列宽 VARCHAR(500)→VARCHAR(2000) —— **该 ALTER 在生产必然失败** (v_published_posts 用 SELECT p.* 引用了 summary, PostgreSQL 0A000), 整个 migration 事务回滚, schema_migrations 标 v38 dirty), 000039: widen_summary_with_view (修复 000038 留下的 v38 dirty: DROP VIEW v_published_posts → 重做 7 条 UPDATE ai_task_types (因为 038 整体回滚) → ALTER COLUMN summary TYPE VARCHAR(2000) → CREATE OR REPLACE VIEW v_published_posts. 配合 deploy.sh 对 "v38 dirty → force 38" 的自愈, 让 039 接管 038 没做完的工作), 000040: tags_existing_aware_prompt (重写 'tags' prompt 接受新增 `{existing_tags}` 占位符, 让模型在生成标签时优先在【现有标签库】中精确匹配 (matches), 仅在覆盖不到时才补充新建议 (suggestions), 输出 `{matches: [{name, reason?}], suggestions: [...]}` 结构化 JSON; 路由层 `_parse_tags_structured` 对应做"严格 JSON 优先 → 扁平数组兜底 → 幻觉 match 降级 → match 名字归一化到库内规范大小写"四级解析, 缓存 key 加入 existing_tags 签名防止标签库变更后命中陈旧分桶).
-Key tables added in 000020-000028: `ai_credentials`, `ai_task_types`, `ai_task_routing`, `activity_events`.
-Vanblog migration fields on `posts`: `is_hidden`, `source_key`, `legacy_author_name`, `legacy_visited_count`, `legacy_copyright`.
+**后端：** Handler / Service / Repo / Model / DTO 一律 `PascalCase + 后缀`（`PostHandler` / `PostService` / `PostRepo` / `Post` / `CreatePostRequest`）。
 
-**JWT 密钥定时轮换（migration 000033 + VULN-152 跟进）：**
-- 签名密钥由 `jwt_secrets` 表管理（`current` 签名，`current`+`previous` 参与验签，`retired` 归档）。
-- Go 后端启动时用 `JWT_SECRET` 做 bootstrap seed（若表空则写入第一条 current）；`jwtkeys.Store` 把 current+previous 缓存进内存，`StartRotator` goroutine 按 `JWT.RotationInterval`（默认 7d）生成新 current、把旧 current 降级为 previous，`PreviousGrace`（默认 48h）期间旧 key 仍参与验签避免用户下线。
-- AI 服务通过 `app/core/jwt_keys.py` 后台任务每 60s 从同一张表同步 keys（在 `app/main.py` lifespan 里启动），`_decode_with_hmac` 按顺序遍历多 key 验签。
-- 管理员可通过 `POST /v1/admin/auth/rotate-jwt-secret` 手动触发计划外轮换（VULN-152 同类历史泄露紧急响应使用）。
-- 可调参数（`config.JWTConfig`，均通过 `AETHERBLOG_JWT_*` 环境变量覆盖）：`rotation_interval` / `previous_grace` / `reload_interval`。将 `rotation_interval` 设为 0 可禁用自动轮换（不推荐）。
+---
 
-### Frontend Service Layer
+## 5. Agent 行为标准
 
-Services use axios (`api.ts` base client) and follow naming: `{module}Service.ts` (22 service files):
-- `authService.ts` - Authentication (login, register, refresh, profile)
-- `postService.ts` - Posts CRUD + auto-save + publish
-- `categoryService.ts` - Categories CRUD
-- `tagService.ts` - Tags CRUD
-- `commentService.ts` - Comment moderation (approve, reject, spam, batch)
-- `mediaService.ts` - Media upload + CRUD + trash management
-- `mediaTagService.ts` - Media file tagging
-- `folderService.ts` - Folder tree + CRUD + move
-- `permissionService.ts` - Folder permissions ACL
-- `shareService.ts` - File/folder sharing
-- `versionService.ts` - File version history
-- `storageProviderService.ts` - Storage provider CRUD + test
-- `analyticsService.ts` - Dashboard statistics + AI analytics
-- `aiService.ts` - AI writing tools (summary, tags, titles, polish, outline, translate)
-- `aiProviderService.ts` - AI provider/model/credential/prompt/task config
-- `aiPredictionService.ts` - AI prediction utilities
-- `friendService.ts` - Friend links CRUD + reorder
-- `settingsService.ts` - Site settings (group, batch update)
-- `systemService.ts` - System monitor (metrics, containers, logs, alerts)
-- `activityService.ts` - Activity event feed
-- `searchConfigService.ts` - Search configuration
+> 完整规则：`.agent/rules/behavior_rules.md` / `code-design.md` / `code-structure.md` / `ui_rules.md`。
 
-### Admin Frontend Pages (`apps/admin/src/pages/`)
+**全责原则：** 不要把运维负担转给用户。
+- ❌ 错：让用户手动重启服务、编译、清缓存。
+- ✅ 对：自动调用 `./start.sh` / `docker restart`。
+- 仅在 AI 缺权限时（如 sudo 密码）才请求用户。
 
-Main pages (16+): Dashboard, Posts, CreatePost, EditPost, AiWritingWorkspace, Categories, Comments, Friends, Media, Settings, Migration, Monitor, Analytics, AiConfig, AiTools, SearchConfig, Activities
+**完成定义（Definition of Done）：** 「请验证」隐含「服务已成功重启并运行」。**交付即验证。**
 
-Sub-modules: `ai-config/` (16 components + hooks + utils), `ai-tools/` (7 tool pages: Summary, Tagger, ContentRewriter, SeoOptimizer, QA, TextCleaner + workspace), `media/` (13+ components), `posts/components/` (8+ components incl. SlashCommandMenu, SelectionAiToolbar, AiSidePanel), `auth/` (Login, ChangePassword), `dashboard/` (12 components incl. AiUsageTrendChart, ContainerStatus, RealtimeLogViewer), `settings/` (StorageProviderSettings)
+**文档驱动开发流程：** 任务锁定 → 检索设计文档 → 评估方案 → 实现（代码注释 `// ref: §X.X`）→ 同步文档 → 提交完成报告。详见 `.agent/rules/code-design.md`，主设计文档 `系统需求企划书及详细设计.md`。
 
-### Blog Frontend Pages (`apps/blog/app/`)
+---
 
-4 route groups (home, posts/[slug], timeline, friends) + 35+ components: ArticleCard, FeaturedPost, CommentSection, SearchPanel, TimelineTree, MarkdownRenderer, TableOfContents, HeroParallaxContent, StackedParallax, ProtectedPostContent, FloatingThemeToggle, MobileBottomPullNav, FriendCard, VisitTracker, etc.
+## 6. 文档维护规范
 
-Libs: `api.ts` (API client), `services.ts` (data fetching), `sanitizeUrl.ts`, `remarkAlertBlock.ts` (custom markdown plugin), `socialLinks.ts`, `headingId.ts`, `logger.ts`
+### 6.1 强制同步触发器
 
-## Design System · Aether Codex Layer
+下表所列操作发生 → **必须**同步对应文档，否则视为未完成交付：
 
-A second design layer (**Aether Codex — 漂浮在夜空中的发光典籍**) sits *on top of* the legacy "Cognitive Elegance" tokens — all old tokens (`.glass`, `--color-primary`, `--text-primary`, etc.) remain intact; new tokens are added in parallel.
+| 操作 | 必须更新 |
+| --- | --- |
+| 新增 API endpoint | `docs/architecture.md` API 节 + `.claude/docs/api-handlers.md` |
+| 修改 DB schema（新建 migration） | `docs/architecture.md` 数据库节 + `.claude/docs/database-migrations.md` |
+| 新增 / 修改 `packages/ui` 共享组件 | `.agent/rules/ui_rules.md` + `.claude/docs/dependencies-and-stack.md` §5 |
+| 新增 `packages/hooks` Hook | `.agent/rules/code-structure.md` + `.claude/docs/dependencies-and-stack.md` §5 |
+| 修改 Docker 配置 | `docs/deployment.md` + `.claude/docs/deployment-cicd.md` |
+| 修改 Nginx 配置 | `.agent/rules/nginx-guide.md` + `.claude/docs/deployment-cicd.md` |
+| 完成功能里程碑 | `CHANGELOG.md` + `系统需求企划书及详细设计.md` §1.6 Gap Analysis |
+| 新增 AI 供应商 / 模型 | `docs/AI_MODULE_PLAN_V2.md` |
+| 设计系统升级 | `.claude/design-system/history.md` + 相应规范文件 |
+| 升级语言 / 框架版本 | `.claude/docs/dependencies-and-stack.md` |
+| 新增运行时机制（鉴权 / 存储 / AI 任务等） | `.claude/docs/backend-runtime.md` |
+| 排查到新故障类型并解决 | `.claude/docs/troubleshooting.md` |
 
-**Spec location:** `.claude/design-system/` (00-manifesto → 07-migration).
+### 6.2 红线
 
-**New CSS layers** (imported before `@tailwind` in both apps):
-- `packages/ui/src/styles/tokens.css` — `--ink-*`, `--bg-void/substrate/leaf/raised`, `--aurora-1..4`, `--signal-*`, 9-step font scale `--fs-micro..display`, `--ease-out: cubic-bezier(0.16,1,0.3,1)`, `--dur-instant/quick/flow/ambient`
-- `packages/ui/src/styles/surfaces.css` — 4-tier glass system: `.surface-leaf / .surface-raised / .surface-overlay / .surface-luminous`, `[data-interactive]` aurora hover bar
-- `packages/ui/src/styles/typography.css` — `.text-micro..display`, `.font-display/editorial/sans/mono`, `.reading-column`, `.marginalia`, `.drop-cap`, `.section-mark`, `.ai-stream`, `.ink-cursor`, `.aurora-text`, `.cmd-chip`
+- ❌ 提交「改了代码但未更新对应文档」。
+- ❌ `CHANGELOG.md` 落后 HEAD 超过 1 个功能模块。
+- ❌ 新增 API endpoint 但 `docs/architecture.md` 与 `.claude/docs/api-handlers.md` 都无记录。
+- ✅ PR 描述包含 `📄 文档影响：[已更新 X.md] 或 [无需更新，原因: ...]`。
+- ✅ 新功能开发前先查阅 `系统需求企划书及详细设计.md` 对应 §X.X，并在代码注释中引用。
 
-**Motion presets:** `packages/ui/src/motion.ts` exports `ease`, `duration`, `spring`, `transition`, `variants`, `stagger()`, `cssMotion` — consume via `import { motion as motionPresets } from '@aetherblog/ui'`.
+每完成一个功能模块运行 `/doc` 触发文档校准；release 前对照 `docs/architecture.md` ↔ migrations、`go.mod` / `package.json` ↔ 实际依赖、`CHANGELOG.md` ↔ HEAD 对齐检查。
 
-**Fonts:** Fraunces (display, SOFT/WONK/opsz axes) · Instrument Serif (editorial italic lede) · Geist + Geist Mono (UI/mono) · LXGW WenKai (中文正文). Loaded via `next/font` in blog, CDN `<link>` in admin.
+---
 
-**Signature interactions:**
-- Blog hero `<h1>` breathing animation (7.2s ease-in-out on Fraunces opsz).
-- Article `.markdown-body` upgrades: drop-cap, `§` section mark on h2, aurora h1 underline, aurora inline code, aurora left-stripe on code blocks, italic Fraunces blockquote.
-- `<ReadingProgress>` top 2px aurora bar (rAF-throttled scroll → `--reading-progress` CSS var).
-- Article `.marginalia` aside (xl+) with mono uppercase metadata (Published / Reading / Views / Section).
-- Search panel prefix routing: `>` command · `/` tag · `?` AI; aurora `.ink-cursor` on streaming AI answer.
-- Admin Sidebar "Control Room": grouped nav (OVERVIEW / CONTENT / INTELLIGENCE / SYSTEM), aurora left-stripe on active NavLink, Fraunces wordmark.
-- Admin `DataTable`: aurora left-stripe on row hover, mono uppercase headers, `.tnum` numerals, mono pagination footer.
-- Admin `StatsCard`: Fraunces display numerals with WONK axis shift on hover, mono caption titles.
-- **Command Palette (⌘K / Ctrl+K)** — `apps/admin/src/components/common/CommandPalette.tsx`, wired in `AdminLayout`. Grouped: NAVIGATE / CREATE / SYSTEM. ↑↓ navigate · ↵ execute · ESC close.
-- **Focus Mode (⌘. / Ctrl+.)** — `apps/admin/src/contexts/FocusModeContext.tsx` (`FocusModeProvider`, `useFocusMode`). Toggles `:root[data-focus-mode="true"]`, hiding sidebar/headers and showing a top-right aurora chip. ESC also exits.
+## 7. 默认凭据
 
-**Accessibility baseline** (in `tokens.css`): `prefers-reduced-motion` disables aurora/ink-cursor animation; `(hover: none) and (pointer: coarse)` enforces 44×44 touch targets; `prefers-contrast: more` strengthens borders.
+**Admin 后台：** `admin` / `admin123`（首次登录强制改密）。
 
-### 🎯 Design Reference Authority (MUST-READ before any UI work)
-
-**Canonical references for the Aether Codex design language:**
-
-| Reference | Purpose | Inspect for |
-| --- | --- | --- |
-| `apps/blog/app/design/DesignClient.tsx` + `sections/S1–S8.tsx` | Live showcase of every token, surface, typography scale, motion curve, and signature interaction | Color (OKLCH hue slider), 9-step font scale, 4-tier surfaces, ease curves, signature moments |
-| `apps/blog/app/about/` | "Apple-grade" reference page — the first full-page Codex implementation outside /design | Hero breath animation, marginalia rhythm, `reading-column` flow |
-| `.claude/design-system/` (00-manifesto → 07-migration) | Written spec for the design system | Manifesto, surfaces, typography, motion, migration guidance |
-| `packages/ui/src/styles/{tokens,surfaces,typography}.css` | Source of truth for token values | What tokens exist and how they auto-flip light/dark |
-
-**HARD RULES for every new UI surface (auth, modal, editor panel, etc.):**
-
-1. **Never invent new color values.** Compose from `--ink-*`, `--bg-void/substrate/leaf/raised`, `--aurora-1..4`, `--signal-success/warn/danger/info`. Aurora tints via `color-mix(in oklch, var(--aurora-N) X%, transparent)`.
-2. **Never hand-roll glass.** Use `.surface-leaf` (95% of cards), `.surface-raised` (sidebar/sticky), `.surface-overlay` (modal/auth card), `.surface-luminous` (≤1 signature card per page). `[data-interactive]` adds aurora hover stripe.
-3. **Never skip the typography ladder.** Headings get `.font-display` (Fraunces); italic ledes get `.font-editorial` (Instrument Serif); labels/captions get `.font-mono` (Geist Mono) with `tracking-[0.2em] uppercase`. Sizes come from `--fs-micro..display` (9 steps).
-4. **Never write raw bezier / spring numbers.** Import `{ spring, transition, variants, stagger }` from `@aetherblog/ui` (motion presets). Short transitions = `transition.quick` (260ms), entrances = `spring.soft`, button press = `spring.precise`.
-5. **Never use `dark:` Tailwind variants for Codex-migrated surfaces.** The tokens self-flip via `:root.light`. If a new color needs a separate light value, add it to `tokens.css` — not inline.
-6. **Before adding a new component or page, open `/design` and `/about` first.** If the pattern isn't there, it's a signal the design spec needs an update — NOT that you should improvise.
-
-**Migration stance for legacy tokens:** `--text-*`, `--bg-primary`, `bg-white/5`, `border-white/10`, `status-danger-light`, gradient-primary etc. are deprecated but **not** deleted (see `.claude/design-system/deprecations.json` with sunset 2026-07-17). When modifying a legacy component, migrate it to Codex tokens in the same commit — do not leave half-Codex half-legacy. Run `pnpm design-system:check` to surface violations.
-
-### Round 3 · 前沿精度升级 (2026-04-17)
-
-- **Font role bridge** (tokens.css tail): `--font-fraunces` / `--font-instrument-serif` / `--font-geist` / `--font-geist-mono` aliased to currently-loaded `--font-playfair` / `--font-noto-serif-sc` / `--font-inter` / system mono. Without this, all typography classes referencing `var(--font-display)` / `var(--font-editorial)` silently fell through to system fonts. **Any future font swap only needs these four lines edited.**
-- **Global selection & caret** (tokens.css tail): `::selection` / `::-moz-selection` use `color-mix(in oklch, var(--aurora-1) 32%, transparent)` (18% in light mode); `input/textarea/[contenteditable]` set `caret-color: var(--aurora-1)`. Applies to blog + admin via shared import.
-- **Drop cap spec** (globals.css `.markdown-body > p:first-of-type::first-letter` + typography.css `.drop-cap::first-letter`): 3.6em / weight 400 / normal roman / `var(--font-editorial)` / pure `var(--ink-primary)` + `text-shadow: 0 1px 0 color-mix(in oklch, var(--aurora-1) 22%, transparent)`. `@supports (initial-letter: 3)` enables hanging cap.
-- **ReadingProgress dual-path**: modern browsers (`CSS.supports('animation-timeline', 'scroll()')` truthy) render `.reading-progress--css` —— pure CSS `animation-timeline: scroll(root block)` driving `transform: scaleX(0→1)`, zero JS / zero React re-render. Safari < 26 and older Chrome/Firefox fall back to rAF subcomponent. Detection runs inside first `useEffect`.
-- **View Transitions** (blog only): `experimental.viewTransition: true` in `next.config.ts`; element opt-in via `style={{ viewTransitionName: \`post-${slug}\` }}` / `post-${slug}-title` on ArticleCard `<article>`, FeaturedPost outer `<div>`, article page `<article>` + `<h1>`. `globals.css` defines `::view-transition-old/new/group` with Apple Material standard ease `cubic-bezier(0.32, 0.72, 0, 1)` (crossfade 420ms) and enter ease `cubic-bezier(0.22, 0.61, 0.36, 1)` (group morph 560ms). Reduce-motion collapses group to 1ms.
-- **`/design` route** (Aether Codex 作品集入口): `apps/blog/app/design/{page.tsx, DesignClient.tsx, loading.tsx, sections/S1–S8.tsx, components/{HueSlider, AuroraSwatch, TypeScaleRow, EaseCurveViz, CodeSample, ScrollSection}.tsx}`. Mirrors `/about` server+client pattern with 10-min ISR. S2 hosts an OKLCH hue slider that derives aurora-1..4 in real time; S5 lets the visitor trigger each ease curve; S7 is the 八问八答 reasoning essay.
-
-### Round 4 · 设计系统落地到全博客 (2026-04-17)
-
-After Round 3 risked being a `/design`-only showcase, Round 4 sweeps the entire blog surface into the Codex layer in four phases:
-
-- **Phase 1 — titles & feature cards**: Hero `<h1>` runs `breath-soft 4.8s cubic-bezier(0.5, 0, 0.25, 1)` with `text-wrap: balance` and CJK letter-spacing reversal; section titles + article `<h1>` adopt `font-display` (Fraunces) with `text-wrap: balance`; `ArticleCard` → `surface-leaf` + `data-interactive`; `FeaturedPost` → `surface-raised` + `data-interactive`.
-- **Phase 2 — high-visibility sweeps**: `PostNavigation` (both prev/next links), `CommentSection` (comment card + trigger + expanded form), `TableOfContents` (empty state + floating trigger), `SearchPanel` (modal → `surface-overlay`) all moved off hand-rolled `bg-white/10 border border-white/10` onto the canonical `surface-*` classes.
-- **Phase 3 — floating chrome + ambient states**: `ScrollToTop` / `ArticleFloatingActions` (5 sites) / `FloatingThemeToggle` → `surface-raised !rounded-full` circles; `TimelineTree` year/month buttons + `/posts` empty state → surface system.
-- **Phase 4 — nav + /about + FriendCard**:
-  - `BlogHeader` four active nav indicators (archives/friends/about/design) moved from `text-primary` + `bg-primary` (legacy brand-gradient) to `text-[var(--aurora-1)]` + `bg-[var(--aurora-1)]`, with inactive state on `--ink-secondary`. Inline header background retained to protect iOS PWA safe-area + translate collapse logic.
-  - `MobileMenu` drawer replaced `bg-[var(--bg-overlay)] backdrop-blur-2xl border-l border-[var(--border-default)] shadow-2xl` with the canonical `surface-overlay !rounded-none !rounded-l-2xl` (right edge flush to viewport, left radius natural). Active link uses `bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]` + `text-[var(--aurora-1)]`.
-  - `/about` `HeroSection` h1 breath cadence aligned to the 4.8s asymmetric global value; `text-wrap: balance` added.
-  - `FriendCard` **hybrid**: wrapper composes `surface-leaf` + `data-interactive` (inherits 4-tier radius/blur/border + aurora hover stripe), and `--aurora-1` is locally overridden to each friend's `themeColor` via inline style — so the `[data-interactive]::after` stripe renders in the friend's brand color, not the site-wide aurora. Background gradient retargeted at `var(--bg-leaf)`; redundant `rounded-2xl border shadow-lg` stripped.
-- **`@property --aurora-angle`** (typography.css): typed `<angle>` custom property enables real rotation tweening on `.aurora-text` hover (previously the `background-image: linear-gradient(<angle>, ...)` would hard-swap at 225° ↔ 315° without animation).
-- **Aurora hover stripe edge fix** (`surfaces.css`): gradient stops switched from 0%/100% hard-cut to 0/6/18/82/94/100% with `border-*-left-radius: inherit` + `filter: drop-shadow` instead of `box-shadow`, so the 2px stripe fades at both ends and follows the card's rounded corner rather than painting a rectangular halo.
-
-### Round 5 · 性能与架构资产 (2026-04-17)
-
-不做视觉改造,沉淀三件基础设施:
-
-- **`content-visibility: auto`** on `.markdown-body > :not(:first-child)` with `contain-intrinsic-size: auto 600px`(pre/code 480px, figure/img 420px). Off-viewport paragraphs/code blocks/images don't enter style & layout; LCP ~1.4s → ~0.6s, TBT -40%. `:target` forces `visible` so TOC/hash navigation doesn't hit the Chrome<109 anchor-offset bug. `:first-child` exempted to protect drop-cap.
-- **`--space-0..--space-10`** 8px-baseline 节奏尺度 token in `tokens.css` (0.25/0.5/0.75/1/1.5/2/3/4/6/8 rem). 0-3 for inline, 4-6 for cards, 7-10 for section breaks.
-- **Deprecations infrastructure**:
-  - `.claude/design-system/deprecations.json` — 8-rule catalogue with sunset 2026-07-17. Rules: `legacy-glass-classes` (error), `naked-white-glass`, `naked-backdrop-blur`, `hardcoded-primary-gradient` (warnings), `legacy-text-primary-inline`, `legacy-ink-aliases`, `naked-text-sizes`, `arbitrary-spacing` (info).
-  - `scripts/codemod-tokens.mjs` — zero-dep Node 20 scanner/fixer/reporter. `check` exits 1 on error-level violations, `fix` applies replacement maps, `report` emits Markdown.
-  - `pnpm design-system:check|fix|report` npm scripts. Current baseline: **0 error · 449 warning · 2173 info**.
-- **CSS anchor-positioning for `.marginalia`** (`typography.css` under `@supports (anchor-name: …)`): `.article-anchor` on h1 + `.marginalia--anchored` on aside make the marginalia track the h1 X-height baseline precisely on Chrome 125+/Safari 26+. `@position-try --fallback-top-left` handles the case where the anchor scrolls out of view. Older browsers silently fall through to the legacy `hidden xl:block absolute -left-52 top-0` positioning — zero visual regression.
-
-## Design System ("Cognitive Elegance")
-
-### UI Philosophy
-- **Keywords:** Ethereal, Professional, Depth, Fluidity
-- **Style:** High-end SaaS (Linear, Raycast) + Atmospheric Web (Vercel)
-- **Default:** Dark mode with rich ambient gradients
-- **Brand:** Understated luxury, avoid "gamified" neon, prefer aurora-like soft glow
-
-### Color Palette (Dark Theme)
-- **Background:** `#09090b` (Zinc-950) or `#0a0a0c`
-- **Card layer 1:** `bg-white/5` or `bg-black/40`
-- **Card layer 2:** `bg-white/10`
-- **Borders:** `border-white/5` or `border-white/10` (subtle)
-- **Accent:** `from-indigo-500 to-purple-600` (Aether gradient)
-- **Text:** Titles `text-white`, body `text-slate-400`, highlight `text-slate-200`
-
-### Component Patterns
-
-**Glass Cards (standard container):**
-```tsx
-<div className="relative bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-6 overflow-hidden">
-  <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
-  <div className="relative z-10">
-    {/* Content */}
-  </div>
-</div>
-```
-
-**Ambient Backgrounds (page-level):**
-```tsx
-<div className="absolute inset-0 overflow-hidden pointer-events-none">
-  <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-indigo-500/10 rounded-full blur-[120px] animate-pulse" />
-  <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[100px]" />
-</div>
-```
-
-### Animation Standards (Framer Motion)
-- Use spring physics or custom bezier: `transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}`
-- List items must use stagger animations
-- Hover effects: subtle lift `y: -2` or scale `scale: 1.01`
-
-### Loading Experience
-- **FORBIDDEN:** Simple spinners (full-screen or partial)
-- **REQUIRED:** Skeleton screens matching final layout with shimmer/pulse effect
-- **Colors:** `bg-white/5` with subtle borders
-- **Goal:** Zero-latency perception, no content jump
-
-### Component Location Rules
-**MUST use `packages/ui` for:**
-- All UI components (Button, Card, Modal, Toast, Input, etc.)
-- Any component used in multiple apps
-
-**apps/ directories only for:**
-- Page components
-- Layout components
-- Business-specific components
-
-**FORBIDDEN:**
-- Creating duplicate UI components in `apps/admin` or `apps/blog`
-- Using browser native `confirm`/`alert` (use shared Modal)
-
-## Naming Conventions
-
-### Frontend
-- Page components: `PascalCase + Page` (e.g., `DashboardPage.tsx`)
-- Components: `PascalCase` (e.g., `PostCard.tsx`)
-- Hooks: `camelCase + use` (e.g., `useDebounce.ts`)
-- Services: `camelCase + Service` (e.g., `postService.ts`)
-- Stores: `camelCase + Store` (e.g., `authStore.ts`)
-- Types: `PascalCase` (e.g., `Post`, `CreatePostRequest`)
-
-### Backend
-- Handlers: `PascalCase + Handler` (e.g., `PostHandler`)
-- Services: `PascalCase + Service` (e.g., `PostService`)
-- Repositories: `PascalCase + Repo` (e.g., `PostRepo`)
-- Models: `PascalCase` (e.g., `Post`)
-- DTOs: `PascalCase + Request/Response` (e.g., `CreatePostRequest`)
-
-## Development Workflow Principles
-
-### Agent Behavior Standards (from `.agent/rules/behavior_rules.md`)
-
-**Full Ownership Principle:**
-- DO NOT transfer operational burden to users
-- ❌ Wrong: Ask user to manually restart services, compile, clear cache
-- ✅ Right: Automatically call `./start.sh` or `docker restart` when needed
-- Only request user help when AI lacks permissions (e.g., sudo password)
-
-**Definition of Done:**
-- Delivery means verification
-- Before notifying user, ensure environment is ready
-- "Please verify" implies services are already successfully restarted and running
-
-### Document-Driven Development
-
-This project follows a strict document-driven workflow defined in `.agent/rules/code-design.md`. When working on features:
-
-1. **Task Locking:** Identify relevant design document sections (§X.X)
-2. **Document Retrieval:** Extract design requirements, data structures, API definitions
-3. **Solution Evaluation:** If proposing optimizations, must submit formal optimization request
-4. **Implementation:** Code must reference design docs with `// ref: §X.X` comments
-5. **Documentation Sync:** Update design docs when approved changes are made
-6. **Completion Report:** Provide detailed task completion summary
-
-Reference the detailed design document: `系统需求企划书及详细设计.md`
-
-### AI Architecture
-
-The AI system uses an external service pattern:
-```
-Go backend → HTTP client → FastAPI ai-service (Python)
-                                ↓
-                           LiteLLM → LLM providers
-```
-
-- **`apps/ai-service/`** - Python FastAPI service with rate limiting, caching, metrics, provider registry, and vector store
-- **`apps/server-go/`** - Go backend with HTTP client that calls the external AI service
-- **Test coverage requirement:** 80% (configured in `pyproject.toml`)
-
-#### AI Service Capabilities
-
-**Supported Providers:** OpenAI, Anthropic, Google, Azure, LiteLLM, Custom
-
-**Supported Model Types:** `chat`, `embedding`, `image`, `audio`, `reasoning`, `tts`, `stt`, `realtime`, `text2video`, `text2music`, `code`, `completion`
-
-**Business Endpoints** (all support streaming via `/stream` suffix):
-- `POST /api/v1/ai/summary[/stream]` - Article summarization
-- `POST /api/v1/ai/tags[/stream]` - Auto tag generation; 可选 `existingTags: [{name, postCount}]` 让 AI 在【现有标签库】中精确复用 + 仅对未覆盖主题新建,响应分 `matches` (现有, 含 `postCount` / 可选 `reason`) + `suggestions` (新建) 两段
-- `POST /api/v1/ai/titles[/stream]` - Title suggestions
-- `POST /api/v1/ai/polish[/stream]` - Text polishing
-- `POST /api/v1/ai/outline[/stream]` - Outline generation
-- `POST /api/v1/ai/translate[/stream]` - Translation
-
-**SSE stream protocol** (emitted by `/stream` variants):
-Each line is `data: <json>\n\n`. Four event types:
-- `{type:"delta", content, isThink?}` — incremental text. `isThink=true` when inside a `<think>` block.
-- `{type:"result", data:<TaskData>}` — **structured final payload**, emitted once right before `done`. `data` shape matches the non-stream response DTO. For `tags` 任务这是一个 4 字段对象: `{tags: string[]} ` (扁平合并视图, 旧客户端兼容用) + `{matches: TagMatch[], suggestions: string[]}` (新分桶视图, `TagMatch = {name, postCount, reason?}`)。Front-end consumes this directly to render structured UI and power "apply to post" actions — no client-side regex parsing.
-- `{type:"done"}` — terminal marker.
-- `{type:"error", code, message}` — mid-stream failure.
-
-The admin `useStreamResponse` hook exposes `{content, result, isDone, error, ...}`. AI 工具箱 (`AIToolsPage` → `AIToolsWorkspace` → `ToolResultRenderer`) 按工具分发渲染结构化结果并提供"应用到文章"动作；目标文章通过 `useAiToolTarget` hook 管理，支持 `?tool=<code>&postId=<id>` URL 深链。
-
-**Configuration Endpoints** (managed by Go backend AiHandler + proxied to FastAPI):
-- Prompts: `GET/PUT /v1/admin/ai/prompts[/:taskType]` (Go handler)
-- Tasks: `CRUD /v1/admin/ai/tasks[/:code]` (Go handler)
-- Providers/Models/Credentials: `ANY /v1/admin/providers/*` (Go proxy → FastAPI)
-- Health: `GET /v1/admin/ai/health`
-
-**Nginx routing for AI:** `/api/v1/ai/*` proxied to FastAPI:8000 with 600s timeout and SSE support (`X-Accel-Buffering: no`)
-
-### CI/CD
-
-GitHub Actions workflows in `.github/workflows/`:
-- **`ci-cd.yml`** - Main pipeline: build, test, Docker image push
-- **`quick-build.yml`** - Fast validation build
-
-See `.github/CICD_GUIDE.md` and `.github/VERSION_GUIDE.md` for details.
-
-## Docker Deployment
-
-### Build Images
-```bash
-# Parallel build and push (recommended)
-./docker-build.sh --push --version v1.1.1
-
-# Sequential build (unstable network)
-./docker-build.sh --push --sequential --version v1.1.1
-
-# Build single image
-./docker-build.sh --only backend --push
-./docker-build.sh --only blog --push
-./docker-build.sh --only admin --push
-```
-
-### Production Deployment
-```bash
-# Configure environment
-cp .env.example .env
-# Edit .env with your settings
-
-# Pull and start
-export DOCKER_REGISTRY=golovin0623
-export VERSION=v1.1.2
-docker-compose -f docker-compose.prod.yml pull
-docker-compose -f docker-compose.prod.yml up -d
-
-# View logs
-docker-compose -f docker-compose.prod.yml logs -f
-```
-
-### Port Mapping (Production)
-- Gateway (unified entry): 7899
-- Blog frontend: 7893 (optional direct access)
-- Admin dashboard: 7894 (optional direct access)
-- PostgreSQL: 7895
-- Backend API: Internal only (container network)
-
-### CI/CD Webhook Automation
-
-Production is driven by a five-stage pipeline — **no manual steps on the server**:
-
-```
-GitHub Actions (ci-cd.yml)
-   │ build & push multi-arch images
-   ▼
-HMAC-SHA256 signed POST /deploy
-   │
-   ▼
-webhook_server.py  (ops/webhook/)
-   ├─ verify HMAC + parse services allowlist
-   ├─ flock /var/lock/aetherblog-deploy.lock + git fetch + reset --hard FETCH_HEAD  ← code pulled here (PR #525)
-   ├─ release flock, fork deploy.sh with env["SKIP_GIT_SYNC"]="true"
-   ▼
-deploy.sh  (ops/webhook/)
-   ├─ flock /var/lock/aetherblog-deploy.lock
-   ├─ skip internal git sync (already done at webhook layer); fallback path retained for direct `bash deploy.sh` invocation
-   ├─ strict KEY=VALUE .env parser (NOT source, NOT IFS='=')
-   ├─ compose pull
-   ├─ pre-deploy migration (compose run --rm + dirty self-heal table)
-   └─ compose up -d   (full / incremental / canary / rollback)
-   ▼
-ops/release/preflight.sh
-   ├─ static: compose config, required cmds
-   └─ runtime: services running, migration ≥33, gateway /health,
-              ai-service /health (≤120s retry window),
-              auth enforcement, ai_providers ≥60, ai_models ≥1500,
-              backend logs clean, /app/logs readable
-```
-
-Failure aborts deploy (`exit 1`); logs appended to `/var/log/aetherblog-deploy.log`.
-
-**Deploy modes** (via `DEPLOY_MODE` env):
-- `full` (default) — pull + up -d all services
-- `incremental` — only specified `DEPLOY_SERVICES`; frontend-only skips migration
-- `canary` — pre-defined `CANARY_SERVICES=backend,ai-service` rollout
-- `rollback` — `ROLLBACK_VERSION=vX.Y.Z` revert to prior image tag
-
-**Container security hardening** (all application services):
-- `security_opt: [no-new-privileges:true]`, `cap_drop: [ALL]`, `read_only: true` + `tmpfs` (VULN-123)
-- `JWT_SECRET:?...` / `AI_CREDENTIAL_ENCRYPTION_KEYS:?...` / `REDIS_PASSWORD:?...` must be set; compose fails fast on missing (VULN-056 / -119 / -120)
-- ai-service healthcheck: `start_period: 45s, interval: 10s` (gives cold start room for litellm/asyncpg/pgvector import + asyncpg pool + jwt_keys DB fetch)
-- backend healthcheck: `start_period: 30s, interval: 3s` (VULN-150 — don't mask crash loops as "healthy yet")
-- Docker socket mounted `:ro` on backend for admin `/v1/admin/monitor/*` — note `:ro` only protects socket file, Docker API itself is root-equivalent; set `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` to match host docker group
-
-Full troubleshooting + flow diagram: [`docs/deployment.md#cicd-自动化发布链路`](docs/deployment.md#cicd-自动化发布链路).
-
-## Nginx Gateway
-
-Gateway configurations in `nginx/`:
-- **`nginx.conf`** - Production routing rules:
-  - `/api/v1/ai/*` → ai_service (FastAPI:8000), timeout 600s, SSE support (`X-Accel-Buffering: no`)
-  - `/admin/` → admin (Vite:5173 / compiled:80)
-  - `/api/` → backend (Go:8080)
-  - `/` → blog (Next.js:3000)
-  - `client_max_body_size: 10GB` (for media uploads)
-- **`nginx.dev.conf`** - Development: same routing with hot reload proxying
-
-Used by `./start.sh --gateway` (dev) and `./start.sh --prod` (production) modes.
-
-## Common Issues
-
-### Port Conflicts from Docker
-If `./start.sh` reports "port already allocated":
-```bash
-# Clean up exited containers
-docker compose down --remove-orphans
-./start.sh
-```
-
-### Go Build Issues
-```bash
-cd apps/server-go
-go clean -cache && go build ./...
-```
-
-### Frontend Package Errors
-If seeing "Failed to resolve import":
-1. Check if dependency is declared in that package's `package.json`
-2. Add missing dependency
-3. Run `pnpm install`
-
-### ai-service Won't Start / Preflight Stuck on `docker health=starting`
-
-**Symptom:** `[FAIL] [api] ai-service health check failed (docker health=starting); curl: (7) Failed to connect to localhost port 8000`. Uvicorn never binds.
-
-**First step:** `docker logs aetherblog-ai-service --tail 200`
-
-**Most common root cause** (historical):
-```
-ValueError: Invalid Fernet key in AI_CREDENTIAL_ENCRYPTION_KEYS: ...
-(key #1 length=43, expected 32 bytes base64url)
-```
-The legacy `deploy.sh` `while IFS='=' read -r k v` parser silently eats the trailing `=` padding from base64 Fernet keys (44 chars → 43 chars). All three layers of defense are now in place — pull latest:
-
-1. **`ops/webhook/deploy.sh`** — strict `KEY=VALUE` parser using `${line%%=*}` / `${line#*=}` (no IFS tokenizer gotcha).
-2. **`apps/ai-service/app/core/config.py._pad_b64url`** — auto-pads missing `=` to a 4-byte boundary; decryption of existing DB credentials remains consistent.
-3. **`ops/release/preflight.sh`** — 24 × 5s retry window + `docker inspect Health.Status=healthy` as alternate pass signal.
-
-### Backend Log Spam from Health Probes
-
-**Symptom:** INFO-level `GET /api/actuator/health 200` floods `backend` logs every 3s (docker healthcheck + SystemMonitor).
-
-**Fix (shipped):** `apps/server-go/internal/middleware/trace.go` introduces `isHealthProbePath()` and downgrades successful probe responses to `Debug`. 4xx/5xx still emit `Warn`/`Error`. Matches: `/api/actuator/health`, `/api/v1/admin/system/health`, `/api/v1/admin/system/metrics`, plus any path ending in `/health` or `/ready`.
-
-## Environment Variables
-
-See `.env.example` for all configuration options:
-- `GATEWAY_PORT` - Unified gateway port (default: 7899)
-- `POSTGRES_PASSWORD` - Database password
-- `REDIS_HOST`, `REDIS_PORT` - Redis connection
-- `OPENAI_API_KEY` - AI functionality
-
-## Default Credentials
-
-**Admin Dashboard:**
-- Username: `admin`
-- Password: `admin123` (must change on first login)
-
-To reset password manually:
+应急重置：
 ```sql
 UPDATE users SET password_hash = '$2a$10$8.UnVuG9HHgffUDAlk8q2OuVGkqBKkjJRqdE7z6OcExSqz8tRdByW' WHERE username = 'admin';
--- Password becomes: 123456
+-- 密码变成: 123456
 ```
 
-## Custom Slash Commands (Skills)
+---
 
-| Command | Description |
-|---------|-------------|
-| `/doc` | 执行最严苛的质量控制与文档同步流程，确保代码、文档与设计一致性。 |
+## 8. 自定义 slash 命令
 
-## 📱 移动端真机调试
-
-手机和 Mac 在同一 Wi-Fi 下，通过局域网 IP 访问本地开发服务器。
-
-### 推荐方式：网关模式（统一入口）
-
-```bash
-./start.sh --gateway    # 启动所有服务 + Nginx 网关
-```
-
-手机浏览器访问 **`http://<Mac IP>:7899`**：
-- `/` → 博客前台
-- `/admin/` → 管理后台
-- `/api` → 后端 API
-
-> **关键配置：** `apps/blog/.env.local` 中 `NEXT_PUBLIC_ADMIN_URL=/admin/`（相对路径），确保管理后台链接在手机上也能正确跳转。
-
-### 备选方式：直连端口
-
-```bash
-cd apps/blog && npm run dev -- -p 3000           # 博客 http://<Mac IP>:3000
-cd apps/admin && npm run dev -- --host 0.0.0.0   # 管理后台 http://<Mac IP>:5173
-```
-
-> Vite 默认只监听 localhost，必须加 `--host 0.0.0.0` 才能从手机访问。
-
-### 远程调试
-
-- **iOS Safari:** Mac Safari → 开发 → 选择设备 → 选择页面
-- **Android Chrome:** Mac Chrome → `chrome://inspect` → 选择设备
-
-### 移动端编码约束
-
-| 规则 | 说明 |
-|:-----|:-----|
-| 移动端判断 | 统一使用 `useMediaQuery('(max-width: 768px)')` |
-| 底部面板 | 使用 Bottom Sheet 模式：`max-h-[66vh]`，内容溢出滚动，点击遮罩关闭 |
-| Safe Area | 底部区域使用 `pb-[max(1rem,env(safe-area-inset-bottom))]` |
-| 触控目标 | 按钮最小触控区域 44×44px |
-| 编辑器默认模式 | 移动端默认 `'edit'`（源码模式），桌面端默认 `'split'`（分屏模式） |
-| 响应式修改 | 仅调整移动端样式，不影响桌面端布局 |
-
-## 📄 文档维护规范
-
-### 强制同步触发器（Mandatory Sync Triggers）
-以下操作发生时，**必须**同步更新对应文档，否则视为未完成交付：
-
-| 操作类型 | 必须更新的文档 |
-|---------|--------------|
-| 新增 API endpoint（handler 函数） | `docs/architecture.md` API节 + `CLAUDE.md` API表格 |
-| 修改数据库 Schema（新建migration） | `docs/architecture.md` 数据库节 + 更新迁移版本号 |
-| 新增/修改共享 UI 组件（packages/ui） | `CLAUDE.md` 组件列表 + `.agent/rules/ui_rules.md` |
-| 新增 React Hook（packages/hooks） | `CLAUDE.md` hooks列表 + `.agent/rules/code-structure.md` |
-| 修改 Docker 配置 | `docs/deployment.md` |
-| 修改 Nginx 配置 | `.agent/rules/nginx-guide.md` + `CLAUDE.md` Nginx章节 |
-| 完成功能里程碑 | `CHANGELOG.md` + `系统需求企划书及详细设计.md` §1.6 Gap Analysis |
-| 新增 npm 依赖（packages级别） | `CLAUDE.md` 依赖管理节 |
-| 新增 AI 供应商或模型 | `CLAUDE.md` AI服务能力节 + `docs/AI_MODULE_PLAN_V2.md` |
-
-### 周期性文档健康检查
-每完成一个完整功能模块后执行：
-1. 运行 `/doc` 命令触发文档校准流程
-2. 确认 `CHANGELOG.md` 已录入本次变更（不得落后超过1个功能模块）
-3. 确认 `系统需求企划书及详细设计.md` §1.6 Gap Analysis 已更新
-4. 执行 `git diff --stat HEAD~1` 检查是否有代码变更但无对应文档变更
-
-### 文档质量红线（Doc Quality Redlines）
-- ❌ **禁止**：提交"修改了代码但未更新对应文档"的 commit
-- ❌ **禁止**：CHANGELOG.md 落后当前 HEAD 超过 1 个功能模块
-- ❌ **禁止**：新增 API endpoint 但不在 `docs/architecture.md` 中记录
-- ✅ **要求**：每个 PR 描述中必须包含：`📄 文档影响: [已更新 X.md] 或 [无需更新，原因: ...]`
-- ✅ **要求**：新功能开发前先查阅 `系统需求企划书及详细设计.md` 对应 §X.X，并在代码注释中引用
-
-### 文档版本对齐检查表
-每次 release 前必须完成：
-- [ ] CLAUDE.md API 端点表与实际 handler 文件一致
-- [ ] CLAUDE.md 依赖版本表与 go.mod / package.json 一致
-- [ ] docs/architecture.md 数据库节与最新 migration 一致
-- [ ] CHANGELOG.md 包含本次 release 所有变更
-- [ ] .agent/rules/ 规则与实际代码模式一致
+| 命令 | 说明 |
+| --- | --- |
+| `/doc` | 执行最严苛的质量控制与文档同步流程。 |
