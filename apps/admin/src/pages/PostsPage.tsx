@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown,
@@ -45,8 +45,12 @@ export default function PostsPage() {
     ? { duration: 0 }
     : { type: 'spring' as const, stiffness: 320, damping: 30 };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // URL ?search= 是搜索关键词的唯一事实源:
+  // 既支持外部入口(侧边栏全局搜索)直接预填,也让浏览器后退/分享链接保持搜索状态。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') ?? '';
+  const [searchQuery, setSearchQuery] = useState(urlSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(urlSearch);
   const [posts, setPosts] = useState<PostListItem[]>([]);
   const [pagination, setPagination] = useState({ pageNum: 1, pageSize: 10, total: 0, pages: 0 });
   const [loading, setLoading] = useState(true);
@@ -157,6 +161,22 @@ export default function PostsPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // debouncedSearch → URL: 输入稳定后回写 ?search=, 用 replace 避免污染历史栈
+  useEffect(() => {
+    const current = searchParams.get('search') ?? '';
+    if (current === debouncedSearch) return;
+    const next = new URLSearchParams(searchParams);
+    if (debouncedSearch) next.set('search', debouncedSearch);
+    else next.delete('search');
+    setSearchParams(next, { replace: true });
+  }, [debouncedSearch, searchParams, setSearchParams]);
+
+  // 外部 URL 变更(如侧边栏跳转 /posts?search=...) → 同步回输入框
+  useEffect(() => {
+    setSearchQuery(prev => (prev === urlSearch ? prev : urlSearch));
+    setDebouncedSearch(prev => (prev === urlSearch ? prev : urlSearch));
+  }, [urlSearch]);
 
   const fetchPosts = async (pageNum = 1, currentStatus?: string, keyword?: string, currentFilters = filters) => {
     try {
