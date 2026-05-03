@@ -307,7 +307,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	handler.NewMigrationHandler(migrationSvc).Mount(admin.Group("/migrations"))
 
 	// --- AI 代理接口 ---
-	aiHandler := handler.NewAiHandler(s.Config)
+	aiHandler := handler.NewAiHandler(s.Config, activitySvc)
 	aiHandler.Mount(admin.Group("/ai"))
 	aiHandler.MountProviders(admin.Group("/providers"))
 
