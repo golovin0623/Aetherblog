@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, EyeOff, Trash2 } from 'lucide-react';
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import type { SearchProfile } from '@/services/searchProfileService';
 import { CHUNKER_KINDS } from './ChunkerKindSelector';
@@ -47,15 +48,20 @@ export function ProfileDetailDrawer({
   const canDeprecate = profile && profile.status !== 'active' && profile.status !== 'deprecated';
   const canDelete = profile && profile.status === 'deprecated';
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {profile && (
-        <div className="fixed inset-0 z-50 flex justify-end pointer-events-none">
+        <div
+          className="fixed inset-0 flex justify-end pointer-events-none"
+          style={{ zIndex: 100 }}
+        >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto"
+            className="absolute inset-0 bg-black/70 backdrop-blur-md pointer-events-auto"
             onClick={onClose}
           />
           <motion.aside
@@ -173,7 +179,8 @@ export function ProfileDetailDrawer({
           </motion.aside>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
 

@@ -279,12 +279,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         "unhandled_exception",
         extra={"data": {"error": str(exc), "error_type": type(exc).__name__}},
     )
+    # 把异常类型 + 截断后的 message 一并回传给 admin。光说 "Internal server error"
+    # 不带任何上下文,前端只能给用户看一个红色 toast,运维只能去捞 docker logs ——
+    # 这两个失败都属于 "可避免的痛苦"。截断到 240 字符避免泄露完整堆栈;
+    # 如果 message 包含敏感信息(比如 DSN 字符串)需要在更上层 raise 时主动包装。
+    error_type = type(exc).__name__
+    raw_msg = str(exc).strip()
+    safe_msg = raw_msg[:240] + "…" if len(raw_msg) > 240 else raw_msg
+    detail = f"{error_type}: {safe_msg}" if safe_msg else error_type
     payload = ApiResponse(
         code=500,
-        message="Internal server error",
+        message=detail or "Internal server error",
         success=False,
-        errorMessage="Internal server error",
-        errorCode="INTERNAL_ERROR",
-        requestId=getattr(request.state, "request_id", None)
+        errorMessage=detail or "Internal server error",
+        errorCode=f"INTERNAL_{error_type.upper()}",
+        requestId=getattr(request.state, "request_id", None),
     )
     return JSONResponse(status_code=500, content=payload.model_dump())

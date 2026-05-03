@@ -75,17 +75,28 @@ export function ProfileListCard({
   const canDeprecate = profile.status !== 'active' && profile.status !== 'deprecated';
   const canDelete = profile.status === 'deprecated';
 
+  const isActive = profile.status === 'active';
+
   return (
     <motion.div
       layout
       data-interactive
       onClick={() => onSelect(profile)}
       className={cn(
-        'surface-leaf surface-admin-item cursor-pointer',
+        'surface-leaf surface-admin-item cursor-pointer relative overflow-hidden',
         'p-4 sm:p-5',
-        'hover:translate-y-[-1px] transition-transform'
+        'hover:translate-y-[-1px] transition-transform',
+        // active 状态:左侧 aurora 高亮条 + 卡片底色微调,与列表中其他 profile 形成视觉对比
+        isActive && 'ring-1 ring-[color-mix(in_oklch,var(--signal-success)_30%,transparent)]',
       )}
     >
+      {/* active 专属左侧 aurora 条(与 sidebar 当前路由的视觉语言一致) */}
+      {isActive && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[var(--signal-success)] via-[var(--aurora-1)] to-[var(--aurora-3)]"
+        />
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center flex-wrap gap-2">
@@ -99,7 +110,12 @@ export function ProfileListCard({
               <StatusIcon className="w-3 h-3" />
               {status.label}
             </span>
-            <h3 className="text-base font-semibold text-[var(--text-primary)] truncate">
+            <h3
+              className={cn(
+                'text-base font-semibold truncate',
+                isActive ? 'text-[var(--text-primary)] font-display' : 'text-[var(--text-primary)]',
+              )}
+            >
               {profile.name}
             </h3>
           </div>

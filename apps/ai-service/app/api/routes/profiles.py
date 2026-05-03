@@ -91,6 +91,17 @@ async def create_profile(
             status_code=400,
             detail="chunkOverlapTokens 必须小于 chunkSizeTokens",
         )
+    # chunker_kind 在 DB CHECK 约束里已硬定枚举,但 CHECK 抛错形态是 asyncpg.CheckViolationError,
+    # 给用户的提示远不如这里就地拒绝来得清楚。
+    allowed_chunkers = {"recursive", "fixed", "markdown", "qa", "parent_child"}
+    if req.chunkerKind not in allowed_chunkers:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"chunkerKind '{req.chunkerKind}' 不支持,合法值: "
+                f"{sorted(allowed_chunkers)}"
+            ),
+        )
     async with pool.acquire() as conn:
         try:
             row = await conn.fetchrow(
@@ -113,6 +124,8 @@ async def create_profile(
             )
         except Exception as exc:  # asyncpg.UniqueViolationError 等
             exc_name = type(exc).__name__
+            # asyncpg 不是必装依赖,用名字而不是 isinstance 判断,避免 import 时机
+            # 与可选依赖冲突。
             if "UniqueViolation" in exc_name:
                 raise HTTPException(
                     status_code=409,
@@ -121,9 +134,51 @@ async def create_profile(
             if "CheckViolation" in exc_name:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"参数违反 search_profiles 表约束：{exc}",
+                    detail=f"参数违反 search_profiles 表约束:{exc}",
                 )
-            raise
+            if "ForeignKeyViolation" in exc_name:
+                # 当前表无 FK,留作未来防御 —— 万一以后加 model_id REFERENCES ai_models
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"外键约束失败:{exc}",
+                )
+            if "UndefinedTable" in exc_name:
+                # 极少触发(GET 已能确认表存在),但若 ai-service 与 Go backend 走两套 DB
+                # 时这里能给出明确的迁移指引,而不是甩个 500。
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "search_profiles 表不存在 —— ai-service 连到的 Postgres "
+                        "未跑 migration 000041。请到 server-go 容器执行 ./migrate up 或确认 "
+                        "AETHERBLOG_POSTGRES_DSN 与 backend 一致。"
+                    ),
+                )
+            if "DataError" in exc_name or "InvalidTextRepresentation" in exc_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"字段格式不合法:{exc}",
+                )
+            # 兜底:把异常类型 + 截断 message 透出去给前端,避免变成不可调试的 500。
+            logger.exception(
+                "search_profile.create_failed",
+                extra={"data": {
+                    "exc_type": exc_name,
+                    "code": req.code,
+                    "model_id": req.modelId,
+                    "chunker": req.chunkerKind,
+                }},
+            )
+            raw = str(exc).strip()
+            safe = raw[:200] + "…" if len(raw) > 200 else raw
+            raise HTTPException(
+                status_code=500,
+                detail=f"创建 profile 失败({exc_name}):{safe}" if safe else f"创建 profile 失败({exc_name})",
+            )
+        if row is None:  # 理论上不会发生(INSERT...RETURNING 至少一行),保险
+            raise HTTPException(
+                status_code=500,
+                detail="search_profiles INSERT...RETURNING 未返回结果",
+            )
     logger.info(
         "search_profile.created",
         extra={"data": {
