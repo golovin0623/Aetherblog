@@ -9,25 +9,25 @@ import (
 // TestS3Storage_TypeReturnsProviderType 验证 Type() 透传 providerType。
 // Phase 1 修复:原实现固定返回 "S3",造成 media_files.storage_type 与实际 provider 脱节。
 func TestS3Storage_TypeReturnsProviderType(t *testing.T) {
-	cfg := `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`
 	cases := []struct {
 		providerType string
+		cfg          string
 		want         string
 	}{
-		{"COS", "COS"},
-		{"OSS", "OSS"},
-		{"R2", "R2"},
-		{"MINIO", "MINIO"},
-		{"S3", "S3"},
-		{"", "S3"}, // 空 → 兜底 S3
+		{"COS", `{"bucket":"x","region":"ap-shanghai","accessKeyId":"k","secretAccessKey":"s"}`, "COS"},
+		{"OSS", `{"bucket":"x","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`, "OSS"},
+		{"R2", `{"bucket":"x","region":"auto","endpoint":"https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com","accessKeyId":"k","secretAccessKey":"s"}`, "R2"},
+		{"MINIO", `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`, "MINIO"},
+		{"S3", `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`, "S3"},
+		{"", `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`, "S3"}, // 空 → 兜底 S3
 	}
 	for _, c := range cases {
 		var st *S3Storage
 		var err error
 		if c.providerType == "" {
-			st, err = NewS3Storage(cfg)
+			st, err = NewS3Storage(c.cfg)
 		} else {
-			st, err = NewS3Storage(cfg, c.providerType)
+			st, err = NewS3Storage(c.cfg, c.providerType)
 		}
 		if err != nil {
 			t.Fatalf("NewS3Storage(%q): %v", c.providerType, err)
@@ -40,15 +40,303 @@ func TestS3Storage_TypeReturnsProviderType(t *testing.T) {
 
 // TestS3Storage_FactoryRoutes 验证 NewFromConfig 把上游类型透传到 Type()。
 func TestS3Storage_FactoryRoutes(t *testing.T) {
-	cfg := `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`
-	cases := []string{"S3", "MINIO", "OSS", "COS", "R2"}
-	for _, p := range cases {
+	cases := map[string]string{
+		"S3":    `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`,
+		"MINIO": `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`,
+		"OSS":   `{"bucket":"x","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
+		"COS":   `{"bucket":"x","region":"ap-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
+		"R2":    `{"bucket":"x","region":"auto","endpoint":"https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com","accessKeyId":"k","secretAccessKey":"s"}`,
+	}
+	for p, cfg := range cases {
 		store, err := NewFromConfig(p, cfg)
 		if err != nil {
 			t.Fatalf("NewFromConfig(%q): %v", p, err)
 		}
 		if got := store.Type(); got != p {
 			t.Errorf("provider %q Type()=%q want %q", p, got, p)
+		}
+	}
+}
+
+// TestS3Storage_DefaultEndpointsForCloudProviders 验证 COS/OSS 留空 endpoint 时
+// 后端会按 provider + region 生成厂商域名,而不是落到 AWS 默认 S3 域名。
+func TestS3Storage_DefaultEndpointsForCloudProviders(t *testing.T) {
+	cases := []struct {
+		name         string
+		providerType string
+		cfg          string
+		wantEndpoint string
+		wantURL      string
+	}{
+		{
+			name:         "cos",
+			providerType: "COS",
+			cfg:          `{"bucket":"example-bucket","region":"ap-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
+			wantEndpoint: "https://cos.ap-shanghai.myqcloud.com",
+			wantURL:      "https://example-bucket.cos.ap-shanghai.myqcloud.com/2026/05/a.jpg",
+		},
+		{
+			name:         "oss",
+			providerType: "OSS",
+			cfg:          `{"bucket":"my-bucket","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
+			wantEndpoint: "https://oss-cn-shanghai.aliyuncs.com",
+			wantURL:      "https://my-bucket.oss-cn-shanghai.aliyuncs.com/2026/05/a.jpg",
+		},
+		{
+			name:         "oss endpoint-style region",
+			providerType: "OSS",
+			cfg:          `{"bucket":"my-bucket","region":"oss-cn-hangzhou","accessKeyId":"k","secretAccessKey":"s"}`,
+			wantEndpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+			wantURL:      "https://my-bucket.oss-cn-hangzhou.aliyuncs.com/2026/05/a.jpg",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			st, err := NewS3Storage(c.cfg, c.providerType)
+			if err != nil {
+				t.Fatalf("NewS3Storage(%q): %v", c.providerType, err)
+			}
+			if st.cfg.Endpoint != c.wantEndpoint {
+				t.Errorf("endpoint=%q want %q", st.cfg.Endpoint, c.wantEndpoint)
+			}
+			if got := st.GetURL("2026/05/a.jpg"); got != c.wantURL {
+				t.Errorf("GetURL()=%q want %q", got, c.wantURL)
+			}
+		})
+	}
+}
+
+func TestS3Storage_ImageHostCustomURLPathAndOptions(t *testing.T) {
+	cfg := `{
+		"bucket":"example-bucket",
+		"region":"ap-shanghai",
+		"path":"assets/",
+		"customUrl":"https://cdn.example.com",
+		"options":"?variant=public",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	objectKey, err := st.objectKey("sample.image.png")
+	if err != nil {
+		t.Fatalf("objectKey: %v", err)
+	}
+	if objectKey != "assets/sample.image.png" {
+		t.Fatalf("objectKey=%q", objectKey)
+	}
+	got := st.GetURL("sample.image.png")
+	want := "https://cdn.example.com/assets/sample.image.png?variant=public"
+	if got != want {
+		t.Fatalf("GetURL()=%q want %q", got, want)
+	}
+}
+
+func TestS3Storage_CustomURLPreservesExistingQuery(t *testing.T) {
+	cfg := `{
+		"bucket":"example-bucket",
+		"region":"ap-shanghai",
+		"path":"assets/",
+		"customUrl":"https://cdn.example.com/static?token=abc",
+		"options":"?variant=public",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	got := st.GetURL("a.png")
+	want := "https://cdn.example.com/static/assets/a.png?token=abc&variant=public"
+	if got != want {
+		t.Fatalf("GetURL()=%q want %q", got, want)
+	}
+}
+
+func TestS3Storage_PathPrefixIsTransparentForListingKeys(t *testing.T) {
+	cfg := `{"bucket":"b","region":"ap-shanghai","path":"/assets/","accessKeyId":"k","secretAccessKey":"s"}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	if got := st.listPrefix("2026/05"); got != "assets/2026/05" {
+		t.Fatalf("listPrefix=%q", got)
+	}
+	if got := st.externalKey("assets/2026/05/a.png"); got != "2026/05/a.png" {
+		t.Fatalf("externalKey=%q", got)
+	}
+}
+
+func TestS3Storage_ObjectKeyValidatesFinalPrefixedKey(t *testing.T) {
+	cfg := `{"bucket":"x","region":"ap-shanghai","path":"` + strings.Repeat("p", 512) + `","accessKeyId":"k","secretAccessKey":"s"}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	if _, err := st.objectKey(strings.Repeat("k", 512)); err == nil {
+		t.Fatal("objectKey should reject final key longer than 1024 bytes")
+	}
+}
+
+func TestS3Storage_ObjectKeyWithPathAcceptsLeadingSlashAfterNormalization(t *testing.T) {
+	cfg := `{"bucket":"x","region":"ap-shanghai","path":"assets","accessKeyId":"k","secretAccessKey":"s"}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	got, err := st.objectKey("/a.png")
+	if err != nil {
+		t.Fatalf("objectKey: %v", err)
+	}
+	if got != "assets/a.png" {
+		t.Fatalf("objectKey=%q", got)
+	}
+}
+
+func TestS3Storage_RejectsInvalidPathPrefix(t *testing.T) {
+	cfg := `{"bucket":"x","region":"ap-shanghai","path":"../img","accessKeyId":"k","secretAccessKey":"s"}`
+	if _, err := NewS3Storage(cfg, "COS"); err == nil {
+		t.Fatal("NewS3Storage(COS) should reject path traversal prefix")
+	}
+}
+
+func TestS3Storage_RejectsInvalidProviderRegionForGeneratedEndpoint(t *testing.T) {
+	cfg := `{"bucket":"x","region":"ap-shanghai.example.com","accessKeyId":"k","secretAccessKey":"s"}`
+	if _, err := NewS3Storage(cfg, "COS"); err == nil {
+		t.Fatal("NewS3Storage(COS) should reject invalid generated endpoint region")
+	}
+}
+
+func TestTrustedProviderEndpoint(t *testing.T) {
+	cases := []struct {
+		name         string
+		providerType string
+		region       string
+		endpoint     string
+		want         bool
+	}{
+		{
+			name:         "cos official service endpoint",
+			providerType: "COS",
+			region:       "ap-shanghai",
+			endpoint:     "https://cos.ap-shanghai.myqcloud.com",
+			want:         true,
+		},
+		{
+			name:         "oss official service endpoint",
+			providerType: "OSS",
+			region:       "cn-shanghai",
+			endpoint:     "https://oss-cn-shanghai.aliyuncs.com",
+			want:         true,
+		},
+		{
+			name:         "oss endpoint-style region",
+			providerType: "OSS",
+			region:       "oss-cn-hangzhou",
+			endpoint:     "https://oss-cn-hangzhou.aliyuncs.com",
+			want:         true,
+		},
+		{
+			name:         "oss internal endpoint",
+			providerType: "OSS",
+			region:       "cn-hangzhou",
+			endpoint:     "https://oss-cn-hangzhou-internal.aliyuncs.com",
+			want:         true,
+		},
+		{
+			name:         "r2 account endpoint",
+			providerType: "R2",
+			region:       "auto",
+			endpoint:     "https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com",
+			want:         true,
+		},
+		{
+			name:         "aws regional endpoint",
+			providerType: "S3",
+			region:       "us-west-2",
+			endpoint:     "https://s3.us-west-2.amazonaws.com",
+			want:         true,
+		},
+		{
+			name:         "aws china regional endpoint",
+			providerType: "S3",
+			region:       "cn-north-1",
+			endpoint:     "https://s3.cn-north-1.amazonaws.com.cn",
+			want:         true,
+		},
+		{
+			name:         "aws dualstack endpoint",
+			providerType: "S3",
+			region:       "us-east-1",
+			endpoint:     "https://s3.dualstack.us-east-1.amazonaws.com",
+			want:         true,
+		},
+		{
+			name:         "cos lookalike suffix",
+			providerType: "COS",
+			region:       "ap-shanghai",
+			endpoint:     "https://cos.ap-shanghai.myqcloud.com.evil.example",
+			want:         false,
+		},
+		{
+			name:         "cos wrong region",
+			providerType: "COS",
+			region:       "ap-guangzhou",
+			endpoint:     "https://cos.ap-shanghai.myqcloud.com",
+			want:         false,
+		},
+		{
+			name:         "cos non-https",
+			providerType: "COS",
+			region:       "ap-shanghai",
+			endpoint:     "http://cos.ap-shanghai.myqcloud.com",
+			want:         false,
+		},
+		{
+			name:         "r2 lookalike suffix",
+			providerType: "R2",
+			region:       "auto",
+			endpoint:     "https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com.evil.example",
+			want:         false,
+		},
+		{
+			name:         "aws wrong region",
+			providerType: "S3",
+			region:       "us-east-1",
+			endpoint:     "https://s3.us-west-2.amazonaws.com",
+			want:         false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isTrustedProviderEndpoint(c.endpoint, c.providerType, c.region); got != c.want {
+				t.Fatalf("isTrustedProviderEndpoint()=%v want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestMinIOPrivateEndpointRequiresExplicitOptIn(t *testing.T) {
+	blockedCfg := `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","accessKeyId":"k","secretAccessKey":"s"}`
+	if _, err := NewS3Storage(blockedCfg, "MINIO"); err == nil {
+		t.Fatal("NewS3Storage(MINIO) should reject private endpoint without explicit opt-in")
+	}
+
+	allowedCfg := `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`
+	if _, err := NewS3Storage(allowedCfg, "MINIO"); err != nil {
+		t.Fatalf("NewS3Storage(MINIO) with allowPrivateEndpoint: %v", err)
+	}
+}
+
+func TestS3Storage_EndpointRequiredForMinIOAndR2(t *testing.T) {
+	cfg := `{"bucket":"x","region":"auto","accessKeyId":"k","secretAccessKey":"s"}`
+	for _, providerType := range []string{"MINIO", "R2"} {
+		if _, err := NewS3Storage(cfg, providerType); err == nil {
+			t.Fatalf("NewS3Storage(%s) should require endpoint", providerType)
 		}
 	}
 }

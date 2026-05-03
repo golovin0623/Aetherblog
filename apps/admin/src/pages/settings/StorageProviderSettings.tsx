@@ -30,8 +30,15 @@ const PROVIDER_TYPES: { value: StorageProviderType; label: string; description: 
   { value: 'R2', label: 'Cloudflare R2', description: 'Cloudflare 零出口费 S3 兼容存储' },
 ];
 
+type EndpointPreset = {
+  label: string;
+  value: string;
+  needsAccountId?: boolean;
+  allowPrivateEndpoint?: boolean;
+};
+
 // 各 provider 的 endpoint 预设(用于一键填入)
-const ENDPOINT_PRESETS: Partial<Record<StorageProviderType, { label: string; value: string; needsAccountId?: boolean }[]>> = {
+const ENDPOINT_PRESETS: Partial<Record<StorageProviderType, EndpointPreset[]>> = {
   COS: [
     { label: '广州 (ap-guangzhou)', value: 'https://cos.ap-guangzhou.myqcloud.com' },
     { label: '上海 (ap-shanghai)', value: 'https://cos.ap-shanghai.myqcloud.com' },
@@ -49,7 +56,7 @@ const ENDPOINT_PRESETS: Partial<Record<StorageProviderType, { label: string; val
     { label: 'Cloudflare R2', value: 'https://<account-id>.r2.cloudflarestorage.com', needsAccountId: true },
   ],
   MINIO: [
-    { label: '本地默认 (localhost:9000)', value: 'http://localhost:9000' },
+    { label: '本地默认 (localhost:9000)', value: 'http://localhost:9000', allowPrivateEndpoint: true },
   ],
 };
 
@@ -65,7 +72,7 @@ const DEFAULT_REGIONS: Partial<Record<StorageProviderType, string>> = {
  * S3 兼容配置(LOCAL 之外的统一形状)
  *
  * 后端 storage/s3.go 的 S3Config 字段:
- *   bucket, region, endpoint, accessKeyId, secretAccessKey, urlPrefix, forcePathStyle
+ *   bucket, region, endpoint, accessKeyId, secretAccessKey, path, customUrl, options, urlPrefix, allowPrivateEndpoint, forcePathStyle
  */
 interface S3LikeConfig {
   bucket: string;
@@ -73,7 +80,11 @@ interface S3LikeConfig {
   endpoint: string;
   accessKeyId: string;
   secretAccessKey: string;
+  path: string;
+  customUrl: string;
+  options: string;
   urlPrefix: string;
+  allowPrivateEndpoint: boolean;
   forcePathStyle: boolean;
 }
 
@@ -88,7 +99,11 @@ const EMPTY_S3_CONFIG: S3LikeConfig = {
   endpoint: '',
   accessKeyId: '',
   secretAccessKey: '',
+  path: '',
+  customUrl: '',
+  options: '',
   urlPrefix: '',
+  allowPrivateEndpoint: false,
   forcePathStyle: false,
 };
 
@@ -254,7 +269,9 @@ function ProviderCard({
       }
       const bucket = (cfg.bucket as string) || '-';
       const region = (cfg.region as string) || '-';
-      return `bucket: ${bucket} · region: ${region}`;
+      const path = (cfg.path as string) || '';
+      const customUrl = (cfg.customUrl as string) || (cfg.urlPrefix as string) || '';
+      return `bucket: ${bucket} · region: ${region}${path ? ` · path: ${path}` : ''}${customUrl ? ` · URL: ${customUrl}` : ''}`;
     } catch {
       return '配置解析失败';
     }
@@ -365,17 +382,11 @@ function ProviderDialog({
   // 切 type 时根据需要重置默认 region
   const handleTypeChange = (type: StorageProviderType) => {
     setProviderType(type);
-    if (type !== 'LOCAL' && DEFAULT_REGIONS[type] && !s3Cfg.region) {
-      setS3Cfg({ ...s3Cfg, region: DEFAULT_REGIONS[type] || '' });
-    }
-    if (type === 'R2') {
-      // R2 必须 forcePathStyle=true
-      setS3Cfg({ ...s3Cfg, forcePathStyle: true });
-    }
-    if (type === 'MINIO') {
-      // MinIO 通常 forcePathStyle=true
-      setS3Cfg({ ...s3Cfg, forcePathStyle: true });
-    }
+    setS3Cfg((prev) => ({
+      ...prev,
+      region: type !== 'LOCAL' && DEFAULT_REGIONS[type] && !prev.region ? DEFAULT_REGIONS[type] || '' : prev.region,
+      forcePathStyle: type === 'R2' || type === 'MINIO' ? true : prev.forcePathStyle,
+    }));
   };
 
   const buildConfigJson = (): string => {
@@ -393,8 +404,11 @@ function ProviderDialog({
     }
     if (!s3Cfg.bucket) return 'bucket 不能为空';
     if (!s3Cfg.region) return 'region 不能为空';
-    if (providerType === 'R2' && !s3Cfg.urlPrefix) {
-      return 'R2 必须配置 urlPrefix(公网访问域名,如 https://pub-xxxx.r2.dev)';
+    if ((providerType === 'MINIO' || providerType === 'R2') && !s3Cfg.endpoint) {
+      return `${providerType} endpoint 不能为空`;
+    }
+    if (providerType === 'R2' && !s3Cfg.customUrl && !s3Cfg.urlPrefix) {
+      return 'R2 必须配置 customUrl 或 urlPrefix(公网访问域名,如 https://pub-xxxx.r2.dev)';
     }
     return null;
   };
@@ -642,9 +656,26 @@ function S3Fields({
 }: {
   cfg: S3LikeConfig;
   onChange: (v: S3LikeConfig) => void;
-  presets: { label: string; value: string; needsAccountId?: boolean }[];
+  presets: EndpointPreset[];
   providerType: StorageProviderType;
 }) {
+  const endpointLabel =
+    providerType === 'COS'
+      ? 'endpoint (留空按 region 自动生成 COS endpoint)'
+      : providerType === 'OSS'
+        ? 'endpoint (留空按 region 自动生成 OSS endpoint)'
+        : providerType === 'S3'
+          ? 'endpoint (留空走默认 AWS S3)'
+          : 'endpoint';
+  const endpointPlaceholder =
+    providerType === 'COS'
+      ? 'https://cos.ap-shanghai.myqcloud.com'
+      : providerType === 'OSS'
+        ? 'https://oss-cn-shanghai.aliyuncs.com'
+        : providerType === 'R2'
+          ? 'https://<account-id>.r2.cloudflarestorage.com'
+          : 'https://example.com';
+
   return (
     <div className="space-y-3 p-4 bg-[var(--bg-input)]/30 rounded-lg border border-[var(--border-subtle)]">
       <div className="grid grid-cols-2 gap-3">
@@ -672,12 +703,12 @@ function S3Fields({
 
       {/* endpoint + 预设 */}
       <div>
-        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">endpoint (留空走默认 AWS S3)</label>
+        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">{endpointLabel}</label>
         <input
           type="text"
           value={cfg.endpoint}
           onChange={(e) => onChange({ ...cfg, endpoint: e.target.value })}
-          placeholder="https://cos.ap-guangzhou.myqcloud.com"
+          placeholder={endpointPlaceholder}
           className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm font-mono"
         />
         {presets.length > 0 && (
@@ -687,7 +718,13 @@ function S3Fields({
               <button
                 key={p.value}
                 type="button"
-                onClick={() => onChange({ ...cfg, endpoint: p.value })}
+                onClick={() =>
+                  onChange({
+                    ...cfg,
+                    endpoint: p.value,
+                    allowPrivateEndpoint: p.allowPrivateEndpoint ?? cfg.allowPrivateEndpoint,
+                  })
+                }
                 className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
               >
                 {p.label}
@@ -724,11 +761,49 @@ function S3Fields({
         </div>
       </div>
 
+      {/* 图床路径与自定义域名 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">path (对象路径前缀)</label>
+          <input
+            type="text"
+            value={cfg.path}
+            onChange={(e) => onChange({ ...cfg, path: e.target.value })}
+            placeholder="assets/"
+            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm font-mono"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">options (URL 查询参数)</label>
+          <input
+            type="text"
+            value={cfg.options}
+            onChange={(e) => onChange({ ...cfg, options: e.target.value })}
+            placeholder="?variant=public"
+            className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm font-mono"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+          customUrl (图床/自定义域名;优先于 urlPrefix)
+          {providerType === 'R2' && <span className="text-status-danger ml-1">R2 必填其一</span>}
+        </label>
+        <input
+          type="text"
+          value={cfg.customUrl}
+          onChange={(e) => onChange({ ...cfg, customUrl: e.target.value })}
+          placeholder={providerType === 'COS' ? 'https://cdn.example.com' : 'https://cdn.example.com'}
+          className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm font-mono"
+        />
+      </div>
+
       {/* CDN URL 前缀 */}
       <div>
         <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
-          urlPrefix (CDN 域名;留空时按 bucket+endpoint 自动拼接)
-          {providerType === 'R2' && <span className="text-status-danger ml-1">R2 必填</span>}
+          urlPrefix (兼容旧 CDN 字段;留空时按 bucket+endpoint 自动拼接)
+          {providerType === 'R2' && <span className="text-status-danger ml-1">R2 必填其一</span>}
         </label>
         <input
           type="text"
@@ -738,7 +813,7 @@ function S3Fields({
             providerType === 'R2'
               ? 'https://pub-xxxx.r2.dev 或自定义域名'
               : providerType === 'COS'
-                ? 'https://your-cdn.example.com (可选)'
+                ? 'https://your-cdn.example.com (可选,新配置建议用 customUrl)'
                 : '可选'
           }
           className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm font-mono"
@@ -756,6 +831,19 @@ function S3Fields({
         <span className="text-sm text-[var(--text-secondary)]">forcePathStyle</span>
         <span className="text-xs text-[var(--text-muted)]">(MinIO/R2 必须开启)</span>
       </label>
+
+      {providerType === 'MINIO' && (
+        <label className="flex items-center gap-2 pt-1">
+          <input
+            type="checkbox"
+            checked={cfg.allowPrivateEndpoint}
+            onChange={(e) => onChange({ ...cfg, allowPrivateEndpoint: e.target.checked })}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-[var(--text-secondary)]">allowPrivateEndpoint</span>
+          <span className="text-xs text-[var(--text-muted)]">(允许 localhost/内网 endpoint)</span>
+        </label>
+      )}
     </div>
   );
 }
