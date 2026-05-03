@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
@@ -309,7 +310,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// --- AI 代理接口 ---
 	aiHandler := handler.NewAiHandler(s.Config)
 	aiHandler.Mount(admin.Group("/ai"))
-	aiHandler.MountProviders(admin.Group("/providers"))
+
+	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
+	const providerProxyBodyLimit = "10M"
+	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))
 
 	// --- 搜索管理 ---
 	searchAdmin := admin.Group("/search")
