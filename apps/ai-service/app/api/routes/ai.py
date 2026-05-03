@@ -1062,7 +1062,6 @@ async def polish(
                 cached_model = cached_data.get("model") or model
                 return ApiResponse(data=PolishData(
                     polishedContent=response_text,
-                    changes=None,
                     model=cached_model,
                     tokensUsed=tokens_used,
                     latencyMs=latency_ms,
@@ -1088,7 +1087,6 @@ async def polish(
         tokens_used = estimate_tokens(req.content) + estimate_tokens(response_text)
         data = PolishData(
             polishedContent=response_text,
-            changes=None,
             model=model,
             tokensUsed=tokens_used,
             latencyMs=latency_ms,
