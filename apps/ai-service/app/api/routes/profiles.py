@@ -16,10 +16,13 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_pg_pool, get_vector_store, require_admin
 from app.schemas.common import ApiResponse
@@ -28,6 +31,11 @@ from app.schemas.search import CreateSearchProfileRequest, SearchProfileResponse
 logger = logging.getLogger("ai-service")
 
 router = APIRouter(prefix="/api/v1/admin/search/profiles", tags=["search-profiles"])
+
+
+def _sse_pack(obj: dict) -> str:
+    """SSE 帧序列化。``json.dumps`` 不要 escape 中文，让 admin UI 直接渲染。"""
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
 def _row_to_profile(row: Any) -> dict[str, Any]:
@@ -326,3 +334,138 @@ async def delete_profile(
         await conn.execute("DELETE FROM search_profiles WHERE id = $1", row["id"])
     logger.info("search_profile.deleted", extra={"data": {"code": code}})
     return ApiResponse(data={"status": "deleted", "code": code})
+
+
+@router.post("/{code}/reindex/stream")
+async def reindex_profile_stream(
+    code: str,
+    user=Depends(require_admin),
+    pool=Depends(get_pg_pool),
+    vector_store=Depends(get_vector_store),
+):
+    """以 SSE 流式发送针对指定 profile 的全量 reindex 进度。
+
+    端点强绑定单个 profile（蓝绿切换专用），URL 命名空间放在 ``/profiles/{code}``
+    之下。旧的非流式 ``POST /v1/admin/search/reindex?profileCode=`` 保留兼容老调用。
+
+    SSE 帧格式（与 admin ``useReindexStream`` 协商）：
+        data: {"type":"start","total":N,"profile":<code>}
+        data: {"type":"progress","postId":<id>,"index":i,"chunks":<n>,
+               "status":"ok"|"failed","error"?:..,"elapsedMs":..}
+        data: {"type":"result","data":{...}}
+        data: {"type":"done"}
+        data: {"type":"error","message":...}
+
+    注意 ``X-Accel-Buffering: no``：必须显式发，否则 nginx 会按默认 8KB
+    缓冲攒够才推一次，admin UI 进度条会出现"卡住—瀑布"现象。
+    """
+    profile = await vector_store._fetch_profile_by_code(code)
+    if not profile:
+        raise HTTPException(404, f"Profile '{code}' 不存在")
+    if profile.status == "deprecated":
+        raise HTTPException(400, f"Profile '{code}' 已弃用，无法重建索引")
+    target_status = "active" if profile.status == "active" else "shadow"
+
+    async def gen():
+        # 整个生成器包一层 try/except：StreamingResponse 一旦开始返回就是
+        # 200 OK，期间任何未捕获异常会让 SSE 连接被截断，前端只能感知
+        # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
+        # useReindexStream 能优雅处理（写 error state、停 isRunning）。
+        try:
+            # 内存优化：不要一次把所有 PUBLISHED 文章的 content_markdown 拉进
+            # 内存（数万篇 × 平均 20KB 正文 = 数百 MB，会让 ai-service OOM）。
+            # 分两步走：
+            #   1. 先 SELECT id（每行 8 byte）拿到 id 列表，用于 total + 顺序
+            #   2. 处理每篇时单独 SELECT 一行 content_markdown（DB 仍是单连接，
+            #      asyncpg 内部会复用 prepared statement，开销可控）
+            # 这样即使 1 万篇博客也只会让 id 列表占 80KB 内存。
+            async with pool.acquire() as conn:
+                id_rows = await conn.fetch(
+                    "SELECT id FROM posts "
+                    "WHERE deleted = FALSE AND status = 'PUBLISHED' "
+                    "ORDER BY id ASC"
+                )
+            total = len(id_rows)
+            yield _sse_pack({"type": "start", "total": total, "profile": code})
+
+            indexed = 0
+            failed = 0
+            for i, id_row in enumerate(id_rows, 1):
+                post_id = id_row["id"]
+                t0 = time.perf_counter()
+                try:
+                    # Per-post 取 content。中途若文章被删 / 改状态，fetchrow
+                    # 返回 None，跳过并标 failed（避免 KeyError）。
+                    async with pool.acquire() as conn:
+                        post = await conn.fetchrow(
+                            "SELECT id, title, slug, content_markdown FROM posts "
+                            "WHERE id = $1 AND deleted = FALSE AND status = 'PUBLISHED'",
+                            post_id,
+                        )
+                    if not post:
+                        failed += 1
+                        yield _sse_pack({
+                            "type": "progress",
+                            "postId": post_id,
+                            "index": i,
+                            "chunks": 0,
+                            "status": "failed",
+                            "error": "post no longer PUBLISHED",
+                            "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
+                        })
+                        continue
+                    result = await vector_store.upsert_post_embedding(
+                        post_id=post["id"],
+                        title=post["title"],
+                        slug=post["slug"],
+                        content=post["content_markdown"] or "",
+                        metadata={"status": "PUBLISHED"},
+                        profile=profile,
+                        target_status=target_status,
+                    )
+                    indexed += 1
+                    yield _sse_pack({
+                        "type": "progress",
+                        "postId": post["id"],
+                        "index": i,
+                        "chunks": result.get("chunks", 0),
+                        "status": "ok",
+                        "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
+                    })
+                except Exception as exc:
+                    failed += 1
+                    # 错误消息截断 200 字符避免把堆栈泄露到前端 UI
+                    yield _sse_pack({
+                        "type": "progress",
+                        "postId": post_id,
+                        "index": i,
+                        "chunks": 0,
+                        "status": "failed",
+                        "error": str(exc)[:200],
+                        "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
+                    })
+
+            yield _sse_pack({"type": "result", "data": {
+                "profile": code,
+                "indexed": indexed,
+                "failed": failed,
+                "target_status": target_status,
+            }})
+            yield _sse_pack({"type": "done"})
+        except Exception as exc:
+            # DB 连接 / 池获取 / 任何 per-post try 之外的异常都落到这里。
+            # message 截断 200 字符避免把堆栈泄露到前端 UI。
+            logger.warning(
+                "reindex_stream.fatal",
+                extra={"data": {"profile": code, "error": str(exc)[:200]}},
+            )
+            yield _sse_pack({"type": "error", "message": str(exc)[:200]})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
