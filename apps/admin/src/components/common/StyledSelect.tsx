@@ -85,19 +85,34 @@ export function StyledSelect({
       if (event.key === 'Escape') {
         setOpen(false);
         buttonRef.current?.focus();
+        return;
       }
+
+      if (event.key === 'Tab') {
+        setOpen(false);
+      }
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
     };
 
     const handleLayoutChange = () => updateMenuPosition();
 
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('focusin', handleFocusIn);
     window.addEventListener('resize', handleLayoutChange);
     window.addEventListener('scroll', handleLayoutChange, true);
 
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('focusin', handleFocusIn);
       window.removeEventListener('resize', handleLayoutChange);
       window.removeEventListener('scroll', handleLayoutChange, true);
     };
