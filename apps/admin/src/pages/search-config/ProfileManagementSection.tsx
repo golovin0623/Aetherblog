@@ -73,7 +73,7 @@ export function ProfileManagementSection({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.05 }}
-      className="surface-leaf p-6 space-y-5 lg:col-span-2"
+      className="surface-leaf surface-admin-panel p-6 space-y-5 lg:col-span-2"
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-2">
@@ -126,7 +126,7 @@ export function ProfileManagementSection({
           {[0, 1].map((i) => (
             <div
               key={i}
-              className="h-28 surface-leaf !rounded-xl animate-pulse"
+              className="h-28 surface-leaf surface-admin-item !rounded-xl animate-pulse"
             />
           ))}
         </div>
