@@ -182,7 +182,7 @@ export default function StorageProviderSettings() {
         {isLoading ? (
           <div className="text-center py-12 text-[var(--text-muted)]">加载中...</div>
         ) : providers.length === 0 ? (
-          <div className="text-center py-12 surface-leaf rounded-2xl">
+          <div className="text-center py-12 surface-leaf surface-admin-panel rounded-2xl">
             <Server className="w-12 h-12 text-[var(--text-muted)] mx-auto mb-4" />
             <p className="text-[var(--text-muted)]">暂无存储提供商</p>
           </div>
@@ -264,7 +264,7 @@ function ProviderCard({
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="surface-leaf rounded-2xl p-5"
+      className="surface-leaf surface-admin-item rounded-2xl p-5"
       data-interactive
     >
       <div className="flex items-start justify-between gap-4">
@@ -575,7 +575,7 @@ function AutoBackupToggle() {
   });
 
   return (
-    <div className="surface-leaf rounded-xl p-4 mb-4 flex items-center justify-between">
+    <div className="surface-leaf surface-admin-item rounded-xl p-4 mb-4 flex items-center justify-between">
       <div className="flex-1">
         <p className="text-sm font-medium text-[var(--text-primary)]">自动后台备份</p>
         <p className="text-xs text-[var(--text-muted)] mt-1">

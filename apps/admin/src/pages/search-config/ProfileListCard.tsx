@@ -81,7 +81,7 @@ export function ProfileListCard({
       data-interactive
       onClick={() => onSelect(profile)}
       className={cn(
-        'surface-leaf cursor-pointer',
+        'surface-leaf surface-admin-item cursor-pointer',
         'p-4 sm:p-5',
         'hover:translate-y-[-1px] transition-transform'
       )}
