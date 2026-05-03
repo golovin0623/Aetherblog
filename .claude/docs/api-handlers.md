@@ -8,7 +8,7 @@
 
 ## 1. Handler 总览（24 个模块，按职责分组）
 
-> 表格中「Handler 文件」列是**源文件名**（Go 仓库习惯 snake_case，例：`auth_handler.go`），对应的 Go 类型名为 PascalCase（例：`AuthHandler`，符合 `CLAUDE.md` §4 后端命名约定）。这样写便于直接 grep 文件 / 跳定义。
+> 表格中「Handler 文件」列是**源文件名（不含 `.go` 扩展名）**（Go 仓库习惯 snake_case，例：`auth_handler` → 实际文件 `auth_handler.go`），对应的 Go 类型名为 PascalCase（例：`AuthHandler`，符合 `CLAUDE.md` §4 后端命名约定）。这样写便于直接 grep 文件 / 跳定义。
 
 ### 鉴权与用户
 
