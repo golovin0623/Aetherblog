@@ -219,18 +219,25 @@ export function DateRangePicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // 计算 popover 位置
+  // 计算 popover 位置 + 尺寸
   React.useLayoutEffect(() => {
     if (!isOpen || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    const popW = 580;
-    const popH = 380;
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
+    const SAFE_GUTTER = 8;
 
-    // 横向：默认 left 对齐 trigger.left，超出则贴右
+    // 宽度：理想 580，但窄屏（≈360px 起）下要 clamp 到 viewport - 16，
+    // 否则日历会横向溢出导致结束日期不可点击。
+    const popW = Math.min(580, viewportW - SAFE_GUTTER * 2);
+    const popH = 380;
+
+    // 横向：默认 left 对齐 trigger.left，溢出则贴右；clamp 到左 8px
     let left = rect.left;
-    if (left + popW > viewportW - 8) left = Math.max(8, viewportW - popW - 8);
+    if (left + popW > viewportW - SAFE_GUTTER) {
+      left = Math.max(SAFE_GUTTER, viewportW - popW - SAFE_GUTTER);
+    }
+    if (left < SAFE_GUTTER) left = SAFE_GUTTER;
 
     // 纵向：默认下方，不够则上方
     const spaceBelow = viewportH - rect.bottom;

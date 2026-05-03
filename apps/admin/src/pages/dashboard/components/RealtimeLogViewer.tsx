@@ -230,8 +230,10 @@ const LEVEL_NORMALIZE: Record<string, LogLevel> = {
   PANIC: 'FATAL',
 };
 
-const ISO_TS_RE = /(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?:Z|[+-]\d{2}:?\d{2})?/;
-const NGINX_TS_RE = /\[(\d{2})\/(\w{3})\/(\d{4}):(\d{2}:\d{2}:\d{2})\s/;
+// 时间戳 / 级别正则锚定到行首：日志行的时间戳 / 级别永远在前面，
+// 不锚定会让消息正文里的 ISO 数字串或 "WARN" 词被误识别。
+const ISO_TS_RE = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?:Z|[+-]\d{2}:?\d{2})?/;
+const NGINX_TS_RE = /^\[(\d{2})\/(\w{3})\/(\d{4}):(\d{2}:\d{2}:\d{2})\s/;
 const LEVEL_RE = /\b(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|PANIC)\b/;
 const HTTP_RE = /"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+([^\s"]+)\s+HTTP\/[\d.]+"\s+(\d{3})/;
 
@@ -248,7 +250,7 @@ function parseLogLine(line: string): ParsedLogLine {
 
   let stripped = line;
 
-  // 1. 时间戳
+  // 1. 时间戳 —— ISO 优先，nginx 兜底；命中后从 message 中剥离避免重复展示
   const isoMatch = line.match(ISO_TS_RE);
   if (isoMatch) {
     result.timestamp = isoMatch[2]; // 仅取 HH:mm:ss(.SSS) 部分，节省列宽
@@ -257,11 +259,11 @@ function parseLogLine(line: string): ParsedLogLine {
     const ngMatch = line.match(NGINX_TS_RE);
     if (ngMatch) {
       result.timestamp = ngMatch[4];
-      // 不剥离 nginx 时间戳，因为它在 [...] 内被 HTTP 上下文需要
+      stripped = stripped.replace(ngMatch[0], '').trim();
     }
   }
 
-  // 2. 级别
+  // 2. 级别 token
   const lvlMatch = stripped.match(LEVEL_RE);
   if (lvlMatch) {
     const upper = lvlMatch[1].toUpperCase();
@@ -270,12 +272,14 @@ function parseLogLine(line: string): ParsedLogLine {
     stripped = stripped.replace(new RegExp(`^\\s*${lvlMatch[1]}\\s*[:|]?\\s*`, 'i'), '');
   }
 
-  // 3. HTTP（nginx access log 主要场景）
+  // 3. HTTP（nginx access log 主要场景）—— 命中后也从 message 剥离，
+  //    渲染期不再需要二次 regex 匹配
   const httpMatch = line.match(HTTP_RE);
   if (httpMatch) {
     result.method = httpMatch[1];
     result.path = httpMatch[2];
     result.status = parseInt(httpMatch[3], 10);
+    stripped = stripped.replace(httpMatch[0], '').trim();
   }
 
   result.message = stripped.trim();
@@ -716,13 +720,15 @@ export function RealtimeLogViewer({
       if (exportMenuRef.current && exportMenuRef.current.contains(e.target as Node)) return;
       setExportMenuOpen(false);
     };
+    // 必须用同一引用 add/remove，匿名箭头函数在 cleanup 时无法对应卸载，会泄漏。
+    const onResize = () => setExportMenuOpen(false);
     document.addEventListener('mousedown', onClick);
     window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', () => setExportMenuOpen(false));
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('mousedown', onClick);
       window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', () => setExportMenuOpen(false));
+      window.removeEventListener('resize', onResize);
     };
   }, [exportMenuOpen]);
 
@@ -733,6 +739,13 @@ export function RealtimeLogViewer({
     }
     return logs.filter((line) => line.toLowerCase().includes(normalizedKeyword));
   }, [logs, normalizedKeyword]);
+
+  // 提前解析日志行，避免每次 render 时 map 中重复跑 4 个 regex。
+  // 跟着 visibleLogs 变化重算 —— 关键字过滤后子集变小，解析开销也随之缩减。
+  const parsedVisibleLogs = useMemo(
+    () => visibleLogs.map((line) => parseLogLine(line)),
+    [visibleLogs],
+  );
 
   const preserveScrollContext = (updater: () => void) => {
     const previousScrollTop = scrollRef.current?.scrollTop ?? null;
@@ -949,6 +962,8 @@ export function RealtimeLogViewer({
       <button
         type="button"
         onClick={() => setToolbarExpanded(v => !v)}
+        aria-expanded={toolbarExpanded}
+        aria-controls="log-viewer-advanced-toolbar"
         className={cn(
           'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px] font-mono uppercase tracking-[0.12em] border',
           'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
@@ -968,6 +983,9 @@ export function RealtimeLogViewer({
         ref={exportTriggerRef}
         type="button"
         onClick={() => setExportMenuOpen(v => !v)}
+        aria-haspopup="menu"
+        aria-expanded={exportMenuOpen}
+        aria-controls="log-viewer-export-menu"
         disabled={isViewExportDisabled && (!useAppLogs || isRawDownloadDisabled)}
         className={cn(
           'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px] font-mono uppercase tracking-[0.12em] border',
@@ -992,6 +1010,7 @@ export function RealtimeLogViewer({
     <AnimatePresence initial={false}>
       {toolbarExpanded && (
         <motion.div
+          id="log-viewer-advanced-toolbar"
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
@@ -1037,7 +1056,7 @@ export function RealtimeLogViewer({
                 className="flex-1 h-1 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] rounded-lg appearance-none cursor-pointer accent-[var(--aurora-1)]"
                 aria-label={`字号 ${fontSize}px`}
               />
-              <span className="text-[11px] font-mono text-[var(--ink-muted)] tabular-nums w-12 text-right">{fontSize}px</span>
+              <span className="text-[11px] font-mono text-[var(--ink-muted)] tnum w-12 text-right">{fontSize}px</span>
             </div>
 
             {/* 运行时门槛 */}
@@ -1110,6 +1129,7 @@ export function RealtimeLogViewer({
       <AnimatePresence>
         {exportMenuOpen && (
           <motion.div
+            id="log-viewer-export-menu"
             ref={exportMenuRef}
             style={exportMenuStyle}
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
@@ -1292,8 +1312,8 @@ export function RealtimeLogViewer({
           </div>
         ) : visibleLogs.length > 0 ? (
           <div className={cn('px-2', compactMode ? 'py-1' : 'py-2')}>
-            {visibleLogs.map((line, index) => {
-              const parsed = parseLogLine(line);
+            {parsedVisibleLogs.map((parsed, index) => {
+              const line = parsed.raw;
               const lvlStyle = parsed.level ? LEVEL_STYLES[parsed.level] : null;
 
               // 主行的左侧光带颜色（替代原 includes 误判）
@@ -1323,7 +1343,7 @@ export function RealtimeLogViewer({
                 >
                   {/* 行号 / 时间戳 列 */}
                   {showLineMeta && (
-                    <div className="shrink-0 w-[100px] text-[10px] font-mono text-[var(--ink-muted)] tabular-nums leading-relaxed select-none pt-px">
+                    <div className="shrink-0 w-[100px] text-[10px] font-mono text-[var(--ink-muted)] tnum leading-relaxed select-none pt-px">
                       <span className="opacity-60">#{(index + 1).toString().padStart(4, ' ')}</span>
                       {parsed.timestamp && (
                         <span className="ml-1.5">{parsed.timestamp}</span>
@@ -1331,7 +1351,7 @@ export function RealtimeLogViewer({
                     </div>
                   )}
                   {!showLineMeta && parsed.timestamp && (
-                    <span className="shrink-0 font-mono text-[var(--ink-muted)] tabular-nums leading-relaxed pt-px text-[0.92em]">
+                    <span className="shrink-0 font-mono text-[var(--ink-muted)] tnum leading-relaxed pt-px text-[0.92em]">
                       {parsed.timestamp}
                     </span>
                   )}
@@ -1359,12 +1379,12 @@ export function RealtimeLogViewer({
                           {parsed.method}
                         </span>
                         <span className="text-[var(--ink-primary)] truncate">{parsed.path}</span>
-                        <span className={cn('inline-flex items-center px-1.5 rounded font-mono font-semibold text-[10px] tabular-nums', statusToneClasses(parsed.status))}>
+                        <span className={cn('inline-flex items-center px-1.5 rounded font-mono font-semibold text-[10px] tnum', statusToneClasses(parsed.status))}>
                           {parsed.status}
                         </span>
                         {parsed.message && (
                           <span className="text-[var(--ink-muted)] text-[0.92em]">
-                            {parsed.message.replace(parsed.raw.match(HTTP_RE)?.[0] ?? '', '').trim()}
+                            {parsed.message}
                           </span>
                         )}
                       </span>
@@ -1466,7 +1486,7 @@ export function RealtimeLogViewer({
         <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
           {renderStatusBar()}
           <div className="flex items-center gap-3">
-            <div className="text-[10px] font-mono text-[var(--ink-muted)] tabular-nums">
+            <div className="text-[10px] font-mono text-[var(--ink-muted)] tnum">
               最近成功 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
             </div>
             {renderActionButtons(true)}
@@ -1512,7 +1532,7 @@ export function RealtimeLogViewer({
                 <div className="px-4 py-2.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {renderStatusBar(true)}
-                    <span className="text-[10px] font-mono text-[var(--ink-muted)] tabular-nums ml-2 shrink-0">
+                    <span className="text-[10px] font-mono text-[var(--ink-muted)] tnum ml-2 shrink-0">
                       {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
                     </span>
                   </div>

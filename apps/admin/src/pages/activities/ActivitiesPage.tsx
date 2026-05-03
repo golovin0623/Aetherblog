@@ -492,7 +492,7 @@ export default function ActivitiesPage() {
                 </button>
               </div>
               <div className="mt-2 text-xs text-[var(--ink-muted)]">
-                匹配 <span className="text-[var(--ink-primary)] font-medium tabular-nums">{total}</span> 条记录
+                匹配 <span className="text-[var(--ink-primary)] font-medium tnum">{total}</span> 条记录
               </div>
             </motion.div>
           )}
