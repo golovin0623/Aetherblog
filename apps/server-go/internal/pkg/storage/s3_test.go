@@ -135,6 +135,27 @@ func TestS3Storage_ImageHostCustomURLPathAndOptions(t *testing.T) {
 	}
 }
 
+func TestS3Storage_CustomURLPreservesExistingQuery(t *testing.T) {
+	cfg := `{
+		"bucket":"vanlog-1258312217",
+		"region":"ap-shanghai",
+		"path":"img/",
+		"customUrl":"https://data.golovin.cn/static?token=abc",
+		"options":"?imagevanblog",
+		"accessKeyId":"k",
+		"secretAccessKey":"s"
+	}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	got := st.GetURL("a.png")
+	want := "https://data.golovin.cn/static/img/a.png?token=abc&imagevanblog"
+	if got != want {
+		t.Fatalf("GetURL()=%q want %q", got, want)
+	}
+}
+
 func TestS3Storage_PathPrefixIsTransparentForListingKeys(t *testing.T) {
 	cfg := `{"bucket":"b","region":"ap-shanghai","path":"/img/","accessKeyId":"k","secretAccessKey":"s"}`
 	st, err := NewS3Storage(cfg, "COS")
@@ -146,6 +167,32 @@ func TestS3Storage_PathPrefixIsTransparentForListingKeys(t *testing.T) {
 	}
 	if got := st.externalKey("img/2026/05/a.png"); got != "2026/05/a.png" {
 		t.Fatalf("externalKey=%q", got)
+	}
+}
+
+func TestS3Storage_ObjectKeyValidatesFinalPrefixedKey(t *testing.T) {
+	cfg := `{"bucket":"x","region":"ap-shanghai","path":"` + strings.Repeat("p", 512) + `","accessKeyId":"k","secretAccessKey":"s"}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	if _, err := st.objectKey(strings.Repeat("k", 512)); err == nil {
+		t.Fatal("objectKey should reject final key longer than 1024 bytes")
+	}
+}
+
+func TestS3Storage_ObjectKeyWithPathAcceptsLeadingSlashAfterNormalization(t *testing.T) {
+	cfg := `{"bucket":"x","region":"ap-shanghai","path":"img","accessKeyId":"k","secretAccessKey":"s"}`
+	st, err := NewS3Storage(cfg, "COS")
+	if err != nil {
+		t.Fatalf("NewS3Storage(COS): %v", err)
+	}
+	got, err := st.objectKey("/a.png")
+	if err != nil {
+		t.Fatalf("objectKey: %v", err)
+	}
+	if got != "img/a.png" {
+		t.Fatalf("objectKey=%q", got)
 	}
 }
 
