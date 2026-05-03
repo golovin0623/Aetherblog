@@ -13,6 +13,8 @@ detect-changes ──┬─→ frontend-quality ──┬─→ build-blog     �
                  └─→ config-validate  ──┴─→ build-admin     ──┘
 ```
 
+`config-validate` 会同时校验 Docker Compose 渲染与 Go migration 版本唯一性，避免多个 PR 抢同一个 `0000xx` 迁移号后在部署阶段才失败。
+
 **触发条件：**
 - Push 到 `main` 或 `develop` — 增量构建 + 增量部署
 - Push Tag `v*` — 全量构建 + 全量部署（标志全部置为 true，忽略变更检测）
