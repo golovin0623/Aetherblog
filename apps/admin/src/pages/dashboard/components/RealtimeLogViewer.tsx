@@ -1037,7 +1037,7 @@ export function RealtimeLogViewer({
             {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)]" />}
           </div>
           <div className="flex items-center gap-1 sm:gap-3 ml-auto">
-            <div className="hidden sm:block text-[10px] text-[var(--text-muted)]">
+            <div className="hidden sm:block text-[10px] text-[var(--text-muted)] tnum">
               最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
             </div>
             <button
@@ -1051,6 +1051,7 @@ export function RealtimeLogViewer({
               onClick={() => setEmbeddedFiltersExpanded(prev => !prev)}
               title={embeddedFiltersExpanded ? '收起筛选' : '展开筛选'}
               aria-expanded={embeddedFiltersExpanded}
+              aria-controls="embedded-filters-content"
             >
               {embeddedFiltersExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               筛选
@@ -1058,12 +1059,13 @@ export function RealtimeLogViewer({
             {renderActionButtons(true)}
           </div>
         </div>
-        <div className="sm:hidden px-3 pb-1 text-[10px] text-[var(--text-muted)]">
+        <div className="sm:hidden px-3 pb-1 text-[10px] text-[var(--text-muted)] tnum">
           最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
         </div>
         <AnimatePresence initial={false}>
           {embeddedFiltersExpanded && (
             <motion.div
+              id="embedded-filters-content"
               key="embedded-toolbar-filters-mobile"
               className="lg:hidden overflow-hidden"
               initial={{ height: 0, opacity: 0 }}
@@ -1120,7 +1122,7 @@ export function RealtimeLogViewer({
                     <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
                     {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded shrink-0">{pauseReasonLabel}</span>}
                     {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)]" />}
-                    <span className="text-[10px] text-[var(--text-muted)] truncate">
+                    <span className="text-[10px] text-[var(--text-muted)] truncate tnum">
                       {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
                     </span>
                   </div>
