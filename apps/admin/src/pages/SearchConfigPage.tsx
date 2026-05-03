@@ -32,6 +32,11 @@ import {
 } from '@/services/searchConfigService';
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
+import { ProfileManagementSection } from './search-config/ProfileManagementSection';
+import { ProfileActivationFlow } from './search-config/ProfileActivationFlow';
+import { ProfileDetailDrawer } from './search-config/ProfileDetailDrawer';
+import { useSearchProfiles } from '@/hooks/useSearchProfiles';
+import type { SearchProfile } from '@/services/searchProfileService';
 
 // Toggle 来自 @aetherblog/ui
 
@@ -368,6 +373,13 @@ export default function SearchConfigPage() {
   // pending 为 null 代表没有在切换；为 number 或 ''（清空选择）代表待确认值。
   const [pendingEmbeddingModelId, setPendingEmbeddingModelId] =
     useState<number | null | undefined>(undefined);
+
+  // Profile activation flow + detail drawer 状态。activatingProfile 非 null
+  // 时弹激活向导；selectedProfile 非 null 时展开右侧抽屉。
+  const [activatingProfile, setActivatingProfile] = useState<SearchProfile | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<SearchProfile | null>(null);
+  const profilesQuery = useSearchProfiles();
+  const activeProfile = profilesQuery.data?.find((p) => p.status === 'active') ?? null;
 
   // 更新向量化路由的 mutation
   const updateRoutingMutation = useMutation({
@@ -1179,6 +1191,12 @@ export default function SearchConfigPage() {
           </div>
         </motion.div>
 
+        {/* Search Profile 管理（蓝绿切换 + chunker 策略试错入口） */}
+        <ProfileManagementSection
+          onRequestActivate={(p) => setActivatingProfile(p)}
+          onSelectProfile={(p) => setSelectedProfile(p)}
+        />
+
         {/* Card 2: 搜索功能开关 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -1423,6 +1441,29 @@ export default function SearchConfigPage() {
           }
         }}
         onCancel={() => setPendingEmbeddingModelId(undefined)}
+      />
+
+      {/* Profile 激活向导 + 详情抽屉（与上面的 ProfileManagementSection 配套） */}
+      {activatingProfile && (
+        <ProfileActivationFlow
+          profile={activatingProfile}
+          activeProfile={activeProfile}
+          onClose={() => setActivatingProfile(null)}
+        />
+      )}
+      <ProfileDetailDrawer
+        profile={selectedProfile}
+        onClose={() => setSelectedProfile(null)}
+        onDeprecate={() => {
+          // 复用 ProfileManagementSection 内部的 deprecate / delete 处理：
+          // 这里仅关闭抽屉，让用户在 ListCard 操作菜单上完成。drawer 的按钮
+          // 主要服务于 deprecate 的快速触发；如要复用 mutation，可在后续重构
+          // 把 deprecate / delete handler 提到 page 级。
+          setSelectedProfile(null);
+        }}
+        onDelete={() => {
+          setSelectedProfile(null);
+        }}
       />
     </div>
   );
