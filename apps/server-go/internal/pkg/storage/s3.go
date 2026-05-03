@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -18,9 +19,9 @@ import (
 // >= 该尺寸的请求走 manager.Uploader (自动分片 + 并发 + 失败重试),
 // 小文件继续走单次 PutObject (开销小)。AWS 推荐的最小分片大小为 5MB。
 const (
-	multipartThreshold int64 = 16 * 1024 * 1024 // 16 MB — 小于这个用 PutObject
-	multipartPartSize  int64 = 8 * 1024 * 1024  // 8 MB 分片大小
-	multipartConcurrency     = 4                  // 单次上传内的分片并发
+	multipartThreshold   int64 = 16 * 1024 * 1024 // 16 MB — 小于这个用 PutObject
+	multipartPartSize    int64 = 8 * 1024 * 1024  // 8 MB 分片大小
+	multipartConcurrency       = 4                // 单次上传内的分片并发
 )
 
 // validateEndpoint 拒绝将 S3 自定义 endpoint 指向内网 / 元数据服务，防御 SSRF。
@@ -32,17 +33,11 @@ func validateEndpoint(raw string) error {
 	if raw == "" {
 		return nil
 	}
-	u, err := url.Parse(raw)
+	u, err := parseEndpoint(raw)
 	if err != nil {
-		return fmt.Errorf("invalid endpoint: %w", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("endpoint scheme must be http or https, got %q", u.Scheme)
+		return err
 	}
 	host := u.Hostname()
-	if host == "" {
-		return fmt.Errorf("endpoint missing hostname")
-	}
 	ips, err := net.LookupIP(host)
 	if err != nil {
 		return fmt.Errorf("endpoint DNS lookup failed: %w", err)
@@ -67,22 +62,52 @@ func validateEndpoint(raw string) error {
 	return nil
 }
 
+func validateEndpointSyntax(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	_, err := parseEndpoint(raw)
+	return err
+}
+
+func parseEndpoint(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("endpoint scheme must be http or https, got %q", u.Scheme)
+	}
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("endpoint missing hostname")
+	}
+	return u, nil
+}
+
 // S3Config 保存从存储提供商配置 JSON（storage_providers.config_json）解析出的连接参数。
 type S3Config struct {
 	// Bucket 存储桶名称
-	Bucket         string `json:"bucket"`
+	Bucket string `json:"bucket"`
 	// Region AWS 区域，默认为 "us-east-1"
-	Region         string `json:"region"`
+	Region string `json:"region"`
 	// Endpoint 自定义服务端点，用于 MinIO 等兼容实现；AWS S3 可留空
-	Endpoint       string `json:"endpoint"`
+	Endpoint string `json:"endpoint"`
 	// AccessKeyID 访问密钥 ID
-	AccessKeyID    string `json:"accessKeyId"`
+	AccessKeyID string `json:"accessKeyId"`
 	// SecretAccessKey 访问密钥
 	SecretAccessKey string `json:"secretAccessKey"`
 	// URLPrefix CDN 或公开访问的 URL 前缀；若设置，GetURL 将优先使用此值
-	URLPrefix      string `json:"urlPrefix"`
+	URLPrefix string `json:"urlPrefix"`
+	// Path 对象 key 根前缀,例如 "img/"。业务传入的 key 会落到该前缀下。
+	Path string `json:"path"`
+	// CustomURL 图床/自定义域名,优先级高于 URLPrefix,例如 "https://data.example.com"。
+	CustomURL string `json:"customUrl"`
+	// Options 追加到公开 URL 末尾的查询参数,例如 "?imagevanblog"。
+	Options string `json:"options"`
+	// AllowPrivateEndpoint 允许 MinIO 使用内网/localhost endpoint。默认关闭以保留 SSRF 防护。
+	AllowPrivateEndpoint bool `json:"allowPrivateEndpoint"`
 	// ForcePathStyle 是否强制使用路径风格 URL（MinIO 必须设为 true）
-	ForcePathStyle bool   `json:"forcePathStyle"`
+	ForcePathStyle bool `json:"forcePathStyle"`
 }
 
 // S3Storage 是兼容 S3 协议的对象存储实现，支持 AWS S3、MinIO、Cloudflare R2 等后端。
@@ -106,13 +131,28 @@ func NewS3Storage(configJSON string, providerType ...string) (*S3Storage, error)
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("s3 config: bucket is required")
 	}
-	// SECURITY (VULN-032): 防 SSRF —— 拒绝把 endpoint 指向内网 / IMDS。
-	if err := validateEndpoint(cfg.Endpoint); err != nil {
+	pt := "S3"
+	if len(providerType) > 0 && providerType[0] != "" {
+		pt = strings.ToUpper(providerType[0])
+	}
+
+	generatedEndpoint, err := applyProviderDefaults(&cfg, pt)
+	if err != nil {
 		return nil, fmt.Errorf("s3 config: %w", err)
 	}
-	// region 默认值
-	if cfg.Region == "" {
-		cfg.Region = "us-east-1"
+	if err := normalizeS3ConfigPaths(&cfg); err != nil {
+		return nil, fmt.Errorf("s3 config: %w", err)
+	}
+	// SECURITY (VULN-032): 防 SSRF —— 拒绝把用户自定义 endpoint 指向内网 / IMDS。
+	// COS/OSS 的内置 endpoint 由受限 region 生成,不做 DNS 依赖的校验,避免单元测试和离线环境受外网 DNS 影响。
+	if !generatedEndpoint && !isTrustedProviderEndpoint(cfg.Endpoint, pt, cfg.Region) {
+		if allowPrivateEndpoint(pt, cfg.AllowPrivateEndpoint) {
+			if err := validateEndpointSyntax(cfg.Endpoint); err != nil {
+				return nil, fmt.Errorf("s3 config: %w", err)
+			}
+		} else if err := validateEndpoint(cfg.Endpoint); err != nil {
+			return nil, fmt.Errorf("s3 config: %w", err)
+		}
 	}
 
 	// 构建 S3 客户端选项：设置区域、凭证、自定义端点和路径风格
@@ -127,13 +167,188 @@ func NewS3Storage(configJSON string, providerType ...string) (*S3Storage, error)
 		},
 	}
 
-	pt := "S3"
-	if len(providerType) > 0 && providerType[0] != "" {
-		pt = providerType[0]
-	}
-
 	client := s3.New(s3.Options{}, opts...)
 	return &S3Storage{client: client, cfg: cfg, providerType: pt}, nil
+}
+
+// applyProviderDefaults 补齐 S3 兼容厂商的默认 region/endpoint。
+// COS/OSS 若没有显式 endpoint,不能走 AWS SDK 的默认 S3 域名,否则会拼出
+// bucket.s3.<region>.amazonaws.com 这类不存在的地址(例如 ap-shanghai)。
+func applyProviderDefaults(cfg *S3Config, providerType string) (generatedEndpoint bool, err error) {
+	cfg.Region = strings.TrimSpace(cfg.Region)
+	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
+	cfg.URLPrefix = strings.TrimSpace(cfg.URLPrefix)
+	cfg.CustomURL = strings.TrimSpace(cfg.CustomURL)
+	cfg.Options = strings.TrimSpace(cfg.Options)
+	if cfg.Region == "" {
+		switch providerType {
+		case "COS":
+			cfg.Region = "ap-guangzhou"
+		case "OSS":
+			cfg.Region = "cn-hangzhou"
+		case "R2":
+			cfg.Region = "auto"
+		default:
+			cfg.Region = "us-east-1"
+		}
+	}
+	if cfg.Endpoint != "" {
+		return false, nil
+	}
+	switch providerType {
+	case "COS":
+		if err := validateProviderRegion(cfg.Region); err != nil {
+			return false, err
+		}
+		cfg.Endpoint = fmt.Sprintf("https://cos.%s.myqcloud.com", cfg.Region)
+		return true, nil
+	case "OSS":
+		if err := validateProviderRegion(cfg.Region); err != nil {
+			return false, err
+		}
+		if strings.HasPrefix(cfg.Region, "oss-") {
+			cfg.Endpoint = fmt.Sprintf("https://%s.aliyuncs.com", cfg.Region)
+		} else {
+			cfg.Endpoint = fmt.Sprintf("https://oss-%s.aliyuncs.com", cfg.Region)
+		}
+		return true, nil
+	case "MINIO", "R2":
+		return false, fmt.Errorf("%s endpoint is required", providerType)
+	default:
+		return false, nil
+	}
+}
+
+func validateProviderRegion(region string) error {
+	if region == "" {
+		return fmt.Errorf("region is required")
+	}
+	for _, r := range region {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return fmt.Errorf("region contains invalid character %q", r)
+	}
+	return nil
+}
+
+func isTrustedProviderEndpoint(raw, providerType, region string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Port() != "" ||
+		u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	if u.Path != "" && u.Path != "/" {
+		return false
+	}
+	region = strings.ToLower(strings.TrimSpace(region))
+	if err := validateProviderRegion(region); err != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+
+	switch strings.ToUpper(providerType) {
+	case "COS":
+		return host == fmt.Sprintf("cos.%s.myqcloud.com", region)
+	case "OSS":
+		endpointRegion := region
+		if !strings.HasPrefix(endpointRegion, "oss-") {
+			endpointRegion = "oss-" + endpointRegion
+		}
+		return host == endpointRegion+".aliyuncs.com" ||
+			host == endpointRegion+"-internal.aliyuncs.com"
+	case "R2":
+		return isTrustedR2EndpointHost(host)
+	case "S3":
+		return isTrustedAWSS3EndpointHost(host, region)
+	default:
+		return false
+	}
+}
+
+func allowPrivateEndpoint(providerType string, enabled bool) bool {
+	return enabled && strings.EqualFold(providerType, "MINIO")
+}
+
+func isTrustedR2EndpointHost(host string) bool {
+	const suffix = ".r2.cloudflarestorage.com"
+	if !strings.HasSuffix(host, suffix) {
+		return false
+	}
+	accountID := strings.TrimSuffix(host, suffix)
+	if accountID == "" || strings.Contains(accountID, ".") || strings.HasPrefix(accountID, "-") || strings.HasSuffix(accountID, "-") {
+		return false
+	}
+	for _, r := range accountID {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isTrustedAWSS3EndpointHost(host, region string) bool {
+	if host == "s3.amazonaws.com" || host == "s3-accelerate.amazonaws.com" ||
+		host == "s3-accelerate.dualstack.amazonaws.com" {
+		return true
+	}
+	return host == fmt.Sprintf("s3.%s.amazonaws.com", region) ||
+		host == fmt.Sprintf("s3.%s.amazonaws.com.cn", region) ||
+		host == fmt.Sprintf("s3.dualstack.%s.amazonaws.com", region) ||
+		host == fmt.Sprintf("s3.dualstack.%s.amazonaws.com.cn", region)
+}
+
+func normalizeS3ConfigPaths(cfg *S3Config) error {
+	pathPrefix, err := normalizeKeyPrefix(cfg.Path)
+	if err != nil {
+		return fmt.Errorf("path: %w", err)
+	}
+	cfg.Path = pathPrefix
+	return nil
+}
+
+func normalizeKeyPrefix(prefix string) (string, error) {
+	prefix = strings.ReplaceAll(strings.TrimSpace(prefix), "\\", "/")
+	prefix = strings.Trim(prefix, "/")
+	if prefix == "" {
+		return "", nil
+	}
+	if len(prefix) > 512 {
+		return "", fmt.Errorf("too long")
+	}
+	if strings.Contains(prefix, "..") {
+		return "", fmt.Errorf("must not contain '..'")
+	}
+	return prefix + "/", nil
+}
+
+func (s *S3Storage) objectKey(key string) (string, error) {
+	if err := validateS3Key(key); err != nil {
+		return "", err
+	}
+	if s.cfg.Path == "" {
+		return key, nil
+	}
+	return s.cfg.Path + strings.TrimLeft(key, "/"), nil
+}
+
+func (s *S3Storage) listPrefix(prefix string) string {
+	prefix = strings.TrimLeft(prefix, "/")
+	if s.cfg.Path == "" {
+		return prefix
+	}
+	return s.cfg.Path + prefix
+}
+
+func (s *S3Storage) externalKey(objectKey string) string {
+	if s.cfg.Path == "" {
+		return objectKey
+	}
+	return strings.TrimPrefix(objectKey, s.cfg.Path)
 }
 
 // validateS3Key 阻止畸形 key（前导 '/', '..', 超长）传入 SDK。
@@ -170,14 +385,15 @@ func validateS3Key(key string) error {
 //
 // 成功时返回文件的公开访问 URL。
 func (s *S3Storage) Upload(ctx context.Context, key string, r io.Reader, size int64, mimeType string) (string, error) {
-	if err := validateS3Key(key); err != nil {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
 		return "", err
 	}
 
 	if size > 0 && size < multipartThreshold {
 		input := &s3.PutObjectInput{
 			Bucket:        aws.String(s.cfg.Bucket),
-			Key:           aws.String(key),
+			Key:           aws.String(objectKey),
 			Body:          r,
 			ContentLength: aws.Int64(size),
 			ContentType:   aws.String(mimeType),
@@ -197,7 +413,7 @@ func (s *S3Storage) Upload(ctx context.Context, key string, r io.Reader, size in
 	})
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(s.cfg.Bucket),
-		Key:         aws.String(key),
+		Key:         aws.String(objectKey),
 		Body:        r,
 		ContentType: aws.String(mimeType),
 	}
@@ -209,12 +425,13 @@ func (s *S3Storage) Upload(ctx context.Context, key string, r io.Reader, size in
 
 // Delete 删除 S3 存储桶中指定 key 对应的对象。
 func (s *S3Storage) Delete(ctx context.Context, key string) error {
-	if err := validateS3Key(key); err != nil {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
 		return fmt.Errorf("s3 delete object: %w", err)
 	}
 	input := &s3.DeleteObjectInput{
 		Bucket: aws.String(s.cfg.Bucket),
-		Key:    aws.String(key),
+		Key:    aws.String(objectKey),
 	}
 	if _, err := s.client.DeleteObject(ctx, input); err != nil {
 		return fmt.Errorf("s3 delete object: %w", err)
@@ -227,21 +444,82 @@ func (s *S3Storage) Delete(ctx context.Context, key string) error {
 //  2. 若配置了自定义 Endpoint，根据 ForcePathStyle 选择路径风格或虚拟主机风格
 //  3. 默认构造标准 AWS S3 公开访问 URL
 func (s *S3Storage) GetURL(key string) string {
-	if s.cfg.URLPrefix != "" {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
+		return ""
+	}
+	publicBase := s.cfg.CustomURL
+	if publicBase == "" {
+		publicBase = s.cfg.URLPrefix
+	}
+	if publicBase != "" {
 		// 使用 CDN 或自定义公开访问前缀
-		return s.cfg.URLPrefix + "/" + key
+		return appendURLOptions(joinURLPath(publicBase, objectKey), s.cfg.Options)
 	}
 	// 自定义端点（如 MinIO）的 URL 构造
 	if s.cfg.Endpoint != "" {
 		if s.cfg.ForcePathStyle {
 			// 路径风格：endpoint/bucket/key（MinIO 默认）
-			return s.cfg.Endpoint + "/" + s.cfg.Bucket + "/" + key
+			return appendURLOptions(joinURLPath(s.cfg.Endpoint, s.cfg.Bucket, objectKey), s.cfg.Options)
 		}
-		// 虚拟主机风格：endpoint/key
-		return s.cfg.Endpoint + "/" + key
+		// 虚拟主机风格：bucket.endpoint/key
+		return appendURLOptions(virtualHostedURL(s.cfg.Endpoint, s.cfg.Bucket, objectKey), s.cfg.Options)
 	}
 	// 标准 AWS S3 公开访问 URL 格式
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.cfg.Bucket, s.cfg.Region, key)
+	return appendURLOptions(fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.cfg.Bucket, s.cfg.Region, objectKey), s.cfg.Options)
+}
+
+func joinURLPath(base string, parts ...string) string {
+	out := strings.TrimRight(base, "/")
+	for _, part := range parts {
+		part = strings.Trim(part, "/")
+		if part == "" {
+			continue
+		}
+		out += "/" + part
+	}
+	return out
+}
+
+func virtualHostedURL(endpoint, bucket, key string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return joinURLPath(endpoint, key)
+	}
+	hostname := u.Hostname()
+	if hostname != "" && !strings.HasPrefix(hostname, bucket+".") {
+		host := bucket + "." + hostname
+		if port := u.Port(); port != "" {
+			host = net.JoinHostPort(host, port)
+		}
+		u.Host = host
+	}
+	return joinURLPath(u.String(), key)
+}
+
+func appendURLOptions(rawURL, options string) string {
+	options = strings.TrimSpace(options)
+	if options == "" || rawURL == "" {
+		return rawURL
+	}
+	hasQuery := strings.Contains(rawURL, "?")
+	switch {
+	case strings.HasPrefix(options, "?"):
+		if hasQuery {
+			return rawURL + "&" + strings.TrimPrefix(options, "?")
+		}
+		return rawURL + options
+	case strings.HasPrefix(options, "&"):
+		if hasQuery {
+			return rawURL + options
+		}
+		return rawURL + "?" + strings.TrimPrefix(options, "&")
+	default:
+		if hasQuery {
+			return rawURL + "&" + options
+		}
+		return rawURL + "?" + options
+	}
 }
 
 // Type 返回上游存储类型标识符(S3/MINIO/R2/COS/OSS)。
@@ -265,12 +543,13 @@ func (s *S3Storage) TestConnection(ctx context.Context) error {
 
 // Get 实现 Storage.Get,从 bucket 读对象。返回的 ReadCloser 必须由调用方关闭。
 func (s *S3Storage) Get(ctx context.Context, key string) (io.ReadCloser, int64, string, error) {
-	if err := validateS3Key(key); err != nil {
+	objectKey, err := s.objectKey(key)
+	if err != nil {
 		return nil, 0, "", err
 	}
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.cfg.Bucket),
-		Key:    aws.String(key),
+		Key:    aws.String(objectKey),
 	})
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("s3 get object: %w", err)
@@ -297,8 +576,9 @@ func (s *S3Storage) List(ctx context.Context, prefix, continuationToken string, 
 		Bucket:  aws.String(s.cfg.Bucket),
 		MaxKeys: &maxKeys,
 	}
-	if prefix != "" {
-		input.Prefix = aws.String(prefix)
+	objectPrefix := s.listPrefix(prefix)
+	if objectPrefix != "" {
+		input.Prefix = aws.String(objectPrefix)
 	}
 	if continuationToken != "" {
 		input.ContinuationToken = aws.String(continuationToken)
@@ -311,7 +591,7 @@ func (s *S3Storage) List(ctx context.Context, prefix, continuationToken string, 
 	for _, o := range out.Contents {
 		key := ""
 		if o.Key != nil {
-			key = *o.Key
+			key = s.externalKey(*o.Key)
 		}
 		size := int64(0)
 		if o.Size != nil {
@@ -336,12 +616,13 @@ func (s *S3Storage) List(ctx context.Context, prefix, continuationToken string, 
 
 // HeadObject 返回 key 的元数据(大小、MIME),用于 Phase 5 反向导入时判断"云上还在不在"。
 func (s *S3Storage) HeadObject(ctx context.Context, key string) (size int64, mime string, exists bool, err error) {
-	if verr := validateS3Key(key); verr != nil {
-		return 0, "", false, verr
+	objectKey, err := s.objectKey(key)
+	if err != nil {
+		return 0, "", false, err
 	}
 	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.cfg.Bucket),
-		Key:    aws.String(key),
+		Key:    aws.String(objectKey),
 	})
 	if err != nil {
 		// SDK 没有显式 NotFound 类型简单识别;按字符串/状态码匹配
