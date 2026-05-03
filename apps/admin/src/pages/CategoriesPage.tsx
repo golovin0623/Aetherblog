@@ -352,15 +352,7 @@ export default function CategoriesPage() {
         isOpen={showFormModal}
         onClose={closeFormModal}
         onSubmit={handleSubmit}
-        type={
-          editTarget?.kind === 'tag'
-            ? 'tag'
-            : editTarget?.kind === 'category'
-              ? 'category'
-              : isCategoryTab
-                ? 'category'
-                : 'tag'
-        }
+        type={editTarget?.kind ?? (isCategoryTab ? 'category' : 'tag')}
         loading={submitting}
         initial={
           editTarget

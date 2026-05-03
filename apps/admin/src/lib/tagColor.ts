@@ -22,12 +22,19 @@ export const TAG_PALETTE: TagColor[] = [
   { bg: 'bg-orange-50 dark:bg-orange-500/15', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200/60 dark:border-orange-500/25', icon: 'text-orange-500 dark:text-orange-400', badge: 'bg-orange-100/80 dark:bg-orange-500/20 text-orange-600 dark:text-orange-300', shadow: 'hover:shadow-orange-500/10' },
 ];
 
-export const getTagColor = (name: string): TagColor => {
+/* djb2-derived 字符串哈希 —— `getTagColor` / `getTagHex` 共用,
+   保证同一 tag 名在两套调色板里映射到同一个槽位。私有于本文件,
+   因为它的稳定性合约(同名 → 同 index)对外只通过两个 getter 暴露。 */
+const hashTagName = (name: string): number => {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
+  return Math.abs(hash);
+};
+
+export const getTagColor = (name: string): TagColor => {
+  return TAG_PALETTE[hashTagName(name) % TAG_PALETTE.length];
 };
 
 /* -------------------------------------------------------------
@@ -54,9 +61,5 @@ export const TAG_HEX_PALETTE = [
 ] as const;
 
 export const getTagHex = (name: string): string => {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return TAG_HEX_PALETTE[Math.abs(hash) % TAG_HEX_PALETTE.length];
+  return TAG_HEX_PALETTE[hashTagName(name) % TAG_HEX_PALETTE.length];
 };
