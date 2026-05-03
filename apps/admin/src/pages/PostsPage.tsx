@@ -9,6 +9,7 @@ import { postService, PostListItem, Post } from '@/services/postService';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { StyledSelect } from '@/components/common';
 import { PostPropertiesModal } from '@/components/PostPropertiesModal';
 import PostTableRow from '@/components/posts/PostTableRow';
 import { UpdatePostPropertiesRequest } from '@/types/post';
@@ -248,6 +249,26 @@ export default function PostsPage() {
     setActiveTagPopover(prev => prev === id ? null : id);
   }, []);
 
+  const categorySelectOptions = useMemo(
+    () => [
+      { value: '', label: '全部分类' },
+      ...categories.map((category) => ({ value: String(category.id), label: category.name })),
+    ],
+    [categories]
+  );
+  const visibilitySelectOptions = [
+    { value: '', label: '全部可见性' },
+    { value: 'false', label: '仅公开' },
+    { value: 'true', label: '仅隐藏' },
+  ];
+  const tagSelectOptions = useMemo(
+    () => [
+      { value: '', label: '全部标签' },
+      ...tags.map((tag) => ({ value: String(tag.id), label: tag.name })),
+    ],
+    [tags]
+  );
+
   return (
     <div className="flex flex-col">
       {/* 页面标题 */}
@@ -308,7 +329,7 @@ export default function PostsPage() {
         </div>
 
         {/* 状态筛选 (滑动背景效果) */}
-        <div className="flex items-center p-1 bg-[var(--bg-secondary)] rounded-full border border-[var(--border-subtle)] backdrop-blur-md">
+        <div className="surface-leaf surface-admin-card flex items-center p-1 rounded-full">
           {[
             { key: undefined, label: '全部' },
             { key: 'PUBLISHED', label: '已发布' },
@@ -321,18 +342,16 @@ export default function PostsPage() {
                 onClick={() => handleStatusChange(tab.key)}
                 className={cn(
                   'relative px-5 py-2 rounded-full text-sm font-medium transition-colors duration-300',
-                  isActive ? 'text-primary' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  isActive ? 'text-[var(--text-inverse)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="activeStatusTab"
-                    className="absolute inset-0 bg-primary/20 border border-primary/50 text-primary rounded-full shadow-[0_0_15px_rgba(99,102,241,0.3)]"
+                    className="absolute inset-0 bg-[var(--color-primary)] rounded-full shadow-sm"
                     transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
                     style={{ borderRadius: 9999 }}
-                  >
-                    <div className="absolute inset-0 bg-primary/20 blur opacity-50 rounded-full" />
-                  </motion.div>
+                  />
                 )}
                 <span className="relative z-10">{tab.label}</span>
               </button>
@@ -350,7 +369,7 @@ export default function PostsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
               'w-full pl-10 pr-4 py-2 rounded-xl text-sm',
-              'bg-[var(--bg-secondary)] border border-[var(--border-subtle)]',
+              'bg-[var(--bg-leaf)] border border-[var(--border-subtle)]',
               'text-[var(--text-primary)] placeholder-[var(--text-muted)]',
               'focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20',
               'transition-all duration-200'
@@ -366,7 +385,7 @@ export default function PostsPage() {
               'flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all duration-200 shadow-sm border',
               showAdvancedFilter
                 ? 'bg-primary/20 border-primary/50 text-primary'
-                : 'bg-[var(--bg-secondary)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                : 'bg-[var(--bg-leaf)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)] hover:text-[var(--text-primary)]'
             )}
           >
             <Filter className="w-4 h-4" />
@@ -431,52 +450,44 @@ export default function PostsPage() {
             transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
             className="overflow-hidden"
           >
-            <div className="p-5 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-2xl">
+            <div className="surface-leaf surface-admin-card p-5 rounded-2xl">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* 分类筛选 */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">所属分类</label>
-                  <select
-                    value={filters.categoryId || ''}
-                    onChange={(e) => setFilters(f => ({ ...f, categoryId: e.target.value ? Number(e.target.value) : undefined }))}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
-                  >
-                    <option value="" className="bg-[var(--bg-card)]">全部分类</option>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id} className="bg-[var(--bg-card)]">{c.name}</option>
-                    ))}
-                  </select>
+                  <StyledSelect
+                    value={filters.categoryId ? String(filters.categoryId) : ''}
+                    onChange={(nextValue) => setFilters(f => ({ ...f, categoryId: nextValue ? Number(nextValue) : undefined }))}
+                    options={categorySelectOptions}
+                    ariaLabel="所属分类"
+                    buttonClassName="rounded-xl"
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">隐藏状态</label>
-                  <select
+                  <StyledSelect
                     value={filters.hidden === undefined ? '' : String(filters.hidden)}
-                    onChange={(e) => setFilters(f => ({
+                    onChange={(nextValue) => setFilters(f => ({
                       ...f,
-                      hidden: e.target.value === '' ? undefined : e.target.value === 'true'
+                      hidden: nextValue === '' ? undefined : nextValue === 'true'
                     }))}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
-                  >
-                    <option value="" className="bg-[var(--bg-card)]">全部可见性</option>
-                    <option value="false" className="bg-[var(--bg-card)]">仅公开</option>
-                    <option value="true" className="bg-[var(--bg-card)]">仅隐藏</option>
-                  </select>
+                    options={visibilitySelectOptions}
+                    ariaLabel="隐藏状态"
+                    buttonClassName="rounded-xl"
+                  />
                 </div>
 
                 {/* 标签筛选 */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">标签筛选</label>
-                  <select
-                    value={filters.tagId || ''}
-                    onChange={(e) => setFilters(f => ({ ...f, tagId: e.target.value ? Number(e.target.value) : undefined }))}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 appearance-none cursor-pointer"
-                  >
-                    <option value="" className="bg-[var(--bg-card)]">全部标签</option>
-                    {tags.map(t => (
-                      <option key={t.id} value={t.id} className="bg-[var(--bg-card)]">{t.name}</option>
-                    ))}
-                  </select>
+                  <StyledSelect
+                    value={filters.tagId ? String(filters.tagId) : ''}
+                    onChange={(nextValue) => setFilters(f => ({ ...f, tagId: nextValue ? Number(nextValue) : undefined }))}
+                    options={tagSelectOptions}
+                    ariaLabel="标签筛选"
+                    buttonClassName="rounded-xl"
+                  />
                 </div>
 
                 {/* 浏览量范围 */}
@@ -488,7 +499,7 @@ export default function PostsPage() {
                       placeholder="最小"
                       value={filters.minViewCount || ''}
                       onChange={(e) => setFilters(f => ({ ...f, minViewCount: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
+                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                     />
                     <span className="text-[var(--text-muted)] flex-shrink-0">-</span>
                     <input
@@ -496,7 +507,7 @@ export default function PostsPage() {
                       placeholder="最大"
                       value={filters.maxViewCount || ''}
                       onChange={(e) => setFilters(f => ({ ...f, maxViewCount: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
+                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
                     />
                   </div>
                 </div>
@@ -509,14 +520,14 @@ export default function PostsPage() {
                       type="date"
                       value={filters.startDate}
                       onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
                     />
                     <span className="text-[var(--text-muted)] flex-shrink-0">至</span>
                     <input
                       type="date"
                       value={filters.endDate}
                       onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
                     />
                   </div>
                 </div>
@@ -528,7 +539,7 @@ export default function PostsPage() {
 
 
       {/* 文章列表 */}
-      <div className="rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-hidden backdrop-blur-sm shadow-xl relative flex flex-col">
+      <div className="surface-leaf surface-admin-card rounded-2xl overflow-hidden relative flex flex-col">
         {/* 固定表头 - 仅桌面端显示 */}
         <table className="w-full table-fixed hidden md:table">
           <thead className="bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] text-[var(--text-muted)] text-xs font-semibold uppercase tracking-wider">

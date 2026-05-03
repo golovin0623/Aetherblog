@@ -154,7 +154,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
   // 加载状态
   if (loading && !data) {
     return (
-      <div className={cn("p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col", className)}>
+      <div className={cn("surface-leaf surface-dashboard-card p-6 rounded-xl flex flex-col", className)}>
         <div className="h-6 w-24 bg-[var(--bg-secondary)] rounded mb-6 animate-pulse" />
         <div className="grid grid-cols-2 gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
@@ -207,7 +207,7 @@ export function SystemStatus({ refreshInterval = 30, className }: SystemStatusPr
   const services = data?.services || [];
 
   return (
-    <div className={cn("p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col", className)}>
+    <div className={cn("surface-leaf surface-dashboard-card p-6 rounded-xl flex flex-col", className)}>
       {/* 头部 - Fixed */}
       <div className="flex items-center justify-between mb-6 shrink-0">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">系统状态</h3>

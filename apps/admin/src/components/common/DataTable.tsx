@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StyledSelect } from './StyledSelect';
 
 interface Column<T> {
   key: keyof T | string;
@@ -48,7 +49,7 @@ export function DataTable<T extends { id: number | string }>({
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="bg-[var(--bg-card)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+    <div className="surface-leaf surface-dashboard-card rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full tnum">
           <thead>
@@ -158,16 +159,18 @@ export function DataTable<T extends { id: number | string }>({
             {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
               <label className="flex items-center gap-1.5 font-mono text-[11px] tracking-wider text-[var(--text-muted)]">
                 <span className="hidden sm:inline">每页</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => onPageSizeChange(Number(e.target.value))}
-                  className="h-7 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-subtle)] px-1.5 text-[11px] text-[var(--text-primary)]"
-                  aria-label="每页条数"
-                >
-                  {pageSizeOptions.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                <StyledSelect
+                  value={String(pageSize)}
+                  onChange={(nextValue) => onPageSizeChange(Number(nextValue))}
+                  options={pageSizeOptions.map((opt) => ({
+                    value: String(opt),
+                    label: String(opt),
+                  }))}
+                  ariaLabel="每页条数"
+                  className="w-16"
+                  buttonClassName="!h-7 !rounded-md !px-2 !text-[11px] !font-mono !tracking-wider"
+                  menuClassName="!rounded-lg"
+                />
               </label>
             )}
             <button

@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { format, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { StyledSelect } from '@/components/common';
 
 // ========== 图表数据辅助 ==========
 
@@ -192,7 +193,7 @@ export function SystemTrends({ className }: { className?: string }) {
 
   if (showSkeleton) {
     return (
-      <div className={cn("p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col", className)}>
+      <div className={cn("surface-leaf surface-dashboard-card p-4 sm:p-6 rounded-xl flex flex-col", className)}>
         <div className="flex flex-col sm:flex-row justify-between mb-6 gap-4">
           <div className="h-6 w-32 bg-[var(--bg-secondary)] rounded animate-pulse" />
           <div className="flex gap-2">
@@ -209,7 +210,7 @@ export function SystemTrends({ className }: { className?: string }) {
   }
 
   return (
-    <div className={cn("p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] transition-all duration-300 flex flex-col", className)}>
+    <div className={cn("surface-leaf surface-dashboard-card p-4 sm:p-6 rounded-xl transition-all duration-300 flex flex-col", className)}>
       {/* 统一的头部与控制栏 */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-6 gap-4 shrink-0">
         
@@ -275,36 +276,40 @@ export function SystemTrends({ className }: { className?: string }) {
 
           {/* 控制组 */}
           <div className="flex items-center bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-subtle)] p-0.5 h-7">
-             <select
-                 value={minutes}
-                 onChange={(e) => setMinutes(Number(e.target.value))}
-                 className="select-mini bg-transparent text-[var(--text-primary)] text-[10px] pl-2 focus:outline-none border-none cursor-pointer hover:text-primary transition-colors h-full min-w-[60px]"
-                 title="时间范围"
-               >
-                 <option value="30">30分</option>
-                 <option value="60">1小时</option>
-                 <option value="180">3小时</option>
-                 <option value="720">12小时</option>
-                 <option value="1440">24小时</option>
-                 <option value="4320">3天</option>
-                 <option value="10080">7天</option>
-                 <option value="43200">30天</option>
-             </select>
+             <StyledSelect
+                 value={String(minutes)}
+                 onChange={(nextValue) => setMinutes(Number(nextValue))}
+                 options={[
+                   { value: '30', label: '30分' },
+                   { value: '60', label: '1小时' },
+                   { value: '180', label: '3小时' },
+                   { value: '720', label: '12小时' },
+                   { value: '1440', label: '24小时' },
+                   { value: '4320', label: '3天' },
+                   { value: '10080', label: '7天' },
+                   { value: '43200', label: '30天' },
+                 ]}
+                 ariaLabel="时间范围"
+                 buttonClassName="!h-6 !min-w-[66px] !border-transparent !bg-transparent !px-2 !py-0 !text-[10px] !text-[var(--text-primary)] focus:!ring-0"
+                 menuClassName="!max-h-56"
+               />
 
              <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 
-             <select
-                 value={refreshInterval}
-                 onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                 className="select-mini bg-transparent text-[var(--text-muted)] text-[10px] pl-2 focus:outline-none border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors h-full min-w-[50px]"
-                 title="刷新频率"
-               >
-                 <option value="5">5s</option>
-                 <option value="10">10s</option>
-                 <option value="30">30s</option>
-                 <option value="60">1m</option>
-                 <option value="300">5m</option>
-             </select>
+             <StyledSelect
+                 value={String(refreshInterval)}
+                 onChange={(nextValue) => setRefreshInterval(Number(nextValue))}
+                 options={[
+                   { value: '5', label: '5s' },
+                   { value: '10', label: '10s' },
+                   { value: '30', label: '30s' },
+                   { value: '60', label: '1m' },
+                   { value: '300', label: '5m' },
+                 ]}
+                 ariaLabel="刷新频率"
+                 buttonClassName="!h-6 !min-w-[54px] !border-transparent !bg-transparent !px-2 !py-0 !text-[10px] !text-[var(--text-muted)] focus:!ring-0"
+                 menuClassName="!max-h-56"
+               />
 
              <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 

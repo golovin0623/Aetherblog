@@ -29,7 +29,7 @@ export function DeviceChart({
   // 加载中时显示骨架屏
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[420px]">
         <div className="w-24 h-6 bg-[var(--bg-secondary)] rounded animate-pulse mb-4" />
         <div className="h-[340px] flex items-center justify-center">
           <div className="w-48 h-48 rounded-full bg-[var(--bg-secondary)] animate-pulse relative overflow-hidden">
@@ -42,7 +42,7 @@ export function DeviceChart({
   }
 
   return (
-    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[420px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">设备分布</h3>
       <div className="flex-1 w-full min-h-0">
         <ResponsiveContainer width="100%" height="100%">

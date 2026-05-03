@@ -38,7 +38,7 @@ export function VisitorChart({
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px]">
+      <div className="surface-leaf surface-dashboard-card p-4 sm:p-6 rounded-xl h-[420px]">
         <div className="flex justify-between items-center mb-6">
           <div className="space-y-2">
             <div className="w-24 h-6 bg-[var(--bg-secondary)] rounded animate-pulse" />
@@ -63,7 +63,7 @@ export function VisitorChart({
   const displayData = data;
 
   return (
-    <div className="p-4 sm:p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-4 sm:p-6 rounded-xl h-[420px] flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div>
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">访问趋势</h3>
