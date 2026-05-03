@@ -35,7 +35,11 @@ import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
 import { ProfileManagementSection } from './search-config/ProfileManagementSection';
 import { ProfileActivationFlow } from './search-config/ProfileActivationFlow';
 import { ProfileDetailDrawer } from './search-config/ProfileDetailDrawer';
-import { useSearchProfiles } from '@/hooks/useSearchProfiles';
+import {
+  useSearchProfiles,
+  useDeprecateProfile,
+  useDeleteProfile,
+} from '@/hooks/useSearchProfiles';
 import type { SearchProfile } from '@/services/searchProfileService';
 
 // Toggle 来自 @aetherblog/ui
@@ -378,7 +382,10 @@ export default function SearchConfigPage() {
   // 时弹激活向导；selectedProfile 非 null 时展开右侧抽屉。
   const [activatingProfile, setActivatingProfile] = useState<SearchProfile | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<SearchProfile | null>(null);
+  const [pendingDrawerDelete, setPendingDrawerDelete] = useState<SearchProfile | null>(null);
   const profilesQuery = useSearchProfiles();
+  const deprecateProfileMutation = useDeprecateProfile();
+  const deleteProfileMutation = useDeleteProfile();
   const activeProfile = profilesQuery.data?.find((p) => p.status === 'active') ?? null;
 
   // 更新向量化路由的 mutation
@@ -416,6 +423,33 @@ export default function SearchConfigPage() {
     },
     onError: () => toast.error('更新失败'),
   });
+
+  const handleDrawerDeprecate = async () => {
+    const profile = selectedProfile;
+    if (!profile) return;
+    try {
+      await deprecateProfileMutation.mutateAsync(profile.code);
+      toast.success(`Profile "${profile.code}" 已 deprecated`);
+      setSelectedProfile(null);
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message || '操作失败';
+      toast.error(msg);
+    }
+  };
+
+  const handleDrawerDelete = async () => {
+    const profile = pendingDrawerDelete;
+    if (!profile) return;
+    try {
+      await deleteProfileMutation.mutateAsync(profile.code);
+      toast.success(`Profile "${profile.code}" 已删除`);
+      setPendingDrawerDelete(null);
+      setSelectedProfile((current) => (current?.code === profile.code ? null : current));
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message || '删除失败';
+      toast.error(msg);
+    }
+  };
 
   const embeddingLoading =
     providersQuery.isLoading || embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading || credentialsQuery.isLoading;
@@ -1454,16 +1488,27 @@ export default function SearchConfigPage() {
       <ProfileDetailDrawer
         profile={selectedProfile}
         onClose={() => setSelectedProfile(null)}
-        onDeprecate={() => {
-          // 复用 ProfileManagementSection 内部的 deprecate / delete 处理：
-          // 这里仅关闭抽屉，让用户在 ListCard 操作菜单上完成。drawer 的按钮
-          // 主要服务于 deprecate 的快速触发；如要复用 mutation，可在后续重构
-          // 把 deprecate / delete handler 提到 page 级。
-          setSelectedProfile(null);
-        }}
+        onDeprecate={handleDrawerDeprecate}
         onDelete={() => {
-          setSelectedProfile(null);
+          if (selectedProfile) {
+            setPendingDrawerDelete(selectedProfile);
+          }
         }}
+      />
+      <ConfirmModal
+        isOpen={pendingDrawerDelete !== null}
+        title="删除 profile"
+        variant="danger"
+        confirmText={deleteProfileMutation.isPending ? '删除中…' : '确认删除'}
+        cancelText="取消"
+        message={
+          pendingDrawerDelete
+            ? `确定要删除 profile "${pendingDrawerDelete.code}" 吗？此操作不可逆。\n\n` +
+              '若该 profile 仍有向量行，删除会被后端拒绝（先清空 post_embeddings）。'
+            : ''
+        }
+        onConfirm={handleDrawerDelete}
+        onCancel={() => setPendingDrawerDelete(null)}
       />
     </div>
   );

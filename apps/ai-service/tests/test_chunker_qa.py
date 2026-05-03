@@ -66,6 +66,40 @@ def test_markdown_heading_qa_pairs():
     assert "上下文" in chunks[1].text
 
 
+def test_markdown_short_q_a_headings_yield_qa_pairs():
+    text = (
+        "## Q\n"
+        "What is chunking?\n\n"
+        "## A\n"
+        "Splitting long documents into smaller semantic pieces.\n\n"
+        "## Q: Why use it?\n\n"
+        "## A: Because embedding models have token limits.\n"
+    )
+    chunks = split(text, chunker_kind="qa", chunk_size_tokens=512, chunk_overlap_tokens=64)
+    assert len(chunks) == 2
+    assert "What is chunking" in chunks[0].text
+    assert "token limits" in chunks[1].text
+
+
+def test_q_and_a_prefixed_markdown_headings_do_not_trigger_qa_mode():
+    text = (
+        "## Quick Start\n"
+        "Install the package and configure the service.\n\n"
+        "## API\n"
+        "The API section describes endpoints and payloads.\n\n"
+        "## Query Params\n"
+        "Use limit and offset to paginate responses.\n\n"
+        "## Architecture\n"
+        "The architecture section explains the data flow.\n"
+    )
+    chunks = split(text, chunker_kind="qa", chunk_size_tokens=512, chunk_overlap_tokens=0)
+    full = "\n\n".join(c.text for c in chunks)
+    assert "## Quick Start" in full
+    assert "## API" in full
+    assert "## Query Params" in full
+    assert "## Architecture" in full
+
+
 def test_qa_pair_exceeding_budget_is_split_with_question_preserved():
     # 答案极长，单对超过 chunk_size 预算
     long_answer = "这是一段非常长的答案。" * 200  # ~2400 chars
