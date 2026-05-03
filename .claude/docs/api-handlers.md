@@ -2,21 +2,23 @@
 
 > **何时读：** 新增或修改 API 端点；前端找不到对应后端入口；排查 router 注册缺失；写迁移脚本前确认 schema。
 >
-> **真理源始终是 `apps/server-go/internal/server/router.go` 与各 `handler/*.go`** —— 本表是高层导航，PR 后请同步更新。
+> **真理源始终是 `apps/server-go/internal/server/server.go` 的 `setupRoutes()`（路由注册）与各 `handler/*.go`（业务逻辑）** —— 本表是高层导航，PR 后请同步更新。
 
 ---
 
 ## 1. Handler 总览（24 个模块，按职责分组）
 
+> 表格中「Handler 文件」列是**源文件名（不含 `.go` 扩展名）**（Go 仓库习惯 snake_case，例：`auth_handler` → 实际文件 `auth_handler.go`），对应的 Go 类型名为 PascalCase（例：`AuthHandler`，符合 `CLAUDE.md` §4 后端命名约定）。这样写便于直接 grep 文件 / 跳定义。
+
 ### 鉴权与用户
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `auth_handler` | `/v1/auth/*` + `/v1/admin/auth/*` | `POST /login`、`/register`、`/refresh`、`/logout`；`GET /me`；`POST /change-password`；`PUT /profile`、`/avatar`；**admin only：** `POST /rotate-jwt-secret`（手动触发 JWT 签名密钥轮换） |
 
 ### 内容创作
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `post_handler` | `/v1/admin/posts/*` + `/v1/public/posts/*` | Admin CRUD + publish + auto-save + properties patch；5 个公共路由 + password verify |
 | `comment_handler` | `/v1/admin/comments/*` + `/v1/public/*` | 12 个 admin 路由（含批量 approve / delete）+ 2 个公共路由（list + 带速率限制的 submit） |
@@ -26,7 +28,7 @@
 
 ### 媒体与文件
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `media_handler` | `/v1/admin/media/*` | 18 路由：upload（单 + 批）、list、stats、batch-move、回收站管理、CRUD、content update |
 | `media_tag_handler` | `/v1/admin/media-tags/*` | 9 路由：tags CRUD + popular + search + 批量；file-tag 关联（list / add / remove） |
@@ -39,13 +41,13 @@
 
 ### AI
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `ai_handler` | `/v1/admin/ai/*` | 9 个业务端点（summary / tags / titles / polish / outline / translate + stream 变体 + health） + 7 个配置端点（prompts + tasks CRUD） + provider 透传（`Any /*`） |
 
 ### 站点配置与统计
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `site_handler` | `/v1/admin/site/*` | `info`、`stats`、`author` |
 | `site_setting_handler` | `/v1/admin/settings/*` | `list`、`group`、`batch-update`、`get-by-key`、`update-by-key` |
@@ -56,7 +58,7 @@
 
 ### 系统监控
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `system_monitor_handler` | `/v1/admin/monitor/*` | 14 路由：metrics、storage、health、overview、containers、container logs、logs、log files、log download、network test、history、history stats、history delete、alerts、config |
 | `log_level_handler` | `/v1/admin/system/log-level` | `GET` 当前 backend / ai-service 日志级别；`PUT` 在线调整两端 root logger（详见 `backend-runtime.md` §4） |
@@ -64,13 +66,13 @@
 
 ### 检索
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `search_handler` | `/v1/public/search/*` + `/v1/admin/search/*` | `GET search`（hybrid / keyword / semantic）、`GET qa`（SSE）、配置 CRUD、stats、reindex、retry-failed、embedding-status |
 
 ### 数据迁移
 
-| Handler | 路由前缀 | 关键端点 |
+| Handler 文件 | 路由前缀 | 关键端点 |
 | --- | --- | --- |
 | `migration_handler` | `/v1/admin/migrations/vanblog/*` | `POST /analyze`（dry-run）、`POST /import/stream`（NDJSON/SSE）、`POST /import?mode=dry-run\|execute`（兼容） —— 详见 `backend-runtime.md` §5 |
 

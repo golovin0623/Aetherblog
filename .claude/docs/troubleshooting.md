@@ -165,7 +165,7 @@ pnpm design-system:report   # 生成 Markdown 报告
 ```
 
 规则定义在 `.claude/design-system/deprecations.json`（sunset 2026-07-17）。
-当前基线：**0 error / 449 warning / 2173 info**。
+**红线：保持 `0 error`**；warning / info 数量持续递减，实时数据跑 `pnpm design-system:report` 查看。
 
 新增 error 通常是用了 `legacy-glass-classes`（`.glass` / `.glass-card` 等）—— 改用 `.surface-leaf` / `.surface-raised` 对应层级。
 

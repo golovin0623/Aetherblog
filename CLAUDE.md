@@ -12,7 +12,7 @@
 | --- | --- |
 | 启动 / 重启服务 / 改 `.env` / 移动端真机调试 | `.claude/docs/startup-and-env.md` |
 | 改 JWT、对象存储、AI 服务、运行时日志、VanBlog 迁入 | `.claude/docs/backend-runtime.md` |
-| 新增 / 修改 API 端点；前端找不到后端入口 | `.claude/docs/api-handlers.md` + `apps/server-go/internal/server/router.go` |
+| 新增 / 修改 API 端点；前端找不到后端入口 | `.claude/docs/api-handlers.md` + `apps/server-go/internal/server/server.go`（`setupRoutes`） |
 | 写新 migration；排查 `schema_migrations dirty` | `.claude/docs/database-migrations.md` |
 | 准备发版；改 Docker / Nginx / CI/CD webhook | `.claude/docs/deployment-cicd.md`（速查） + `docs/deployment.md`（详细） |
 | 服务起不来 / 健康检查失败 / 端口冲突 / 构建报错 | `.claude/docs/troubleshooting.md` |
@@ -79,7 +79,7 @@
 import { Button, Card, cn } from '@aetherblog/ui';
 import { useDebounce } from '@aetherblog/hooks';
 import type { Post } from '@aetherblog/types';
-import { formatDate } from '@aetherblog/utils';
+import { formatDate, slugify } from '@aetherblog/utils';
 ```
 
 完整导出清单 → `.claude/docs/dependencies-and-stack.md` §5。
@@ -108,7 +108,7 @@ import { formatDate } from '@aetherblog/utils';
 
 ### 3.7 Legacy token 迁移立场
 
-`--text-*` / `--bg-primary` / `bg-white/5` / `border-white/10` / `status-danger-light` / 品牌渐变等已废弃但**未删除**（sunset 2026-07-17，见 `deprecations.json`）。修改 legacy 组件时须**在同一 commit 迁移到 Codex** —— 不留半 Codex 半 legacy。`pnpm design-system:check` 暴露违规（当前基线 0 error / 449 warning / 2173 info）。
+`--text-*` / `--bg-primary` / `bg-white/5` / `border-white/10` / `status-danger-light` / 品牌渐变等已废弃但**未删除**（sunset 2026-07-17，见 `deprecations.json`）。修改 legacy 组件时须**在同一 commit 迁移到 Codex** —— 不留半 Codex 半 legacy。`pnpm design-system:check` 暴露违规，**红线 = 保持 `0 error`**（warning / info 实时数量跑 `pnpm design-system:report` 查看）。
 
 ---
 
