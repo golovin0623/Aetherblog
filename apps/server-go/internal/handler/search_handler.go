@@ -512,9 +512,16 @@ func (h *SearchHandler) proxyProfileStream(
 	// SSE 走的是同步阻塞（当前 goroutine 即任务 goroutine），所以这里直接绑定
 	// 当前 request 的 ctx cancel —— Cancel 端点调用 cancelActiveJob() 会触发
 	// ctx.Done()，DoStream 内部的 http 调用会立即返回，连带让我们退出 scanner 循环。
-	// 30min 安全上限：对齐 Reindex / IndexBatch 的硬上限，防止上游 hang 让锁
-	// 永久持有（client 已断开但 stream 还卡在 DoStream → ai-service 的 read 上）。
-	streamCtx, cancel := context.WithTimeout(c.Request().Context(), 30*time.Minute)
+	//
+	// 故意不加 ``context.WithTimeout(..., 30*time.Minute)``：那个 30 分钟硬上限
+	// 是 Reindex / IndexBatch 这类 ``异步 goroutine`` 的兜底 circuit breaker，
+	// 不适合 SSE 同步流。timeout 触发时 scanner 静默退 EOF，handler 返回 nil，
+	// 不会再 emit 终端 ``error`` / ``result`` 帧 —— ProfileActivationFlow 的
+	// 状态机只在 ``stream.error`` / ``stream.result`` 翻转时离开 reindexing 步，
+	// 静默 EOF 会让 UI 永远卡在 reindexing (codex P2 → PR #557)。
+	// "锁被持有过久" 的安全网由其他层覆盖：客户端断开 ⇒ request ctx fire；
+	// ai-service hang ⇒ streamClient HTTP 超时；nginx ⇒ proxy_read_timeout。
+	streamCtx, cancel := context.WithCancel(c.Request().Context())
 	h.setActiveJob("profile-reindex", cancel)
 	defer func() {
 		cancel()
