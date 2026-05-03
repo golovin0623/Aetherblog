@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
