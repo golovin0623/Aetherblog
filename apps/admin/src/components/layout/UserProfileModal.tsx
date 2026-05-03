@@ -78,10 +78,12 @@ export function UserProfileModal({ isOpen, onClose, sidebarCollapsed }: UserProf
     setIsUploadingAvatar(true);
     try {
       const mediaItem = await mediaService.upload(file);
-      const res = await authService.updateAvatar(mediaItem.fileUrl);
+      // Phase 3: 切到 cdnUrl 优先,LOCAL 模式仍走 fileUrl
+      const avatarUrl = mediaItem.cdnUrl || mediaItem.fileUrl;
+      const res = await authService.updateAvatar(avatarUrl);
       if (res.code === 200) {
-        setAvatar(mediaItem.fileUrl);
-        updateUser({ avatar: mediaItem.fileUrl });
+        setAvatar(avatarUrl);
+        updateUser({ avatar: avatarUrl });
         toast.success('头像更新成功');
       } else {
         toast.error(res.message || '头像更新失败');

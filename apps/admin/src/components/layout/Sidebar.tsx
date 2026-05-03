@@ -21,6 +21,7 @@ import {
   Moon,
   Bot,
   PanelLeftClose,
+  Cloud,
 } from 'lucide-react';
 import { AetherMark } from '@aetherblog/ui';
 import { useSidebarStore, useAuthStore } from '@/stores';
@@ -51,6 +52,7 @@ const navSections: Array<{
     items: [
       { path: '/posts', icon: FileText, label: '文章管理' },
       { path: '/media', icon: Image, label: '媒体库' },
+      { path: '/storage/explorer', icon: Cloud, label: '云端浏览' },
       { path: '/categories', icon: FolderTree, label: '分类标签' },
       { path: '/comments', icon: MessageSquare, label: '评论管理' },
       { path: '/friends', icon: Link2, label: '友情链接' },

@@ -34,6 +34,7 @@ import {
   FolderOpen,
   Folder,
   PanelLeftClose,
+  CloudUpload,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -53,6 +54,7 @@ import { TagFilterBar } from './media/components/TagFilterBar';
 import { VirtualMediaGrid } from './media/components/VirtualMediaGrid';
 import { KeyboardShortcutsPanel } from './media/components/KeyboardShortcutsPanel';
 import { TrashDialog } from './media/components/TrashDialog';
+import { SyncDialog } from './media/components/SyncDialog';
 import { MediaGridSkeleton as MediaSkeletonGrid, MediaListSkeleton, FolderTreeSkeleton } from '@/components/skeletons/MediaSkeleton';
 import { useMediaKeyboardShortcuts } from '@/hooks/useMediaKeyboardShortcuts';
 import { Pagination } from '@/components/common/Pagination';
@@ -120,6 +122,7 @@ export default function MediaPage() {
 
   // @ref 回收站对话框状态
   const [trashDialogOpen, setTrashDialogOpen] = useState(false);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
 
   // @ref 移动端文件夹抽屉状态
   const [showMobileFolders, setShowMobileFolders] = useState(false);
@@ -427,6 +430,13 @@ export default function MediaPage() {
             <Keyboard className="w-5 h-5" />
           </button>
           <button
+            onClick={() => setSyncDialogOpen(true)}
+            className="p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            title="备份到云 (Phase 4)"
+          >
+            <CloudUpload className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setTrashDialogOpen(true)}
             className="relative p-2 hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             title="回收站"
@@ -620,7 +630,7 @@ export default function MediaPage() {
                     onPreview={(item) => handlePreview(item.id)}
                     onDelete={(id) => handleDeleteConfirm(id)}
                     onCopyUrl={handleCopyUrl}
-                    onDownload={(item) => handleDownload(item.fileUrl, item.originalName)}
+                    onDownload={(item) => handleDownload(getMediaUrl(item), item.originalName)}
                   />
                 ) : (
                   <MediaGrid
@@ -817,7 +827,7 @@ export default function MediaPage() {
                   onClick={() => {
                     const urls = currentItems
                       .filter((item: any) => selectedIds.has(item.id))
-                      .map((item: any) => getMediaUrl(item.fileUrl))
+                      .map((item: any) => getMediaUrl(item))
                       .join('\n');
                     navigator.clipboard.writeText(urls);
                     toast.success('已复制所有选中链接');
@@ -905,6 +915,7 @@ export default function MediaPage() {
 
       {/* @ref 回收站对话框 */}
       <TrashDialog open={trashDialogOpen} onClose={() => setTrashDialogOpen(false)} />
+      <SyncDialog open={syncDialogOpen} onClose={() => setSyncDialogOpen(false)} />
 
       {/* @ref 移动端文件夹抽屉 - 优化为常驻 DOM 以消除初次呼出卡顿 */}
       <div className="lg:hidden">

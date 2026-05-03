@@ -2,7 +2,10 @@
 package imgproc
 
 import (
+	"bytes"
+	"fmt"
 	"image"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,4 +55,63 @@ func GenerateThumbnail(srcPath, thumbPath string, maxSize int) error {
 	thumb := imaging.Fit(src, maxSize, maxSize, imaging.Lanczos)
 	// 保存缩略图到目标路径
 	return imaging.Save(thumb, thumbPath)
+}
+
+// GetDimensionsFromReader 从 io.Reader 解码图片配置头,返回宽高(像素)。
+// 仅读取 header(不加载像素),适合 S3/COS 等远程存储模式下从内存 buffer 读取。
+func GetDimensionsFromReader(r io.Reader) (int, int, error) {
+	cfg, _, err := image.DecodeConfig(r)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
+}
+
+// GenerateThumbnailFromReader 从 io.Reader 读取源图片,生成 maxSize 边界内的缩略图,
+// 返回缩略图字节数组(JPEG 格式)。供 S3/COS 等远程存储模式下生成缩略图后再上传。
+//
+// format 决定输出格式: "jpeg"(默认), "png", "gif", "tiff", "bmp"。
+func GenerateThumbnailFromReader(r io.Reader, maxSize int, format string) ([]byte, error) {
+	src, err := imaging.Decode(r, imaging.AutoOrientation(true))
+	if err != nil {
+		return nil, fmt.Errorf("decode image: %w", err)
+	}
+	thumb := imaging.Fit(src, maxSize, maxSize, imaging.Lanczos)
+
+	var f imaging.Format
+	switch strings.ToLower(format) {
+	case "png":
+		f = imaging.PNG
+	case "gif":
+		f = imaging.GIF
+	case "tiff":
+		f = imaging.TIFF
+	case "bmp":
+		f = imaging.BMP
+	default:
+		f = imaging.JPEG
+	}
+
+	var buf bytes.Buffer
+	if err := imaging.Encode(&buf, thumb, f); err != nil {
+		return nil, fmt.Errorf("encode thumbnail: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// FormatFromMime 根据 MIME 类型返回 imaging 编码器需要的格式字符串(jpeg/png/gif/tiff/bmp)。
+// 未识别的 MIME 类型回落到 "jpeg"。
+func FormatFromMime(mime string) string {
+	switch mime {
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/tiff":
+		return "tiff"
+	case "image/bmp":
+		return "bmp"
+	default:
+		return "jpeg"
+	}
 }

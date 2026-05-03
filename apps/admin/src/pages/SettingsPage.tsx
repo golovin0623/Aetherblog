@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type } from 'lucide-react';
+import { Save, RefreshCw, Globe, Palette, Search, Database, Loader2, User, MessageSquare, Sparkles, Upload, X, ImageIcon, DatabaseZap, Type, Cloud } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { settingsService } from '@/services/settingsService';
@@ -11,6 +11,8 @@ import FontPickerModal, { getFontOption } from '@/components/settings/FontPicker
 import { useFontPreview } from '@/contexts/FontPreviewContext';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
+// 存储管理 tab — Phase 2: 入口落在 /settings 顶层 tab 而非新页面,与现有 migration tab 同套机制
+const StorageProviderSettings = lazy(() => import('./settings/StorageProviderSettings'));
 
 // 设置元数据定义
 // 帮助将原始键映射到 UI 标签和输入类型
@@ -110,6 +112,11 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
     label: '数据迁移',
     icon: DatabaseZap,
     fields: [] // 特殊 tab：不使用标准字段渲染，而是直接加载 MigrationPage 组件
+  },
+  storage: {
+    label: '存储管理',
+    icon: Cloud,
+    fields: [] // 特殊 tab：直接加载 StorageProviderSettings 组件 (对象存储 rollout - Phase 2)
   }
 };
 
@@ -142,7 +149,8 @@ function ImageUploadField({ value, onChange }: { value: string; onChange: (url: 
       const result = await mediaService.upload(file, (percent) => {
         setUploadProgress(percent);
       });
-      const url = result.fileUrl;
+      // Phase 3: 优先 cdnUrl(LOCAL=/api/uploads/...,云=完整 URL),fileUrl 兜底
+      const url = result.cdnUrl || result.fileUrl;
       onChange(url);
       toast.success('Logo 上传成功');
     } catch {
@@ -410,7 +418,7 @@ export default function SettingsPage() {
             transition={{ duration: 0.2 }}
             className={cn(
               "rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]",
-              activeTab !== 'migration' && "p-6 space-y-6"
+              activeTab !== 'migration' && activeTab !== 'storage' && "p-6 space-y-6"
             )}
           >
             {activeTab === 'migration' ? (
@@ -421,6 +429,16 @@ export default function SettingsPage() {
               }>
                 <div className="p-6">
                   <MigrationPage />
+                </div>
+              </Suspense>
+            ) : activeTab === 'storage' ? (
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              }>
+                <div className="p-6">
+                  <StorageProviderSettings />
                 </div>
               </Suspense>
             ) : (
