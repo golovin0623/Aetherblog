@@ -208,6 +208,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate Go migration versions
+        run: |
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          migration_dir = Path("apps/server-go/migrations")
+          pattern = re.compile(r"^(\d{6})_.+\.(up|down)\.sql$")
+          seen = {}
+          duplicates = []
+
+          for path in sorted(migration_dir.glob("*.sql")):
+              match = pattern.match(path.name)
+              if not match:
+                  continue
+              key = match.groups()
+              if key in seen:
+                  duplicates.append((key[0], key[1], seen[key], path))
+              else:
+                  seen[key] = path
+
+          if duplicates:
+              for version, direction, first, second in duplicates:
+                  print(
+                      f"::error file={second}::duplicate migration version "
+                      f"{version}.{direction}; already used by {first}"
+                  )
+              sys.exit(1)
+
+          print("✅ Go migration versions are unique")
+          PY
+
       - name: Validate Docker Compose files
         env:
           # VULN-117/118/119/120 给变量加了 `${VAR:?}` 强校验；CI 占位值必须
