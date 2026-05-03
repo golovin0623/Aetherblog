@@ -486,17 +486,80 @@ func (h *SearchHandler) ProxyProfiles(c echo.Context) error {
 // proxyProfileStream 处理 POST /{code}/reindex/stream，将 ai-service 的 SSE
 // 帧逐行透传给浏览器。复用 ai_handler 的 validateSSELine 白名单（已扩展
 // 支持 start / progress 事件类型）。
+//
+// 并发约束（codex review #552）：复用 reindexing 原子锁，防止与 Reindex /
+// RetryFailed / IndexBatch / 另一条 profile reindex 并发执行 —— 这些都对
+// post_embeddings 与 posts.embedding_status 写入，并发会引发竞态、双倍负载
+// 与不一致状态。SSE handler 同步阻塞直到流结束，所以锁在 defer 里释放即可
+// （不像异步 Reindex 是 goroutine 内释放）。
 func (h *SearchHandler) proxyProfileStream(
 	c echo.Context, method, targetPath string, headers map[string]string,
 ) error {
+	if !h.reindexing.CompareAndSwap(false, true) {
+		// 故意不用 response.Fail —— 它返回 HTTP 200 + 失败 envelope，符合 Java 端
+		// 既有约定。但本端点的消费者 (apps/admin/src/hooks/useReindexStream.ts)
+		// 是 fetch + SSE reader，``if (!res.ok)`` 判定为错误的唯一信号是
+		// HTTP 状态码 ——  200 envelope 会让它继续读 body 当 SSE 帧解析，
+		// 找不到 ``data:`` 行 → stream 无声结束 → ProfileActivationFlow 卡在
+		// "reindexing" 步永不退出 (codex P1, PR #557 review)。
+		// 这里用 409 + 同形 envelope，envelope 让 admin UI 错误解析器拿到 message，
+		// 409 让 SSE consumer 正确进入 error 分支。
+		return c.JSON(http.StatusConflict, response.R{
+			Code:    http.StatusConflict,
+			Message: "索引任务正在进行中，请等待完成或取消后重试",
+		})
+	}
+	// SSE 走的是同步阻塞（当前 goroutine 即任务 goroutine），所以这里直接绑定
+	// 当前 request 的 ctx cancel —— Cancel 端点调用 cancelActiveJob() 会触发
+	// ctx.Done()，DoStream 内部的 http 调用会立即返回，连带让我们退出 scanner 循环。
+	//
+	// 故意不加 ``context.WithTimeout(..., 30*time.Minute)``：那个 30 分钟硬上限
+	// 是 Reindex / IndexBatch 这类 ``异步 goroutine`` 的兜底 circuit breaker，
+	// 不适合 SSE 同步流。timeout 触发时 scanner 静默退 EOF，handler 返回 nil，
+	// 不会再 emit 终端 ``error`` / ``result`` 帧 —— ProfileActivationFlow 的
+	// 状态机只在 ``stream.error`` / ``stream.result`` 翻转时离开 reindexing 步，
+	// 静默 EOF 会让 UI 永远卡在 reindexing (codex P2 → PR #557)。
+	// "锁被持有过久" 的安全网由其他层覆盖：客户端断开 ⇒ request ctx fire；
+	// ai-service hang ⇒ streamClient HTTP 超时；nginx ⇒ proxy_read_timeout。
+	streamCtx, cancel := context.WithCancel(c.Request().Context())
+	h.setActiveJob("profile-reindex", cancel)
+	defer func() {
+		cancel()
+		h.clearActiveJob()
+		h.reindexing.Store(false)
+	}()
+
 	body := c.Request().Body
 	defer body.Close()
 
 	respBody, statusCode, err := h.svc.ProxyProfileStream(
-		c.Request().Context(), method, targetPath, body, headers,
+		streamCtx, method, targetPath, body, headers,
 	)
 	if err != nil {
-		return handleSearchError(c, err)
+		// codex P1 (PR #557): handleSearchError 的 response.Fail 分支会返回
+		// HTTP 200 + envelope，对 axios 调用方安全，但对本端点的 SSE 消费者
+		// (useReindexStream) 而言 200 = "我开始读 SSE body 了" → 解出空帧 →
+		// 静默 EOF → ProfileActivationFlow 卡死。所有 pre-stream 错误必须
+		// 走非 2xx 路径，让 useReindexStream 的 ``!res.ok`` 走 error 分支。
+		//
+		// cancel 优先：如果 streamCtx 在 ProxyProfileStream 内部就被外部
+		// /v1/admin/search/cancel 端点取消，专门返回 409 + cancel 文案。
+		// 其它情况用 502 + 上游错误透传。
+		httpStatus := http.StatusBadGateway
+		msg := "上游 AI 服务错误"
+		if streamCtx.Err() != nil {
+			httpStatus = http.StatusConflict
+			msg = "重建索引已被取消"
+		} else if errors.Is(err, service.ErrAIClientNil) {
+			httpStatus = http.StatusServiceUnavailable
+			msg = "AI 服务未配置，请检查服务端 AI 配置"
+		} else if clientErr, ok := err.(*service.AIClientError); ok {
+			msg = clientErr.Message
+		}
+		return c.JSON(httpStatus, response.R{
+			Code:    httpStatus,
+			Message: msg,
+		})
 	}
 	defer respBody.Close()
 
@@ -520,16 +583,54 @@ func (h *SearchHandler) proxyProfileStream(
 	scanner := bufio.NewScanner(respBody)
 	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 
+	// 跟踪上游是否已经 emit 终态帧（done / result / error）。
+	// codex P2 review (PR #557): 如果是被外部 cancel 端点中断，scanner 会安静退
+	// 出，handler 返回 nil，但 useReindexStream 没看到任何 ``error`` /
+	// ``result`` 帧 → ProfileActivationFlow 永远不会离开 ``reindexing`` 步。
+	// 必须在这里补一个 error 帧让前端状态机能转移。
+	sawTerminalUpstream := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !validateSSELine(line) {
 			continue
 		}
+		// 复用 validateSSELine 的解析逻辑判定终态。validateSSELine 内部已经
+		// 解过一次 JSON，这里再解一次确实有重复成本，但 SSE 事件量级（数 K）
+		// 完全可承受，换来跨 handler 复用比抽出共享 helper 更简单。
+		if strings.HasPrefix(line, "data:") {
+			payload := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "data: "), "data:"))
+			if payload != "" {
+				var evt sseEvent
+				if err := json.Unmarshal([]byte(payload), &evt); err == nil {
+					if evt.Type == "done" || evt.Type == "result" || evt.Type == "error" {
+						sawTerminalUpstream = true
+					}
+				}
+			}
+		}
 		fmt.Fprintf(w, "%s\n", line)
 		flusher.Flush()
 	}
-	if err := scanner.Err(); err != nil {
-		log.Warn().Err(err).Msg("profile reindex SSE scanner error")
+	scanErr := scanner.Err()
+	if scanErr != nil {
+		log.Warn().Err(scanErr).Msg("profile reindex SSE scanner error")
+	}
+
+	// 如果上游在终态前就被中断（cancel 端点 / 客户端断开 / 上游连接错误），
+	// 而上游又没自己 emit 终态，这里替它 emit 一个 error 帧，让前端能转移
+	// 出 reindexing 步。区分 cancel vs upstream-error 让前端 toast 文案能差异化。
+	if !sawTerminalUpstream {
+		var fallback string
+		switch {
+		case streamCtx.Err() != nil:
+			fallback = `data: {"type":"error","code":"cancelled","message":"重建索引已被取消"}` + "\n\n"
+		case scanErr != nil:
+			fallback = `data: {"type":"error","code":"upstream","message":"上游连接中断"}` + "\n\n"
+		}
+		if fallback != "" {
+			fmt.Fprint(w, fallback)
+			flusher.Flush()
+		}
 	}
 	return nil
 }
