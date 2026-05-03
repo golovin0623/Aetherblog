@@ -33,7 +33,7 @@ function MetaRow({ icon: Icon, label, value, hint }: MetaRowProps) {
     <div className="flex items-start gap-3 py-3">
       <Icon className="w-4 h-4 mt-0.5 flex-shrink-0 text-[var(--ink-muted)]" />
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+        <div className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--ink-muted)]">
           {label}
         </div>
         <div className="text-sm text-[var(--ink-primary)] mt-1 tnum">{value}</div>
