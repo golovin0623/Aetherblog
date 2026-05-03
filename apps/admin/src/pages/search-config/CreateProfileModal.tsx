@@ -1,5 +1,5 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { Loader2, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from '@aetherblog/ui';
 import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
@@ -23,6 +23,8 @@ interface FormState {
   chunkerKind: ChunkerKind;
   chunkSizeTokens: number;
   chunkOverlapTokens: number;
+  /** code 字段是否被用户手动改过。改过之后停止 auto-suggest,避免覆盖用户意图。 */
+  codeTouched: boolean;
 }
 
 const DEFAULT_FORM: FormState = {
@@ -33,9 +35,41 @@ const DEFAULT_FORM: FormState = {
   chunkerKind: 'recursive',
   chunkSizeTokens: 512,
   chunkOverlapTokens: 64,
+  codeTouched: false,
 };
 
 const CODE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+const CHUNK_SIZE_PRESETS = [256, 512, 1024, 2048] as const;
+
+/** 把 model_id 截成 code 安全形态: 取最后一段 / 移除非法字符 / 截到 16 字符。 */
+function modelIdToCodeFragment(modelId: string): string {
+  const last = modelId.split('/').pop() ?? modelId;
+  const safe = last.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '');
+  return safe.slice(0, 16);
+}
+
+/** 根据当前 form 字段拼一个建议的 code,例如 ``recursive-512-overlap-64``。 */
+function suggestCode(form: FormState): string {
+  const modelFrag = form.modelId ? modelIdToCodeFragment(form.modelId) : '';
+  const parts = [
+    form.chunkerKind,
+    String(form.chunkSizeTokens),
+    'ov',
+    String(form.chunkOverlapTokens),
+  ];
+  if (modelFrag) parts.unshift(modelFrag);
+  return parts.join('-').slice(0, 64);
+}
+
+/** 从 model.capabilities 解析向量维度,与 CodexModelPicker 同源。 */
+function resolveDim(model: AiModel | null | undefined): number | null {
+  if (!model) return null;
+  const caps = (model.capabilities || {}) as Record<string, unknown>;
+  const raw = caps.dim ?? caps.dimension ?? caps.output_dim;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 /**
  * 创建 search profile 的表单 Modal。
@@ -50,7 +84,7 @@ const CODE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
  */
 export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps) {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const createMut = useCreateProfile();
 
   // 取已启用 provider 下的 embedding 模型 —— 同 SearchConfigPage 选模型逻辑
@@ -94,8 +128,32 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
     }));
   };
 
-  const validate = (): string | null => {
-    if (!CODE_RE.test(form.code)) {
+  const onChunkSizeChange = (size: number) => {
+    setForm((f) => ({
+      ...f,
+      chunkSizeTokens: size,
+      // overlap 跟随 size 再归一次,但只在用户没手填过 overlap 时生效。简化处理:
+      // 当 overlap >= 新 size 时强制下调,否则保留用户值。
+      chunkOverlapTokens:
+        f.chunkOverlapTokens >= size
+          ? Math.max(0, Math.min(2048, Math.floor(size / 8)))
+          : f.chunkOverlapTokens,
+    }));
+  };
+
+  // 当前选中的 embedding 模型(用于显示 dim hint)
+  const selectedModel = useMemo(
+    () => embeddingModels.find((m) => m.model_id === form.modelId) ?? null,
+    [embeddingModels, form.modelId],
+  );
+  const selectedDim = resolveDim(selectedModel);
+
+  // 实时 code 建议 —— 只要用户没手动改过 code,就持续填充
+  const suggested = useMemo(() => suggestCode(form), [form]);
+  const effectiveCode = form.codeTouched && form.code ? form.code : suggested;
+
+  const validate = (codeToCheck: string): string | null => {
+    if (!CODE_RE.test(codeToCheck)) {
       return 'code 只能包含小写字母 / 数字 / -, _，必须以字母或数字开头，最长 64 字符';
     }
     if (!form.name.trim() || form.name.length > 120) {
@@ -122,14 +180,16 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    const v = validate();
+    // 用户没手填 code 时回落到 suggested,保证不会卡在"没填 code"上
+    const codeToSubmit = (form.codeTouched && form.code ? form.code : suggested).trim();
+    const v = validate(codeToSubmit);
     if (v) {
-      setError(v);
+      setError({ message: v });
       return;
     }
     try {
       await createMut.mutateAsync({
-        code: form.code.trim(),
+        code: codeToSubmit,
         name: form.name.trim(),
         description: form.description.trim() || null,
         modelId: form.modelId,
@@ -137,11 +197,18 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
         chunkSizeTokens: form.chunkSizeTokens,
         chunkOverlapTokens: form.chunkOverlapTokens,
       });
-      toast.success(`Profile "${form.code}" 已创建（status: shadow）`);
+      toast.success(`Profile "${codeToSubmit}" 已创建,status: shadow`, {
+        description: '下一步:在主面板选中该 profile,执行全量 reindex 后再激活',
+      });
       onClose();
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message || '创建失败';
-      setError(msg);
+      // ai-service 现在按 errorCode 返回更细粒度信息(INTERNAL_<EXC_TYPE> / HTTP_409 等),
+      // 把它单独显示出来,运维 / 用户可以直接搜文档找解决方法。
+      const e2 = err as { message?: string; errorMessage?: string; errorCode?: string };
+      setError({
+        message: e2.errorMessage || e2.message || '创建失败',
+        code: e2.errorCode,
+      });
     }
   };
 
@@ -160,16 +227,32 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
             <label className={labelCls}>code</label>
             <input
               type="text"
-              value={form.code}
-              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-              placeholder="e.g. recursive-256-overlap-32"
+              value={effectiveCode}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, code: e.target.value, codeTouched: true }))
+              }
+              placeholder={suggested || 'e.g. recursive-512-ov-64'}
               className={inputCls}
-              autoFocus
               required
             />
-            <p className="text-xs text-[var(--text-muted)]">
-              小写字母 / 数字 / - / _，唯一标识此 profile（创建后不可改）
-            </p>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[var(--aurora-1)]/70" />
+                {form.codeTouched ? '已手动编辑' : '自动按当前配置生成'}
+                <span className="text-[var(--text-muted)]/70"> · 创建后不可改</span>
+              </p>
+              {form.codeTouched && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((f) => ({ ...f, code: '', codeTouched: false }))
+                  }
+                  className="text-xs font-mono text-[var(--aurora-1)] hover:underline"
+                >
+                  恢复自动生成
+                </button>
+              )}
+            </div>
           </div>
           <div className="space-y-1.5">
             <label className={labelCls}>name</label>
@@ -200,14 +283,51 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
           <label className={labelCls}>embedding 模型</label>
           {embeddingModelsQuery.isLoading ? (
             <div className="h-10 surface-leaf !rounded-lg animate-pulse" />
+          ) : embeddingModels.length === 0 ? (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-200">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="space-y-1 min-w-0">
+                <p className="font-medium">没有可用的 embedding 模型</p>
+                <p className="text-xs text-amber-200/80">
+                  请先到 <span className="font-mono">AI 配置 → 模型</span> 启用一个
+                  embedding 模型(如 <span className="font-mono">text-embedding-3-large</span>
+                  或 <span className="font-mono">qwen3-embedding-8b</span>)。
+                </p>
+                <a
+                  href="/admin/ai-config"
+                  className="inline-flex items-center gap-1 text-xs font-mono underline-offset-2 hover:underline"
+                >
+                  打开 AI 配置 <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
           ) : (
-            <CodexModelPicker
-              models={embeddingModels}
-              providers={enabledProviders}
-              value={embeddingModels.find((m) => m.model_id === form.modelId) ?? null}
-              onChange={(m) => setForm((f) => ({ ...f, modelId: m?.model_id ?? '' }))}
-              placeholder="选择 embedding 模型"
-            />
+            <>
+              <CodexModelPicker
+                models={embeddingModels}
+                providers={enabledProviders}
+                value={selectedModel}
+                onChange={(m) =>
+                  setForm((f) => ({ ...f, modelId: m?.model_id ?? '' }))
+                }
+                placeholder="选择 embedding 模型"
+              />
+              {selectedModel && (
+                <p className="text-xs text-[var(--text-muted)] flex items-center gap-2 flex-wrap">
+                  <span className="font-mono">{selectedModel.provider_code}</span>
+                  <span>·</span>
+                  <span className="font-mono">{selectedModel.model_id}</span>
+                  {selectedDim && (
+                    <>
+                      <span>·</span>
+                      <span className="font-mono text-[var(--aurora-1)]">
+                        {selectedDim} 维
+                      </span>
+                    </>
+                  )}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -228,16 +348,33 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
               max={8192}
               value={form.chunkSizeTokens}
               onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  chunkSizeTokens: Number.parseInt(e.target.value, 10) || 512,
-                }))
+                onChunkSizeChange(Number.parseInt(e.target.value, 10) || 512)
               }
               className={inputCls}
               required
             />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {CHUNK_SIZE_PRESETS.map((preset) => {
+                const active = form.chunkSizeTokens === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => onChunkSizeChange(preset)}
+                    className={cn(
+                      'px-2 py-0.5 rounded-md text-[0.7rem] font-mono transition-colors',
+                      active
+                        ? 'bg-[var(--aurora-1)] text-white'
+                        : 'bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]',
+                    )}
+                  >
+                    {preset}
+                  </button>
+                );
+              })}
+            </div>
             <p className="text-xs text-[var(--text-muted)]">
-              64-8192。parent_child 模式下解释为 child 大小（parent = child × 4）
+              64-8192。parent_child 模式下解释为 child 大小(parent = child × 4)
             </p>
           </div>
           <div className="space-y-1.5">
@@ -256,14 +393,23 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
               className={inputCls}
               required
             />
-            <p className="text-xs text-[var(--text-muted)]">必须 &lt; chunk_size_tokens</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              必须 &lt; chunk_size_tokens · 经验值 size/8
+            </p>
           </div>
         </div>
 
         {error && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <p className="text-sm text-red-300">{error}</p>
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm text-red-300 break-words">{error.message}</p>
+              {error.code && (
+                <p className="text-[0.65rem] font-mono uppercase tracking-[0.18em] text-red-400/70">
+                  {error.code}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
