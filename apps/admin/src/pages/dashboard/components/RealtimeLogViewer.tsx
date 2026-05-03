@@ -237,6 +237,7 @@ export function RealtimeLogViewer({
   const [refreshTick, setRefreshTick] = useState(0);
   const [manualPaused, setManualPaused] = useState(false);
   const [fullscreenToolbarExpanded, setFullscreenToolbarExpanded] = useState(false);
+  const [embeddedFiltersExpanded, setEmbeddedFiltersExpanded] = useState(false);
   const [hiddenPaused, setHiddenPaused] = useState(
     typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false
   );
@@ -1026,23 +1027,57 @@ export function RealtimeLogViewer({
   const renderEmbeddedContent = () => (
     <>
       <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-leaf)] shrink-0">
-        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
+        <div className="px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0 flex-wrap">
             <Terminal className="w-4 h-4 text-primary shrink-0" />
             <span className="font-mono font-medium truncate">{getTitle()}</span>
             <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-            {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
-            {!autoScroll && !isPaused && <span className="text-[10px] bg-status-info-light text-status-info px-1.5 py-0.5 rounded ml-1 shrink-0">滚动锁定解除</span>}
-            {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
+            {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded shrink-0">{pauseReasonLabel}</span>}
+            {!autoScroll && !isPaused && <span className="text-[10px] bg-status-info-light text-status-info px-1.5 py-0.5 rounded shrink-0">滚动锁定解除</span>}
+            {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)]" />}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-[10px] text-[var(--text-muted)]">
+          <div className="flex items-center gap-1 sm:gap-3 ml-auto">
+            <div className="hidden sm:block text-[10px] text-[var(--text-muted)]">
               最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
             </div>
+            <button
+              type="button"
+              className={cn(
+                'lg:hidden flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors',
+                embeddedFiltersExpanded
+                  ? 'border-primary/40 text-primary bg-primary/10'
+                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+              )}
+              onClick={() => setEmbeddedFiltersExpanded(prev => !prev)}
+              title={embeddedFiltersExpanded ? '收起筛选' : '展开筛选'}
+              aria-expanded={embeddedFiltersExpanded}
+            >
+              {embeddedFiltersExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              筛选
+            </button>
             {renderActionButtons(true)}
           </div>
         </div>
-        {renderToolbarFilters()}
+        <div className="sm:hidden px-3 pb-1 text-[10px] text-[var(--text-muted)]">
+          最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
+        </div>
+        <AnimatePresence initial={false}>
+          {embeddedFiltersExpanded && (
+            <motion.div
+              key="embedded-toolbar-filters-mobile"
+              className="lg:hidden overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {renderToolbarFilters()}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className="hidden lg:block">
+          {renderToolbarFilters()}
+        </div>
       </div>
       {renderLogArea()}
     </>
@@ -1078,18 +1113,18 @@ export function RealtimeLogViewer({
             >
               {/* 全屏紧凑工具栏 */}
               <div className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                <div className="px-4 py-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0">
+                <div className="px-3 sm:px-4 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0 flex-wrap">
                     <Terminal className="w-4 h-4 text-primary shrink-0" />
                     <span className="font-mono font-medium truncate">{getTitle()}</span>
                     <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-                    {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded ml-1 shrink-0">{pauseReasonLabel}</span>}
-                    {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)] ml-1" />}
-                    <span className="text-[10px] text-[var(--text-muted)] ml-2">
+                    {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded shrink-0">{pauseReasonLabel}</span>}
+                    {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)]" />}
+                    <span className="text-[10px] text-[var(--text-muted)] truncate">
                       {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 justify-end shrink-0">
                     <button
                       className={cn(
                         'flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors',
