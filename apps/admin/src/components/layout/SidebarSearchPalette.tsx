@@ -115,8 +115,14 @@ export function SidebarSearchPalette({
     };
   }, []);
 
+  // 派生可见性: 只有锚点真正在视口中的实例才发请求 —— 移动 / 桌面双 SidebarContent
+  // 同时 mount, 共享同一个 query, 不 gate 会导致每次 keystroke 双倍后端调用.
+  // 用 boolean 派生 (而不是 pos 对象) 防止 resize 导致 pos 引用变化触发 refetch.
+  const isVisible = isOpen && pos !== null;
+
   // 文章 / 媒体: 后端搜索, 各通道独立失败不连坐
   useEffect(() => {
+    if (!isVisible) return;
     const q = debouncedQuery.trim();
     if (!q) {
       setPosts([]);
@@ -153,7 +159,7 @@ export function SidebarSearchPalette({
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, isVisible]);
 
   const filteredCategories = useMemo(() => {
     const q = debouncedQuery.trim().toLowerCase();

@@ -91,10 +91,12 @@ export function Sidebar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    // palette 打开时, Enter 已被 palette 的 window 监听器拦截; 这里兜底.
-    if (paletteOpen) return;
+    // palette 有结果时, 它的 window keydown 监听器会 preventDefault 掉 Enter ——
+    // form submit 不会触发, 这里也不会跑. 但 debounce 窗口里 items 还为空,
+    // palette 不会拦截 Enter, 此时仍要兜底跳 /posts?search= 保住"打字 + 回车"工作流.
     const q = searchValue.trim();
     if (!q) return;
+    setPaletteOpen(false);
     setMobileOpen(false);
     startTransition(() => {
       navigate(`/posts?search=${encodeURIComponent(q)}`);
