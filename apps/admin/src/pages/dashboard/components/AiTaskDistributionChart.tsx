@@ -42,6 +42,25 @@ const COLORS = [
   '#f43f5e', // rose-500
 ];
 
+const TASK_COLORS: Record<string, string> = {
+  summary: COLORS[0],
+  tags: COLORS[1],
+  titles: COLORS[2],
+  polish: COLORS[3],
+  outline: COLORS[4],
+  translate: COLORS[5],
+  qa: COLORS[6],
+  embedding: COLORS[7],
+};
+
+const getTaskColor = (task: string): string => {
+  const mappedColor = TASK_COLORS[task];
+  if (mappedColor) return mappedColor;
+
+  const hash = Array.from(task).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return COLORS[hash % COLORS.length];
+};
+
 const formatCost = (value: number | null | undefined): string => {
   if (value == null || !Number.isFinite(value)) return '$0.00';
   if (value < 0.01) return `$${value.toFixed(4)}`;
@@ -59,14 +78,14 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
     // 按 cost 降序 — 让"最烧钱的任务"立刻浮到顶, 满足审计 §1.2 "运营无法回答
     // 哪个工具最贵" 的下钻诉求
     return [...data]
-      .map((item, index) => ({
+      .map((item) => ({
         rawTask: item.task,
         task: TASK_LABEL_ZH[item.task] || item.task,
         calls: item.calls ?? 0,
         tokens: item.tokens ?? 0,
         cost: item.cost ?? 0,
         percentage: item.percentage ?? 0,
-        color: COLORS[index % COLORS.length],
+        color: getTaskColor(item.task),
       }))
       .sort((a, b) => b.cost - a.cost);
   }, [data]);
@@ -133,7 +152,7 @@ export function AiTaskDistributionChart({ data, loading = false }: AiTaskDistrib
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 12 }}
-                width={72}
+                width={88}
               />
               <Tooltip
                 cursor={{ fill: 'var(--bg-card-hover)', opacity: 0.4 }}
