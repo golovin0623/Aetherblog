@@ -327,13 +327,22 @@ func normalizeKeyPrefix(prefix string) (string, error) {
 }
 
 func (s *S3Storage) objectKey(key string) (string, error) {
-	if err := validateS3Key(key); err != nil {
+	fullKey := key
+	if s.cfg.Path == "" {
+		if err := validateS3Key(fullKey); err != nil {
+			return "", err
+		}
+		return fullKey, nil
+	}
+	trimmedKey := strings.TrimLeft(key, "/")
+	if trimmedKey == "" {
+		return "", fmt.Errorf("s3 key: empty")
+	}
+	fullKey = s.cfg.Path + trimmedKey
+	if err := validateS3Key(fullKey); err != nil {
 		return "", err
 	}
-	if s.cfg.Path == "" {
-		return key, nil
-	}
-	return s.cfg.Path + strings.TrimLeft(key, "/"), nil
+	return fullKey, nil
 }
 
 func (s *S3Storage) listPrefix(prefix string) string {
@@ -470,6 +479,24 @@ func (s *S3Storage) GetURL(key string) string {
 }
 
 func joinURLPath(base string, parts ...string) string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return ""
+	}
+	if u, err := url.Parse(base); err == nil && (u.Scheme != "" || u.Host != "" || strings.HasPrefix(base, "/")) {
+		path := strings.TrimRight(u.Path, "/")
+		for _, part := range parts {
+			part = strings.Trim(part, "/")
+			if part == "" {
+				continue
+			}
+			path += "/" + part
+		}
+		u.Path = path
+		u.RawPath = ""
+		return u.String()
+	}
+
 	out := strings.TrimRight(base, "/")
 	for _, part := range parts {
 		part = strings.Trim(part, "/")
@@ -502,24 +529,23 @@ func appendURLOptions(rawURL, options string) string {
 	if options == "" || rawURL == "" {
 		return rawURL
 	}
-	hasQuery := strings.Contains(rawURL, "?")
-	switch {
-	case strings.HasPrefix(options, "?"):
-		if hasQuery {
-			return rawURL + "&" + strings.TrimPrefix(options, "?")
-		}
-		return rawURL + options
-	case strings.HasPrefix(options, "&"):
-		if hasQuery {
-			return rawURL + options
-		}
-		return rawURL + "?" + strings.TrimPrefix(options, "&")
-	default:
-		if hasQuery {
-			return rawURL + "&" + options
-		}
-		return rawURL + "?" + options
+	options = strings.TrimPrefix(strings.TrimPrefix(options, "?"), "&")
+	if options == "" {
+		return rawURL
 	}
+	if u, err := url.Parse(rawURL); err == nil && (u.Scheme != "" || u.Host != "" || strings.HasPrefix(rawURL, "/")) {
+		if u.RawQuery == "" {
+			u.RawQuery = options
+		} else {
+			u.RawQuery += "&" + options
+		}
+		return u.String()
+	}
+	hasQuery := strings.Contains(rawURL, "?")
+	if hasQuery {
+		return rawURL + "&" + options
+	}
+	return rawURL + "?" + options
 }
 
 // Type 返回上游存储类型标识符(S3/MINIO/R2/COS/OSS)。
