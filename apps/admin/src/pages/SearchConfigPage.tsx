@@ -32,6 +32,15 @@ import {
 } from '@/services/searchConfigService';
 import { aiProviderService, type AiModel } from '@/services/aiProviderService';
 import { CodexModelPicker } from '@/components/ai/CodexModelPicker';
+import { ProfileManagementSection } from './search-config/ProfileManagementSection';
+import { ProfileActivationFlow } from './search-config/ProfileActivationFlow';
+import { ProfileDetailDrawer } from './search-config/ProfileDetailDrawer';
+import {
+  useSearchProfiles,
+  useDeprecateProfile,
+  useDeleteProfile,
+} from '@/hooks/useSearchProfiles';
+import type { SearchProfile } from '@/services/searchProfileService';
 
 // Toggle 来自 @aetherblog/ui
 
@@ -369,6 +378,16 @@ export default function SearchConfigPage() {
   const [pendingEmbeddingModelId, setPendingEmbeddingModelId] =
     useState<number | null | undefined>(undefined);
 
+  // Profile activation flow + detail drawer 状态。activatingProfile 非 null
+  // 时弹激活向导；selectedProfile 非 null 时展开右侧抽屉。
+  const [activatingProfile, setActivatingProfile] = useState<SearchProfile | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<SearchProfile | null>(null);
+  const [pendingDrawerDelete, setPendingDrawerDelete] = useState<SearchProfile | null>(null);
+  const profilesQuery = useSearchProfiles();
+  const deprecateProfileMutation = useDeprecateProfile();
+  const deleteProfileMutation = useDeleteProfile();
+  const activeProfile = profilesQuery.data?.find((p) => p.status === 'active') ?? null;
+
   // 更新向量化路由的 mutation
   const updateRoutingMutation = useMutation({
     mutationFn: (modelId: number | null) => {
@@ -404,6 +423,33 @@ export default function SearchConfigPage() {
     },
     onError: () => toast.error('更新失败'),
   });
+
+  const handleDrawerDeprecate = async () => {
+    const profile = selectedProfile;
+    if (!profile) return;
+    try {
+      await deprecateProfileMutation.mutateAsync(profile.code);
+      toast.success(`Profile "${profile.code}" 已 deprecated`);
+      setSelectedProfile(null);
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message || '操作失败';
+      toast.error(msg);
+    }
+  };
+
+  const handleDrawerDelete = async () => {
+    const profile = pendingDrawerDelete;
+    if (!profile) return;
+    try {
+      await deleteProfileMutation.mutateAsync(profile.code);
+      toast.success(`Profile "${profile.code}" 已删除`);
+      setPendingDrawerDelete(null);
+      setSelectedProfile((current) => (current?.code === profile.code ? null : current));
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message || '删除失败';
+      toast.error(msg);
+    }
+  };
 
   const embeddingLoading =
     providersQuery.isLoading || embeddingModelsQuery.isLoading || embeddingRoutingQuery.isLoading || credentialsQuery.isLoading;
@@ -1179,6 +1225,12 @@ export default function SearchConfigPage() {
           </div>
         </motion.div>
 
+        {/* Search Profile 管理（蓝绿切换 + chunker 策略试错入口） */}
+        <ProfileManagementSection
+          onRequestActivate={(p) => setActivatingProfile(p)}
+          onSelectProfile={(p) => setSelectedProfile(p)}
+        />
+
         {/* Card 2: 搜索功能开关 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -1423,6 +1475,40 @@ export default function SearchConfigPage() {
           }
         }}
         onCancel={() => setPendingEmbeddingModelId(undefined)}
+      />
+
+      {/* Profile 激活向导 + 详情抽屉（与上面的 ProfileManagementSection 配套） */}
+      {activatingProfile && (
+        <ProfileActivationFlow
+          profile={activatingProfile}
+          activeProfile={activeProfile}
+          onClose={() => setActivatingProfile(null)}
+        />
+      )}
+      <ProfileDetailDrawer
+        profile={selectedProfile}
+        onClose={() => setSelectedProfile(null)}
+        onDeprecate={handleDrawerDeprecate}
+        onDelete={() => {
+          if (selectedProfile) {
+            setPendingDrawerDelete(selectedProfile);
+          }
+        }}
+      />
+      <ConfirmModal
+        isOpen={pendingDrawerDelete !== null}
+        title="删除 profile"
+        variant="danger"
+        confirmText={deleteProfileMutation.isPending ? '删除中…' : '确认删除'}
+        cancelText="取消"
+        message={
+          pendingDrawerDelete
+            ? `确定要删除 profile "${pendingDrawerDelete.code}" 吗？此操作不可逆。\n\n` +
+              '若该 profile 仍有向量行，删除会被后端拒绝（先清空 post_embeddings）。'
+            : ''
+        }
+        onConfirm={handleDrawerDelete}
+        onCancel={() => setPendingDrawerDelete(null)}
       />
     </div>
   );

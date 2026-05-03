@@ -623,3 +623,25 @@ func (s *SearchService) ProxyEmbeddingStatus(ctx context.Context, headers map[st
 	}
 	return s.aiClient.DoSync(ctx, http.MethodGet, "/api/v1/admin/providers/routing/embedding", nil, headers)
 }
+
+// ProxyProfileSync 代理 search profile 的同步管理请求（list / create / activate / deprecate / delete）。
+// 调用方负责传入完整的 ai-service 路径（含 query string，已 URL 编码）。
+func (s *SearchService) ProxyProfileSync(
+	ctx context.Context, method, path string, body io.Reader, headers map[string]string,
+) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
+	}
+	return s.aiClient.DoSync(ctx, method, path, body, headers)
+}
+
+// ProxyProfileStream 代理 search profile 的 SSE 流式请求（仅 reindex/stream 用）。
+// 走长超时 streamClient；ai-service 端按 chunk 推帧，本端透传给浏览器。
+func (s *SearchService) ProxyProfileStream(
+	ctx context.Context, method, path string, body io.Reader, headers map[string]string,
+) (io.ReadCloser, int, error) {
+	if s.aiClient == nil {
+		return nil, http.StatusServiceUnavailable, ErrAIClientNil
+	}
+	return s.aiClient.DoStream(ctx, method, path, body, headers)
+}

@@ -168,6 +168,7 @@ class VectorStoreService:
                         pe.post_id,
                         pe.chunk_index,
                         pe.chunk_text,
+                        pe.parent_text,
                         1 - (pe.embedding::{cast_type}({dim}) <=> $1::{cast_type}({dim})) AS similarity
                     FROM post_embeddings pe
                     WHERE pe.profile_id = $2
@@ -180,7 +181,10 @@ class VectorStoreService:
                     SELECT
                         cc.post_id,
                         MAX(cc.similarity) AS similarity,
-                        (array_agg(cc.chunk_text ORDER BY cc.similarity DESC NULLS LAST))[1] AS top_chunk_text
+                        -- 优先返回 parent_text 提供完整上下文（parent_child 策略下）；
+                        -- parent_text 为 NULL（其他策略）时自然退化到 chunk_text。
+                        (array_agg(COALESCE(cc.parent_text, cc.chunk_text)
+                                   ORDER BY cc.similarity DESC NULLS LAST))[1] AS top_chunk_text
                     FROM candidate_chunks cc
                     GROUP BY cc.post_id
                 )
@@ -320,6 +324,9 @@ class VectorStoreService:
                         profile.id,
                     )
                     # 批量 INSERT 新 chunks
+                    # parent_text 仅在 parent_child 策略下非 NULL；其他策略下 chunker
+                    # 生成 Chunk.parent_text=None，asyncpg 自动写为 SQL NULL，召回侧
+                    # COALESCE(parent_text, chunk_text) 自然退化，对其他策略零侵入。
                     rows_to_insert = [
                         (
                             post_id,
@@ -330,14 +337,16 @@ class VectorStoreService:
                             target_status,
                             c.index,
                             c.text,
+                            c.parent_text,
                         )
                         for c, vec in embed_results
                     ]
                     await conn.executemany(
                         """
                         INSERT INTO post_embeddings
-                            (post_id, profile_id, model_id, dim, embedding, status, chunk_index, chunk_text, indexed_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                            (post_id, profile_id, model_id, dim, embedding, status,
+                             chunk_index, chunk_text, parent_text, indexed_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                         """,
                         rows_to_insert,
                     )
