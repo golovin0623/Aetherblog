@@ -81,6 +81,31 @@ def test_qa_pair_exceeding_budget_is_split_with_question_preserved():
     # 切片产生的所有 chunks 都应包含完整 question
     long_q_chunks = [c for c in chunks if "什么是 chunking" in c.text]
     assert len(long_q_chunks) >= 1, "长答案切片后应保留至少一个含 question 的 chunk"
+    # 关键不变量：每片不得超过预算上限（防 embedding API 拒）
+    for c in chunks:
+        assert c.tokens <= 256 + 2, (  # +2 for newline tolerance
+            f"chunk #{c.index} tokens={c.tokens} exceeds 256 budget"
+        )
+
+
+def test_qa_question_longer_than_budget_falls_back_to_hard_split():
+    # question 自己就超过预算 —— 不能再保留 question 完整出现在每片
+    # 此时退化到对 combined 整体按 token 硬切，至少不溢出 chunk_size
+    long_question = "这是一个非常非常非常长的问题，" * 30  # ~360 chars (~250+ tokens)
+    text = (
+        f"问：{long_question}\n"
+        "答：简短答案。\n\n"
+        "问：第二个问题？\n"
+        "答：第二个答案。\n"
+    )
+    # chunk_size=128，远小于 long_question
+    chunks = split(text, chunker_kind="qa", chunk_size_tokens=128, chunk_overlap_tokens=0)
+    assert len(chunks) >= 2
+    # 关键：每片仍严格不超过 chunk_size + 小幅 tokenizer 边界误差
+    for c in chunks:
+        assert c.tokens <= 128 + 2, (
+            f"chunk #{c.index} tokens={c.tokens} exceeds 128 budget despite long question"
+        )
 
 
 def test_no_qa_markers_falls_back_to_recursive():

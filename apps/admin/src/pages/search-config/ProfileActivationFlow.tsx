@@ -11,7 +11,11 @@ import {
 import { toast } from 'sonner';
 import { Modal } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
-import { useReindexStream, type ReindexProgressEvent } from '@/hooks/useReindexStream';
+import {
+  useReindexStream,
+  type ReindexCounters,
+  type ReindexProgressEvent,
+} from '@/hooks/useReindexStream';
 import { useActivateProfile } from '@/hooks/useSearchProfiles';
 import type { SearchProfile } from '@/services/searchProfileService';
 
@@ -118,7 +122,8 @@ export function ProfileActivationFlow({
         {step === 'reindexing' && (
           <ReindexingStep
             total={stream.total}
-            progress={stream.progress}
+            counters={stream.counters}
+            recent={stream.recent}
             running={stream.isRunning}
             onAbort={() => {
               stream.abort();
@@ -293,27 +298,26 @@ function ConfirmStep({
 
 function ReindexingStep({
   total,
-  progress,
+  counters,
+  recent,
   running,
   onAbort,
 }: {
   total: number;
-  progress: ReindexProgressEvent[];
+  counters: ReindexCounters;
+  recent: ReindexProgressEvent[];
   running: boolean;
   onAbort: () => void;
 }) {
-  const failed = progress.filter((p) => p.status === 'failed').length;
-  const done = progress.length;
+  const { done, failed, ok, totalElapsedMs } = counters;
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   const avgMs = useMemo(() => {
-    const ok = progress.filter((p) => p.status === 'ok');
-    if (ok.length === 0) return 0;
-    const sum = ok.reduce((acc, p) => acc + p.elapsedMs, 0);
-    return Math.round(sum / ok.length);
-  }, [progress]);
+    if (ok === 0) return 0;
+    return Math.round(totalElapsedMs / ok);
+  }, [ok, totalElapsedMs]);
 
-  // 取最近 5 条事件，倒序展示
-  const recent = progress.slice(-5).reverse();
+  // recent 来自 hook 内部环形缓冲（最多 16 条），UI 只展示最新 5 条倒序
+  const display = recent.slice(-5).reverse();
 
   return (
     <div className="space-y-4">
@@ -355,12 +359,12 @@ function ReindexingStep({
       </div>
 
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
-        {recent.length === 0 && running && (
+        {display.length === 0 && running && (
           <p className="text-xs text-[var(--text-muted)] text-center py-3">
             等待第一条进度事件…
           </p>
         )}
-        {recent.map((p) => (
+        {display.map((p) => (
           <div
             key={`${p.postId}-${p.index}`}
             className={cn(
@@ -454,10 +458,14 @@ function FailedStep({
   onRetry: () => void;
   onClose: () => void;
 }) {
-  const failedEvents = stream.progress.filter((p) => p.status === 'failed');
+  // Hook 现在只保留最多 16 条 recent，不存全量历史。failed 总数从 counters
+  // 读取（精确值）；明细只能展示 recent 里恰好命中的失败条目（最多 5 条预览，
+  // 完整列表用户可在 ai-service 日志里看）。
+  const failedEvents = stream.recent.filter((p) => p.status === 'failed');
+  const failedTotal = stream.counters.failed;
   const message = stream.error || activateError?.message || (
-    failedEvents.length > 0
-      ? `${failedEvents.length} 篇文章 reindex 失败，未自动激活`
+    failedTotal > 0
+      ? `${failedTotal} 篇文章 reindex 失败，未自动激活`
       : '激活失败'
   );
 
@@ -474,8 +482,10 @@ function FailedStep({
                   post #{e.postId}: {e.error || 'unknown error'}
                 </li>
               ))}
-              {failedEvents.length > 5 && (
-                <li className="text-red-300/60">…还有 {failedEvents.length - 5} 篇</li>
+              {failedTotal > failedEvents.length && (
+                <li className="text-red-300/60">
+                  …还有 {failedTotal - failedEvents.length} 篇（详情见 ai-service 日志）
+                </li>
               )}
             </ul>
           )}

@@ -372,25 +372,53 @@ async def reindex_profile_stream(
         # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
         # useReindexStream 能优雅处理（写 error state、停 isRunning）。
         try:
+            # 内存优化：不要一次把所有 PUBLISHED 文章的 content_markdown 拉进
+            # 内存（数万篇 × 平均 20KB 正文 = 数百 MB，会让 ai-service OOM）。
+            # 分两步走：
+            #   1. 先 SELECT id（每行 8 byte）拿到 id 列表，用于 total + 顺序
+            #   2. 处理每篇时单独 SELECT 一行 content_markdown（DB 仍是单连接，
+            #      asyncpg 内部会复用 prepared statement，开销可控）
+            # 这样即使 1 万篇博客也只会让 id 列表占 80KB 内存。
             async with pool.acquire() as conn:
-                posts = await conn.fetch(
-                    "SELECT id, title, slug, content_markdown FROM posts "
+                id_rows = await conn.fetch(
+                    "SELECT id FROM posts "
                     "WHERE deleted = FALSE AND status = 'PUBLISHED' "
                     "ORDER BY id ASC"
                 )
-            total = len(posts)
+            total = len(id_rows)
             yield _sse_pack({"type": "start", "total": total, "profile": code})
 
             indexed = 0
             failed = 0
-            for i, p in enumerate(posts, 1):
+            for i, id_row in enumerate(id_rows, 1):
+                post_id = id_row["id"]
                 t0 = time.perf_counter()
                 try:
+                    # Per-post 取 content。中途若文章被删 / 改状态，fetchrow
+                    # 返回 None，跳过并标 failed（避免 KeyError）。
+                    async with pool.acquire() as conn:
+                        post = await conn.fetchrow(
+                            "SELECT id, title, slug, content_markdown FROM posts "
+                            "WHERE id = $1 AND deleted = FALSE AND status = 'PUBLISHED'",
+                            post_id,
+                        )
+                    if not post:
+                        failed += 1
+                        yield _sse_pack({
+                            "type": "progress",
+                            "postId": post_id,
+                            "index": i,
+                            "chunks": 0,
+                            "status": "failed",
+                            "error": "post no longer PUBLISHED",
+                            "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
+                        })
+                        continue
                     result = await vector_store.upsert_post_embedding(
-                        post_id=p["id"],
-                        title=p["title"],
-                        slug=p["slug"],
-                        content=p["content_markdown"] or "",
+                        post_id=post["id"],
+                        title=post["title"],
+                        slug=post["slug"],
+                        content=post["content_markdown"] or "",
                         metadata={"status": "PUBLISHED"},
                         profile=profile,
                         target_status=target_status,
@@ -398,7 +426,7 @@ async def reindex_profile_stream(
                     indexed += 1
                     yield _sse_pack({
                         "type": "progress",
-                        "postId": p["id"],
+                        "postId": post["id"],
                         "index": i,
                         "chunks": result.get("chunks", 0),
                         "status": "ok",
@@ -409,7 +437,7 @@ async def reindex_profile_stream(
                     # 错误消息截断 200 字符避免把堆栈泄露到前端 UI
                     yield _sse_pack({
                         "type": "progress",
-                        "postId": p["id"],
+                        "postId": post_id,
                         "index": i,
                         "chunks": 0,
                         "status": "failed",

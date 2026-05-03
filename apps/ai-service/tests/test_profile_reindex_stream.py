@@ -38,11 +38,22 @@ def _parse_sse(body_bytes: bytes) -> list[dict]:
 
 
 class FakeConn:
+    """模拟 asyncpg.Connection：``fetch`` 返回 id 列表（来自 SELECT id 阶段），
+    ``fetchrow`` 按 id 查找单行 post。"""
+
     def __init__(self, posts):
         self.posts = posts
+        self._by_id = {p["id"]: p for p in posts}
 
     async def fetch(self, _sql, *_args):
+        # 新实现只 SELECT id 列；返回所有 post 的 dict 也能兼容（routes 只读 row["id"]）
         return self.posts
+
+    async def fetchrow(self, _sql, *args):
+        # routes 调用形如 fetchrow("... WHERE id = $1 ...", post_id)
+        if not args:
+            return None
+        return self._by_id.get(args[0])
 
 
 class FakePool:
@@ -221,6 +232,34 @@ def test_reindex_stream_deprecated_profile_returns_400():
 
     res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
     assert res.status_code == 400
+
+
+def test_reindex_stream_post_deleted_midway_yields_failed_progress():
+    """SELECT id 阶段拿到 post_id，但处理时 fetchrow 返回 None
+    （文章被删 / 改状态）—— 应 emit progress(failed) 而非崩溃。"""
+
+    class FakeConnDropped(FakeConn):
+        async def fetchrow(self, _sql, *_args):
+            return None  # 模拟所有 post 在 fetch 之后都被删了
+
+    class FakePoolDropped(FakePool):
+        @asynccontextmanager
+        async def acquire(self):
+            yield FakeConnDropped(self._posts)
+
+    pool = FakePoolDropped([{"id": 7, "title": "X", "slug": "x", "content_markdown": "x"}])
+    vs = FakeVectorStore(profile=_profile(), upsert_results=[])
+    _install(pool=pool, vector_store=vs)
+
+    res = client.post("/api/v1/admin/search/profiles/new-v2/reindex/stream")
+    assert res.status_code == 200
+    events = _parse_sse(res.content)
+    progress = [e for e in events if e["type"] == "progress"]
+    assert len(progress) == 1
+    assert progress[0]["status"] == "failed"
+    assert "no longer PUBLISHED" in progress[0]["error"]
+    # vector_store.upsert_post_embedding 不应被调用
+    assert vs.calls == []
 
 
 def test_reindex_stream_db_outage_yields_error_frame():

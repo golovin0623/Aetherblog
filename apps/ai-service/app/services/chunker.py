@@ -249,9 +249,20 @@ def _split_qa(
             chunks.append(combined)
             continue
         # 单对超限：按 token 切 answer，保留 question 在每片头部
-        # answer 留出的 token 预算：chunk_size - question_tokens - 缓冲(2)
+        # 关键不变量：每片 chunk 的 token 数 <= chunk_size_tokens（防 embedding API 拒）
+        # 边界：question 自己已经接近或超过 chunk_size_tokens —— 没法把
+        # question 完整放进每片。这种情况退化到对 combined 整体硬切（接受
+        # question 被切碎；后续召回时仍能用文档级 max 聚合命中）。
         q_tokens = _token_len(question, encoding)
-        budget = max(64, chunk_size_tokens - q_tokens - 2)
+        # 预留 2 tokens 给两个换行符。budget 严格小于 chunk_size_tokens - q_tokens
+        # 才能保证 question + budget + 换行 <= chunk_size_tokens。
+        budget = chunk_size_tokens - q_tokens - 2
+        if budget < 16:
+            # question 自身太长（占了几乎所有预算或更多）—— 没法保留 question 在
+            # 每片头部，回退到整体硬切，让 _slice_by_tokens 严格按 token 切。
+            for piece in _slice_by_tokens(combined, chunk_size_tokens, encoding):
+                chunks.append(piece.strip())
+            continue
         for piece in _slice_by_tokens(answer, budget, encoding):
             chunks.append(f"{question}\n\n{piece.strip()}")
     return chunks

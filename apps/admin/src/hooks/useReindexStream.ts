@@ -2,6 +2,13 @@ import { useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+/**
+ * 进度面板只展示最近 5 条事件，所以保留全量事件流是浪费 —— [...p, obj]
+ * 累加是 O(N²)，3000 篇文章 reindex 时会让浏览器持续跑 GC。这里用一个
+ * 固定大小的 ring buffer 替代完整数组，counters 单独累加。下游的
+ * "最近 5 条"列表直接读 ``recent`` 即可。
+ */
+const RECENT_BUFFER_SIZE = 16;
 
 /**
  * 一篇文章的 reindex 进度事件（来自后端 ``profiles.py:reindex_profile_stream``）。
@@ -15,6 +22,25 @@ export interface ReindexProgressEvent {
   elapsedMs: number;
 }
 
+/** 聚合后的进度统计，UI 直接渲染这一组数字而非遍历完整事件列表。 */
+export interface ReindexCounters {
+  /** 已处理总数（ok + failed）。 */
+  done: number;
+  /** 累计成功篇数。 */
+  ok: number;
+  /** 累计失败篇数。 */
+  failed: number;
+  /** 成功篇的总耗时（ms），用于推导平均耗时。 */
+  totalElapsedMs: number;
+}
+
+const EMPTY_COUNTERS: ReindexCounters = {
+  done: 0,
+  ok: 0,
+  failed: 0,
+  totalElapsedMs: 0,
+};
+
 export interface ReindexResult {
   profile: string;
   indexed: number;
@@ -24,7 +50,13 @@ export interface ReindexResult {
 
 interface UseReindexStreamReturn {
   total: number;
-  progress: ReindexProgressEvent[];
+  /**
+   * 聚合统计 —— 已处理 / 成功 / 失败 / 平均耗时来源，所有 progress 事件
+   * 累加得到，无 list 拷贝。
+   */
+  counters: ReindexCounters;
+  /** 最近 N 条事件（环形缓冲，按时间倒序提供）。 */
+  recent: ReindexProgressEvent[];
   result: ReindexResult | null;
   isRunning: boolean;
   error: string | null;
@@ -32,7 +64,7 @@ interface UseReindexStreamReturn {
   start: (profileCode: string) => Promise<void>;
   /** 中止当前 stream（``AbortController.abort``）；服务端的 reindex 已起跑的批不可逆。*/
   abort: () => void;
-  /** 重置内部状态（清 progress / result / error），用于关闭向导后下次再开。*/
+  /** 重置内部状态（清 counters / recent / result / error），用于关闭向导后下次再开。*/
   reset: () => void;
 }
 
@@ -46,17 +78,21 @@ interface UseReindexStreamReturn {
  * 事件分桶（与 ai-service ``profiles.py:_sse_pack`` 协议一致）：
  *   {type: "start", total, profile}      → 写 total
  *   {type: "progress", postId, index, chunks, status, error?, elapsedMs}
- *                                          → 累加 progress[]
+ *                                          → 累加 counters + 推入 recent ring buffer
  *   {type: "result", data: {...}}         → 写 result
  *   {type: "done"}                        → 关闭 isRunning
  *   {type: "error", message}              → 写 error + 关闭 isRunning
+ *
+ * 性能：counters 是 4 个数字累加 O(1)；recent 是 16 槽环形缓冲 O(1)。
+ * 即使 reindex 数万篇也不会让 React 重渲染节奏堆积。
  *
  * 健壮性：单条 malformed data 行只 console.error 不终止整条流；中途网络断
  * 也只 set error，不抛。
  */
 export function useReindexStream(): UseReindexStreamReturn {
   const [total, setTotal] = useState(0);
-  const [progress, setProgress] = useState<ReindexProgressEvent[]>([]);
+  const [counters, setCounters] = useState<ReindexCounters>(EMPTY_COUNTERS);
+  const [recent, setRecent] = useState<ReindexProgressEvent[]>([]);
   const [result, setResult] = useState<ReindexResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +100,8 @@ export function useReindexStream(): UseReindexStreamReturn {
 
   const reset = useCallback(() => {
     setTotal(0);
-    setProgress([]);
+    setCounters(EMPTY_COUNTERS);
+    setRecent([]);
     setResult(null);
     setError(null);
     setIsRunning(false);
@@ -73,7 +110,8 @@ export function useReindexStream(): UseReindexStreamReturn {
   const start = useCallback(async (profileCode: string) => {
     // 取消可能的旧 stream，避免事件交错
     abortRef.current?.abort();
-    setProgress([]);
+    setCounters(EMPTY_COUNTERS);
+    setRecent([]);
     setResult(null);
     setError(null);
     setIsRunning(true);
@@ -138,7 +176,25 @@ export function useReindexStream(): UseReindexStreamReturn {
             if (obj.type === 'start') {
               setTotal(obj.total ?? 0);
             } else if (obj.type === 'progress') {
-              setProgress((p) => [...p, obj as ReindexProgressEvent]);
+              const evt = obj as ReindexProgressEvent;
+              // counters: O(1) 累加
+              setCounters((c) => ({
+                done: c.done + 1,
+                ok: c.ok + (evt.status === 'ok' ? 1 : 0),
+                failed: c.failed + (evt.status === 'failed' ? 1 : 0),
+                // 只把 ok 的耗时计入平均（failed 的耗时通常是超时/拒绝边界值，
+                // 拉高均值会让 UI 误导用户预估剩余时间）
+                totalElapsedMs:
+                  c.totalElapsedMs + (evt.status === 'ok' ? evt.elapsedMs : 0),
+              }));
+              // recent: O(1) 推入环形缓冲；UI 取倒序时直接 .slice().reverse()
+              setRecent((r) => {
+                if (r.length < RECENT_BUFFER_SIZE) {
+                  return [...r, evt];
+                }
+                // 满了：去掉最早一条，追加新条；len 始终 == RECENT_BUFFER_SIZE
+                return [...r.slice(1), evt];
+              });
             } else if (obj.type === 'result') {
               setResult(obj.data as ReindexResult);
             } else if (obj.type === 'done') {
@@ -170,5 +226,5 @@ export function useReindexStream(): UseReindexStreamReturn {
     setIsRunning(false);
   }, []);
 
-  return { total, progress, result, isRunning, error, start, abort, reset };
+  return { total, counters, recent, result, isRunning, error, start, abort, reset };
 }
