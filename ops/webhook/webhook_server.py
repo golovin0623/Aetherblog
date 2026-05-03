@@ -34,6 +34,8 @@ import http.server
 import json
 import logging
 import os
+import socket
+import socketserver
 import subprocess
 import sys
 from typing import Iterator, Optional, Tuple
@@ -74,6 +76,10 @@ GIT_RESET_TIMEOUT = int(os.environ.get("GIT_RESET_TIMEOUT", "60"))
 # 与 deploy.sh 共享同一把 flock —— sync 与手动 `bash deploy.sh` 之间互斥,
 # 避免两个 git fetch+reset 并发踩 .git/index.lock.
 LOCK_FILE = os.environ.get("LOCK_FILE", "/var/lock/aetherblog-deploy.lock")
+# 公网暴露的 webhook 会被扫描器打到。Python 标准库 HTTPServer 默认单线程且
+# socket 无超时, 一个半开的 POST 就能卡住所有后续部署请求。
+REQUEST_TIMEOUT = float(os.environ.get("WEBHOOK_REQUEST_TIMEOUT", "15"))
+MAX_BODY_BYTES = int(os.environ.get("WEBHOOK_MAX_BODY_BYTES", "8192"))
 
 # 允许的服务名白名单
 ALLOWED_SERVICES = {"backend", "ai-service", "blog", "admin", "gateway"}
@@ -147,6 +153,31 @@ def _tail(text: str, lines: int = 20) -> str:
     return "\n".join(text.strip().splitlines()[-lines:])
 
 
+def _read_request_body(handler) -> Tuple[bytes, Optional[Tuple[int, str]]]:
+    raw_length = handler.headers.get("Content-Length", "0")
+    try:
+        content_length = int(raw_length)
+    except (TypeError, ValueError):
+        return b"", (400, "Invalid Content-Length")
+
+    if content_length < 0:
+        return b"", (400, "Invalid Content-Length")
+    if content_length > MAX_BODY_BYTES:
+        return b"", (413, "Request body too large")
+    if content_length == 0:
+        return b"", None
+
+    try:
+        body = handler.rfile.read(content_length)
+    except socket.timeout:
+        logging.warning("Webhook request body read timed out")
+        return b"", (408, "Request body timed out")
+
+    if len(body) != content_length:
+        return b"", (400, "Incomplete request body")
+    return body, None
+
+
 def _verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     """常时间 HMAC-SHA256 验签（GitHub 风格）。"""
     if not signature_header or not signature_header.startswith("sha256="):
@@ -194,8 +225,12 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             self._send(404, "Not Found")
             return
 
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length) if content_length > 0 else b""
+        body, body_error = _read_request_body(self)
+        if body_error is not None:
+            status, message = body_error
+            logging.warning("Webhook rejected: %s", message)
+            self._send(status, message)
+            return
 
         if not _verify_signature(body, self.headers.get("X-Hub-Signature-256")):
             logging.warning("Webhook rejected: invalid signature")
@@ -279,12 +314,21 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             self._send(500, "Internal error")
 
 
+class DeployHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+    def get_request(self):
+        request, client_address = super(DeployHTTPServer, self).get_request()
+        request.settimeout(REQUEST_TIMEOUT)
+        return request, client_address
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    server = http.server.HTTPServer((BIND_HOST, PORT), WebhookHandler)
+    server = DeployHTTPServer((BIND_HOST, PORT), WebhookHandler)
     logging.info("Webhook server running on %s:%s", BIND_HOST, PORT)
     server.serve_forever()
 
