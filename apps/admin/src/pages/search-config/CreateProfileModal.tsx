@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { Loader2, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from '@aetherblog/ui';
@@ -148,9 +149,12 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
   );
   const selectedDim = resolveDim(selectedModel);
 
-  // 实时 code 建议 —— 只要用户没手动改过 code,就持续填充
+  // 实时 code 建议 —— 只要用户没手动改过 code,就持续填充。一旦标记为
+  // codeTouched 后就完全交给 form.code: 用户清空时输入框真的为空(placeholder 仍展示
+  // suggested), validate 会负责拦截空值。否则用户清空后 effectiveCode 立即回弹到
+  // suggested,会让"我想重打"的意图失效。
   const suggested = useMemo(() => suggestCode(form), [form]);
-  const effectiveCode = form.codeTouched && form.code ? form.code : suggested;
+  const effectiveCode = form.codeTouched ? form.code : suggested;
 
   const validate = (codeToCheck: string): string | null => {
     if (!CODE_RE.test(codeToCheck)) {
@@ -180,8 +184,9 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    // 用户没手填 code 时回落到 suggested,保证不会卡在"没填 code"上
-    const codeToSubmit = (form.codeTouched && form.code ? form.code : suggested).trim();
+    // 与 effectiveCode 同语义: codeTouched 后完全交给 form.code(空值会被 validate 拦截),
+    // 没动过则回落到 suggested,保证默认配置直接可提交。
+    const codeToSubmit = (form.codeTouched ? form.code : suggested).trim();
     const v = validate(codeToSubmit);
     if (v) {
       setError({ message: v });
@@ -233,6 +238,7 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
               }
               placeholder={suggested || 'e.g. recursive-512-ov-64'}
               className={inputCls}
+              autoFocus
               required
             />
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -293,12 +299,16 @@ export function CreateProfileModal({ isOpen, onClose }: CreateProfileModalProps)
                   embedding 模型(如 <span className="font-mono">text-embedding-3-large</span>
                   或 <span className="font-mono">qwen3-embedding-8b</span>)。
                 </p>
-                <a
-                  href="/admin/ai-config"
+                {/* Link 用 react-router 内部导航,避免整页刷新丢失当前 query 缓存 /
+                    Modal 状态。BrowserRouter basename 已是 /admin,所以这里写相对路径
+                    /ai-config 即可,最终落到 /admin/ai-config。 */}
+                <Link
+                  to="/ai-config"
                   className="inline-flex items-center gap-1 text-xs font-mono underline-offset-2 hover:underline"
+                  onClick={onClose}
                 >
                   打开 AI 配置 <ExternalLink className="w-3 h-3" />
-                </a>
+                </Link>
               </div>
             </div>
           ) : (
