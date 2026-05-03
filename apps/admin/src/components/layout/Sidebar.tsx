@@ -28,10 +28,11 @@ import { useSidebarStore, useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { useSiteLogo } from '@/hooks/useSiteLogo';
 import { cn } from '@/lib/utils';
-import { startTransition, useCallback, useState } from 'react';
+import { startTransition, useCallback, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { UserProfileModal } from './UserProfileModal';
+import { SidebarSearchPalette } from './SidebarSearchPalette';
 import { getMediaUrl } from '@/services/mediaService';
 import { authService } from '@/services/authService';
 
@@ -82,6 +83,7 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState('');
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -89,6 +91,8 @@ export function Sidebar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    // palette 打开时, Enter 已被 palette 的 window 监听器拦截; 这里兜底.
+    if (paletteOpen) return;
     const q = searchValue.trim();
     if (!q) return;
     setMobileOpen(false);
@@ -96,6 +100,20 @@ export function Sidebar() {
       navigate(`/posts?search=${encodeURIComponent(q)}`);
     });
   };
+
+  const handleSelectPaletteItem = useCallback(
+    (path: string) => {
+      setPaletteOpen(false);
+      setSearchValue('');
+      setMobileOpen(false);
+      startTransition(() => {
+        navigate(path);
+      });
+    },
+    [navigate, setMobileOpen]
+  );
+
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   // 点击导航项：
   // 1. 立即(urgent)关闭移动端抽屉 —— 用户看到的视觉反馈不能被阻塞
@@ -140,6 +158,10 @@ export function Sidebar() {
     toggle,
     handleNavClick,
     isProfileOpen: showProfileModal,
+    paletteOpen,
+    setPaletteOpen,
+    handleSelectPaletteItem,
+    closePalette,
   };
 
   return (
@@ -217,6 +239,10 @@ interface SidebarContentProps {
   handleNavClick: (e: React.MouseEvent<HTMLAnchorElement>, path: string) => void;
   closeMobile?: () => void;
   isProfileOpen: boolean;
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
+  handleSelectPaletteItem: (path: string) => void;
+  closePalette: () => void;
 }
 
 function SidebarContent({
@@ -232,9 +258,14 @@ function SidebarContent({
   handleNavClick,
   closeMobile,
   isProfileOpen,
+  paletteOpen,
+  setPaletteOpen,
+  handleSelectPaletteItem,
+  closePalette,
 }: SidebarContentProps) {
   const { isDark, toggleThemeWithAnimation } = useTheme();
   const siteLogo = useSiteLogo();
+  const searchAnchorRef = useRef<HTMLDivElement>(null);
 
   return (
     <>
@@ -308,15 +339,30 @@ function SidebarContent({
           >
             <Search className="w-5 h-5 text-[var(--text-muted)]" />
           </button>
-          <div className={cn(
-            'overflow-hidden transition-all duration-300',
-            effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
-          )}>
+          <div
+            ref={searchAnchorRef}
+            className={cn(
+              'overflow-hidden transition-all duration-300',
+              effectiveCollapsed ? 'w-0 opacity-0 ml-0' : 'flex-1 opacity-100 ml-2'
+            )}
+          >
             <input
               type="text"
               value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              placeholder="搜索..."
+              onChange={(e) => {
+                const v = e.target.value;
+                setSearchValue(v);
+                setPaletteOpen(v.trim().length > 0);
+              }}
+              onFocus={() => {
+                if (searchValue.trim()) setPaletteOpen(true);
+              }}
+              placeholder="搜索文章 / 媒体 / 分类 / 标签…"
+              role="combobox"
+              aria-expanded={paletteOpen}
+              aria-controls="sidebar-search-palette"
+              aria-autocomplete="list"
+              autoComplete="off"
               className={cn(
                 'w-full px-3 py-1.5 rounded-lg text-sm',
                 'bg-[var(--bg-card)] border border-border',
@@ -328,6 +374,13 @@ function SidebarContent({
           </div>
         </form>
       </div>
+      <SidebarSearchPalette
+        query={searchValue}
+        isOpen={paletteOpen && !effectiveCollapsed}
+        anchorRef={searchAnchorRef}
+        onClose={closePalette}
+        onNavigate={handleSelectPaletteItem}
+      />
 
       {/* 导航菜单 — Control Room 分组 */}
       <nav className="flex-1 py-3 overflow-y-auto">

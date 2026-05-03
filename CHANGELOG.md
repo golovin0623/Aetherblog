@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### ✨🐛 管理后台侧边栏搜索 · 修复半成品并升级为多通道预览 (2026-05-03)
+
+**背景:** 管理后台一共有三个搜索入口, 都各自有问题:
+1. **侧边栏搜索框** —— 表单 `onSubmit` 已经接线, Enter 时跳转 `/posts?search=<keyword>`; 但 `PostsPage` 只读本地 state, 完全不解析 URL 上的 `search=` 参数, 导致关键词被 URL 吞掉, 列表不会被过滤、PostsPage 自己的搜索框也是空的。
+2. **顶栏 Header 搜索框** —— 纯装饰, 没 `value` / `onChange` / `onSubmit`, 是死代码。
+3. **PostsPage 内搜索框** —— 工作正常但仅页内可用。
+
+加上已有的 `⌘K` 命令面板, 等于"四个搜索入口、三种残缺"。本次按"角色不重叠"清理: 侧边栏 = 内容快速搜索 (文章 / 媒体 / 分类 / 标签); ⌘K = 命令导航; PostsPage = 页内细化筛选; Header 死框直接删除。
+
+**Fixed:**
+
+- **`apps/admin/src/pages/PostsPage.tsx`** —— 接入 `useSearchParams`, 把 `?search=` 作为关键词的唯一事实源。`searchQuery` / `debouncedSearch` 都用 URL 值初始化; debounce 稳定后回写 URL (`replace: true` 不污染历史栈); 监听外部 URL 变化 (如侧边栏跳转) 同步回输入框, 用 `prev === urlSearch` 短路防止与本地 typing 互踩。副产品: 复制链接、刷新、浏览器后退都自动保留搜索状态。
+- **`apps/admin/src/components/layout/Header.tsx`** —— 删除完全没接线的搜索框 + 未使用的 `Search` lucide import; 容器从 `justify-between` 改成 `justify-end`, 让右侧用户菜单/通知/主题切换正确贴右。
+
+**Added:**
+
+- **`apps/admin/src/components/layout/SidebarSearchPalette.tsx` (新)** —— 侧边栏搜索的 Inline 预览面板:
+  - **多通道并发**: `Promise.allSettled` 同时打 `postService.getList({ keyword, pageSize:5 })` + `mediaService.getList({ keyword, pageSize:3 })`, 单通道失败不连坐 (各自记日志, 仍能展示其它通道结果); 分类/标签量小, 一次性拉全量后本地子串过滤 (top 3 each)。
+  - **键盘导航**: ↑↓ 循环 active 项 + ↵ 进入 + esc 关闭, 用 window 级 keydown listener (与 CommandPalette 一致); 仅在锚点可见时绑定监听器, 移动/桌面双 SidebarContent 实例不会重复触发 Enter。
+  - **Portal 定位**: 因 `motion.aside` 上有 `transform-gpu` + `overflow-hidden`, 任何 `position:fixed` 子元素都会被它做成"包含块"截断 —— 所以走 `createPortal(document.body)` + 实时 `getBoundingClientRect` 锚定; 监听 resize / capture-scroll 自动跟随; 锚点宽度为 0 (collapsed) 或 translate 到屏外 (移动抽屉关闭) 时直接 `pos = null` 不渲染。
+  - **三态 + a11y**: loading 用骨架屏 (3 行 pulse, 不用 spinner, 守 §3.6); empty 走 `font-editorial italic` 一行 + `font-mono uppercase tracking` 副提示 (Aether Codex §3.4 排版); error 用 `--signal-warn` 单行 + `role="alert"`; 容器 `role="listbox"` + 每项 `role="option"` + `aria-selected`; 输入框升级为 `role="combobox"` + `aria-expanded` + `aria-autocomplete="list"`。
+  - **样式**: 用 `surface-overlay` token 类 (modal 级表面, blur + aurora glow), active 行用 `color-mix(in oklch, var(--aurora-1) 14%, transparent)` + 左侧 aurora 渐变光柱 (与 `CommandPalette.tsx:201-209` 同一模式), 全程零 `dark:` 变体 / 零裸 hex / 零品牌渐变 (Aether Codex 六硬规则 §3.4)。
+  - **底部 footer**: `查看 "X" 的全部文章` 永远作为最后一项, 无内容命中时也保留 —— 与 P1.1 修复联动, 点击或 Enter 兜底跳到 `/posts?search=` 让 PostsPage 用更宽条件继续搜。
+
+- **`apps/admin/src/components/layout/Sidebar.tsx`** —— 接入 palette: 新增 `paletteOpen` state + `handleSelectPaletteItem` (清空输入 + 关移动抽屉 + `startTransition` 路由跳转) + `closePalette`; 给搜索 input 包裹 `searchAnchorRef` 作为 portal 锚点; `onChange` / `onFocus` 按"输入有内容时打开 palette"语义切换; `handleSearch` 在 palette 打开时直接 `return` 兜底 (palette 的 window listener 已 `preventDefault` 掉 Enter 的 form submit, 这里防御性双保险)。
+
+**Why 不把侧边栏搜索做成命令面板的复刻:** 命令面板 (`⌘K` / `CommandPalette.tsx`) 的语义是"执行命令 / 跳转设置页", 是**键盘党**专属; 侧边栏搜索的语义是"在站内**内容**里找东西", 是**鼠标党**入口。两者职责正交, 合并会牺牲两边的速度感。Linear / Notion / Vercel 都是这么分的。
+
+**Why 分类/标签不走后端 keyword:** 这两个表通常 < 200 行, 一次拉全量再 `includes` 过滤的延迟比再发一次 HTTP 还低, 也避免给后端加专门的 search endpoint。如果将来量级到千级, 改成同 `postService.getList` 模式的 `?keyword=` 即可, 接口面零改动。
+
+**已知未做 (后续可选 P3):** 后端聚合 endpoint `/api/v1/admin/search` —— 当前前端打 2 个独立 HTTP 请求, 在 fast 网络下没问题, 慢网 / 移动端首字延迟可见。要做的话改成单次请求 + 后端 fan-out 即可, 不影响当前契约。
+
 ### ✨ AI 标签工具 · 现有标签库感知 + 双段选择 UX (2026-05-01)
 
 **背景:** 旧版 AI Tagger 只会基于内容"凭空"生成标签字符串, 完全不知道站点已有哪些标签 —— 经常把"人工智能"重新生成成"AI", 让用户手动改标签 / 接受重复。本次让 AI Tagger 升级为"先复用, 再补新建"的双段输出模式, 并把"复用 vs 创建"的应用副作用在 UI 上可视化分离。
