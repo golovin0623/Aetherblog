@@ -560,16 +560,54 @@ func (h *SearchHandler) proxyProfileStream(
 	scanner := bufio.NewScanner(respBody)
 	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 
+	// 跟踪上游是否已经 emit 终态帧（done / result / error）。
+	// codex P2 review (PR #557): 如果是被外部 cancel 端点中断，scanner 会安静退
+	// 出，handler 返回 nil，但 useReindexStream 没看到任何 ``error`` /
+	// ``result`` 帧 → ProfileActivationFlow 永远不会离开 ``reindexing`` 步。
+	// 必须在这里补一个 error 帧让前端状态机能转移。
+	sawTerminalUpstream := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !validateSSELine(line) {
 			continue
 		}
+		// 复用 validateSSELine 的解析逻辑判定终态。validateSSELine 内部已经
+		// 解过一次 JSON，这里再解一次确实有重复成本，但 SSE 事件量级（数 K）
+		// 完全可承受，换来跨 handler 复用比抽出共享 helper 更简单。
+		if strings.HasPrefix(line, "data:") {
+			payload := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "data: "), "data:"))
+			if payload != "" {
+				var evt sseEvent
+				if err := json.Unmarshal([]byte(payload), &evt); err == nil {
+					if evt.Type == "done" || evt.Type == "result" || evt.Type == "error" {
+						sawTerminalUpstream = true
+					}
+				}
+			}
+		}
 		fmt.Fprintf(w, "%s\n", line)
 		flusher.Flush()
 	}
-	if err := scanner.Err(); err != nil {
-		log.Warn().Err(err).Msg("profile reindex SSE scanner error")
+	scanErr := scanner.Err()
+	if scanErr != nil {
+		log.Warn().Err(scanErr).Msg("profile reindex SSE scanner error")
+	}
+
+	// 如果上游在终态前就被中断（cancel 端点 / 客户端断开 / 上游连接错误），
+	// 而上游又没自己 emit 终态，这里替它 emit 一个 error 帧，让前端能转移
+	// 出 reindexing 步。区分 cancel vs upstream-error 让前端 toast 文案能差异化。
+	if !sawTerminalUpstream {
+		var fallback string
+		switch {
+		case streamCtx.Err() != nil:
+			fallback = `data: {"type":"error","code":"cancelled","message":"重建索引已被取消"}` + "\n\n"
+		case scanErr != nil:
+			fallback = `data: {"type":"error","code":"upstream","message":"上游连接中断"}` + "\n\n"
+		}
+		if fallback != "" {
+			fmt.Fprint(w, fallback)
+			flusher.Flush()
+		}
 	}
 	return nil
 }
