@@ -191,7 +191,7 @@ docker-compose -f docker-compose.prod.yml up -d
 | `/admin` | 管理后台 |
 | `/api` | 后端 API |
 
-> 详细的 Docker 构建、域名配置、运维命令请参考 [部署指南](./docs/deployment.md)。
+> 详细的 Docker 构建、域名配置、运维命令请参考 [部署指南](./docs/deployment.md)；CI 自动部署与 webhook secret 轮换参考 [Webhook 部署器](./ops/webhook/README.md)。
 
 ---
 
@@ -203,6 +203,7 @@ docker-compose -f docker-compose.prod.yml up -d
 | 🏗 [系统架构](./docs/architecture.md) | 架构概览、模块依赖、技术选型、数据流 |
 | 🐳 [部署指南](./docs/deployment.md) | Docker 构建、生产部署、域名配置、运维 |
 | 🔄 [CI/CD 指南](./.github/CICD_GUIDE.md) | GitHub Actions 配置、自动构建部署 |
+| 🚀 [Webhook 部署器](./ops/webhook/README.md) | 自动部署 webhook、HMAC 鉴权、secret 轮换手册 |
 | 📋 [更新日志](./CHANGELOG.md) | 版本发布记录与变更说明 |
 | 📂 [文档中心](./docs/INDEX.md) | 全部文档索引（含设计文档、QA 报告等） |
 

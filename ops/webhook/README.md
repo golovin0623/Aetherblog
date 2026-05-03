@@ -18,6 +18,7 @@
 | Python 最低版本 | **3.6** (CentOS 7 / RHEL 7 系统默认就是这个版本) | `webhook_server.py` 顶部注释列了不能用的 3.7+ 语法; 改这个文件时盯一下别误用 `from __future__ import annotations` / 海象运算符 / 内置泛型 |
 | 监听地址 | `0.0.0.0:7868` | **公网可见**, 安全靠 HMAC-SHA256 + 32 字节 secret 兜底 |
 | WEBHOOK_SECRET | systemd unit 内联 (sed 替换 placeholder) | 不走 EnvironmentFile |
+| 请求防挂死 | `WEBHOOK_REQUEST_TIMEOUT=15`, `WEBHOOK_MAX_BODY_BYTES=8192` | 防止公网半开/超大请求占住部署入口 |
 | 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
 | systemd 加固指令 | 无 | 不上 `ProtectSystem` / `ProtectHome` / `SystemCallFilter` 等 |
 
@@ -97,19 +98,90 @@ systemctl status deploy-webhook --no-pager
 
 CI 用 HMAC-SHA256 给请求体签名, 头部 `X-Hub-Signature-256: sha256=<hex>`. 详见 `.github/workflows/ci-cd.yml` 的 deploy job.
 
+## Webhook Secret 轮换
+
+触发条件:
+
+- secret 被贴到聊天、日志、工单或截图里。
+- 怀疑 GitHub Actions Secret / systemd unit 被泄露。
+- 例行安全轮换。
+
+轮换原则:
+
+- 生成 32 字节随机 secret, hex 后为 64 个字符。
+- 同一个新值必须同时更新服务器 systemd 与 GitHub Actions Secret。
+- 不要把新 secret 写入仓库、聊天记录或明文运维文档。
+
+```bash
+# 1) 在服务器生成新 secret
+NEW_SECRET="$(openssl rand -hex 32)"
+echo "$NEW_SECRET"
+
+# 2) 替换 systemd unit 里的 WEBHOOK_SECRET
+cp /etc/systemd/system/deploy-webhook.service \
+  /etc/systemd/system/deploy-webhook.service.bak.$(date +%Y%m%d%H%M%S)
+
+sed -i -E \
+  "s/^Environment=WEBHOOK_SECRET=.*/Environment=WEBHOOK_SECRET=${NEW_SECRET}/" \
+  /etc/systemd/system/deploy-webhook.service
+
+systemctl daemon-reload
+systemctl restart deploy-webhook.service
+
+# 3) 本机未签名探测: 应快速返回 401 Invalid signature
+curl --noproxy '*' -i --max-time 5 -X POST http://127.0.0.1:7868/deploy
+
+# 4) 签名探测: 使用非法服务名, 应返回 400 Invalid services field, 不会触发部署
+body='{"services": "__probe__"}'
+sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$NEW_SECRET" -hex | awk '{print $NF}')
+printf '%s' "$body" | curl --noproxy '*' -i --max-time 5 -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Hub-Signature-256: sha256=$sig" \
+  --data-binary @- \
+  http://127.0.0.1:7868/deploy
+
+# 5) 更新 GitHub Secret 后, 再清理当前 shell 里的敏感变量
+# unset NEW_SECRET body sig
+```
+
+第 5 步前, 在 GitHub 仓库页面更新同一个值:
+
+```
+Settings → Secrets and variables → Actions
+→ DEPLOY_WEBHOOK_SECRET → Update
+```
+
+如果当前机器已登录 `gh`, 也可以用命令更新:
+
+```bash
+printf '%s' "$NEW_SECRET" | gh secret set DEPLOY_WEBHOOK_SECRET \
+  --repo golovin0623/Aetherblog \
+  --body-file -
+```
+
+同时确认 `DEPLOY_WEBHOOK_URL` 仍为 `http://<your-server-ip>:7868/deploy`。不要填
+`:7869`, 不要填 gateway/blog 域名, 也不要把 secret 放进 URL 路径。
+
+GitHub 更新完成并确认后, 再清理当前 shell 里的敏感变量:
+
+```bash
+unset NEW_SECRET body sig
+```
+
 ## 验证
 
 ```bash
 # 健康检查 (HMAC 不通过, 应返回 401)
-curl -i -X POST http://127.0.0.1:7868/deploy
+curl --noproxy '*' -i -X POST http://127.0.0.1:7868/deploy
 
 # 用真 secret 触发增量部署
-WEBHOOK_SECRET=<your-secret>
+WEBHOOK_SECRET=<64-hex-secret>
 body='{"services": "backend gateway"}'
 sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
-curl -i -X POST -H "Content-Type: application/json" \
+printf '%s' "$body" | curl --noproxy '*' -i -X POST \
+  -H "Content-Type: application/json" \
   -H "X-Hub-Signature-256: sha256=$sig" \
-  --data-raw "$body" \
+  --data-binary @- \
   http://127.0.0.1:7868/deploy
 
 # 查看 webhook 服务日志
@@ -137,14 +209,24 @@ tail -n 100 /var/log/aetherblog-deploy.log
    sudo journalctl -u deploy-webhook.service --since "10 minutes ago" --no-pager
    ```
 
-3. **数据库迁移到底卡在哪**:
+3. **本机 curl 卡住且没有 journal 日志**:
+   ```bash
+   env | grep -i proxy || true
+   curl --noproxy '*' -i --max-time 5 -X POST http://127.0.0.1:7868/deploy
+   ```
+   如果这里没有快速返回 `401 Invalid signature`, 说明 webhook 进程可能被半开请求
+   占住, 或当前 shell 的代理环境变量把 `127.0.0.1` 请求绕走了。先用
+   `--noproxy '*'` 排除代理；仍不返回时再 `systemctl restart deploy-webhook.service`
+   恢复入口, 并确认 `webhook_server.py` 已包含线程 server + 请求体超时保护。
+
+4. **数据库迁移到底卡在哪**:
    ```bash
    docker exec aetherblog-postgres psql -U aetherblog -d aetherblog \
      -c "SELECT version, dirty FROM schema_migrations;"
    ```
    如果 dirty=true, 看 deploy.sh 的 self-heal 表 (`_try_heal_known_dirty` 函数) 有没有登记当前 dirty 版本的 recipe.
 
-4. **完整部署日志**:
+5. **完整部署日志**:
    ```bash
    tail -200 /var/log/aetherblog-deploy.log
    ```
