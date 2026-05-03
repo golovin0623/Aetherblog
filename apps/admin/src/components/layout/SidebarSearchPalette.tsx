@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ArrowRight, CornerDownLeft, FileText, FolderTree, Hash, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { postService, PostListItem } from '@/services/postService';
@@ -45,6 +45,7 @@ export function SidebarSearchPalette({
   onNavigate,
 }: SidebarSearchPaletteProps) {
   const paletteRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [posts, setPosts] = useState<PostListItem[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -290,12 +291,13 @@ export function SidebarSearchPalette({
       {isOpen && pos && (
         <motion.div
           ref={paletteRef}
+          id="sidebar-search-palette"
           role="listbox"
           aria-label="侧边栏搜索结果"
-          initial={{ opacity: 0, y: -4, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -4, scale: 0.98 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          initial={reduceMotion ? false : { opacity: 0, y: -4, scale: 0.98 }}
+          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           className="surface-overlay fixed z-[60] overflow-hidden rounded-xl"
           style={{
             top: pos.top,
