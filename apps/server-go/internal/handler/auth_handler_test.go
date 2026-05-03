@@ -34,6 +34,24 @@ func TestAuthHandler_GetJWTSecretMeta_ReturnsErrorWhenRepoMissing(t *testing.T) 
 	}
 }
 
+func TestRotationIntervalDays_ReturnsZeroWhenDisabled(t *testing.T) {
+	if got := rotationIntervalDays(0); got != 0 {
+		t.Errorf("expected disabled interval to return 0, got %d", got)
+	}
+}
+
+func TestRotationIntervalDays_ReturnsOneForSubDayInterval(t *testing.T) {
+	if got := rotationIntervalDays(12 * time.Hour); got != 1 {
+		t.Errorf("expected sub-day interval to return 1, got %d", got)
+	}
+}
+
+func TestPreviousGraceHours_DefaultsToFortyEightWhenUnset(t *testing.T) {
+	if got := previousGraceHours(0); got != 48 {
+		t.Errorf("expected unset grace to default to 48, got %d", got)
+	}
+}
+
 // TestFormatNullableTime_ReturnsNilForNilPtr 验证：
 // nil 输入返回 nil 而不是空字符串。前端依赖 null 来隐藏对应行 —— 空字符串
 // 会让 UI 看起来"有但没填"反而更糟。

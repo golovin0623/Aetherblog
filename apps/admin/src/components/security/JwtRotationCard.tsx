@@ -162,8 +162,12 @@ export function JwtRotationCard({ className }: { className?: string }) {
           <MetaRow
             icon={Clock}
             label="自动轮换间隔"
-            value={`${meta.rotationIntervalDays} 天`}
-            hint={`旧密钥宽限期 ${meta.previousGraceHours} 小时`}
+            value={meta.rotationIntervalDays > 0 ? `${meta.rotationIntervalDays} 天` : '已禁用'}
+            hint={
+              meta.rotationIntervalDays > 0
+                ? `旧密钥宽限期 ${meta.previousGraceHours} 小时`
+                : `自动轮换未开启 · 手动轮换仍使用 ${meta.previousGraceHours} 小时宽限期`
+            }
           />
         </div>
       ) : (

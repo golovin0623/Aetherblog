@@ -35,7 +35,7 @@ type AuthHandler struct {
 	// 签名，JWTAuth 中间件通过 jwtKeys.Verifiers() 支持 current+previous 双 key 验证。
 	jwtKeys *jwtkeys.Store
 	// jwtRepo 仅给管理 UI 拉密钥轮换元数据 (晋升时间 / 宽限期到期等),
-	// 不参与签发/验签热路径。可为 nil (旧调用方兼容),GET 元数据端点会返回 503。
+	// 不参与签发/验签热路径。可为 nil (旧调用方兼容),GET 元数据端点会返回 500。
 	jwtRepo *repository.JWTSecretRepo
 }
 
@@ -98,21 +98,35 @@ func (h *AuthHandler) GetJWTSecretMeta(c echo.Context) error {
 		log.Error().Err(err).Msg("get jwt secret meta failed")
 		return response.FailWith(c, response.InternalError, "查询失败")
 	}
-	rotationDays := int(h.cfg.JWT.RotationInterval / (24 * time.Hour))
-	if rotationDays < 1 {
-		rotationDays = 1
-	}
-	graceHours := int(h.cfg.JWT.PreviousGrace / time.Hour)
-	if graceHours < 1 {
-		graceHours = 1
-	}
 	return response.OK(c, map[string]any{
 		"currentPromotedAt":    meta.CurrentPromotedAt.UTC().Format(time.RFC3339),
 		"previousDemotedAt":    formatNullableTime(meta.PreviousDemotedAt),
 		"previousRetiresAt":    formatNullableTime(meta.PreviousRetiresAt),
-		"rotationIntervalDays": rotationDays,
-		"previousGraceHours":   graceHours,
+		"rotationIntervalDays": rotationIntervalDays(h.cfg.JWT.RotationInterval),
+		"previousGraceHours":   previousGraceHours(h.cfg.JWT.PreviousGrace),
 	})
+}
+
+func rotationIntervalDays(interval time.Duration) int {
+	if interval <= 0 {
+		return 0
+	}
+	days := int(interval / (24 * time.Hour))
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
+func previousGraceHours(grace time.Duration) int {
+	if grace <= 0 {
+		grace = 48 * time.Hour
+	}
+	hours := int(grace / time.Hour)
+	if hours < 1 {
+		return 1
+	}
+	return hours
 }
 
 // formatNullableTime 把 *time.Time 转成 RFC3339 字符串或 nil (前端见到 null 即可隐藏对应行)。
@@ -130,7 +144,7 @@ func formatNullableTime(t *time.Time) any {
 //  3. jwtkeys.Store 刷新内存快照；
 //  4. 已发放的 access token 在 grace window 内仍可验签（不强制用户下线）。
 //
-// 响应只返回 rotated_at / previous_expires_at；绝不回传 secret 本身。
+// 响应只返回 rotatedAt / previousGraceHours；绝不回传 secret 本身。
 func (h *AuthHandler) RotateJWTSecret(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
