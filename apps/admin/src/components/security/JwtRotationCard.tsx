@@ -96,7 +96,7 @@ export function JwtRotationCard({ className }: { className?: string }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`surface-leaf p-5 sm:p-6 ${className || ''}`}
+      className={`surface-leaf surface-admin-panel p-5 sm:p-6 ${className || ''}`}
     >
       <div className="flex items-start justify-between gap-3 sm:gap-4 mb-5">
         <div className="flex items-start gap-3 min-w-0">

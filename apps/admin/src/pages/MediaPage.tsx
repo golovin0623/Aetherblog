@@ -544,7 +544,7 @@ export default function MediaPage() {
           className="hidden lg:flex shrink-0 relative"
           style={{ width: folderPanelWidth }}
         >
-          <div className="flex-1 h-full surface-leaf !rounded-2xl flex flex-col overflow-hidden">
+          <div className="flex-1 h-full surface-leaf surface-admin-panel !rounded-2xl flex flex-col overflow-hidden">
             {/* 固定标题头 */}
             <div className="px-4 py-3.5 flex items-center justify-between shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)]">
               <div className="flex items-center gap-2">
