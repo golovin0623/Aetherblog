@@ -144,14 +144,14 @@ export function JwtRotationCard({ className }: { className?: string }) {
           <MetaRow
             icon={KeyRound}
             label="当前密钥晋升于"
-            value={formatDate(meta.currentPromotedAt, 'YYYY-MM-DD HH:mm:ss')}
+            value={formatDate(meta.currentPromotedAt, 'yyyy-MM-dd HH:mm:ss')}
             hint={formatRelativeTime(meta.currentPromotedAt)}
           />
           {meta.previousRetiresAt && (
             <MetaRow
               icon={AlertTriangle}
               label="上一密钥宽限期至"
-              value={formatDate(meta.previousRetiresAt, 'YYYY-MM-DD HH:mm:ss')}
+              value={formatDate(meta.previousRetiresAt, 'yyyy-MM-dd HH:mm:ss')}
               hint={
                 new Date(meta.previousRetiresAt) > new Date()
                   ? `${formatRelativeTime(meta.previousRetiresAt)} 失效 · 期间旧 token 仍可验签`
