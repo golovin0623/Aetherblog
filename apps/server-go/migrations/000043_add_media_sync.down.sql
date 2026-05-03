@@ -1,4 +1,4 @@
--- 000042_add_media_sync.down.sql
+-- 000043_add_media_sync.down.sql
 
 DELETE FROM site_settings WHERE setting_key = 'storage.sync.auto_enabled';
 

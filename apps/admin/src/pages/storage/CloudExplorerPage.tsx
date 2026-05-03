@@ -10,7 +10,7 @@
  *   4. 已入库行只能点"在媒体库中查看"(跳到 /media?highlight=ID)
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Cloud, Folder, FileText, Download, Eye, Trash2, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RefreshCw, Loader2 } from 'lucide-react';
@@ -44,7 +44,7 @@ export default function CloudExplorerPage() {
   const providers = providersResp?.data || [];
 
   // 默认选中第一个非 LOCAL 的 enabled provider
-  useMemo(() => {
+  useEffect(() => {
     if (!providerId && providers.length > 0) {
       const firstCloud = providers.find((p) => p.providerType !== 'LOCAL' && p.isEnabled);
       if (firstCloud) {

@@ -99,7 +99,7 @@ export function MediaDetail({ item: media, onClose, onDelete, onMove }: MediaDet
   if (!media) return null;
 
   const Icon = typeIcons[media.fileType] || FileText;
-  const fullUrl = getMediaUrl(media.fileUrl);
+  const fullUrl = getMediaUrl(media);
   const isImage = media.fileType === 'IMAGE';
 
   const tabs: { id: DetailTab; label: string; icon: typeof Tag }[] = [

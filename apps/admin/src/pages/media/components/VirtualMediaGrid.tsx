@@ -1,6 +1,6 @@
 import { FixedSizeGrid as Grid } from 'react-window';
 import { useCallback } from 'react';
-import type { MediaItem } from '@/services/mediaService';
+import { getMediaUrl, type MediaItem } from '@/services/mediaService';
 
 /**
  * 虚拟滚动媒体网格组件
@@ -91,7 +91,7 @@ export function VirtualMediaGrid({
             >
               {item.fileType === 'IMAGE' ? (
                 <img
-                  src={item.fileUrl}
+                  src={getMediaUrl(item)}
                   alt={item.originalName}
                   className="w-full h-full object-cover"
                   loading="lazy"
