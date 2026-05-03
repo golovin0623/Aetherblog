@@ -29,3 +29,34 @@ export const getTagColor = (name: string): TagColor => {
   }
   return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
 };
+
+/* -------------------------------------------------------------
+ * Codex-aligned hex palette —— 给 Aether Codex surface 用.
+ *
+ * 每个 tag 在 surface-leaf data-interactive 上需要一个 hex 颜色覆盖
+ * 局部 --aurora-1, 这样左侧光带和边框辉光会跟随 tag 自身色相 (与
+ * FriendCard 里 themeColor 覆盖 aurora 的做法一致). hex 与 TAG_PALETTE
+ * 顺序对齐, 保证同一 tag 名在两套 API 下色相一致.
+ * ------------------------------------------------------------- */
+export const TAG_HEX_PALETTE = [
+  '#3B82F6', // blue-500
+  '#8B5CF6', // violet-500
+  '#10B981', // emerald-500
+  '#F59E0B', // amber-500
+  '#EC4899', // pink-500
+  '#14B8A6', // teal-500
+  '#F43F5E', // rose-500
+  '#6366F1', // indigo-500
+  '#0EA5E9', // sky-500
+  '#84CC16', // lime-500
+  '#D946EF', // fuchsia-500
+  '#F97316', // orange-500
+] as const;
+
+export const getTagHex = (name: string): string => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TAG_HEX_PALETTE[Math.abs(hash) % TAG_HEX_PALETTE.length];
+};
