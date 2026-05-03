@@ -53,7 +53,7 @@ export default function FloatingThemeToggle() {
       className="surface-raised !rounded-full md:hidden fixed right-6 bottom-8 z-[60] w-[44px] h-[44px]
         transition-all duration-300 hover:scale-110 active:scale-95
         flex items-center justify-center group
-        focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] focus-visible:outline-none overflow-hidden"
+        focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)] focus-visible:outline-none"
       aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
     >
       <AnimatePresence mode="wait" initial={false}>
