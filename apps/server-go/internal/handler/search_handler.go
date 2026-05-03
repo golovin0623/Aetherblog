@@ -496,16 +496,14 @@ func (h *SearchHandler) proxyProfileStream(
 	c echo.Context, method, targetPath string, headers map[string]string,
 ) error {
 	if !h.reindexing.CompareAndSwap(false, true) {
-		return c.JSON(http.StatusConflict, map[string]any{
-			"code":    http.StatusConflict,
-			"success": false,
-			"message": "索引任务正在进行中，请等待完成或取消后重试",
-		})
+		return response.Fail(c, "索引任务正在进行中，请等待完成或取消后重试")
 	}
 	// SSE 走的是同步阻塞（当前 goroutine 即任务 goroutine），所以这里直接绑定
 	// 当前 request 的 ctx cancel —— Cancel 端点调用 cancelActiveJob() 会触发
 	// ctx.Done()，DoStream 内部的 http 调用会立即返回，连带让我们退出 scanner 循环。
-	streamCtx, cancel := context.WithCancel(c.Request().Context())
+	// 30min 安全上限：对齐 Reindex / IndexBatch 的硬上限，防止上游 hang 让锁
+	// 永久持有（client 已断开但 stream 还卡在 DoStream → ai-service 的 read 上）。
+	streamCtx, cancel := context.WithTimeout(c.Request().Context(), 30*time.Minute)
 	h.setActiveJob("profile-reindex", cancel)
 	defer func() {
 		cancel()
