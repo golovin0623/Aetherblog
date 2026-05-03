@@ -202,9 +202,9 @@ func (s *StorageProviderService) ListObjects(ctx context.Context, providerID int
 // ImportObjects 把指定 keys 反向导入到 media_files catalog。
 //
 // 对每个 key:
-//   1. 在云端 Head 一次确认存在 + 取大小/MIME。
-//   2. 写入 media_files (file_path=key, file_url=key, cdn_url=GetURL(key))。
-//   3. 跳过已在 catalog 的 key (避免重复)。
+//  1. 在云端 Head 一次确认存在 + 取大小/MIME。
+//  2. 写入 media_files (file_path=key, file_url=key, cdn_url=GetURL(key))。
+//  3. 跳过已在 catalog 的 key (避免重复)。
 //
 // 返回 (importedCount, skippedKeys, err)。
 func (s *StorageProviderService) ImportObjects(ctx context.Context, providerID int64, keys []string, uploaderID *int64) (int, []string, error) {
@@ -508,9 +508,10 @@ func mergeProviderConfigJSON(oldJSON, newJSON string) (string, error) {
 }
 
 // isRedactedValue 判断字符串是否是 redactProviderConfigJSON 生成的脱敏值。
-// 简单启发式: 包含 "****" 即视为脱敏。
+// redactProviderConfigJSON 只会产生两种形态:"****" 或 "ab****cdef"。
+// 不把任意包含 "****" 的真实 secret 当占位符,避免误保留旧密钥。
 func isRedactedValue(v string) bool {
-	return strings.Contains(v, "****")
+	return v == "****" || (len(v) == 10 && strings.HasPrefix(v[2:], "****"))
 }
 
 // toProviderVO 将 StorageProvider 模型转换为视图对象。

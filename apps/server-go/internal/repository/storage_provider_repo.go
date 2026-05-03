@@ -263,12 +263,13 @@ func (r *StorageProviderRepo) MigrateLegacyToEncrypted(ctx context.Context) (int
 }
 
 // LookupCatalogByKeys 反查 keys 在 media_files 中(限定 storage_provider_id=providerID)的 ID 映射。
+// 包含回收站中的 deleted=true 行;它们仍是 catalog 的一部分,不能被云端浏览器当孤儿删除。
 // @ref 对象存储 rollout - Phase 5
 func (r *StorageProviderRepo) LookupCatalogByKeys(ctx context.Context, providerID int64, keys []string) (map[string]int64, error) {
 	if len(keys) == 0 {
 		return map[string]int64{}, nil
 	}
-	q, args, err := sqlx.In(`SELECT id, file_path FROM media_files WHERE storage_provider_id = ? AND file_path IN (?) AND deleted = false`, providerID, keys)
+	q, args, err := sqlx.In(`SELECT id, file_path FROM media_files WHERE storage_provider_id = ? AND file_path IN (?)`, providerID, keys)
 	if err != nil {
 		return nil, err
 	}

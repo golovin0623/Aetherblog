@@ -1,4 +1,4 @@
--- 000042_add_media_sync.up.sql
+-- 000043_add_media_sync.up.sql
 -- Phase 4 of object storage rollout — 本地→云的单向镜像备份机制。
 --
 -- 字段语义:

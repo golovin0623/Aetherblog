@@ -94,7 +94,7 @@ func TestValidateEndpoint_RejectsPrivate(t *testing.T) {
 		{"https://10.0.0.1", true},
 		{"https://192.168.1.1", true},
 		{"https://169.254.169.254", true}, // IMDS
-		{"ftp://example.com", true},        // 非 http(s)
+		{"ftp://example.com", true},       // 非 http(s)
 	}
 	for _, c := range cases {
 		err := validateEndpoint(c.endpoint)
@@ -142,6 +142,18 @@ func TestLocalStorage_ListFiltersByPrefix(t *testing.T) {
 		if !strings.HasPrefix(o.Key, "2026/05/") {
 			t.Errorf("unexpected key %q outside prefix", o.Key)
 		}
+	}
+
+	page1, tok, err := store.List(ctx, "2026/05", "", 1)
+	if err != nil {
+		t.Fatalf("list page1: %v", err)
+	}
+	page2, _, err := store.List(ctx, "2026/05", tok, 1)
+	if err != nil {
+		t.Fatalf("list page2: %v", err)
+	}
+	if tok == "" || len(page1) != 1 || len(page2) != 1 || page1[0].Key == page2[0].Key {
+		t.Errorf("pagination should return distinct objects across pages, page1=%v token=%q page2=%v", page1, tok, page2)
 	}
 }
 

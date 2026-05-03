@@ -627,7 +627,7 @@ export default function MediaPage() {
                     onPreview={(item) => handlePreview(item.id)}
                     onDelete={(id) => handleDeleteConfirm(id)}
                     onCopyUrl={handleCopyUrl}
-                    onDownload={(item) => handleDownload(item.fileUrl, item.originalName)}
+                    onDownload={(item) => handleDownload(getMediaUrl(item), item.originalName)}
                   />
                 ) : (
                   <MediaGrid
@@ -824,7 +824,7 @@ export default function MediaPage() {
                   onClick={() => {
                     const urls = currentItems
                       .filter((item: any) => selectedIds.has(item.id))
-                      .map((item: any) => getMediaUrl(item.fileUrl))
+                      .map((item: any) => getMediaUrl(item))
                       .join('\n');
                     navigator.clipboard.writeText(urls);
                     toast.success('已复制所有选中链接');

@@ -66,25 +66,25 @@ var allowedMimeTypes = map[string]bool{
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // .pptx
 	// Office 文档 (旧版)
-	"application/msword":                  true, // .doc
-	"application/vnd.ms-excel":            true, // .xls
-	"application/vnd.ms-powerpoint":       true, // .ppt
+	"application/msword":            true, // .doc
+	"application/vnd.ms-excel":      true, // .xls
+	"application/vnd.ms-powerpoint": true, // .ppt
 	// 其他文档
-	"application/pdf":             true,
-	"text/plain":                  true, // .txt
-	"text/csv":                    true, // .csv
-	"text/markdown":               true, // .md
-	"application/json":            true, // .json
-	"application/xml":             true, // .xml
-	"text/xml":                    true, // .xml
+	"application/pdf":  true,
+	"text/plain":       true, // .txt
+	"text/csv":         true, // .csv
+	"text/markdown":    true, // .md
+	"application/json": true, // .json
+	"application/xml":  true, // .xml
+	"text/xml":         true, // .xml
 	// 压缩包
-	"application/zip":                  true, // .zip
-	"application/x-rar-compressed":     true, // .rar
-	"application/vnd.rar":              true, // .rar (新 MIME)
-	"application/x-7z-compressed":      true, // .7z
-	"application/gzip":                 true, // .gz
-	"application/x-tar":                true, // .tar
-	"application/x-bzip2":              true, // .bz2
+	"application/zip":              true, // .zip
+	"application/x-rar-compressed": true, // .rar
+	"application/vnd.rar":          true, // .rar (新 MIME)
+	"application/x-7z-compressed":  true, // .7z
+	"application/gzip":             true, // .gz
+	"application/x-tar":            true, // .tar
+	"application/x-bzip2":          true, // .bz2
 	// 字体
 	"font/woff":              true,
 	"font/woff2":             true,
@@ -357,11 +357,11 @@ type UpdateContentParams struct {
 // UpdateContent 替换某条媒体的二进制内容(图片编辑器保存场景)。
 //
 // 行为:
-//   1. 按 media.StorageProviderID 反查源 store(主文件所在 provider)。
-//   2. 在同一 provider 上写新 key:{年}/{月}/{毫秒时间戳}_edited{ext}。
-//   3. 更新 media_files 的 file_path/file_url/file_size/current_version + cdn_url
-//      (cdn_url 末尾追加 ?v={current_version} 自动让 CDN 缓存失效)。
-//   4. 旧 key 不立即删 — 保留给 version_history 服务做版本回滚。
+//  1. 按 media.StorageProviderID 反查源 store(主文件所在 provider)。
+//  2. 在同一 provider 上写新 key:{年}/{月}/{毫秒时间戳}_edited{ext}。
+//  3. 更新 media_files 的 file_path/file_url/file_size/current_version + cdn_url
+//     (cdn_url 末尾追加 ?v={current_version} 自动让 CDN 缓存失效)。
+//  4. 旧 key 不立即删 — 保留给 version_history 服务做版本回滚。
 //
 // 缩略图: 远程 provider 模式下不重新生成(避免读取大文件回内存);LOCAL 模式同样跳过,
 // 因为 thumbnails/* 是按主文件 key 命名的,新 key 与缩略图脱节,thumbnails 重生成
@@ -577,11 +577,11 @@ func (s *MediaService) PermanentDeleteWithOptions(ctx context.Context, id int64,
 	if deleteCloud {
 		store, _, rerr := s.resolveStoreForMedia(ctx, m)
 		if rerr != nil {
-			log.Warn().Err(rerr).Int64("id", id).Msg("resolve storage failed, skipping backend delete")
+			return fmt.Errorf("resolve storage: %w", rerr)
 		} else if store != nil {
 			if derr := store.Delete(ctx, m.FilePath); derr != nil {
-				// 后端删除失败 — 不阻塞 DB 清理,但记录日志便于运维补漏
-				log.Warn().Err(derr).Int64("id", id).Str("path", m.FilePath).Msg("backend delete failed")
+				// 单文件删除没有 failedIds 通道;返回错误并保留 DB 行,让管理员可重试或显式 deleteCloud=false。
+				return fmt.Errorf("backend delete failed: %w", derr)
 			}
 			// 同步删除缩略图 variant
 			s.deleteVariantsBackend(ctx, store, id)

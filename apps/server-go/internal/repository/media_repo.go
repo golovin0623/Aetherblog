@@ -186,10 +186,10 @@ func (r *MediaRepo) GetStats(ctx context.Context) (*MediaStats, error) {
 // Create 向 media_files 表插入新的媒体文件记录，通过 RETURNING 回填数据库生成的 id 和 created_at。
 func (r *MediaRepo) Create(ctx context.Context, m *model.MediaFile) error {
 	return r.db.QueryRowContext(ctx, `
-		INSERT INTO media_files (filename, original_name, file_path, file_url, file_size, mime_type, file_type, storage_type, width, height, uploader_id, folder_id, storage_provider_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, created_at`,
+		INSERT INTO media_files (filename, original_name, file_path, file_url, file_size, mime_type, file_type, storage_type, width, height, uploader_id, folder_id, storage_provider_id, cdn_url)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, created_at`,
 		m.Filename, m.OriginalName, m.FilePath, m.FileURL, m.FileSize, m.MimeType, m.FileType,
-		m.StorageType, m.Width, m.Height, m.UploaderID, m.FolderID, m.StorageProviderID,
+		m.StorageType, m.Width, m.Height, m.UploaderID, m.FolderID, m.StorageProviderID, m.CdnURL,
 	).Scan(&m.ID, &m.CreatedAt)
 }
 

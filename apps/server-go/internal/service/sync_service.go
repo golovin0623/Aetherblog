@@ -132,7 +132,9 @@ func (s *SyncService) Start(ctx context.Context) {
 		log.Info().Int64("n", n).Msg("sync worker: reset stale RUNNING jobs to PENDING")
 	}
 
-	workerCtx, cancel := context.WithCancel(ctx)
+	// 后台 worker 不能继承 HTTP request context;手动触发接口返回后 request context
+	// 会被 Echo 取消,否则刚入队的任务会在首个 tick 前退出。
+	workerCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	go s.loop(workerCtx)
 }
@@ -152,13 +154,14 @@ func (s *SyncService) loop(ctx context.Context) {
 	defer tick.Stop()
 
 	for {
+		if err := s.processBatch(ctx); err != nil {
+			log.Warn().Err(err).Msg("sync worker: batch failed")
+		}
+
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			if err := s.processBatch(ctx); err != nil {
-				log.Warn().Err(err).Msg("sync worker: batch failed")
-			}
 		}
 	}
 }
@@ -293,9 +296,9 @@ func (s *SyncService) EnqueueOne(ctx context.Context, mediaID int64, targetProvi
 
 // Status 当前 worker 状态摘要。
 type SyncStatusSnapshot struct {
-	Running   bool                       `json:"running"`
+	Running   bool                        `json:"running"`
 	Counts    repository.SyncStatusCounts `json:"counts"`
-	UpdatedAt time.Time                  `json:"updatedAt"`
+	UpdatedAt time.Time                   `json:"updatedAt"`
 }
 
 // GetStatus 返回 worker 实时摘要。

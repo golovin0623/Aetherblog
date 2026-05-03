@@ -41,7 +41,7 @@ const MediaSlide: React.FC<{
   isZoomed: boolean;
   onZoomToggle: () => void;
 }> = ({ item, rotation, isZoomed, onZoomToggle }) => {
-  const url = getMediaUrl(item.fileUrl);
+  const url = getMediaUrl(item);
   if (item.fileType === 'IMAGE') {
     return (
       <div
@@ -166,7 +166,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   const handleDownloadClick = useCallback(() => {
     if (currentItem) {
-      onDownload(getMediaUrl(currentItem.fileUrl), currentItem.originalName);
+      onDownload(getMediaUrl(currentItem), currentItem.originalName);
     }
   }, [currentItem, onDownload]);
 
@@ -258,8 +258,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   }, [currentIndex]);
 
   if (!currentItem) return null;
-
-  const fullUrl = getMediaUrl(currentItem.fileUrl);
 
   // 移动端轮播可见幻灯片：仅渲染 [前一张、当前、后一张] 以优化性能
   const visibleIndices = isMobile
@@ -587,7 +585,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                   )}
                   {item.fileType === 'IMAGE' ? (
                     <img
-                      src={getMediaUrl(item.fileUrl)}
+                      src={getMediaUrl(item)}
                       className="w-full h-full object-cover"
                       alt=""
                       loading="lazy"

@@ -189,7 +189,7 @@ export function MediaList({
         {items.map((item) => {
           const Icon = typeIcons[item.fileType] || FileText;
           const isSelected = selectedId === item.id || selectedIds.has(item.id);
-          const fullUrl = getMediaUrl(item.fileUrl);
+          const fullUrl = getMediaUrl(item);
 
           return (
             <div

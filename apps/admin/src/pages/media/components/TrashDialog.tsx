@@ -351,7 +351,7 @@ export function TrashDialog({ open, onClose }: TrashDialogProps) {
                           <Icon className="w-6 h-6 text-[var(--text-muted)]" />
                           {item.fileType === 'IMAGE' && (
                             <img
-                              src={getMediaUrl(item.fileUrl)}
+                              src={getMediaUrl(item)}
                               alt=""
                               className="absolute inset-0 w-full h-full object-cover"
                               onError={(e) => {

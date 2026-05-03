@@ -155,10 +155,6 @@ func (s *LocalStorage) List(_ context.Context, prefix, continuationToken string,
 			}
 			return nil
 		}
-		if len(objects) >= limit {
-			nextTok = key
-			return filepath.SkipAll
-		}
 		info, ierr := d.Info()
 		if ierr != nil {
 			return nil
@@ -168,6 +164,10 @@ func (s *LocalStorage) List(_ context.Context, prefix, continuationToken string,
 			Size:         info.Size(),
 			LastModified: info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
 		})
+		if len(objects) >= limit {
+			nextTok = key
+			return filepath.SkipAll
+		}
 		return nil
 	})
 	if walkErr != nil && walkErr != filepath.SkipAll {

@@ -9,8 +9,8 @@ import (
 // Phase 2 的 secret-preserving merge 是个安全敏感的纯函数,这里用单元测试穷举边界。
 
 func TestMergeProviderConfigJSON_KeepsSecretWhenRedacted(t *testing.T) {
-	old := `{"bucket":"old-bucket","accessKeyId":"AKIAOLD","secretAccessKey":"super-secret-old"}`
-	new := `{"bucket":"new-bucket","accessKeyId":"AK****OLD","secretAccessKey":"su****old"}`
+	old := `{"bucket":"old-bucket","accessKeyId":"AKIAOLD123456","secretAccessKey":"super-secret-old"}`
+	new := `{"bucket":"new-bucket","accessKeyId":"AK****3456","secretAccessKey":"su****-old"}`
 	merged, err := mergeProviderConfigJSON(old, new)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
@@ -22,7 +22,7 @@ func TestMergeProviderConfigJSON_KeepsSecretWhenRedacted(t *testing.T) {
 	if got["bucket"] != "new-bucket" {
 		t.Errorf("bucket should be updated to new-bucket, got %v", got["bucket"])
 	}
-	if got["accessKeyId"] != "AKIAOLD" {
+	if got["accessKeyId"] != "AKIAOLD123456" {
 		t.Errorf("accessKeyId should keep old value, got %v", got["accessKeyId"])
 	}
 	if got["secretAccessKey"] != "super-secret-old" {
@@ -72,6 +72,8 @@ func TestIsRedactedValue(t *testing.T) {
 		{"plaintext_secret", false},
 		{"", false},
 		{"AKIAIOSFODNN7EXAMPLE", false},
+		{"real****secret", false},
+		{"AB****CD123", false},
 	}
 	for _, c := range cases {
 		if got := isRedactedValue(c.v); got != c.want {
