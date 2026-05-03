@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -69,21 +69,41 @@ export default function CategoriesPage() {
     fetchData();
   }, [activeTab]);
 
+  /* close 时延迟清空 editTarget,让退场动画期间仍显示"编辑"标题/初值;
+     用 ref 跟踪计时器,任一 open 路径必须先取消挂起的 reset,否则
+     "关闭 A → 200ms 内打开 B" 的窗口会让旧定时器在新模态打开后
+     才触发,把 editTarget 清成 null,导致表单被重置、Save 误走 create. */
+  const editTargetResetTimer = useRef<number | null>(null);
+  const cancelPendingEditReset = () => {
+    if (editTargetResetTimer.current !== null) {
+      window.clearTimeout(editTargetResetTimer.current);
+      editTargetResetTimer.current = null;
+    }
+  };
+  useEffect(() => () => cancelPendingEditReset(), []);
+
   const openCreate = () => {
+    cancelPendingEditReset();
     setEditTarget(null);
     setShowFormModal(true);
   };
   const openEditCategory = (cat: Category) => {
+    cancelPendingEditReset();
     setEditTarget({ kind: 'category', data: cat });
     setShowFormModal(true);
   };
   const openEditTag = (tag: Tag) => {
+    cancelPendingEditReset();
     setEditTarget({ kind: 'tag', data: tag });
     setShowFormModal(true);
   };
   const closeFormModal = () => {
     setShowFormModal(false);
-    setTimeout(() => setEditTarget(null), 200);
+    cancelPendingEditReset();
+    editTargetResetTimer.current = window.setTimeout(() => {
+      setEditTarget(null);
+      editTargetResetTimer.current = null;
+    }, 200);
   };
 
   const handleSubmit = async (data: { name: string; description?: string }) => {
