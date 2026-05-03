@@ -9,7 +9,7 @@ export interface JwtSecretMeta {
   previousDemotedAt: string | null;
   /** 上一密钥宽限期到期时间 (此后将被标为 retired); 没有 previous 时为 null。 */
   previousRetiresAt: string | null;
-  /** 配置的自动轮换间隔 (天)。 */
+  /** 配置的自动轮换间隔 (天); 0 表示自动轮换已禁用。 */
   rotationIntervalDays: number;
   /** 配置的 previous 宽限期 (小时)。 */
   previousGraceHours: number;
