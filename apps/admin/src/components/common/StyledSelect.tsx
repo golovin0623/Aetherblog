@@ -4,6 +4,9 @@ import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 
+const MENU_GAP_PX = 6;
+const MENU_MAX_HEIGHT_PX = 256;
+
 export interface StyledSelectOption {
   value: string;
   label: string;
@@ -42,15 +45,21 @@ export function StyledSelect({
   const selected = options.find((option) => option.value === value);
   const selectedIndex = options.findIndex((option) => option.value === value);
   const [activeIndex, setActiveIndex] = useState(Math.max(0, selectedIndex));
+  const activeOptionId = open && options[activeIndex] ? `${id}-option-${activeIndex}` : undefined;
 
   const updateMenuPosition = () => {
     const button = buttonRef.current;
     if (!button) return;
     const rect = button.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const showAbove = spaceBelow < MENU_MAX_HEIGHT_PX + 20 && rect.top > MENU_MAX_HEIGHT_PX + 20;
+
     setMenuStyle({
       position: 'fixed',
       left: rect.left,
-      top: rect.bottom + 6,
+      top: showAbove ? undefined : rect.bottom + MENU_GAP_PX,
+      bottom: showAbove ? viewportHeight - rect.top + MENU_GAP_PX : undefined,
       width: rect.width,
       zIndex: 10000,
     });
@@ -97,6 +106,14 @@ export function StyledSelect({
   useEffect(() => {
     setActiveIndex(Math.max(0, selectedIndex));
   }, [selectedIndex]);
+
+  useEffect(() => {
+    if (!open) return;
+    const activeOption = menuRef.current?.querySelector<HTMLElement>(
+      `[data-select-option-index="${activeIndex}"]`
+    );
+    activeOption?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open]);
 
   const selectOption = (option: StyledSelectOption) => {
     if (option.disabled) return;
@@ -156,14 +173,19 @@ export function StyledSelect({
           {options.map((option, index) => {
             const isSelected = option.value === value;
             const isActive = index === activeIndex;
+            const optionId = `${id}-option-${index}`;
             return (
               <li key={option.value} role="presentation">
                 <button
+                  id={optionId}
                   type="button"
                   role="option"
                   aria-selected={isSelected}
+                  data-select-option-index={index}
                   disabled={option.disabled}
-                  onMouseEnter={() => setActiveIndex(index)}
+                  onMouseEnter={() => {
+                    if (!option.disabled) setActiveIndex(index);
+                  }}
                   onClick={() => selectOption(option)}
                   className={cn(
                     'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
@@ -193,7 +215,9 @@ export function StyledSelect({
         ref={buttonRef}
         type="button"
         role="combobox"
+        aria-haspopup="listbox"
         aria-controls={id}
+        aria-activedescendant={activeOptionId}
         aria-expanded={open}
         aria-label={ariaLabel}
         disabled={disabled}

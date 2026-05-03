@@ -39,6 +39,33 @@ type LogViewAction =
   | { type: 'ENTER_FULLSCREEN' }
   | { type: 'EXIT_FULLSCREEN' };
 
+const LOG_LEVEL_SELECT_OPTIONS = [
+  { value: 'ALL', label: '全部日志' },
+  { value: 'INFO', label: 'INFO' },
+  { value: 'WARN', label: 'WARN' },
+  { value: 'ERROR', label: 'ERROR' },
+  { value: 'DEBUG', label: 'DEBUG' },
+];
+
+const QUICK_LEVEL_OPTIONS = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
+
+const BACKEND_RUNTIME_LEVEL_OPTIONS = [
+  { value: 'debug', label: 'backend·debug' },
+  { value: 'info', label: 'backend·info' },
+  { value: 'warn', label: 'backend·warn' },
+  { value: 'error', label: 'backend·error' },
+];
+
+const AI_RUNTIME_LEVEL_OPTIONS = [
+  { value: 'debug', label: 'ai·debug' },
+  { value: 'info', label: 'ai·info' },
+  { value: 'warning', label: 'ai·warning' },
+  { value: 'error', label: 'ai·error' },
+];
+
+const COMPACT_SELECT_FOCUS_CLASS =
+  'focus-visible:!ring-1 focus-visible:!ring-primary/30 focus-visible:!ring-offset-1 focus-visible:!ring-offset-[var(--bg-card)]';
+
 const INITIAL_LOG_VIEW_STATE: LogViewState = {
   lifecycle: 'idle',
   mode: 'embedded',
@@ -670,7 +697,6 @@ export function RealtimeLogViewer({
   const statusLabel = statusLabelMap[viewState.lifecycle];
   const statusClassName = statusClassMap[viewState.lifecycle];
   const pauseReasonLabel = viewState.pauseReason === 'hidden' ? '页面隐藏自动暂停' : '手动暂停';
-  const quickLevelOptions = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
   const isRawDownloadDisabled = exporting || isLoading;
   const isViewExportDisabled = exporting || visibleLogs.length === 0;
   const downloadFeedbackTone =
@@ -708,21 +734,18 @@ export function RealtimeLogViewer({
                 setFilterLevel(nextLevel);
               });
             }}
-            options={[
-              { value: 'ALL', label: '全部日志' },
-              { value: 'INFO', label: 'INFO' },
-              { value: 'WARN', label: 'WARN' },
-              { value: 'ERROR', label: 'ERROR' },
-              { value: 'DEBUG', label: 'DEBUG' },
-            ]}
+            options={LOG_LEVEL_SELECT_OPTIONS}
             ariaLabel="日志级别过滤"
-            buttonClassName="!h-6 !min-w-[96px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)] focus:!ring-0"
+            buttonClassName={cn(
+              '!h-6 !min-w-[96px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
+              COMPACT_SELECT_FOCUS_CLASS,
+            )}
             menuClassName="!max-h-56"
           />
         </div>
 
         <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5">
-          {quickLevelOptions.map((levelOption) => (
+          {QUICK_LEVEL_OPTIONS.map((levelOption) => (
             <button
               key={levelOption}
               type="button"
@@ -767,28 +790,24 @@ export function RealtimeLogViewer({
               value={(runtimeLevel?.backend || 'info').toLowerCase()}
               disabled={runtimeLevelApplying === 'backend'}
               onChange={(nextLevel) => void applyRuntimeLevel('backend', nextLevel)}
-              options={[
-                { value: 'debug', label: 'backend·debug' },
-                { value: 'info', label: 'backend·info' },
-                { value: 'warn', label: 'backend·warn' },
-                { value: 'error', label: 'backend·error' },
-              ]}
+              options={BACKEND_RUNTIME_LEVEL_OPTIONS}
               ariaLabel={`backend 当前级别: ${runtimeLevel?.backend ?? '加载中'}`}
-              buttonClassName="!h-6 !min-w-[112px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)] focus:!ring-0"
+              buttonClassName={cn(
+                '!h-6 !min-w-[112px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
+                COMPACT_SELECT_FOCUS_CLASS,
+              )}
               menuClassName="!max-h-56"
             />
             <StyledSelect
               value={((runtimeLevel?.aiService) || 'info').toLowerCase()}
               disabled={runtimeLevelApplying === 'aiService' || Boolean(runtimeLevel?.aiServiceError)}
               onChange={(nextLevel) => void applyRuntimeLevel('aiService', nextLevel)}
-              options={[
-                { value: 'debug', label: 'ai·debug' },
-                { value: 'info', label: 'ai·info' },
-                { value: 'warning', label: 'ai·warning' },
-                { value: 'error', label: 'ai·error' },
-              ]}
+              options={AI_RUNTIME_LEVEL_OPTIONS}
               ariaLabel={runtimeLevel?.aiServiceError ? `ai-service 不可达: ${runtimeLevel.aiServiceError}` : `ai-service 当前级别: ${runtimeLevel?.aiService ?? '加载中'}`}
-              buttonClassName="!h-6 !min-w-[92px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)] focus:!ring-0"
+              buttonClassName={cn(
+                '!h-6 !min-w-[92px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
+                COMPACT_SELECT_FOCUS_CLASS,
+              )}
               menuClassName="!max-h-56"
             />
           </div>

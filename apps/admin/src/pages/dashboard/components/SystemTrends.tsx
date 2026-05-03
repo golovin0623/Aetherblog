@@ -28,6 +28,28 @@ import { format, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { StyledSelect } from '@/components/common';
 
+const HISTORY_RANGE_OPTIONS = [
+  { value: '30', label: '30分' },
+  { value: '60', label: '1小时' },
+  { value: '180', label: '3小时' },
+  { value: '720', label: '12小时' },
+  { value: '1440', label: '24小时' },
+  { value: '4320', label: '3天' },
+  { value: '10080', label: '7天' },
+  { value: '43200', label: '30天' },
+];
+
+const REFRESH_INTERVAL_OPTIONS = [
+  { value: '5', label: '5s' },
+  { value: '10', label: '10s' },
+  { value: '30', label: '30s' },
+  { value: '60', label: '1m' },
+  { value: '300', label: '5m' },
+];
+
+const COMPACT_SELECT_FOCUS_CLASS =
+  'focus-visible:!ring-1 focus-visible:!ring-primary/30 focus-visible:!ring-offset-1 focus-visible:!ring-offset-[var(--bg-secondary)]';
+
 // ========== 图表数据辅助 ==========
 
 interface MergedDataPoint {
@@ -276,40 +298,31 @@ export function SystemTrends({ className }: { className?: string }) {
 
           {/* 控制组 */}
           <div className="flex items-center bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-subtle)] p-0.5 h-7">
-             <StyledSelect
-                 value={String(minutes)}
-                 onChange={(nextValue) => setMinutes(Number(nextValue))}
-                 options={[
-                   { value: '30', label: '30分' },
-                   { value: '60', label: '1小时' },
-                   { value: '180', label: '3小时' },
-                   { value: '720', label: '12小时' },
-                   { value: '1440', label: '24小时' },
-                   { value: '4320', label: '3天' },
-                   { value: '10080', label: '7天' },
-                   { value: '43200', label: '30天' },
-                 ]}
-                 ariaLabel="时间范围"
-                 buttonClassName="!h-6 !min-w-[66px] !border-transparent !bg-transparent !px-2 !py-0 !text-[10px] !text-[var(--text-primary)] focus:!ring-0"
-                 menuClassName="!max-h-56"
-               />
+            <StyledSelect
+              value={String(minutes)}
+              onChange={(nextValue) => setMinutes(Number(nextValue))}
+              options={HISTORY_RANGE_OPTIONS}
+              ariaLabel="时间范围"
+              buttonClassName={cn(
+                '!h-6 !min-w-[66px] !border-transparent !bg-transparent !px-2 !py-0 !text-[10px] !text-[var(--text-primary)]',
+                COMPACT_SELECT_FOCUS_CLASS,
+              )}
+              menuClassName="!max-h-56"
+            />
 
-             <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
+            <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 
-             <StyledSelect
-                 value={String(refreshInterval)}
-                 onChange={(nextValue) => setRefreshInterval(Number(nextValue))}
-                 options={[
-                   { value: '5', label: '5s' },
-                   { value: '10', label: '10s' },
-                   { value: '30', label: '30s' },
-                   { value: '60', label: '1m' },
-                   { value: '300', label: '5m' },
-                 ]}
-                 ariaLabel="刷新频率"
-                 buttonClassName="!h-6 !min-w-[54px] !border-transparent !bg-transparent !px-2 !py-0 !text-[10px] !text-[var(--text-muted)] focus:!ring-0"
-                 menuClassName="!max-h-56"
-               />
+            <StyledSelect
+              value={String(refreshInterval)}
+              onChange={(nextValue) => setRefreshInterval(Number(nextValue))}
+              options={REFRESH_INTERVAL_OPTIONS}
+              ariaLabel="刷新频率"
+              buttonClassName={cn(
+                '!h-6 !min-w-[54px] !border-transparent !bg-transparent !px-2 !py-0 !text-[10px] !text-[var(--text-muted)]',
+                COMPACT_SELECT_FOCUS_CLASS,
+              )}
+              menuClassName="!max-h-56"
+            />
 
              <div className="w-px h-3 bg-[var(--border-subtle)] mx-0.5" />
 

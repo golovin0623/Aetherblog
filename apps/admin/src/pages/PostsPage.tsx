@@ -15,6 +15,12 @@ import PostTableRow from '@/components/posts/PostTableRow';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { logger } from '@/lib/logger';
 
+const VISIBILITY_SELECT_OPTIONS = [
+  { value: '', label: '全部可见性' },
+  { value: 'false', label: '仅公开' },
+  { value: 'true', label: '仅隐藏' },
+];
+
 export default function PostsPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -256,11 +262,6 @@ export default function PostsPage() {
     ],
     [categories]
   );
-  const visibilitySelectOptions = [
-    { value: '', label: '全部可见性' },
-    { value: 'false', label: '仅公开' },
-    { value: 'true', label: '仅隐藏' },
-  ];
   const tagSelectOptions = useMemo(
     () => [
       { value: '', label: '全部标签' },
@@ -472,7 +473,7 @@ export default function PostsPage() {
                       ...f,
                       hidden: nextValue === '' ? undefined : nextValue === 'true'
                     }))}
-                    options={visibilitySelectOptions}
+                    options={VISIBILITY_SELECT_OPTIONS}
                     ariaLabel="隐藏状态"
                     buttonClassName="rounded-xl"
                   />
