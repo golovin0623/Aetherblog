@@ -533,8 +533,8 @@ const SearchPanelBase: React.FC<SearchPanelProps> = ({ isOpen, onClose }) => {
                         参考来源
                       </div>
                       <ul className="space-y-1">
-                        {aiAnswer.sources.map((source) => (
-                          <li key={source.slug}>
+                        {aiAnswer.sources.map((source, idx) => (
+                          <li key={`${source.slug}-${idx}`}>
                             <a
                               href={`/posts/${source.slug}`}
                               onClick={(e) => {
