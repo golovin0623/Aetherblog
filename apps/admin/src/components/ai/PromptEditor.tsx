@@ -109,7 +109,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             <div className="flex items-center gap-1 sm:gap-1.5 animate-in fade-in slide-in-from-right-4 duration-300">
               <button
                 onClick={handleDiscard}
-                className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-[9px] sm:text-[10px] font-black bg-status-danger-light text-status-danger hover:bg-status-danger/20 uppercase tracking-widest transition-all"
+                className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-[9px] sm:text-[10px] font-black bg-[color-mix(in_oklch,var(--signal-danger)_14%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_24%,transparent)] uppercase tracking-widest transition-all"
               >
                 Discard
               </button>
@@ -284,7 +284,7 @@ function PromptDiffView({ defaultPrompt, currentPrompt, isDirty }: PromptDiffVie
     let removed = 0;
     let unchanged = 0;
     changes.forEach((c) => {
-      const lines = c.value.split('\n').filter((l, idx, arr) => l.length > 0 || idx < arr.length - 1).length;
+      const lines = c.count || 0;
       if (c.added) added += lines;
       else if (c.removed) removed += lines;
       else unchanged += lines;
