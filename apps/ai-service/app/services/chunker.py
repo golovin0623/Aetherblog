@@ -39,11 +39,15 @@ class Chunk:
         index: 在文档内的连续序号（从 0 开始）。写入 ``chunk_index`` 列。
         text: chunk 的原文片段。写入 ``chunk_text`` 列，召回时用作 snippet。
         tokens: chunk 估算的 token 数（仅供日志 / debug，不入库）。
+        parent_text: 仅 ``parent_child`` 策略下非 None；child 命中后用 parent_text
+            提供完整上下文，写入 ``post_embeddings.parent_text`` 列。其他策略下为
+            None，存储层会写入 SQL NULL。
     """
 
     index: int
     text: str
     tokens: int
+    parent_text: str | None = None
 
 
 def _get_encoding():
@@ -253,6 +257,58 @@ def _split_qa(
     return chunks
 
 
+def _split_parent_child(
+    text: str,
+    child_size_tokens: int,
+    encoding,
+    parent_size_multiplier: int = 4,
+) -> list[Chunk]:
+    """父子段切片。
+
+    算法：
+      1. 用 _split_recursive 切出 parent chunks，size = child × multiplier
+         （默认 4 → 256 child / 1024 parent）
+      2. 对每个 parent，再用 _split_recursive 切出 child chunks（size = child）
+      3. 每个 child 记录其所属 parent_text；最终返回 [Chunk(parent_text=...)]
+
+    返回 ``list[Chunk]``（直接构造好 dataclass，不再走 caller 的统一构造路径，
+    因为只有这条策略需要写 parent_text 字段）。caller 的 _apply_overlap 不
+    适用于 parent_child（child 跨 parent 时 overlap 语义混乱）。
+
+    边界：
+      - 空文本 → 返回空列表
+      - 短文档（< parent_size）→ 1 个 parent，N 个 children 共享 parent_text
+      - parent 与 child 之间不应用 overlap（child 承担精排，没必要再 overlap）
+    """
+    if not text or not text.strip():
+        return []
+
+    parent_size = max(child_size_tokens * parent_size_multiplier, child_size_tokens + 1)
+
+    parent_chunks = _split_recursive(text, parent_size, encoding)
+    if not parent_chunks:
+        return []
+
+    children: list[Chunk] = []
+    chunk_index = 0
+    for parent_text in parent_chunks:
+        child_chunks = _split_recursive(parent_text, child_size_tokens, encoding)
+        if not child_chunks:
+            # parent 本身已经够小（递归切片不再细分）→ 直接当 child
+            child_chunks = [parent_text]
+        for child_text in child_chunks:
+            children.append(
+                Chunk(
+                    index=chunk_index,
+                    text=child_text,
+                    tokens=_token_len(child_text, encoding),
+                    parent_text=parent_text,
+                )
+            )
+            chunk_index += 1
+    return children
+
+
 def _apply_overlap(
     chunks: list[str],
     overlap_tokens: int,
@@ -311,10 +367,11 @@ def split(
         else:
             overlapped = raw_chunks
     elif kind == "parent_child":
-        # 占位：parent_child 由 _split_parent_child 实现（下一个 commit 引入）；
-        # 现在仍走 recursive 不阻塞数据迁移。
-        raw_chunks = _split_recursive(text, chunk_size_tokens, encoding)
-        overlapped = _apply_overlap(raw_chunks, chunk_overlap_tokens, encoding)
+        # parent_child 直接返回 list[Chunk]（包含 parent_text 字段），
+        # 走独立路径，不经过 _apply_overlap / 统一构造。
+        # chunk_size_tokens 在此策略下解释为 child 大小；parent = child × 4
+        # （硬编码 multiplier，未来如要参数化再加 search_profiles 列）。
+        return _split_parent_child(text, chunk_size_tokens, encoding)
     else:
         # 未知策略：保守按 recursive 处理，但日志层会有 warning。
         raw_chunks = _split_recursive(text, chunk_size_tokens, encoding)
