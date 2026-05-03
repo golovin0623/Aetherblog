@@ -3,6 +3,8 @@ import axios from 'axios';
 import { R, PageResult } from '@/types';
 
 export type MediaType = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
+export type StorageType = 'LOCAL' | 'S3' | 'MINIO' | 'OSS' | 'COS' | 'R2';
+export type SyncStatus = 'NONE' | 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
 
 export interface MediaItem {
   id: number;
@@ -16,6 +18,15 @@ export interface MediaItem {
   width?: number;
   height?: number;
   createdAt: string;
+  // 对象存储 rollout - Phase 1
+  storageType?: StorageType;
+  storageProviderId?: number;
+  cdnUrl?: string;
+  // 对象存储 rollout - Phase 4 (占位字段,Phase 4 才填充)
+  syncStatus?: SyncStatus;
+  backupProviderId?: number;
+  backupUrl?: string;
+  backupAt?: string;
 }
 
 export interface MediaListParams {
@@ -39,21 +50,35 @@ export interface StorageStats {
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 /**
- * 获取媒体文件的完整URL
- * 后端 context path 是 /api，所以 /uploads/* 需要变成 /api/uploads/*
+ * 获取媒体文件的完整 URL。
+ *
+ * Phase 1 改造:接受 string 或 MediaItem。优先返回 cdnUrl(包含完整可访问 URL)。
+ * 字符串入参表示历史 fileUrl(LOCAL=/uploads/...),后端 context path 是 /api,
+ * 所以 /uploads/* 需要变成 /api/uploads/*。
  */
-export const getMediaUrl = (fileUrl: string): string => {
+export const getMediaUrl = (input: string | Pick<MediaItem, 'cdnUrl' | 'fileUrl' | 'storageType'>): string => {
+  if (!input) return '';
+  // MediaItem 对象:优先 cdnUrl,空时 fileUrl
+  if (typeof input === 'object') {
+    if (input.cdnUrl) return input.cdnUrl;
+    return resolveLocalPath(input.fileUrl);
+  }
+  // 字符串路径:历史调用方
+  return resolveLocalPath(input);
+};
+
+// resolveLocalPath 处理纯字符串入参的 /uploads → /api/uploads 拼接。
+function resolveLocalPath(fileUrl: string): string {
   if (!fileUrl) return '';
-  // 如果已经是完整URL，直接返回
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  // /uploads/... -> /api/uploads/... (后端 context path 是 /api)
   if (fileUrl.startsWith('/uploads')) {
     return `/api${fileUrl}`;
   }
+  // 既不是绝对 URL 也不是 /uploads,可能是 storage key,直接返回让上层兜底
   return fileUrl;
-};
+}
 
 export const mediaService = {
   /**
@@ -222,17 +247,21 @@ export const mediaService = {
   },
 
   /**
-   * 彻底删除文件（从回收站永久删除）
+   * 彻底删除文件（从回收站永久删除）。
+   * Phase 3: 增加 deleteCloud 选项 — false 时只清 catalog,后端文件保留(适合"先抢救云端原件"场景)。
    */
-  permanentDelete: (id: number): Promise<R<void>> => {
-    return api.delete<R<void>>(`/v1/admin/media/${id}/permanent`);
+  permanentDelete: (id: number, options?: { deleteCloud?: boolean }): Promise<R<void>> => {
+    const params = options?.deleteCloud === false ? { deleteCloud: 'false' } : undefined;
+    return api.delete<R<void>>(`/v1/admin/media/${id}/permanent`, { params });
   },
 
   /**
-   * 批量彻底删除文件
+   * 批量彻底删除文件。
+   * Phase 3: deleteCloud 同上;返回值若为 { failedIds: [...] } 表示部分文件后端删除失败但 DB 已清。
    */
-  batchPermanentDelete: (ids: number[]): Promise<R<void>> => {
-    return api.delete<R<void>>('/v1/admin/media/trash/batch-permanent', { data: ids });
+  batchPermanentDelete: (ids: number[], options?: { deleteCloud?: boolean }): Promise<R<{ failedIds?: number[] } | void>> => {
+    const params = options?.deleteCloud === false ? { deleteCloud: 'false' } : undefined;
+    return api.delete<R<{ failedIds?: number[] } | void>>('/v1/admin/media/trash/batch-permanent', { data: ids, params });
   },
 
   /**

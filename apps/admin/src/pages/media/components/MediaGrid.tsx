@@ -10,6 +10,7 @@ import { Image, Video, Music, FileText, Check, Trash2, Download, Link2, Eye, Fol
 import { useMediaQuery } from '@aetherblog/hooks';
 import { cn, formatFileSize } from '@/lib/utils';
 import { MediaItem, MediaType, getMediaUrl } from '@/services/mediaService';
+import { StorageBadge } from './StorageBadge';
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -59,7 +60,8 @@ export function MediaGrid({
           const Icon = typeIcons[item.fileType] || FileText;
           const isSelected = selectedIds.has(item.id);
           const isActive = activeId === item.id;
-          const fullUrl = getMediaUrl(item.fileUrl);
+          // Phase 1: getMediaUrl 接收 MediaItem 时优先 cdnUrl,LOCAL 模式回落 fileUrl
+          const fullUrl = getMediaUrl(item);
 
           return (
             <motion.div
@@ -159,6 +161,13 @@ export function MediaGrid({
                     <Eye className={cn(isCompact || isTouch ? 'w-4 h-4' : 'w-6 h-6')} strokeWidth={1.6} />
                   </motion.button>
                 </div>
+
+                {/* 存储后端徽章 (右上角) — Phase 3 */}
+                {item.storageType && (
+                  <div className="absolute top-2 right-2 z-20 pointer-events-none">
+                    <StorageBadge type={item.storageType} size="sm" />
+                  </div>
+                )}
 
                 {/* 选择框 (左上角) —— hover 或 active 时显现 */}
                 <div

@@ -17,9 +17,12 @@ export interface CreateStorageProviderRequest {
   priority?: number;
 }
 
+// 后端 dto.StorageProviderRequest 要求 name/providerType/configJson 都是 required,
+// 即便是 PUT(update) 也需要全部传(后端会做 secret-merge 逻辑保留旧 secret)。
 export interface UpdateStorageProviderRequest {
-  name?: string;
-  configJson?: string;
+  name: string;
+  providerType: StorageProviderType;
+  configJson: string;
   isEnabled?: boolean;
   priority?: number;
 }
@@ -55,8 +58,11 @@ export const storageProviderService = {
 
   /**
    * 更新存储提供商
+   *
+   * 入参支持 CreateStorageProviderRequest 形状(前端 Phase 2 直接复用 create 表单字段),
+   * 也接受 UpdateStorageProviderRequest 显式形状。
    */
-  update: async (id: number, data: UpdateStorageProviderRequest): Promise<R<StorageProvider>> => {
+  update: async (id: number, data: CreateStorageProviderRequest | UpdateStorageProviderRequest): Promise<R<StorageProvider>> => {
     return api.put(`/v1/admin/storage/providers/${id}`, data);
   },
 
@@ -80,4 +86,49 @@ export const storageProviderService = {
   testConnection: async (id: number): Promise<R<{ success: boolean; message: string }>> => {
     return api.post(`/v1/admin/storage/providers/${id}/test`);
   },
+
+  // ========== Phase 5: 云端浏览 + 反向导入 ==========
+
+  /**
+   * 列出指定 provider 上 prefix 下的对象,带 catalog 状态。
+   */
+  listObjects: async (
+    providerId: number,
+    options: { prefix?: string; token?: string; limit?: number } = {}
+  ): Promise<R<ListObjectsResult>> => {
+    return api.get(`/v1/admin/storage/providers/${providerId}/objects`, {
+      params: {
+        prefix: options.prefix,
+        token: options.token,
+        limit: options.limit,
+      },
+    });
+  },
+
+  /**
+   * 把云端 ORPHAN 对象批量导入 catalog。
+   */
+  importObjects: async (providerId: number, keys: string[]): Promise<R<{ imported: number; skippedKeys?: string[] }>> => {
+    return api.post(`/v1/admin/storage/providers/${providerId}/import`, { keys });
+  },
+
+  /**
+   * 删除云端 ORPHAN 对象。catalog 中存在的 key 会被拒绝(refusedKeys 返回)。
+   */
+  deleteObjects: async (providerId: number, keys: string[]): Promise<R<{ deleted: number; refusedKeys?: string[] }>> => {
+    return api.delete(`/v1/admin/storage/providers/${providerId}/objects`, { data: { keys } });
+  },
 };
+
+// Phase 5 类型
+export interface ListObjectsResult {
+  objects?: Array<{
+    key: string;
+    size: number;
+    lastModified?: string;
+    etag?: string;
+    mediaFileId?: number;
+    status: 'IN_CATALOG' | 'ORPHAN';
+  }>;
+  nextToken?: string;
+}

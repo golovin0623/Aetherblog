@@ -4,6 +4,11 @@ import "time"
 
 // MediaFile 对应数据库 `media_files` 表，表示一个已上传的文件，
 // 该文件存储在本地磁盘或外部对象存储服务中。
+//
+// Phase 4 字段(同步备份):
+//   - SyncStatus     主文件 vs default provider 的镜像状态(NONE/PENDING/SYNCING/SYNCED/FAILED)。
+//   - BackupProviderID / BackupURL / BackupAt 备份成功后落库。
+//   - BackupError    最近一次失败原因。
 type MediaFile struct {
 	ID                int64      `db:"id"`
 	Filename          string     `db:"filename"`            // 存储键/磁盘或存储桶中的文件名
@@ -29,6 +34,25 @@ type MediaFile struct {
 	Deleted           bool       `db:"deleted"`             // 软删除标志；已删除文件进入回收站
 	DeletedAt         *time.Time `db:"deleted_at"`          // 软删除时间，可为空
 	CreatedAt         *time.Time `db:"created_at"`          // 记录创建时间
+	// Phase 4: 同步备份状态
+	SyncStatus       string     `db:"sync_status"`        // NONE / PENDING / SYNCING / SYNCED / FAILED
+	BackupProviderID *int64     `db:"backup_provider_id"` // 备份目标 provider
+	BackupURL        *string    `db:"backup_url"`         // 备份后的完整 URL
+	BackupAt         *time.Time `db:"backup_at"`          // 最近备份成功时间
+	BackupError      *string    `db:"backup_error"`       // 最近失败原因
+}
+
+// MediaSyncJob 对应 media_sync_jobs 表 (Phase 4 同步备份工作队列)。
+type MediaSyncJob struct {
+	ID                int64      `db:"id"`
+	MediaID           int64      `db:"media_id"`
+	TargetProviderID  int64      `db:"target_provider_id"`
+	Status            string     `db:"status"` // PENDING / RUNNING / SUCCEEDED / FAILED
+	Attempt           int        `db:"attempt"`
+	LastError         *string    `db:"last_error"`
+	CreatedAt         time.Time  `db:"created_at"`
+	StartedAt         *time.Time `db:"started_at"`
+	FinishedAt        *time.Time `db:"finished_at"`
 }
 
 // MediaFolder 对应数据库 `media_folders` 表，为媒体文件提供层级组织结构。

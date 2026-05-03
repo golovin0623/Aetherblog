@@ -277,12 +277,34 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	mediaRepo := repository.NewMediaRepo(s.DB)
 	folderRepo := repository.NewFolderRepo(s.DB)
 	storageProviderRepo := repository.NewStorageProviderRepo(s.DB)
-	mediaSvc := service.NewMediaService(mediaRepo, localStore, s.Config.Upload.Path)
+	// 启动时自动把 legacy 明文 storage_providers.config_json 加密重写
+	// (AI_CREDENTIAL_ENCRYPTION_KEYS 未配置时这是 no-op,所以 dev 环境不受影响)。
+	if migrated, total, err := storageProviderRepo.MigrateLegacyToEncrypted(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("storage_providers legacy encryption migration failed")
+	} else if migrated > 0 {
+		log.Info().Int("migrated", migrated).Int("total", total).Msg("encrypted legacy storage_providers.config_json rows on startup")
+	}
+	// Phase 1: MediaService 改造 — 注入 providerRepo 让 Upload/Delete 按 default provider 走对应后端。
+	mediaSvc := service.NewMediaService(mediaRepo, localStore, storageProviderRepo, s.Config.Upload.Path)
 	folderSvc := service.NewFolderService(folderRepo)
-	storageProviderSvc := service.NewStorageProviderService(storageProviderRepo)
-	handler.NewMediaHandler(mediaSvc, activitySvc).Mount(admin.Group("/media"))
+	// StorageProviderService 持有 mediaSvc 引用以便在 Update/Delete 后清缓存
+	storageProviderSvc := service.NewStorageProviderService(storageProviderRepo, mediaSvc)
+
+	// Phase 4: 同步备份 worker
+	mediaSyncRepo := repository.NewMediaSyncRepo(s.DB)
+	siteSettingRepoForSync := repository.NewSiteSettingRepo(s.DB)
+	syncSvc := service.NewSyncService(mediaRepo, mediaSyncRepo, storageProviderRepo, siteSettingRepoForSync, mediaSvc, s.Config.Sync)
+	// 优先级: site_settings.storage.sync.auto_enabled > config.SyncConfig.AutoEnabled
+	// admin 在 UI 上切换 site_settings 后(StorageProviderSettings 自动同步开关)立即启停
+	syncSvc.AutoStartIfEnabled(context.Background())
+	syncHandler := handler.NewSyncHandler(syncSvc)
+
+	mediaHandler := handler.NewMediaHandler(mediaSvc, activitySvc)
+	mediaHandler.Mount(admin.Group("/media"))
+	syncHandler.MountMediaRoutes(admin.Group("/media")) // POST /admin/media/:id/sync
 	handler.NewFolderHandler(folderSvc).Mount(admin.Group("/media/folders"))
 	handler.NewStorageProviderHandler(storageProviderSvc).Mount(admin.Group("/storage/providers"))
+	syncHandler.Mount(admin.Group("/storage/sync"))
 
 	// 媒体高级功能：标签、权限、分享、版本管理
 	mediaTagRepo := repository.NewMediaTagRepo(s.DB)
@@ -292,7 +314,10 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	shareRepo := repository.NewShareRepo(s.DB)
 	handler.NewShareHandler(service.NewShareService(shareRepo), mediaSvc).Mount(admin.Group("/media"))
 	versionRepo := repository.NewVersionRepo(s.DB)
-	handler.NewVersionHandler(service.NewVersionService(versionRepo, mediaRepo), mediaSvc).Mount(admin.Group("/media"))
+	versionSvc := service.NewVersionService(versionRepo, mediaRepo)
+	handler.NewVersionHandler(versionSvc, mediaSvc).Mount(admin.Group("/media"))
+	// 注入版本快照能力 — UploadContent 在覆盖文件前自动写一份历史版本
+	mediaHandler.SetVersionDeps(versionSvc, mediaRepo)
 
 	// --- 数据统计与分析 ---
 	analyticsRepo := repository.NewAnalyticsRepo(s.DB)

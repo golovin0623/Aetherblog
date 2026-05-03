@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/golovin0623/aetherblog-server/internal/dto"
+	"github.com/golovin0623/aetherblog-server/internal/middleware"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/service"
 )
@@ -28,6 +29,11 @@ func (h *StorageProviderHandler) Mount(g *echo.Group) {
 	g.DELETE("/:id", h.Delete)
 	g.POST("/:id/set-default", h.SetDefault)
 	g.POST("/:id/test", h.Test)
+
+	// Phase 5: 云端浏览 + 反向导入
+	g.GET("/:id/objects", h.ListObjects)
+	g.POST("/:id/import", h.ImportObjects)
+	g.DELETE("/:id/objects", h.DeleteObjects)
 }
 
 // List 处理 GET /admin/storage-providers 请求。
@@ -140,4 +146,91 @@ func (h *StorageProviderHandler) Test(c echo.Context) error {
 	}
 	ok, msg := h.svc.Test(c.Request().Context(), id)
 	return response.OK(c, map[string]interface{}{"success": ok, "message": msg})
+}
+
+// ListObjects 处理 GET /admin/storage/providers/:id/objects?prefix=&token=&limit=
+// 返回该 provider 上 prefix 下的对象 + 是否在 catalog (Phase 5)。
+func (h *StorageProviderHandler) ListObjects(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	prefix := c.QueryParam("prefix")
+	token := c.QueryParam("token")
+	limit := 100
+	if v := c.QueryParam("limit"); v != "" {
+		if n, _ := strconv.Atoi(v); n > 0 {
+			limit = n
+		}
+	}
+	res, err := h.svc.ListObjects(c.Request().Context(), id, prefix, token, limit)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, res)
+}
+
+// importObjectsReq POST body
+type importObjectsReq struct {
+	Keys []string `json:"keys" validate:"required,min=1,max=200"`
+}
+
+// ImportObjects 处理 POST /admin/storage/providers/:id/import {keys: [...]}
+// 把云端孤儿对象写入 media_files catalog (Phase 5)。
+//
+// uploaderID 从 JWT 中的当前 actor 取,导入的文件归属于触发该操作的 admin。
+func (h *StorageProviderHandler) ImportObjects(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	var req importObjectsReq
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	if len(req.Keys) == 0 {
+		return response.FailWith(c, response.BadRequest, "keys 为空")
+	}
+	var uploaderID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		uid := lu.UserID
+		uploaderID = &uid
+	}
+	imported, skipped, err := h.svc.ImportObjects(c.Request().Context(), id, req.Keys, uploaderID)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, map[string]any{
+		"imported":    imported,
+		"skippedKeys": skipped,
+	})
+}
+
+// deleteObjectsReq DELETE body
+type deleteObjectsReq struct {
+	Keys []string `json:"keys"`
+}
+
+// DeleteObjects 处理 DELETE /admin/storage/providers/:id/objects {keys: [...]}
+// 删除云端 ORPHAN 对象 (Phase 5);catalog 中已存在的 key 拒绝删,必须走 media 删除路径。
+func (h *StorageProviderHandler) DeleteObjects(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, "无效的ID")
+	}
+	var req deleteObjectsReq
+	if err := c.Bind(&req); err != nil {
+		return response.FailWith(c, response.BadRequest, "请求格式错误")
+	}
+	if len(req.Keys) == 0 {
+		return response.FailWith(c, response.BadRequest, "keys 为空")
+	}
+	deleted, refused, err := h.svc.DeleteObjects(c.Request().Context(), id, req.Keys)
+	if err != nil {
+		return response.FailWith(c, response.BadRequest, err.Error())
+	}
+	return response.OK(c, map[string]any{
+		"deleted":     deleted,
+		"refusedKeys": refused,
+	})
 }

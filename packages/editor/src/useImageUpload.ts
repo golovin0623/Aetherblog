@@ -6,9 +6,16 @@
 import { useState, useCallback, useRef } from 'react';
 import type { UploadItem } from './components/UploadProgress';
 
-/**上传结果 */
+/**
+ * 上传结果
+ *
+ * @ref 对象存储 rollout - Phase 3
+ * cdnUrl 是后端 Phase 1 之后落库的字段:LOCAL=/api/uploads/...,S3/COS=云端公开 URL。
+ * 调用方应优先使用 cdnUrl,留 url 兼容历史返回(如果上传 service 没填 cdnUrl)。
+ */
 export interface UploadResult {
   url: string;
+  cdnUrl?: string;
   originalName: string;
   width?: number;
   height?: number;
