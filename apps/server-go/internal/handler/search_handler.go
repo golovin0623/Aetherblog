@@ -536,7 +536,30 @@ func (h *SearchHandler) proxyProfileStream(
 		streamCtx, method, targetPath, body, headers,
 	)
 	if err != nil {
-		return handleSearchError(c, err)
+		// codex P1 (PR #557): handleSearchError 的 response.Fail 分支会返回
+		// HTTP 200 + envelope，对 axios 调用方安全，但对本端点的 SSE 消费者
+		// (useReindexStream) 而言 200 = "我开始读 SSE body 了" → 解出空帧 →
+		// 静默 EOF → ProfileActivationFlow 卡死。所有 pre-stream 错误必须
+		// 走非 2xx 路径，让 useReindexStream 的 ``!res.ok`` 走 error 分支。
+		//
+		// cancel 优先：如果 streamCtx 在 ProxyProfileStream 内部就被外部
+		// /v1/admin/search/cancel 端点取消，专门返回 409 + cancel 文案。
+		// 其它情况用 502 + 上游错误透传。
+		httpStatus := http.StatusBadGateway
+		msg := "上游 AI 服务错误"
+		if streamCtx.Err() != nil {
+			httpStatus = http.StatusConflict
+			msg = "重建索引已被取消"
+		} else if errors.Is(err, service.ErrAIClientNil) {
+			httpStatus = http.StatusServiceUnavailable
+			msg = "AI 服务未配置，请检查服务端 AI 配置"
+		} else if clientErr, ok := err.(*service.AIClientError); ok {
+			msg = clientErr.Message
+		}
+		return c.JSON(httpStatus, response.R{
+			Code:    httpStatus,
+			Message: msg,
+		})
 	}
 	defer respBody.Close()
 
