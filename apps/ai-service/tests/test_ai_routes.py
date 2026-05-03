@@ -758,6 +758,194 @@ async def test_stream_emits_result_even_without_explicit_done():
     assert "done" in types
 
 
+@pytest.mark.asyncio
+async def test_stream_emits_result_event_before_done_for_polish():
+    """polish 流必须在 done 之前下发 ``{type:"result", data:PolishData}``。
+
+    审计 §1.3 P1.5 跟进: 在此之前只有 tags 任务有 stream result 测试,
+    polish/outline/translate/qa 全在裸奔; 一旦未来 PR 触动
+    ``_build_stream_result_payload`` 的 task 分支, 没人能挡住"应用到文章"
+    按钮变灰这种症状。这条测试锁住 polish 任务的 result payload 字段。
+    """
+    llm = FakeLlm(
+        stream_events=[
+            {"type": "delta", "content": "Polished ", "isThink": False},
+            {"type": "delta", "content": "content here", "isThink": False},
+            {"type": "done"},
+        ]
+    )
+    chunks: list[bytes] = []
+    async for chunk in _stream_with_think_detection(
+        request=_make_request(),
+        llm=llm,
+        prompt_variables={"content": "raw text", "tone": "专业"},
+        model_alias="polish",
+        user_id="user-1",
+        custom_prompt=None,
+        model_id=None,
+        provider_code=None,
+        model="fake/gpt-test",
+        usage_context={"provider_code": "fake", "model_id": "gpt-test"},
+        metrics=_make_metrics(),
+        usage_logger=FakeUsageLogger(),
+        start_time=0.0,
+        request_text="raw text",
+    ):
+        chunks.append(chunk)
+
+    events = _parse_sse_events(chunks)
+    types = [e.get("type") for e in events]
+    assert "result" in types, f"No result event in {types}"
+    assert types.index("result") < types.index("done")
+
+    result_event = next(e for e in events if e.get("type") == "result")
+    data = result_event["data"]
+    # PolishData 形态: {polishedContent, model}
+    assert "polishedContent" in data, f"polishedContent missing in {data}"
+    assert data["polishedContent"] == "Polished content here"
+    assert data.get("model") == "fake/gpt-test"
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_result_event_before_done_for_outline():
+    """outline 流必须在 done 之前下发 ``{type:"result", data:OutlineData}``。"""
+    llm = FakeLlm(
+        stream_events=[
+            {"type": "delta", "content": "## Section 1\n", "isThink": False},
+            {"type": "delta", "content": "## Section 2", "isThink": False},
+            {"type": "done"},
+        ]
+    )
+    chunks: list[bytes] = []
+    async for chunk in _stream_with_think_detection(
+        request=_make_request(),
+        llm=llm,
+        # outline_stream 与非流式 outline 一样, 将 existingContent 包装进
+        # context; _build_stream_result_payload 当前只看 full_text。
+        prompt_variables={
+            "topic": "AI 入门",
+            "depth": 2,
+            "style": "professional",
+            "context": "",
+        },
+        model_alias="outline",
+        user_id="user-1",
+        custom_prompt=None,
+        model_id=None,
+        provider_code=None,
+        model="fake/gpt-test",
+        usage_context={"provider_code": "fake", "model_id": "gpt-test"},
+        metrics=_make_metrics(),
+        usage_logger=FakeUsageLogger(),
+        start_time=0.0,
+        request_text="AI 入门",
+    ):
+        chunks.append(chunk)
+
+    events = _parse_sse_events(chunks)
+    types = [e.get("type") for e in events]
+    assert "result" in types, f"No result event in {types}"
+    assert "done" in types
+    assert types.index("result") < types.index("done")
+
+    result_event = next(e for e in events if e.get("type") == "result")
+    data = result_event["data"]
+    # OutlineData 形态: {outline, characterCount, model}
+    assert data["outline"] == "## Section 1\n## Section 2"
+    assert data["characterCount"] == len(data["outline"])
+    assert data.get("model") == "fake/gpt-test"
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_result_event_before_done_for_translate():
+    """translate 流必须在 done 之前下发 ``{type:"result", data:TranslateData}``。
+
+    sourceLanguage 为空时该字段必须是 None (前端按"自动检测"渲染),
+    targetLanguage 必须从 prompt_variables 透传。
+    """
+    llm = FakeLlm(
+        stream_events=[
+            {"type": "delta", "content": "Hello, ", "isThink": False},
+            {"type": "delta", "content": "world.", "isThink": False},
+            {"type": "done"},
+        ]
+    )
+    chunks: list[bytes] = []
+    async for chunk in _stream_with_think_detection(
+        request=_make_request(),
+        llm=llm,
+        prompt_variables={
+            "content": "你好,世界.",
+            "target_language": "en",
+            "source_language": "zh",
+        },
+        model_alias="translate",
+        user_id="user-1",
+        custom_prompt=None,
+        model_id=None,
+        provider_code=None,
+        model="fake/gpt-test",
+        usage_context={"provider_code": "fake", "model_id": "gpt-test"},
+        metrics=_make_metrics(),
+        usage_logger=FakeUsageLogger(),
+        start_time=0.0,
+        request_text="你好,世界.",
+    ):
+        chunks.append(chunk)
+
+    events = _parse_sse_events(chunks)
+    types = [e.get("type") for e in events]
+    assert "result" in types, f"No result event in {types}"
+    assert "done" in types
+    assert types.index("result") < types.index("done")
+
+    result_event = next(e for e in events if e.get("type") == "result")
+    data = result_event["data"]
+    # TranslateData 形态: {translatedContent, sourceLanguage, targetLanguage, model}
+    assert data["translatedContent"] == "Hello, world."
+    assert data["targetLanguage"] == "en"
+    assert data["sourceLanguage"] == "zh"
+    assert data.get("model") == "fake/gpt-test"
+
+
+@pytest.mark.asyncio
+async def test_stream_translate_normalizes_auto_detect_source():
+    """translate: source_language='自动检测' 必须归一化为 None,
+    避免 TranslateData.sourceLanguage 漏出 UI 占位符给前端。"""
+    llm = FakeLlm(
+        stream_events=[
+            {"type": "delta", "content": "Hello", "isThink": False},
+            {"type": "done"},
+        ]
+    )
+    chunks: list[bytes] = []
+    async for chunk in _stream_with_think_detection(
+        request=_make_request(),
+        llm=llm,
+        prompt_variables={
+            "content": "你好",
+            "target_language": "en",
+            "source_language": "自动检测",
+        },
+        model_alias="translate",
+        user_id="user-1",
+        custom_prompt=None,
+        model_id=None,
+        provider_code=None,
+        model="fake/gpt-test",
+        usage_context={},
+        metrics=_make_metrics(),
+        usage_logger=FakeUsageLogger(),
+        start_time=0.0,
+        request_text="你好",
+    ):
+        chunks.append(chunk)
+
+    events = _parse_sse_events(chunks)
+    result_event = next(e for e in events if e.get("type") == "result")
+    assert result_event["data"]["sourceLanguage"] is None
+
+
 # ─────────────────────────── 安全的 prompt 渲染 ───────────────────────────
 
 
