@@ -1,24 +1,33 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Plus, Search, Filter, Loader2, Edit, Copy, Trash2, X, ChevronDown,
+  ChevronLeft, ChevronRight, Settings, Sparkles, EyeOff, Lock, Eye,
+  FolderOpen, Tag as TagIcon, BarChart3, FileText,
+} from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { postService, PostListItem, Post } from '@/services/postService';
 import { categoryService, Category } from '@/services/categoryService';
 import { tagService, Tag } from '@/services/tagService';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { StyledSelect } from '@/components/common';
+import { Select, DateRangePicker, type SelectOption, type DateRangeValue } from '@aetherblog/ui';
 import { PostPropertiesModal } from '@/components/PostPropertiesModal';
 import PostTableRow from '@/components/posts/PostTableRow';
 import { UpdatePostPropertiesRequest } from '@/types/post';
 import { logger } from '@/lib/logger';
 
-const VISIBILITY_SELECT_OPTIONS = [
-  { value: '', label: '全部可见性' },
-  { value: 'false', label: '仅公开' },
-  { value: 'true', label: '仅隐藏' },
+/**
+ * 浏览量预设 —— 与其让用户填两个 number input，不如给 5 个常用区间。
+ * value 用 'min:max' 编码，'-' 表示无界。
+ */
+const VIEW_COUNT_PRESETS: Array<{ value: string; label: string; min?: number; max?: number }> = [
+  { value: '',                label: '全部浏览量' },
+  { value: '0:99',            label: '< 100',           max: 99 },
+  { value: '100:999',         label: '100 – 1k',        min: 100, max: 999 },
+  { value: '1000:9999',       label: '1k – 10k',        min: 1000, max: 9999 },
+  { value: '10000:-',         label: '> 10k',           min: 10000 },
 ];
 
 export default function PostsPage() {
@@ -45,6 +54,32 @@ export default function PostsPage() {
     endDate: '',
     hidden: undefined as boolean | undefined,
   });
+  // UI 派生：浏览量预设 / 日期范围 ——
+  // 内部 filters 形状不变（backend 接受 min/maxViewCount + start/endDate），
+  // UI 控件用 preset / range 包装一层，更易理解。
+  const [viewCountPreset, setViewCountPreset] = useState<string>('');
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ startTime: '', endTime: '' });
+
+  // preset → filters.min/maxViewCount
+  useEffect(() => {
+    if (viewCountPreset === '') {
+      setFilters(f => ({ ...f, minViewCount: undefined, maxViewCount: undefined }));
+      return;
+    }
+    const preset = VIEW_COUNT_PRESETS.find(p => p.value === viewCountPreset);
+    if (preset) {
+      setFilters(f => ({ ...f, minViewCount: preset.min, maxViewCount: preset.max }));
+    }
+  }, [viewCountPreset]);
+
+  // dateRange → filters.start/endDate
+  useEffect(() => {
+    setFilters(f => ({
+      ...f,
+      startDate: dateRange.startTime || '',
+      endDate: dateRange.endTime || '',
+    }));
+  }, [dateRange.startTime, dateRange.endTime]);
 
   // 操作确认状态
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -255,20 +290,129 @@ export default function PostsPage() {
     setActiveTagPopover(prev => prev === id ? null : id);
   }, []);
 
-  const categorySelectOptions = useMemo(
+  const categorySelectOptions: SelectOption[] = useMemo(
     () => [
       { value: '', label: '全部分类' },
       ...categories.map((category) => ({ value: String(category.id), label: category.name })),
     ],
     [categories]
   );
-  const tagSelectOptions = useMemo(
+  const tagSelectOptions: SelectOption[] = useMemo(
     () => [
       { value: '', label: '全部标签' },
       ...tags.map((tag) => ({ value: String(tag.id), label: tag.name })),
     ],
     [tags]
   );
+  const viewCountOptions: SelectOption[] = useMemo(
+    () => VIEW_COUNT_PRESETS.map((p) => ({ value: p.value, label: p.label })),
+    []
+  );
+
+  /* -----------------------------------------------------------
+   * 激活筛选 chip 摘要
+   * 收集：搜索 / 分类 / 标签 / 浏览量 / 日期 / 仅隐藏
+   * status tab 不入 chip（它已有独立的 segmented 显示）
+   * ----------------------------------------------------------- */
+  type ActiveFilterChip = {
+    key: string;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    value: string;
+    onRemove: () => void;
+  };
+
+  const activeChips: ActiveFilterChip[] = [];
+
+  if (debouncedSearch) {
+    activeChips.push({
+      key: 'search',
+      icon: Search,
+      label: '搜索',
+      value: debouncedSearch,
+      onRemove: () => setSearchQuery(''),
+    });
+  }
+  if (filters.categoryId) {
+    const cat = categories.find((c) => c.id === filters.categoryId);
+    activeChips.push({
+      key: 'category',
+      icon: FolderOpen,
+      label: '分类',
+      value: cat?.name ?? `#${filters.categoryId}`,
+      onRemove: () => setFilters((f) => ({ ...f, categoryId: undefined })),
+    });
+  }
+  if (filters.tagId) {
+    const t = tags.find((tt) => tt.id === filters.tagId);
+    activeChips.push({
+      key: 'tag',
+      icon: TagIcon,
+      label: '标签',
+      value: t?.name ?? `#${filters.tagId}`,
+      onRemove: () => setFilters((f) => ({ ...f, tagId: undefined })),
+    });
+  }
+  if (viewCountPreset) {
+    const preset = VIEW_COUNT_PRESETS.find((p) => p.value === viewCountPreset);
+    activeChips.push({
+      key: 'viewCount',
+      icon: BarChart3,
+      label: '浏览',
+      value: preset?.label ?? viewCountPreset,
+      onRemove: () => setViewCountPreset(''),
+    });
+  }
+  if (dateRange.startTime || dateRange.endTime) {
+    const s = dateRange.startTime;
+    const e = dateRange.endTime;
+    let value = '';
+    if (s && e && s === e) value = s;
+    else if (s && e) value = `${s} → ${e}`;
+    else if (s) value = `自 ${s}`;
+    else if (e) value = `至 ${e}`;
+    activeChips.push({
+      key: 'date',
+      icon: FileText,
+      label: '日期',
+      value,
+      onRemove: () => setDateRange({ startTime: '', endTime: '' }),
+    });
+  }
+  if (filters.hidden === true) {
+    activeChips.push({
+      key: 'hidden',
+      icon: EyeOff,
+      label: '可见性',
+      value: '仅隐藏',
+      onRemove: () => setFilters((f) => ({ ...f, hidden: undefined })),
+    });
+  } else if (filters.hidden === false) {
+    activeChips.push({
+      key: 'hidden',
+      icon: Eye,
+      label: '可见性',
+      value: '仅公开',
+      onRemove: () => setFilters((f) => ({ ...f, hidden: undefined })),
+    });
+  }
+
+  const activeFilterCount = activeChips.length;
+
+  const resetAllFilters = () => {
+    setFilters({
+      categoryId: undefined,
+      tagId: undefined,
+      minViewCount: undefined,
+      maxViewCount: undefined,
+      startDate: '',
+      endDate: '',
+      hidden: undefined,
+    });
+    setViewCountPreset('');
+    setDateRange({ startTime: '', endTime: '' });
+    setSearchQuery('');
+  };
 
   return (
     <div className="flex flex-col">
@@ -286,55 +430,55 @@ export default function PostsPage() {
         </div>
       </div>
 
-      {/* 筛选和搜索 */}
-      <div className="flex flex-wrap items-center gap-4 mb-4">
-        {/* 操作按钮组 */}
+      {/* 主操作行 */}
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        {/* CTA 组 —— AI 协同写作 + 新建文章 */}
         <div className="flex items-center gap-2">
-          {/* AI 协同写作按钮 */}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
+          <button
+            type="button"
             onClick={() => navigate('/posts/ai-writing/new')}
-            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 overflow-hidden transition-colors"
+            className={cn(
+              'inline-flex items-center gap-2 h-10 px-3.5 rounded-lg text-sm font-medium',
+              'border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]',
+              'bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]',
+              'text-[var(--aurora-1)]',
+              'hover:bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]',
+              'transition-[background-color,border-color] duration-[var(--dur-quick)] ease-[var(--ease-out)]'
+            )}
           >
-            <Sparkles className="w-4 h-4 text-primary" />
+            <Sparkles className="w-4 h-4" />
             <span>AI 协同写作</span>
-            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/20 text-primary -ml-0.5">新</span>
-          </motion.button>
+            <span className="px-1.5 py-px text-[10px] font-mono uppercase tracking-[0.12em] rounded bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]">
+              新
+            </span>
+          </button>
 
-          {/* 新建文章主按钮 */}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
+          <button
+            type="button"
             onClick={() => navigate('/posts/new')}
-            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-primary via-primary to-primary overflow-hidden shadow-lg shadow-primary/25"
+            className={cn(
+              'group relative inline-flex items-center gap-2 h-10 px-4 rounded-lg text-sm font-semibold text-white overflow-hidden',
+              'bg-[var(--color-primary)]',
+              'shadow-[0_4px_12px_-2px_color-mix(in_oklch,var(--aurora-1)_28%,transparent)]',
+              'hover:shadow-[0_6px_16px_-2px_color-mix(in_oklch,var(--aurora-1)_38%,transparent)]',
+              'transition-shadow duration-[var(--dur-quick)] ease-[var(--ease-out)]'
+            )}
           >
-            {/* 持续流动的光泽效果 */}
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-              style={{
-                animation: 'shimmer 3s ease-in-out infinite',
-              }}
+            <span
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-[var(--dur-flow)] ease-[var(--ease-out)]"
             />
-            <style>{`
-              @keyframes shimmer {
-                0% { transform: translateX(-100%); }
-                50% { transform: translateX(100%); }
-                50.01% { transform: translateX(-100%); }
-                100% { transform: translateX(-100%); }
-              }
-            `}</style>
-            <Plus className="w-4 h-4 relative z-10" />
-            <span className="relative z-10">新建文章</span>
-          </motion.button>
+            <Plus className="w-4 h-4 relative" />
+            <span className="relative">新建文章</span>
+          </button>
         </div>
 
-        {/* 状态筛选 (滑动背景效果) */}
-        <div className="surface-leaf surface-admin-card flex items-center p-1 rounded-full">
+        {/* 状态 segmented */}
+        <div className="surface-leaf flex items-center p-1 rounded-full">
           {[
-            { key: undefined, label: '全部' },
-            { key: 'PUBLISHED', label: '已发布' },
-            { key: 'DRAFT', label: '草稿' },
+            { key: undefined,    label: '全部' },
+            { key: 'PUBLISHED',  label: '已发布' },
+            { key: 'DRAFT',      label: '草稿' },
           ].map((tab) => {
             const isActive = activeStatus === tab.key;
             return (
@@ -342,16 +486,16 @@ export default function PostsPage() {
                 key={tab.key ?? 'all'}
                 onClick={() => handleStatusChange(tab.key)}
                 className={cn(
-                  'relative px-5 py-2 rounded-full text-sm font-medium transition-colors duration-300',
-                  isActive ? 'text-[var(--text-inverse)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  'relative h-8 px-4 rounded-full text-sm font-medium',
+                  'transition-colors duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                  isActive ? 'text-[var(--text-inverse)]' : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
                 )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="activeStatusTab"
-                    className="absolute inset-0 bg-[var(--color-primary)] rounded-full shadow-sm"
-                    transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
-                    style={{ borderRadius: 9999 }}
+                    className="absolute inset-0 bg-[var(--color-primary)] rounded-full"
+                    transition={{ type: 'spring', stiffness: 320, damping: 30 }}
                   />
                 )}
                 <span className="relative z-10">{tab.label}</span>
@@ -360,177 +504,155 @@ export default function PostsPage() {
           })}
         </div>
 
+        {/* 可见性切换 chip —— 三态循环：全部 → 仅隐藏 → 仅公开 → 全部 */}
+        <button
+          type="button"
+          onClick={() => {
+            setFilters((f) => ({
+              ...f,
+              hidden: f.hidden === undefined ? true : f.hidden === true ? false : undefined,
+            }));
+          }}
+          className={cn(
+            'inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-medium border',
+            'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+            filters.hidden === true
+              ? 'border-[color-mix(in_oklch,var(--signal-warn)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] text-[var(--signal-warn)]'
+              : filters.hidden === false
+                ? 'border-[color-mix(in_oklch,var(--signal-success)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)] text-[var(--signal-success)]'
+                : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+          )}
+          title="点击切换可见性筛选"
+        >
+          {filters.hidden === true
+            ? <><EyeOff className="w-3.5 h-3.5" /> 仅隐藏</>
+            : filters.hidden === false
+              ? <><Eye className="w-3.5 h-3.5" /> 仅公开</>
+              : <><Eye className="w-3.5 h-3.5" /> 全部可见性</>}
+        </button>
+
         {/* 搜索框 */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--ink-muted)] pointer-events-none" />
           <input
             type="text"
-            placeholder="搜索文章标题..."
+            placeholder="搜索文章标题…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
-              'w-full pl-10 pr-4 py-2 rounded-xl text-sm',
-              'bg-[var(--bg-leaf)] border border-[var(--border-subtle)]',
-              'text-[var(--text-primary)] placeholder-[var(--text-muted)]',
-              'focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20',
-              'transition-all duration-200'
+              'w-full h-10 pl-10 pr-9 rounded-lg text-sm',
+              'bg-[var(--bg-leaf)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]',
+              'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+              'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+              'hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)]',
+              'focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)]',
+              'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
             )}
           />
-        </div>
-
-        {/* 筛选按钮 + 重置按钮 */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all duration-200 shadow-sm border',
-              showAdvancedFilter
-                ? 'bg-primary/20 border-primary/50 text-primary'
-                : 'bg-[var(--bg-leaf)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)] hover:text-[var(--text-primary)]'
-            )}
-          >
-            <Filter className="w-4 h-4" />
-            <span>高级筛选</span>
-            <ChevronDown className={cn('w-4 h-4 transition-transform duration-300', showAdvancedFilter && 'rotate-180')} />
-          </button>
-
-          {/* 重置按钮 (与主题色协调) */}
-          {showAdvancedFilter && (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.9, x: -10 }}
-              animate={{ opacity: 1, scale: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.9, x: -10 }}
-              transition={{ duration: 0.15 }}
-              onClick={() => setFilters({
-                categoryId: undefined,
-                tagId: undefined,
-                minViewCount: undefined,
-                maxViewCount: undefined,
-                startDate: '',
-                endDate: '',
-                hidden: undefined,
-              })}
-              className="group relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium overflow-hidden"
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="清空搜索"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
             >
-              {/* 渐变边框背景 (使用主题色) */}
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary via-accent to-primary opacity-50 group-hover:opacity-100 transition-opacity duration-300" />
-              {/* 内部背景 */}
-              <div className="absolute inset-[1px] rounded-[10px] bg-[var(--bg-primary)]" />
-              {/* 光泽流动 */}
-              <div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100"
-                style={{
-                  animation: 'shimmerReset 1.5s ease-in-out infinite',
-                }}
-              />
-              <style>{`
-                @keyframes shimmerReset {
-                  0% { transform: translateX(-100%); }
-                  100% { transform: translateX(100%); }
-                }
-              `}</style>
-              <X className="w-3.5 h-3.5 relative z-10 text-primary/80 group-hover:text-primary transition-colors" />
-              <span className="relative z-10 text-[var(--text-tertiary)] group-hover:text-white transition-colors">重置</span>
-            </motion.button>
+              <X className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
+
+        {/* 高级筛选切换 */}
+        <button
+          type="button"
+          onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+          className={cn(
+            'inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-sm font-medium border',
+            'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+            showAdvancedFilter
+              ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--ink-primary)]'
+              : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+          )}
+        >
+          <Filter className="w-4 h-4" />
+          <span>高级筛选</span>
+          {activeFilterCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-mono font-semibold bg-[var(--aurora-1)] text-[var(--bg-void)]">
+              {activeFilterCount}
+            </span>
+          )}
+          <ChevronDown className={cn('w-4 h-4 transition-transform duration-[var(--dur-quick)]', showAdvancedFilter && 'rotate-180')} />
+        </button>
       </div>
 
       {/* 高级筛选面板 */}
       <AnimatePresence initial={false}>
         {showAdvancedFilter && (
           <motion.div
-            key="content"
-            initial="collapsed"
-            animate="open"
-            exit="collapsed"
-            variants={{
-              open: { opacity: 1, height: 'auto', marginBottom: 16 },
-              collapsed: { opacity: 0, height: 0, marginBottom: 0 }
-            }}
-            transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
-            className="overflow-hidden"
+            key="advanced-panel"
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-visible"
           >
-            <div className="surface-leaf surface-admin-card p-5 rounded-2xl">
+            <div className="surface-leaf rounded-xl p-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* 分类筛选 */}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">所属分类</label>
-                  <StyledSelect
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
+                    所属分类
+                  </label>
+                  <Select
                     value={filters.categoryId ? String(filters.categoryId) : ''}
-                    onChange={(nextValue) => setFilters(f => ({ ...f, categoryId: nextValue ? Number(nextValue) : undefined }))}
+                    onValueChange={(v) =>
+                      setFilters((f) => ({ ...f, categoryId: v ? Number(v) : undefined }))
+                    }
                     options={categorySelectOptions}
+                    placeholder="全部分类"
+                    prefix={<FolderOpen />}
                     ariaLabel="所属分类"
-                    buttonClassName="rounded-xl"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">隐藏状态</label>
-                  <StyledSelect
-                    value={filters.hidden === undefined ? '' : String(filters.hidden)}
-                    onChange={(nextValue) => setFilters(f => ({
-                      ...f,
-                      hidden: nextValue === '' ? undefined : nextValue === 'true'
-                    }))}
-                    options={VISIBILITY_SELECT_OPTIONS}
-                    ariaLabel="隐藏状态"
-                    buttonClassName="rounded-xl"
-                  />
-                </div>
-
-                {/* 标签筛选 */}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">标签筛选</label>
-                  <StyledSelect
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
+                    标签
+                  </label>
+                  <Select
                     value={filters.tagId ? String(filters.tagId) : ''}
-                    onChange={(nextValue) => setFilters(f => ({ ...f, tagId: nextValue ? Number(nextValue) : undefined }))}
+                    onValueChange={(v) =>
+                      setFilters((f) => ({ ...f, tagId: v ? Number(v) : undefined }))
+                    }
                     options={tagSelectOptions}
-                    ariaLabel="标签筛选"
-                    buttonClassName="rounded-xl"
+                    placeholder="全部标签"
+                    prefix={<TagIcon />}
+                    ariaLabel="标签"
                   />
                 </div>
 
-                {/* 浏览量范围 */}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">浏览量范围</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      placeholder="最小"
-                      value={filters.minViewCount || ''}
-                      onChange={(e) => setFilters(f => ({ ...f, minViewCount: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
-                    />
-                    <span className="text-[var(--text-muted)] flex-shrink-0">-</span>
-                    <input
-                      type="number"
-                      placeholder="最大"
-                      value={filters.maxViewCount || ''}
-                      onChange={(e) => setFilters(f => ({ ...f, maxViewCount: e.target.value ? Number(e.target.value) : undefined }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
+                    浏览量
+                  </label>
+                  <Select
+                    value={viewCountPreset}
+                    onValueChange={setViewCountPreset}
+                    options={viewCountOptions}
+                    placeholder="全部浏览量"
+                    prefix={<BarChart3 />}
+                    ariaLabel="浏览量范围"
+                  />
                 </div>
 
-                {/* 发布时间范围 */}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-[var(--text-secondary)] ml-1">发布时间</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={filters.startDate}
-                      onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
-                    />
-                    <span className="text-[var(--text-muted)] flex-shrink-0">至</span>
-                    <input
-                      type="date"
-                      value={filters.endDate}
-                      onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))}
-                      className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-primary/50 cursor-pointer appearance-none dark:[color-scheme:dark]"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] mb-1.5">
+                    发布时间
+                  </label>
+                  <DateRangePicker
+                    value={dateRange}
+                    onChange={setDateRange}
+                    placeholder="选择时间范围"
+                    ariaLabel="发布时间筛选"
+                  />
                 </div>
               </div>
             </div>
@@ -538,6 +660,62 @@ export default function PostsPage() {
         )}
       </AnimatePresence>
 
+      {/* 激活筛选 chip 摘要 —— 让用户随时看清在筛什么 */}
+      <AnimatePresence initial={false}>
+        {activeFilterCount > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                已应用 {activeFilterCount}
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+                {activeChips.map((chip) => {
+                  const Icon = chip.icon;
+                  return (
+                    <motion.span
+                      key={chip.key}
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-xs"
+                    >
+                      <Icon className="w-3 h-3 text-[var(--aurora-1)] shrink-0" />
+                      <span className="text-[var(--ink-muted)] font-mono">{chip.label}</span>
+                      <span className="text-[var(--ink-primary)] font-medium max-w-[180px] truncate">
+                        {chip.value}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={chip.onRemove}
+                        aria-label={`移除${chip.label}筛选`}
+                        className="ml-0.5 w-5 h-5 inline-flex items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </motion.span>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] hover:text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] transition-colors"
+              >
+                <X className="w-3 h-3" />
+                全部清空
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 文章列表 */}
       <div className="surface-leaf surface-admin-card rounded-2xl overflow-hidden relative flex flex-col">
@@ -616,12 +794,52 @@ export default function PostsPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-center py-20"
+                className="text-center py-20 px-6"
               >
-                <div className="w-16 h-16 bg-[var(--bg-secondary)] rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Search className="w-8 h-8 text-[var(--text-muted)]" />
+                <div className="w-16 h-16 mx-auto mb-4 inline-flex items-center justify-center rounded-2xl bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]">
+                  {activeFilterCount > 0
+                    ? <Search className="w-8 h-8 text-[var(--aurora-1)]" />
+                    : <FileText className="w-8 h-8 text-[var(--aurora-1)]" />}
                 </div>
-                <p className="text-[var(--text-muted)]">暂无符合条件的文章</p>
+                <h3 className="font-display text-lg text-[var(--ink-primary)] mb-1">
+                  {activeFilterCount > 0 ? '当前筛选条件下没有文章' : '还没有任何文章'}
+                </h3>
+                <p className="text-sm text-[var(--ink-muted)] max-w-sm mx-auto">
+                  {activeFilterCount > 0
+                    ? '尝试清空当前筛选，或者换个关键字搜索'
+                    : '从一篇空白文章开始，或者让 AI 协同写作帮你打草稿'}
+                </p>
+                <div className="mt-5 flex items-center justify-center gap-2 flex-wrap">
+                  {activeFilterCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={resetAllFilters}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-sm font-medium border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      清空筛选
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/posts/new')}
+                        className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-sm font-semibold text-white bg-[var(--color-primary)] shadow-[0_4px_12px_-2px_color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:shadow-[0_6px_16px_-2px_color-mix(in_oklch,var(--aurora-1)_38%,transparent)] transition-shadow"
+                      >
+                        <Plus className="w-4 h-4" />
+                        创建第一篇文章
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/posts/ai-writing/new')}
+                        className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-sm font-medium border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--aurora-1)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] transition-colors"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        AI 协同写作
+                      </button>
+                    </>
+                  )}
+                </div>
               </motion.div>
             ) : (
               <motion.div
