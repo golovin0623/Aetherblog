@@ -35,3 +35,35 @@ class IndexRequest(BaseModel):
     # 由 Go backend 根据搜索配置 (search.index_post_timeout_sec) 透传，
     # 保证两端超时一致；None 时使用 ai-service 默认值。
     timeoutSec: int | None = Field(default=None, ge=10, le=600)
+
+
+# ============================================================
+# Search Profile DTOs (migration 000041)
+# ============================================================
+
+
+class SearchProfileResponse(BaseModel):
+    """search_profiles 表行的 API 视图。"""
+
+    id: int
+    code: str
+    name: str
+    description: str | None = None
+    modelId: str
+    chunkerKind: str
+    chunkSizeTokens: int
+    chunkOverlapTokens: int
+    status: str  # 'active' | 'shadow' | 'deprecated'
+    createdAt: str | None = None
+    updatedAt: str | None = None
+
+
+class CreateSearchProfileRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = None
+    modelId: str = Field(min_length=1, max_length=120)
+    chunkerKind: str = Field(default="recursive")
+    chunkSizeTokens: int = Field(default=512, ge=64, le=8192)
+    chunkOverlapTokens: int = Field(default=64, ge=0, le=2048)
+
