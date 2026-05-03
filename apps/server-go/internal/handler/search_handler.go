@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -416,6 +418,120 @@ func (h *SearchHandler) EmbeddingStatus(c echo.Context) error {
 	}
 	defer body.Close()
 	return searchProxyResponse(c, body, statusCode)
+}
+
+// ProxyProfiles 通配代理 ``/v1/admin/search/profiles[/*]`` 到 ai-service。
+//
+// 设计取舍：
+//   - profile CRUD（list / create / activate / deprecate / delete）走同步代理 DoSync
+//   - 唯一的流式端点 ``POST /{code}/reindex/stream`` 走 DoStream + line-by-line forward
+//     （借用 ai_handler 的 validateSSELine 白名单 + bufio.Scanner 实现，避免代码重复）
+//   - 路径透传保留 ``EscapedPath()``，与 ai_handler.ProxyProviders 一致防止
+//     `..` / `%2F` 注入
+//
+// SSE 帧通过 nginx 时已在 ``/api/v1/admin/search`` location 配 ``proxy_buffering off``
+// + ``proxy_read_timeout 600s``，浏览器看到的延迟仅是 ai-service emit 间隔。
+func (h *SearchHandler) ProxyProfiles(c echo.Context) error {
+	// 取 EscapedPath() 保留客户端原始编码
+	escapedFull := c.Request().URL.EscapedPath()
+	// AI service 的路由前缀已包含完整 ``/api/v1/admin/search/profiles``，
+	// 这里直接拿原始路径透传即可（escapedFull 已是 ``/api/v1/admin/search/profiles[/...]``）。
+	targetPath := escapedFull
+
+	// 多级解码尝试，发现 `..` 后整体拒绝（深度防御）
+	probe := targetPath
+	for {
+		decoded, err := url.PathUnescape(probe)
+		if err != nil {
+			break
+		}
+		if decoded == probe {
+			break
+		}
+		probe = decoded
+	}
+	if strings.Contains(probe, "..") {
+		return response.FailWith(c, response.BadRequest, "invalid path traversal")
+	}
+
+	queryString := c.QueryString()
+	if queryString != "" {
+		targetPath = targetPath + "?" + queryString
+	}
+
+	method := c.Request().Method
+	headers := searchProxyHeaders(c)
+
+	// SSE 流式端点：路径以 ``/reindex/stream`` 结尾且方法为 POST
+	isStream := method == http.MethodPost &&
+		strings.HasSuffix(c.Request().URL.Path, "/reindex/stream")
+
+	if isStream {
+		return h.proxyProfileStream(c, method, targetPath, headers)
+	}
+
+	var reqBody io.Reader
+	if method != http.MethodGet && method != http.MethodDelete {
+		reqBody = c.Request().Body
+		defer c.Request().Body.Close()
+	}
+	body, statusCode, err := h.svc.ProxyProfileSync(c.Request().Context(), method, targetPath, reqBody, headers)
+	if err != nil {
+		return handleSearchError(c, err)
+	}
+	defer body.Close()
+	return searchProxyResponse(c, body, statusCode)
+}
+
+// proxyProfileStream 处理 POST /{code}/reindex/stream，将 ai-service 的 SSE
+// 帧逐行透传给浏览器。复用 ai_handler 的 validateSSELine 白名单（已扩展
+// 支持 start / progress 事件类型）。
+func (h *SearchHandler) proxyProfileStream(
+	c echo.Context, method, targetPath string, headers map[string]string,
+) error {
+	body := c.Request().Body
+	defer body.Close()
+
+	respBody, statusCode, err := h.svc.ProxyProfileStream(
+		c.Request().Context(), method, targetPath, body, headers,
+	)
+	if err != nil {
+		return handleSearchError(c, err)
+	}
+	defer respBody.Close()
+
+	if statusCode != http.StatusOK {
+		// 上游返回非 200（如 404/400），按同步响应透传
+		return searchProxyResponse(c, respBody, statusCode)
+	}
+
+	w := c.Response()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, ok := w.Writer.(http.Flusher)
+	if !ok {
+		return response.Fail(c, "streaming not supported")
+	}
+
+	scanner := bufio.NewScanner(respBody)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !validateSSELine(line) {
+			continue
+		}
+		fmt.Fprintf(w, "%s\n", line)
+		flusher.Flush()
+	}
+	if err := scanner.Err(); err != nil {
+		log.Warn().Err(err).Msg("profile reindex SSE scanner error")
+	}
+	return nil
 }
 
 // searchProxyResponse 将 AI service 的响应透传给客户端。
