@@ -675,12 +675,14 @@ class LlmRouter:
             # 静默切换会破坏"测试该模型"的意图。
             routing = None
             if self.model_router and not resolved.override:
-                try:
-                    routing = await self._get_routing(model_alias, user_id)
-                except Exception:
-                    routing = None
+                routing = await self._get_routing(model_alias, user_id)
             if routing and routing.fallback_model:
-                fallback_routing = await self._get_routing_for_fallback(routing)
+                fallback_routing = await self._prepare_fallback_routing(
+                    routing,
+                    task_alias=model_alias,
+                    primary_model=resolved.model,
+                    primary_exc=primary_exc,
+                )
                 if fallback_routing:
                     fallback_model = self._prefix_model_for_litellm(
                         fallback_routing.model.model_id,
@@ -697,8 +699,6 @@ class LlmRouter:
                             }
                         },
                     )
-                    # SECURITY (VULN-057)：fallback 的 api_base 同样要经过守卫。
-                    await self._guard_api_base(fallback_routing.credential.base_url)
                     response = await acompletion(
                         model=fallback_model,
                         messages=messages,
@@ -709,6 +709,38 @@ class LlmRouter:
                     )
                     return response.choices[0].message.content or ""
             raise
+
+    async def _prepare_fallback_routing(
+        self,
+        original: "RoutingConfig",
+        *,
+        task_alias: str,
+        primary_model: str,
+        primary_exc: Exception,
+    ) -> "RoutingConfig | None":
+        """Resolve and validate fallback routing without masking the primary failure."""
+        try:
+            fallback_routing = await self._get_routing_for_fallback(original)
+            if not fallback_routing:
+                return None
+            # SECURITY (VULN-057)：fallback 的 api_base 同样要经过守卫。
+            await self._guard_api_base(fallback_routing.credential.base_url)
+            return fallback_routing
+        except Exception as fallback_exc:
+            fallback_model = getattr(getattr(original, "fallback_model", None), "model_id", None)
+            logger.warning(
+                "llm_router.fallback_prepare_failed",
+                extra={
+                    "data": {
+                        "task_alias": task_alias,
+                        "primary_model": primary_model,
+                        "fallback_model": fallback_model,
+                        "primary_error": f"{type(primary_exc).__name__}: {primary_exc}",
+                        "fallback_error": f"{type(fallback_exc).__name__}: {fallback_exc}",
+                    }
+                },
+            )
+            return None
 
     async def _get_routing_for_fallback(self, original: "RoutingConfig") -> "RoutingConfig | None":
         """获取 fallback 模型对应的凭证。"""
@@ -808,15 +840,17 @@ class LlmRouter:
             # 为 None，那时跳过 fallback。
             routing = None
             if self.model_router and not resolved.override:
-                try:
-                    routing = await self._get_routing(model_alias, user_id)
-                except Exception:
-                    routing = None
+                routing = await self._get_routing(model_alias, user_id)
 
             if not routing or not routing.fallback_model:
                 raise
 
-            fallback_routing = await self._get_routing_for_fallback(routing)
+            fallback_routing = await self._prepare_fallback_routing(
+                routing,
+                task_alias=model_alias,
+                primary_model=resolved.model,
+                primary_exc=primary_exc,
+            )
             if not fallback_routing:
                 raise
 
@@ -835,8 +869,6 @@ class LlmRouter:
                     }
                 },
             )
-            # SECURITY (VULN-057)：fallback 的 api_base 同样要经过守卫。
-            await self._guard_api_base(fallback_routing.credential.base_url)
             fallback_stream = await acompletion(
                 model=fallback_model,
                 messages=messages,
