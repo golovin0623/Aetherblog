@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🐛 管理后台实时日志查看器 · 移动端可读性修复 (2026-05-03)
+
+**背景:** 系统监控页 `/admin/monitor` 的 `RealtimeLogViewer` 在移动端出现两个明显问题:
+
+1. **嵌入态日志面板** 高 500px, 顶部头部 + 滤镜区合计要占 ~410px (字号滑块、级别 select、ALL/ERROR/WARN/INFO/DEBUG 标签、关键字、运行时下拉、换行/紧凑/行信息、导出按钮全部 wrap 成 6+ 行), 留给日志正文的可视空间被压到 ~90px, 仅能显示 2-3 行 access log。
+2. **全屏态顶栏** 把标题 + 状态徽章 + "200 行 · 时间" + "工具栏" toggle + 4 个动作按钮 + 关闭 X 强行塞在一行, 在 ~390px 宽的手机上严重挤压, 文字标签竖排叠字。
+
+**Fixed (`apps/admin/src/pages/dashboard/components/RealtimeLogViewer.tsx`):**
+
+- 新增 `embeddedFiltersExpanded` state, 嵌入态头部增加 **`筛选` 折叠按钮 (`lg:hidden`)** —— 移动端 / 平板默认收起, `lg` (1024px+) 桌面端按钮自动消失, 滤镜区域始终展开维持原桌面体验。折叠态下日志正文从 ~90px 跃升到 ~430px, 真正可读。
+- 折叠/展开走 `AnimatePresence` + `motion.div` 高度过渡 (与全屏工具栏同款 250ms `[0.22, 1, 0.36, 1]`), 不出现内容跳变。
+- "最近成功: HH:MM:SS" 标签在移动端从挤压在按钮组旁边的位置, 移到独立 `sm:hidden` 行, 桌面端仍跟在按钮组左侧。
+- **全屏顶栏** 改成 `flex-col gap-2 sm:flex-row` —— 手机上标题信息一行 (terminal icon + 标题 + 状态 + 行数·时间)、工具按钮组单独成行 (工具栏 / 刷新 / 滚动锁 / 暂停 / 清屏 / 关闭), 不再挤压; `sm` (640px+) 起恢复单行布局, 桌面体验零退化。
+- 标题徽章 `ml-1` 余量统一去掉, 改用父容器 `gap-2` + `flex-wrap` 控制间距, 在窄屏更紧凑且不会断词换行。
+
+**Verified:**
+
+- `pnpm typecheck` ✅
+- `pnpm build` ✅
+- `pnpm design-system:check` ✅ (0 errors, 红线保持)
+- 嵌入态桌面 (`lg+`): 行为与改动前一致 (滤镜常驻, 无折叠按钮)。
+- 嵌入态移动 (`<lg`): 默认收起滤镜, 点击 `筛选 ▾` 展开, 再点收起。
+
 ### ✨🐛 管理后台侧边栏搜索 · 修复半成品并升级为多通道预览 (2026-05-03)
 
 **背景:** 管理后台一共有三个搜索入口, 都各自有问题:
