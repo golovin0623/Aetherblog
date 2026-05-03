@@ -10,25 +10,13 @@
 
 /* Warm admin surfaces for embedded management panels.
    These sit on the Codex off-white canvas without falling back to pure white. */
-.surface-admin-panel {
+.surface-leaf.surface-admin-panel {
   background: color-mix(in oklch, var(--bg-void) 72%, var(--bg-substrate));
   border-color: rgb(from var(--ink-primary) r g b / 0.08);
   box-shadow: 0 1px 2px rgba(28, 26, 20, 0.035);
 }
 
-.surface-admin-item {
-  background: color-mix(in oklch, var(--bg-void) 86%, var(--bg-substrate));
-  border-color: rgb(from var(--ink-primary) r g b / 0.075);
-  box-shadow: 0 1px 2px rgba(28, 26, 20, 0.03);
-}
-
-:root.light .surface-admin-panel {
-  background: color-mix(in oklch, var(--bg-void) 72%, var(--bg-substrate));
-  border-color: rgb(from var(--ink-primary) r g b / 0.08);
-  box-shadow: 0 1px 2px rgba(28, 26, 20, 0.035);
-}
-
-:root.light .surface-admin-item {
+.surface-leaf.surface-admin-item {
   background: color-mix(in oklch, var(--bg-void) 86%, var(--bg-substrate));
   border-color: rgb(from var(--ink-primary) r g b / 0.075);
   box-shadow: 0 1px 2px rgba(28, 26, 20, 0.03);
