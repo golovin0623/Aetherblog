@@ -310,55 +310,64 @@ async def reindex_profile_stream(
     target_status = "active" if profile.status == "active" else "shadow"
 
     async def gen():
-        async with pool.acquire() as conn:
-            posts = await conn.fetch(
-                "SELECT id, title, slug, content_markdown FROM posts "
-                "WHERE deleted = FALSE AND status = 'PUBLISHED' ORDER BY id ASC"
-            )
-        total = len(posts)
-        yield _sse({"type": "start", "total": total, "profile": code})
-
-        indexed = 0
-        failed = 0
-        for i, p in enumerate(posts, 1):
-            t0 = time.perf_counter()
-            try:
-                result = await vector_store.upsert_post_embedding(
-                    post_id=p["id"],
-                    title=p["title"], slug=p["slug"],
-                    content=p["content_markdown"] or "",
-                    metadata={"status": "PUBLISHED"},
-                    profile=profile,
-                    target_status=target_status,
+        # 整个生成器包一层 try/except：StreamingResponse 一旦开始返回就是
+        # 200 OK，期间任何未捕获异常会让 SSE 连接被截断，前端只能感知
+        # "连接关闭"而不知道发生了什么。显式 yield 一个 error 事件让
+        # useReindexStream 能优雅处理（写 error state、停 isRunning）。
+        try:
+            async with pool.acquire() as conn:
+                posts = await conn.fetch(
+                    "SELECT id, title, slug, content_markdown FROM posts "
+                    "WHERE deleted = FALSE AND status = 'PUBLISHED' ORDER BY id ASC"
                 )
-                indexed += 1
-                yield _sse({
-                    "type": "progress",
-                    "postId": p["id"],
-                    "index": i,
-                    "chunks": result.get("chunks", 0),
-                    "status": "ok",
-                    "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                })
-            except Exception as exc:
-                failed += 1
-                yield _sse({
-                    "type": "progress",
-                    "postId": p["id"],
-                    "index": i,
-                    "chunks": 0,
-                    "status": "failed",
-                    "error": str(exc)[:200],
-                    "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
-                })
+            total = len(posts)
+            yield _sse({"type": "start", "total": total, "profile": code})
 
-        yield _sse({"type": "result", "data": {
-            "profile": code,
-            "indexed": indexed,
-            "failed": failed,
-            "target_status": target_status,
-        }})
-        yield _sse({"type": "done"})
+            indexed = 0
+            failed = 0
+            for i, p in enumerate(posts, 1):
+                t0 = time.perf_counter()
+                try:
+                    result = await vector_store.upsert_post_embedding(
+                        post_id=p["id"],
+                        title=p["title"], slug=p["slug"],
+                        content=p["content_markdown"] or "",
+                        metadata={"status": "PUBLISHED"},
+                        profile=profile,
+                        target_status=target_status,
+                    )
+                    indexed += 1
+                    yield _sse({
+                        "type": "progress",
+                        "postId": p["id"],
+                        "index": i,
+                        "chunks": result.get("chunks", 0),
+                        "status": "ok",
+                        "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
+                    })
+                except Exception as exc:
+                    failed += 1
+                    yield _sse({
+                        "type": "progress",
+                        "postId": p["id"],
+                        "index": i,
+                        "chunks": 0,
+                        "status": "failed",
+                        "error": str(exc)[:200],
+                        "elapsedMs": round((time.perf_counter() - t0) * 1000, 2),
+                    })
+
+            yield _sse({"type": "result", "data": {
+                "profile": code,
+                "indexed": indexed,
+                "failed": failed,
+                "target_status": target_status,
+            }})
+            yield _sse({"type": "done"})
+        except Exception as exc:
+            # DB 连接 / 池获取 / 任何 per-post try 之外的异常都落到这里。
+            # message 截断 200 字符避免把堆栈泄露到前端 UI。
+            yield _sse({"type": "error", "message": str(exc)[:200]})
 
     return StreamingResponse(
         gen(),
@@ -543,12 +552,21 @@ export function useReindexStream() {
         buf = lines.pop() ?? '';
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
-          const obj = JSON.parse(line.slice(6));
-          if (obj.type === 'start') setTotal(obj.total);
-          else if (obj.type === 'progress') setProgress((p) => [...p, obj]);
-          else if (obj.type === 'result') setResult(obj.data);
-          else if (obj.type === 'done') setIsRunning(false);
-          else if (obj.type === 'error') { setError(obj.message); setIsRunning(false); }
+          // 单条 malformed 不能让整个 stream 处理跪掉。SSE 协议允许
+          // keep-alive 注释行、空 data、上游缓冲拼帧等边界情况，对所有
+          // JSON.parse 失败都只 console.error 然后继续读下一行。
+          try {
+            const data = line.slice(6);
+            if (!data) continue;
+            const obj = JSON.parse(data);
+            if (obj.type === 'start') setTotal(obj.total);
+            else if (obj.type === 'progress') setProgress((p) => [...p, obj]);
+            else if (obj.type === 'result') setResult(obj.data);
+            else if (obj.type === 'done') setIsRunning(false);
+            else if (obj.type === 'error') { setError(obj.message); setIsRunning(false); }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', e, line);
+          }
         }
       }
     } catch (e: any) {
