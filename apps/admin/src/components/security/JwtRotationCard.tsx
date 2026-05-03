@@ -30,14 +30,14 @@ interface MetaRowProps {
 
 function MetaRow({ icon: Icon, label, value, hint }: MetaRowProps) {
   return (
-    <div className="flex items-start gap-3 py-2">
-      <Icon className="w-4 h-4 mt-0.5 flex-shrink-0 text-[var(--text-muted)]" />
+    <div className="flex items-start gap-3 py-3">
+      <Icon className="w-4 h-4 mt-0.5 flex-shrink-0 text-[var(--ink-muted)]" />
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--text-muted)]">
+        <div className="text-xs font-mono uppercase tracking-[0.2em] text-[var(--ink-muted)]">
           {label}
         </div>
-        <div className="text-sm text-[var(--text-primary)] mt-0.5">{value}</div>
-        {hint && <div className="text-xs text-[var(--text-muted)] mt-0.5">{hint}</div>}
+        <div className="text-sm text-[var(--ink-primary)] mt-1 tnum">{value}</div>
+        {hint && <div className="text-xs text-[var(--ink-secondary)] mt-1">{hint}</div>}
       </div>
     </div>
   );
@@ -96,18 +96,18 @@ export function JwtRotationCard({ className }: { className?: string }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className={`surface-leaf p-6 ${className || ''}`}
+      className={`surface-leaf p-5 sm:p-6 ${className || ''}`}
     >
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)]">
+      <div className="flex items-start justify-between gap-3 sm:gap-4 mb-5">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="p-2 rounded-xl bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] shrink-0">
             <ShieldCheck className="w-5 h-5 text-[var(--aurora-1)]" />
           </div>
-          <div>
-            <h3 className="text-base font-display font-semibold text-[var(--text-primary)]">
+          <div className="min-w-0">
+            <h3 className="text-base font-display font-semibold text-[var(--ink-primary)]">
               JWT 签名密钥
             </h3>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            <p className="text-xs text-[var(--ink-secondary)] mt-1 leading-relaxed">
               定时自动轮换 + 应急手动触发 · 永不在 UI 中暴露 secret 内容
             </p>
           </div>
@@ -116,14 +116,17 @@ export function JwtRotationCard({ className }: { className?: string }) {
           type="button"
           onClick={() => setConfirmOpen(true)}
           disabled={loading || rotating}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
-            bg-[color-mix(in_oklch,var(--signal-warn)_14%,transparent)]
-            hover:bg-[color-mix(in_oklch,var(--signal-warn)_24%,transparent)]
-            text-[var(--signal-warn)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-warn)]/40"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-[0.18em] rounded-lg shrink-0
+            border border-[var(--border-subtle)]
+            bg-transparent text-[var(--ink-secondary)]
+            hover:text-[var(--signal-warn)]
+            hover:border-[color-mix(in_oklch,var(--signal-warn)_32%,transparent)]
+            hover:bg-[color-mix(in_oklch,var(--signal-warn)_8%,transparent)]
+            transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklch,var(--signal-warn)_40%,transparent)]"
         >
-          {rotating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
-          {rotating ? '轮换中…' : '立即轮换'}
+          {rotating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+          {rotating ? '轮换中' : '立即轮换'}
         </button>
       </div>
 
@@ -131,16 +134,16 @@ export function JwtRotationCard({ className }: { className?: string }) {
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex gap-3 py-2">
-              <div className="w-4 h-4 mt-0.5 rounded bg-[var(--bg-secondary)] animate-pulse" />
+              <div className="w-4 h-4 mt-0.5 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] animate-pulse" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-2 w-24 rounded bg-[var(--bg-secondary)] animate-pulse" />
-                <div className="h-3 w-48 rounded bg-[var(--bg-secondary)] animate-pulse" />
+                <div className="h-2 w-24 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] animate-pulse" />
+                <div className="h-3 w-48 rounded bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] animate-pulse" />
               </div>
             </div>
           ))}
         </div>
       ) : meta ? (
-        <div className="divide-y divide-[var(--border-subtle)]">
+        <div className="divide-y divide-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
           <MetaRow
             icon={KeyRound}
             label="当前密钥晋升于"
@@ -171,7 +174,7 @@ export function JwtRotationCard({ className }: { className?: string }) {
           />
         </div>
       ) : (
-        <div className="text-sm text-[var(--text-muted)] py-4">
+        <div className="text-sm text-[var(--ink-muted)] py-4">
           未能获取 JWT 元数据,请检查后端日志。
         </div>
       )}
