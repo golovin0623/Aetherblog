@@ -912,6 +912,11 @@ class LlmRouter:
             # 使用调用方传入的 timeout_sec（通常来自 search.index_post_timeout_sec
             # 搜索配置，默认 180s），保证和 Go backend 的 per-post context 对齐。
             # num_retries=0：避免 LiteLLM 自己多次重试导致总耗时成倍放大。
+            #
+            # 注意：调用方（``vector_store.upsert_post_embedding``）已经按 search
+            # profile 配置把内容切分成 ≤ chunk_size_tokens 的 chunks。embed() 不
+            # 再做截断 —— provider 上限保护交由 chunker 上游处理，避免双层裁剪
+            # 让单篇文章的尾部内容静默丢失。
             effective_timeout = timeout_sec if (timeout_sec and timeout_sec > 0) else 180
             response = await aembedding(
                 model=model,
