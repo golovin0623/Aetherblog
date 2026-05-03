@@ -59,8 +59,8 @@ CI: {"services": "backend gateway"} → webhook → deploy.sh incremental
 |--------|------|------|
 | `DOCKER_USERNAME` | Docker Hub 用户名 | `golovin0623` |
 | `DOCKER_PASSWORD` | Docker Hub Access Token | (在 Docker Hub → Account Settings → Security 创建) |
-| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `http://your-server:7868/deploy/your-secret` |
-| `JWT_SECRET` | JWT 密钥（可选，用于 AI 服务） | 随机字符串 |
+| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `http://your-server:7868/deploy` |
+| `DEPLOY_WEBHOOK_SECRET` | webhook HMAC 密钥 | `openssl rand -hex 32` 生成的 64 位 hex |
 
 ## Webhook 部署配置（服务器端）
 
@@ -77,7 +77,7 @@ chmod +x /root/Aetherblog/ops/webhook/deploy.sh
 
 # 3. 生成 webhook secret
 WEBHOOK_SECRET=$(openssl rand -hex 32)
-echo "保存此 secret: $WEBHOOK_SECRET"
+echo "保存此 secret，并同步写入 GitHub Actions 的 DEPLOY_WEBHOOK_SECRET"
 
 # 4. 安装 systemd 服务
 cp ops/webhook/deploy-webhook.service /etc/systemd/system/
@@ -90,8 +90,11 @@ systemctl enable deploy-webhook
 systemctl start deploy-webhook
 
 # 6. 将 webhook URL 配置到 GitHub Secret
-#    DEPLOY_WEBHOOK_URL = http://<server-ip>:7868/deploy/<WEBHOOK_SECRET>
+#    DEPLOY_WEBHOOK_URL = http://<server-ip>:7868/deploy
+#    DEPLOY_WEBHOOK_SECRET = 上面生成的 WEBHOOK_SECRET
 ```
+
+> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。
 
 ### 从旧方式迁移（手动 cp → 软链接）
 
@@ -106,18 +109,27 @@ systemctl restart deploy-webhook
 ### 验证
 
 ```bash
-# 增量部署测试
-curl -i -X POST -H "Content-Type: application/json" \
-  -d '{"services": "backend gateway"}' \
-  "http://127.0.0.1:7868/deploy/<WEBHOOK_SECRET>"
+# 健康检查（未签名，应返回 401 Invalid signature）
+curl --noproxy '*' -i --max-time 5 -X POST http://127.0.0.1:7868/deploy
 
-# 全量部署测试（不传 services）
-curl -i -X POST "http://127.0.0.1:7868/deploy/<WEBHOOK_SECRET>"
+# 签名探测（非法服务名，应返回 400 Invalid services field，不触发部署）
+body='{"services": "__probe__"}'
+sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
+printf '%s' "$body" | curl --noproxy '*' -i --max-time 5 -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Hub-Signature-256: sha256=$sig" \
+  --data-binary @- \
+  http://127.0.0.1:7868/deploy
 
 # 查看日志
 journalctl -u deploy-webhook -n 50 --no-pager
 tail -n 50 /var/log/aetherblog-deploy.log
 ```
+
+### Webhook Secret 轮换
+
+如果 `DEPLOY_WEBHOOK_SECRET` 被贴到聊天、日志、工单或截图里，必须立即轮换。完整步骤见
+[`ops/webhook/README.md`](../ops/webhook/README.md#webhook-secret-轮换)。
 
 ### 部署模式
 
