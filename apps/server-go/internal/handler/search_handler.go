@@ -486,14 +486,38 @@ func (h *SearchHandler) ProxyProfiles(c echo.Context) error {
 // proxyProfileStream 处理 POST /{code}/reindex/stream，将 ai-service 的 SSE
 // 帧逐行透传给浏览器。复用 ai_handler 的 validateSSELine 白名单（已扩展
 // 支持 start / progress 事件类型）。
+//
+// 并发约束（codex review #552）：复用 reindexing 原子锁，防止与 Reindex /
+// RetryFailed / IndexBatch / 另一条 profile reindex 并发执行 —— 这些都对
+// post_embeddings 与 posts.embedding_status 写入，并发会引发竞态、双倍负载
+// 与不一致状态。SSE handler 同步阻塞直到流结束，所以锁在 defer 里释放即可
+// （不像异步 Reindex 是 goroutine 内释放）。
 func (h *SearchHandler) proxyProfileStream(
 	c echo.Context, method, targetPath string, headers map[string]string,
 ) error {
+	if !h.reindexing.CompareAndSwap(false, true) {
+		return c.JSON(http.StatusConflict, map[string]any{
+			"code":    http.StatusConflict,
+			"success": false,
+			"message": "索引任务正在进行中，请等待完成或取消后重试",
+		})
+	}
+	// SSE 走的是同步阻塞（当前 goroutine 即任务 goroutine），所以这里直接绑定
+	// 当前 request 的 ctx cancel —— Cancel 端点调用 cancelActiveJob() 会触发
+	// ctx.Done()，DoStream 内部的 http 调用会立即返回，连带让我们退出 scanner 循环。
+	streamCtx, cancel := context.WithCancel(c.Request().Context())
+	h.setActiveJob("profile-reindex", cancel)
+	defer func() {
+		cancel()
+		h.clearActiveJob()
+		h.reindexing.Store(false)
+	}()
+
 	body := c.Request().Body
 	defer body.Close()
 
 	respBody, statusCode, err := h.svc.ProxyProfileStream(
-		c.Request().Context(), method, targetPath, body, headers,
+		streamCtx, method, targetPath, body, headers,
 	)
 	if err != nil {
 		return handleSearchError(c, err)
