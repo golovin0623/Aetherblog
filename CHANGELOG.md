@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 📐 Agent 三模式产品定位锁定 · Cowork / Code 设计冻结 (2026-05-05)
+
+**背景:** Workspace 顶部 segmented control 的 Chat / Cowork / Code 长期只切换一行 system prompt 文字, 用户极易把"三模式"误解为"三种 prompt 风格"。但产品愿景里 Cowork 是**主动型异步副手**（cron 任务 + 多工具组合 + 通知 inbox + 知识合成）, Code 是**最底层 Agent 编排平台**（工具注册 + YAML/DAG 工作流 + 节点级 trace + autonomous 固化模板）—— 二者均为独立子系统, 与 Chat 完全不同的能力架构。本批次先把定位与产品路线固化为文档, 同时把 workspace UI 上的 Cowork / Code 上锁防误解, 开发推迟到后续阶段。
+
+**Added (`docs/agent/`):**
+
+- **`README.md`（新, ~200 行）** —— 三模式总入口, 用对照表锁定每个模式的形态 / 能力边界 / 用户故事; 明确 Cowork ≠ Code 的边界（"预制菜单 vs 原料库", 互不替代）; 列出当前在线状态与开放计划; 设立"修改 Agent 模式定位 / 实施阶段必须更新本目录"的硬规则, CLAUDE.md §6.1 触发器表已加入对应条目。
+- **`COWORK_ROADMAP.md`（新, ~520 行）** —— Cowork 模式产品路线: 目标定位 / 与 Chat 区别对照 / 4 类用户画像 + 4 个详细 user story / 17 项能力清单 (P0~P2 分级) / 4 张 DB schema (`cowork_tasks` / `cowork_runs` / `notifications` / `cowork_subscriptions`) / 完整 API 设计 (任务 CRUD + 运行控制 + 通知 inbox + 内部 ai-service 接口) / 架构图含调度器在 Go / 执行器在 ai-service 的关键决策 / Phase 1~5 里程碑 / 6 类风险缓解 / Phase 2 MVP 验收清单 / 任务类型规范附录 (`topic_brief` / `article_audit` / `topic_explore` / `image_compose` / `weekly_digest`)。
+- **`CODE_ROADMAP.md`（新, ~700 行）** —— Code 模式产品路线: 目标定位与"YAML 优先 / 可回放 / autonomous 可固化"四条设计原则 / 5 类用户画像 + 4 个详细 user story / 24 项能力清单 / 5 张 DB schema (`agent_tools` / `agent_workflows` / `agent_workflow_versions` / `workflow_runs` / `workflow_node_logs`) / DSL 完整 schema 含 fixed / DAG / branch / for_each / autonomous mode 范例 / 架构图含 Go 鉴权层 + ai-service 工作流引擎拆分 / 完整 API 设计 (含 SSE trace / 暂停续跑 / autonomous→fixed 固化) / Phase 1~5 里程碑 / 6 类风险缓解（重点 SSRF / 表达式注入 / autonomous 死循环）/ Cowork 协同接口预留 / 内置工具清单附录。
+
+**Changed (`apps/blog`):**
+
+- **`agent/workspace/components/ModeSwitch.tsx`** —— 重写为支持锁定模式: Cowork / Code 两个标签加 `Soon` 徽标 + `Lock` 图标, 点击不切换 mode 而是弹 `ModeInfoPopover` 说明卡（含一句话定位 + 2-3 句详述 + 链接到对应 roadmap 文档）; 导出 `AVAILABLE_MODES: ReadonlySet<AgentMode>` 给上游做防御性约束; 锁定文案严格围绕"它是什么独立子系统"展开, 不再用"prompt 切换"或"三种姿势"这类暗示。
+- **`agent/workspace/WorkspaceClient.tsx`** —— `handleModeChange` 加 `AVAILABLE_MODES.has(mode)` 守卫拒绝锁定模式; `handleSend` 引入 `effectiveMode` —— 即便 session 历史里残留 cowork/code（来自老 localStorage）也强制按 chat 走, 不让 ai-service 误以为 Cowork 已经在跑; topbar 当前模式显示同样按 `AVAILABLE_MODES` 兜底回 chat。
+- **`agent/sections/ModesSection.tsx`** —— landing 页三模式介绍重写: 标题从"三种姿势"改为"三个独立子系统", 副标题明示"它们不是 prompt 切换 —— 是三套不同的能力架构"; Cowork / Code 卡片右上角加 `Coming` 徽标; 卡片正文与 sample 行替换为对应 roadmap 文档真实场景片段 (`task · 每工作日 09:00 行业速览` / `workflow · article_audit · v3` 等); 各卡片底注引用 `docs/agent/COWORK_ROADMAP.md` / `docs/agent/CODE_ROADMAP.md`。
+
+**为什么这是定位锁定而非纯文档工作:**
+
+- 用户原始反馈是"我看不出三个模式有什么区别 / 为什么切换没有作用"。链路上 mode 是接通的（Go 透传 + ai-service `_MODE_SYSTEM_PROMPTS[req.mode]` 命中）, 但**接通方式只是不同的 system prompt 第一行**, 与产品愿景里的"主动副手 + Agent 编排平台"完全不是一回事。继续保留这个伪装会让后续真正实施 Cowork / Code 时背上"这只是把 prompt 写得更好一点"的包袱, 也会让用户在等待真正功能上线期间被反复误导。
+- 处理方式: **先把愿景文档化锁定**, 把 UI 上锁让用户**无法**误用, 但通过 InfoPopover 与 landing 页 Coming 徽标传递清晰预期, 同时给出"完整设计请看 docs/agent/*"的进一步信息源。这样既不阻塞 Chat 模式当前可用性, 又防止伪装 Cowork / Code "已经在工作"。
+
+**未变更但相关（不删, 等真实施 Phase 1 时再动）:**
+
+- `apps/ai-service/app/api/routes/agent.py` 的 `_MODE_SYSTEM_PROMPTS["cowork"]` / `["code"]` 占位 prompt 保留（前端始终发 chat 时它们走不到, 但留着便于后续验证 `mode` 字段透传链路完好）。
+- `lib/agentSessions.ts` 的 `AgentMode = 'chat' | 'cowork' | 'code'` 类型保留（DB / localStorage 已存在的 cowork/code 会话不必迁移, 由 UI 兜底回退）。
+
+
+
+**背景:** PostsPage 高级滤镜把三类视觉语言堆在一起 —— 3 个 `StyledSelect` + 2 个 `<input type="date">` + 2 个 number input —— 与新做的 ActivitiesPage / RealtimeLogViewer 在 Codex 视觉节奏上完全对不上。"重置"按钮披着渐变描边 + 内嵌白底 + shimmer 动画看起来像主 CTA, 跟"新建文章"的 shimmer 互相抢眼; 已激活的滤镜在折叠回去后没有任何可视化, 用户必须再展开下拉框才能确认状态; 状态栏（已发布 / 草稿 / 已下架）和"显示状态"被拆在两个不同的概念坐标轴; 空状态只有一个搜索图标 + 一行文案, 没有 CTA, 也不区分"过滤后无结果"与"全站无文章"。
+
+**Added (`packages/ui`):**
+
+- **`Select.tsx`（新, 363 行）** —— 真·样式化下拉, 全程走 Aether Codex token (surface-leaf / aurora hover stripe / signal-* 状态), 支持 keyboard navigation (↑↓ + ↵ + esc + Tab close)、`prefers-reduced-motion`、`aria-controls` / `aria-expanded` / `role="combobox"`、`disabled` / `loading` / clear button、`searchable` 模式。从 admin 私有的 `StyledSelect` 提升为共享, **17 个 admin 调用点全部迁移**, 旧 `StyledSelect` 一次性删除。
+- **`DateRangePicker.tsx`（新, 649 行）** —— 双月日历 + 预设范围（今天 / 昨天 / 近 7 天 / 近 30 天 / 本月 / 上月 / 自定义）+ 单击锚 + 二次单击关闭区间, locale 化（zh-CN）+ ISO 输出, 全程 popover-mode 不阻塞页面; 与 `Select` 同源走 `surface-overlay` + portal 定位（避免父级 `transform-gpu` / `overflow-hidden` 截断弹层）。
+
+**Added/Changed (`apps/admin`):**
+
+- **`PostsPage.tsx`** —— 高级滤镜面板从"三件套"重做为"双 `Select` + 单 `DateRangePicker` + 数值范围 inline"; 状态 / 显示状态合并为单一 segmented control（`已发布 / 草稿 / 已下架 / 全部`）; 折叠回去时新增 active filter chip row（每个 chip 可单独 ×, 也支持"全部清除"）; 空状态分两态：① 有过滤条件且 0 命中 → 文案 "暂无符合条件的文章" + "重置筛选" CTA; ② 全站 0 文章 → "还没有文章" + "新建第一篇" CTA。"重置"按钮去掉所有装饰, 改成 `font-mono uppercase tracking` 文字按钮 + aurora-1 underline-on-hover, 与"新建文章" shimmer 不再竞争。
+- **`taxonomy prefetch` (`useTaxonomies` hook)** —— 改成 `lazy-gate`：仅当用户首次打开高级滤镜面板时拉取 categories / tags（之前是页面挂载就预拉, 即便用户从不开滤镜也付费）, 同时加 5 分钟 stale-time 缓存避免反复点开-收起触发刷流量。
+- **`URL-as-source-of-truth`** —— 接入 `useSearchParams`, `?status=` / `?categoryId=` / `?dateRange=` / `?search=` 全部 URL 化, 复制链接 / 刷新 / 浏览器后退都还原状态, 也让侧边栏搜索 palette 跳转 `?search=...` 直接生效（与 5/3 侧边栏搜索条目联动）。
+
+**Verified:**
+
+- `pnpm typecheck` ✅ / `pnpm build` ✅ / `pnpm design-system:check` ✅ (0 errors, 红线保持)
+- 桌面 / 平板 / 手机三档手工回归: filter 折叠 → 展开 → 设条件 → 复制 URL 重开 → 状态完整恢复; chip 单点 × → URL & UI 同步; "重置筛选" CTA 在过滤态命中空集时出现, 全站 0 文章态显示"新建第一篇"。
+- PR #568 follow-ups（`b228323c` / `49a48974` / `c537a13e`）—— Codex review 跟进 7 项: DateRangePicker 焦点 trap、aria-label 完备性、disabled 态 hover stripe 抑制、reduced-motion 路径、单元测试补齐。
+
+**Why 把 Select / DateRangePicker 提升到 `packages/ui` 而不是 admin 私有:** 这两个原子已经是 ActivitiesPage / RealtimeLogViewer / PostsPage 三个高曝光页的公共语言, 提升到共享层后任何后续 admin 页（包括正在做的 SearchConfigPage profile 列表 + 媒体库 batch filter）零成本接入。同时 blog 端 `/timeline` 与 `/posts` 也开始用 `Select`, 跨 app 复用价值显性化。
+
 ### 🐛 管理后台实时日志查看器 · 移动端可读性修复 (2026-05-03)
 
 **背景:** 系统监控页 `/admin/monitor` 的 `RealtimeLogViewer` 在移动端出现两个明显问题:
@@ -63,6 +112,152 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Why 分类/标签不走后端 keyword:** 这两个表通常 < 200 行, 一次拉全量再 `includes` 过滤的延迟比再发一次 HTTP 还低, 也避免给后端加专门的 search endpoint。如果将来量级到千级, 改成同 `postService.getList` 模式的 `?keyword=` 即可, 接口面零改动。
 
 **已知未做 (后续可选 P3):** 后端聚合 endpoint `/api/v1/admin/search` —— 当前前端打 2 个独立 HTTP 请求, 在 fast 网络下没问题, 慢网 / 移动端首字延迟可见。要做的话改成单次请求 + 后端 fan-out 即可, 不影响当前契约。
+
+### ✨ Search Profiles · 完整管理 UI + 索引 profile 化 chunking pipeline (2026-05-02 / 2026-05-03)
+
+**背景:** PR #541 早期用 token-truncation 止住了 8192 token 上限造成的 400, 但代价是长博文（如 23K+ 字符）尾部被静默丢失, RAG 召回不到 —— 违反"知识库不该截断"原则。同时 admin 侧 SearchConfigPage 只能换嵌入模型, 切 chunking 策略 / 切片参数都得跑 SQL, 蓝绿协议 (000034) 也只在 model_id 维度生效。本次把整条索引链升级为业界标准的 chunking pipeline + profile 化配置 + admin 可视化操作面 + SSE 流式 reindex。
+
+**Added (后端):**
+
+- **`apps/server-go/migrations/000041_search_profiles`** —— 新建 `search_profiles` 表把 `(chunker_kind, model_id, chunk_size_tokens, overlap_tokens)` 四元组绑成一个完整 profile, 复用 000034 的蓝绿翻转协议（`status` ∈ active/shadow/deprecated/archived; `code` 唯一; `params` jsonb 兜底未来扩展）。`post_embeddings` 加 `profile_id` + `chunk_index` + `chunk_text` 三列, 存量行整体归到默认 profile（chunk_index=0、chunk_text=NULL, 仍可被搜到）。
+- **`apps/server-go/migrations/000044_post_embedding_parent_text`** —— 给 `post_embeddings` 加 `parent_text TEXT`, 配合 parent_child chunker（child 高精度召回 / parent 高上下文回显）。PG 17 的 `ADD COLUMN IF NOT EXISTS` 是 instant DDL, 不重写表。
+- **`apps/ai-service/app/services/chunker.py`** —— 5 种 chunker_kind: `recursive`（按段落 / 句子递归切, 默认）、`fixed`（固定 token 窗口）、`markdown`（按 # / ## / ### 层级保持文档结构）、`qa`（专为 FAQ / Q&A 内容设计）、`parent_child`（child 嵌入召回 + parent 文本回显）。每个策略独立单元测试。
+- **`apps/server-go/internal/handler/search_handler.go`** —— Search Profiles CRUD（list / create / activate / archive / delete）+ `POST /v1/admin/search/profiles/:code/reindex/stream` SSE 流式重建端点 + `POST .../retry-failed?profileCode=` 影子恢复入口。SSE 加锁守护（同 profile 同时只能跑一个 reindex）, 锁竞争返回 HTTP 409 而非 200 信封, cancel-aborted 路径补 terminal SSE error frame。
+- **`apps/ai-service/app/services/vector_store.py`** —— parent_child profile 写 / 读时持久化 parent_text, 其他 profile 该列为 NULL。
+
+**Added (前端):**
+
+- **`apps/admin/src/services/searchProfileService.ts` + `useSearchProfiles` (React Query)** —— Profile CRUD + active/shadow 状态查询。
+- **`apps/admin/src/hooks/useReindexStream.ts`** —— SSE 消费 hook, 把后端 `progress / chunk / done / error / result` 五种事件帧解析成 React state, 支持 `cancel()` 主动取消 + `prefers-reduced-motion` 适配; 复用 `EventSource` polyfill 处理浏览器跨域 cookie。
+- **`apps/admin/src/pages/search-config/components/`（新）** —— `ProfileListCard`（列表 + status 徽标 + 操作按钮）、`CreateProfileModal`（chunker_kind 选择 + 切片参数表单 + 模型选择, 走 `Modal` portal）、`ProfileDetailDrawer`（详情 + chunk 抽样 + reindex 进度）、`ChunkerKindSelector`（5 选 1 + 帮助文案 + 适用场景图）、`ProfileActivationFlow`（shadow → active 翻转确认 + 影响范围预览）、`ProfileManagementSection`（顶层装配）。
+
+**Verified:**
+
+- `pnpm typecheck` ✅ / `go test ./...` ✅ / `pnpm test` (chunker 单测全部通过) ✅
+- 真机回归: 长博文（23682 chars）切 parent_child profile, child chunks 正常召回, parent_text 渲染到 SearchPanel 来源卡片; 蓝绿翻转 shadow → active 时, 任意一篇 reindex 失败均不翻转指针, shadow 保留供修复。
+- 5/3 评审跟进（`d164a578` / `8277e68a` / `ea0f7733` / `5fe111bb` / `03ac7b39` / `7b94e3f4` / `4c639e36` / `ff08d0f5`）—— gemini / codex review 8 条, SSE 健壮性手册见 `docs/SEARCH_PROFILES_FOLLOWUP_PLAN.md`。
+
+**Why 把 chunker 抽到 5 种独立策略而不是单一可调参函数:** 不同内容类型（技术博客 / FAQ / 长论文 / 代码片段）的最优切法在 token 距离上根本不连续, 一个统一函数永远在某一类上欠拟合。5 种策略各自独立测试, 切换是 profile 级原子操作, 蓝绿协议保证零切换窗口。
+
+### ✨ 对象存储完整打通 + 双向管理 + Fernet 加密 (2026-05-03)
+
+**真问题:** 此前 storage 抽象层是装饰性的 —— 前端选了"S3 / R2 / OSS / COS / MinIO"也无效, 新文件永远进 `./uploads`; `PermanentDeleteBatch` 存在 ownership 越权 + 孤儿文件残留; 大文件上传走 RAM 一次性载入, 256MB 文件能让 server-go OOM; admin 侧无法看到云上已有但 DB 没记录的孤儿文件。
+
+**Added / Changed (一次性补齐六层能力):**
+
+- **路由 (Router)** —— 上传请求按 `default storage_provider` 路由, 不再硬接 LOCAL; 删除既删 DB 行也调 storage 层 `DeleteObject` 异步对账。
+- **流式 multipart (Streaming Upload)** —— 大文件改 `io.Pipe` + 5MB chunk + AWS SDK `s3.PutObject` streaming, RAM 占用稳定在 ~20MB 不论文件大小。
+- **Secret 加密** —— `storage_providers.access_key_secret` 字段走 Fernet 加密落库, 加密 key 来自 `AI_CREDENTIAL_ENCRYPTION_KEYS` 多 key 轮换列表（与 ai_credentials 同源）。`GET /v1/admin/storage` 永不返回明文 secret, 仅返回 `secretFingerprint`（前 8 位 hash）让 admin 验证一致性。
+- **Ownership + 越权修复** —— `PermanentDeleteBatch` 加 user_id 校验; "孤儿"扫描端点 `POST /v1/admin/storage/:id/objects` 列出云端有但 DB 无的对象, `POST .../import` 反向导入到 media 库, `DELETE .../objects` 批量清云端孤儿。
+- **Migration 000042** —— `align_storage_provider_types`: CHECK 约束扩展到 R2（之前 `factory.go` 接受但 SQL 拒绝, 创建 R2 provider / 上传 R2 文件直接失败 — VULN-fix）; 同步给 `media_variants` 加 `storage_provider_id` 让缩略图与主文件保持同源。
+- **Sync handler (`sync_handler.go`, 新)** —— Phase 4 存量本地文件入云任务队列：`POST /v1/admin/storage/sync/start`（入队 + 启 worker）/ `POST .../cancel`（优雅停, in-flight chunk 跑完即停）/ `GET .../status`（worker 数 + counts）/ `GET .../failed` / `POST .../retry`; 单文件入口 `POST /v1/admin/media/:id/sync`。
+- **Migration 000043** —— `add_media_sync`: `media_files` 加 `sync_status` / `sync_error` / `synced_at`, 新建 `media_sync_jobs` 任务表（含 status / error / retried_at / max_retries）。
+- **Admin UI** —— `StorageProviderSettings`（provider CRUD + test connection + secret rotate）、`MediaSyncDashboard`（队列状态 + 失败列表 + 重试 / 全部重试 / 取消）、`DeleteMediaConfirmModal`（明确"仅删 DB / 同时删云端 / 同时删本地"三态预选）。
+
+**Verified:** `go test ./internal/handler/...` ✅; AWS SDK 流式上传压测 256MB / 1GB 文件 RAM 稳定; Fernet 多 key 轮换 manual test。
+
+### ✦ JWT 签名密钥轮换 UI + meta 端点 (2026-05-03)
+
+**背景:** `POST /v1/admin/auth/rotate-jwt-secret` 早就实现（VULN-152 跟进）, 但 admin 零 UI, curl-only。应急时刻（commit 误推 token / 怀疑泄露）找运维 SSH 操作, 错过黄金时间, 违背"敏感操作 UI 化"原则。
+
+**Added:**
+
+- **后端 `GET /v1/admin/auth/jwt-secret-meta`** —— 返回 `currentPromotedAt` / `previousDemotedAt` / `previousRetiresAt` / `rotationIntervalDays` / `previousGraceHours`; **永不返回 `secret_value`**, 元数据仅含时间戳与配置间隔。
+- **`apps/admin/src/pages/dashboard/components/JwtRotationCard.tsx`** —— 系统监控页新增"JWT 密钥状态"卡, 双行 MetaRow 排版（current / previous + 各自时间）+ "立即轮换"按钮 + 二次确认 modal（影响范围预览：所有未到期 access token 在 grace 期内仍可用, refresh token 立即失效需要重登）+ 操作完成后 `activity_events` 审计。
+- **`5121ae5b` / `696ee85e` / `71e1c39d` / `70fbd497`** —— Codex 评审跟进：MetaRow label hierarchy 修复、Aether Codex token 对齐、`yyyy/dd` 格式 lowercase 修正、Aurora-1 hover stripe。
+- **`d48af82e fix(security): 修正 JWT 轮换元数据默认值`** —— 配置缺失时回退到 30 天 / 24 小时（与 `auth_handler.go::DefaultJwtRotationConfig()` 对齐）。
+
+### ✨ AI Prompt 编辑器 · 「恢复默认」按钮 + diff 预览 (2026-05-03)
+
+**背景:** 审计 P1.6: 编辑器只有 `Default` 单 toggle 看默认 prompt, 改坏只能跑 SQL 回滚, 也无法直观看到自己改了什么。
+
+**Changed (`apps/admin/src/pages/ai-config/components/PromptEditor.tsx`):**
+
+- 顶栏新增 **「恢复默认」** 按钮 —— 点开二次确认 modal 显示"将丢弃当前所有修改, 此操作不可撤销", 确认后把 `prompt_text` 重置为 `ai_task_types.default_prompt_text`, 不删数据库行。
+- 新增 **「Diff 预览」** 切换 —— 工作区上方加 segmented control（`Edit / Diff / Default`）。Diff 模式用 `react-diff-viewer` 渲染左右双栏, 高亮新增 / 删除 / 修改行; Default 模式只读显示出厂 prompt 模板。
+- 占位符提示 chip row（`{content}` / `{max_length}` / `{existing_tags}` / `{depth}` / `{style}` / `{source_lang}` / `{target_lang}`）—— 点 chip 直接插入光标位置, 减少手敲拼写错误。
+
+**Verified:** 评审跟进 `812a130a` / `d3956eea` —— inline diff 在 Mobile Safari 上 viewport 溢出修复 + reduced-motion 适配。
+
+### ✨ AI 仪表盘 · 任务费用下钻柱状图 (2026-05-03)
+
+**问题:** `GET /v1/admin/stats/ai-dashboard` 早就在 response 返回 `taskDistribution[]`（task / calls / tokens / cost / percentage）, AnalyticsPage 也已经把它解到 `data.taskDistribution` —— 但**根本没渲染**。运营人员无法回答"哪个 AI 工具最贵 / 该砍哪个"。
+
+**Added (`apps/admin/src/pages/AnalyticsPage.tsx`):**
+
+- 新 `TaskCostBarChart` —— recharts horizontal bar, x 轴 cost (USD), y 轴 task name, 颜色按 percentage 从 aurora-1 渐变到 signal-warn（>40% 高亮 warn）, hover 显示 tokens / calls / 平均单次成本。
+- "稳定颜色"修复（`1dba555d`）—— task 名 → aurora 色映射用确定性 hash 而非 index, 避免数据集顺序变化时颜色乱跳。
+
+### ✨ AI 缓存扩展 polish / outline + fallback 6 条合约锁定 (2026-05-03)
+
+**Added:**
+
+- **`apps/ai-service/app/api/routes/ai.py`** —— polish / outline 任务接 Redis 缓存, TTL 1 小时, key 含 `model_alias + content_hash + max_length + style/depth`。审计 §1.2 / §4.2 标记为"无 Redis 缓存"的最后两个真实成本浪费点本次清零。
+- **`4f221736 feat(ai-fallback): chat() 路径对齐 stream_chat() + 锁住 6 条 fallback 合约`** —— 把流式与非流式 fallback 链路统一到同一组单元测试, 锁住六条契约：① fallback prep 失败保留 primary error; ② primary success 短路不触发 fallback; ③ primary 5xx 触发 fallback; ④ primary 4xx 不触发 fallback（用户输入问题不是 provider 问题）; ⑤ fallback 也失败时优先抛 primary error; ⑥ override 模型缺 credential 时降级到 env-fallback 并标记 `fallback_used: true`。
+
+### ✨ QA SearchPanel 来源渲染 + result event (2026-05-03)
+
+**Added:**
+
+- **`apps/blog/app/components/SearchPanel.tsx`** —— QA 模式下流式追加来源卡片：每条来源卡显示 post 标题、chunk 片段、相似度分数、跳转链接; parent_child profile 下额外显示 parent_text 折叠区。
+- **`apps/ai-service/app/api/routes/search.py::qa`** —— SSE 流尾部补 `result` 事件帧（含 `sources: [{postId, slug, title, score, parentText?}]`）, 与之前的 `delta` / `done` / `error` 帧拼成完整契约; 旧客户端不读 result 不影响。
+- **`2adc4138 fix(blog): make QA source keys unique`** —— React key 用 `postId + chunkIndex` 复合键, 避免同一篇文章多 chunk 命中时 React 报 key 冲突。
+
+### 🎨 admin Codex 升级波次 · CategoriesPage / ActivitiesPage / Dashboard / Select / JwtRotationCard (2026-05-03)
+
+CategoriesPage / ActivitiesPage 此前是平铺无设计的"`bg-white/5` 玻璃 + 命名色标签"基线, 与 `/design`、`/about` 建立的 aurora 设计语言彻底脱节。本波次集中迁移：
+
+- **`09710346 feat(admin): upgrade CategoriesPage to Aether Codex design`** —— 卡片走 `surface-leaf` + `data-interactive`, 标签走 aurora-1..4 而非 Tailwind named color, 编辑按钮 bug 修复, stagger 入场动画。
+- **`b87f4dff feat(admin): unify ActivitiesPage & RealtimeLogViewer filter UI to Aether Codex`** —— 两个列表页的滤镜区从手写 UI 统一到 Codex 共享原子（在此之前是 PostsPage 滤镜重构的"实验场"）。
+- **`eebcba8e fix(admin): polish dashboard and select surfaces`** + **`9a3b592f fix(admin): close styled select on focus loss`** —— 仪表盘 KPI 卡 + select 失焦关闭。
+- **`98c2bb98 fix(admin): remove redundant light surface rules`** + **`1feff576 fix(admin): warm new admin surfaces`** —— light 主题下重复的 surface override 移除, light/dark 切换不再有"冷色一闪"。
+- **`150ea16e chore(ai-tools): 删除 pages/ai-tools/ 死代码（7 文件 / 683 行）`** —— `/ai-tools/*` 路由早已被 `AiWritingWorkspace` 取代但残留导致 sidebar 双入口, 一次性清理。
+- **`78f9120a fix(blog): remove hardcoded image domain`** —— 删掉 next.config.ts 中硬编码的 `cdn.aetherblog.com`, 让 blog 在自部署 / R2 / Cloudfront 三种 CDN 形态下都能加载图片。
+
+### 🐛 Webhook 安全加固 + secret rotation 文档 (2026-05-03)
+
+**Added:**
+
+- **`a7540924 Harden webhook requests against proxy and connection hangs`** —— `ops/webhook/server.go` 读 / 写超时 + IdleTimeout 显式设置, 防止 HTTPS 反代后端 hang 住导致 systemd `MainPID dead`; HMAC verify 失败时不再 echo body, 改用 fixed-time response 防 timing leak。
+- **`0bb120c8 docs(webhook): document secret rotation`** —— 新增 `docs/ops/webhook-secret-rotation.md`：① 生成新 secret 的 openssl 命令; ② GitHub Repository Secrets 替换流程; ③ 服务器侧 systemd 环境文件替换 + `systemctl restart aetherblog-webhook` 顺序; ④ 旧 secret 优雅过渡（双 secret 并行 24 小时窗口）。
+
+### 📚 CLAUDE.md 拆分为渐进披露式分层文档 (2026-05-03)
+
+**Changed (`f2f578b8 docs(claude): 拆分 CLAUDE.md 为渐进披露式分层文档`):**
+
+- 把原 CLAUDE.md（~30K 字, 含完整 API 表 / migration 历史 / 故障速查 / 启动指南）按主题拆到 `.claude/docs/`：`startup-and-env.md`、`backend-runtime.md`、`api-handlers.md`、`database-migrations.md`、`deployment-cicd.md`、`troubleshooting.md`、`dependencies-and-stack.md`。
+- CLAUDE.md 顶部补"子文档导航"表 —— "触发场景 → 必读文档"映射, AI agent 按需 Read, 不再一次性吃掉 30K context。
+- **`780e270f docs(claude): 应对 PR #561 的 4 条评审建议`** + **`2f160ba7 docs(api-handlers): 澄清「Handler 文件」列不含 .go 扩展名`** —— PR #561 评审跟进 4 条 + 表格列含义澄清。
+
+### 🐛 ActivitiesPage 多维筛选修复 + 时间常量 refactor (2026-05-02)
+
+**问题:** ActivitiesPage 分类筛选选了"comment"后, 列表反而显示全部事件而非仅 comment。原因是 `ActivityFilter` 的 `category` 参数与 `kind` 参数 OR 关系而非 AND, 后端 SQL `WHERE category = ? OR kind = ?` 而不是 `AND`。
+
+**Fixed (`971478d2`):** SQL 改为 `AND` 语义, 同时给 ActivitiesPage 加多轴筛选（category / kind / actor / time range / status 五维同时生效）。`f903d263 refactor(activities): 采纳 #543 评审 —— time.Hour / time.Nanosecond 替代魔术数字` 把 `60*60*1000_000_000` 这类魔术数字替换为 `time.Hour` 等常量。
+
+### ✨ 文章 AI 工具 · 应用前差量预览 (long text modal + short field inline) (2026-05-01)
+
+**背景:** 旧版 AI 工具点"应用"立刻生效, 没有 confirm 步骤 —— 5 万字润色一念之差就替换原文, 撤销只能靠 `Ctrl+Z` 编辑器历史栈, 用户表示"心脏病发"。
+
+**Added:**
+
+- **`b994dd3c feat(ai-tools): 标签可勾选 + 摘要/标题/标签应用前后差量预览（短字段 inline）`** —— 摘要 / 标题 / 标签三类短字段在工具卡内联 inline diff: 左旧右新, 颜色高亮添加 / 删除 / 修改; 标签从"全选 / 全不选"升级为单标签可勾选 + bulk action。
+- **`bf65457a feat(ai-tools): 润色/翻译/大纲 应用前的长文本 modal 预览（diff/split/render 分形态）`** —— 长文本走 modal: ① **Diff 模式** 双栏左右对比（react-diff-viewer 行级 highlight）; ② **Split 模式** 上下并排 markdown render; ③ **Render 模式** 仅新版本（看最终效果）。三态切换无缝, 模态 ESC 关闭, 应用按钮在 modal 底部 sticky。
+- **`46084d43 feat(admin): 文章「修改信息」摘要字段补 AI 生成入口 + 模型选择 + 调位置`** —— PostInfoEditor 摘要字段右侧加"AI 生成"按钮, 走 ModelSelector 选模型, 异步生成后填回 textarea。
+- **`24b60f1f fix(ai-tools): 修复移动端「生成结果」卡片标题截断与目标文章下拉框溢出`** + **`3e26fef6 refactor(ai-tools): 采纳 #535 评审 —— 目标文章下拉框迁移到 createPortal`** —— 目标文章下拉走 portal 突破 `overflow:hidden` 父容器截断。
+- **`741a45d7 fix(post): 摘要字符上限三层不统一，硬截 200 与 AI 工具/DB 不一致`** —— 编辑器 / AI 工具 / DB 三层上限 200 / 1000 / 2000 不一致, 统一到 2000 (与 migration 000039 后的 `posts.summary VARCHAR(2000)` 对齐)。
+- **`6557f6b2 fix(admin): ModelSelector 按钮缺 type="button" 导致表单内点击触发提交`** —— 同表单内点 ModelSelector 触发整个表单 submit 的 bug 修复, 是个 React 默认 `<button>` type="submit" 的老坑。
+
+### 🛠️ 一键启动真正开箱即用 (2026-05-01)
+
+**背景:** 新克隆仓库的本机模式启动有一系列暗坑 —— `.env.example` 是纯生产模板（POSTGRES_PASSWORD 空 / REDIS_HOST=redis / AUTH_COOKIE_SECURE=true）但被 `start.sh` 本机模式 source 给 Go 后端, 导致 PG 鉴权失败 + Redis 主机解析失败; `apps/blog/.env.local.example` 不存在, 博客首页"管理后台"按钮以"未配置"灰态展示无法点击; `.gitignore` 里有一条孤立的 `apps/blog/.env.local.example` 忽略规则—— 模板文件本身被 git 忽略, 是上述缺失的元根因。
+
+**Fixed (`0357df1f feat(dx): 一键启动真正开箱即用`):**
+
+- **`start.sh::bootstrap_env()`** —— 紧接 `check_dependencies()` 之后调用, 自动: ① 缺 `.env` → 从 `.env.example` 拷贝; ② JWT_SECRET / AETHERBLOG_AI_INTERNAL_SERVICE_TOKEN / AI_INTERNAL_SERVICE_TOKEN / AI_CREDENTIAL_ENCRYPTION_KEYS 任一为空 → 用 `openssl rand -base64 48` / `cryptography Fernet` 就地生成（已有非空值不覆盖, 保护用户手填）; ③ 缺 `apps/{blog,admin}/.env.local` → 从 `.env.local.example` 拷贝; ④ 跨平台 `sed -i` 兼容（GNU vs BSD）, Python cryptography 缺失时回退到 openssl 生成等价 Fernet key。
+- **`.env.example`** —— 重写为开箱即用模板: `POSTGRES_PASSWORD=aetherblog123` / `REDIS_HOST=localhost` / `REDIS_PASSWORD=aetherblog_dev` / `AUTH_COOKIE_SECURE=false` 与 `docker-compose.yml` 容器配置对齐, cp 出来直接可跑。引入 `[LOCAL DEV]` / `[PROD]` / `[AUTO-GEN]` 三类字段标签, 明确每个值在两种模式下应是什么。
+- **`.gitignore`** —— 删除 `apps/blog/.env.local.example` 忽略规则; 新增 `apps/blog/.env.local.example` 模板文件（NEXT_PUBLIC_ADMIN_URL / NEXT_PUBLIC_API_BASE_URL 占位）。
+- **结果:** 新克隆 → `./start.sh --gateway` 单命令直接到 `http://localhost:7899` 完整服务启动, 不再需要任何手动 `.env` 编辑。
 
 ### ✨ AI 标签工具 · 现有标签库感知 + 双段选择 UX (2026-05-01)
 

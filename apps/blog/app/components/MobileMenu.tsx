@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Menu, Settings2, Home, Clock, Archive, Link as LinkIcon, Info, Palette } from 'lucide-react';
+import { Menu, Settings2, Home, Clock, Sparkles, Link as LinkIcon, Info, Palette } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '@aetherblog/hooks';
 import { getSiteSettings } from '../lib/services';
@@ -15,12 +15,12 @@ import { sanitizeImageUrl } from '../lib/sanitizeUrl';
 import { buildAdminUrl, getAdminLinkConfig, reportAdminLinkIssueOnce } from '../lib/adminUrl';
 
 // 导航页面类型
-type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | 'design' | null;
+type NavPage = 'posts' | 'timeline' | 'agent' | 'friends' | 'about' | 'design' | null;
 
 const NAV_LINKS = [
   { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
   { href: '/timeline', label: '时间线', icon: Clock, key: 'timeline' as NavPage },
-  { href: '/archives', label: '归档', icon: Archive, key: 'archives' as NavPage },
+  { href: '/agent', label: 'Agent', icon: Sparkles, key: 'agent' as NavPage },
   { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
   { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
   { href: '/design', label: '设计', icon: Palette, key: 'design' as NavPage },
@@ -55,7 +55,7 @@ const MobileMenu = memo(function MobileMenu() {
   const [activePage, setActivePage] = useState<NavPage>(() => {
     if (pathname === '/timeline') return 'timeline';
     if (pathname === '/posts') return 'posts';
-    if (pathname === '/archives') return 'archives';
+    if (pathname.startsWith('/agent')) return 'agent';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
     if (pathname === '/design') return 'design';
@@ -94,8 +94,8 @@ const MobileMenu = memo(function MobileMenu() {
       setActivePage('timeline');
     } else if (pathname === '/posts') {
       setActivePage('posts');
-    } else if (pathname === '/archives') {
-      setActivePage('archives');
+    } else if (pathname.startsWith('/agent')) {
+      setActivePage('agent');
     } else if (pathname === '/friends') {
       setActivePage('friends');
     } else if (pathname === '/about') {

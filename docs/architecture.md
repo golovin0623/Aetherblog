@@ -134,7 +134,7 @@ cmd/server/main.go（Go 可执行入口）
 | **基础层** | `internal/pkg/*` | 分页、响应格式、JWT 工具、图片处理、存储 |
 | **配置层** | `internal/config` | 配置管理（koanf） |
 
-### 核心 Handler（24 个）
+### 核心 Handler（26 个）
 
 | Handler | 路径前缀 | 功能 | 路由示例 |
 |-----------|----------|------|---------|
@@ -154,14 +154,16 @@ cmd/server/main.go（Go 可执行入口）
 | `SiteSettingHandler` | `/v1/admin/settings` | 站点设置 CRUD / 分组查询 / 批量更新 | GET .../group/:group, PATCH .../batch |
 | `FriendLinkHandler` | `/v1/admin/friends` + `/v1/public/friends` | 友链 CRUD / 排序 / 可见切换 / 分页 | PATCH .../toggle-visible, .../reorder |
 | `ActivityHandler` | `/v1/admin/activities` | 操作活动事件流 | GET .../recent, GET /, GET .../user/:userId |
-| `StorageProviderHandler` | `/v1/admin/storage` | 存储提供商 / 默认设置 / 连接测试 | POST .../:id/test, POST .../:id/set-default |
+| `StorageProviderHandler` | `/v1/admin/storage` | 存储提供商 / 默认设置 / 连接测试 / 云端浏览（list / import / objects delete） | POST .../:id/test, POST .../:id/objects, POST .../:id/import |
+| `SyncHandler` | `/v1/admin/storage/sync` + `/v1/admin/media/:id/sync` | 存量本地文件入云：start / cancel / status / failed / retry；单文件入口 | POST .../start, POST .../media/:id/sync |
 | `ArchiveHandler` | `/v1/public/archives` | 归档列表 / 统计 | GET .../stats |
-| `MigrationHandler` | `/v1/admin/migration` | Vanblog 数据导入 | POST .../vanblog/import |
+| `MigrationHandler` | `/v1/admin/migration` | Vanblog 数据导入（dry-run / execute） | POST .../vanblog/import |
 | `MediaTagHandler` | `/v1/admin/media-tags` | 媒体标签 CRUD + 热门 + 搜索 + 批量；文件标签关联 | GET .../popular, POST .../batch |
 | `SystemHandler` | `/v1/system` | 系统时间 | GET .../time |
+| `LogLevelHandler` | `/v1/admin/system/log-level` | 在线调整 backend / ai-service root logger 日志级别 | GET / PUT |
 | `VisitorHandler` | `/v1/admin/visitors` | 访客记录 / 今日统计 | POST /, GET .../today |
 | `VersionHandler` | `/v1/admin/files/:fileId/versions` | 文件版本历史 / 回滚 / 删除 | POST .../versions/:num/restore |
-| `SearchHandler` | `/v1/public/search` + `/v1/admin/search` | 混合搜索 / 语义搜索 / QA（SSE）/ 配置 / 索引管理 | GET .../search, GET .../qa |
+| `SearchHandler` | `/v1/public/search` + `/v1/admin/search` | 混合搜索 / 语义搜索 / QA（SSE）/ 配置 / 索引管理 / Search Profiles CRUD + activate + reindex SSE | GET .../search, GET .../qa, POST .../profiles/:code/reindex/stream |
 
 ---
 
@@ -484,6 +486,30 @@ CREATE INDEX idx_post_emb_3072_active ON post_embeddings
 5. 旧行保留作为回滚凭证；运维可按需运行清理脚本 GC `deprecated` 行。
 
 未来出现新维度（如 8192d）只需追加一条 partial HNSW 索引，主表结构不变。
+
+### Search Profiles（migration 000041 / 000044）
+
+000034 把版本化维度限定在 `model_id`，但实际 RAG 召回质量还受 chunking 策略、`chunk_size` 与 `overlap` 三个独立维度影响。**000041 引入 `search_profiles` 表**，把 `(chunker_kind, model_id, chunk_size_tokens, overlap_tokens)` 四元组绑成一个完整 profile，并复用 000034 的蓝绿翻转协议：
+
+```
+search_profiles
+  id, code (唯一), display_name, status (active/shadow/deprecated/archived),
+  chunker_kind (recursive/fixed/markdown/qa/parent_child),
+  model_id, chunk_size_tokens, overlap_tokens, params(jsonb),
+  created_at, updated_at, activated_at
+```
+
+`post_embeddings` 加 `profile_id` + `chunk_index` + `chunk_text` 三列；存量 1:1 行整体归到「默认 profile」（chunk_index=0、chunk_text=NULL，仍可被搜到，admin UI 提示「建议 reindex 以应用新切片策略」）。
+
+切换流程：
+
+1. 新建 profile（status=`shadow`），按新策略全站 reindex 写入 shadow 行
+2. 全部成功后 → 一条事务里 (a) shadow→active (b) 旧 active→deprecated (c) `site_settings.search.active_profile_code` 翻转
+3. 任一篇失败 → 不翻转，shadow 行保留供修复后再触发
+
+**000044** 给 `post_embeddings` 加 `parent_text TEXT`：parent_child chunker 把 post 切成 child（小，高精度召回） + parent（大，高上下文回显），其他 chunker_kind 此列为 NULL。父段长度由 `search_profiles.chunk_size_tokens × 4` 经验值决定。
+
+Admin 走 SearchConfigPage 下的 ProfileManagementSection（创建 / 激活 / 删除 / SSE 流式 reindex），SSE 端点 `POST /v1/admin/search/profiles/:code/reindex/stream` 接 `useReindexStream` hook，409 锁竞争返回 HTTP 状态码而非 200 信封。
 
 ### 失败可见性
 
