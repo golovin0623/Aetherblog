@@ -55,6 +55,7 @@ export default function FloatingThemeToggle() {
         flex items-center justify-center group
         focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none overflow-hidden"
       aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+      title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
     >
       <AnimatePresence mode="wait" initial={false}>
         {isDark ? (

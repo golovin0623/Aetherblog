@@ -82,7 +82,7 @@ export function ThemeToggle({
           ${buttonSize} ${className}
         `}
         title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
-        aria-label="Toggle theme"
+        aria-label={isDark ? '切换到亮色主题' : '切换到暗色主题'}
       >
         <AnimatePresence mode="wait">
           {isDark ? (
@@ -153,7 +153,7 @@ export function ThemeToggle({
           ${buttonSize}
         `}
         title="选择主题"
-        aria-label="Select theme"
+        aria-label="选择主题"
       >
         <motion.div
           initial={false}
@@ -176,7 +176,7 @@ export function ThemeToggle({
             {/* 下拉菜单 */}
             <motion.div
               role="menu"
-              aria-label="Theme options"
+              aria-label="主题选项"
               initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.95 }}
