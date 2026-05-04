@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 43
-- **最新：** `000043_add_media_sync`（Phase 4 同步备份字段 + `media_sync_jobs` 表）
-- **次新：** `000042_align_storage_provider_types`
+- **总数：** 44
+- **最新：** `000044_post_embedding_parent_text`（parent_child chunker 父段原文列）
+- **次新：** `000043_add_media_sync`（Phase 4 同步备份字段 + `media_sync_jobs` 表）
 
 ---
 
@@ -25,6 +25,8 @@
 | `jwt_secrets` | 000033 | JWT 签名密钥定时轮换（current/previous/retired 三态） |
 | `post_embeddings` | 000034 | 版本化向量存储（替代 `post_vectors`） |
 | `media_sync_jobs` | 000043 | 存量本地文件入云任务队列 |
+| `search_profiles` | 000041 | Chunking 策略 + 模型 + 切片参数四元组绑定，蓝绿翻转扩展到全 RAG pipeline |
+| `post_embeddings.parent_text` | 000044 | parent_child chunker 父段原文（其他 chunker_kind 为 NULL） |
 
 ---
 
@@ -102,7 +104,14 @@ DB 管理的定时轮换签名密钥，三态 `current / previous / retired`。�
 
 详见 `backend-runtime.md` §3 「`tags` 端点的『现有标签库』机制」。
 
-### 000041 · （略，参见 SQL 文件本身）
+### 000041 · `search_profiles`（**蓝绿协议 v2**）
+把 000034 的版本化维度（仅 `model_id`）推广到 `(chunker_kind, model_id, chunk_size_tokens, overlap_tokens)` 四元组：
+- 新建 `search_profiles` 表（`code` 唯一、`status` ∈ active/shadow/deprecated/archived、`chunker_kind` ∈ recursive/fixed/markdown/qa/parent_child）。
+- `post_embeddings` 加 `profile_id` + `chunk_index` + `chunk_text` 三列；存量 1:1 行整体归到默认 profile（chunk_index=0、chunk_text=NULL）。
+- 翻转流程同 000034：shadow reindex → 一条事务里翻转三处指针（profile.status × 旧/新 + `site_settings.search.active_profile_code`）。
+- partial HNSW 索引仍按 `dim × status='active'` 分桶，profile 维度通过 `profile_id` 过滤。
+
+详见 `architecture.md`「Search Profiles」节与 SearchConfigPage `ProfileManagementSection`。
 
 ### 000042 · `align_storage_provider_types`
 把 `storage_providers.provider_type` 与 `media_files.storage_type` CHECK 约束扩展到 **R2**（原本只允许 LOCAL/S3/MINIO/OSS/COS，但 `factory.go` 早就接受 R2，造成创建 R2 provider / 上传 R2 文件失败 —— **VULN-fix**）。
@@ -110,6 +119,13 @@ DB 管理的定时轮换签名密钥，三态 `current / previous / retired`。�
 
 ### 000043 · `add_media_sync`
 Phase 4 同步备份字段 + `media_sync_jobs` 表。详见 `backend-runtime.md` §2 「存量文件入云」。
+
+### 000044 · `post_embedding_parent_text`（follow-up to 000041）
+给 `post_embeddings` 加 `parent_text TEXT`：parent_child chunker 把 post 切成 child（小，高精度召回） + parent（大，高上下文回显），父段原文存这一列。其他 chunker_kind 为 NULL。
+
+PG 17 上 `ADD COLUMN IF NOT EXISTS` 是 instant DDL（不重写表），即便 `post_embeddings` 已有几百万行也不会触发长锁。父段长度由 `search_profiles.chunk_size_tokens × 4` 经验值决定，固化在 `chunker.py::_split_parent_child`。
+
+> **历史小坑：** 该 migration 一开始误编号为 000042（与同期开发的 align_storage 撞号），最终在 `10a116f9 fix(db): renumber parent text migration` 重编为 000044。生产无影响（开发分支隔离）。
 
 ---
 
