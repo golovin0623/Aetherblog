@@ -79,67 +79,83 @@ interface Preset {
 
 /**
  * 预设清单 —— 全部以"今天"为锚点
+ *
+ * 关键设计：每个 resolve / match 闭包内部都重新计算 today（`startOfDay(new Date())`），
+ * 而不是在 buildPresets 顶层捕获一次。原因：admin 页面在 useMemo([]) 中缓存
+ * presets 后会跨过午夜，若 today 是模块加载时一次性算的，"今天 / 最近 7 天 /
+ * 本月" 会一直用昨天作为锚点，发出过期日期。延迟到点击 / 比对时计算可避免。
  */
 function buildPresets(): Preset[] {
-  const today = startOfDay(new Date());
-  const presets: Preset[] = [
+  return [
     {
       key: 'today',
       label: '今天',
-      resolve: () => ({ start: today, end: today }),
-      match: (s, e) => !!s && !!e && isSameDay(s, today) && isSameDay(e, today),
+      resolve: () => {
+        const today = startOfDay(new Date());
+        return { start: today, end: today };
+      },
+      match: (s, e) => {
+        const today = startOfDay(new Date());
+        return !!s && !!e && isSameDay(s, today) && isSameDay(e, today);
+      },
     },
     {
       key: 'yesterday',
       label: '昨天',
       resolve: () => {
-        const y = subDays(today, 1);
+        const y = subDays(startOfDay(new Date()), 1);
         return { start: y, end: y };
       },
       match: (s, e) => {
-        const y = subDays(today, 1);
+        const y = subDays(startOfDay(new Date()), 1);
         return !!s && !!e && isSameDay(s, y) && isSameDay(e, y);
       },
     },
     {
       key: 'last7',
       label: '最近 7 天',
-      resolve: () => ({ start: subDays(today, 6), end: today }),
-      match: (s, e) =>
-        !!s &&
-        !!e &&
-        isSameDay(s, subDays(today, 6)) &&
-        isSameDay(e, today),
+      resolve: () => {
+        const today = startOfDay(new Date());
+        return { start: subDays(today, 6), end: today };
+      },
+      match: (s, e) => {
+        const today = startOfDay(new Date());
+        return !!s && !!e && isSameDay(s, subDays(today, 6)) && isSameDay(e, today);
+      },
     },
     {
       key: 'last30',
       label: '最近 30 天',
-      resolve: () => ({ start: subDays(today, 29), end: today }),
-      match: (s, e) =>
-        !!s &&
-        !!e &&
-        isSameDay(s, subDays(today, 29)) &&
-        isSameDay(e, today),
+      resolve: () => {
+        const today = startOfDay(new Date());
+        return { start: subDays(today, 29), end: today };
+      },
+      match: (s, e) => {
+        const today = startOfDay(new Date());
+        return !!s && !!e && isSameDay(s, subDays(today, 29)) && isSameDay(e, today);
+      },
     },
     {
       key: 'thisMonth',
       label: '本月',
-      resolve: () => ({ start: startOfMonth(today), end: today }),
-      match: (s, e) =>
-        !!s &&
-        !!e &&
-        isSameDay(s, startOfMonth(today)) &&
-        isSameDay(e, today),
+      resolve: () => {
+        const today = startOfDay(new Date());
+        return { start: startOfMonth(today), end: today };
+      },
+      match: (s, e) => {
+        const today = startOfDay(new Date());
+        return !!s && !!e && isSameDay(s, startOfMonth(today)) && isSameDay(e, today);
+      },
     },
     {
       key: 'lastMonth',
       label: '上月',
       resolve: () => {
-        const prev = subMonths(today, 1);
+        const prev = subMonths(startOfDay(new Date()), 1);
         return { start: startOfMonth(prev), end: endOfMonth(prev) };
       },
       match: (s, e) => {
-        const prev = subMonths(today, 1);
+        const prev = subMonths(startOfDay(new Date()), 1);
         return (
           !!s &&
           !!e &&
@@ -151,15 +167,16 @@ function buildPresets(): Preset[] {
     {
       key: 'thisYear',
       label: '本年',
-      resolve: () => ({ start: startOfYear(today), end: today }),
-      match: (s, e) =>
-        !!s &&
-        !!e &&
-        isSameDay(s, startOfYear(today)) &&
-        isSameDay(e, today),
+      resolve: () => {
+        const today = startOfDay(new Date());
+        return { start: startOfYear(today), end: today };
+      },
+      match: (s, e) => {
+        const today = startOfDay(new Date());
+        return !!s && !!e && isSameDay(s, startOfYear(today)) && isSameDay(e, today);
+      },
     },
   ];
-  return presets;
 }
 
 /* -----------------------------------------------------------
@@ -230,7 +247,7 @@ export function DateRangePicker({
     // 宽度：理想 580，但窄屏（≈360px 起）下要 clamp 到 viewport - 16，
     // 否则日历会横向溢出导致结束日期不可点击。
     const popW = Math.min(580, viewportW - SAFE_GUTTER * 2);
-    const popH = 380;
+    const desiredH = 380;
 
     // 横向：默认 left 对齐 trigger.left，溢出则贴右；clamp 到左 8px
     let left = rect.left;
@@ -239,14 +256,21 @@ export function DateRangePicker({
     }
     if (left < SAFE_GUTTER) left = SAFE_GUTTER;
 
-    // 纵向：默认下方，不够则上方
-    const spaceBelow = viewportH - rect.bottom;
-    const flipUp = spaceBelow < popH + 12 && rect.top > spaceBelow;
+    // 纵向：选择空间更大的一侧，再 clamp height 到该侧可用区。
+    // 短视口（手机横屏 / 分屏）下两边都不到 380 时，maxHeight 会让内部
+    // 滚动而不是把 panel 推出屏幕。
+    const spaceBelow = viewportH - rect.bottom - SAFE_GUTTER - 6;
+    const spaceAbove = rect.top - SAFE_GUTTER - 6;
+    const flipUp = spaceBelow < desiredH && spaceAbove > spaceBelow;
+    const availableH = Math.max(160, flipUp ? spaceAbove : spaceBelow);
+    const popMaxH = Math.min(desiredH, availableH);
 
     const next: React.CSSProperties = {
       position: 'fixed',
       left,
       width: popW,
+      maxHeight: popMaxH,
+      overflowY: 'auto',
       zIndex: 9999,
     };
     if (flipUp) next.bottom = viewportH - rect.top + 6;
