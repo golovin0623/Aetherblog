@@ -68,11 +68,17 @@ func NewAgentHandler(
 }
 
 // Mount 注册到给定的路由组（约定为 /api/v1/agent，已套上 JWT 中间件）。
-func (h *AgentHandler) Mount(g *echo.Group) {
-	g.POST("/chat", h.Chat)
-	g.GET("/models", h.Models)
-	g.GET("/articles", h.Articles)
-	g.GET("/tags", h.Tags)
+//
+// 两种限流分开传入，原因：把限流挂在 group 上会让 GET /articles 这类 picker
+// 端点和 POST /chat 共享同一桶。`@` picker 一边输入一边搜，单次拉一长串
+// articles 可能在用户还没发出第一条消息前就把 chat 桶用光，下一条 chat
+// 直接拿 429。chatLimit 单独门 LLM 这条贵路径；pickerLimit 给 GET 路径一个
+// 较松的桶（picker 反正只查本地 DB，瓶颈在 SQL 不在 LLM）。
+func (h *AgentHandler) Mount(g *echo.Group, chatLimit, pickerLimit echo.MiddlewareFunc) {
+	g.POST("/chat", h.Chat, chatLimit)
+	g.GET("/models", h.Models, pickerLimit)
+	g.GET("/articles", h.Articles, pickerLimit)
+	g.GET("/tags", h.Tags, pickerLimit)
 }
 
 // ============================================================================

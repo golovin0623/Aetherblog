@@ -344,10 +344,18 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	// SECURITY: 这里只挂 authMW，不强制 RequireRole("admin")。理由是 /agent 工作台
 	// 对所有注册用户开放，但下游 ai-service 仍走 internal-token 通道（在 handler 内
 	// 注入 X-Internal-Service），以防止用户拿到的 JWT 直接打到 ai-service。
+	//
+	// 限流分两桶（PR #573 codex review 反馈）：
+	//   · chat（30/min/user）—— POST /chat 是 LLM 真正费 token 的路径，紧。
+	//   · picker（120/min/user）—— GET /models /articles /tags 只命中本地 DB，
+	//     `@` picker 一边输入一边搜，给 4x 头部空间避免用户还没发消息就 429。
 	agentHandler := handler.NewAgentHandler(s.Config, postRepo, tagRepo)
-	agentGroup := api.Group("/v1/agent", authMW,
-		middleware.RateLimitByUser(s.Redis, "rate:agent:chat", 30, time.Minute))
-	agentHandler.Mount(agentGroup)
+	agentGroup := api.Group("/v1/agent", authMW)
+	agentHandler.Mount(
+		agentGroup,
+		middleware.RateLimitByUser(s.Redis, "rate:agent:chat", 30, time.Minute),
+		middleware.RateLimitByUser(s.Redis, "rate:agent:picker", 120, time.Minute),
+	)
 
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"

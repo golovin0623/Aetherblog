@@ -206,6 +206,7 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           rows={1}
+          aria-label="消息输入框"
           placeholder={placeholder ?? '提问、创建或开始任务。@ 引用文章 · / 调用命令'}
           className="agent-composer-textarea w-full bg-transparent outline-none resize-none text-[14.5px] text-[var(--ink-primary)] placeholder-[var(--ink-muted)]/65 leading-[1.55]"
           style={{ maxHeight: `${max}px` }}
