@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useReducer, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useReducer, useMemo, useLayoutEffect, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { systemService, type LogLevelStatus } from '@/services/systemService';
-import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, Type, Filter, ArrowDown, Download, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Terminal, Pause, Play, Trash2, RefreshCw, Maximize2, Minimize2, ArrowDown, Download, ChevronDown, X, Search as SearchIcon, Sliders, FileDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
-import { StyledSelect } from '@/components/common';
+import { Select } from '@aetherblog/ui';
 
 interface RealtimeLogViewerProps {
   containerId?: string | null;
@@ -38,33 +39,6 @@ type LogViewAction =
   | { type: 'SET_PAUSED'; paused: boolean; reason?: LogPauseReason | null }
   | { type: 'ENTER_FULLSCREEN' }
   | { type: 'EXIT_FULLSCREEN' };
-
-const LOG_LEVEL_SELECT_OPTIONS = [
-  { value: 'ALL', label: '全部日志' },
-  { value: 'INFO', label: 'INFO' },
-  { value: 'WARN', label: 'WARN' },
-  { value: 'ERROR', label: 'ERROR' },
-  { value: 'DEBUG', label: 'DEBUG' },
-];
-
-const QUICK_LEVEL_OPTIONS = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
-
-const BACKEND_RUNTIME_LEVEL_OPTIONS = [
-  { value: 'debug', label: 'backend·debug' },
-  { value: 'info', label: 'backend·info' },
-  { value: 'warn', label: 'backend·warn' },
-  { value: 'error', label: 'backend·error' },
-];
-
-const AI_RUNTIME_LEVEL_OPTIONS = [
-  { value: 'debug', label: 'ai·debug' },
-  { value: 'info', label: 'ai·info' },
-  { value: 'warning', label: 'ai·warning' },
-  { value: 'error', label: 'ai·error' },
-];
-
-const COMPACT_SELECT_FOCUS_CLASS =
-  'focus-visible:!ring-1 focus-visible:!ring-primary/30 focus-visible:!ring-offset-1 focus-visible:!ring-offset-[var(--bg-card)]';
 
 const INITIAL_LOG_VIEW_STATE: LogViewState = {
   lifecycle: 'idle',
@@ -216,6 +190,163 @@ function mergeLogsIncrementally(previous: string[], incoming: string[], maxLines
   return [...previous, ...incoming.slice(overlapSize)].slice(-maxLines);
 }
 
+/* =============================================================
+ * 日志行结构化解析
+ * -------------------------------------------------------------
+ * 把一行裸日志解析成可分列渲染的字段。无法解析的部分原样降级到 message。
+ * 关键判断：
+ *   • 级别用 \b 边界匹配独立 token，避免 "WARNING" 被识别为 "WARN"
+ *   • ISO 时间戳与 nginx 时间戳两套并行
+ *   • HTTP 行结构识别后单独高亮 method/path/status
+ * ============================================================= */
+
+type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+
+interface ParsedLogLine {
+  /** 原始行 */
+  raw: string;
+  /** 解析出的时间戳（HH:mm:ss / HH:mm:ss.SSS / 完整 ISO） */
+  timestamp: string | null;
+  /** 标准化级别（WARNING → WARN, PANIC → FATAL） */
+  level: LogLevel | null;
+  /** HTTP 方法（解析自 nginx access log） */
+  method: string | null;
+  /** HTTP 路径 */
+  path: string | null;
+  /** HTTP 状态码（数字） */
+  status: number | null;
+  /** 主消息 —— 去掉时间戳/级别后的剩余内容 */
+  message: string;
+}
+
+const LEVEL_NORMALIZE: Record<string, LogLevel> = {
+  TRACE: 'TRACE',
+  DEBUG: 'DEBUG',
+  INFO:  'INFO',
+  WARN:  'WARN',
+  WARNING: 'WARN',
+  ERROR: 'ERROR',
+  FATAL: 'FATAL',
+  PANIC: 'FATAL',
+};
+
+// 时间戳 / 级别正则锚定到行首：日志行的时间戳 / 级别永远在前面，
+// 不锚定会让消息正文里的 ISO 数字串或 "WARN" 词被误识别。
+const ISO_TS_RE = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?:Z|[+-]\d{2}:?\d{2})?/;
+const NGINX_TS_RE = /^\[(\d{2})\/(\w{3})\/(\d{4}):(\d{2}:\d{2}:\d{2})\s/;
+const LEVEL_RE = /\b(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|PANIC)\b/;
+const HTTP_RE = /"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+([^\s"]+)\s+HTTP\/[\d.]+"\s+(\d{3})/;
+
+function parseLogLine(line: string): ParsedLogLine {
+  const result: ParsedLogLine = {
+    raw: line,
+    timestamp: null,
+    level: null,
+    method: null,
+    path: null,
+    status: null,
+    message: line,
+  };
+
+  let stripped = line;
+
+  // 1. 时间戳 —— ISO 优先，nginx 兜底；命中后从 message 中剥离避免重复展示
+  const isoMatch = line.match(ISO_TS_RE);
+  if (isoMatch) {
+    result.timestamp = isoMatch[2]; // 仅取 HH:mm:ss(.SSS) 部分，节省列宽
+    stripped = stripped.replace(isoMatch[0], '').trim();
+  } else {
+    const ngMatch = line.match(NGINX_TS_RE);
+    if (ngMatch) {
+      result.timestamp = ngMatch[4];
+      stripped = stripped.replace(ngMatch[0], '').trim();
+    }
+  }
+
+  // 2. 级别 token
+  const lvlMatch = stripped.match(LEVEL_RE);
+  if (lvlMatch) {
+    const upper = lvlMatch[1].toUpperCase();
+    result.level = LEVEL_NORMALIZE[upper] ?? null;
+    // 仅从 message 头部剥离单个紧贴空白/冒号的 level token
+    stripped = stripped.replace(new RegExp(`^\\s*${lvlMatch[1]}\\s*[:|]?\\s*`, 'i'), '');
+  }
+
+  // 3. HTTP（nginx access log 主要场景）—— 命中后也从 message 剥离，
+  //    渲染期不再需要二次 regex 匹配
+  const httpMatch = line.match(HTTP_RE);
+  if (httpMatch) {
+    result.method = httpMatch[1];
+    result.path = httpMatch[2];
+    result.status = parseInt(httpMatch[3], 10);
+    stripped = stripped.replace(httpMatch[0], '').trim();
+  }
+
+  result.message = stripped.trim();
+  return result;
+}
+
+/* =============================================================
+ * 视觉常量 —— 级别 / HTTP method / status 的色板
+ * ============================================================= */
+
+const LEVEL_STYLES: Record<LogLevel, { bg: string; text: string; border: string; label: string }> = {
+  TRACE: {
+    label: 'TRACE',
+    bg: 'bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]',
+    text: 'text-[var(--ink-muted)]',
+    border: 'border-[color-mix(in_oklch,var(--ink-primary)_12%,transparent)]',
+  },
+  DEBUG: {
+    label: 'DEBUG',
+    bg: 'bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]',
+    text: 'text-[var(--signal-info)]',
+    border: 'border-[color-mix(in_oklch,var(--signal-info)_24%,transparent)]',
+  },
+  INFO: {
+    label: 'INFO',
+    bg: 'bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]',
+    text: 'text-[var(--signal-info)]',
+    border: 'border-[color-mix(in_oklch,var(--signal-info)_24%,transparent)]',
+  },
+  WARN: {
+    label: 'WARN',
+    bg: 'bg-[color-mix(in_oklch,var(--signal-warn)_12%,transparent)]',
+    text: 'text-[var(--signal-warn)]',
+    border: 'border-[color-mix(in_oklch,var(--signal-warn)_28%,transparent)]',
+  },
+  ERROR: {
+    label: 'ERROR',
+    bg: 'bg-[color-mix(in_oklch,var(--signal-danger)_12%,transparent)]',
+    text: 'text-[var(--signal-danger)]',
+    border: 'border-[color-mix(in_oklch,var(--signal-danger)_28%,transparent)]',
+  },
+  FATAL: {
+    label: 'FATAL',
+    bg: 'bg-[color-mix(in_oklch,var(--signal-danger)_18%,transparent)]',
+    text: 'text-[var(--signal-danger)]',
+    border: 'border-[color-mix(in_oklch,var(--signal-danger)_42%,transparent)]',
+  },
+};
+
+function statusToneClasses(status: number): string {
+  if (status >= 500) return 'text-[var(--signal-danger)] bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)]';
+  if (status >= 400) return 'text-[var(--signal-warn)] bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)]';
+  if (status >= 300) return 'text-[var(--signal-info)] bg-[color-mix(in_oklch,var(--signal-info)_10%,transparent)]';
+  if (status >= 200) return 'text-[var(--signal-success)] bg-[color-mix(in_oklch,var(--signal-success)_10%,transparent)]';
+  return 'text-[var(--ink-muted)] bg-[color-mix(in_oklch,var(--ink-primary)_5%,transparent)]';
+}
+
+const METHOD_TONE: Record<string, string> = {
+  GET:    'text-[var(--signal-info)]',
+  POST:   'text-[var(--signal-success)]',
+  PUT:    'text-[var(--signal-warn)]',
+  PATCH:  'text-[var(--signal-warn)]',
+  DELETE: 'text-[var(--signal-danger)]',
+  HEAD:    'text-[var(--ink-muted)]',
+  OPTIONS: 'text-[var(--ink-muted)]',
+};
+
 export function RealtimeLogViewer({
   containerId,
   containerName,
@@ -236,11 +367,14 @@ export function RealtimeLogViewer({
   const [autoScroll, setAutoScroll] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
   const [manualPaused, setManualPaused] = useState(false);
-  const [fullscreenToolbarExpanded, setFullscreenToolbarExpanded] = useState(false);
-  const [embeddedFiltersExpanded, setEmbeddedFiltersExpanded] = useState(false);
   const [hiddenPaused, setHiddenPaused] = useState(
     typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false
   );
+  const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const [exportMenuStyle, setExportMenuStyle] = useState<CSSProperties>({});
   const [viewState, dispatchViewState] = useReducer(reduceLogViewState, INITIAL_LOG_VIEW_STATE);
 
   const [lastSuccessAt, setLastSuccessAt] = useState<Date | null>(null);
@@ -329,7 +463,6 @@ export function RealtimeLogViewer({
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = originalBodyOverflow;
-      setFullscreenToolbarExpanded(false);
       const fallbackTarget = previousFocusRef.current ?? fullscreenTriggerRef.current;
       fallbackTarget?.focus();
     };
@@ -555,6 +688,50 @@ export function RealtimeLogViewer({
     }
   }, [logs, isPaused, autoScroll]);
 
+  /* -------------------------------------------------------------
+   * 导出菜单 portal 定位 + outside click dismiss
+   * ------------------------------------------------------------- */
+  useLayoutEffect(() => {
+    if (!exportMenuOpen || !exportTriggerRef.current) return;
+    const rect = exportTriggerRef.current.getBoundingClientRect();
+    const menuW = 240;
+    const next: CSSProperties = {
+      position: 'fixed',
+      top: rect.bottom + 6,
+      right: window.innerWidth - rect.right,
+      width: menuW,
+      zIndex: 9999,
+    };
+    setExportMenuStyle(next);
+  }, [exportMenuOpen]);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        exportTriggerRef.current && !exportTriggerRef.current.contains(t) &&
+        exportMenuRef.current && !exportMenuRef.current.contains(t)
+      ) {
+        setExportMenuOpen(false);
+      }
+    };
+    const onScroll = (e: Event) => {
+      if (exportMenuRef.current && exportMenuRef.current.contains(e.target as Node)) return;
+      setExportMenuOpen(false);
+    };
+    // 必须用同一引用 add/remove，匿名箭头函数在 cleanup 时无法对应卸载，会泄漏。
+    const onResize = () => setExportMenuOpen(false);
+    document.addEventListener('mousedown', onClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [exportMenuOpen]);
+
   const normalizedKeyword = keyword.trim().toLowerCase();
   const visibleLogs = useMemo(() => {
     if (!normalizedKeyword) {
@@ -562,6 +739,13 @@ export function RealtimeLogViewer({
     }
     return logs.filter((line) => line.toLowerCase().includes(normalizedKeyword));
   }, [logs, normalizedKeyword]);
+
+  // 提前解析日志行，避免每次 render 时 map 中重复跑 4 个 regex。
+  // 跟着 visibleLogs 变化重算 —— 关键字过滤后子集变小，解析开销也随之缩减。
+  const parsedVisibleLogs = useMemo(
+    () => visibleLogs.map((line) => parseLogLine(line)),
+    [visibleLogs],
+  );
 
   const preserveScrollContext = (updater: () => void) => {
     const previousScrollTop = scrollRef.current?.scrollTop ?? null;
@@ -574,11 +758,6 @@ export function RealtimeLogViewer({
         scrollRef.current.scrollTop = previousScrollTop;
       }
     });
-  };
-
-  const extractLineTime = (line: string) => {
-    const match = line.match(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/);
-    return match ? match[0] : null;
   };
 
   const handleScroll = () => {
@@ -709,202 +888,342 @@ export function RealtimeLogViewer({
           ? 'warn'
           : 'success';
 
-  const renderToolbarFilters = () => (
-    <div className="px-4 py-2 border-t border-[var(--border-subtle)] flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2 group">
-          <Type className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
-          <input
-            type="range"
-            min="10"
-            max="20"
-            step="1"
-            value={fontSize}
-            onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-            className="w-20 h-1 bg-[var(--bg-secondary)] rounded-lg appearance-none cursor-pointer accent-primary"
-            title={`字体大小: ${fontSize}px`}
-          />
-        </div>
+  const handleScrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    setAutoScroll(true);
+  };
 
-        <div className="flex items-center gap-1 bg-[var(--bg-card)] rounded p-0.5 border border-[var(--border-subtle)]">
-          <Filter className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1.5 mr-1" />
-          <StyledSelect
-            value={filterLevel}
-            onChange={(nextLevel) => {
-              preserveScrollContext(() => {
-                setFilterLevel(nextLevel);
-              });
-            }}
-            options={LOG_LEVEL_SELECT_OPTIONS}
-            ariaLabel="日志级别过滤"
-            buttonClassName={cn(
-              '!h-6 !min-w-[96px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
-              COMPACT_SELECT_FOCUS_CLASS,
-            )}
-            menuClassName="!max-h-56"
-          />
-        </div>
+  /* -------------------------------------------------------------
+   * 主工具栏 —— 始终显示
+   * ------------------------------------------------------------- */
+  const LEVEL_SEGMENTS = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
 
-        <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5">
-          {QUICK_LEVEL_OPTIONS.map((levelOption) => (
+  const renderMainToolbar = () => (
+    <div className="px-4 py-2.5 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-3 flex-wrap">
+      {/* 级别段控 —— 唯一的级别过滤入口（替代原"全部日志"下拉 + 段控的二选一困惑） */}
+      <div className="inline-flex items-center p-0.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+        {LEVEL_SEGMENTS.map((lvl) => {
+          const isSelected = filterLevel === lvl;
+          return (
             <button
-              key={levelOption}
+              key={lvl}
               type="button"
+              onClick={() => preserveScrollContext(() => setFilterLevel(lvl))}
               className={cn(
-                'px-1.5 py-0.5 text-[10px] rounded transition-colors',
-                filterLevel === levelOption
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                'h-7 px-3 rounded-full text-[11px] font-mono uppercase tracking-[0.12em]',
+                'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                isSelected
+                  ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+                  : 'text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
               )}
-              onClick={() => {
-                preserveScrollContext(() => {
-                  setFilterLevel(levelOption);
-                });
-              }}
             >
-              {levelOption}
+              {lvl}
             </button>
-          ))}
-        </div>
-
-        <input
-          value={keyword}
-          onChange={(event) => {
-            const nextKeyword = event.target.value;
-            preserveScrollContext(() => {
-              setKeyword(nextKeyword);
-            });
-          }}
-          placeholder="关键字过滤"
-          className="h-7 w-36 sm:w-44 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 text-[10px] sm:text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
-        />
-
-        {useAppLogs && (
-          <div
-            className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-card)] p-0.5"
-            title="运行时日志级别 —— 调整 backend / ai-service 实际记录的最低级别;不持久化,重启后回到环境变量。"
-          >
-            <span className="px-1.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-              运行时
-            </span>
-            <StyledSelect
-              value={(runtimeLevel?.backend || 'info').toLowerCase()}
-              disabled={runtimeLevelApplying === 'backend'}
-              onChange={(nextLevel) => void applyRuntimeLevel('backend', nextLevel)}
-              options={BACKEND_RUNTIME_LEVEL_OPTIONS}
-              ariaLabel={`backend 当前级别: ${runtimeLevel?.backend ?? '加载中'}`}
-              buttonClassName={cn(
-                '!h-6 !min-w-[112px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
-                COMPACT_SELECT_FOCUS_CLASS,
-              )}
-              menuClassName="!max-h-56"
-            />
-            <StyledSelect
-              value={((runtimeLevel?.aiService) || 'info').toLowerCase()}
-              disabled={runtimeLevelApplying === 'aiService' || Boolean(runtimeLevel?.aiServiceError)}
-              onChange={(nextLevel) => void applyRuntimeLevel('aiService', nextLevel)}
-              options={AI_RUNTIME_LEVEL_OPTIONS}
-              ariaLabel={runtimeLevel?.aiServiceError ? `ai-service 不可达: ${runtimeLevel.aiServiceError}` : `ai-service 当前级别: ${runtimeLevel?.aiService ?? '加载中'}`}
-              buttonClassName={cn(
-                '!h-6 !min-w-[92px] !border-transparent !bg-transparent !px-1 !py-0 !text-[10px] sm:!text-xs !text-[var(--text-secondary)]',
-                COMPACT_SELECT_FOCUS_CLASS,
-              )}
-              menuClassName="!max-h-56"
-            />
-          </div>
-        )}
-
-        {runtimeLevelError && useAppLogs && (
-          <span
-            className="text-[10px] text-status-warning truncate max-w-[180px]"
-            title={runtimeLevelError}
-          >
-            ⚠ {runtimeLevelError}
-          </span>
-        )}
-
-        <button
-          type="button"
-          className={cn('px-2 py-1 text-[10px] rounded border transition-colors', wrapLines ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
-          onClick={() => preserveScrollContext(() => setWrapLines(previous => !previous))}
-        >
-          换行
-        </button>
-        <button
-          type="button"
-          className={cn('px-2 py-1 text-[10px] rounded border transition-colors', compactMode ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
-          onClick={() => preserveScrollContext(() => setCompactMode(previous => !previous))}
-        >
-          紧凑
-        </button>
-        <button
-          type="button"
-          className={cn('px-2 py-1 text-[10px] rounded border transition-colors', showLineMeta ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]')}
-          onClick={() => preserveScrollContext(() => setShowLineMeta(previous => !previous))}
-        >
-          行信息
-        </button>
+          );
+        })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
-        {useAppLogs && (
+      {/* 搜索 */}
+      <div className="relative flex-1 min-w-[180px] max-w-[420px]">
+        <SearchIcon className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--ink-muted)] pointer-events-none" />
+        <input
+          type="text"
+          value={keyword}
+          onChange={(e) => {
+            const next = e.target.value;
+            preserveScrollContext(() => setKeyword(next));
+          }}
+          placeholder="过滤关键字"
+          className={cn(
+            'w-full h-8 pl-8 pr-7 rounded-md text-xs',
+            'bg-[var(--bg-leaf)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]',
+            'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+            'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+            'hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)]',
+            'focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)]',
+            'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+          )}
+        />
+        {keyword && (
           <button
-            className={cn(
-              'p-1.5 rounded transition-colors',
-              isRawDownloadDisabled
-                ? 'cursor-not-allowed text-[var(--text-muted)]/60'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-            )}
-            onClick={handleDownload}
-            title={exporting ? '正在下载日志文件' : '按级别下载原始日志文件'}
-            disabled={isRawDownloadDisabled}
+            type="button"
+            onClick={() => setKeyword('')}
+            aria-label="清空关键字"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] transition-colors"
           >
-            {exporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            <X className="w-3 h-3" />
           </button>
         )}
-        <button
-          type="button"
-          className={cn(
-            'px-2 py-1 text-[10px] rounded border transition-colors',
-            isViewExportDisabled
-              ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
-              : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-          )}
-          onClick={handleExportCurrentView}
-          title={
-            exporting
-              ? '导出处理中'
-              : visibleLogs.length === 0
-                ? '当前筛选无日志可导出'
-                : '导出当前筛选日志'
-          }
-          disabled={isViewExportDisabled}
-        >
-          导出当前
-        </button>
-        <button
-          type="button"
-          className={cn(
-            'px-2 py-1 text-[10px] rounded border transition-colors',
-            isViewExportDisabled
-              ? 'cursor-not-allowed border-[var(--border-subtle)] text-[var(--text-muted)]/60'
-              : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-          )}
-          onClick={() => handleExportRecentLines(500)}
-          title={
-            exporting
-              ? '导出处理中'
-              : visibleLogs.length === 0
-                ? '当前筛选无日志可导出'
-                : '导出最近500行日志'
-          }
-          disabled={isViewExportDisabled}
-        >
-          导出最近500
-        </button>
       </div>
+
+      {/* 高级展开 */}
+      <button
+        type="button"
+        onClick={() => setToolbarExpanded(v => !v)}
+        aria-expanded={toolbarExpanded}
+        aria-controls="log-viewer-advanced-toolbar"
+        className={cn(
+          'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px] font-mono uppercase tracking-[0.12em] border',
+          'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+          toolbarExpanded
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] text-[var(--ink-primary)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+            : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+        )}
+        title="显示设置 / 字号 / 运行时门槛"
+      >
+        <Sliders className="w-3.5 h-3.5" />
+        <span>设置</span>
+        <ChevronDown className={cn('w-3 h-3 transition-transform', toolbarExpanded && 'rotate-180')} />
+      </button>
+
+      {/* 导出菜单 */}
+      <button
+        ref={exportTriggerRef}
+        type="button"
+        onClick={() => setExportMenuOpen(v => !v)}
+        aria-haspopup="menu"
+        aria-expanded={exportMenuOpen}
+        aria-controls="log-viewer-export-menu"
+        disabled={isViewExportDisabled && (!useAppLogs || isRawDownloadDisabled)}
+        className={cn(
+          'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px] font-mono uppercase tracking-[0.12em] border',
+          'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+          'disabled:opacity-50 disabled:cursor-not-allowed',
+          exportMenuOpen
+            ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] text-[var(--ink-primary)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+            : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+        )}
+      >
+        <FileDown className="w-3.5 h-3.5" />
+        <span>导出</span>
+        <ChevronDown className={cn('w-3 h-3 transition-transform', exportMenuOpen && 'rotate-180')} />
+      </button>
     </div>
   );
+
+  /* -------------------------------------------------------------
+   * 高级折叠区 —— 显示 / 字号 / 运行时门槛
+   * ------------------------------------------------------------- */
+  const renderAdvancedToolbar = () => (
+    <AnimatePresence initial={false}>
+      {toolbarExpanded && (
+        <motion.div
+          id="log-viewer-advanced-toolbar"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+          className="overflow-hidden"
+        >
+          <div className="px-4 py-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+            {/* 显示开关 */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] w-[70px] shrink-0">显示</span>
+              {([
+                { active: wrapLines,    label: '换行', onClick: () => preserveScrollContext(() => setWrapLines(v => !v)) },
+                { active: compactMode,  label: '紧凑', onClick: () => preserveScrollContext(() => setCompactMode(v => !v)) },
+                { active: showLineMeta, label: '行号', onClick: () => preserveScrollContext(() => setShowLineMeta(v => !v)) },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={opt.onClick}
+                  className={cn(
+                    'h-7 px-3 rounded-full text-[11px] font-mono uppercase tracking-[0.12em] border',
+                    'transition-[background-color,border-color,color] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                    opt.active
+                      ? 'border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)] text-[var(--ink-primary)] bg-[color-mix(in_oklch,var(--aurora-1)_10%,transparent)]'
+                      : 'border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 字号 */}
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] w-[70px] shrink-0">字号</span>
+              <input
+                type="range"
+                min="10"
+                max="20"
+                step="1"
+                value={fontSize}
+                onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
+                className="flex-1 h-1 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] rounded-lg appearance-none cursor-pointer accent-[var(--aurora-1)]"
+                aria-label={`字号 ${fontSize}px`}
+              />
+              <span className="text-[11px] font-mono text-[var(--ink-muted)] tnum w-12 text-right">{fontSize}px</span>
+            </div>
+
+            {/* 运行时门槛 */}
+            {useAppLogs && (
+              <div className="md:col-span-2 flex items-center gap-3 flex-wrap">
+                <span
+                  className="text-[10px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] w-[70px] shrink-0"
+                  title="调整 backend / ai-service 实际记录的最低级别。不持久化，重启后回到环境变量。"
+                >
+                  门槛
+                </span>
+                <div className="inline-flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-[var(--ink-muted)]">backend</span>
+                  <Select
+                    size="sm"
+                    fullWidth={false}
+                    className="min-w-[120px]"
+                    value={(runtimeLevel?.backend || 'info').toLowerCase()}
+                    disabled={runtimeLevelApplying === 'backend'}
+                    onValueChange={(v) => void applyRuntimeLevel('backend', v)}
+                    options={[
+                      { value: 'debug', label: 'DEBUG' },
+                      { value: 'info',  label: 'INFO' },
+                      { value: 'warn',  label: 'WARN' },
+                      { value: 'error', label: 'ERROR' },
+                    ]}
+                    ariaLabel={`backend 当前级别: ${runtimeLevel?.backend ?? '加载中'}`}
+                  />
+                </div>
+                <div className="inline-flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-[var(--ink-muted)]">ai-service</span>
+                  <Select
+                    size="sm"
+                    fullWidth={false}
+                    className="min-w-[120px]"
+                    value={((runtimeLevel?.aiService) || 'info').toLowerCase()}
+                    disabled={runtimeLevelApplying === 'aiService' || Boolean(runtimeLevel?.aiServiceError)}
+                    onValueChange={(v) => void applyRuntimeLevel('aiService', v)}
+                    options={[
+                      { value: 'debug',   label: 'DEBUG' },
+                      { value: 'info',    label: 'INFO' },
+                      { value: 'warning', label: 'WARN' },
+                      { value: 'error',   label: 'ERROR' },
+                    ]}
+                    ariaLabel={runtimeLevel?.aiServiceError ? `ai-service 不可达: ${runtimeLevel.aiServiceError}` : `ai-service 当前级别: ${runtimeLevel?.aiService ?? '加载中'}`}
+                  />
+                </div>
+                {runtimeLevelError && (
+                  <span
+                    className="text-[11px] text-[var(--signal-warn)] truncate max-w-[200px] inline-flex items-center gap-1"
+                    title={runtimeLevelError}
+                  >
+                    <span aria-hidden>⚠</span> {runtimeLevelError}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  /* -------------------------------------------------------------
+   * 导出菜单 —— portal 弹层
+   * ------------------------------------------------------------- */
+  const renderExportMenuPortal = () => {
+    if (typeof window === 'undefined') return null;
+    return createPortal(
+      <AnimatePresence>
+        {exportMenuOpen && (
+          <motion.div
+            id="log-viewer-export-menu"
+            ref={exportMenuRef}
+            style={exportMenuStyle}
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.99 }}
+            transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+            className="surface-overlay rounded-xl p-1.5"
+            role="menu"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              disabled={isViewExportDisabled}
+              onClick={() => {
+                handleExportCurrentView();
+                setExportMenuOpen(false);
+              }}
+              className={cn(
+                'w-full text-left px-3 py-2 rounded-lg text-sm flex items-start gap-2.5',
+                'transition-[background-color,color] duration-[var(--dur-instant)]',
+                isViewExportDisabled
+                  ? 'opacity-40 cursor-not-allowed text-[var(--ink-muted)]'
+                  : 'text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+              )}
+            >
+              <FileDown className="w-4 h-4 mt-0.5 text-[var(--aurora-1)] shrink-0" />
+              <span className="flex-1">
+                <span className="block">导出当前视图</span>
+                <span className="block text-[11px] font-mono text-[var(--ink-muted)] mt-0.5">
+                  按当前过滤导出 {visibleLogs.length} 行
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={isViewExportDisabled}
+              onClick={() => {
+                handleExportRecentLines(500);
+                setExportMenuOpen(false);
+              }}
+              className={cn(
+                'w-full text-left px-3 py-2 rounded-lg text-sm flex items-start gap-2.5',
+                'transition-[background-color,color] duration-[var(--dur-instant)]',
+                isViewExportDisabled
+                  ? 'opacity-40 cursor-not-allowed text-[var(--ink-muted)]'
+                  : 'text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+              )}
+            >
+              <FileDown className="w-4 h-4 mt-0.5 text-[var(--aurora-1)] shrink-0" />
+              <span className="flex-1">
+                <span className="block">导出最近 500 行</span>
+                <span className="block text-[11px] font-mono text-[var(--ink-muted)] mt-0.5">
+                  快速截取尾部 500 条
+                </span>
+              </span>
+            </button>
+            {useAppLogs && (
+              <>
+                <div className="my-1 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={isRawDownloadDisabled}
+                  onClick={() => {
+                    void handleDownload();
+                    setExportMenuOpen(false);
+                  }}
+                  className={cn(
+                    'w-full text-left px-3 py-2 rounded-lg text-sm flex items-start gap-2.5',
+                    'transition-[background-color,color] duration-[var(--dur-instant)]',
+                    isRawDownloadDisabled
+                      ? 'opacity-40 cursor-not-allowed text-[var(--ink-muted)]'
+                      : 'text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+                  )}
+                >
+                  {exporting
+                    ? <RefreshCw className="w-4 h-4 mt-0.5 text-[var(--aurora-1)] shrink-0 animate-spin" />
+                    : <Download className="w-4 h-4 mt-0.5 text-[var(--aurora-1)] shrink-0" />}
+                  <span className="flex-1">
+                    <span className="block">下载完整原始日志</span>
+                    <span className="block text-[11px] font-mono text-[var(--ink-muted)] mt-0.5">
+                      从服务端按 {filterLevel} 级别拉取
+                    </span>
+                  </span>
+                </button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body
+    );
+  };
 
   const renderActionButtons = (showFullscreenToggle: boolean) => (
     <div className="flex items-center gap-1">
@@ -983,103 +1302,198 @@ export function RealtimeLogViewer({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 font-mono text-[var(--text-secondary)] leading-relaxed custom-scrollbar bg-[var(--bg-card)]"
+        className="flex-1 overflow-y-auto font-mono text-[var(--ink-secondary)] custom-scrollbar bg-[var(--bg-card)] relative"
         style={{ fontSize: `${fontSize}px` }}
       >
         {isLoading && logs.length === 0 && viewState.lastActiveLifecycle === 'idle' ? (
-          <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
-            <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-            正在加载日志...
+          <div className="flex items-center justify-center h-full text-[var(--ink-muted)] gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            <span>正在加载日志…</span>
           </div>
         ) : visibleLogs.length > 0 ? (
-          visibleLogs.map((line, index) => {
-            const lineTime = showLineMeta ? extractLineTime(line) : null;
-            return (
-              <div key={`${index}-${line.slice(0, 24)}`} className={cn(
-                wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto',
-                compactMode ? 'px-1 py-0 leading-snug' : 'px-1 py-0.5',
-                'hover:bg-[var(--bg-card-hover)] rounded transition-colors border-l-2',
-                line.includes('ERROR') ? 'border-status-danger/50 bg-status-danger/5 dark:bg-status-danger-light' :
-                line.includes('WARN') ? 'border-status-warning/50 bg-status-warning/5 dark:bg-status-warning-light' :
-                line.includes('DEBUG') ? 'border-status-info/50' :
-                'border-transparent hover:border-[var(--border-subtle)]'
-              )}>
-                {showLineMeta && (
-                  <div className="text-[10px] text-[var(--text-muted)] mb-0.5">
-                    #{index + 1}{lineTime ? ` · ${lineTime}` : ''}
+          <div className={cn('px-2', compactMode ? 'py-1' : 'py-2')}>
+            {parsedVisibleLogs.map((parsed, index) => {
+              const line = parsed.raw;
+              const lvlStyle = parsed.level ? LEVEL_STYLES[parsed.level] : null;
+
+              // 主行的左侧光带颜色（替代原 includes 误判）
+              const stripeColor = parsed.level === 'ERROR' || parsed.level === 'FATAL'
+                ? 'before:bg-[var(--signal-danger)]'
+                : parsed.level === 'WARN'
+                  ? 'before:bg-[var(--signal-warn)]'
+                  : parsed.level === 'DEBUG' || parsed.level === 'TRACE'
+                    ? 'before:bg-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]'
+                    : '';
+
+              return (
+                <div
+                  key={`${index}-${line.slice(0, 24)}`}
+                  className={cn(
+                    'group relative rounded-md flex items-start gap-2.5',
+                    'transition-colors duration-[var(--dur-instant)]',
+                    'hover:bg-[color-mix(in_oklch,var(--aurora-1)_4%,transparent)]',
+                    compactMode ? 'px-2 py-0.5' : 'px-2 py-1',
+                    // 左侧 2px 极光光带（仅有 level 的行）
+                    stripeColor && cn(
+                      'before:content-[""] before:absolute before:left-0 before:top-1.5 before:bottom-1.5',
+                      'before:w-[2px] before:rounded-full before:opacity-70',
+                      stripeColor
+                    )
+                  )}
+                >
+                  {/* 行号 / 时间戳 列 */}
+                  {showLineMeta && (
+                    <div className="shrink-0 w-[100px] text-[10px] font-mono text-[var(--ink-muted)] tnum leading-relaxed select-none pt-px">
+                      <span className="opacity-60">#{(index + 1).toString().padStart(4, ' ')}</span>
+                      {parsed.timestamp && (
+                        <span className="ml-1.5">{parsed.timestamp}</span>
+                      )}
+                    </div>
+                  )}
+                  {!showLineMeta && parsed.timestamp && (
+                    <span className="shrink-0 font-mono text-[var(--ink-muted)] tnum leading-relaxed pt-px text-[0.92em]">
+                      {parsed.timestamp}
+                    </span>
+                  )}
+
+                  {/* 级别徽章 */}
+                  {lvlStyle && (
+                    <span
+                      className={cn(
+                        'shrink-0 inline-flex items-center justify-center h-[18px] min-w-[44px] px-1.5 rounded text-[10px] font-mono font-semibold tracking-wider border mt-px',
+                        lvlStyle.bg, lvlStyle.text, lvlStyle.border
+                      )}
+                    >
+                      {lvlStyle.label}
+                    </span>
+                  )}
+
+                  {/* 主体（HTTP / 普通文本） */}
+                  <div className={cn(
+                    'flex-1 min-w-0 leading-relaxed',
+                    wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre overflow-x-auto'
+                  )}>
+                    {parsed.method && parsed.path && parsed.status !== null ? (
+                      <span className="inline-flex items-center gap-2 flex-wrap">
+                        <span className={cn('font-mono font-semibold text-[0.92em]', METHOD_TONE[parsed.method] ?? 'text-[var(--ink-secondary)]')}>
+                          {parsed.method}
+                        </span>
+                        <span className="text-[var(--ink-primary)] truncate">{parsed.path}</span>
+                        <span className={cn('inline-flex items-center px-1.5 rounded font-mono font-semibold text-[10px] tnum', statusToneClasses(parsed.status))}>
+                          {parsed.status}
+                        </span>
+                        {parsed.message && (
+                          <span className="text-[var(--ink-muted)] text-[0.92em]">
+                            {parsed.message}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className={lvlStyle ? 'text-[var(--ink-secondary)]' : 'text-[var(--ink-secondary)]'}>
+                        {parsed.message || parsed.raw}
+                      </span>
+                    )}
                   </div>
-                )}
-                <div>{line}</div>
-              </div>
-            );
-          })
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-[var(--text-muted)]">
+          <div className="flex items-center justify-center h-full text-[var(--ink-muted)]">
             {normalizedKeyword && logs.length > 0
               ? '关键字无匹配日志'
               : (viewState.lifecycle === 'error' ? '日志服务异常，点击右上角重试' : '当前无可展示日志')}
           </div>
         )}
       </div>
+
+      {/* 浮动「回到底部」按钮 —— 仅在脱离底部且有日志时出现 */}
+      {!autoScroll && !isPaused && visibleLogs.length > 0 && (
+        <button
+          type="button"
+          onClick={handleScrollToBottom}
+          className={cn(
+            'absolute bottom-4 right-4 z-[5] inline-flex items-center gap-1.5 h-8 px-3 rounded-full',
+            'surface-raised text-[11px] font-mono uppercase tracking-[0.12em] text-[var(--ink-primary)]',
+            'shadow-[0_4px_16px_-4px_color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+            'hover:shadow-[0_6px_20px_-4px_color-mix(in_oklch,var(--aurora-1)_40%,transparent)]',
+            'transition-shadow duration-[var(--dur-quick)]'
+          )}
+        >
+          <ArrowDown className="w-3.5 h-3.5 text-[var(--aurora-1)]" />
+          <span>回到底部</span>
+        </button>
+      )}
     </>
+  );
+
+  /**
+   * 状态指示点 —— 比 chip 更克制，给 healthy 注入呼吸感
+   */
+  const renderStatusDot = () => {
+    const dotColor =
+      viewState.lifecycle === 'healthy' ? 'bg-[var(--signal-success)]' :
+      viewState.lifecycle === 'error' ? 'bg-[var(--signal-danger)]' :
+      viewState.lifecycle === 'no_data' ? 'bg-[var(--signal-warn)]' :
+      viewState.lifecycle === 'paused' ? 'bg-[var(--signal-warn)]' :
+      'bg-[var(--ink-muted)]';
+    return (
+      <span className="relative inline-flex items-center justify-center w-2 h-2 shrink-0" aria-hidden>
+        <span className={cn('absolute inset-0 rounded-full opacity-40', dotColor, viewState.lifecycle === 'healthy' && 'animate-ping')} />
+        <span className={cn('relative w-1.5 h-1.5 rounded-full', dotColor)} />
+      </span>
+    );
+  };
+
+  /**
+   * 状态行 —— 顶部紧凑信息条
+   */
+  const renderStatusBar = (compact = false) => (
+    <div className={cn(
+      'flex items-center gap-2 text-sm text-[var(--ink-secondary)] min-w-0',
+      compact && 'gap-2'
+    )}>
+      <Terminal className="w-4 h-4 text-[var(--aurora-1)] shrink-0" />
+      <span className="font-mono font-medium text-[var(--ink-primary)] truncate">{getTitle()}</span>
+      <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+        {renderStatusDot()}
+        <span>{statusLabel}</span>
+      </span>
+      {isPaused && (
+        <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-mono uppercase tracking-[0.12em] px-1.5 py-0.5 rounded-full bg-[color-mix(in_oklch,var(--signal-warn)_10%,transparent)] text-[var(--signal-warn)] border border-[color-mix(in_oklch,var(--signal-warn)_22%,transparent)]">
+          <Pause className="w-2.5 h-2.5" />
+          {pauseReasonLabel}
+        </span>
+      )}
+      {!autoScroll && !isPaused && (
+        <button
+          type="button"
+          onClick={handleScrollToBottom}
+          className="inline-flex items-center gap-1 shrink-0 text-[10px] font-mono uppercase tracking-[0.12em] px-1.5 py-0.5 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] text-[var(--aurora-1)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] transition-colors cursor-pointer"
+          title="点击回到底部并恢复自动跟随"
+        >
+          <ArrowDown className="w-2.5 h-2.5" />
+          已暂停跟随
+        </button>
+      )}
+      {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--ink-muted)] shrink-0" />}
+    </div>
   );
 
   const renderEmbeddedContent = () => (
     <>
-      <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-leaf)] shrink-0">
-        <div className="px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0 flex-wrap">
-            <Terminal className="w-4 h-4 text-primary shrink-0" />
-            <span className="font-mono font-medium truncate">{getTitle()}</span>
-            <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-            {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded shrink-0">{pauseReasonLabel}</span>}
-            {!autoScroll && !isPaused && <span className="text-[10px] bg-status-info-light text-status-info px-1.5 py-0.5 rounded shrink-0">滚动锁定解除</span>}
-            {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)]" />}
-          </div>
-          <div className="flex items-center gap-1 sm:gap-3 ml-auto">
-            <div className="hidden sm:block text-[10px] text-[var(--text-muted)] tnum">
-              最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
+      <div className="sticky top-0 z-10 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)] shrink-0">
+        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+          {renderStatusBar()}
+          <div className="flex items-center gap-3">
+            <div className="text-[10px] font-mono text-[var(--ink-muted)] tnum">
+              最近成功 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
             </div>
-            <button
-              type="button"
-              className={cn(
-                'lg:hidden flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors',
-                embeddedFiltersExpanded
-                  ? 'border-primary/40 text-primary bg-primary/10'
-                  : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-              )}
-              onClick={() => setEmbeddedFiltersExpanded(prev => !prev)}
-              title={embeddedFiltersExpanded ? '收起筛选' : '展开筛选'}
-              aria-expanded={embeddedFiltersExpanded}
-              aria-controls="embedded-filters-content"
-            >
-              {embeddedFiltersExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              筛选
-            </button>
             {renderActionButtons(true)}
           </div>
         </div>
-        <div className="sm:hidden px-3 pb-1 text-[10px] text-[var(--text-muted)] tnum">
-          最近成功: {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无'}
-        </div>
-        <AnimatePresence initial={false}>
-          {embeddedFiltersExpanded && (
-            <motion.div
-              id="embedded-filters-content"
-              key="embedded-toolbar-filters-mobile"
-              className="lg:hidden overflow-hidden"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {renderToolbarFilters()}
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <div className="hidden lg:block">
-          {renderToolbarFilters()}
-        </div>
+        {renderMainToolbar()}
+        {renderAdvancedToolbar()}
       </div>
       {renderLogArea()}
     </>
@@ -1113,60 +1527,28 @@ export function RealtimeLogViewer({
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              {/* 全屏紧凑工具栏 */}
-              <div className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                <div className="px-3 sm:px-4 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] min-w-0 flex-wrap">
-                    <Terminal className="w-4 h-4 text-primary shrink-0" />
-                    <span className="font-mono font-medium truncate">{getTitle()}</span>
-                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded border shrink-0', statusClassName)}>{statusLabel}</span>
-                    {isPaused && <span className="text-[10px] bg-status-warning-light text-status-warning px-1.5 py-0.5 rounded shrink-0">{pauseReasonLabel}</span>}
-                    {isLoading && <RefreshCw className="w-3 h-3 animate-spin text-[var(--text-muted)]" />}
-                    <span className="text-[10px] text-[var(--text-muted)] truncate tnum">
+              {/* 全屏工具栏 —— 与嵌入式同样的三段结构（更宽松的间距） */}
+              <div className="shrink-0 border-b border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] bg-[var(--bg-leaf)]">
+                <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {renderStatusBar(true)}
+                    <span className="text-[10px] font-mono text-[var(--ink-muted)] tnum ml-2 shrink-0">
                       {visibleLogs.length} 行 · {lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : '尚无更新'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 justify-end shrink-0">
-                    <button
-                      className={cn(
-                        'flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors',
-                        fullscreenToolbarExpanded
-                          ? 'border-primary/40 text-primary bg-primary/10'
-                          : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
-                      )}
-                      onClick={() => setFullscreenToolbarExpanded(prev => !prev)}
-                      title={fullscreenToolbarExpanded ? '收起工具栏' : '展开工具栏'}
-                    >
-                      {fullscreenToolbarExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      工具栏
-                    </button>
+                  <div className="flex items-center gap-1">
                     {renderActionButtons(false)}
                     <button
-                      className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--bg-card-hover)] transition-colors"
-                      onClick={() => {
-                        setFullscreenToolbarExpanded(false);
-                        dispatchViewState({ type: 'EXIT_FULLSCREEN' });
-                      }}
+                      className="p-1.5 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] rounded-md hover:bg-[color-mix(in_oklch,var(--ink-primary)_6%,transparent)] transition-colors"
+                      onClick={() => dispatchViewState({ type: 'EXIT_FULLSCREEN' })}
                       title="退出全屏 (Esc)"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <AnimatePresence initial={false}>
-                  {fullscreenToolbarExpanded && (
-                    <motion.div
-                      key="fullscreen-toolbar-filters"
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                      className="overflow-hidden"
-                    >
-                      {renderToolbarFilters()}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {renderMainToolbar()}
+                {renderAdvancedToolbar()}
               </div>
               {renderLogArea()}
             </motion.div>
@@ -1176,12 +1558,13 @@ export function RealtimeLogViewer({
 
       {!isFullScreen && (
         <div className={cn(
-          'surface-leaf surface-dashboard-card rounded-xl flex flex-col overflow-hidden transition-all duration-300 h-full min-h-[400px]',
+          'surface-leaf surface-dashboard-card rounded-xl flex flex-col overflow-hidden transition-all duration-300 h-full min-h-[400px] relative',
           className
         )}>
           {renderEmbeddedContent()}
         </div>
       )}
+      {renderExportMenuPortal()}
     </>
   );
 }

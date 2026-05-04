@@ -7,47 +7,51 @@ import {
   MessageSquare,
   User,
   Settings,
-  Link,
-  Image,
+  Link as LinkIcon,
+  Image as ImageIcon,
   Sparkles,
   Shield,
   AlertTriangle,
   Clock,
-  Filter,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
   Search as SearchIcon,
   X,
+  Layers,
+  Activity as ActivityIcon,
+  Tag as TagIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@aetherblog/hooks';
-import { formatDistanceToNow } from 'date-fns';
+import { Select, DateRangePicker, type DateRangeValue, type SelectOption } from '@aetherblog/ui';
+import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { activityService, ActivityEvent, ActivityQueryParams } from '@/services/activityService';
 
-/**
- * 事件类别配置
- */
+/* -----------------------------------------------------------
+ * 事件类别配置 —— 颜色与图标
+ * 颜色用 token，避免 hard-code hex
+ * ----------------------------------------------------------- */
 const categoryConfig = {
-  post: { icon: FileText, label: '文章', bgColor: 'bg-status-info-light', borderColor: 'border-status-info-border', textColor: 'text-status-info' },
-  comment: { icon: MessageSquare, label: '评论', bgColor: 'bg-status-success-light', borderColor: 'border-status-success-border', textColor: 'text-status-success' },
-  user: { icon: User, label: '用户', bgColor: 'bg-accent/10', borderColor: 'border-accent/20', textColor: 'text-accent' },
-  system: { icon: Settings, label: '系统', bgColor: 'bg-[var(--bg-tertiary)]', borderColor: 'border-[var(--border-default)]', textColor: 'text-[var(--text-muted)]' },
-  friend: { icon: Link, label: '友链', bgColor: 'bg-pink-500/10', borderColor: 'border-pink-500/20', textColor: 'text-pink-400' },
-  media: { icon: Image, label: '媒体', bgColor: 'bg-cyan-500/10', borderColor: 'border-cyan-500/20', textColor: 'text-cyan-400' },
-  ai: { icon: Sparkles, label: 'AI', bgColor: 'bg-primary/10', borderColor: 'border-primary/20', textColor: 'text-primary' },
-  security: { icon: Shield, label: '安全', bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border', textColor: 'text-status-warning' },
+  post:     { icon: FileText,      label: '文章',  bgColor: 'bg-status-info-light',    borderColor: 'border-status-info-border',    textColor: 'text-status-info' },
+  comment:  { icon: MessageSquare, label: '评论',  bgColor: 'bg-status-success-light', borderColor: 'border-status-success-border', textColor: 'text-status-success' },
+  user:     { icon: User,          label: '用户',  bgColor: 'bg-accent/10',            borderColor: 'border-accent/20',             textColor: 'text-accent' },
+  system:   { icon: Settings,      label: '系统',  bgColor: 'bg-[var(--bg-tertiary)]', borderColor: 'border-[var(--border-default)]', textColor: 'text-[var(--text-muted)]' },
+  friend:   { icon: LinkIcon,      label: '友链',  bgColor: 'bg-pink-500/10',          borderColor: 'border-pink-500/20',           textColor: 'text-pink-400' },
+  media:    { icon: ImageIcon,     label: '媒体',  bgColor: 'bg-cyan-500/10',          borderColor: 'border-cyan-500/20',           textColor: 'text-cyan-400' },
+  ai:       { icon: Sparkles,      label: 'AI',    bgColor: 'bg-primary/10',           borderColor: 'border-primary/20',            textColor: 'text-primary' },
+  security: { icon: Shield,        label: '安全',  bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border', textColor: 'text-status-warning' },
 } as const;
 
 type CategoryKey = keyof typeof categoryConfig;
 
 const statusConfig = {
-  INFO: { label: '信息', color: 'text-[var(--text-muted)]', bgColor: 'bg-[var(--bg-tertiary)]' },
-  SUCCESS: { label: '成功', color: 'text-status-success', bgColor: 'bg-status-success-light' },
-  WARNING: { label: '警告', color: 'text-status-warning', bgColor: 'bg-status-warning-light' },
-  ERROR: { label: '错误', color: 'text-status-danger', bgColor: 'bg-status-danger-light' },
+  INFO:    { label: '信息', color: 'text-[var(--text-muted)]', bgColor: 'bg-[var(--bg-tertiary)]' },
+  SUCCESS: { label: '成功', color: 'text-status-success',      bgColor: 'bg-status-success-light' },
+  WARNING: { label: '警告', color: 'text-status-warning',      bgColor: 'bg-status-warning-light' },
+  ERROR:   { label: '错误', color: 'text-status-danger',       bgColor: 'bg-status-danger-light' },
 } as const;
 
 type StatusKey = keyof typeof statusConfig;
@@ -65,14 +69,14 @@ const statuses: Array<'all' | StatusKey> = ['all', 'INFO', 'SUCCESS', 'WARNING',
  */
 const eventTypeOptions: Record<CategoryKey, Array<{ value: string; label: string }>> = {
   post: [
-    { value: 'post.create', label: '创建文章' },
-    { value: 'post.update', label: '更新文章' },
-    { value: 'post.delete', label: '删除文章' },
+    { value: 'post.create',  label: '创建文章' },
+    { value: 'post.update',  label: '更新文章' },
+    { value: 'post.delete',  label: '删除文章' },
     { value: 'post.publish', label: '发布文章' },
   ],
   comment: [
     { value: 'comment.approve', label: '审核通过' },
-    { value: 'comment.delete', label: '删除评论' },
+    { value: 'comment.delete',  label: '删除评论' },
   ],
   user: [
     { value: 'user.login', label: '用户登录' },
@@ -95,6 +99,27 @@ const eventTypeOptions: Record<CategoryKey, Array<{ value: string; label: string
 };
 
 /**
+ * 时间范围 chip 显示用 —— 把 ISO 转中文友好文案
+ */
+function formatDateRangeChip(start?: string, end?: string): string | null {
+  const s = start ? parseISO(start) : null;
+  const e = end ? parseISO(end) : null;
+  if (!s && !e) return null;
+  if (s && e && isValid(s) && isValid(e)) {
+    if (format(s, 'yyyy-MM-dd') === format(e, 'yyyy-MM-dd')) {
+      return format(s, 'yyyy 年 M 月 d 日', { locale: zhCN });
+    }
+    if (s.getFullYear() === e.getFullYear()) {
+      return `${format(s, 'M/d')} – ${format(e, 'M/d')}`;
+    }
+    return `${format(s, 'yyyy/M/d')} – ${format(e, 'yyyy/M/d')}`;
+  }
+  if (s && isValid(s)) return `自 ${format(s, 'yyyy/M/d')}`;
+  if (e && isValid(e)) return `至 ${format(e, 'yyyy/M/d')}`;
+  return null;
+}
+
+/**
  * 活动事件列表页面
  *
  * @ref §8.2 - 活动事件管理
@@ -108,8 +133,7 @@ export default function ActivitiesPage() {
   const [selectedStatus, setSelectedStatus] = useState<'all' | StatusKey>('all');
   const [selectedEventType, setSelectedEventType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ startTime: '', endTime: '' });
   const [pageNum, setPageNum] = useState(1);
   const pageSize = 20;
 
@@ -123,18 +147,18 @@ export default function ActivitiesPage() {
   // 任何过滤维度变化都回到第一页
   useEffect(() => {
     setPageNum(1);
-  }, [selectedCategory, selectedStatus, selectedEventType, debouncedSearch, startTime, endTime]);
+  }, [selectedCategory, selectedStatus, selectedEventType, debouncedSearch, dateRange.startTime, dateRange.endTime]);
 
   const queryParams: ActivityQueryParams = useMemo(() => ({
     category: selectedCategory === 'all' ? undefined : selectedCategory,
     eventType: selectedEventType || undefined,
     status: selectedStatus === 'all' ? undefined : selectedStatus,
     search: debouncedSearch || undefined,
-    startTime: startTime || undefined,
-    endTime: endTime || undefined,
+    startTime: dateRange.startTime || undefined,
+    endTime: dateRange.endTime || undefined,
     pageNum,
     pageSize,
-  }), [selectedCategory, selectedStatus, selectedEventType, debouncedSearch, startTime, endTime, pageNum]);
+  }), [selectedCategory, selectedStatus, selectedEventType, debouncedSearch, dateRange.startTime, dateRange.endTime, pageNum]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['activities', queryParams],
@@ -148,22 +172,78 @@ export default function ActivitiesPage() {
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const activeFilterCount = [
-    selectedCategory !== 'all',
-    selectedStatus !== 'all',
-    !!selectedEventType,
-    !!debouncedSearch,
-    !!startTime,
-    !!endTime,
-  ].filter(Boolean).length;
+  /* -----------------------------------------------------------
+   * 激活筛选可视化 —— 把所有非默认值收集为可单独移除的 chip
+   * 这是当前 UI 与原版最大的差异：用户能"看见"自己开了什么。
+   * ----------------------------------------------------------- */
+  type ActiveChip = {
+    key: string;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    value: string;
+    onRemove: () => void;
+  };
+
+  const activeChips: ActiveChip[] = [];
+  if (selectedCategory !== 'all') {
+    const cfg = categoryConfig[selectedCategory];
+    activeChips.push({
+      key: 'category',
+      icon: cfg.icon,
+      label: '分类',
+      value: cfg.label,
+      onRemove: () => setSelectedCategory('all'),
+    });
+  }
+  if (selectedStatus !== 'all') {
+    activeChips.push({
+      key: 'status',
+      icon: ActivityIcon,
+      label: '状态',
+      value: statusConfig[selectedStatus].label,
+      onRemove: () => setSelectedStatus('all'),
+    });
+  }
+  if (selectedEventType) {
+    const opt = selectedCategory !== 'all'
+      ? eventTypeOptions[selectedCategory].find((o) => o.value === selectedEventType)
+      : undefined;
+    activeChips.push({
+      key: 'eventType',
+      icon: TagIcon,
+      label: '类型',
+      value: opt?.label ?? selectedEventType,
+      onRemove: () => setSelectedEventType(''),
+    });
+  }
+  const dateChip = formatDateRangeChip(dateRange.startTime, dateRange.endTime);
+  if (dateChip) {
+    activeChips.push({
+      key: 'date',
+      icon: Clock,
+      label: '时间',
+      value: dateChip,
+      onRemove: () => setDateRange({ startTime: '', endTime: '' }),
+    });
+  }
+  if (debouncedSearch) {
+    activeChips.push({
+      key: 'search',
+      icon: SearchIcon,
+      label: '关键词',
+      value: debouncedSearch,
+      onRemove: () => setSearchTerm(''),
+    });
+  }
+
+  const activeFilterCount = activeChips.length;
 
   const resetFilters = () => {
     setSelectedCategory('all');
     setSelectedStatus('all');
     setSelectedEventType('');
     setSearchTerm('');
-    setStartTime('');
-    setEndTime('');
+    setDateRange({ startTime: '', endTime: '' });
   };
 
   const lookupCategory = (category: string): typeof categoryConfig.system => {
@@ -182,11 +262,19 @@ export default function ActivitiesPage() {
 
   const getColors = (category: ActivityEvent['eventCategory'], status: string) => {
     if (status === 'WARNING') return { bgColor: 'bg-status-warning-light', borderColor: 'border-status-warning-border' };
-    if (status === 'ERROR') return { bgColor: 'bg-status-danger-light', borderColor: 'border-status-danger-border' };
+    if (status === 'ERROR')   return { bgColor: 'bg-status-danger-light',  borderColor: 'border-status-danger-border' };
     return lookupCategory(category);
   };
 
-  const subTypeOptions = selectedCategory === 'all' ? [] : eventTypeOptions[selectedCategory];
+  // 当前分类下的事件类型 → Select 选项
+  const eventTypeSelectOptions: SelectOption[] = useMemo(() => {
+    if (selectedCategory === 'all') return [];
+    return eventTypeOptions[selectedCategory].map((o) => ({
+      value: o.value,
+      label: o.label,
+      description: o.value,
+    }));
+  }, [selectedCategory]);
 
   return (
     <div className="p-6 space-y-6">
@@ -216,149 +304,199 @@ export default function ActivitiesPage() {
         </button>
       </div>
 
-      {/* 筛选区域 */}
+      {/* ===========================================================
+           筛选卡片 —— 三层结构（搜索行 / segmented 行 / 激活筛选行）
+           =========================================================== */}
       <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-subtle)] p-4 space-y-4">
-        {/* 分类筛选 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[var(--text-muted)] min-w-[64px]">
-            <Filter className="w-4 h-4" />
-            <span className="text-sm">分类:</span>
-          </div>
-          {categories.map((cat) => {
-            const config = cat === 'all' ? null : categoryConfig[cat];
-            const isSelected = selectedCategory === cat;
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-                  isSelected
-                    ? 'bg-primary text-white'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
-                )}
-              >
-                {cat === 'all' ? '全部' : config?.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 状态筛选 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[var(--text-muted)] min-w-[64px]">
-            <span className="text-sm">状态:</span>
-          </div>
-          {statuses.map((s) => {
-            const isSelected = selectedStatus === s;
-            const cfg = s === 'all' ? null : statusConfig[s];
-            return (
-              <button
-                key={s}
-                onClick={() => setSelectedStatus(s)}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-                  isSelected
-                    ? 'bg-primary text-white'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'
-                )}
-              >
-                {s === 'all' ? '全部' : cfg?.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 高级筛选行：事件类型下拉 + 时间区间 + 搜索 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* 二级事件类型 */}
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">事件类型</label>
-            <select
-              value={selectedEventType}
-              onChange={(e) => setSelectedEventType(e.target.value)}
-              disabled={selectedCategory === 'all' || subTypeOptions.length === 0}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="">
-                {selectedCategory === 'all'
-                  ? '先选择分类'
-                  : subTypeOptions.length === 0
-                    ? '该分类暂无细分'
-                    : '全部'}
-              </option>
-              {subTypeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* 起始时间 */}
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">起始日期</label>
+        {/* 行 1 · 主搜索 + 时间 + 事件类型 */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+          {/* 搜索栏 */}
+          <div className="md:col-span-5 relative">
+            <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-muted)] pointer-events-none" />
             <input
-              type="date"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              max={endTime || undefined}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-          </div>
-
-          {/* 结束时间 */}
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">结束日期</label>
-            <input
-              type="date"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              min={startTime || undefined}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-          </div>
-
-          {/* 搜索 */}
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">关键词</label>
-            <div className="relative">
-              <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="搜索标题或描述"
-                className="w-full pl-9 pr-9 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)]"
-                  aria-label="清空搜索"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="搜索标题或描述"
+              aria-label="关键词搜索"
+              className={cn(
+                'w-full h-10 pl-9 pr-9 rounded-lg text-sm',
+                'bg-[var(--bg-leaf)] border border-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]',
+                'text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)]',
+                'transition-[border-color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                'hover:border-[color-mix(in_oklch,var(--aurora-1)_30%,transparent)]',
+                'focus:outline-none focus:border-[color-mix(in_oklch,var(--aurora-1)_50%,transparent)]',
+                'focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--aurora-1)_22%,transparent)]'
               )}
-            </div>
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                aria-label="清空搜索"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--ink-primary)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* 时间范围 */}
+          <div className="md:col-span-4">
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              placeholder="选择时间范围"
+              ariaLabel="时间范围筛选"
+            />
+          </div>
+
+          {/* 事件类型 */}
+          <div className="md:col-span-3">
+            <Select
+              value={selectedEventType}
+              onValueChange={setSelectedEventType}
+              options={eventTypeSelectOptions}
+              placeholder={
+                selectedCategory === 'all'
+                  ? '先选择分类'
+                  : eventTypeSelectOptions.length === 0
+                    ? '该分类暂无细分'
+                    : '所有事件类型'
+              }
+              disabled={selectedCategory === 'all' || eventTypeSelectOptions.length === 0}
+              disabledHint={
+                selectedCategory === 'all'
+                  ? '先选择分类'
+                  : eventTypeSelectOptions.length === 0
+                    ? '该分类暂无细分'
+                    : undefined
+              }
+              prefix={<TagIcon />}
+              ariaLabel="事件类型"
+            />
           </div>
         </div>
 
-        {/* 已选过滤摘要 + 清空 */}
-        {activeFilterCount > 0 && (
-          <div className="flex items-center justify-between text-sm pt-2 border-t border-[var(--border-subtle)]">
-            <span className="text-[var(--text-muted)]">
-              已应用 <span className="text-[var(--text-primary)] font-medium">{activeFilterCount}</span> 个筛选条件
-              ，匹配 <span className="text-[var(--text-primary)] font-medium">{total}</span> 条记录
-            </span>
-            <button
-              onClick={resetFilters}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
-            >
-              <X className="w-3 h-3" />
-              清空筛选
-            </button>
+        {/* 行 2 · 分类 segmented chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] min-w-[60px]">
+            <Layers className="w-3.5 h-3.5" />
+            <span>分类</span>
           </div>
-        )}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {categories.map((cat) => {
+              const config = cat === 'all' ? null : categoryConfig[cat];
+              const isSelected = selectedCategory === cat;
+              const Icon = config?.icon;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium',
+                    'transition-[background-color,border-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                    'border',
+                    isSelected
+                      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_25%,transparent)]'
+                      : 'bg-[var(--bg-leaf)] border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] hover:text-[var(--ink-primary)]'
+                  )}
+                >
+                  {Icon && <Icon className={cn('w-3.5 h-3.5', isSelected ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} />}
+                  {cat === 'all' ? '全部' : config?.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 行 3 · 状态 segmented chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] min-w-[60px]">
+            <ActivityIcon className="w-3.5 h-3.5" />
+            <span>状态</span>
+          </div>
+          <div className="inline-flex items-center p-0.5 rounded-full bg-[color-mix(in_oklch,var(--ink-primary)_4%,transparent)] border border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)]">
+            {statuses.map((s) => {
+              const isSelected = selectedStatus === s;
+              const cfg = s === 'all' ? null : statusConfig[s];
+              return (
+                <button
+                  key={s}
+                  onClick={() => setSelectedStatus(s)}
+                  className={cn(
+                    'h-7 px-3 rounded-full text-xs font-medium',
+                    'transition-[background-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                    isSelected
+                      ? 'bg-[var(--bg-leaf)] text-[var(--ink-primary)] shadow-[0_1px_2px_color-mix(in_oklch,var(--ink-primary)_8%,transparent)]'
+                      : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+                  )}
+                >
+                  {s === 'all' ? '全部' : cfg?.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 行 4 · 已激活筛选 chips（条件渲染） */}
+        <AnimatePresence initial={false}>
+          {activeFilterCount > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="pt-3 border-t border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)]">
+                  已应用 {activeFilterCount}
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+                  {activeChips.map((chip) => {
+                    const Icon = chip.icon;
+                    return (
+                      <motion.span
+                        key={chip.key}
+                        layout
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                        className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)] border border-[color-mix(in_oklch,var(--aurora-1)_22%,transparent)] text-xs"
+                      >
+                        <Icon className="w-3 h-3 text-[var(--aurora-1)] shrink-0" />
+                        <span className="text-[var(--ink-muted)] font-mono">{chip.label}</span>
+                        <span className="text-[var(--ink-primary)] font-medium max-w-[180px] truncate">
+                          {chip.value}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={chip.onRemove}
+                          aria-label={`移除${chip.label}筛选`}
+                          className="ml-0.5 w-5 h-5 inline-flex items-center justify-center rounded-full text-[var(--ink-muted)] hover:bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </motion.span>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={resetFilters}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-mono uppercase tracking-[0.12em] text-[var(--ink-muted)] hover:text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  全部清空
+                </button>
+              </div>
+              <div className="mt-2 text-xs text-[var(--ink-muted)]">
+                匹配 <span className="text-[var(--ink-primary)] font-medium tnum">{total}</span> 条记录
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* 活动列表 */}
@@ -393,7 +531,7 @@ export default function ActivitiesPage() {
         ) : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={`${selectedCategory}-${selectedStatus}-${selectedEventType}-${debouncedSearch}-${startTime}-${endTime}-${pageNum}`}
+              key={`${selectedCategory}-${selectedStatus}-${selectedEventType}-${debouncedSearch}-${dateRange.startTime}-${dateRange.endTime}-${pageNum}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

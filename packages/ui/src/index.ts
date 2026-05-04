@@ -12,6 +12,8 @@ export * from './components/Badge';
 export * from './components/Tag';
 export * from './components/Skeleton';
 export * from './components/Dropdown';
+export * from './components/Select';
+export * from './components/DateRangePicker';
 export * from './components/Tooltip';
 export * from './components/Textarea';
 export * from './components/Toggle';
