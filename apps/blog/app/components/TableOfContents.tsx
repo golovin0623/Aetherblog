@@ -138,7 +138,9 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
     }
   }, []);
 
-  const minLevel = headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
+  const minLevel = useMemo(() => {
+    return headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
+  }, [headings]);
 
   // 渲染目录列表内容
   const renderTocList = () => (

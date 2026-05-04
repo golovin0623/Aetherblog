@@ -40,7 +40,9 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
     () => extractHeadingsFromMarkdown(content),
     [content]
   );
-  const minLevel = headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
+  const minLevel = useMemo(() => {
+    return headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
+  }, [headings]);
 
   useEffect(() => {
     setMounted(true);
