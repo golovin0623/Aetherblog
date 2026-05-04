@@ -340,6 +340,15 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	aiHandler := handler.NewAiHandler(s.Config, activitySvc)
 	aiHandler.Mount(admin.Group("/ai"))
 
+	// --- Agent 对话接口（任意已登录用户可访问，区别于 admin /ai 代理） ---
+	// SECURITY: 这里只挂 authMW，不强制 RequireRole("admin")。理由是 /agent 工作台
+	// 对所有注册用户开放，但下游 ai-service 仍走 internal-token 通道（在 handler 内
+	// 注入 X-Internal-Service），以防止用户拿到的 JWT 直接打到 ai-service。
+	agentHandler := handler.NewAgentHandler(s.Config, postRepo, tagRepo)
+	agentGroup := api.Group("/v1/agent", authMW,
+		middleware.RateLimitByUser(s.Redis, "rate:agent:chat", 30, time.Minute))
+	agentHandler.Mount(agentGroup)
+
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"
 	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))

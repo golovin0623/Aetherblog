@@ -32,6 +32,10 @@ export default function FloatingThemeToggle() {
 
   if (!mounted) return null;
 
+  // Agent 工作台自带主题入口，不让全局浮层占用 fixed bottom-right 位置
+  // 与 composer / FAB 相互遮挡。
+  if (pathname.startsWith('/agent/workspace')) return null;
+
   // 判断当前路由是否属于移动端重页面
   const isHeavyPage = MOBILE_HEAVY_PAGES.includes(pathname);
 

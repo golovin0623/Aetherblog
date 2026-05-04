@@ -546,6 +546,36 @@ func (r *PostRepo) SearchPublished(ctx context.Context, keyword string, limit, o
 	return rows, err
 }
 
+// FilterPublicNoPassword 输入候选 id 列表，返回其中"已发布 + 未隐藏 +
+// 未删除 + 未设密码"的 id 子集。
+//
+// 用途：Agent picker 的 @ 文章选择器拿到 SearchPublished 候选后，必须再做
+// 一次 password IS NULL 过滤——SearchResultRow 不带 password 字段，必须
+// 单独查一次。让 Repo 而不是 handler 拼 SQL，避免 IN(...) 占位符注入风险。
+//
+// 复杂度：单次 batch SELECT，最多 60 个 id 一起回表，毫秒级。
+func (r *PostRepo) FilterPublicNoPassword(ctx context.Context, ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	query, args, err := sqlx.In(`
+		SELECT id FROM posts
+		WHERE id IN (?)
+		  AND deleted = false
+		  AND status = 'PUBLISHED'
+		  AND is_hidden = false
+		  AND password IS NULL`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("FilterPublicNoPassword: build IN clause: %w", err)
+	}
+	query = r.db.Rebind(query)
+	var out []int64
+	if err := r.db.SelectContext(ctx, &out, query, args...); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ListEmbeddingStatus 返回已发布文章的向量索引状态列表，支持按 embeddingStatus 过滤。
 // statusFilter 为空时返回所有已发布文章，否则只返回指定状态的文章。
 func (r *PostRepo) ListEmbeddingStatus(ctx context.Context, statusFilter string, limit, offset int) ([]dto.EmbeddingPostItem, int, error) {

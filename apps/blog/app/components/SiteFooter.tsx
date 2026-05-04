@@ -102,7 +102,7 @@ function extractSocialLinks(raw: unknown): SocialItem[] {
 const FOOTER_NAV: { label: string; href: string }[] = [
   { label: '首页', href: '/' },
   { label: '时间线', href: '/timeline' },
-  { label: '归档', href: '/archives' },
+  { label: 'Agent', href: '/agent' },
   { label: '友链', href: '/friends' },
   { label: '关于', href: '/about' },
   { label: '设计', href: '/design' },
