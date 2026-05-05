@@ -247,8 +247,8 @@ export default function Sidebar({
       <div
         className="px-3 pt-3 border-t border-[var(--ink-subtle)]/12 flex items-center gap-3"
         style={{
-          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
-          paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
+          paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
         }}
       >
         <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 flex items-center justify-center text-[var(--ink-primary)] text-sm font-medium overflow-hidden flex-shrink-0">
