@@ -125,7 +125,7 @@ def _sync_repo(commit_sha: str = "") -> Tuple[bool, str, str]:
         subprocess.run(
             ["git", "fetch", "--quiet", "--tags", "origin", fetch_ref],
             cwd=PROJECT_DIR, check=True, timeout=GIT_FETCH_TIMEOUT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
         )
 
         if commit_sha:
@@ -135,12 +135,12 @@ def _sync_repo(commit_sha: str = "") -> Tuple[bool, str, str]:
             subprocess.run(
                 ["git", "cat-file", "-e", commit_sha + "^{commit}"],
                 cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
             )
             subprocess.run(
                 ["git", "merge-base", "--is-ancestor", commit_sha, "FETCH_HEAD"],
                 cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
             )
             target_sha = commit_sha
         else:
@@ -150,7 +150,7 @@ def _sync_repo(commit_sha: str = "") -> Tuple[bool, str, str]:
             resolved = subprocess.run(
                 ["git", "rev-parse", "FETCH_HEAD"],
                 cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
             )
             target_sha = (resolved.stdout or "").strip()
             if not _HEX_SHA_RE.match(target_sha):
@@ -159,7 +159,7 @@ def _sync_repo(commit_sha: str = "") -> Tuple[bool, str, str]:
         subprocess.run(
             ["git", "reset", "--hard", target_sha],
             cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
         )
         msg = "Repo synced to %s (from %s)" % (target_sha, fetch_ref)
         if commit_sha:
@@ -361,7 +361,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 timeout=DEPLOY_TIMEOUT,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                universal_newlines=True,
                 env=env,
             )
             logging.info("Deployment succeeded")
