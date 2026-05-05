@@ -18,6 +18,7 @@ AetherBlog 项目文档导航。
 
 | 文档 | 说明 |
 |------|------|
+| [**CI & Webhook 自动部署手册**](./ci-webhook-deploy-runbook.md) | 整体架构 · 触发条件 · 自重启链路 · 故障排查 · 历史事故索引（**遇到部署问题先看这份**） |
 | [**GitHub Actions 总览**](../.github/CICD_README.md) | 工作流文件说明、快速上手、构建状态 |
 | [**CI/CD 配置指南**](../.github/CICD_GUIDE.md) | 详细配置、Secrets 设置、自动部署、故障排查 |
 | [**工作流使用说明**](../.github/workflows/README.md) | 各 Workflow 触发方式与操作指南 |
