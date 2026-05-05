@@ -45,20 +45,18 @@ export default function ModelPicker({
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // 点外部关闭 —— 用 pointerdown 替代 mousedown 统一桌面 + 触屏，避免
-  // iOS Safari 上合成 mousedown 时序与 React 重渲染冲突的边角问题。
+  // 关闭策略 —— 仅监听 ESC，外部点击靠 backdrop overlay 拦截。
+  // 历史方案用 document.pointerdown + wrapperRef.contains() 检测：iOS Safari
+  // 上有几率把合法的"选项点击"误判成"外部点击"先 setOpen(false)，导致选项
+  // onClick 还没机会跑就被 unmount，表现为"模型选择不生效"。换 backdrop
+  // 后选项 onClick 必然先于 backdrop（菜单在 z-index 上方），不再有竞态。
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
@@ -98,8 +96,8 @@ export default function ModelPicker({
   // 移动端 max-w 紧到 160px 避免与同一行的发送 / 工具按钮抢空间，桌面回到
   // 240px 给完整 displayName。Apple HIG 推荐触控目标 ≥44×44，移动端严格符合。
   const triggerClass = compact
-    ? 'inline-flex items-center gap-1 px-2 h-11 sm:h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors text-[12px] max-w-[160px] sm:max-w-[240px]'
-    : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/40 transition-colors text-[12px] max-w-[220px]';
+    ? 'inline-flex items-center gap-1 px-2 h-11 sm:h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-95 transition-all text-[12px] max-w-[160px] sm:max-w-[240px]'
+    : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/40 active:scale-[0.97] transition-all text-[12px] max-w-[220px]';
 
   // 弹出位置：top-start 让 popover 出现在按钮上方左对齐，避免遮挡 composer 内容。
   const popClass =
@@ -139,16 +137,33 @@ export default function ModelPicker({
 
       <AnimatePresence>
         {open && (
-          <motion.div
-            {...motionProps}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            role="listbox"
-            // 加 bg-[var(--bg-leaf)] 实色兜底：surface-overlay 自带的玻璃半透明
-            // 在 EmptyState（背后有 aurora glow + Sparkles 大图标）下会出现内容
-            // 穿透感（用户截图证据：下拉项之间能看到背景的 ✨ icon）。
-            // 实色背景让信息层级清晰：弹层 = 第一焦点，背景 = 视觉次级。
-            className={`${popClass} surface-overlay bg-[var(--bg-leaf)] rounded-xl border border-[var(--ink-subtle)]/20 z-50 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]`}
-          >
+          <>
+            {/* 全屏 backdrop 接住外部点击，z-40 < menu z-50。这条路径替代了
+                document.pointerdown + wrapperRef.contains() 的兜底逻辑：
+                选项 onClick 永远先于 backdrop onClick 触发（事件冒泡 + 立体
+                z-index），不再有"选了模型却被外部检测误判 setOpen(false)
+                抢跑"的 iOS 竞态。 */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+              }}
+              aria-hidden="true"
+            />
+            <motion.div
+              {...motionProps}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              role="listbox"
+              // inline style 强制实色背景：surface-overlay 自带的玻璃半透明 +
+              // backdrop-filter: blur(40px) 在 EmptyState（背后有 aurora glow
+              // + Sparkles 大图标）下会出现内容穿透感（用户截图证据：下拉项
+              // 之间能看到背景的 ✨ icon），并在部分 iOS 设备上干扰菜单内
+              // 触控命中。inline style 优先级最高，覆盖 surface-overlay 的
+              // background shorthand，让弹层=信息焦点、背景=视觉次级。
+              style={{ background: 'var(--bg-leaf)' }}
+              className={`${popClass} surface-overlay rounded-xl border border-[var(--ink-subtle)]/20 z-50 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]`}
+            >
             <div className="max-h-[360px] overflow-y-auto py-2">
               {/* 默认（自动）选项 */}
               <button
@@ -159,7 +174,7 @@ export default function ModelPicker({
                   onChange(null, null);
                   setOpen(false);
                 }}
-                className={`w-full text-left px-3 py-2 flex items-start justify-between gap-2 transition-colors ${
+                className={`w-full text-left px-3 py-2 flex items-start justify-between gap-2 transition-all active:scale-[0.985] ${
                   !value.modelId
                     ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
                     : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
@@ -228,7 +243,7 @@ export default function ModelPicker({
                               onChange(m.modelId, m.providerCode);
                               setOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 flex items-start justify-between gap-2 transition-colors ${
+                            className={`w-full text-left px-3 py-2 flex items-start justify-between gap-2 transition-all active:scale-[0.985] ${
                               isActive
                                 ? 'bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--aurora-1)]'
                                 : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)]/70 hover:text-[var(--ink-primary)]'
@@ -258,7 +273,8 @@ export default function ModelPicker({
                   );
                 })}
             </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>
