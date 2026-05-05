@@ -441,34 +441,91 @@ echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
 
 # ---------------------------------------------------------------------------
-# 自动重启 deploy-webhook：webhook 是常驻 systemd 进程，磁盘上的 webhook_server.py
-# 改了不会被进程自己捡起来。这里比对 mtime，新于进程启动时间就用
-# `systemd-run --on-active=2s` 调度一次延迟 restart —— 既让本次 webhook 请求把
-# 200 写完，又让新代码在下一次部署立刻生效。
+# Post-deploy hooks 设计原理（事故学习版）
 #
-# 历史事故 2026-05-05：webhook 进程 5 月 3 日启动跑老版本（无 ThreadingMixIn /
-# settimeout），磁盘上加固版从未生效；scanner 半开连接把单线程 recvfrom 钉死 7
-# 小时，PR #602 / #597 触发的 CI 部署连接全部堆 backlog 拿 RST，业务停摆。
+# webhook 是常驻 systemd 进程，磁盘上的 webhook_server.py / deploy.sh 改了
+# 不会被进程自己捡起来。在 PR #605 加固版中还多了一层副本：ExecStart 加载的是
+# /var/lib/aetherblog/webhook/ 下的副本，git fetch 只更新 PROJECT_DIR
+# (/var/lib/aetherblog/repo) —— 副本不会自动跟着 repo 走。
+#
+# 因此每次部署成功后需要做两件事：
+#   1) sync_webhook_files_to_runtime —— 把 repo 下的 webhook 代码 cp 到副本目录
+#   2) restart_webhook_if_stale —— 比对副本 mtime 与 webhook 进程启动时间，
+#      新于则用 `systemd-run --on-active=Ns` 调度一次延迟 restart
 #
 # 用 systemd-run 而不是 `(sleep 2; systemctl restart) &`：后者作为 deploy.sh
 # 子进程仍在 deploy-webhook.service 的 cgroup 内，systemctl restart 触发的
 # `KillMode=control-group` 会把这个 sleeper 一起杀掉；transient unit 才能跑出
 # webhook 自己的 cgroup。
 #
-# **顺序很关键 —— 必须在 preflight 之前调用**：preflight.sh 里也有同款过期
-# 检查，且 deploy.sh 默认 `PREFLIGHT_BLOCK=true` + `set -e`，preflight 一旦因
-# webhook 过期 fail 就直接 exit，restart hook 跑不到 —— 下次部署还是过期，
-# 死循环直到人工 `systemctl restart deploy-webhook`。把调度提到 preflight 前，
-# `systemd-run` 是 fire-and-forget 异步定时器，独立于 deploy.sh 后续是否成功
-# / 是否被 set -e 终止；2s 后 webhook 必然被替换，下一次部署 preflight 自动
-# 转 PASS，整条恢复链自愈。
+# 调用时机用 `trap _post_deploy_hooks EXIT` 而不是显式调用 —— 这条踩过两个坑：
+#
+#   坑 A（codex review on PR #612 第二轮）: 显式调用放在 preflight 之前，
+#     timer +2s 在 deploy.sh 还在跑 preflight / prune（常 ≥ 2s）的时候触发，
+#     systemctl restart 通过 control-group 把 deploy.sh 一起 SIGTERM 掉，
+#     subprocess.run 拿到非零退出码 → CI 收到 500，部署"成功 work、失败 report"。
+#
+#   坑 B（codex review on PR #612 第一轮）: 显式调用放在 preflight 之后，
+#     `set -e + PREFLIGHT_BLOCK=true` 默认下 preflight FAIL 直接 exit，
+#     restart hook 永远跑不到 → webhook 一直过期，每次部署都是同一种 fail loop。
+#
+# `trap EXIT` 同时解决两个坑：
+#   - bash 真正在退出**那一瞬间**才进入 trap → 此时 deploy.sh 主流程已结束，
+#     timer +2s 期间 deploy.sh 早已 wait()'d 完，webhook_server.py 的
+#     subprocess.run 也已返回，response 写回 socket 完成 → timer 不再可能
+#     误伤 in-flight deploy。
+#   - set -e 触发的 exit 同样会进 trap → preflight FAIL 不再阻断恢复路径。
 # ---------------------------------------------------------------------------
+
+# 把 repo 下 ops/webhook/{deploy.sh,webhook_server.py} 的最新版同步到 ExecStart
+# 实际加载的副本目录（默认 /var/lib/aetherblog/webhook，通过 WEBHOOK_RUNTIME_DIR
+# 覆盖）。老 root 模式下 ops/webhook 通过软链接已经 == ExecStart 路径，
+# realpath 比较自动跳过 cp。
+sync_webhook_files_to_runtime() {
+  local runtime_webhook_dir="${WEBHOOK_RUNTIME_DIR:-/var/lib/aetherblog/webhook}"
+  local repo_webhook_dir="$PROJECT_DIR/ops/webhook"
+
+  if [ ! -d "$runtime_webhook_dir" ] || [ ! -d "$repo_webhook_dir" ]; then
+    return
+  fi
+
+  local rrepo rrun
+  rrepo=$(realpath "$repo_webhook_dir" 2>/dev/null || echo "$repo_webhook_dir")
+  rrun=$(realpath "$runtime_webhook_dir" 2>/dev/null || echo "$runtime_webhook_dir")
+  if [ "$rrepo" = "$rrun" ]; then
+    # 旧 root 模式：软链直读，repo 改动当次部署即生效，不需要也不能 cp。
+    return
+  fi
+
+  local f src dst src_mtime dst_mtime
+  for f in deploy.sh webhook_server.py; do
+    src="$repo_webhook_dir/$f"
+    dst="$runtime_webhook_dir/$f"
+    if [ ! -f "$src" ]; then
+      continue
+    fi
+    src_mtime=$(stat -c %Y "$src" 2>/dev/null || echo 0)
+    dst_mtime=$(stat -c %Y "$dst" 2>/dev/null || echo 0)
+    if [ "$src_mtime" -le "$dst_mtime" ]; then
+      continue
+    fi
+    echo "[$(date -Iseconds)] sync webhook file: $src -> $dst (src_mtime=$src_mtime, dst_mtime=$dst_mtime)"
+    if ! cp -f "$src" "$dst" 2>/dev/null; then
+      echo "[$(date -Iseconds)] WARN: failed to cp $src to $dst (permission?)"
+    fi
+  done
+}
+
 restart_webhook_if_stale() {
-  local webhook_py="$PROJECT_DIR/ops/webhook/webhook_server.py"
+  # WEBHOOK_RUNTIME_PY: ExecStart 实际加载的 webhook_server.py 绝对路径。
+  # 加固版（PR #605）unit 显式注入 /var/lib/aetherblog/webhook/webhook_server.py;
+  # root 模式不设这个 env 时 fallback 到 $PROJECT_DIR/ops/webhook/...，
+  # 此时 ExecStart 经软链接也是同一文件 → 行为一致。
+  local webhook_py="${WEBHOOK_RUNTIME_PY:-$PROJECT_DIR/ops/webhook/webhook_server.py}"
   if [ ! -f "$webhook_py" ]; then
     return
   fi
-  if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
+  if ! command -v systemctl >/dev/null 2>&1; then
     return
   fi
   if [ "$(systemctl is-active deploy-webhook 2>/dev/null || true)" != "active" ]; then
@@ -491,7 +548,6 @@ restart_webhook_if_stale() {
   fi
   proc_start_epoch=$(date -d "$proc_start_iso" +%s 2>/dev/null || echo 0)
   if [ "$proc_start_epoch" -eq 0 ]; then
-    # date 解析失败兜底：宁可漏一次重启提示，也不能在每次部署都误触发 systemd-run。
     echo "[$(date -Iseconds)] WARN: failed to parse deploy-webhook ActiveEnterTimestamp ($proc_start_iso), skipping staleness check"
     return
   fi
@@ -500,27 +556,66 @@ restart_webhook_if_stale() {
     return
   fi
 
-  echo "[$(date -Iseconds)] webhook_server.py is newer than running deploy-webhook (file_mtime=$file_mtime, proc_start=$proc_start_epoch)"
-  echo "[$(date -Iseconds)] Scheduling deploy-webhook restart (+2s) so the current 200 response can flush first"
+  echo "[$(date -Iseconds)] $webhook_py is newer than running deploy-webhook (file_mtime=$file_mtime, proc_start=$proc_start_epoch)"
 
-  # unit 名带纳秒避免快速串行部署时撞名；CentOS 7 的 systemd 219 没有
-  # --collect, transient unit 跑完后仍会以 inactive 形态留在内存直到 reboot,
-  # 影响可忽略。
-  local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
-  if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
-         systemctl restart deploy-webhook 2>&1; then
-    echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+  # 两条 restart 路径，按可用性自动 fallback：
+  #
+  # (a) Sentinel + path-unit (推荐, hardened 模式必须走这条):
+  #     PR #605 让 webhook 跑 User=webhook + NoNewPrivileges=true 之后, deploy.sh
+  #     是无特权进程, 不能直接 `systemctl restart deploy-webhook` (Codex P1 on
+  #     PR #605). 改为 touch 一个 sentinel 文件 (默认 /run/aetherblog/restart-webhook,
+  #     RuntimeDirectory=aetherblog 已经 chown webhook:webhook), 装在系统级别的
+  #     `aetherblog-webhook-restart.path` 监听该文件出现, 触发 root oneshot 服务
+  #     `aetherblog-webhook-restart.service` 跑 `sleep 2 && systemctl restart`.
+  #     全程不需要 sudo / polkit / 关 NoNewPrivileges.
+  #
+  # (b) systemd-run direct (老 root 模式 / 手工 bash deploy.sh 兜底):
+  #     deploy.sh 当前进程是 root 时, 直接 systemd-run --on-active=2s 调度,
+  #     行为跟 PR #612 原版一致. path-unit 可以未安装.
+  local restart_sentinel="${WEBHOOK_RESTART_SENTINEL:-/run/aetherblog/restart-webhook}"
+  local sentinel_dir
+  sentinel_dir=$(dirname "$restart_sentinel")
+
+  if [ -d "$sentinel_dir" ] && [ -w "$sentinel_dir" ]; then
+    if printf '%s file=%s mtime=%s proc=%s\n' \
+         "$(date -Iseconds)" "$webhook_py" "$file_mtime" "$proc_start_epoch" \
+         > "$restart_sentinel" 2>/dev/null; then
+      echo "[$(date -Iseconds)] Wrote restart sentinel: $restart_sentinel (root path-unit will restart deploy-webhook in ~2s)"
+      return
+    fi
+    echo "[$(date -Iseconds)] WARN: failed to write $restart_sentinel, falling back to systemd-run"
   fi
+
+  if [ "$(id -u)" = "0" ] && command -v systemd-run >/dev/null 2>&1; then
+    local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
+    echo "[$(date -Iseconds)] Scheduling deploy-webhook restart via systemd-run (+2s, root fallback)"
+    if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
+           systemctl restart deploy-webhook 2>&1; then
+      echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+    fi
+    return
+  fi
+
+  echo "[$(date -Iseconds)] WARN: webhook is stale but neither sentinel ($restart_sentinel) nor systemd-run-as-root is available; manually run: sudo systemctl restart deploy-webhook"
 }
 
-restart_webhook_if_stale
+_post_deploy_hooks() {
+  # || true 兜底：trap 进来时若 PROJECT_DIR / 相关 env 还没赋值（脚本极早期
+  # 失败时），sync 函数里 stat / cp 拿空字符串构造路径会 noisy fail，hook 不应
+  # 反过来变成新的 stderr 噪声源。
+  sync_webhook_files_to_runtime || true
+  restart_webhook_if_stale || true
+}
+
+# 触发条件：bash 任何方式退出 —— 正常完成、preflight FAIL 触发的 set -e、
+# 早期路径错误、SIGTERM。这是上文「调用时机」段落详述的关键设计选择。
+trap _post_deploy_hooks EXIT
 
 # ---------------------------------------------------------------------------
 # 部署后：完整 preflight 校验（运行时检查）
 #
-# 排在 restart_webhook_if_stale 之后：preflight 自带的 webhook 过期检查可能
-# 让 deploy.sh 在 set -e 下 exit 1，但此时 systemd-run 已经把恢复 timer 排
-# 出去了，CI 这次拿 500 是诊断信号，下次部署就自动恢复。
+# preflight 现在排在 trap 安装之后：即使 preflight 因 webhook 过期等原因 FAIL
+# 导致 set -e 退出，trap EXIT 仍会跑 _post_deploy_hooks 把恢复路径接通。
 # ---------------------------------------------------------------------------
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
   echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"
