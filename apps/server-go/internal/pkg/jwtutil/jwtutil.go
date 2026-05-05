@@ -26,6 +26,11 @@ type Claims struct {
 	Username string `json:"username"`
 	// Role 是用户角色（如 ADMIN、USER）
 	Role     string `json:"role"`
+	// MustChangePassword 标识该 token 来自一个仍需强制改密的账号。
+	// 为 true 时，middleware.RequirePasswordRotated 会拒绝除 /me /change-password
+	// /refresh /logout 外的全部接口，避免默认密码账号绕过改密流程做任意操作。
+	// omitempty 让正常账号的 token 不携带该字段，体积不变。
+	MustChangePassword bool `json:"mcp,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -37,15 +42,21 @@ type LoginUser struct {
 	Username string
 	// Role 是用户角色
 	Role     string
+	// MustChangePassword 透传自 JWT claim，供 middleware.RequirePasswordRotated 判断。
+	MustChangePassword bool
 }
 
 // GenerateToken 使用 HS256 算法创建并签名一个 JWT 令牌。
 // userID 会被格式化为字符串存入 Subject 字段，expiration 指定令牌有效期。
+// mustChangePassword 为 true 时，token 会带上 mcp=true claim，被
+// middleware.RequirePasswordRotated 限制访问范围（仅放行 /me /change-password
+// /refresh /logout，其余 403），保障默认密码账号不能跳过改密直接做事。
 // 返回签名后的 JWT 字符串，出错时返回错误。
-func GenerateToken(userID int64, username, role, secret string, expiration time.Duration) (string, error) {
+func GenerateToken(userID int64, username, role, secret string, expiration time.Duration, mustChangePassword bool) (string, error) {
 	claims := Claims{
-		Username: username,
-		Role:     role,
+		Username:           username,
+		Role:               role,
+		MustChangePassword: mustChangePassword,
 		RegisteredClaims: jwt.RegisteredClaims{
 			// Subject 存储用户 ID 的字符串表示
 			Subject:   fmt.Sprintf("%d", userID),

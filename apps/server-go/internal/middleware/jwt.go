@@ -58,9 +58,10 @@ func JWTAuthWithKeys(keys func() []string) echo.MiddlewareFunc {
 			}
 
 			c.Set(ContextKeyLoginUser, &jwtutil.LoginUser{
-				UserID:   userID,
-				Username: claims.Username,
-				Role:     claims.Role,
+				UserID:             userID,
+				Username:           claims.Username,
+				Role:               claims.Role,
+				MustChangePassword: claims.MustChangePassword,
 			})
 			return next(c)
 		}
@@ -85,9 +86,10 @@ func JWTOptionalWithKeys(keys func() []string) echo.MiddlewareFunc {
 			if token := extractToken(c); token != "" {
 				if claims, err := jwtutil.ParseTokenWithKeys(token, keys()); err == nil {
 					c.Set(ContextKeyLoginUser, &jwtutil.LoginUser{
-						UserID:   mustParseID(claims.Subject),
-						Username: claims.Username,
-						Role:     claims.Role,
+						UserID:             mustParseID(claims.Subject),
+						Username:           claims.Username,
+						Role:               claims.Role,
+						MustChangePassword: claims.MustChangePassword,
 					})
 				}
 			}
@@ -158,6 +160,34 @@ func RequireRole(roles ...string) echo.MiddlewareFunc {
 				}
 			}
 			return response.FailWith(c, response.Forbidden, "权限不足")
+		}
+	}
+}
+
+// RequirePasswordRotated 拦截 must_change_password=true 的 token，避免默认密码
+// 账号在改密前调用业务接口。必须挂在 JWTAuth* 之后，因为它依赖 LoginUser 已存入上下文。
+//
+// SECURITY: 与服务端硬拦截登录的方案对比 —— 那种做法会让用户连 JWT 都拿不到，
+// 而 /change-password 端点本身需要 JWT 鉴权，造成自服务死锁，最终只能走管理员
+// 重置 flag 这条线（与 LoginResponse.MustChangePassword 字段语义直接矛盾）。
+// 因此鉴权放行登录、签发携带 mcp=true 的 token，由本中间件把 token 关在
+// "改密+登出+查自身" 的小笼子里：业务路由全部 403，前端拿到 mustChangePassword=true
+// 后自然只能走改密界面，UpdatePassword 成功会自动清掉 must_change_password 标志，
+// 下次登录拿到的就是普通 token。
+//
+// 应当挂载的位置：所有"非改密相关"的鉴权路由 —— /v1/auth/{register,profile,avatar}、
+// /v1/admin/*、/v1/agent/* 等。**绝对不能**挂在 /me /change-password /refresh /logout 上。
+func RequirePasswordRotated() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			lu := GetLoginUser(c)
+			if lu == nil {
+				return response.FailWith(c, response.Unauthorized, "未登录")
+			}
+			if lu.MustChangePassword {
+				return response.FailWith(c, response.Forbidden, "请先完成首次登录改密后再访问该接口")
+			}
+			return next(c)
 		}
 	}
 }

@@ -439,8 +439,19 @@ func truncateForLog(s string) string {
 // generateAccessToken 为指定用户签发 JWT Access Token。
 // 始终用 jwtKeys.Current() 作为签名密钥 —— 轮换发生后立即使用新 key，
 // 旧 key 仅在 JWTAuth 中间件验证阶段（Verifiers 中的 previous）保留。
+//
+// SECURITY: 把 user.MustChangePassword 透传进 claim，让 token 自身携带"必须改密"
+// 状态。middleware.RequirePasswordRotated 据此把这类 token 限制在 /me /change-password
+// /refresh /logout 范围内，杜绝默认密码账号在改密前调用业务接口。
 func (h *AuthHandler) generateAccessToken(user *model.User) (string, error) {
-	return jwtutil.GenerateToken(user.ID, user.Username, user.Role, h.jwtKeys.Current(), h.cfg.JWT.Expiration)
+	return jwtutil.GenerateToken(
+		user.ID,
+		user.Username,
+		user.Role,
+		h.jwtKeys.Current(),
+		h.cfg.JWT.Expiration,
+		user.MustChangePassword,
+	)
 }
 
 // buildLoginResponse 从用户模型和 Access Token 构建 LoginResponse DTO。

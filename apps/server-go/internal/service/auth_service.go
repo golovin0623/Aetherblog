@@ -52,6 +52,12 @@ func (s *AuthService) FindByUsernameOrEmail(ctx context.Context, identifier stri
 
 // CheckUserCanLogin 检查用户账号状态是否允许登录。
 // 当账号状态非 ACTIVE 时返回错误，提示账号已被禁用或未激活。
+//
+// 注意：MustChangePassword 不在此处拦截 —— 拦截下来用户连 JWT 都拿不到，
+// 而 /change-password 端点本身需要 JWT 鉴权，会形成自服务死锁。
+// 安全兜底改在 middleware.RequirePasswordRotated：登录可正常签发 token，
+// 但 token 携带 mcp=true 时除 /me /change-password /refresh /logout 外的
+// 接口一律 403。flag 在用户改密成功后由 user_repo.UpdatePassword 自动清零。
 func (s *AuthService) CheckUserCanLogin(u *model.User) error {
 	if u.Status != "ACTIVE" {
 		return errors.New("账号已被禁用或未激活")
