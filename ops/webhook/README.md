@@ -101,12 +101,15 @@ install -m 0755 -o webhook -g webhook \
 WEBHOOK_SECRET=$(openssl rand -hex 32)
 echo "$WEBHOOK_SECRET"
 install -d -m 0750 -o root -g webhook /etc/aetherblog
-umask 0027
 cat > /etc/aetherblog/webhook.env <<EOF
 WEBHOOK_SECRET=${WEBHOOK_SECRET}
 EOF
 chmod 0640 /etc/aetherblog/webhook.env
 chown root:webhook /etc/aetherblog/webhook.env
+
+# 注意: /var/log/aetherblog/ (日志) 与 /run/aetherblog/ (锁文件) 不需要手动
+# 创建——unit 里的 LogsDirectory=aetherblog / RuntimeDirectory=aetherblog
+# 会让 systemd 在每次启动时按 User=webhook / Group=webhook 自动建好.
 
 # 4) 安装 systemd unit
 cp /var/lib/aetherblog/Aetherblog/ops/webhook/deploy-webhook.service \
@@ -153,8 +156,8 @@ printf '%s' "$body" | curl --noproxy '*' -i -X POST \
 # 查看 webhook 服务日志
 journalctl -u deploy-webhook -n 100 --no-pager
 
-# 查看部署脚本日志
-tail -n 100 /var/log/aetherblog-deploy.log
+# 查看部署脚本日志（unit 已把 LOG_FILE 重定向到 LogsDirectory）
+tail -n 100 /var/log/aetherblog/deploy.log
 ```
 
 ## 常见诊断
@@ -184,5 +187,5 @@ tail -n 100 /var/log/aetherblog-deploy.log
 
 4. **完整部署日志**:
    ```bash
-   tail -200 /var/log/aetherblog-deploy.log
+   tail -200 /var/log/aetherblog/deploy.log
    ```

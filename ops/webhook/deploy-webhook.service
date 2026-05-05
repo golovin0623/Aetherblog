@@ -28,6 +28,12 @@ Environment=WEBHOOK_PORT=7868
 Environment=WEBHOOK_BIND=127.0.0.1
 Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
+# 日志 / 锁文件路径走 systemd LogsDirectory / RuntimeDirectory: 由 systemd
+# 在每次启动时按 User/Group 创建 /var/log/aetherblog 与 /run/aetherblog,
+# 无特权 webhook 帐号有写权限. deploy.sh 与 webhook_server.py 都尊重这两个
+# env override (默认是 /var/log/aetherblog-deploy.log + /var/lock/...).
+Environment=LOG_FILE=/var/log/aetherblog/deploy.log
+Environment=LOCK_FILE=/run/aetherblog/deploy.lock
 # PROJECT_DIR 必须落在 ReadWritePaths 里, 否则 webhook_server.py 的 git
 # fetch + reset --hard 会被 ProtectSystem=strict 拒掉. webhook_server.py
 # 自己默认是 /root/Aetherblog，但 ProtectHome=true 已经把 /root 屏蔽，
@@ -45,7 +51,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/aetherblog/webhook /var/lib/aetherblog/Aetherblog /var/lock /var/log
+# LogsDirectory / RuntimeDirectory 由 systemd 自动以 User/Group 拥有,
+# 不需要再加进 ReadWritePaths. 仓库工作树 + webhook 运行目录是另一回事.
+LogsDirectory=aetherblog
+RuntimeDirectory=aetherblog
+ReadWritePaths=/var/lib/aetherblog/webhook /var/lib/aetherblog/Aetherblog
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
