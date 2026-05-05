@@ -531,6 +531,291 @@ body {
 }
 
 /* ========================================
+   Agent 工作台 · MarkdownRenderer 缩放
+   ----------------------------------------
+   .markdown-body 默认面向万字长文（line-height 1.8、标题阶梯往上拔到 h1 32px+），
+   塞进对话气泡里太"重"。`.agent-md` 包裹后把它压成 chat 体量：
+     · 段落 line-height 1.55、字号继承气泡 14.5px；
+     · 标题不再有顶部留白与超大尺寸 —— 用类似 inline 段头的处理；
+     · 代码块 my-3 而非 my-4，列表项行距贴一格。
+   不动 .markdown-body 全局样式，只在 .agent-md 内做 cascade 覆盖，避免污染
+   /posts 文章详情页等同源 renderer。
+   ======================================== */
+.agent-md .markdown-body {
+  line-height: 1.55;
+  font-size: 14.5px;
+}
+.agent-md .markdown-body > * {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.agent-md .markdown-body > :first-child {
+  margin-top: 0;
+}
+.agent-md .markdown-body > :last-child {
+  margin-bottom: 0;
+}
+.agent-md .markdown-body h1,
+.agent-md .markdown-body h2,
+.agent-md .markdown-body h3,
+.agent-md .markdown-body h4 {
+  font-family: var(--font-display, inherit);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 0.9rem;
+  margin-bottom: 0.4rem;
+  color: var(--ink-primary);
+}
+.agent-md .markdown-body h1 { font-size: 1.25rem; }
+.agent-md .markdown-body h2 { font-size: 1.15rem; }
+.agent-md .markdown-body h3 { font-size: 1.05rem; }
+.agent-md .markdown-body h4 { font-size: 0.98rem; }
+.agent-md .markdown-body p {
+  margin: 0.4rem 0;
+}
+.agent-md .markdown-body ul,
+.agent-md .markdown-body ol {
+  margin: 0.4rem 0;
+  padding-left: 1.4rem;
+}
+.agent-md .markdown-body li {
+  margin: 0.2rem 0;
+}
+.agent-md .markdown-body pre,
+.agent-md .markdown-body .code-block-wrapper {
+  margin-top: 0.6rem !important;
+  margin-bottom: 0.6rem !important;
+}
+.agent-md .markdown-body code:not(pre code) {
+  font-size: 0.88em;
+  padding: 0.1em 0.35em;
+}
+.agent-md .markdown-body blockquote {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.9rem;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 40%, transparent);
+  color: var(--ink-secondary);
+}
+
+/* ----------------------------------------
+ · Agent · 流式期间的轻量 markdown (.agent-md-stream)
+ ----------------------------------------
+ 这一组样式只在流式中（StreamMarkdown 组件）生效。结束后父级切到完整
+ MarkdownRenderer (.markdown-body)，覆盖率从这里"接力"过去。
+ 设计原则：行高 / 标题阶梯 / 列表间距与上面 .agent-md 完全一致，确保
+ 切换瞬间不抖；唯一区别是 code 块没有 shiki 背景，给个简洁的 token 框。
+*/
+.agent-md-stream {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-primary);
+}
+.agent-md-stream > * {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.agent-md-stream > :first-child { margin-top: 0; }
+.agent-md-stream > :last-child  { margin-bottom: 0; }
+.agent-md-stream h1,
+.agent-md-stream h2,
+.agent-md-stream h3,
+.agent-md-stream h4 {
+  font-family: var(--font-display, inherit);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 0.9rem;
+  margin-bottom: 0.4rem;
+  color: var(--ink-primary);
+}
+.agent-md-stream h1 { font-size: 1.25rem; }
+.agent-md-stream h2 { font-size: 1.15rem; }
+.agent-md-stream h3 { font-size: 1.05rem; }
+.agent-md-stream h4 { font-size: 0.98rem; }
+.agent-md-stream p { margin: 0.4rem 0; }
+.agent-md-stream ul,
+.agent-md-stream ol {
+  margin: 0.4rem 0;
+  padding-left: 1.4rem;
+}
+.agent-md-stream li { margin: 0.2rem 0; }
+.agent-md-stream code:not(pre code) {
+  font-size: 0.88em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--ink-subtle) 18%, transparent);
+}
+.agent-md-stream pre {
+  margin: 0.6rem 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--ink-subtle) 22%, transparent);
+  background: color-mix(in oklch, var(--ink-subtle) 8%, transparent);
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.agent-md-stream pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: var(--ink-primary);
+}
+.agent-md-stream blockquote {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.9rem;
+  border-left: 2px solid color-mix(in oklch, var(--aurora-1) 40%, transparent);
+  color: var(--ink-secondary);
+}
+.agent-md-stream table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 12.5px;
+}
+.agent-md-stream th,
+.agent-md-stream td {
+  border: 1px solid color-mix(in oklch, var(--ink-subtle) 22%, transparent);
+  padding: 0.35rem 0.6rem;
+}
+.agent-md-stream a {
+  color: var(--aurora-1);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* ========================================
+   Agent · 流式态微动效（呼吸光晕 / 光标 / 点阵 / 思考块脉动）
+   ----------------------------------------
+   设计基线：
+   · 所有 hue 都从 --aurora-1（极光主调）派生，绝不引入新色；
+   · 所有 cubic-bezier 都用 [0.45, 0, 0.25, 1]（设计系统 transition.glow），
+     保证与 Aether Codex 其它"光"保持节律一致；
+   · 所有持续时长落在 1.2s ~ 4.8s 之间；这一频段在视觉上是"安静的呼吸"，
+     不会与文本输入、按钮 hover 等高频交互争夺注意力。
+   ======================================== */
+
+/* 三点 typing 指示器 —— 漂浮 + 节律呼吸（不破坏 baseline） */
+@keyframes agent-dot-pulse {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateY(-2px) scale(1.18);
+    opacity: 1;
+  }
+}
+.agent-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: agent-dot-pulse 1.35s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: transform, opacity;
+}
+
+/* 流式期间气泡的 aurora 边沿 —— 比 hover stripe 更克制，呼吸 3.6s 一循环 */
+@keyframes agent-bubble-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 18%, transparent),
+      0 6px 28px -10px color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--aurora-1) 32%, transparent),
+      0 10px 36px -10px color-mix(in oklch, var(--aurora-1) 38%, transparent);
+  }
+}
+.agent-bubble-pending {
+  animation: agent-bubble-glow 3.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+/* 思考块"正在思考"时的左侧光带 —— 沿垂直轴流动 */
+@keyframes agent-think-shimmer {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+.agent-think-shimmer {
+  position: absolute;
+  inset: 0;
+  width: 1.5px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--aurora-1) 80%, transparent) 50%,
+    transparent 100%
+  );
+  animation: agent-think-shimmer 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  pointer-events: none;
+}
+
+/* 流式光标 —— 平滑 1.05s 闪烁，不刺眼 */
+@keyframes agent-caret-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.05; }
+}
+.agent-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: agent-caret-blink 1.05s steps(1, end) infinite;
+}
+
+/* prefers-reduced-motion —— 关掉所有非必需动效 */
+@media (prefers-reduced-motion: reduce) {
+  .agent-dot,
+  .agent-bubble-pending,
+  .agent-think-shimmer,
+  .agent-caret {
+    animation: none !important;
+  }
+}
+
+/* ----------------------------------------
+ · Agent · 工作台滚动条统一打磨
+ ----------------------------------------
+ 默认浏览器滚动条（尤其 macOS Chrome）在 surface-leaf 玻璃卡里
+ 是一根灰色矩形，与设计极不协调。这里把 Agent 工作台几个关键
+ 滚动容器（textarea、sidebar 列表、对话流）统一成 6px 细线 + 半透明 ink，
+ 不悬停时几乎看不见。
+*/
+.agent-composer-textarea::-webkit-scrollbar,
+.agent-thumb-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.agent-composer-textarea::-webkit-scrollbar-track,
+.agent-thumb-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.agent-composer-textarea::-webkit-scrollbar-thumb,
+.agent-thumb-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--ink-subtle) 35%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.agent-composer-textarea:hover::-webkit-scrollbar-thumb,
+.agent-thumb-scroll:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--ink-subtle) 55%, transparent);
+  background-clip: padding-box;
+}
+/* Firefox */
+.agent-composer-textarea,
+.agent-thumb-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--ink-subtle) 40%, transparent) transparent;
+}
+
+/* ========================================
    Markdown 渲染器样式（完整）
    ======================================== */
 .markdown-body {

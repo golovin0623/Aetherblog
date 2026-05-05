@@ -2,7 +2,7 @@
 
 > 给 Claude Code 的工作指令。**本文件只放「不读会做错」的稳定铁律**与**子文档导航**；操作手册、API 表、迁移历史、故障速查全部按主题拆到 `.claude/docs/` 子文档，按需 Read。
 >
-> 版本对齐基线：2026-05-03（migrations 000043 / 24 个后端 handler / Aether Codex Round 5）。
+> 版本对齐基线：2026-05-04（migrations 000044 / 26 个后端 handler / Aether Codex Round 5 + 增量 admin Codex 升级波次）。
 
 ---
 
@@ -155,6 +155,7 @@ import { formatDate, slugify } from '@aetherblog/utils';
 | 升级语言 / 框架版本 | `.claude/docs/dependencies-and-stack.md` |
 | 新增运行时机制（鉴权 / 存储 / AI 任务等） | `.claude/docs/backend-runtime.md` |
 | 排查到新故障类型并解决 | `.claude/docs/troubleshooting.md` |
+| 修改 Agent 模式定位 / 实施阶段（Chat / Cowork / Code） | `docs/agent/README.md` + 对应 `COWORK_ROADMAP.md` 或 `CODE_ROADMAP.md` |
 
 ### 6.2 红线
 

@@ -41,14 +41,14 @@ AetherBlog/
 │       ├── internal/
 │       │   ├── config/          # 配置（koanf）
 │       │   ├── server/          # HTTP server 初始化与路由注册
-│       │   ├── handler/         # 24 个 handler 模块
+│       │   ├── handler/         # 26 个 handler 模块
 │       │   ├── service/         # 业务逻辑
 │       │   ├── repository/      # 数据访问
 │       │   ├── model/           # 数据模型
 │       │   ├── dto/             # 请求 / 响应 DTO
 │       │   ├── middleware/      # JWT、CORS、限流
 │       │   └── pkg/             # 共享工具（pagination、response、JWT、image、storage、cryptkey）
-│       └── migrations/          # 43 个 SQL 迁移文件
+│       └── migrations/          # 44 个 SQL 迁移文件
 ├── docs/                        # 用户级文档
 │   ├── architecture.md
 │   ├── deployment.md            # 详细部署文档（含 CI/CD 链路）
@@ -160,9 +160,11 @@ AetherBlog/
 
 > 真理源是各包的 `src/index.ts`。本表为高频引用速查。
 
-### `@aetherblog/ui`（15 个组件 + 工具）
+### `@aetherblog/ui`（17 个组件 + 工具）
 
-`Button` · `Card` · `Input` · `Modal` · `ConfirmModal` · `Toast` · `Avatar` · `Badge` · `Tag` · `Skeleton` · `Dropdown` · `Tooltip` · `Textarea` · `Toggle` + `cn` 工具（clsx + tailwind-merge）
+`Button` · `Card` · `Input` · `Modal` · `ConfirmModal` · `Toast` · `Avatar` · `Badge` · `Tag` · `Skeleton` · `Dropdown` · `Select` · `DateRangePicker` · `Tooltip` · `Textarea` · `Toggle` · `AetherMark` + `cn` 工具（clsx + tailwind-merge）
+
+> `Select` / `DateRangePicker` 是 PR #568 PostsPage 滤镜重构时从 admin 私有组件提升为共享组件 —— 任何 admin 页用到的「样式化下拉」「日期范围筛选」一律走这两个；`AetherMark` 是 Codex 标识徽。
 
 **外加：** Aether Codex 动效预设 `motion`（`ease`、`duration`、`spring`、`transition`、`variants`、`stagger()`、`cssMotion`），从 `@aetherblog/ui` 导入。
 
