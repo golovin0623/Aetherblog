@@ -167,6 +167,14 @@ sed_inplace() {
     fi
 }
 
+# 生成 URL 安全的强随机密钥（base64url，无 padding / 无 '+' '/'）。
+# POSTGRES_PASSWORD 等密钥后续会被直接拼进 postgresql+asyncpg://user:pass@…
+# 这种 DSN，标准 base64 里的 '/' 在 URL userinfo 段是分隔符（'+' 也是保留字符），
+# 会让 asyncpg 把 DSN 解析坏（codex review on PR #613）。统一改用 base64url。
+gen_url_safe_secret() {
+    openssl rand -base64 48 | tr -d '\n' | tr '+/' '-_' | tr -d '='
+}
+
 # 如果 .env 中 KEY 当前为空（或不存在），就把它就地设置为 VALUE。
 # 已经有非空值时不会覆盖，保护用户手填的密钥。
 bootstrap_secret_field() {
@@ -265,9 +273,17 @@ bootstrap_env() {
     # 数据库/缓存密码：非生产模式下自动生成（或保留现值）强随机口令。
     # docker-compose.yml 已改为读取 .env 中的 POSTGRES/REDIS 密码（并保留
     # 仅兜底默认值），避免把公开弱口令写入共享根 .env 后被生产 compose 复用。
+    # 字符集走 gen_url_safe_secret（base64url）：POSTGRES_PASSWORD 后续会被拼进
+    # postgresql+asyncpg://user:pass@... DSN，含 '/' '+' 会被 URL 解析器截断
+    # （codex review on PR #613）。同时只在字段为空时才调 openssl，避免重复
+    # 启动时白白生成一次随机串再丢弃（gemini review on PR #613）。
     if [ "$PROD_MODE" = false ]; then
-        bootstrap_secret_field "POSTGRES_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
-        bootstrap_secret_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+        if [ -z "$(get_env_field POSTGRES_PASSWORD)" ]; then
+            bootstrap_secret_field "POSTGRES_PASSWORD" "$(gen_url_safe_secret)"
+        fi
+        if [ -z "$(get_env_field REDIS_PASSWORD)" ]; then
+            bootstrap_secret_field "REDIS_PASSWORD" "$(gen_url_safe_secret)"
+        fi
     fi
 
     # JWT 签名启动 seed
