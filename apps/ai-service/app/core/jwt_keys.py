@@ -73,17 +73,20 @@ async def start_refresher(pool: asyncpg.Pool) -> None:
 
     在 ``main.py`` 的 ``lifespan`` 启动阶段被调用。任务会一直运行,
     直到被取消 (lifespan 关闭时)。
+
+    若初始 ``refresh(pool)`` 失败 (例如 DB 可达但 ``jwt_secrets`` 表
+    尚未迁移完成), 本函数会**抛出**异常且**不**创建后台 task ——
+    这样调用方的重试逻辑能立即再次尝试, 不会被误判为 "成功" 而陷入
+    长达一个 ``REFRESH_INTERVAL_SECONDS`` 的 fail-closed 冷窗口。
     """
     global _TASK
     if _TASK is not None and not _TASK.done():
         return
 
     # 初始阻塞拉取一次,这样第一个请求就已经看得到 DB 状态。
-    # 这里失败会记录日志并继续 —— 调用方在缓存为空时会 fail-closed。
-    try:
-        await refresh(pool)
-    except Exception as exc:
-        logger.warning("jwt_keys.initial_refresh_failed", extra={"data": {"error": str(exc)}})
+    # 失败时直接抛出: 不创建后台 task, 让调用方决定是否重试 —— 此时缓存
+    # 为空, decode 路径会 fail-closed, 与本模块的安全语义一致。
+    await refresh(pool)
 
     async def _loop() -> None:
         while True:

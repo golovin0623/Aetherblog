@@ -114,8 +114,10 @@ async def lifespan(app: FastAPI):
                 await asyncio.sleep(_JWT_REFRESHER_RETRY_INTERVAL_SEC)
 
     # 提前预热 PG pool,这样 JWT key refresher 启动时有目标可对话。
-    # 如果 PG 此时还连不上,start_jwt_key_refresher 的初次拉取会软失败,
-    # 并由重试任务持续拉起 refresher 直到 DB 恢复。
+    # 如果 PG 此时连不上,或者初次 refresh 抛出 (例如 jwt_secrets 表迁移
+    # 还没完成),start_jwt_key_refresher 会把异常抛出且不会创建后台 task,
+    # 此时由 _retry_start_jwt_refresher 每 _JWT_REFRESHER_RETRY_INTERVAL_SEC
+    # 重试一次, 直到 DB 恢复并完成首拉。
     try:
         pool = await deps_module.get_pg_pool()
         await start_jwt_key_refresher(pool)
