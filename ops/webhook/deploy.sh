@@ -49,6 +49,7 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
   deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
   fetch_ref="${deploy_ref#origin/}"
   fetch_ref="${fetch_ref:-main}"
+  deploy_remote_ref="refs/remotes/origin/${fetch_ref}"
 
   echo "[$(date -Iseconds)] Syncing repo to $deploy_ref"
   if ! git diff --quiet HEAD 2>/dev/null; then
@@ -58,14 +59,11 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
 
   current_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
 
-  if ! git fetch --quiet --tags origin "$fetch_ref"; then
-    echo "[$(date -Iseconds)] ERROR: git fetch origin $fetch_ref failed"
+  if ! git fetch --quiet --no-tags origin "+refs/heads/${fetch_ref}:${deploy_remote_ref}"; then
+    echo "[$(date -Iseconds)] ERROR: git fetch origin refs/heads/$fetch_ref failed"
     exit 1
   fi
-  # 用 FETCH_HEAD 而不是 $deploy_ref：若调用方传的是无 origin/ 前缀的本地分支名
-  # (DEPLOY_GIT_REF=main)，reset 到本地 main 可能落空（git fetch 不更新本地分支
-  # HEAD）。FETCH_HEAD 一定是刚 fetch 下来的那个 ref，确保跟远端同步。
-  git reset --hard FETCH_HEAD
+  git reset --hard "$deploy_remote_ref"
 
   new_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
   if [ -n "$current_self_sha" ] && [ "$current_self_sha" != "$new_self_sha" ]; then
