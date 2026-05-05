@@ -108,13 +108,24 @@ func TestJWTAuthWithKeys_PopulatesMustChangePasswordClaim(t *testing.T) {
 	c := e.NewContext(req, rec)
 
 	mw := JWTAuthWithKeys(func() []string { return []string{secret} })
+	called := false
 	h := mw(func(c echo.Context) error {
+		called = true
 		lu := GetLoginUser(c)
 		if lu == nil {
 			t.Fatal("期望 LoginUser 已写入上下文")
 		}
+		if lu.UserID != 99 {
+			t.Errorf("UserID = %d, 期望 99", lu.UserID)
+		}
+		if lu.Username != "seed-admin" {
+			t.Errorf("Username = %q, 期望 seed-admin", lu.Username)
+		}
+		if lu.Role != "ADMIN" {
+			t.Errorf("Role = %q, 期望 ADMIN", lu.Role)
+		}
 		if !lu.MustChangePassword {
-			t.Fatal("期望 MustChangePassword=true")
+			t.Error("MustChangePassword = false, 期望 true")
 		}
 		return c.NoContent(http.StatusOK)
 	})
@@ -122,7 +133,10 @@ func TestJWTAuthWithKeys_PopulatesMustChangePasswordClaim(t *testing.T) {
 	if err := h(c); err != nil {
 		t.Fatalf("handler 返回错误: %v", err)
 	}
+	if !called {
+		t.Error("下游 handler 应该被调用 —— 默认 rec.Code=200 会让缺失调用静默通过")
+	}
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, 期望 200", rec.Code)
+		t.Errorf("status = %d, 期望 200", rec.Code)
 	}
 }
