@@ -56,6 +56,9 @@ func (s *AuthService) CheckUserCanLogin(u *model.User) error {
 	if u.Status != "ACTIVE" {
 		return errors.New("账号已被禁用或未激活")
 	}
+	if u.MustChangePassword {
+		return errors.New("首次登录必须先修改默认密码，请联系管理员重置后重试")
+	}
 	return nil
 }
 
