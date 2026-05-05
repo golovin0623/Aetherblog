@@ -16,9 +16,13 @@ detect-changes ──┬─→ frontend-quality ──┬─→ build-blog     �
 `config-validate` 会同时校验 Docker Compose 渲染与 Go migration 版本唯一性，避免多个 PR 抢同一个 `0000xx` 迁移号后在部署阶段才失败。
 
 **触发条件：**
-- Push 到 `main` 或 `develop` — 增量构建 + 增量部署
-- Push Tag `v*` — 全量构建 + 全量部署（标志全部置为 true，忽略变更检测）
+- Push 到 `main` — 增量构建 + 增量部署 + push `:latest`
+- Push 到 `develop` — 增量构建（不发部署 webhook，不动 `:latest`）
 - PR 到 `main` — 仅测试 + lint，不构建镜像
+
+> SECURITY: Tag 推送（`v*` 等）**不**触发 CI 构建或部署。Tag 不经过 PR review，
+> 历史上曾是镜像/部署链路的授权绕过点。版本化镜像通过 `docker-build.sh --push --version vX.Y.Z`
+> 在受控环境本地构建后推送，回滚走 `DEPLOY_MODE=rollback ROLLBACK_VERSION=vX.Y.Z`。
 
 ### 路径变更检测
 
@@ -165,12 +169,15 @@ docker compose -f docker-compose.prod.yml up -d
 ## 版本发布
 
 ```bash
-# 常规发布（推送 tag 触发全量构建 + 部署）
+# 日常推 main —— 只构建变更模块 + 增量部署，自动更新 :latest
+git push origin main
+
+# 版本化镜像 —— 在受控环境本地构建并 push（CI 不再处理 tag 推送）
+./docker-build.sh --push --version v1.2.0
+
+# 推 tag 仅作为代码版本标记，不触发 CI 镜像构建/部署
 git tag v1.2.0
 git push origin v1.2.0
-
-# 日常推 main（只构建变更模块 + 增量部署）
-git push origin main
 ```
 
 ## 常见问题
