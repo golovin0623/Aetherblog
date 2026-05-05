@@ -262,6 +262,10 @@ bootstrap_env() {
         echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
     fi
 
+    # 数据库/缓存密码（开发模式可自动生成；生产模式要求运维显式确认）
+    bootstrap_secret_field "POSTGRES_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+    bootstrap_secret_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+
     # JWT 签名启动 seed
     bootstrap_secret_field "JWT_SECRET" "$(openssl rand -base64 48 | tr -d '\n')"
 
