@@ -242,8 +242,9 @@ class LlmRouter:
         provider_code: str | None,
         user_id: int | None,
         model_alias: str | None = None,
+        allow_override: bool = False,
     ) -> "LlmRouter._ResolvedRoute | None":
-        if not model_id:
+        if not model_id or not allow_override:
             return None
         if not self.model_router:
             raise ValueError("Model override is not available")
@@ -300,8 +301,15 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> "LlmRouter._ResolvedRoute":
-        override = await self._resolve_override(model_id, provider_code, user_id, model_alias=model_alias)
+        override = await self._resolve_override(
+            model_id,
+            provider_code,
+            user_id,
+            model_alias=model_alias,
+            allow_override=allow_override,
+        )
         if override:
             return override
 
@@ -351,12 +359,14 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> dict[str, str | float | None]:
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
         normalized_provider, normalized_model_id = _normalize_model_parts(resolved.model)
         effective_provider = resolved.provider_code or normalized_provider
@@ -376,12 +386,14 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> str:
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
         return resolved.model
 
@@ -638,6 +650,7 @@ class LlmRouter:
         custom_prompt: str | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> str:
         """发起一次 chat completion 调用，并根据需要渲染 prompt 模板。"""
         resolved = await self._resolve_route(
@@ -645,6 +658,7 @@ class LlmRouter:
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
 
         prompt_template = custom_prompt or resolved.prompt_template
@@ -794,6 +808,7 @@ class LlmRouter:
         custom_prompt: str | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> AsyncGenerator[str, None]:
         """流式返回 chat completion 响应，支持动态 prompt 渲染。
 
@@ -809,6 +824,7 @@ class LlmRouter:
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
 
         prompt_template = custom_prompt or resolved.prompt_template
