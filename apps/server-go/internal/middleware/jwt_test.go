@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -89,4 +90,53 @@ func TestRequirePasswordRotated(t *testing.T) {
 			t.Error("下游 handler 不应被调用 —— 默认密码账号必须先改密")
 		}
 	})
+}
+
+// TestJWTAuthWithKeys_PopulatesMustChangePasswordClaim 验证 JWTAuthWithKeys 会把 mcp
+// claim 透传到上下文中的 LoginUser，供 RequirePasswordRotated 在后续链路执行强制改密拦截。
+func TestJWTAuthWithKeys_PopulatesMustChangePasswordClaim(t *testing.T) {
+	secret := "jwt-auth-with-keys-secret"
+	token, err := jwtutil.GenerateToken(99, "seed-admin", "ADMIN", secret, time.Hour, true)
+	if err != nil {
+		t.Fatalf("GenerateToken 失败: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTAuthWithKeys(func() []string { return []string{secret} })
+	called := false
+	h := mw(func(c echo.Context) error {
+		called = true
+		lu := GetLoginUser(c)
+		if lu == nil {
+			t.Fatal("期望 LoginUser 已写入上下文")
+		}
+		if lu.UserID != 99 {
+			t.Errorf("UserID = %d, 期望 99", lu.UserID)
+		}
+		if lu.Username != "seed-admin" {
+			t.Errorf("Username = %q, 期望 seed-admin", lu.Username)
+		}
+		if lu.Role != "ADMIN" {
+			t.Errorf("Role = %q, 期望 ADMIN", lu.Role)
+		}
+		if !lu.MustChangePassword {
+			t.Error("MustChangePassword = false, 期望 true")
+		}
+		return c.NoContent(http.StatusOK)
+	})
+
+	if err := h(c); err != nil {
+		t.Fatalf("handler 返回错误: %v", err)
+	}
+	if !called {
+		t.Error("下游 handler 应该被调用 —— 默认 rec.Code=200 会让缺失调用静默通过")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, 期望 200", rec.Code)
+	}
 }
