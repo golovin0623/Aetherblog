@@ -60,8 +60,17 @@ func (s *SessionService) IssueRefreshToken(ctx context.Context, userID int64) (s
 	}
 	// 将 refresh key 加入用户会话索引 Set，便于按用户批量撤销
 	userSetKey := userSessionsKeyPrefix + strconv.FormatInt(userID, 10)
-	s.redis.SAdd(ctx, userSetKey, key)
-	s.redis.Expire(ctx, userSetKey, s.refreshTokenTTL)
+	if err := s.redis.SAdd(ctx, userSetKey, key).Err(); err != nil {
+		// 若会话索引写入失败，回滚已签发 token，避免产生无法批量撤销的“游离会话”。
+		s.redis.Del(ctx, key)
+		return "", err
+	}
+	if err := s.redis.Expire(ctx, userSetKey, s.refreshTokenTTL).Err(); err != nil {
+		// Expire 失败时同样回滚，确保令牌与会话索引状态一致。
+		s.redis.Del(ctx, key)
+		s.redis.SRem(ctx, userSetKey, key)
+		return "", err
+	}
 	return token, nil
 }
 
