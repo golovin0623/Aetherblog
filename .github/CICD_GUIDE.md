@@ -16,9 +16,13 @@ detect-changes ──┬─→ frontend-quality ──┬─→ build-blog     �
 `config-validate` 会同时校验 Docker Compose 渲染与 Go migration 版本唯一性，避免多个 PR 抢同一个 `0000xx` 迁移号后在部署阶段才失败。
 
 **触发条件：**
-- Push 到 `main` 或 `develop` — 增量构建 + 增量部署
-- Push Tag `v*` — 全量构建 + 全量部署（标志全部置为 true，忽略变更检测）
+- Push 到 `main` — 增量构建 + 增量部署 + push `:latest`
+- Push 到 `develop` — 增量构建（不发部署 webhook，不动 `:latest`）
 - PR 到 `main` — 仅测试 + lint，不构建镜像
+
+> SECURITY: Tag 推送（`v*` 等）**不**触发 CI 构建或部署。Tag 不经过 PR review，
+> 历史上曾是镜像/部署链路的授权绕过点。版本化镜像通过 `docker-build.sh --push --version vX.Y.Z`
+> 在受控环境本地构建后推送，回滚走 `DEPLOY_MODE=rollback ROLLBACK_VERSION=vX.Y.Z`。
 
 ### 路径变更检测
 
@@ -61,7 +65,7 @@ CI: {"services": "backend gateway"} → webhook → deploy.sh incremental
 |--------|------|------|
 | `DOCKER_USERNAME` | Docker Hub 用户名 | `golovin0623` |
 | `DOCKER_PASSWORD` | Docker Hub Access Token | (在 Docker Hub → Account Settings → Security 创建) |
-| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `http://your-server:7868/deploy` |
+| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `https://deploy.example.com/deploy`（必须 HTTPS 或仅内网/VPN 可达；内网直连需带 `:7868`） |
 | `DEPLOY_WEBHOOK_SECRET` | webhook HMAC 密钥 | `openssl rand -hex 32` 生成的 64 位 hex |
 
 ## Webhook 部署配置（服务器端）
@@ -92,11 +96,12 @@ systemctl enable deploy-webhook
 systemctl start deploy-webhook
 
 # 6. 将 webhook URL 配置到 GitHub Secret
-#    DEPLOY_WEBHOOK_URL = http://<server-ip>:7868/deploy
+#    DEPLOY_WEBHOOK_URL = https://<your-domain>/deploy
+#    （或仅内网/VPN 地址，内网直连需带端口 :7868；不要在公网明文 HTTP 暴露 webhook）
 #    DEPLOY_WEBHOOK_SECRET = 上面生成的 WEBHOOK_SECRET
 ```
 
-> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。
+> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。生产环境必须使用 HTTPS，或放在仅内网/VPN 可达的私网入口并配合防火墙/反向代理。
 
 ### 从旧方式迁移（手动 cp → 软链接）
 
@@ -165,12 +170,15 @@ docker compose -f docker-compose.prod.yml up -d
 ## 版本发布
 
 ```bash
-# 常规发布（推送 tag 触发全量构建 + 部署）
+# 日常推 main —— 只构建变更模块 + 增量部署，自动更新 :latest
+git push origin main
+
+# 版本化镜像 —— 在受控环境本地构建并 push（CI 不再处理 tag 推送）
+./docker-build.sh --push --version v1.2.0
+
+# 推 tag 仅作为代码版本标记，不触发 CI 镜像构建/部署
 git tag v1.2.0
 git push origin v1.2.0
-
-# 日常推 main（只构建变更模块 + 增量部署）
-git push origin main
 ```
 
 ## 常见问题
