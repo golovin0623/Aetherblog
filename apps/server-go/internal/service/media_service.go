@@ -223,13 +223,9 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 	defer f.Close()
 
 	// 文件名层硬拒: 任何映射到 image/svg+xml 的扩展名(.svg / .svgz)直接拒收。
-	// 这是 SVG 防 XSS 的最外层屏障 — 即便:
-	//   (a) http.DetectContentType 把带 <?xml 头的 SVG 嗅探为 text/xml(在白名单内),或
-	//   (b) 嗅探退化为 application/octet-stream 命中扩展名兜底,
-	// 只要保留 .svg/.svgz 文件名落盘,nginx 都会按扩展名以 image/svg+xml 派发,
-	// 触发存储型 same-origin XSS。因此判定基准选用扩展名而非内容嗅探结果。
-	if guessMimeType(fh.Filename) == "image/svg+xml" {
-		return nil, fmt.Errorf("不允许上传该文件类型: %s", "image/svg+xml")
+	// 这是 SVG 防 XSS 的最外层屏障 — 详见 resolveMimeForUpload 的注释。
+	if err := rejectSVGByFilename(fh.Filename); err != nil {
+		return nil, err
 	}
 
 	// 确定 MIME 类型：通过文件内容嗅探（magic bytes）验证，防止扩展名欺骗
@@ -249,16 +245,7 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 		return nil, fmt.Errorf("failed to reset file reader: %w", err)
 	}
 
-	// 优先使用内容嗅探结果；仅当嗅探为通用类型时回退到扩展名猜测，
-	// 不信任客户端提供的 Content-Type 请求头，避免可伪造的 MIME 分类。
-	// application/zip 也需要回退：DOCX/XLSX/PPTX 等 OOXML 格式的 magic bytes 与 ZIP 相同，
-	// 必须通过扩展名区分具体的 Office 文档类型。
-	mimeType := detectedMime
-	if mimeType == "application/octet-stream" || mimeType == "application/zip" || strings.HasPrefix(mimeType, "text/plain") {
-		if guessed := guessMimeType(fh.Filename); guessed != "application/octet-stream" {
-			mimeType = guessed
-		}
-	}
+	mimeType := resolveMimeWithFallback(detectedMime, fh.Filename)
 	// 检查 MIME 类型是否在允许上传的白名单中
 	if !allowedMimeTypes[mimeType] {
 		return nil, fmt.Errorf("不允许上传该文件类型: %s", mimeType)
@@ -376,6 +363,13 @@ type UpdateContentParams struct {
 // 因为 thumbnails/* 是按主文件 key 命名的,新 key 与缩略图脱节,thumbnails 重生成
 // 留到下个用户访问该图片时按需触发(目前未实装,本次仅修复主文件更新)。
 func (s *MediaService) UpdateContent(ctx context.Context, params UpdateContentParams) (*dto.MediaFileVO, error) {
+	// 文件名层硬拒(与 Upload 同步): .svg/.svgz 在任何入口都不能落盘,否则 nginx
+	// 会按扩展名以 image/svg+xml 派发,触发存储型 same-origin XSS。早于 repo 查询
+	// 失败既能省一次 DB IO,也保证 ownership 之外的攻击面也走同一条护栏。
+	if err := rejectSVGByFilename(params.Filename); err != nil {
+		return nil, err
+	}
+
 	media, err := s.repo.FindByID(ctx, params.MediaID)
 	if err != nil {
 		return nil, err
@@ -396,12 +390,7 @@ func (s *MediaService) UpdateContent(ctx context.Context, params UpdateContentPa
 		_, _ = seeker.Seek(0, io.SeekStart)
 		sniffBuf = sniffBuf[:n]
 	}
-	detectedMime := http.DetectContentType(sniffBuf)
-	if detectedMime == "application/octet-stream" || detectedMime == "application/zip" {
-		if guessed := guessMimeType(params.Filename); guessed != "application/octet-stream" {
-			detectedMime = guessed
-		}
-	}
+	detectedMime := resolveMimeWithFallback(http.DetectContentType(sniffBuf), params.Filename)
 	if !allowedMimeTypes[detectedMime] {
 		return nil, fmt.Errorf("不允许上传该文件类型: %s", detectedMime)
 	}
@@ -801,6 +790,51 @@ func classifyFileType(mime string) string {
 	default:
 		return "OTHER"
 	}
+}
+
+// rejectSVGByFilename 是 SVG 防 XSS 三层防线的最外层入口护栏:
+// 任何映射到 image/svg+xml 的扩展名(.svg / .svgz)直接拒收。即便:
+//   (a) http.DetectContentType 把带 <?xml 头的 SVG 嗅探为 text/xml(在白名单内),或
+//   (b) 嗅探退化为 application/octet-stream / text/plain 命中扩展名兜底,
+// 只要保留 .svg/.svgz 文件名落盘,nginx 都会按扩展名以 image/svg+xml 派发,
+// 触发存储型 same-origin XSS。因此判定基准选用扩展名而非内容嗅探结果。
+//
+// 所有写入媒体二进制的入口(Upload / UpdateContent / 后续新增端点)必须共用此函数,
+// 不要在调用方重新实现 — 见 PR #615 review 反馈。
+func rejectSVGByFilename(filename string) error {
+	if guessMimeType(filename) == "image/svg+xml" {
+		return fmt.Errorf("不允许上传该文件类型: %s", "image/svg+xml")
+	}
+	return nil
+}
+
+// resolveMimeWithFallback 是 Upload / UpdateContent 共用的 MIME 解析器:
+// 优先用内容嗅探(防伪造的 Content-Type),仅当嗅探退化为通用类型时回退到扩展名猜测。
+//
+// 触发回退的三种通用类型:
+//  1. application/octet-stream — 嗅探完全失败的兜底。
+//  2. application/zip          — DOCX/XLSX/PPTX 等 OOXML 格式 magic bytes 与 ZIP 相同,
+//                                必须用扩展名区分具体类型。
+//  3. text/plain 前缀          — 常见 <svg ...> 载荷会被嗅探成 "text/plain; charset=utf-8",
+//                                必须用扩展名抬升为 image/svg+xml 配合白名单拒收。
+//                                注意是 HasPrefix 而非 == — 嗅探结果通常带 charset 后缀。
+//
+// guessMimeType 返回 application/octet-stream 表示扩展名也无法识别,此时保留嗅探结果。
+//
+// 抽出来的目的:
+//   - 避免 Upload / UpdateContent 之间漂移(PR #615 Gemini review 指出原 UpdateContent
+//     缺 text/plain 前缀分支,留下与 Upload 不一致的防御缝隙)。
+//   - 便于直接对资源的 fallback 行为做单元测试,而不是在测试里复制 production 表达式
+//     (PR #615 Codex review 指出原测试只验证了 guessMimeType 的输出,从未真正驱动
+//     production 的 HasPrefix 条件)。
+func resolveMimeWithFallback(detected, filename string) string {
+	mime := detected
+	if mime == "application/octet-stream" || mime == "application/zip" || strings.HasPrefix(mime, "text/plain") {
+		if guessed := guessMimeType(filename); guessed != "application/octet-stream" {
+			mime = guessed
+		}
+	}
+	return mime
 }
 
 // guessMimeType 根据文件扩展名猜测 MIME 类型，用于请求头未提供或为通用二进制类型时的兜底处理。
