@@ -193,7 +193,7 @@ bootstrap_prod_secure_field() {
     shift 2
     local insecure_values=("$@")
     local current
-    current=$(get_env_field "$key")
+    current=$(get_env_field "$key" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
 
     if [ -z "$current" ]; then
         bootstrap_secret_field "$key" "$secure_value"
