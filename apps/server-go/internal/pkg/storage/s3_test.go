@@ -18,7 +18,7 @@ func TestS3Storage_TypeReturnsProviderType(t *testing.T) {
 		{"OSS", `{"bucket":"x","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`, "OSS"},
 		{"R2", `{"bucket":"x","region":"auto","endpoint":"https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com","accessKeyId":"k","secretAccessKey":"s"}`, "R2"},
 		// 用公网 IP 字面量,避免 net.LookupIP 在离线 CI 触发真实 DNS 查询。
-		{"MINIO", `{"bucket":"x","region":"us-east-1","endpoint":"https://1.1.1.1","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`, "MINIO"},
+		{"MINIO", `{"bucket":"x","region":"us-east-1","endpoint":"https://example.com","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`, "MINIO"},
 		{"S3", `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`, "S3"},
 		{"", `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`, "S3"}, // 空 → 兜底 S3
 	}
@@ -43,7 +43,7 @@ func TestS3Storage_TypeReturnsProviderType(t *testing.T) {
 func TestS3Storage_FactoryRoutes(t *testing.T) {
 	cases := map[string]string{
 		"S3":    `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`,
-		"MINIO": `{"bucket":"x","region":"us-east-1","endpoint":"https://1.1.1.1","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`,
+		"MINIO": `{"bucket":"x","region":"us-east-1","endpoint":"https://example.com","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`,
 		"OSS":   `{"bucket":"x","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
 		"COS":   `{"bucket":"x","region":"ap-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
 		"R2":    `{"bucket":"x","region":"auto","endpoint":"https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com","accessKeyId":"k","secretAccessKey":"s"}`,
