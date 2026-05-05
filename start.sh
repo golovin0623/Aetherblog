@@ -262,9 +262,13 @@ bootstrap_env() {
         echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
     fi
 
-    # 数据库/缓存密码（开发模式可自动生成；生产模式要求运维显式确认）
-    bootstrap_secret_field "POSTGRES_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
-    bootstrap_secret_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+    # 数据库/缓存密码：仅在非生产模式下自动生成。
+    # 生产模式由下方 require_prod_secure_field / bootstrap_prod_secure_field 接管，
+    # 以避免把已初始化的 PGDATA 与 .env 静默分叉（详见下方 PROD_MODE 分支注释）。
+    if [ "$PROD_MODE" = false ]; then
+        bootstrap_secret_field "POSTGRES_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+        bootstrap_secret_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+    fi
 
     # JWT 签名启动 seed
     bootstrap_secret_field "JWT_SECRET" "$(openssl rand -base64 48 | tr -d '\n')"
