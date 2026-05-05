@@ -167,6 +167,38 @@ sed_inplace() {
     fi
 }
 
+# 生成 URL 安全的强随机密钥（base64url，无 padding / 无 '+' '/'）。
+# POSTGRES_PASSWORD 等密钥后续会被直接拼进 postgresql+asyncpg://user:pass@…
+# 这种 DSN，标准 base64 里的 '/' 在 URL userinfo 段是分隔符（'+' 也是保留字符），
+# 会让 asyncpg 把 DSN 解析坏（codex review on PR #613）。统一改用 base64url。
+gen_url_safe_secret() {
+    openssl rand -base64 48 | tr -d '\n' | tr '+/' '-_' | tr -d '='
+}
+
+# 解析当前 docker-compose project 的实际名字。优先级与 docker compose v2 一致：
+# 显式 COMPOSE_PROJECT_NAME > docker compose config 输出中的 .name > 目录名
+# normalized（小写、剥掉非 [a-z0-9_-]）。bootstrap_env 用这个来定位 postgres
+# 数据卷，硬编码 `aetherblog_postgres_data` 在用户改了项目名时会漏判（codex
+# P2 review on PR #613）。
+docker_compose_project_name() {
+    if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
+        echo "$COMPOSE_PROJECT_NAME"
+        return
+    fi
+    local name=""
+    if command -v docker >/dev/null 2>&1; then
+        # docker compose v2.4+ 把 project name 写进 config 输出（顶层 `name:`）
+        name=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" config --format json 2>/dev/null \
+            | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 \
+            | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ -z "$name" ]; then
+        # 退化到 compose 默认规则（basename，小写 + 仅保留 [a-z0-9_-]）。
+        name=$(basename "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]//g')
+    fi
+    echo "${name:-aetherblog}"
+}
+
 # 如果 .env 中 KEY 当前为空（或不存在），就把它就地设置为 VALUE。
 # 已经有非空值时不会覆盖，保护用户手填的密钥。
 bootstrap_secret_field() {
@@ -262,16 +294,40 @@ bootstrap_env() {
         echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
     fi
 
-    # 数据库/缓存密码：仅在非生产模式下自动填充。
-    # 必须与 docker-compose.yml 写死/默认的口令保持一致——postgres 服务把
-    # POSTGRES_PASSWORD 硬编码为 aetherblog123（PGDATA 初始化锁定），redis 走
-    # ${REDIS_PASSWORD:-aetherblog_dev} 兜底。所以这里 bootstrap 必须写同样的
-    # 值，否则 backend 会拿随机口令连库 28P01，破坏一行命令本地启动。
-    # 生产模式由下方 require_/bootstrap_prod_secure_field 接管，避免 PGDATA 与
-    # .env 静默分叉。
+    # 数据库/缓存密码：非生产模式下自动生成（或保留现值）强随机口令。
+    # docker-compose.yml 已改为读取 .env 中的 POSTGRES/REDIS 密码（并保留
+    # 仅兜底默认值），避免把公开弱口令写入共享根 .env 后被生产 compose 复用。
+    # 字符集走 gen_url_safe_secret（base64url）：POSTGRES_PASSWORD 后续会被拼进
+    # postgresql+asyncpg://user:pass@... DSN，含 '/' '+' 会被 URL 解析器截断
+    # （codex review on PR #613）。同时只在字段为空时才调 openssl，避免重复
+    # 启动时白白生成一次随机串再丢弃（gemini review on PR #613）。
     if [ "$PROD_MODE" = false ]; then
-        bootstrap_secret_field "POSTGRES_PASSWORD" "aetherblog123"
-        bootstrap_secret_field "REDIS_PASSWORD" "aetherblog_dev"
+        if [ -z "$(get_env_field POSTGRES_PASSWORD)" ]; then
+            # PGDATA 一次性绑定 POSTGRES_PASSWORD：postgres 容器只在卷首次
+            # 初始化时写入该口令，之后启动忽略 env。若 postgres_data 卷已存在
+            # （老版本用 docker-compose 兜底默认 aetherblog123 起过），现在生成
+            # 新随机口令会让 backend / AI 28P01（codex P2 review on PR #613）。
+            # 策略：仅在能确认卷不存在（fresh install）时才生成强随机口令；
+            # 其他情况（卷已存在 / docker daemon 离线无法判断）沿用历史默认值
+            # 保护升级路径，用户可手动改 .env + ALTER ROLE 切到强随机。
+            # 卷名走 docker_compose_project_name 解析，避免硬编码项目名在
+            # COMPOSE_PROJECT_NAME / -p / 非默认目录下漏判（codex P2 review）。
+            local _pg_volume
+            _pg_volume="$(docker_compose_project_name)_postgres_data"
+            if command -v docker >/dev/null 2>&1 \
+               && docker info >/dev/null 2>&1 \
+               && ! docker volume inspect "$_pg_volume" >/dev/null 2>&1; then
+                bootstrap_secret_field "POSTGRES_PASSWORD" "$(gen_url_safe_secret)"
+            else
+                bootstrap_secret_field "POSTGRES_PASSWORD" "aetherblog123"
+                echo -e "${YELLOW}   ℹ️  POSTGRES_PASSWORD 沿用 docker-compose 历史默认值，避免与既存 ${_pg_volume} 卷分叉；如需强随机口令请手动改 .env 后 ALTER ROLE${NC}"
+            fi
+        fi
+        # REDIS_PASSWORD 不持久化：redis 容器每次启动从 --requirepass 读 env，
+        # AOF/RDB 不存口令，所以即使 redis_data 卷已存在也可以安全轮换。
+        if [ -z "$(get_env_field REDIS_PASSWORD)" ]; then
+            bootstrap_secret_field "REDIS_PASSWORD" "$(gen_url_safe_secret)"
+        fi
     fi
 
     # JWT 签名启动 seed
@@ -340,6 +396,19 @@ bootstrap_env() {
             echo -e "${GREEN}   ✅ 已为 $app 创建 .env.local${NC}"
         fi
     done
+
+    # 把 .env 中的容器口令显式导出到当前 shell，覆盖任何上层 shell 已经导出
+    # 的同名变量。docker-compose interpolation 优先级是 host shell > .env，
+    # 多 project 公用 dev shell 时若 host 已经 export 过 POSTGRES_PASSWORD /
+    # REDIS_PASSWORD，`docker compose up` 会用 host 值起 postgres/redis 容器，
+    # 而 start_backend / start_ai_service 后面 source .env 又拿到 .env 的值，
+    # 造成 28P01（codex P2 review on PR #613）。这里强制把 .env 值塞回 host
+    # env 把两条路径拉齐。
+    local _pg_pw _rd_pw
+    _pg_pw=$(get_env_field POSTGRES_PASSWORD | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    _rd_pw=$(get_env_field REDIS_PASSWORD | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    [ -n "$_pg_pw" ] && export POSTGRES_PASSWORD="$_pg_pw"
+    [ -n "$_rd_pw" ] && export REDIS_PASSWORD="$_rd_pw"
 
     echo -e "${GREEN}✅ 环境配置就绪${NC}"
 }
