@@ -31,6 +31,11 @@ import (
 const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
 
 // allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
+//
+// 注意：image/svg+xml 故意不在白名单中。配合 guessMimeType 的 ".svg" 兜底映射，
+// 即使 http.DetectContentType 嗅探出 application/octet-stream，扩展名也会把
+// 文件显式归类为 image/svg+xml，进而被此白名单拒绝。若两处任一变动，SVG 可能
+// 退化为白名单内的 application/octet-stream，造成存储型 same-origin XSS 通道。
 var allowedMimeTypes = map[string]bool{
 	// 图片
 	"image/jpeg":    true,
@@ -805,6 +810,12 @@ func guessMimeType(filename string) string {
 		return "image/tiff"
 	case ".avif":
 		return "image/avif"
+	// SVG 故意保留映射: 不在 allowedMimeTypes 中,这里返回 image/svg+xml 是为了在
+	// http.DetectContentType 嗅探到 application/octet-stream 时,通过扩展名兜底把
+	// .svg 显式归类为 image/svg+xml,从而被白名单拒绝。若移除此 case,.svg 将退化为
+	// 默认的 application/octet-stream(在白名单内),造成 SVG 上传绕过。
+	case ".svg":
+		return "image/svg+xml"
 	// 视频
 	case ".mp4":
 		return "video/mp4"
