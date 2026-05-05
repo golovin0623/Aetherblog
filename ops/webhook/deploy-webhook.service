@@ -3,39 +3,28 @@ Description=AetherBlog Deployment Webhook Service
 After=network.target
 
 # ============================================================================
-# 部署形态：root 直跑 + 0.0.0.0 暴露 + 仓库直链
+# 安全基线：最小权限 + 本机监听 + 密钥走 EnvironmentFile
 #
-# 这份 unit 反映的是当前生产服务器上**真实运行的形态**，不是 PR #459
-# 安全加固设计的目标形态。两者主要差异：
-#   - User=root（vs PR #459 的 User=webhook 无特权用户）
-#   - WorkingDirectory=/root/Aetherblog/webhook  ← 软链接到 ops/webhook
-#     (vs PR #459 的 /var/lib/aetherblog/webhook 独立目录 + cp 同步)
-#   - WEBHOOK_BIND=0.0.0.0（vs PR #459 的 127.0.0.1 + nginx 前置）
-#   - 没有 ProtectSystem / ProtectHome / SystemCallFilter 等加固指令
-#   - WEBHOOK_SECRET 走 systemctl edit 内联，不走 EnvironmentFile
-#
-# PR #459 的加固版有一个未解决的设计冲突: ProtectHome=true 会禁止 webhook
-# 进程读 /root/Aetherblog (因为 PROJECT_DIR 默认还是 /root/Aetherblog),
-# 真正落地需要把仓库迁出 /root/, 当时未完成。等之后想做加固再提单独 PR
-# (路径迁移 + 用户创建 + 文件复制策略 + nginx 前置).
+# - User/Group=webhook 无特权运行
+# - 默认监听 127.0.0.1，建议通过反向代理暴露
+# - WEBHOOK_SECRET 存放在 /etc/aetherblog/webhook.env，避免写入 unit 文件
+# - 启用 systemd sandbox/hardening 指令降低进程逃逸和主机写入面
 # ============================================================================
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/Aetherblog/webhook
+User=webhook
+Group=webhook
+WorkingDirectory=/var/lib/aetherblog/webhook
 
-# WEBHOOK_SECRET 内联在这里. 安装时用 README 的 sed 命令把 change-me 替换成
-# 真正的 32 字节十六进制 secret. systemctl unit 默认权限 0644 root:root,
-# secret 可被本机所有用户读取 —— 接受当前姿态, 不上 EnvironmentFile.
-Environment=WEBHOOK_SECRET=change-me
+EnvironmentFile=-/etc/aetherblog/webhook.env
 
 Environment=WEBHOOK_PORT=7868
-# WEBHOOK_BIND=0.0.0.0 全网监听; 如果你的部署有 nginx 前置可改成 127.0.0.1.
-Environment=WEBHOOK_BIND=0.0.0.0
+# WEBHOOK_BIND 默认 127.0.0.1 本机监听; 由 nginx 等反向代理对外暴露.
+Environment=WEBHOOK_BIND=127.0.0.1
 Environment=WEBHOOK_REQUEST_TIMEOUT=15
 Environment=WEBHOOK_MAX_BODY_BYTES=8192
-Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
+Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
 
 # PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
@@ -43,7 +32,21 @@ Environment=DEPLOY_TIMEOUT=900
 #   Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
 # 任何升级 Python 版本 / 切换发行版的人, 改这一行不动 ExecStart.
 Environment=PYTHON_BIN=/usr/bin/python3
-ExecStart=${PYTHON_BIN} /root/Aetherblog/webhook/webhook_server.py
+ExecStart=${PYTHON_BIN} /var/lib/aetherblog/webhook/webhook_server.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aetherblog/webhook /var/lock /var/log
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
 Restart=always
 RestartSec=3
 

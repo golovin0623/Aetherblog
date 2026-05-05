@@ -12,15 +12,15 @@
 
 | 维度 | 当前生产 | 备注 |
 | --- | --- | --- |
-| 运行用户 | `root` | 接受当前姿态，未上 unprivileged user |
-| 工作目录 | `/root/Aetherblog/webhook` → 软链接到 `/root/Aetherblog/ops/webhook` | git pull 后自动同步 |
+| 运行用户 | `webhook` | 使用无特权用户运行服务 |
+| 工作目录 | `/var/lib/aetherblog/webhook` | 独立目录，避免直接在 `/root` 下运行 |
 | Python 解释器 | 仓库默认 `/usr/bin/python3`，**当前生产** `systemctl edit` 覆盖为 `/root/.pyenv/versions/3.9.9/bin/python3`（pyenv） | 通过 `Environment=PYTHON_BIN=...` 调整，无需改 ExecStart |
 | Python 最低版本 | **3.6** (CentOS 7 / RHEL 7 系统默认就是这个版本) | `webhook_server.py` 顶部注释列了不能用的 3.7+ 语法; 改这个文件时盯一下别误用 `from __future__ import annotations` / 海象运算符 / 内置泛型 |
-| 监听地址 | `0.0.0.0:7868` | **公网可见**, 安全靠 HMAC-SHA256 + 32 字节 secret 兜底 |
-| WEBHOOK_SECRET | systemd unit 内联 (sed 替换 placeholder) | 不走 EnvironmentFile |
+| 监听地址 | `127.0.0.1:7868` | 建议仅本机监听并通过反向代理暴露 |
+| WEBHOOK_SECRET | `/etc/aetherblog/webhook.env` | 避免密钥出现在 world-readable unit 文件 |
 | 请求防挂死 | `WEBHOOK_REQUEST_TIMEOUT=15`, `WEBHOOK_MAX_BODY_BYTES=8192` | 防止公网半开/超大请求占住部署入口 |
 | 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
-| systemd 加固指令 | 无 | 不上 `ProtectSystem` / `ProtectHome` / `SystemCallFilter` 等 |
+| systemd 加固指令 | 已启用 | `NoNewPrivileges` / `ProtectSystem` / `ProtectHome` / `SystemCallFilter` 等 |
 
 > ⚠️ **PR #459 安全加固的剩余尾巴**: 仓库历史里有一版加固设计 (`User=webhook` + 独立工作目录 + 路径搬迁), 但跟 `PROJECT_DIR=/root/Aetherblog` 默认值有冲突, 没真正端到端验证, 也没下到生产. 当前姿态接受这一现实. 想做加固开单独 PR, 配合仓库迁出 `/root/`、nginx 前置、webhook 用户创建一起处理.
 
@@ -76,8 +76,14 @@ WEBHOOK_SECRET=$(openssl rand -hex 32)
 echo "$WEBHOOK_SECRET"
 
 # 3) 安装 systemd 服务
+install -d -m 0750 -o root -g webhook /etc/aetherblog
+cat > /etc/aetherblog/webhook.env <<EOF
+WEBHOOK_SECRET=${WEBHOOK_SECRET}
+EOF
+chmod 0640 /etc/aetherblog/webhook.env
+chown root:webhook /etc/aetherblog/webhook.env
+
 cp ops/webhook/deploy-webhook.service /etc/systemd/system/deploy-webhook.service
-sed -i "s/WEBHOOK_SECRET=change-me/WEBHOOK_SECRET=${WEBHOOK_SECRET}/" /etc/systemd/system/deploy-webhook.service
 
 # 4) 重载并启动
 systemctl daemon-reload
@@ -117,15 +123,16 @@ CI 用 HMAC-SHA256 给请求体签名, 头部 `X-Hub-Signature-256: sha256=<hex>
 NEW_SECRET="$(openssl rand -hex 32)"
 echo "$NEW_SECRET"
 
-# 2) 替换 systemd unit 里的 WEBHOOK_SECRET
-cp /etc/systemd/system/deploy-webhook.service \
-  /etc/systemd/system/deploy-webhook.service.bak.$(date +%Y%m%d%H%M%S)
+# 2) 更新 /etc/aetherblog/webhook.env 里的 WEBHOOK_SECRET
+cp /etc/aetherblog/webhook.env \
+  /etc/aetherblog/webhook.env.bak.$(date +%Y%m%d%H%M%S)
 
-sed -i -E \
-  "s/^Environment=WEBHOOK_SECRET=.*/Environment=WEBHOOK_SECRET=${NEW_SECRET}/" \
-  /etc/systemd/system/deploy-webhook.service
+cat > /etc/aetherblog/webhook.env <<EOF
+WEBHOOK_SECRET=${NEW_SECRET}
+EOF
+chmod 0640 /etc/aetherblog/webhook.env
+chown root:webhook /etc/aetherblog/webhook.env
 
-systemctl daemon-reload
 systemctl restart deploy-webhook.service
 
 # 3) 本机未签名探测: 应快速返回 401 Invalid signature
