@@ -55,13 +55,20 @@ func (s *SessionService) IssueRefreshToken(ctx context.Context, userID int64) (s
 		return "", err
 	}
 	key := buildRefreshKey(token)
-	if err := s.redis.Set(ctx, key, userID, s.refreshTokenTTL).Err(); err != nil {
+	userSetKey := userSessionsKeyPrefix + strconv.FormatInt(userID, 10)
+	// 用 MULTI/EXEC 把「写 token、加入会话索引、刷新索引 TTL」绑成一次原子提交，
+	// 连接级失败时整批不落库，避免历史实现里 Set 已成功但 SAdd/Expire 失败造成的“游离令牌”。
+	if _, err := s.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Set(ctx, key, userID, s.refreshTokenTTL)
+		pipe.SAdd(ctx, userSetKey, key)
+		pipe.Expire(ctx, userSetKey, s.refreshTokenTTL)
+		return nil
+	}); err != nil {
+		// 命令级错误不会触发 EXEC 回滚（Redis 语义），兜底清理一次刚写入的 key/索引项以兼容这种边缘情况。
+		s.redis.Del(ctx, key)
+		s.redis.SRem(ctx, userSetKey, key)
 		return "", err
 	}
-	// 将 refresh key 加入用户会话索引 Set，便于按用户批量撤销
-	userSetKey := userSessionsKeyPrefix + strconv.FormatInt(userID, 10)
-	s.redis.SAdd(ctx, userSetKey, key)
-	s.redis.Expire(ctx, userSetKey, s.refreshTokenTTL)
 	return token, nil
 }
 
