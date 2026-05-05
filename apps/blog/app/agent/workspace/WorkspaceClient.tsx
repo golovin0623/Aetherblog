@@ -749,7 +749,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
               aria-label="打开侧栏"
-              className="md:hidden inline-flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
+              className="md:hidden inline-flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-90 transition-all"
             >
               <Menu className="w-[18px] h-[18px]" />
             </button>
@@ -758,7 +758,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               onClick={() => setDesktopSidebarHidden((v) => !v)}
               aria-label={desktopSidebarHidden ? '展开侧栏' : '收起侧栏'}
               title={desktopSidebarHidden ? '展开侧栏' : '收起侧栏'}
-              className="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
+              className="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] active:scale-90 transition-all"
             >
               {desktopSidebarHidden ? (
                 <PanelLeftOpen className="w-[18px] h-[18px]" />
@@ -804,7 +804,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               onClick={handleCreate}
               aria-label="新建会话"
               title="新建会话"
-              className="sm:hidden inline-flex items-center justify-center w-10 h-10 -mr-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)] transition-colors active:scale-95"
+              className="sm:hidden inline-flex items-center justify-center w-10 h-10 -mr-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)] transition-all active:scale-90"
             >
               <Plus className="w-[18px] h-[18px]" />
             </button>
@@ -1033,7 +1033,7 @@ function EmptyState({
               type="button"
               onClick={() => onPick(p)}
               data-interactive
-              className="group/sug w-full surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-4 py-3 text-[13px] text-[var(--ink-secondary)] hover:border-[var(--aurora-1)]/45 hover:text-[var(--ink-primary)] transition-colors text-left flex items-center justify-between gap-2"
+              className="group/sug w-full surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-4 py-3 text-[13px] text-[var(--ink-secondary)] hover:border-[var(--aurora-1)]/45 hover:text-[var(--ink-primary)] active:scale-[0.985] transition-all text-left flex items-center justify-between gap-2"
             >
               <span>{p}</span>
               <span
