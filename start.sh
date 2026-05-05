@@ -353,6 +353,19 @@ bootstrap_env() {
         fi
     done
 
+    # 把 .env 中的容器口令显式导出到当前 shell，覆盖任何上层 shell 已经导出
+    # 的同名变量。docker-compose interpolation 优先级是 host shell > .env，
+    # 多 project 公用 dev shell 时若 host 已经 export 过 POSTGRES_PASSWORD /
+    # REDIS_PASSWORD，`docker compose up` 会用 host 值起 postgres/redis 容器，
+    # 而 start_backend / start_ai_service 后面 source .env 又拿到 .env 的值，
+    # 造成 28P01（codex P2 review on PR #613）。这里强制把 .env 值塞回 host
+    # env 把两条路径拉齐。
+    local _pg_pw _rd_pw
+    _pg_pw=$(get_env_field POSTGRES_PASSWORD | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    _rd_pw=$(get_env_field REDIS_PASSWORD | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    [ -n "$_pg_pw" ] && export POSTGRES_PASSWORD="$_pg_pw"
+    [ -n "$_rd_pw" ] && export REDIS_PASSWORD="$_rd_pw"
+
     echo -e "${GREEN}✅ 环境配置就绪${NC}"
 }
 
