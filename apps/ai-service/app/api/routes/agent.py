@@ -275,8 +275,8 @@ async def _resolve_for_agent(
     # SECURITY (PR #591 follow-up)：``_resolve_override`` 默认 ``allow_override=False``，
     # 用于堵住 ``rate_limit`` (require_user) 级别的公共 AI 端点上的 modelId
     # 越权路由。Agent 工作台入口 ``/api/v1/agent/chat`` 由
-    # ``require_admin_or_internal`` 守门，是经过授权的合法 override 调用方
-    # （admin 在 ModelPicker 显式选模型），因此显式传 ``allow_override=True``。
+    # ``require_admin_or_internal`` 可被 Go 代理的 internal token 命中，因此这里
+    # 不能放开 override，避免普通登录用户借道 /api/v1/agent/chat 越权选模型。
     if model_id:
         try:
             route = await llm_router._resolve_override(  # noqa: SLF001 — 受控调用
@@ -284,7 +284,6 @@ async def _resolve_for_agent(
                 provider_code=provider_code,
                 user_id=user_id,
                 model_alias="agent",
-                allow_override=True,
             )
         except ValueError as exc:
             raise HTTPException(
