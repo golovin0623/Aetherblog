@@ -118,7 +118,7 @@ EOF
 
 ### 2. 配置 Webhook 自动部署
 
-参考 [CI/CD 配置指南](../.github/CICD_GUIDE.md#webhook-部署配置服务器端) 完成 webhook 安装，实现 git push 后自动增量部署。
+参考 [CI/CD 配置指南](../.github/CICD_GUIDE.md#webhook-部署配置服务器端) 完成 webhook 安装，实现 git push 后自动增量部署。生产环境务必通过 HTTPS 域名入口（或仅内网/VPN 可达），不要使用公网明文 HTTP webhook。
 
 ### 3. 启动服务
 
