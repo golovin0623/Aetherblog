@@ -175,6 +175,30 @@ gen_url_safe_secret() {
     openssl rand -base64 48 | tr -d '\n' | tr '+/' '-_' | tr -d '='
 }
 
+# 解析当前 docker-compose project 的实际名字。优先级与 docker compose v2 一致：
+# 显式 COMPOSE_PROJECT_NAME > docker compose config 输出中的 .name > 目录名
+# normalized（小写、剥掉非 [a-z0-9_-]）。bootstrap_env 用这个来定位 postgres
+# 数据卷，硬编码 `aetherblog_postgres_data` 在用户改了项目名时会漏判（codex
+# P2 review on PR #613）。
+docker_compose_project_name() {
+    if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
+        echo "$COMPOSE_PROJECT_NAME"
+        return
+    fi
+    local name=""
+    if command -v docker >/dev/null 2>&1; then
+        # docker compose v2.4+ 把 project name 写进 config 输出（顶层 `name:`）
+        name=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" config --format json 2>/dev/null \
+            | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 \
+            | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+    fi
+    if [ -z "$name" ]; then
+        # 退化到 compose 默认规则（basename，小写 + 仅保留 [a-z0-9_-]）。
+        name=$(basename "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]//g')
+    fi
+    echo "${name:-aetherblog}"
+}
+
 # 如果 .env 中 KEY 当前为空（或不存在），就把它就地设置为 VALUE。
 # 已经有非空值时不会覆盖，保护用户手填的密钥。
 bootstrap_secret_field() {
@@ -286,13 +310,17 @@ bootstrap_env() {
             # 策略：仅在能确认卷不存在（fresh install）时才生成强随机口令；
             # 其他情况（卷已存在 / docker daemon 离线无法判断）沿用历史默认值
             # 保护升级路径，用户可手动改 .env + ALTER ROLE 切到强随机。
+            # 卷名走 docker_compose_project_name 解析，避免硬编码项目名在
+            # COMPOSE_PROJECT_NAME / -p / 非默认目录下漏判（codex P2 review）。
+            local _pg_volume
+            _pg_volume="$(docker_compose_project_name)_postgres_data"
             if command -v docker >/dev/null 2>&1 \
                && docker info >/dev/null 2>&1 \
-               && ! docker volume inspect aetherblog_postgres_data >/dev/null 2>&1; then
+               && ! docker volume inspect "$_pg_volume" >/dev/null 2>&1; then
                 bootstrap_secret_field "POSTGRES_PASSWORD" "$(gen_url_safe_secret)"
             else
                 bootstrap_secret_field "POSTGRES_PASSWORD" "aetherblog123"
-                echo -e "${YELLOW}   ℹ️  POSTGRES_PASSWORD 沿用 docker-compose 历史默认值，避免与既存 postgres_data 卷分叉；如需强随机口令请手动改 .env 后 ALTER ROLE${NC}"
+                echo -e "${YELLOW}   ℹ️  POSTGRES_PASSWORD 沿用 docker-compose 历史默认值，避免与既存 ${_pg_volume} 卷分叉；如需强随机口令请手动改 .env 后 ALTER ROLE${NC}"
             fi
         fi
         # REDIS_PASSWORD 不持久化：redis 容器每次启动从 --requirepass 读 env，
