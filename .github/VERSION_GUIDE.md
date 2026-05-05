@@ -1,5 +1,11 @@
 # Docker 镜像版本号逻辑说明
 
+> **SECURITY 政策（2026-05 起）：** Tag 推送 (`v*`) **不再触发** CI 构建或部署。
+> Tag 不走 PR review，曾是 `:latest` 覆写与生产 webhook 的授权绕过路径。
+> CI 现在只在 `push` 到 `main` / `develop` 时构建镜像，`:latest` 仅在 `main` 上更新。
+> 版本化镜像通过 `docker-build.sh --push --version vX.Y.Z` 在受控环境手动构建。
+> 见 PR #594。
+
 ## 📦 版本号生成规则
 
 ### 规则 1: 推送到 main 分支 (无 tag)
@@ -43,41 +49,36 @@ git push origin main
 
 ---
 
-### 规则 2: 创建版本标签
+### 规则 2: 版本化镜像（手动构建，不再由 CI 触发）
 
 **触发方式:**
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+# 在受控环境（拥有 Docker Hub 推送权限的本地或受信构建机）执行
+./docker-build.sh --push --version v1.0.0
 ```
 
 **版本号逻辑:**
 ```bash
-VERSION=${GITHUB_REF#refs/tags/}
-# 例如: v1.0.0 (使用 tag 名称)
+VERSION=v1.0.0   # 由 --version 参数显式提供
 ```
 
-**生成的镜像标签（标签触发时全量构建所有模块）:**
+**生成的镜像标签（按需构建模块）:**
 ```
 golovin0623/aetherblog-backend:v1.0.0
-golovin0623/aetherblog-backend:latest
-
 golovin0623/aetherblog-ai-service:v1.0.0
-golovin0623/aetherblog-ai-service:latest
-
 golovin0623/aetherblog-blog:v1.0.0
-golovin0623/aetherblog-blog:latest
-
 golovin0623/aetherblog-admin:v1.0.0
-golovin0623/aetherblog-admin:latest
 ```
 
-**支持的 tag 格式:**
+**为什么不再用 tag 触发 CI？** Tag 推送不经过 PR review，任何拥有写权限的人都能
+绕过分支保护规则把 `:latest` 推到注册表并触发生产 webhook。VULN 治理要求把镜像
+发布与部署收敛到 `main` 推送（即已 review 的代码）。版本化镜像通过受控环境
+本地构建发布；`git tag` 仅用于代码版本标记。
+
+**支持的 version 格式（由调用者维护）:**
 - `v1.0.0` - 标准语义化版本
 - `v1.0.0-beta.1` - 预发布版本
 - `v1.0.0-rc.1` - 候选发布版本
-- `hotfix-login` - 自定义标签
-- 任何字符串都可以作为 tag
 
 ---
 
@@ -104,17 +105,16 @@ VERSION=main-${GITHUB_SHA::7}
 开始
   │
   ├─ 是否是 tag 触发? (refs/tags/*)
-  │   ├─ 是 → VERSION = tag 名称 (例如: v1.0.0)
-  │   │       全量构建所有模块（忽略变更检测）
-  │   └─ 否 ↓
+  │   └─ 是 → CI 不响应（policy: tag 推送不构建镜像、不部署）
+  │           版本化镜像走 ./docker-build.sh --push --version vX.Y.Z
   │
   ├─ 是否是 PR 到 main?
   │   ├─ 是 → 仅测试 + lint，不构建镜像，无版本号
   │   └─ 否 ↓
   │
   └─ Push 到 main 或 develop
-      → VERSION = main-{commit-sha} (例如: main-a1b2c3d)
-        增量构建（只构建变更模块）
+      → VERSION = {branch}-{commit-sha} (例如: main-a1b2c3d)
+        增量构建（只构建变更模块）；:latest 仅在 main 上更新
 ```
 
 ---
@@ -124,11 +124,10 @@ VERSION=main-${GITHUB_SHA::7}
 | 触发方式 | Git 操作 | 版本号示例 | 构建策略 | 镜像标签示例 |
 |---------|---------|-----------|----------|-------------|
 | **推送到 main** | `git push origin main` | `main-a1b2c3d` | 增量（变更模块） | `backend:main-a1b2c3d`<br>`backend:latest` |
-| **推送到 develop** | `git push origin develop` | `main-a1b2c3d` | 增量（变更模块） | `backend:main-a1b2c3d`<br>`backend:latest` |
-| **创建 tag** | `git tag v1.0.0`<br>`git push origin v1.0.0` | `v1.0.0` | 全量（所有模块） | `backend:v1.0.0`<br>`backend:latest` |
-| **预发布 tag** | `git tag v1.0.0-beta.1`<br>`git push origin v1.0.0-beta.1` | `v1.0.0-beta.1` | 全量（所有模块） | `backend:v1.0.0-beta.1`<br>`backend:latest` |
-| **热修复 tag** | `git tag v1.0.1`<br>`git push origin v1.0.1` | `v1.0.1` | 全量（所有模块） | `backend:v1.0.1`<br>`backend:latest` |
+| **推送到 develop** | `git push origin develop` | `develop-a1b2c3d` | 增量（变更模块） | `backend:develop-a1b2c3d` |
+| **手动版本镜像** | `./docker-build.sh --push --version v1.0.0` | `v1.0.0` | 由参数指定的模块 | `backend:v1.0.0` |
 | **PR 到 main** | 提交 PR | — | 不构建镜像，仅测试 | — |
+| **推送 tag** | `git push origin v1.0.0` | — | **CI 不响应**（仅作为代码版本标记） | — |
 
 ---
 
@@ -154,28 +153,27 @@ git push origin main
 # ⏭️ golovin0623/aetherblog-ai-service（未变更，跳过）
 ```
 
-### 示例 2: 正式版本发布
+### 示例 2: 正式版本发布（受控环境本地构建）
 
 ```bash
-# 准备发布 v1.0.0
+# 准备发布 v1.0.0 —— 必须先把代码合到 main 并通过 review
 git checkout main
 git pull origin main
 
-# 创建版本标签
+# 在受控环境（拥有 Docker Hub 推送凭证的本地或受信 runner）构建并推送
+./docker-build.sh --push --version v1.0.0
+
+# 打 git tag 作为代码版本标记（不触发 CI 构建/部署）
 git tag v1.0.0
 git push origin v1.0.0
 
-# GitHub Actions 自动构建
-
-# 生成的镜像（tag 触发：全量构建所有模块）:
+# 生成的镜像:
 # ✅ golovin0623/aetherblog-backend:v1.0.0
-# ✅ golovin0623/aetherblog-backend:latest
 # ✅ golovin0623/aetherblog-ai-service:v1.0.0
-# ✅ golovin0623/aetherblog-ai-service:latest
 # ✅ golovin0623/aetherblog-blog:v1.0.0
-# ✅ golovin0623/aetherblog-blog:latest
 # ✅ golovin0623/aetherblog-admin:v1.0.0
-# ✅ golovin0623/aetherblog-admin:latest
+#
+# :latest 由 main 推送时的 CI 维护，与 tag 解耦
 ```
 
 ### 示例 3: 热修复版本
@@ -190,36 +188,38 @@ git checkout -b hotfix/login-bug
 git add .
 git commit -m "fix: login bug"
 
-# 合并到 main
-git checkout main
-git merge hotfix/login-bug
+# 走 PR review 合并到 main（CI 自动构建增量镜像 + 更新 :latest）
+git push origin hotfix/login-bug
+# → 开 PR → review → merge to main
 
-# 创建热修复标签
+# 受控环境构建版本化镜像
+./docker-build.sh --push --version v1.0.1
 git tag v1.0.1
 git push origin v1.0.1
 
 # 生成的镜像:
 # ✅ golovin0623/aetherblog-backend:v1.0.1
-# ✅ golovin0623/aetherblog-backend:latest
+# ✅ golovin0623/aetherblog-backend:latest（由 main 推送时的 CI 更新）
 ```
 
 ### 示例 4: Beta 测试版本
 
 ```bash
-# 准备 Beta 版本
+./docker-build.sh --push --version v2.0.0-beta.1
 git tag v2.0.0-beta.1
 git push origin v2.0.0-beta.1
 
 # 生成的镜像:
 # ✅ golovin0623/aetherblog-backend:v2.0.0-beta.1
-# ✅ golovin0623/aetherblog-backend:latest
 ```
 
 ---
 
 ## 🔄 latest 标签的行为
 
-**重要:** `latest` 标签会在每次构建时更新,始终指向最新的构建。
+**重要:** `latest` 标签**只**由 `main` 分支的推送触发的 CI 维护，每次推送时更新到最新的 main 构建。
+版本化镜像（`docker-build.sh --version vX.Y.Z`）**不会**移动 `:latest`，避免手动构建覆盖
+受 review 的 main 镜像。
 
 ```bash
 # 第一次推送
@@ -230,13 +230,12 @@ git push origin main
 git push origin main
 # 生成: backend:main-b2c3d4e, backend:latest (指向 main-b2c3d4e)
 
-# 创建 tag
-git tag v1.0.0
-git push origin v1.0.0
-# 生成: backend:v1.0.0, backend:latest (指向 v1.0.0)
+# 受控环境构建版本镜像（不动 :latest）
+./docker-build.sh --push --version v1.0.0
+# 生成: backend:v1.0.0  ← :latest 仍指向 main 最新
 ```
 
-**注意:** 如果你想使用固定版本,不要使用 `latest`,而是使用具体的版本号!
+**注意:** 生产环境用具体版本号（`v1.0.0`），不要用 `:latest`！
 
 ---
 
