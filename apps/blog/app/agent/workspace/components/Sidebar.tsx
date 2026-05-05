@@ -116,7 +116,7 @@ export default function Sidebar({
             href="/agent"
             className="font-display text-[17px] leading-none tracking-[-0.01em] text-[var(--ink-primary)] inline-flex items-center gap-2 hover:text-[var(--aurora-1)] transition-colors"
           >
-            <span className="aurora-text">Agent</span>
+            <span className="aurora-text">灵境</span>
             <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mt-0.5">workspace</span>
           </Link>
           {onMobileClose && (
@@ -373,12 +373,14 @@ function SessionMenu({
           e.stopPropagation();
           onToggle();
         }}
-        className={`p-1 rounded transition-all ${
+        // 触控区：移动端 32×32（drawer 内单手操作触达；桌面 hover-friendly
+        // 24×24）。移动端不启用 hover-only 显隐，始终常驻可见。
+        className={`inline-flex items-center justify-center w-8 h-8 md:w-6 md:h-6 rounded transition-all ${
           open
             ? 'bg-[var(--bg-raised)] text-[var(--ink-primary)]'
             : isActive
             ? 'text-[var(--aurora-1)]/85 hover:bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)]'
-            : 'text-[var(--ink-muted)] opacity-0 group-hover/sess:opacity-100 hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]'
+            : 'text-[var(--ink-muted)] opacity-100 md:opacity-0 md:group-hover/sess:opacity-100 hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]'
         }`}
       >
         <MoreHorizontal className="w-3.5 h-3.5" />

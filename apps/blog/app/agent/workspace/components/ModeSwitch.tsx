@@ -28,7 +28,7 @@ const OPTIONS: ModeOption[] = [
     label: 'Chat',
     icon: MessageSquare,
     available: true,
-    oneLiner: '同步问答 Agent · 已上线',
+    oneLiner: '同步问答模式 · 已上线',
     detail: '基于站点知识库的轻量问答。支持 @ 引用文章、# 标签筛选、/ 命令。一次 LLM 调用即结束，不持久化任何会话外的副作用。',
   },
   {

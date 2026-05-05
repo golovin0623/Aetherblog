@@ -74,7 +74,10 @@ export default function ModelPicker({
     return Array.from(map.entries()).map(([provider, items]) => ({ provider, items }));
   }, [state]);
 
-  // 选中项的 displayName
+  // 触发按钮显示态：用户主动选过（modelId 非 null）→ 仅显示 displayName；
+  // 未选 / 自动模式 → "自动 · <默认 displayName>" 暗示当前会落到的模型。
+  // 不再叠加"模型 · "前缀 —— icon + ChevronDown 已经传达"这是模型选择"语义，
+  // 三段叠加（"模型 · 自动 · gpt-5.4"）在 320px 屏宽下必截断，反而降低识别度。
   const currentLabel = useMemo(() => {
     if (state.status !== 'ready') return '默认模型';
     if (!value.modelId) {
@@ -87,9 +90,14 @@ export default function ModelPicker({
     return found ? found.displayName || found.modelId : value.modelId;
   }, [state, value]);
 
-  // 紧凑（composer 内嵌）时按钮更小、文字更短；常规（topbar）按钮带 mono uppercase。
+  // 用户主动选过非 null 的模型 → icon 着色（aurora），强化"已主动选择"感知。
+  const isUserSelected = !!value.modelId;
+
+  // 紧凑（composer 内嵌 / 移动端控制条）时按钮高度移动端 44px、桌面 28px；
+  // 移动端 max-w 紧到 160px 避免与同一行的发送 / 工具按钮抢空间，桌面回到
+  // 240px 给完整 displayName。Apple HIG 推荐触控目标 ≥44×44，移动端严格符合。
   const triggerClass = compact
-    ? 'inline-flex items-center gap-1 px-2 h-11 sm:h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors text-[12px] max-w-[220px] sm:max-w-[240px]'
+    ? 'inline-flex items-center gap-1 px-2 h-11 sm:h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors text-[12px] max-w-[160px] sm:max-w-[240px]'
     : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/40 transition-colors text-[12px] max-w-[220px]';
 
   // 弹出位置：top-start 让 popover 出现在按钮上方左对齐，避免遮挡 composer 内容。
@@ -118,9 +126,13 @@ export default function ModelPicker({
         ) : state.status === 'error' ? (
           <AlertCircle className="w-3 h-3 text-[var(--signal-warn)] flex-shrink-0" />
         ) : (
-          <Cpu className="w-3 h-3 text-[var(--aurora-1)]/85 flex-shrink-0" />
+          <Cpu
+            className={`w-3 h-3 flex-shrink-0 ${
+              isUserSelected ? 'text-[var(--aurora-1)]' : 'text-[var(--aurora-1)]/65'
+            }`}
+          />
         )}
-        <span className="truncate">{compact ? `模型 · ${currentLabel}` : currentLabel}</span>
+        <span className="truncate">{currentLabel}</span>
         <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
