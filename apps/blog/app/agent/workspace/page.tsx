@@ -3,7 +3,7 @@ import { getSiteSettings } from '@/app/lib/services';
 import WorkspaceClient from './WorkspaceClient';
 
 export const metadata: Metadata = {
-  title: '工作台 · Agent',
+  title: '工作台 · 灵境',
   robots: { index: false, follow: false },
 };
 

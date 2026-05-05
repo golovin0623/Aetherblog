@@ -120,7 +120,7 @@ export default function ModelPicker({
         ) : (
           <Cpu className="w-3 h-3 text-[var(--aurora-1)]/85 flex-shrink-0" />
         )}
-        <span className="truncate">{currentLabel}</span>
+        <span className="truncate">{compact ? `模型 · ${currentLabel}` : currentLabel}</span>
         <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

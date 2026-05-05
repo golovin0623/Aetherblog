@@ -82,6 +82,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // chat 请求并清空。换会话或显式移除时也清空。
   const [pendingArticles, setPendingArticles] = useState<AgentArticle[]>([]);
   const [pendingTags, setPendingTags] = useState<AgentTag[]>([]);
+  const [sessionModelOverride, setSessionModelOverride] = useState<{
+    modelId: string | null;
+    providerCode: string | null;
+  }>({ modelId: null, providerCode: null });
 
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgIdRef = useRef<string | null>(null);
@@ -116,6 +120,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     () => sessions.find((s) => s.id === activeId) ?? null,
     [sessions, activeId],
   );
+
+  useEffect(() => {
+    setSessionModelOverride({
+      modelId: activeSession?.modelId ?? null,
+      providerCode: activeSession?.providerCode ?? null,
+    });
+  }, [activeSession?.id, activeSession?.modelId, activeSession?.providerCode]);
 
   // ---- 会话操作 ----
   // 把 streaming 状态收尾成"已中断"。被两条路径复用：
@@ -217,6 +228,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const handleModelChange = useCallback(
     (modelId: string | null, providerCode: string | null) => {
       if (!activeId) return;
+      setSessionModelOverride({ modelId, providerCode });
       setSessions((list) =>
         list.map((s) =>
           s.id === activeId
@@ -404,8 +416,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         sessionId: sessId,
         mode: effectiveMode,
         messages: history,
-        modelId: session.modelId ?? null,
-        providerCode: session.providerCode ?? null,
+        modelId: sessionModelOverride.modelId ?? session.modelId ?? null,
+        providerCode: sessionModelOverride.providerCode ?? session.providerCode ?? null,
         articleIds: articleIds.length ? articleIds : null,
         tagSlugs: tagSlugs.length ? tagSlugs : null,
       },
@@ -474,7 +486,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       streamingMsgIdRef.current = null;
     }
     setBusy(false);
-  }, [draft, busy, state, activeSession, pendingArticles, pendingTags]);
+  }, [draft, busy, state, activeSession, pendingArticles, pendingTags, sessionModelOverride]);
 
   const handleAbort = useCallback(() => {
     finalizeStreamingMessage('已中断');
