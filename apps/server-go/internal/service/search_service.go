@@ -259,6 +259,7 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 
 	result := &dto.IndexBatchResult{Total: len(posts)}
 	var lastErr string
+	var failedIDs []int64
 	batchStart := time.Now()
 	log.Info().
 		Int("total", len(posts)).
@@ -293,6 +294,7 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		if err != nil {
 			postCancel()
 			result.Failed++
+			failedIDs = append(failedIDs, post.ID)
 			lastErr = err.Error()
 			// 关键观测字段：elapsed_ms 接近 90000 → context 超时，应去 ai-service 日志排查 embed.*
 			// elapsed_ms 很小 → backend/ai-service 连通性问题（502）
@@ -303,20 +305,26 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 				Int64("elapsedMs", elapsed).
 				Err(err).
 				Msg("index post request failed")
+			s.markPostFailed(post.ID)
 			continue
 		}
 		if statusCode != http.StatusOK {
+			detail := readAIErrorDetail(body, statusCode)
 			result.Failed++
-			lastErr = fmt.Sprintf("AI 服务返回状态码 %d", statusCode)
+			failedIDs = append(failedIDs, post.ID)
+			lastErr = detail
 			log.Warn().
 				Int64("postId", post.ID).
 				Int("seq", idx+1).
 				Int("contentLen", contentLen).
 				Int64("elapsedMs", elapsed).
 				Int("status", statusCode).
+				Str("reason", detail).
 				Msg("index post returned non-200")
-			body.Close()
 			postCancel()
+			// ai-service 在某些拒绝路径（如 VULN-062 404）会在 raise 之前就返回，
+			// 不会写 DB → 这里兜底标 FAILED，让 stats / 列表 / 进度条立刻可见
+			s.markPostFailed(post.ID)
 			continue
 		}
 		body.Close()
@@ -338,10 +346,64 @@ func (s *SearchService) IndexBatchPosts(ctx context.Context, postIDs []int64) (*
 		Int64("elapsedMs", batchElapsed).
 		Msg("index batch done")
 
-	if result.Failed > 0 && result.Indexed == 0 && lastErr != "" {
+	// Reason 始终带上"最近一次失败原因"——只要批次里有失败就附带，
+	// 让前端 toast 不必区分"全失败 / 部分失败"两条不同文案路径。
+	if result.Failed > 0 && lastErr != "" {
 		result.Reason = lastErr
 	}
+	result.FailedIDs = failedIDs
 	return result, nil
+}
+
+// readAIErrorDetail 解析 ai-service 错误响应里的 FastAPI ``{"detail": "..."}``
+// 字段，封顶 1KB 防止异常大响应阻塞 goroutine。读失败 / 没有 detail 时回退到
+// "AI 服务返回状态码 N: <截断原文>"，保证调用方总能拿到一句可读字符串。
+func readAIErrorDetail(body io.ReadCloser, statusCode int) string {
+	defer body.Close()
+	raw, err := io.ReadAll(io.LimitReader(body, 1024))
+	if err != nil || len(raw) == 0 {
+		return fmt.Sprintf("AI 服务返回状态码 %d", statusCode)
+	}
+	var parsed struct {
+		Detail any `json:"detail"`
+	}
+	if json.Unmarshal(raw, &parsed) == nil {
+		switch v := parsed.Detail.(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case nil:
+			// 没有 detail 字段，落到原文截断
+		default:
+			// FastAPI validation error 时 detail 是 array
+			if b, mErr := json.Marshal(v); mErr == nil {
+				return string(b)
+			}
+		}
+	}
+	snippet := strings.TrimSpace(string(raw))
+	if snippet == "" {
+		return fmt.Sprintf("AI 服务返回状态码 %d", statusCode)
+	}
+	return fmt.Sprintf("AI 服务返回状态码 %d: %s", statusCode, snippet)
+}
+
+// markPostFailed 把单篇文章的 embedding_status 置为 'FAILED'。失败日志单独
+// 记录但不冒泡——这是观测性兜底，不应阻塞批次继续推进；其它文章必须正常处理。
+//
+// 单独用 background context（3s 超时）：上层 ctx 可能因用户点"停止"已经取消，
+// 但这一篇的 PENDING 必须落库——否则下次拉取会再把它当"待处理"重试一遍，
+// 永远拿不到 FAILED 终态。
+func (s *SearchService) markPostFailed(id int64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.postRepo.MarkEmbeddingFailed(ctx, []int64{id}); err != nil {
+		log.Warn().
+			Int64("postId", id).
+			Err(err).
+			Msg("mark embedding failed: db update failed (state stays PENDING)")
+	}
 }
 
 // MarkPostsEmbeddingPending 将指定 ID 的文章 embedding_status 置为 'PENDING'，

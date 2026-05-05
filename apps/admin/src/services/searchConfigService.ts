@@ -76,6 +76,23 @@ export interface CancelIndexResult {
   message?: string;
 }
 
+/**
+ * 最近一次 batch / single 索引的摘要。后端 in-memory 缓存，restart 后丢失。
+ * 前端在进度面板结束时拉取，把 reason / failedIds 显示到 toast，避免管理员
+ * 去翻 docker 日志。finishedAt 用来过滤"陈旧的上一次摘要"（仅当
+ * finishedAt >= job.startTime 才认为是本次任务的结果）。
+ */
+export interface LastBatchSummary {
+  kind: 'batch' | 'full' | 'retry';
+  startedAt: string;
+  finishedAt: string;
+  total: number;
+  indexed: number;
+  failed: number;
+  reason?: string;
+  failedIds?: number[];
+}
+
 export const searchConfigService = {
   getConfig: (): Promise<R<SearchConfig>> =>
     api.get('/v1/admin/search/config'),
@@ -116,4 +133,7 @@ export const searchConfigService = {
 
   indexBatch: (postIds: number[]): Promise<R<IndexBatchResult>> =>
     api.post('/v1/admin/search/index-batch', { postIds }),
+
+  getLastBatch: (): Promise<R<LastBatchSummary | null>> =>
+    api.get('/v1/admin/search/last-batch'),
 };

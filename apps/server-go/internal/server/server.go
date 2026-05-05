@@ -373,6 +373,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	searchAdmin.GET("/embedding-status", searchHandler.EmbeddingStatus)
 	searchAdmin.GET("/posts", searchHandler.ListPostsEmbedding)
 	searchAdmin.POST("/index-batch", searchHandler.IndexBatch)
+	searchAdmin.GET("/last-batch", searchHandler.LastBatch)
 	// Search profile 管理（list / create / activate / deprecate / delete + SSE reindex）
 	// 通配代理至 ai-service profiles.py。SSE 流式端点（POST /{code}/reindex/stream）
 	// 在 handler 内自动检测 path 后缀切到 DoStream + 行级转发。
