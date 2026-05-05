@@ -185,8 +185,13 @@ services:
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
-      # REMOVED for security: mounting docker.sock grants host-root-equivalent
-      # privilege to any code execution inside backend container.
+      # REMOVED for security: mounting docker.sock (even :ro) grants host-root-
+      # equivalent privilege via the Docker API to any code execution inside the
+      # backend container. The admin "容器监控" page (/v1/admin/monitor/*) will
+      # therefore return Docker-API-unavailable in this default deployment.
+      # To restore safely, front the daemon with tecnativa/docker-socket-proxy
+      # restricted to /containers/json + /containers/*/stats and point backend
+      # at it over the internal network instead of mounting the socket directly.
     depends_on:
       postgres:
         condition: service_healthy

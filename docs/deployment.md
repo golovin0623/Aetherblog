@@ -293,11 +293,13 @@ webhook systemd 单元文件见 `ops/webhook/deploy-webhook.service`，部署与
 | ai-service healthcheck | `start_period: 45s, interval: 10s` | Python 冷启动窗口 ≤ 45s 不计 retries，部署 preflight 不会误判 docker=starting |
 | backend healthcheck | `start_period: 30s, interval: 3s` (**VULN-150**) | 避免把 crash loop 识别为 "healthy yet" |
 
-### Docker socket 访问的权衡
+### Docker socket 访问 —— 默认禁用（PR #603）
 
-`backend` 以只读方式挂载 `/var/run/docker.sock:ro` 给 `/v1/admin/monitor/*` 做容器列表与 stats 查询。**注意**：`:ro` 只阻止写套接字文件本身，Docker API 仍具备 root 等效能力。自托管且只有 admin JWT 能命中该接口是当前可接受的妥协；加固部署应改用 `tecnativa/docker-socket-proxy` 将 API 限制到 `/containers/json` + `/containers/*/stats`。
+`backend` 默认 **不再挂载** `/var/run/docker.sock`，`docker-compose.prod.yml` 的对应 `volumes` / `group_add` 块已移除。原因：即便 `:ro` 也只保护套接字文件本身，Docker API 仍是宿主 root 等价权限 —— 一旦 backend 容器内出现 RCE，攻击者就能直接逃逸到宿主。
 
-宿主 docker 组 GID 通常不是容器里默认的 999，必须通过 `.env` 的 `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` 显式对齐，否则 UID 1001 无法读套接字。
+**影响**：admin 后台 "容器监控" 面板（`/v1/admin/monitor/*`）在默认部署下会返回 Docker API 不可用。如运行手册仍引用旧的 `DOCKER_GID` / 直接挂 socket 步骤，请同步删除。
+
+**如确需该功能（自托管且评估过风险）**，正确做法是改用 `tecnativa/docker-socket-proxy` 将 API 限制到 `/containers/json` + `/containers/*/stats`，然后让 backend 通过内网地址访问代理；**不要**把宿主套接字直接 bind-mount 回 backend，也**不要**把容器 UID 加回宿主 docker 组。
 
 ---
 
