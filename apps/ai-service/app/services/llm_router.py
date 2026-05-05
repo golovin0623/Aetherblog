@@ -29,6 +29,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ai-service")
 
+# 已知的"非 chat"模型类型集合 —— agent override / ModelPicker / fallback
+# 三处 (llm_router._resolve_override / agent.py:agent fallback loop /
+# agent.py:list_agent_models SQL) 必须共享同一份口径, 否则用户能从某条
+# 路径绕过, 选到 ModelPicker 故意藏起来的 embedding / TTS 等模型。
+#
+# 设计选择: 用 denylist 而非 allowlist —— DB 中 model_type 历史值还包含
+# 'text' / 'all' / NULL 这些被视作 chat-capable 的 legacy 值, allowlist
+# 会把它们一并误剔。新增非 chat 模型类型时, 只需扩这一处。
+NON_CHAT_MODEL_TYPES: frozenset[str] = frozenset(
+    {"embedding", "audio", "image", "tts", "stt", "text2video", "video"}
+)
+
 # 当 DB 路由配置与 task type 的 ``default_max_tokens`` 均缺失（仅依赖
 # 环境变量回退路径）时的 max_tokens 兜底上限。没有这一层兜底，LiteLLM
 # 会把 ``None`` 直接转发给上游 provider，模型会一直生成直至填满上下文
@@ -242,15 +254,11 @@ class LlmRouter:
 
         model_type = (model.model_type or "chat").lower()
         capabilities = model.capabilities if isinstance(model.capabilities, dict) else {}
-        # 拒绝所有已知的非 chat 模型类型。保留 denylist (而非 allowlist) 是为了
-        # 兼容 DB 中 model_type 历史值 'text' / 'all' / NULL —— agent.py:329 与 :477
-        # 的 ModelPicker 同样按 COALESCE(model_type, 'chat') NOT IN (...) 约定。
-        # 新增非 chat 类型 (如 video / asr 变体) 时请同步扩充这里与 agent.py。
         # is_enabled 校验有意保留: provider_registry 的 _model_cache 不会因为
         # disable 操作主动失效, 这道闸是 stale-cache 命中后的最后兜底。
         if (
             not model.is_enabled
-            or model_type in {"embedding", "audio", "image", "tts", "stt", "text2video", "video"}
+            or model_type in NON_CHAT_MODEL_TYPES
             or capabilities.get("chat") is False
         ):
             raise ValueError("Requested model is not available for agent chat")
