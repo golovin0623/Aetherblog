@@ -186,6 +186,61 @@ bootstrap_secret_field() {
     echo -e "${GREEN}   ✅ 已自动生成 ${key}${NC}"
 }
 
+# 生产模式下，若配置缺失或仍是已知开发默认值，则强制修复为安全值。
+# 仅适用于「容器在每次启动时从 env 读取」的字段（如 REDIS_PASSWORD、AUTH_COOKIE_SECURE）。
+# 对于「有持久化绑定」的字段（如 POSTGRES_PASSWORD 写入 PGDATA 后不再读 env），请用
+# require_prod_secure_field 走「检测到默认值则报错引导手动轮换」的路径，避免静默改写后
+# 与已初始化的数据卷分叉、把跑着的部署打挂。
+bootstrap_prod_secure_field() {
+    local key=$1
+    local secure_value=$2
+    shift 2
+    local insecure_values=("$@")
+    local current
+    current=$(get_env_field "$key" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    if [ -z "$current" ]; then
+        bootstrap_secret_field "$key" "$secure_value"
+        return 0
+    fi
+
+    local insecure
+    for insecure in "${insecure_values[@]}"; do
+        if [ "$current" = "$insecure" ]; then
+            sed_inplace "s|^${key}=.*|${key}=${secure_value}|" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}   ✅ 生产模式已修复 ${key}${NC}"
+            return 0
+        fi
+    done
+}
+
+# 生产模式下，若关键字段缺失或仍是已知开发默认值，则报错并引导手动处理。
+# 用于「有持久化绑定」的字段：例如 POSTGRES_PASSWORD 一旦 PGDATA 完成初始化就锁定在
+# 容器内，再去 .env 里改密只会让 backend 拿新密码连库 28P01。这种字段不能由脚本静默替换。
+require_prod_secure_field() {
+    local key=$1
+    local hint=$2
+    shift 2
+    local insecure_values=("$@")
+    local current
+    current=$(get_env_field "$key" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    if [ -z "$current" ]; then
+        echo -e "${RED}❌ FATAL: 生产模式下 ${key} 必须显式设置${NC}" >&2
+        echo -e "${YELLOW}   ${hint}${NC}" >&2
+        exit 1
+    fi
+
+    local insecure
+    for insecure in "${insecure_values[@]}"; do
+        if [ "$current" = "$insecure" ]; then
+            echo -e "${RED}❌ FATAL: 生产模式下 ${key} 仍为已知开发默认值 (${insecure})${NC}" >&2
+            echo -e "${YELLOW}   ${hint}${NC}" >&2
+            exit 1
+        fi
+    done
+}
+
 # 自动 bootstrap 缺失的 env 文件（首次启动友好）
 # 1) 根 .env 缺失 → 从 .env.example 拷贝
 # 2) .env 中关键密钥字段为空 → 就地生成强密钥（JWT/内部令牌/Fernet）
@@ -224,6 +279,28 @@ bootstrap_env() {
             _fkey="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
         fi
         bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$_fkey"
+    fi
+
+    if [ "$PROD_MODE" = true ]; then
+        # POSTGRES_PASSWORD 不能由脚本静默轮换：PG 容器只在 PGDATA 首次初始化时
+        # 写入这个口令，之后启动忽略 env。强行替换会让 backend 拿新口令连库直接
+        # 28P01，已部署的实例会被这次「加固」打挂。改成检测到默认值即停机引导
+        # 运维手动 ALTER ROLE。
+        require_prod_secure_field "POSTGRES_PASSWORD" \
+            "请在 .env 中将 POSTGRES_PASSWORD 设为强随机值 (e.g. openssl rand -base64 48)；如已用默认值初始化数据库，请同步执行 ALTER ROLE aetherblog WITH PASSWORD '...'; 然后再重启。" \
+            "aetherblog123"
+
+        # REDIS_PASSWORD 安全可旋转：Redis 容器在每次启动时从 --requirepass 读取
+        # 当前 env 值，AOF/RDB 不持久化口令，所以静默生成强密钥不会与持久数据分叉。
+        bootstrap_prod_secure_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')" "aetherblog_dev"
+
+        # 仅当网关前面有 HTTPS 终结时才正确——否则浏览器不回带 Cookie，登录会断。
+        bootstrap_prod_secure_field "AUTH_COOKIE_SECURE" "true" "false"
+
+        # 注：不在这里改写 REDIS_HOST。`./start.sh --prod` 把 backend / ai-service
+        # 跑在宿主机进程里，宿主机 DNS 解析不到容器服务名 "redis"。要改成全容器化
+        # 部署请走 `docker compose -f docker-compose.prod.yml up`，那条路径下
+        # REDIS_HOST 由 compose 注入，而不是这个脚本。
     fi
 
     # 前端 .env.local
