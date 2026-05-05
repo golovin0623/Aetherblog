@@ -189,6 +189,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
   const handleCreate = useCallback(() => {
     const now = Date.now();
+    // 新会话继承当前 override —— 用户在 EmptyState（或上一个会话）选过模型
+    // 后点"+ 新建会话"，应该把 pending 选择带进新会话，而不是被清空回默认。
+    // 与 handleSend 内联新建分支语义一致：override 是"用户最近的主动选择"，
+    // 新会话是它的应用对象。useEffect 随后会因 activeSession.id 变化清空
+    // override，但此时 modelId/providerCode 已固化在 session 存档里。
     const sess: AgentSession = {
       id: newSessionId(),
       title: '新对话',
@@ -196,11 +201,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       createdAt: now,
       updatedAt: now,
       messages: [],
+      modelId: sessionModelOverride ? sessionModelOverride.modelId : null,
+      providerCode: sessionModelOverride ? sessionModelOverride.providerCode : null,
     };
     setSessions((list) => [sess, ...list]);
     setActiveId(sess.id);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, []);
+  }, [sessionModelOverride]);
 
   const handleSelect = useCallback(
     (id: string) => {
