@@ -240,6 +240,15 @@ class LlmRouter:
         if not model:
             raise ValueError("Requested model not found")
 
+        model_type = (model.model_type or "chat").lower()
+        capabilities = model.capabilities if isinstance(model.capabilities, dict) else {}
+        if (
+            not model.is_enabled
+            or model_type in {"embedding", "audio", "image"}
+            or capabilities.get("chat") is False
+        ):
+            raise ValueError("Requested model is not available for agent chat")
+
         credential = await self.model_router.credential_resolver.get_credential(
             model.provider_code,
             user_id=user_id,
