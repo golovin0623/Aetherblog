@@ -186,6 +186,30 @@ bootstrap_secret_field() {
     echo -e "${GREEN}   ✅ 已自动生成 ${key}${NC}"
 }
 
+# 生产模式下，若配置缺失或仍是已知开发默认值，则强制修复为安全值。
+bootstrap_prod_secure_field() {
+    local key=$1
+    local secure_value=$2
+    shift 2
+    local insecure_values=("$@")
+    local current
+    current=$(get_env_field "$key")
+
+    if [ -z "$current" ]; then
+        bootstrap_secret_field "$key" "$secure_value"
+        return 0
+    fi
+
+    local insecure
+    for insecure in "${insecure_values[@]}"; do
+        if [ "$current" = "$insecure" ]; then
+            sed_inplace "s|^${key}=.*|${key}=${secure_value}|" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}   ✅ 生产模式已修复 ${key}${NC}"
+            return 0
+        fi
+    done
+}
+
 # 自动 bootstrap 缺失的 env 文件（首次启动友好）
 # 1) 根 .env 缺失 → 从 .env.example 拷贝
 # 2) .env 中关键密钥字段为空 → 就地生成强密钥（JWT/内部令牌/Fernet）
@@ -224,6 +248,13 @@ bootstrap_env() {
             _fkey="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
         fi
         bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$_fkey"
+    fi
+
+    if [ "$PROD_MODE" = true ]; then
+        bootstrap_prod_secure_field "POSTGRES_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')" "aetherblog123"
+        bootstrap_prod_secure_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')" "aetherblog_dev"
+        bootstrap_prod_secure_field "AUTH_COOKIE_SECURE" "true" "false"
+        bootstrap_prod_secure_field "REDIS_HOST" "redis" "localhost"
     fi
 
     # 前端 .env.local
