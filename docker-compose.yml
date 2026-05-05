@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: aetherblog
       POSTGRES_USER: aetherblog
-      POSTGRES_PASSWORD: aetherblog123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aetherblog123}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

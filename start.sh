@@ -262,16 +262,12 @@ bootstrap_env() {
         echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
     fi
 
-    # 数据库/缓存密码：仅在非生产模式下自动填充。
-    # 必须与 docker-compose.yml 写死/默认的口令保持一致——postgres 服务把
-    # POSTGRES_PASSWORD 硬编码为 aetherblog123（PGDATA 初始化锁定），redis 走
-    # ${REDIS_PASSWORD:-aetherblog_dev} 兜底。所以这里 bootstrap 必须写同样的
-    # 值，否则 backend 会拿随机口令连库 28P01，破坏一行命令本地启动。
-    # 生产模式由下方 require_/bootstrap_prod_secure_field 接管，避免 PGDATA 与
-    # .env 静默分叉。
+    # 数据库/缓存密码：非生产模式下自动生成（或保留现值）强随机口令。
+    # docker-compose.yml 已改为读取 .env 中的 POSTGRES/REDIS 密码（并保留
+    # 仅兜底默认值），避免把公开弱口令写入共享根 .env 后被生产 compose 复用。
     if [ "$PROD_MODE" = false ]; then
-        bootstrap_secret_field "POSTGRES_PASSWORD" "aetherblog123"
-        bootstrap_secret_field "REDIS_PASSWORD" "aetherblog_dev"
+        bootstrap_secret_field "POSTGRES_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
+        bootstrap_secret_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')"
     fi
 
     # JWT 签名启动 seed
