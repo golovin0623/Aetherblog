@@ -55,11 +55,21 @@ func (s *AuthService) FindByUsernameOrEmail(ctx context.Context, identifier stri
 // CheckUserCanLogin 检查用户账号状态是否允许登录。
 // 当账号状态非 ACTIVE 时返回错误，提示账号已被禁用或未激活。
 //
-// 注意：MustChangePassword 不在此处拦截 —— 拦截下来用户连 JWT 都拿不到，
+// 注意：一般情况下 MustChangePassword 不在此处拦截 —— 拦截下来用户连 JWT 都拿不到，
 // 而 /change-password 端点本身需要 JWT 鉴权，会形成自服务死锁。
 // 安全兜底改在 middleware.RequirePasswordRotated：登录可正常签发 token，
 // 但 token 携带 mcp=true 时除 /me /change-password /refresh /logout 外的
 // 接口一律 403。flag 在用户改密成功后由 user_repo.UpdatePassword 自动清零。
+//
+// 例外：仅当三项同时成立 —— 用户名 == "admin"、must_change_password == true、
+// password_hash 完全等于 migrations/000002_seed_data.up.sql 中写入的种子哈希
+// （即 admin/admin123 默认凭据）—— 才在此层直接拒绝登录，避免远程攻击者利用
+// 已公开的默认凭据获得 JWT 后通过 /change-password 完成账号接管。
+// 该例外只覆盖未经初始化的全新部署：部署方需要带外（CLI 工具或直接执行
+// SQL `UPDATE users SET password_hash=... WHERE username='admin';`）将种子
+// 哈希替换为新的强口令哈希后，本地用户即可走正常的 must_change_password
+// 流程登录并完成自助改密。普通 must_change_password 用户（非种子 admin）
+// 不受影响。
 func (s *AuthService) CheckUserCanLogin(u *model.User) error {
 	if u.Status != "ACTIVE" {
 		return errors.New("账号已被禁用或未激活")
