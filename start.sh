@@ -279,8 +279,24 @@ bootstrap_env() {
     # 启动时白白生成一次随机串再丢弃（gemini review on PR #613）。
     if [ "$PROD_MODE" = false ]; then
         if [ -z "$(get_env_field POSTGRES_PASSWORD)" ]; then
-            bootstrap_secret_field "POSTGRES_PASSWORD" "$(gen_url_safe_secret)"
+            # PGDATA 一次性绑定 POSTGRES_PASSWORD：postgres 容器只在卷首次
+            # 初始化时写入该口令，之后启动忽略 env。若 postgres_data 卷已存在
+            # （老版本用 docker-compose 兜底默认 aetherblog123 起过），现在生成
+            # 新随机口令会让 backend / AI 28P01（codex P2 review on PR #613）。
+            # 策略：仅在能确认卷不存在（fresh install）时才生成强随机口令；
+            # 其他情况（卷已存在 / docker daemon 离线无法判断）沿用历史默认值
+            # 保护升级路径，用户可手动改 .env + ALTER ROLE 切到强随机。
+            if command -v docker >/dev/null 2>&1 \
+               && docker info >/dev/null 2>&1 \
+               && ! docker volume inspect aetherblog_postgres_data >/dev/null 2>&1; then
+                bootstrap_secret_field "POSTGRES_PASSWORD" "$(gen_url_safe_secret)"
+            else
+                bootstrap_secret_field "POSTGRES_PASSWORD" "aetherblog123"
+                echo -e "${YELLOW}   ℹ️  POSTGRES_PASSWORD 沿用 docker-compose 历史默认值，避免与既存 postgres_data 卷分叉；如需强随机口令请手动改 .env 后 ALTER ROLE${NC}"
+            fi
         fi
+        # REDIS_PASSWORD 不持久化：redis 容器每次启动从 --requirepass 读 env，
+        # AOF/RDB 不存口令，所以即使 redis_data 卷已存在也可以安全轮换。
         if [ -z "$(get_env_field REDIS_PASSWORD)" ]; then
             bootstrap_secret_field "REDIS_PASSWORD" "$(gen_url_safe_secret)"
         fi
