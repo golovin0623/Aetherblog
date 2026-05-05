@@ -1,0 +1,18 @@
+[Unit]
+Description=Restart deploy-webhook on staleness sentinel
+# 由 aetherblog-webhook-restart.path 触发. 跑 root 身份, 无 sandbox: 这样才能
+# `systemctl restart deploy-webhook`. 唯一职责是 sleep N 秒 + 删 sentinel +
+# restart, 没有别的逻辑, 攻击面就这一条命令.
+
+# 不要 After=network 之类: path-unit 触发时本服务必须立刻可用.
+
+[Service]
+Type=oneshot
+# 2 秒延迟原因: deploy.sh trap EXIT 写出 sentinel 那一瞬间 bash 还没真正退出,
+# subprocess.run 也还在 wait, webhook_server.py 也还没把 200 写回 socket.
+# +2s 让这条链路全部走完, restart 不会 SIGTERM 掉正在 finish 中的 deploy.sh
+# 从而被 webhook_server 误报 500. (CodexP1 on PR#612 的同款约束,
+# 这里在 root context 重新实现而已.)
+ExecStart=/bin/sh -c 'sleep 2 && rm -f /run/aetherblog/restart-webhook && /usr/bin/systemctl restart deploy-webhook.service'
+
+# 不要 Restart= —— 这是个 oneshot, 失败了不应自重启.

@@ -229,12 +229,25 @@ fi
 
 if $DRY_RUN; then
   echo "[DRY-RUN] cp $REPO_ROOT/ops/webhook/deploy-webhook.service $UNIT_FILE"
+  echo "[DRY-RUN] cp $REPO_ROOT/ops/webhook/aetherblog-webhook-restart.{path,service} /etc/systemd/system/"
 else
   cp "$REPO_ROOT/ops/webhook/deploy-webhook.service" "$UNIT_FILE"
   chmod 0644 "$UNIT_FILE"
+
+  # 装 self-restart pair: path-unit 监听 sentinel + service-unit 真正 restart.
+  # 解决 PR #605 切到 User=webhook 后 deploy.sh 无权 systemctl restart 的问题.
+  cp "$REPO_ROOT/ops/webhook/aetherblog-webhook-restart.path" \
+     /etc/systemd/system/aetherblog-webhook-restart.path
+  cp "$REPO_ROOT/ops/webhook/aetherblog-webhook-restart.service" \
+     /etc/systemd/system/aetherblog-webhook-restart.service
+  chmod 0644 /etc/systemd/system/aetherblog-webhook-restart.path \
+             /etc/systemd/system/aetherblog-webhook-restart.service
 fi
 
 run systemctl daemon-reload
+# 启 path-unit (它装在 multi-user.target, 但显式 enable + start 让首次安装即时生效)
+run systemctl enable aetherblog-webhook-restart.path
+run systemctl start aetherblog-webhook-restart.path
 
 # -----------------------------------------------------------------------------
 # Step 7: 启服务 + 验证

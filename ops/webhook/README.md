@@ -150,11 +150,20 @@ chmod 0640 /etc/aetherblog/webhook.env
 chown root:webhook /etc/aetherblog/webhook.env
 unset WEBHOOK_SECRET
 
-# 6) 安装 systemd unit 并启动 (清掉旧 systemctl edit override, 否则 ExecStart
-#    可能被覆盖回 /root/.pyenv 或老路径)
+# 6) 安装 systemd unit + 自重启 path/service pair, 并启动
+#    - 清掉旧 systemctl edit override, 否则 ExecStart 可能被覆盖回 /root/.pyenv 或老路径
+#    - aetherblog-webhook-restart.{path,service} 是 root 端的 self-restart helper:
+#      User=webhook 跑的 deploy.sh 没有 systemctl restart 权限, 改为 touch
+#      /run/aetherblog/restart-webhook 让 path-unit 触发 root service-unit 来 restart
 rm -rf /etc/systemd/system/deploy-webhook.service.d
 cp ops/webhook/deploy-webhook.service /etc/systemd/system/deploy-webhook.service
+cp ops/webhook/aetherblog-webhook-restart.path \
+   /etc/systemd/system/aetherblog-webhook-restart.path
+cp ops/webhook/aetherblog-webhook-restart.service \
+   /etc/systemd/system/aetherblog-webhook-restart.service
 systemctl daemon-reload
+systemctl enable aetherblog-webhook-restart.path
+systemctl start aetherblog-webhook-restart.path
 systemctl enable deploy-webhook
 systemctl restart deploy-webhook
 systemctl status deploy-webhook --no-pager

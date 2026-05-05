@@ -525,7 +525,7 @@ restart_webhook_if_stale() {
   if [ ! -f "$webhook_py" ]; then
     return
   fi
-  if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
+  if ! command -v systemctl >/dev/null 2>&1; then
     return
   fi
   if [ "$(systemctl is-active deploy-webhook 2>/dev/null || true)" != "active" ]; then
@@ -557,16 +557,46 @@ restart_webhook_if_stale() {
   fi
 
   echo "[$(date -Iseconds)] $webhook_py is newer than running deploy-webhook (file_mtime=$file_mtime, proc_start=$proc_start_epoch)"
-  echo "[$(date -Iseconds)] Scheduling deploy-webhook restart (+2s) at deploy.sh EXIT (subprocess already returned, 200 already flushed)"
 
-  # unit 名带纳秒避免快速串行部署时撞名；CentOS 7 的 systemd 219 没有
-  # --collect, transient unit 跑完后仍会以 inactive 形态留在内存直到 reboot,
-  # 影响可忽略。
-  local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
-  if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
-         systemctl restart deploy-webhook 2>&1; then
-    echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+  # 两条 restart 路径，按可用性自动 fallback：
+  #
+  # (a) Sentinel + path-unit (推荐, hardened 模式必须走这条):
+  #     PR #605 让 webhook 跑 User=webhook + NoNewPrivileges=true 之后, deploy.sh
+  #     是无特权进程, 不能直接 `systemctl restart deploy-webhook` (Codex P1 on
+  #     PR #605). 改为 touch 一个 sentinel 文件 (默认 /run/aetherblog/restart-webhook,
+  #     RuntimeDirectory=aetherblog 已经 chown webhook:webhook), 装在系统级别的
+  #     `aetherblog-webhook-restart.path` 监听该文件出现, 触发 root oneshot 服务
+  #     `aetherblog-webhook-restart.service` 跑 `sleep 2 && systemctl restart`.
+  #     全程不需要 sudo / polkit / 关 NoNewPrivileges.
+  #
+  # (b) systemd-run direct (老 root 模式 / 手工 bash deploy.sh 兜底):
+  #     deploy.sh 当前进程是 root 时, 直接 systemd-run --on-active=2s 调度,
+  #     行为跟 PR #612 原版一致. path-unit 可以未安装.
+  local restart_sentinel="${WEBHOOK_RESTART_SENTINEL:-/run/aetherblog/restart-webhook}"
+  local sentinel_dir
+  sentinel_dir=$(dirname "$restart_sentinel")
+
+  if [ -d "$sentinel_dir" ] && [ -w "$sentinel_dir" ]; then
+    if printf '%s file=%s mtime=%s proc=%s\n' \
+         "$(date -Iseconds)" "$webhook_py" "$file_mtime" "$proc_start_epoch" \
+         > "$restart_sentinel" 2>/dev/null; then
+      echo "[$(date -Iseconds)] Wrote restart sentinel: $restart_sentinel (root path-unit will restart deploy-webhook in ~2s)"
+      return
+    fi
+    echo "[$(date -Iseconds)] WARN: failed to write $restart_sentinel, falling back to systemd-run"
   fi
+
+  if [ "$(id -u)" = "0" ] && command -v systemd-run >/dev/null 2>&1; then
+    local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
+    echo "[$(date -Iseconds)] Scheduling deploy-webhook restart via systemd-run (+2s, root fallback)"
+    if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
+           systemctl restart deploy-webhook 2>&1; then
+      echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+    fi
+    return
+  fi
+
+  echo "[$(date -Iseconds)] WARN: webhook is stale but neither sentinel ($restart_sentinel) nor systemd-run-as-root is available; manually run: sudo systemctl restart deploy-webhook"
 }
 
 _post_deploy_hooks() {
