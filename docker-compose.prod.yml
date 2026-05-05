@@ -185,25 +185,8 @@ services:
     volumes:
       - aetherblog_uploads:/app/uploads
       - aetherblog_logs:/app/logs
-      # 以只读方式挂载 Docker socket，让 admin 后台"容器监控"面板
-      # (apps/server-go/internal/service/container_monitor.go) 能调用 Docker
-      # API 拉取容器列表 / 统计指标。该接口受 /v1/admin/monitor/* 保护
-      # (仅管理员 JWT 可访问)，且只执行 GET 请求。
-      #
-      # 安全权衡说明：即使是 :ro 方式挂载 docker.sock，也通过 Docker daemon
-      # API 暴露了等同 root 的宿主机权限 —— ":ro" 仅防止写入 *socket 文件本身*，
-      # 并不能限制 API 操作面。对于自托管、仅管理员可用的监控场景，我们接受
-      # 这个折中。如需更严格的部署，建议改用 docker-socket-proxy
-      # (tecnativa/docker-socket-proxy) 把 API 限制到 /containers/json 和
-      # /containers/*/stats。
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    # backend 镜像以 UID 1001（非 root）运行。宿主机的 /var/run/docker.sock
-    # 通常归属 root:docker（mode 0660），所以 UID 1001 必须加入宿主机的 docker
-    # 组才能读取。DOCKER_GID 必须与宿主机的 docker 组 GID 一致 ——
-    # 用 `stat -c '%g' /var/run/docker.sock` 查询。默认 999 适用于 Ubuntu/Debian；
-    # 若不同，请在 .env 中设置 DOCKER_GID。
-    group_add:
-      - "${DOCKER_GID:-999}"
+      # REMOVED for security: mounting docker.sock grants host-root-equivalent
+      # privilege to any code execution inside backend container.
     depends_on:
       postgres:
         condition: service_healthy
