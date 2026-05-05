@@ -5,7 +5,15 @@ After=network.target
 # ============================================================================
 # 部署形态：unprivileged user + 127.0.0.1 + systemd hardening
 #
-# 关键约束（PR #459 / #586 的产物，落地前先看 ops/webhook/README.md）：
+# 系统要求（硬性）：
+#   - systemd >= 235 (2017-10): 用到 LockPersonality / LogsDirectory /
+#     RuntimeDirectory, 三者都是 235 引入. CentOS 7 / RHEL 7 (systemd 219)
+#     不支持本 unit, 老主机请直跑 python3 webhook_server.py 走 fallback
+#     路径, 见 ops/webhook/README.md "systemd < 235 主机" 段.
+#   - 现代主流发行版均覆盖: RHEL/CentOS 8 (239), Ubuntu 18.04+ (237+),
+#     Debian 10+ (241), Ubuntu 20.04+ (245).
+#
+# 关键约束（PR #459 / #586 / #587 的产物，落地前先看 ops/webhook/README.md）：
 #   - User/Group=webhook：无特权账号，需在安装前 useradd 创建。
 #   - WorkingDirectory + ReadWritePaths 集中在 /var/lib/aetherblog/，
 #     ProtectHome=true 会**屏蔽 /root**——仓库不能再放在 /root/Aetherblog。

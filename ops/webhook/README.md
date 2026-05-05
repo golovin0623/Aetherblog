@@ -14,14 +14,17 @@
 | --- | --- | --- |
 | 运行用户 | `webhook` | 使用无特权用户运行服务 |
 | 工作目录 | `/var/lib/aetherblog/webhook` | 独立目录，避免直接在 `/root` 下运行 |
-| Python 解释器 | 仓库默认 `/usr/bin/python3`，**当前生产** `systemctl edit` 覆盖为 `/root/.pyenv/versions/3.9.9/bin/python3`（pyenv） | 通过 `Environment=PYTHON_BIN=...` 调整，无需改 ExecStart |
-| Python 最低版本 | **3.6** (CentOS 7 / RHEL 7 系统默认就是这个版本) | `webhook_server.py` 顶部注释列了不能用的 3.7+ 语法; 改这个文件时盯一下别误用 `from __future__ import annotations` / 海象运算符 / 内置泛型 |
+| Python 解释器 | 仓库默认 `/usr/bin/python3`，**当前生产** `systemctl edit` 覆盖为 `/opt/pyenv/versions/3.9.9/bin/python3`（pyenv，须放在 `/opt` 或 `/usr/local`，避开 `ProtectHome=true` 屏蔽的 `/root`、`/home`） | 通过 `Environment=PYTHON_BIN=...` 调整，无需改 ExecStart |
+| Python 最低版本 | **3.6**（webhook_server.py 直跑 fallback 路径仍兼容 CentOS 7 / RHEL 7 默认 3.6.8） | 注：systemd 加固路径见下条 systemd 版本要求；CentOS 7 systemd 219 不支持本 unit，得直跑 `python3 webhook_server.py` |
+| **systemd 最低版本** | **235+**（2017-10）  | unit 同时使用 `LockPersonality` / `LogsDirectory` / `RuntimeDirectory`，三者都是 235 引入。覆盖 RHEL/CentOS 8 (239) / Ubuntu 18.04+ (237+) / Debian 10+ (241)；**不覆盖 CentOS 7 (219)** |
 | 监听地址 | `127.0.0.1:7868` | 建议仅本机监听并通过反向代理暴露 |
 | WEBHOOK_SECRET | `/etc/aetherblog/webhook.env` | 避免密钥出现在 world-readable unit 文件 |
 | 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
 | systemd 加固指令 | 已启用 | `NoNewPrivileges` / `ProtectSystem` / `ProtectHome` / `SystemCallFilter` 等 |
 
 > ⚠️ **从 `/root/Aetherblog` 迁移**: 加固后的 unit 启用 `ProtectHome=true`, 屏蔽 `/root`。如果服务器上原来仓库就在 `/root/Aetherblog`, **必须**先迁移到 `/var/lib/aetherblog/Aetherblog` (见下方安装步骤)，否则 webhook 进程既看不到工作树、也写不进去, 第一次部署就会 500。
+
+> ⚠️ **systemd < 235 主机**: unit 用到 `LockPersonality` / `LogsDirectory` / `RuntimeDirectory`，三者都是 systemd 235 (2017-10) 引入。CentOS 7 / RHEL 7 (systemd 219) 上加载会报 `Unknown lvalue` 然后启动失败。这类老主机请直跑 `WEBHOOK_SECRET=... python3 webhook_server.py`，不要用本 unit；或先迁到现代发行版（CentOS 7 自身已于 2024-06-30 EOL）。
 
 ## Repo sync 顺序
 

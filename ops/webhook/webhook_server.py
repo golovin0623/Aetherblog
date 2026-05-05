@@ -21,6 +21,10 @@ DEPLOYMENT NOTE: 加固后的 unit 启用 ``ProtectHome=true`` 屏蔽 ``/root``,
 路径会被 unit 显式覆盖。
 """
 # 兼容 Python 3.6+ (CentOS 7 / RHEL 7 默认装的 /usr/bin/python3 是 3.6.8).
+# 这条 Python 兼容承诺**只覆盖直跑 fallback 路径** ——
+# 仓库版 systemd unit 用了 LockPersonality / LogsDirectory / RuntimeDirectory,
+# 这三个指令都是 systemd 235+ 引入, CentOS 7 (systemd 219) 上加载即失败.
+# 所以 CentOS 7 主机走 fallback `python3 webhook_server.py`, systemd 加固版本只在 235+ 主机生效.
 # 这意味着不能用:
 #   - from __future__ import annotations  (3.7+)
 #   - f"{x=}"  (3.8+)
