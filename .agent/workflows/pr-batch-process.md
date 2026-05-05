@@ -41,12 +41,9 @@ description: 批量处理 open PR 的辅助流程（需人工确认，禁止自�
    python3 /tmp/gh_pr_helper.py check <PR_NUMBER>
    ```
 
-7. 若需要本地检出分支，**禁止**把 `<branch_name>` 占位符直接替换进单/双引号字符串（含单引号的分支名，如 `feat/o'reilly`，会让外层引号闭合早，从而注入命令）。改为通过已认证的 `gh` 会话直接读取，再用 `git check-ref-format --branch` 校验、用 `--` 与双引号传参：
+7. 若需要本地检出分支，**禁止**把 PR 元数据（尤其分支名）直接拼接进 shell 命令 —— 含单引号的合法分支名（如 `feat/o'reilly`）会闭合外层引号、在任何 `check-ref-format` 校验之前就注入命令。改为使用官方 `gh pr checkout`，它会自动处理 fork 远端、分支追踪、同名本地分支冲突，并完全规避注入面：
    ```bash
-   branch_name=$(gh pr view "<PR_NUMBER>" --json headRefName -q .headRefName)
-   git check-ref-format --branch "$branch_name"
-   git fetch origin -- "$branch_name"
-   git checkout -b "$branch_name" "origin/$branch_name"
+   gh pr checkout "<PR_NUMBER>"
    ```
 
 8. 如出现冲突，仅做本地修复建议；是否提交由用户明确确认后再执行。
