@@ -10,6 +10,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Sparkles,
 } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
@@ -48,6 +49,15 @@ const PROMPT_SUGGESTIONS = [
   '把这段话翻译成英文',
 ];
 
+// 模式名的中文显示映射（顶栏 caption 等用户可见位置使用）。
+// ModeSwitch 内部 segmented 仍用工程字面 Chat / Cowork / Code + SOON 徽标，
+// 此映射只服务于"灵境 · X"形态的副标。
+const MODE_LABEL: Record<AgentMode, string> = {
+  chat: '对话',
+  cowork: '协作',
+  code: '编排',
+};
+
 /**
  * /agent/workspace —— Agent 工作台主界面
  *
@@ -82,6 +92,18 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // chat 请求并清空。换会话或显式移除时也清空。
   const [pendingArticles, setPendingArticles] = useState<AgentArticle[]>([]);
   const [pendingTags, setPendingTags] = useState<AgentTag[]>([]);
+  // sessionModelOverride 三态：
+  //   · null              —— 未触达；ModelPicker.value 与 send payload 落到
+  //                         activeSession 存档值（或全 null 让后端走默认路由）。
+  //   · { modelId, providerCode } 含 null/null —— 用户主动选"自动选择"。
+  //   · { modelId: 'X', providerCode: 'Y' }   —— 用户主动选了具体模型。
+  // 使用 { ... } | null 而非 nullable 字段是为了区分"未操作"与"主动选自动"
+  // —— 后者的两个 null 值是真实意图，不能被 ?? 当作 missing 兜底回 session。
+  // 切换 activeSession 时清空 override（用户进入新会话视为新意图起点）。
+  const [sessionModelOverride, setSessionModelOverride] = useState<{
+    modelId: string | null;
+    providerCode: string | null;
+  } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgIdRef = useRef<string | null>(null);
@@ -116,6 +138,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     () => sessions.find((s) => s.id === activeId) ?? null,
     [sessions, activeId],
   );
+
+  // 切到不同会话时清空 override —— 进入新会话视为新意图起点，不该被前一个
+  // 会话的 picker 选择残留污染。仅依赖 id：会话内 modelId 变化（如自己改名
+  // 或 handleModelChange 更新）不重置 override，避免覆盖即时态。
+  useEffect(() => {
+    setSessionModelOverride(null);
+  }, [activeSession?.id]);
 
   // ---- 会话操作 ----
   // 把 streaming 状态收尾成"已中断"。被两条路径复用：
@@ -160,6 +189,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
   const handleCreate = useCallback(() => {
     const now = Date.now();
+    // 新会话继承当前 override —— 用户在 EmptyState（或上一个会话）选过模型
+    // 后点"+ 新建会话"，应该把 pending 选择带进新会话，而不是被清空回默认。
+    // 与 handleSend 内联新建分支语义一致：override 是"用户最近的主动选择"，
+    // 新会话是它的应用对象。useEffect 随后会因 activeSession.id 变化清空
+    // override，但此时 modelId/providerCode 已固化在 session 存档里。
     const sess: AgentSession = {
       id: newSessionId(),
       title: '新对话',
@@ -167,11 +201,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       createdAt: now,
       updatedAt: now,
       messages: [],
+      modelId: sessionModelOverride ? sessionModelOverride.modelId : null,
+      providerCode: sessionModelOverride ? sessionModelOverride.providerCode : null,
     };
     setSessions((list) => [sess, ...list]);
     setActiveId(sess.id);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, []);
+  }, [sessionModelOverride]);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -216,6 +252,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
 
   const handleModelChange = useCallback(
     (modelId: string | null, providerCode: string | null) => {
+      // 用户在 EmptyState（无活跃会话）也能切换模型 —— 选择被存到 override，
+      // 等真正发送时由 handleSend 写入新会话。否则 ModelPicker 在空态下会
+      // 完全失效（用户最常见的"打开就选模型"场景）。
+      setSessionModelOverride({ modelId, providerCode });
       if (!activeId) return;
       setSessions((list) =>
         list.map((s) =>
@@ -248,6 +288,10 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     let session = activeSession;
     if (!session) {
       const now = Date.now();
+      // 新会话继承用户在 EmptyState 选过的模型 override —— 这一步配合
+      // handleModelChange 的"无 activeId 也保存 override"才闭环：用户在空态
+      // 选 gpt-5.5 → 输入 → 发送，新会话从一开始就带上 gpt-5.5。
+      // 没有 override 时（用户没动过模型）落到 null，让后端走默认路由。
       session = {
         id: newSessionId(),
         title: deriveSessionTitle(text),
@@ -255,6 +299,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         createdAt: now,
         updatedAt: now,
         messages: [],
+        modelId: sessionModelOverride ? sessionModelOverride.modelId : null,
+        providerCode: sessionModelOverride ? sessionModelOverride.providerCode : null,
       };
       setSessions((list) => [session as AgentSession, ...list]);
       setActiveId(session.id);
@@ -404,8 +450,15 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         sessionId: sessId,
         mode: effectiveMode,
         messages: history,
-        modelId: session.modelId ?? null,
-        providerCode: session.providerCode ?? null,
+        // 三元而非 ??：override = { modelId: null, ... } 表示用户主动选了
+        // "自动选择"，应该原样发送（让后端走默认路由）。?? 会把 null 当 missing
+        // 然后回退到 session.modelId（旧值），导致用户看到的"已切换"被静默忽略。
+        modelId: sessionModelOverride
+          ? sessionModelOverride.modelId
+          : (session.modelId ?? null),
+        providerCode: sessionModelOverride
+          ? sessionModelOverride.providerCode
+          : (session.providerCode ?? null),
         articleIds: articleIds.length ? articleIds : null,
         tagSlugs: tagSlugs.length ? tagSlugs : null,
       },
@@ -474,7 +527,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       streamingMsgIdRef.current = null;
     }
     setBusy(false);
-  }, [draft, busy, state, activeSession, pendingArticles, pendingTags]);
+  }, [draft, busy, state, activeSession, pendingArticles, pendingTags, sessionModelOverride]);
 
   const handleAbort = useCallback(() => {
     finalizeStreamingMessage('已中断');
@@ -672,7 +725,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
               aria-label="打开侧栏"
-              className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
+              className="md:hidden inline-flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
             >
               <Menu className="w-[18px] h-[18px]" />
             </button>
@@ -699,27 +752,78 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             <div className="hidden lg:block w-px h-4 bg-[var(--ink-subtle)]/25 mx-1" />
             <div className="min-w-0 flex flex-col">
               <span
-                className="text-[var(--ink-primary)] text-[14px] font-medium truncate max-w-[42vw] sm:max-w-[24rem]"
+                className="text-[var(--ink-primary)] text-[14px] font-medium truncate max-w-[58vw] sm:max-w-[24rem]"
                 title={activeSession?.title || ''}
               >
                 {activeSession?.title || '尚未选择会话'}
               </span>
               <span className="font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-                Agent · {activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat'}
+                灵境 · {MODE_LABEL[activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat']}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <ModeSwitch
-              value={activeSession?.mode || 'chat'}
-              onChange={handleModeChange}
-            />
+            {/* ModeSwitch 仅桌面显示 —— 移动端单手操作下三档 segmented 占用过多
+                横向空间，且 cowork/code 暂未上线（点击只是教育性 InfoPopover），
+                让出空间给"标题 + 新建"两件套更符合移动端高频动作分布。 */}
+            <div className="hidden sm:inline-flex">
+              <ModeSwitch
+                value={activeSession?.mode || 'chat'}
+                onChange={handleModeChange}
+              />
+            </div>
+            {/* 移动端最高频操作：一键新建会话。Sidebar drawer 内也有"新对话"
+                按钮，但顶栏直达更适合"边看边开新话题"的连续使用场景。 */}
+            <button
+              type="button"
+              onClick={handleCreate}
+              aria-label="新建会话"
+              title="新建会话"
+              className="sm:hidden inline-flex items-center justify-center w-10 h-10 -mr-1 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--aurora-1)] transition-colors active:scale-95"
+            >
+              <Plus className="w-[18px] h-[18px]" />
+            </button>
             <div className="hidden sm:flex items-center gap-1 pl-1 ml-1 border-l border-[var(--ink-subtle)]/15">
               <ThemeToggle size="sm" />
             </div>
           </div>
         </header>
+
+        {/* 移动端控制条：把"当前模式 / 模型选择 / 主题"集中到顶栏下方一行，
+            减少顶部认知负担。原顶栏 ModeSwitch 在 mobile 已隐藏，控制条以
+            只读 caption 形式展示当前模式（cowork/code 暂未上线，移动端没有
+            真实切换需求）；ModelPicker 走 activeSession ?? override 兜底，
+            与 composer 内的 ModelPicker 共享同一控制语义。 */}
+        <div className="sm:hidden px-3 pt-2 pb-1.5 border-b border-[var(--ink-subtle)]/10 bg-[var(--bg-substrate)]/88 backdrop-blur-md">
+          <div className="surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-2.5 py-2 flex items-center justify-between gap-2">
+            <div className="min-w-0 flex items-center gap-2">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                模式
+              </span>
+              <span className="text-[12px] text-[var(--ink-primary)] truncate">
+                {MODE_LABEL[activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat']}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ModelPicker
+                value={
+                  sessionModelOverride
+                    ? sessionModelOverride
+                    : {
+                        modelId: activeSession?.modelId ?? null,
+                        providerCode: activeSession?.providerCode ?? null,
+                      }
+                }
+                onChange={handleModelChange}
+                enabled={state.status === 'authed'}
+                placement="bottom-end"
+                compact
+              />
+              <ThemeToggle size="sm" />
+            </div>
+          </div>
+        </div>
 
         {/* 对话流 */}
         <div className="relative flex-1 min-h-0">
@@ -764,7 +868,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         {/* 输入栏（centered，max-w-3xl） —— ModelPicker 内嵌左侧。
             上方加一条从透明到 bg-substrate 的渐变蒙版，让滚动文本"溶入"
             composer 区域，避免最后一行字硬切在 composer 上沿。 */}
-        <div className="relative px-3 sm:px-6 pb-3 sm:pb-5 pt-1 max-w-3xl w-full mx-auto">
+        <div className="relative px-3 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5 pt-1 max-w-3xl w-full mx-auto">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -top-6 left-0 right-0 h-6"
@@ -781,16 +885,29 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             onAbort={handleAbort}
             busy={busy}
             leadingSlot={
-              <ModelPicker
-                value={{
-                  modelId: activeSession?.modelId ?? null,
-                  providerCode: activeSession?.providerCode ?? null,
-                }}
-                onChange={handleModelChange}
-                enabled={state.status === 'authed'}
-                placement="top-start"
-                compact
-              />
+              // 移动端 ModelPicker 已经在顶栏下方控制条暴露，composer 内不再
+              // 重复渲染（避免触控区域内同一控件出现两次造成歧义 + 节省横向
+              // 空间给主行的 @ # / + 发送按钮）。桌面端没有独立控制条，
+              // composer 仍承载 ModelPicker。
+              // value 三元：override 存在时优先采用（含"自动选择"的 null/null
+              // 真值），否则回到 activeSession 存档。EmptyState 下两条路径都
+              // 落到正确显示，且用户主动选"自动"不会被会话存档值覆盖。
+              <div className="hidden sm:block">
+                <ModelPicker
+                  value={
+                    sessionModelOverride
+                      ? sessionModelOverride
+                      : {
+                          modelId: activeSession?.modelId ?? null,
+                          providerCode: activeSession?.providerCode ?? null,
+                        }
+                  }
+                  onChange={handleModelChange}
+                  enabled={state.status === 'authed'}
+                  placement="top-start"
+                  compact
+                />
+              </div>
             }
             selectedArticles={pendingArticles}
             selectedTags={pendingTags}
@@ -801,7 +918,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             onRemoveTag={handleRemoveTag}
           />
           <p className="mt-1.5 text-center font-mono text-[9.5px] uppercase tracking-[0.24em] text-[var(--ink-muted)]/80">
-            Agent 可能出错 · 关键决定请二次核对
+            灵境 可能出错 · 关键决定请二次核对
           </p>
         </div>
       </section>
@@ -859,7 +976,7 @@ function EmptyState({
         transition={{ duration: 0.6, ease }}
         className="font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--aurora-1)]/85 mb-4"
       >
-        {siteTitle.toUpperCase()} · AGENT
+        {siteTitle.toUpperCase()} · 灵境
       </motion.p>
 
       <motion.h2

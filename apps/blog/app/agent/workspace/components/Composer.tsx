@@ -245,7 +245,9 @@ const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             >
               <SlashSquare className="w-3.5 h-3.5" />
             </ToolButton>
-            <ToolButton title="语音输入（待接入）" disabled>
+            {/* 语音输入暂为占位 —— 移动端横向空间紧张时优先让出给主要工具
+                （@ # /），桌面端继续暴露占位以维持视觉提示功能。 */}
+            <ToolButton title="语音输入（待接入）" disabled mobileHidden>
               <Mic className="w-3.5 h-3.5" />
             </ToolButton>
             <span className="hidden lg:inline ml-1.5 font-mono text-[10px] uppercase tracking-[0.22em] truncate">
@@ -343,12 +345,20 @@ interface ToolButtonProps {
   disabled?: boolean;
   active?: boolean;
   onClick?: () => void;
+  /** mobileHidden=true 时移动端隐藏，仅 ≥md 渲染。用于次要工具（如语音占位）
+   *  腾出移动端单手操作的横向空间。 */
+  mobileHidden?: boolean;
 }
 
 const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolButton(
-  { children, title, disabled, active, onClick },
+  { children, title, disabled, active, onClick, mobileHidden },
   ref,
 ) {
+  // 触控区：移动端 36×36（HIG 推荐 44，单手操作密集排列下选 36 平衡密度）；
+  // 桌面 28×28（hover-friendly 紧凑形态）。
+  const sizeClass = mobileHidden
+    ? 'hidden md:inline-flex w-7 h-7'
+    : 'inline-flex w-9 h-9 md:w-7 md:h-7';
   return (
     <button
       ref={ref}
@@ -357,7 +367,7 @@ const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolB
       disabled={disabled}
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all duration-200 ${
+      className={`${sizeClass} items-center justify-center rounded-lg transition-all duration-200 ${
         disabled
           ? 'opacity-40 cursor-not-allowed'
           : active
