@@ -39,6 +39,7 @@ import socket
 import socketserver
 import subprocess
 import sys
+import time
 from typing import Iterator, Optional, Tuple
 
 
@@ -74,6 +75,9 @@ DEPLOY_GIT_REF = os.environ.get("DEPLOY_GIT_REF", "origin/main")
 SKIP_GIT_SYNC = os.environ.get("SKIP_GIT_SYNC", "false").lower() == "true"
 GIT_FETCH_TIMEOUT = int(os.environ.get("GIT_FETCH_TIMEOUT", "120"))
 GIT_RESET_TIMEOUT = int(os.environ.get("GIT_RESET_TIMEOUT", "60"))
+# GFW 或瞬断会让单次 fetch 失败 (exit 128 / timeout); 重试最多 GIT_FETCH_RETRIES
+# 次, 每次间隔指数退避 (2s, 4s, ...). 默认 2 次重试 = 最多 3 次 fetch 尝试.
+GIT_FETCH_RETRIES = int(os.environ.get("GIT_FETCH_RETRIES", "2"))
 # 与 deploy.sh 共享同一把 flock —— sync 与手动 `bash deploy.sh` 之间互斥,
 # 避免两个 git fetch+reset 并发踩 .git/index.lock.
 LOCK_FILE = os.environ.get("LOCK_FILE", "/var/lock/aetherblog-deploy.lock")
@@ -121,13 +125,38 @@ def _sync_repo(commit_sha: str = "") -> Tuple[bool, str, str]:
         return True, "PROJECT_DIR=%s is not a git repo, skipping sync" % PROJECT_DIR, ""
     # str.removeprefix 是 Python 3.9+, 这里用 slice 表达式兼容到 3.6 (Ubuntu 20.04 默认 3.8).
     fetch_ref = (DEPLOY_GIT_REF[7:] if DEPLOY_GIT_REF.startswith("origin/") else DEPLOY_GIT_REF) or "main"
-    try:
-        subprocess.run(
-            ["git", "fetch", "--quiet", "--tags", "origin", fetch_ref],
-            cwd=PROJECT_DIR, check=True, timeout=GIT_FETCH_TIMEOUT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
-        )
 
+    # --- git fetch with exponential-backoff retry ---
+    # GFW / 代理瞬断会导致 exit 128 "Encountered end of file" 或 TimeoutExpired.
+    # 最多重试 GIT_FETCH_RETRIES 次, 退避 2s / 4s / 8s ...
+    fetch_err = None  # type: Optional[str]
+    for attempt in range(GIT_FETCH_RETRIES + 1):
+        if attempt > 0:
+            delay = 2 * (2 ** (attempt - 1))  # 2, 4, 8 ...
+            logging.warning(
+                "git fetch attempt %d/%d failed (%s), retrying in %ds",
+                attempt, GIT_FETCH_RETRIES + 1, fetch_err, delay,
+            )
+            time.sleep(delay)
+        try:
+            subprocess.run(
+                ["git", "fetch", "--quiet", "--tags", "origin", fetch_ref],
+                cwd=PROJECT_DIR, check=True, timeout=GIT_FETCH_TIMEOUT,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+            )
+            fetch_err = None
+            break
+        except subprocess.TimeoutExpired:
+            fetch_err = "git sync timed out: ['git', 'fetch', 'origin', %r]" % fetch_ref
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            fetch_err = "git sync failed (exit %s): %s" % (exc.returncode, stderr or str(exc.cmd))
+
+    if fetch_err:
+        return False, fetch_err, ""
+    # ------------------------------------------------
+
+    try:
         if commit_sha:
             # 形参已经在 _parse_request 里校验过 hex 格式, 这里再做对仓库的存在性
             # 与可达性校验, 避免调用方拿一个本仓库不认识的 hash 把 reset 打到任意
