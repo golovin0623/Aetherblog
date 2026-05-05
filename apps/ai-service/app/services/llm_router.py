@@ -242,9 +242,15 @@ class LlmRouter:
 
         model_type = (model.model_type or "chat").lower()
         capabilities = model.capabilities if isinstance(model.capabilities, dict) else {}
+        # 拒绝所有已知的非 chat 模型类型。保留 denylist (而非 allowlist) 是为了
+        # 兼容 DB 中 model_type 历史值 'text' / 'all' / NULL —— agent.py:329 与 :477
+        # 的 ModelPicker 同样按 COALESCE(model_type, 'chat') NOT IN (...) 约定。
+        # 新增非 chat 类型 (如 video / asr 变体) 时请同步扩充这里与 agent.py。
+        # is_enabled 校验有意保留: provider_registry 的 _model_cache 不会因为
+        # disable 操作主动失效, 这道闸是 stale-cache 命中后的最后兜底。
         if (
             not model.is_enabled
-            or model_type in {"embedding", "audio", "image"}
+            or model_type in {"embedding", "audio", "image", "tts", "stt", "text2video", "video"}
             or capabilities.get("chat") is False
         ):
             raise ValueError("Requested model is not available for agent chat")
