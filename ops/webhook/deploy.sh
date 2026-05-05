@@ -441,25 +441,8 @@ echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
 
 # ---------------------------------------------------------------------------
-# 部署后：完整 preflight 校验（运行时检查）
-# ---------------------------------------------------------------------------
-if [ -x "$PREFLIGHT_SCRIPT" ]; then
-  echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"
-  if [ "$PREFLIGHT_BLOCK" = "true" ]; then
-    # shellcheck disable=SC2086
-    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS
-  else
-    # shellcheck disable=SC2086
-    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS || echo "[$(date -Iseconds)] WARN: post-deploy preflight failed but PREFLIGHT_BLOCK=false"
-  fi
-fi
-
-echo "[$(date -Iseconds)] Running docker image prune -f"
-docker image prune -f
-
-# ---------------------------------------------------------------------------
 # 自动重启 deploy-webhook：webhook 是常驻 systemd 进程，磁盘上的 webhook_server.py
-# 改了不会被进程自己捡起来。这里在 deploy 末尾比对 mtime；新于进程启动时间就用
+# 改了不会被进程自己捡起来。这里比对 mtime，新于进程启动时间就用
 # `systemd-run --on-active=2s` 调度一次延迟 restart —— 既让本次 webhook 请求把
 # 200 写完，又让新代码在下一次部署立刻生效。
 #
@@ -471,6 +454,14 @@ docker image prune -f
 # 子进程仍在 deploy-webhook.service 的 cgroup 内，systemctl restart 触发的
 # `KillMode=control-group` 会把这个 sleeper 一起杀掉；transient unit 才能跑出
 # webhook 自己的 cgroup。
+#
+# **顺序很关键 —— 必须在 preflight 之前调用**：preflight.sh 里也有同款过期
+# 检查，且 deploy.sh 默认 `PREFLIGHT_BLOCK=true` + `set -e`，preflight 一旦因
+# webhook 过期 fail 就直接 exit，restart hook 跑不到 —— 下次部署还是过期，
+# 死循环直到人工 `systemctl restart deploy-webhook`。把调度提到 preflight 前，
+# `systemd-run` 是 fire-and-forget 异步定时器，独立于 deploy.sh 后续是否成功
+# / 是否被 set -e 终止；2s 后 webhook 必然被替换，下一次部署 preflight 自动
+# 转 PASS，整条恢复链自愈。
 # ---------------------------------------------------------------------------
 restart_webhook_if_stale() {
   local webhook_py="$PROJECT_DIR/ops/webhook/webhook_server.py"
@@ -523,5 +514,26 @@ restart_webhook_if_stale() {
 }
 
 restart_webhook_if_stale
+
+# ---------------------------------------------------------------------------
+# 部署后：完整 preflight 校验（运行时检查）
+#
+# 排在 restart_webhook_if_stale 之后：preflight 自带的 webhook 过期检查可能
+# 让 deploy.sh 在 set -e 下 exit 1，但此时 systemd-run 已经把恢复 timer 排
+# 出去了，CI 这次拿 500 是诊断信号，下次部署就自动恢复。
+# ---------------------------------------------------------------------------
+if [ -x "$PREFLIGHT_SCRIPT" ]; then
+  echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"
+  if [ "$PREFLIGHT_BLOCK" = "true" ]; then
+    # shellcheck disable=SC2086
+    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS
+  else
+    # shellcheck disable=SC2086
+    "$PREFLIGHT_SCRIPT" $PREFLIGHT_ARGS || echo "[$(date -Iseconds)] WARN: post-deploy preflight failed but PREFLIGHT_BLOCK=false"
+  fi
+fi
+
+echo "[$(date -Iseconds)] Running docker image prune -f"
+docker image prune -f
 
 echo "[$(date -Iseconds)] Deployment completed"
