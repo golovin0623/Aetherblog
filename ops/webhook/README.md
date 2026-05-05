@@ -12,17 +12,20 @@
 
 | 维度 | 当前生产 | 备注 |
 | --- | --- | --- |
-| 运行用户 | `webhook` | 使用无特权用户运行服务 |
-| 工作目录 | `/var/lib/aetherblog/webhook` | 独立目录，避免直接在 `/root` 下运行 |
-| Python 解释器 | 仓库默认 `/usr/bin/python3`，**当前生产** `systemctl edit` 覆盖为 `/root/.pyenv/versions/3.9.9/bin/python3`（pyenv） | 通过 `Environment=PYTHON_BIN=...` 调整，无需改 ExecStart |
+| 运行用户 | `webhook` (无 shell, 加入 `docker` 组) | 使用无特权用户运行服务；`deploy.sh` 子进程靠 `docker` 组拿到 docker socket 权限 |
+| Webhook 代码目录 | `/var/lib/aetherblog/webhook` | 由 ExecStart 加载；**不是**仓库工作树，安装时由 `cp` 同步 |
+| 仓库工作树 (`PROJECT_DIR`) | `/var/lib/aetherblog/repo` | `deploy.sh` 在这里 `git fetch + reset --hard FETCH_HEAD`；与 `ProtectHome=true` 兼容 |
+| Python 解释器 | 仓库默认 `/usr/bin/python3` | `ProtectHome=true` 后 `/root/.pyenv/...` 不可读；如需自定义版本，装到 `/usr` 或 `/opt` 后 `systemctl edit` 覆盖 `Environment=PYTHON_BIN=...` |
 | Python 最低版本 | **3.6** (CentOS 7 / RHEL 7 系统默认就是这个版本) | `webhook_server.py` 顶部注释列了不能用的 3.7+ 语法; 改这个文件时盯一下别误用 `from __future__ import annotations` / 海象运算符 / 内置泛型 |
 | 监听地址 | `127.0.0.1:7868` | 建议仅本机监听并通过反向代理暴露 |
-| WEBHOOK_SECRET | `/etc/aetherblog/webhook.env` | 避免密钥出现在 world-readable unit 文件 |
+| WEBHOOK_SECRET | `/etc/aetherblog/webhook.env` (`0640 root:webhook`) | 避免密钥出现在 world-readable unit 文件 |
+| 部署日志 | `/var/log/aetherblog/deploy.log` | 由 `LogsDirectory=aetherblog` 自动创建并 chown webhook:webhook |
+| 部署互斥锁 | `/run/aetherblog/deploy.lock` | 由 `RuntimeDirectory=aetherblog` 自动创建；`webhook_server.py` 与 `deploy.sh` 共享，靠 unit 中的 `LOCK_FILE=` 注入 |
 | 请求防挂死 | `WEBHOOK_REQUEST_TIMEOUT=15`, `WEBHOOK_MAX_BODY_BYTES=8192` | 防止公网半开/超大请求占住部署入口 |
-| 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
-| systemd 加固指令 | 已启用 | `NoNewPrivileges` / `ProtectSystem` / `ProtectHome` / `SystemCallFilter` 等 |
+| 自动 git sync | `webhook_server.py` 在 spawn `deploy.sh` 之前 `git fetch + reset --hard FETCH_HEAD`；`deploy.sh` 内置 sync 在 webhook 路径下被 `SKIP_GIT_SYNC=true` 跳过 | 直接 `bash deploy.sh` 时仍走 deploy.sh 自带 sync (要求当前用户对 `PROJECT_DIR` 可写) |
+| systemd 加固指令 | 已启用 | `NoNewPrivileges` / `ProtectSystem=strict` / `ProtectHome=true` / `RestrictAddressFamilies` / `SystemCallFilter=@system-service` / `MemoryDenyWriteExecute` 等 |
 
-> ⚠️ **PR #459 安全加固的剩余尾巴**: 仓库历史里有一版加固设计 (`User=webhook` + 独立工作目录 + 路径搬迁), 但跟 `PROJECT_DIR=/root/Aetherblog` 默认值有冲突, 没真正端到端验证, 也没下到生产. 当前姿态接受这一现实. 想做加固开单独 PR, 配合仓库迁出 `/root/`、nginx 前置、webhook 用户创建一起处理.
+> ⚠️ **从 root 模式迁移**: 之前的 `User=root` + `/root/Aetherblog/webhook` 软链方案与本 unit 不再兼容。一次性迁移步骤见下方「服务器安装步骤」第 1-3 步：建 `webhook` 用户、复制 webhook 代码、把仓库迁到 `/var/lib/aetherblog/repo`。完成迁移后旧 `/root/Aetherblog/webhook` 软链可以删除（不要在新 unit 里继续指向 `/root`，`ProtectHome=true` 会拦死）。
 
 ## Repo sync 顺序
 
@@ -32,11 +35,11 @@
 GitHub Actions push to main
   → webhook (HTTP POST /deploy)
   → webhook_server.py 在 spawn deploy.sh **之前** 完成 git fetch + reset --hard FETCH_HEAD
-    （此时 /root/Aetherblog/ 全量更新, ops/webhook/{deploy.sh, webhook_server.py} 也已写盘）
-  → webhook_server.py 通过 env["SKIP_GIT_SYNC"]="true" spawn deploy.sh
-  → bash 加载 deploy.sh 时直接读盘上最新版本
-  → deploy.sh 内部 sync 被 env 跳过 (作为直接 `bash deploy.sh` 时的 fallback 保留)
-  → docker compose pull + 数据库迁移 + up -d
+    （此时 /var/lib/aetherblog/repo/ 全量更新；deploy.sh 仍执行的是
+     /var/lib/aetherblog/webhook/deploy.sh —— 该副本不会随 git sync 自动刷新）
+  → webhook_server.py 通过 env["SKIP_GIT_SYNC"]="true" spawn /var/lib/aetherblog/webhook/deploy.sh
+  → bash 加载该副本; deploy.sh 内部 sync 被跳过 (作为直接 `bash deploy.sh` 时的 fallback 保留)
+  → cd $PROJECT_DIR (=/var/lib/aetherblog/repo) → docker compose pull + 数据库迁移 + up -d
 ```
 
 ### 边界（webhook 路径）
@@ -45,8 +48,8 @@ GitHub Actions push to main
 | --- | --- |
 | `apps/server-go/migrations/*.sql` | 当次部署（镜像里有就跑） |
 | `apps/<server-go\|ai-service\|blog\|admin>/**` | 当次部署（CI 重建镜像 → docker pull） |
-| `ops/webhook/deploy.sh` | **当次部署**（webhook 层先 sync，bash 加载的就是新版） |
-| `ops/webhook/webhook_server.py` | 需要 `systemctl restart deploy-webhook.service` 才生效 |
+| `ops/webhook/deploy.sh` | **下次部署**（webhook ExecStart 路径在 `/var/lib/aetherblog/webhook/`，git sync 只更新 `/var/lib/aetherblog/repo/`；CI 部署完成后需 `cp` 同步并 `systemctl restart deploy-webhook` —— 当前 root 模式下 deploy.sh 在仓库工作树内, 改动当次生效；切到 webhook 用户隔离布局后变成"下次") |
+| `ops/webhook/webhook_server.py` | 需要 `cp` 到 `/var/lib/aetherblog/webhook/` + `systemctl restart deploy-webhook.service` 才生效 |
 | `ops/webhook/deploy-webhook.service` | 需要 `cp` 到 `/etc/systemd/system/` + `systemctl daemon-reload + restart` 才生效 |
 
 ### Sacrificial first deploy 现象（仅限直接调用 deploy.sh，**不影响 webhook 路径**）
@@ -66,34 +69,70 @@ webhook 路径**不受此限制**——webhook_server.py 在 spawn deploy.sh 之
 
 ## 服务器安装步骤
 
+> 假设你在仓库 checkout 路径下执行 (例如临时 clone 到 `/tmp/aetherblog-src`)。安装结束后 `PROJECT_DIR` 会接管为 `/var/lib/aetherblog/repo`。
+
 ```bash
-# 1) 用软链接指向仓库目录 (git pull 后自动更新, 无需手动 cp)
-ln -sfn /root/Aetherblog/ops/webhook /root/Aetherblog/webhook
-chmod +x /root/Aetherblog/ops/webhook/deploy.sh
+# 1) 创建 webhook 系统用户 (无 shell, 不创建 home), 并加入 docker 组
+#    deploy.sh 子进程靠 docker 组拿 /var/run/docker.sock 权限
+getent group webhook >/dev/null || groupadd --system webhook
+id webhook >/dev/null 2>&1 || useradd --system --gid webhook \
+  --home-dir /var/lib/aetherblog/webhook --no-create-home \
+  --shell /usr/sbin/nologin webhook
+usermod -aG docker webhook
 
-# 2) 生成新 secret
+# 2) 准备目录骨架
+install -d -m 0755 -o root    -g root    /var/lib/aetherblog
+install -d -m 0750 -o webhook -g webhook /var/lib/aetherblog/webhook
+install -d -m 0750 -o webhook -g webhook /var/lib/aetherblog/repo
+install -d -m 0750 -o root    -g webhook /etc/aetherblog
+
+# 3) 同步仓库到 PROJECT_DIR
+#    - 全新机器: 直接克隆
+#    - 已有 /root/Aetherblog 的迁移机器: 用 rsync 把现有仓库搬过去, 保留 .env
+if [ ! -d /var/lib/aetherblog/repo/.git ]; then
+  if [ -d /root/Aetherblog/.git ]; then
+    rsync -a --exclude='node_modules' --exclude='.next' \
+      /root/Aetherblog/ /var/lib/aetherblog/repo/
+  else
+    git clone https://github.com/golovin0623/Aetherblog.git \
+      /var/lib/aetherblog/repo
+  fi
+fi
+chown -R webhook:webhook /var/lib/aetherblog/repo
+
+# 4) 同步 webhook 代码到 ExecStart 路径
+#    只复制 webhook server 启动需要的文件, 仓库元数据和其它无关文件不要进 webhook 目录
+install -m 0755 -o webhook -g webhook \
+  ops/webhook/webhook_server.py ops/webhook/deploy.sh \
+  /var/lib/aetherblog/webhook/
+
+# 5) 生成 secret 并写入 EnvironmentFile
 WEBHOOK_SECRET=$(openssl rand -hex 32)
-echo "$WEBHOOK_SECRET"
+echo "$WEBHOOK_SECRET"   # 同步给 GitHub Actions 的 DEPLOY_WEBHOOK_SECRET
 
-# 3) 安装 systemd 服务
-install -d -m 0750 -o root -g webhook /etc/aetherblog
+umask 077
 cat > /etc/aetherblog/webhook.env <<EOF
 WEBHOOK_SECRET=${WEBHOOK_SECRET}
 EOF
 chmod 0640 /etc/aetherblog/webhook.env
 chown root:webhook /etc/aetherblog/webhook.env
+unset WEBHOOK_SECRET
 
+# 6) 安装 systemd unit 并启动
 cp ops/webhook/deploy-webhook.service /etc/systemd/system/deploy-webhook.service
-
-# 4) 重载并启动
 systemctl daemon-reload
 systemctl enable deploy-webhook
 systemctl restart deploy-webhook
 systemctl status deploy-webhook --no-pager
 ```
 
-> **从旧方式迁移**: 如果之前是手动 cp 文件到 `/root/Aetherblog/webhook/`,
-> 先删掉旧目录再建软链接: `rm -rf /root/Aetherblog/webhook && ln -sfn ...`
+> **代码热更新如何到达 webhook 目录**: `webhook_server.py` 在收到 webhook 时先 `git fetch + reset --hard FETCH_HEAD` 到 `/var/lib/aetherblog/repo`，再 spawn `/var/lib/aetherblog/webhook/deploy.sh`。`deploy.sh` 自身改动**不会**自动从 repo 拉到 webhook 目录 —— 需要部署流水线在 deploy 完后 `cp /var/lib/aetherblog/repo/ops/webhook/{webhook_server.py,deploy.sh} /var/lib/aetherblog/webhook/` 并 `systemctl restart deploy-webhook` (跟旧 `ops/webhook/webhook_server.py` 改动需要 restart 的边界一致, 见下表)。
+
+> **从旧 root 模式迁移**: 旧装法把代码软链到 `/root/Aetherblog/webhook`、内联 `WEBHOOK_SECRET` 到 unit。迁移后:
+> 1. `systemctl stop deploy-webhook`
+> 2. 按上面 1-6 步重做
+> 3. 确认 `journalctl -u deploy-webhook -n 50` 没有 `Permission denied` (尤其是 `/var/run/docker.sock`、`PROJECT_DIR` 的 git 操作)
+> 4. 删除旧 `/root/Aetherblog/webhook` 软链；旧 secret 在 GitHub Settings → Secrets 也一并轮换
 
 ## GitHub Actions Secrets
 
@@ -194,8 +233,8 @@ printf '%s' "$body" | curl --noproxy '*' -i -X POST \
 # 查看 webhook 服务日志
 journalctl -u deploy-webhook -n 100 --no-pager
 
-# 查看部署脚本日志
-tail -n 100 /var/log/aetherblog-deploy.log
+# 查看部署脚本日志 (LogsDirectory=aetherblog 创建的目录)
+tail -n 100 /var/log/aetherblog/deploy.log
 ```
 
 ## 常见诊断
@@ -235,5 +274,5 @@ tail -n 100 /var/log/aetherblog-deploy.log
 
 5. **完整部署日志**:
    ```bash
-   tail -200 /var/log/aetherblog-deploy.log
+   tail -200 /var/log/aetherblog/deploy.log
    ```

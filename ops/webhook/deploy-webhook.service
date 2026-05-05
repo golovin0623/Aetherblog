@@ -1,6 +1,7 @@
 [Unit]
 Description=AetherBlog Deployment Webhook Service
-After=network.target
+After=network.target docker.service
+Wants=docker.service
 
 # ============================================================================
 # 安全基线：最小权限 + 本机监听 + 密钥走 EnvironmentFile
@@ -9,6 +10,11 @@ After=network.target
 # - 默认监听 127.0.0.1，建议通过反向代理暴露
 # - WEBHOOK_SECRET 存放在 /etc/aetherblog/webhook.env，避免写入 unit 文件
 # - 启用 systemd sandbox/hardening 指令降低进程逃逸和主机写入面
+# - PROJECT_DIR 显式指向 /var/lib/aetherblog/repo —— 因为 ProtectHome=true 后
+#   webhook 用户读不到 /root/Aetherblog；deploy.sh 与 webhook_server.py 共享
+#   这个值，覆盖各自的默认 /root/Aetherblog。
+# - LOG_FILE / LOCK_FILE 走 LogsDirectory / RuntimeDirectory 自动创建的目录，
+#   避免对 /var/log /var/lock 申请整目录写权限。
 # ============================================================================
 
 [Service]
@@ -17,7 +23,9 @@ User=webhook
 Group=webhook
 WorkingDirectory=/var/lib/aetherblog/webhook
 
-EnvironmentFile=-/etc/aetherblog/webhook.env
+# 必须存在；webhook_server.py 启动时若 WEBHOOK_SECRET 未注入会 sys.exit(1).
+# 去掉 `-` 前缀让 systemd 在文件缺失时直接报 condition failed, 不要静默启动.
+EnvironmentFile=/etc/aetherblog/webhook.env
 
 Environment=WEBHOOK_PORT=7868
 # WEBHOOK_BIND 默认 127.0.0.1 本机监听; 由 nginx 等反向代理对外暴露.
@@ -27,17 +35,36 @@ Environment=WEBHOOK_MAX_BODY_BYTES=8192
 Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
 
+# 仓库工作树：webhook 用户可读写，与 ProtectHome=true 兼容。
+# 安装时把仓库克隆/迁移到这里 (见 README §服务器安装步骤)。
+Environment=PROJECT_DIR=/var/lib/aetherblog/repo
+
+# 与 LogsDirectory / RuntimeDirectory 对齐 —— systemd 会自动创建并 chown 给
+# webhook:webhook，无需 install 步骤手动 touch+chown，也避免给整 /var/log /var/lock
+# 申请写权限。webhook_server.py 与 deploy.sh 都从环境读这两个变量。
+Environment=LOG_FILE=/var/log/aetherblog/deploy.log
+Environment=LOCK_FILE=/run/aetherblog/deploy.lock
+
 # PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
-# 当前生产装了 pyenv, 安装步骤里用 systemctl edit 覆盖成
-#   Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
-# 任何升级 Python 版本 / 切换发行版的人, 改这一行不动 ExecStart.
+# 注意：ProtectHome=true 后, /root/.pyenv 不再可访问 —— 旧 systemctl edit 覆盖
+# Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3 必须改为
+# 装在 /usr 或 /opt 下的解释器, 否则 ExecStart 直接 ENOENT.
 Environment=PYTHON_BIN=/usr/bin/python3
 ExecStart=${PYTHON_BIN} /var/lib/aetherblog/webhook/webhook_server.py
+
+# systemd 自动创建 /var/log/aetherblog/ 与 /run/aetherblog/，并 chown webhook:webhook.
+LogsDirectory=aetherblog
+RuntimeDirectory=aetherblog
+
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/aetherblog/webhook /var/lock /var/log
+# 收敛到三块明确路径：
+#  - /var/lib/aetherblog/webhook  (webhook 代码同步目录)
+#  - /var/lib/aetherblog/repo     (PROJECT_DIR, deploy.sh 在里面 git fetch+reset)
+#  - /var/lib/aetherblog/state    (可选: 部署元数据/缓存; 当前未使用, 留作扩展)
+ReadWritePaths=/var/lib/aetherblog/webhook /var/lib/aetherblog/repo
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
