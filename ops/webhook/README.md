@@ -93,7 +93,7 @@ systemctl status deploy-webhook --no-pager
 
 | Secret | 值 |
 | --- | --- |
-| `DEPLOY_WEBHOOK_URL` | `http://<your-server-ip>:7868/deploy` |
+| `DEPLOY_WEBHOOK_URL` | `https://deploy.example.com/deploy`（必须 HTTPS 或仅内网/VPN 可达；内网直连需带 `:7868`） |
 | `DEPLOY_WEBHOOK_SECRET` | 上面生成的 32 字节十六进制 secret |
 
 CI 用 HMAC-SHA256 给请求体签名, 头部 `X-Hub-Signature-256: sha256=<hex>`. 详见 `.github/workflows/ci-cd.yml` 的 deploy job.
@@ -159,7 +159,7 @@ printf '%s' "$NEW_SECRET" | gh secret set DEPLOY_WEBHOOK_SECRET \
   --body-file -
 ```
 
-同时确认 `DEPLOY_WEBHOOK_URL` 仍为 `http://<your-server-ip>:7868/deploy`。不要填
+同时确认 `DEPLOY_WEBHOOK_URL` 仍为 `https://<your-domain>/deploy`（必须 HTTPS 或仅内网/VPN 可达；内网直连需带 `:7868`）。不要填
 `:7869`, 不要填 gateway/blog 域名, 也不要把 secret 放进 URL 路径。
 
 GitHub 更新完成并确认后, 再清理当前 shell 里的敏感变量:

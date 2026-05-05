@@ -368,8 +368,13 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 		return response.Error(c, err)
 	}
 
-	// 修改密码后吊销所有会话并清除 Cookie
-	h.session.RevokeAllUserSessions(ctx, lu.UserID)
+	// 修改密码后吊销所有会话，并额外吊销当前请求携带的 Refresh Token。
+	// 这样即便用户会话索引缺失（如历史令牌或索引写入失败），当前会话也会被强制失效。
+	// 批量撤销失败时不阻塞响应（密码已写入数据库），但必须打日志以便运维介入处理残留会话。
+	if err := h.session.RevokeAllUserSessions(ctx, lu.UserID); err != nil {
+		log.Error().Err(err).Int64("user_id", lu.UserID).Msg("revoke all user sessions failed after password change")
+	}
+	h.session.RevokeRefreshToken(ctx, getCookieValue(c, middleware.RefreshTokenCookie))
 	h.clearAuthCookies(c)
 	return response.OKEmpty(c)
 }

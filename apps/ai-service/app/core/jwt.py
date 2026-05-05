@@ -32,7 +32,7 @@ def _decode_with_hmac(token: str, options: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
     keys = get_cached_keys()
     if not keys:
-        # 不应发生: get_cached_keys 会回退到 settings.jwt_secret。
+        # fail-closed: 只接受 DB 轮换缓存中的 active keys。
         raise jwt.InvalidKeyError("no JWT keys available")
 
     last_sig_err: Exception | None = None
