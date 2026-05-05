@@ -302,10 +302,20 @@ bootstrap_env() {
         # 仅当网关前面有 HTTPS 终结时才正确——否则浏览器不回带 Cookie，登录会断。
         bootstrap_prod_secure_field "AUTH_COOKIE_SECURE" "true" "false"
 
-        # 生产模式网关路径会走 docker-compose.prod.yml，backend/ai-service 在容器内
-        # 运行，Redis 服务名应为 redis。首次从 .env.example bootstrap 时若仍是
-        # 本地开发默认 localhost，会导致容器内回环地址并使限流等 Redis 能力失效。
-        bootstrap_prod_secure_field "REDIS_HOST" "redis" "localhost"
+        # REDIS_HOST 不能在 .env 里写死：
+        #   - `./start.sh --prod` 把 backend / ai-service 跑成宿主机进程，宿主机 DNS
+        #     解析不到容器服务名 `redis`，需要 `localhost` 通过端口映射连容器；
+        #   - `docker compose -f docker-compose.prod.yml up` 在容器内运行 backend/ai，
+        #     需要 `redis` 才能在 compose 网络里寻址。
+        # 同一个 .env 不可能同时满足两条路径，所以这里只在值仍是 .env.example 的开发
+        # 默认 `localhost` 时把这一行删掉，交给各运行环境自己的默认接管：
+        #   - Go 配置 yaml 默认 `localhost`（host 进程正确）；
+        #   - docker-compose.prod.yml 里 `${REDIS_HOST:-redis}` 默认 `redis`（容器正确）。
+        # 用户显式设了别的值（外部 Redis IP / 自管 redis-server）则原样保留。
+        if [ "$(get_env_field "REDIS_HOST" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")" = "localhost" ]; then
+            sed_inplace "/^REDIS_HOST=/d" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}   ✅ 生产模式：移除 .env 中的 REDIS_HOST=localhost，让各运行环境默认值接管${NC}"
+        fi
     fi
 
     # 前端 .env.local
