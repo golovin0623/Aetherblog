@@ -61,7 +61,7 @@ CI: {"services": "backend gateway"} → webhook → deploy.sh incremental
 |--------|------|------|
 | `DOCKER_USERNAME` | Docker Hub 用户名 | `golovin0623` |
 | `DOCKER_PASSWORD` | Docker Hub Access Token | (在 Docker Hub → Account Settings → Security 创建) |
-| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `http://your-server:7868/deploy` |
+| `DEPLOY_WEBHOOK_URL` | 部署 webhook 地址 | `https://deploy.example.com/deploy`（必须 HTTPS 或仅内网/VPN 可达） |
 | `DEPLOY_WEBHOOK_SECRET` | webhook HMAC 密钥 | `openssl rand -hex 32` 生成的 64 位 hex |
 
 ## Webhook 部署配置（服务器端）
@@ -92,11 +92,12 @@ systemctl enable deploy-webhook
 systemctl start deploy-webhook
 
 # 6. 将 webhook URL 配置到 GitHub Secret
-#    DEPLOY_WEBHOOK_URL = http://<server-ip>:7868/deploy
+#    DEPLOY_WEBHOOK_URL = https://<your-domain>/deploy
+#    （或仅内网/VPN 地址；不要在公网明文 HTTP 暴露 webhook）
 #    DEPLOY_WEBHOOK_SECRET = 上面生成的 WEBHOOK_SECRET
 ```
 
-> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。
+> webhook 鉴权使用 `X-Hub-Signature-256: sha256=<hmac>` 请求头；secret 不再放在 URL 路径里。生产环境必须使用 HTTPS，或放在仅内网/VPN 可达的私网入口并配合防火墙/反向代理。
 
 ### 从旧方式迁移（手动 cp → 软链接）
 
