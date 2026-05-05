@@ -5,8 +5,6 @@ on:
     branches:
       - main
       - develop
-    tags:
-      - 'v*'
   pull_request:
     branches:
       - main
@@ -76,13 +74,6 @@ jobs:
       - name: Compute aggregate flags
         id: check
         run: |
-          # Tag 推送时全量构建，所有标志置为 true
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            echo "frontend=true" >> $GITHUB_OUTPUT
-            echo "any_changed=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
           # 前端聚合标志: blog 或 admin 任一变更
           if [[ "${{ steps.filter.outputs.blog }}" == "true" || \
                 "${{ steps.filter.outputs.admin }}" == "true" ]]; then
@@ -264,7 +255,7 @@ jobs:
   # ===========================================================================
   frontend-quality:
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true' || startsWith(github.ref, 'refs/tags/v')
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -307,7 +298,7 @@ jobs:
   # ===========================================================================
   backend-test:
     needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true' || startsWith(github.ref, 'refs/tags/v')
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -343,7 +334,7 @@ jobs:
   # ===========================================================================
   ai-test:
     needs: detect-changes
-    if: needs.detect-changes.outputs.ai-service == 'true' || startsWith(github.ref, 'refs/tags/v')
+    if: needs.detect-changes.outputs.ai-service == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -393,9 +384,8 @@ jobs:
   build-backend:
     needs: [detect-changes, backend-test]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.backend == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -418,8 +408,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-backend
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
 
@@ -442,9 +432,8 @@ jobs:
   build-ai-service:
     needs: [detect-changes, ai-test]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.ai-service == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.ai-service == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -467,8 +456,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
 
@@ -491,9 +480,8 @@ jobs:
   build-blog:
     needs: [detect-changes, frontend-quality]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.blog == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.blog == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -516,8 +504,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-blog
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
 
@@ -541,9 +529,8 @@ jobs:
   build-admin:
     needs: [detect-changes, frontend-quality]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.admin == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -566,8 +553,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-admin
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
 
@@ -596,9 +583,8 @@ jobs:
     if: |
       always() &&
       (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-        needs.detect-changes.outputs.any_changed == 'true') ||
-        startsWith(github.ref, 'refs/tags/v')
+        github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+        needs.detect-changes.outputs.any_changed == 'true'
       ) &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
@@ -613,11 +599,6 @@ jobs:
           [[ "${{ needs.detect-changes.outputs.ai-service }}" == "true" ]] && SERVICES="$SERVICES ai-service"
           [[ "${{ needs.detect-changes.outputs.blog }}" == "true" ]] && SERVICES="$SERVICES blog"
           [[ "${{ needs.detect-changes.outputs.admin }}" == "true" ]] && SERVICES="$SERVICES admin"
-
-          # Tag 推送 → 全量部署
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            SERVICES="backend ai-service blog admin"
-          fi
 
           # 任何应用变更都要重启 gateway（nginx 路由可能受影响）
           if [ -n "$SERVICES" ]; then
