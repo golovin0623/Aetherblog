@@ -38,6 +38,12 @@ type SearchHandler struct {
 	activeMu     sync.Mutex
 	activeCancel context.CancelFunc
 	activeKind   string // "full" | "retry" | "batch" —— 仅用于日志和 API 响应
+
+	// lastBatch 缓存最近一次 batch / single 索引完成后的摘要（含失败原因 +
+	// failedIds），让前端进度面板结束时不必翻 docker 日志就能展示
+	// 「失败 N 篇 — 具体原因」。仅 in-memory，restart 后丢失（可接受）。
+	lastBatchMu sync.RWMutex
+	lastBatch   *dto.LastBatchSummary
 }
 
 // NewSearchHandler 创建 SearchHandler 实例。
@@ -71,6 +77,28 @@ func (h *SearchHandler) cancelActiveJob() string {
 		cancel()
 	}
 	return kind
+}
+
+// recordLastBatch 在 batch 任务的 goroutine 退出前调用，把结果摘要存到内存。
+// 前端进度面板结束时通过 GET /v1/admin/search/last-batch 拉取这条摘要，
+// 配合 finishedAt > job.startTime 判定"是不是这次任务的结果"，把 reason /
+// failedIds 带到 toast，让管理员不必翻日志就能看到失败原因。
+func (h *SearchHandler) recordLastBatch(startedAt time.Time, result *dto.IndexBatchResult) {
+	if result == nil {
+		return
+	}
+	h.lastBatchMu.Lock()
+	h.lastBatch = &dto.LastBatchSummary{
+		Kind:       "batch",
+		StartedAt:  startedAt,
+		FinishedAt: time.Now(),
+		Total:      result.Total,
+		Indexed:    result.Indexed,
+		Failed:     result.Failed,
+		Reason:     result.Reason,
+		FailedIDs:  append([]int64(nil), result.FailedIDs...),
+	}
+	h.lastBatchMu.Unlock()
 }
 
 // Search 处理 GET /v1/public/search 请求，执行关键词/语义/混合搜索。
@@ -258,6 +286,7 @@ func (h *SearchHandler) IndexBatch(c echo.Context) error {
 	}
 
 	postIDs := append([]int64(nil), req.PostIDs...)
+	jobStart := time.Now()
 	go func() {
 		// 单批最多 100 篇，每篇 90s，预留 3 倍余量给重试/慢请求
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -281,6 +310,7 @@ func (h *SearchHandler) IndexBatch(c echo.Context) error {
 			Int("indexed", result.Indexed).
 			Int("failed", result.Failed).
 			Msg("async index-batch completed")
+		h.recordLastBatch(jobStart, result)
 	}()
 
 	return response.OK(c, map[string]any{
@@ -408,6 +438,22 @@ func (h *SearchHandler) Cancel(c echo.Context) error {
 		"kind":    kind,
 		"message": "索引任务正在取消，稍后生效",
 	})
+}
+
+// LastBatch 处理 GET /v1/admin/search/last-batch 请求，返回最近一次 batch
+// 索引完成后的摘要（含 reason / failedIds）。仅 in-memory 缓存，restart 后清空。
+//
+// 前端在进度面板结束（done >= jobTotal）时调用此端点，结合 finishedAt 与
+// job.startTime 比对，判断是不是本次任务的结果。从而把"失败原因"做成 toast
+// 上的可读字符串，避免管理员去翻 docker 日志（这是 codex review #577 的痛点）。
+func (h *SearchHandler) LastBatch(c echo.Context) error {
+	h.lastBatchMu.RLock()
+	summary := h.lastBatch
+	h.lastBatchMu.RUnlock()
+	if summary == nil {
+		return response.OK(c, nil)
+	}
+	return response.OK(c, summary)
 }
 
 // EmbeddingStatus 处理 GET /v1/admin/search/embedding-status 请求。

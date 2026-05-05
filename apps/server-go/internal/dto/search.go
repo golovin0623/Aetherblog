@@ -72,8 +72,26 @@ type IndexBatchRequest struct {
 
 // IndexBatchResult 是批量索引操作的响应。
 type IndexBatchResult struct {
-	Indexed int    `json:"indexed"`
-	Failed  int    `json:"failed"`
-	Total   int    `json:"total"`
-	Reason  string `json:"reason,omitempty"`
+	Indexed   int     `json:"indexed"`
+	Failed    int     `json:"failed"`
+	Total     int     `json:"total"`
+	Reason    string  `json:"reason,omitempty"`
+	FailedIDs []int64 `json:"failedIds,omitempty"`
+}
+
+// LastBatchSummary 是最近一次 batch 索引完成后的摘要。前端在进度面板结束时
+// 通过 GET /api/v1/admin/search/last-batch 拉取，把 reason / failedIds 带到
+// toast，让管理员不必去翻 docker 日志就能看见"为什么失败"。
+//
+// 时间戳字段（startedAt / finishedAt）让前端可以判断"这是不是本次任务的结果"
+// （finishedAt >= job.startTime），避免显示陈旧的上一次摘要。
+type LastBatchSummary struct {
+	Kind       string    `json:"kind"`
+	StartedAt  time.Time `json:"startedAt"`
+	FinishedAt time.Time `json:"finishedAt"`
+	Total      int       `json:"total"`
+	Indexed    int       `json:"indexed"`
+	Failed     int       `json:"failed"`
+	Reason     string    `json:"reason,omitempty"`
+	FailedIDs  []int64   `json:"failedIds,omitempty"`
 }

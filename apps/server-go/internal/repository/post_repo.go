@@ -645,3 +645,26 @@ func (r *PostRepo) MarkEmbeddingPending(ctx context.Context, ids []int64) error 
 	_, err = r.db.ExecContext(ctx, query, args...)
 	return err
 }
+
+// MarkEmbeddingFailed 把指定 ID 的文章 embedding_status 置为 'FAILED'。
+//
+// 用途：backend 调 ai-service /api/v1/admin/search/index 时，部分拒绝路径
+// （典型的 VULN-062 隐藏文章 404）会在 ai-service 内部 raise HTTPException
+// 之前就直接返回，**不**写 DB。如果 backend 也只在内存 result.Failed++，
+// 这条文章会永远卡在 PENDING：stats.failed_posts 不增 → 前端 progress
+// panel 永远 0% → 用户以为索引在跑，其实早就失败了。这里兜底落库，
+// 让 stats / 列表 / 进度条全都立刻反映真相。
+func (r *PostRepo) MarkEmbeddingFailed(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	query, args, err := sqlx.In(
+		`UPDATE posts SET embedding_status = 'FAILED', updated_at = NOW()
+		 WHERE id IN (?) AND deleted = false AND status = 'PUBLISHED' AND is_hidden = false`, ids)
+	if err != nil {
+		return err
+	}
+	query = r.db.Rebind(query)
+	_, err = r.db.ExecContext(ctx, query, args...)
+	return err
+}
