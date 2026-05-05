@@ -253,6 +253,11 @@ bootstrap_env() {
             echo -e "${RED}❌ 既无 .env 也无 .env.example，无法 bootstrap${NC}" >&2
             exit 1
         fi
+        if [ "$PROD_MODE" = true ]; then
+            echo -e "${RED}❌ 生产模式检测到缺失 .env。为避免使用示例弱口令，请先手动创建安全 .env 后重试。${NC}" >&2
+            echo -e "${YELLOW}   提示：至少请设置 POSTGRES_PASSWORD、REDIS_PASSWORD、AUTH_COOKIE_SECURE=true。${NC}" >&2
+            exit 1
+        fi
         cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
         echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
     fi
