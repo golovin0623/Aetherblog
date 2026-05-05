@@ -188,6 +188,30 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   );
 
   const handleCreate = useCallback(() => {
+    // 防重复创建：如果列表里已经有空会话（messages.length === 0），直接切到
+    // 该会话而不再 push 一条 —— 否则用户连续多次点"+ 新建"会堆出多条空记录。
+    // 切过去的同时把当前 override 应用到该会话存档（与下面新建路径同款）。
+    const empty = sessions.find((s) => s.messages.length === 0);
+    if (empty) {
+      if (sessionModelOverride) {
+        setSessions((list) =>
+          list.map((s) =>
+            s.id === empty.id
+              ? {
+                  ...s,
+                  modelId: sessionModelOverride.modelId,
+                  providerCode: sessionModelOverride.providerCode,
+                  updatedAt: Date.now(),
+                }
+              : s,
+          ),
+        );
+      }
+      setActiveId(empty.id);
+      requestAnimationFrame(() => composerRef.current?.focus());
+      return;
+    }
+
     const now = Date.now();
     // 新会话继承当前 override —— 用户在 EmptyState（或上一个会话）选过模型
     // 后点"+ 新建会话"，应该把 pending 选择带进新会话，而不是被清空回默认。
@@ -207,7 +231,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     setSessions((list) => [sess, ...list]);
     setActiveId(sess.id);
     requestAnimationFrame(() => composerRef.current?.focus());
-  }, [sessionModelOverride]);
+  }, [sessions, sessionModelOverride]);
 
   const handleSelect = useCallback(
     (id: string) => {

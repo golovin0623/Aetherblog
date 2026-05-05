@@ -45,19 +45,20 @@ export default function ModelPicker({
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // 点外部关闭
+  // 点外部关闭 —— 用 pointerdown 替代 mousedown 统一桌面 + 触屏，避免
+  // iOS Safari 上合成 mousedown 时序与 React 重渲染冲突的边角问题。
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('mousedown', onClick);
+    document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
@@ -142,7 +143,11 @@ export default function ModelPicker({
             {...motionProps}
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
             role="listbox"
-            className={`${popClass} surface-overlay rounded-xl border border-[var(--ink-subtle)]/20 z-50 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]`}
+            // 加 bg-[var(--bg-leaf)] 实色兜底：surface-overlay 自带的玻璃半透明
+            // 在 EmptyState（背后有 aurora glow + Sparkles 大图标）下会出现内容
+            // 穿透感（用户截图证据：下拉项之间能看到背景的 ✨ icon）。
+            // 实色背景让信息层级清晰：弹层 = 第一焦点，背景 = 视觉次级。
+            className={`${popClass} surface-overlay bg-[var(--bg-leaf)] rounded-xl border border-[var(--ink-subtle)]/20 z-50 overflow-hidden shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)]`}
           >
             <div className="max-h-[360px] overflow-y-auto py-2">
               {/* 默认（自动）选项 */}
