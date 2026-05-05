@@ -62,14 +62,6 @@ func validateEndpoint(raw string) error {
 	return nil
 }
 
-func validateEndpointSyntax(raw string) error {
-	if raw == "" {
-		return nil
-	}
-	_, err := parseEndpoint(raw)
-	return err
-}
-
 func parseEndpoint(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -146,11 +138,7 @@ func NewS3Storage(configJSON string, providerType ...string) (*S3Storage, error)
 	// SECURITY (VULN-032): 防 SSRF —— 拒绝把用户自定义 endpoint 指向内网 / IMDS。
 	// COS/OSS 的内置 endpoint 由受限 region 生成,不做 DNS 依赖的校验,避免单元测试和离线环境受外网 DNS 影响。
 	if !generatedEndpoint && !isTrustedProviderEndpoint(cfg.Endpoint, pt, cfg.Region) {
-		if allowPrivateEndpoint(pt, cfg.AllowPrivateEndpoint) {
-			if err := validateEndpointSyntax(cfg.Endpoint); err != nil {
-				return nil, fmt.Errorf("s3 config: %w", err)
-			}
-		} else if err := validateEndpoint(cfg.Endpoint); err != nil {
+		if err := validateEndpoint(cfg.Endpoint); err != nil {
 			return nil, fmt.Errorf("s3 config: %w", err)
 		}
 	}
@@ -267,10 +255,6 @@ func isTrustedProviderEndpoint(raw, providerType, region string) bool {
 	default:
 		return false
 	}
-}
-
-func allowPrivateEndpoint(providerType string, enabled bool) bool {
-	return enabled && strings.EqualFold(providerType, "MINIO")
 }
 
 func isTrustedR2EndpointHost(host string) bool {

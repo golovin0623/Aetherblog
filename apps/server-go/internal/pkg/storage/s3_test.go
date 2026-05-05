@@ -17,7 +17,7 @@ func TestS3Storage_TypeReturnsProviderType(t *testing.T) {
 		{"COS", `{"bucket":"x","region":"ap-shanghai","accessKeyId":"k","secretAccessKey":"s"}`, "COS"},
 		{"OSS", `{"bucket":"x","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`, "OSS"},
 		{"R2", `{"bucket":"x","region":"auto","endpoint":"https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com","accessKeyId":"k","secretAccessKey":"s"}`, "R2"},
-		{"MINIO", `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`, "MINIO"},
+		{"MINIO", `{"bucket":"x","region":"us-east-1","endpoint":"https://minio.example.com","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`, "MINIO"},
 		{"S3", `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`, "S3"},
 		{"", `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`, "S3"}, // 空 → 兜底 S3
 	}
@@ -42,7 +42,7 @@ func TestS3Storage_TypeReturnsProviderType(t *testing.T) {
 func TestS3Storage_FactoryRoutes(t *testing.T) {
 	cases := map[string]string{
 		"S3":    `{"bucket":"x","region":"us-east-1","accessKeyId":"k","secretAccessKey":"s"}`,
-		"MINIO": `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`,
+		"MINIO": `{"bucket":"x","region":"us-east-1","endpoint":"https://minio.example.com","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`,
 		"OSS":   `{"bucket":"x","region":"cn-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
 		"COS":   `{"bucket":"x","region":"ap-shanghai","accessKeyId":"k","secretAccessKey":"s"}`,
 		"R2":    `{"bucket":"x","region":"auto","endpoint":"https://1234567890abcdef1234567890abcdef.r2.cloudflarestorage.com","accessKeyId":"k","secretAccessKey":"s"}`,
@@ -320,15 +320,15 @@ func TestTrustedProviderEndpoint(t *testing.T) {
 	}
 }
 
-func TestMinIOPrivateEndpointRequiresExplicitOptIn(t *testing.T) {
+func TestMinIOPrivateEndpointAlwaysBlocked(t *testing.T) {
 	blockedCfg := `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","accessKeyId":"k","secretAccessKey":"s"}`
 	if _, err := NewS3Storage(blockedCfg, "MINIO"); err == nil {
-		t.Fatal("NewS3Storage(MINIO) should reject private endpoint without explicit opt-in")
+		t.Fatal("NewS3Storage(MINIO) should reject private endpoint")
 	}
 
-	allowedCfg := `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`
-	if _, err := NewS3Storage(allowedCfg, "MINIO"); err != nil {
-		t.Fatalf("NewS3Storage(MINIO) with allowPrivateEndpoint: %v", err)
+	blockedWithFlagCfg := `{"bucket":"x","region":"us-east-1","endpoint":"http://127.0.0.1:9000","allowPrivateEndpoint":true,"accessKeyId":"k","secretAccessKey":"s"}`
+	if _, err := NewS3Storage(blockedWithFlagCfg, "MINIO"); err == nil {
+		t.Fatal("NewS3Storage(MINIO) should reject private endpoint even when allowPrivateEndpoint is true")
 	}
 }
 
