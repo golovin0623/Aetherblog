@@ -40,6 +40,23 @@ type CommentVO struct {
 	Parent    *CommentParentRef `json:"parent,omitempty"`    // 父评论的简要信息（回复场景下返回）
 }
 
+
+// PublicCommentVO 是公开评论接口的安全响应对象，仅包含前台展示所需字段。
+type PublicCommentVO struct {
+	ID        int64             `json:"id"`                  // 评论唯一 ID
+	PostID    int64             `json:"postId"`              // 所属文章 ID
+	ParentID  *int64            `json:"parentId"`            // 父评论 ID（顶级评论为空）
+	Nickname  string            `json:"nickname"`            // 评论者昵称
+	Website   *string           `json:"website,omitempty"`   // 评论者个人网站 URL（可为空）
+	Avatar    *string           `json:"avatar,omitempty"`    // 评论者头像 URL（可为空）
+	Content   string            `json:"content"`             // 评论内容
+	IsAdmin   bool              `json:"isAdmin"`             // 是否为管理员评论
+	LikeCount int               `json:"likeCount"`           // 点赞数量
+	CreatedAt *time.Time        `json:"createdAt"`           // 评论创建时间
+	Children  []PublicCommentVO `json:"children,omitempty"`  // 子评论列表（树形结构时返回）
+	Parent    *CommentParentRef `json:"parent,omitempty"`    // 父评论的简要信息（回复场景下返回）
+}
+
 // CommentPostRef 是评论中内嵌的文章简要引用信息。
 type CommentPostRef struct {
 	ID    int64  `json:"id"`    // 文章 ID

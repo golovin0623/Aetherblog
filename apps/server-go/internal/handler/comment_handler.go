@@ -215,7 +215,7 @@ func (h *CommentHandler) ListByPost(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, map[string]any{"list": vos})
+	return response.OK(c, map[string]any{"list": toPublicCommentVOs(vos)})
 }
 
 // Submit 处理 POST /public/comments/post/:postId 请求（附有限流控制），
@@ -237,7 +237,38 @@ func (h *CommentHandler) Submit(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	return response.OK(c, vo)
+	return response.OK(c, toPublicCommentVO(*vo))
+}
+
+func toPublicCommentVOs(vos []dto.CommentVO) []dto.PublicCommentVO {
+	result := make([]dto.PublicCommentVO, len(vos))
+	for i, vo := range vos {
+		result[i] = toPublicCommentVO(vo)
+	}
+	return result
+}
+
+func toPublicCommentVO(vo dto.CommentVO) dto.PublicCommentVO {
+	result := dto.PublicCommentVO{
+		ID:        vo.ID,
+		PostID:    vo.PostID,
+		ParentID:  vo.ParentID,
+		Nickname:  vo.Nickname,
+		Website:   vo.Website,
+		Avatar:    vo.Avatar,
+		Content:   vo.Content,
+		IsAdmin:   vo.IsAdmin,
+		LikeCount: vo.LikeCount,
+		CreatedAt: vo.CreatedAt,
+		Parent:    vo.Parent,
+	}
+	if len(vo.Children) > 0 {
+		result.Children = make([]dto.PublicCommentVO, len(vo.Children))
+		for i, child := range vo.Children {
+			result.Children[i] = toPublicCommentVO(child)
+		}
+	}
+	return result
 }
 
 // recordCommentActivity 记录评论相关活动事件，失败时仅记录日志不阻塞主流程。
