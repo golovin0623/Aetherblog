@@ -487,12 +487,23 @@ restart_webhook_if_stale() {
 
   local file_mtime proc_start_iso proc_start_epoch
   file_mtime=$(stat -c %Y "$webhook_py" 2>/dev/null || echo 0)
-  proc_start_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp --value 2>/dev/null || true)
-  if [ -z "$proc_start_iso" ] || [ "$proc_start_iso" = "n/a" ]; then
+  # `systemctl show --value` 是 systemd 230+ 语法；生产是 CentOS 7 + systemd 219，
+  # 不识别这个 flag 会回吐 `ActiveEnterTimestamp=...` 整段字符串，让 date -d
+  # 解析失败、proc_start_epoch 变 0、每次部署都误触发 restart。改成
+  # `cut -d= -f2-` 跨 systemd 版本一致地剥前缀。
+  proc_start_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2- || true)
+  # systemd 219 在服务未进入 active 状态时返回 `[no timestamp]`；新版返回空串或
+  # `n/a`。三种 sentinel 一并兜住，避免 date 解析无效字符串。
+  if [ -z "$proc_start_iso" ] || [ "$proc_start_iso" = "n/a" ] || [ "$proc_start_iso" = "[no timestamp]" ]; then
     echo "[$(date -Iseconds)] WARN: deploy-webhook ActiveEnterTimestamp unavailable, skipping staleness check"
     return
   fi
   proc_start_epoch=$(date -d "$proc_start_iso" +%s 2>/dev/null || echo 0)
+  if [ "$proc_start_epoch" -eq 0 ]; then
+    # date 解析失败兜底：宁可漏一次重启提示，也不能在每次部署都误触发 systemd-run。
+    echo "[$(date -Iseconds)] WARN: failed to parse deploy-webhook ActiveEnterTimestamp ($proc_start_iso), skipping staleness check"
+    return
+  fi
 
   if [ "$file_mtime" -le "$proc_start_epoch" ]; then
     return

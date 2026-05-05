@@ -228,10 +228,13 @@ main() {
     else
       local wh_file_mtime wh_proc_iso wh_proc_epoch
       wh_file_mtime=$(stat -c %Y "$webhook_py" 2>/dev/null || echo 0)
-      wh_proc_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp --value 2>/dev/null || true)
+      # `--value` 是 systemd 230+ 才有的 flag；CentOS 7 (systemd 219) 不识别会
+      # 把 `ActiveEnterTimestamp=...` 整段返回，date -d 解析失败让本检查永远 skip。
+      # 用 `cut -d= -f2-` 跨版本一致剥掉 KEY= 前缀。
+      wh_proc_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2- || true)
       wh_proc_epoch=$(date -d "$wh_proc_iso" +%s 2>/dev/null || echo 0)
       if (( wh_proc_epoch == 0 )); then
-        skip "webhook" "deploy-webhook ActiveEnterTimestamp unavailable"
+        skip "webhook" "deploy-webhook ActiveEnterTimestamp unavailable or unparseable ('$wh_proc_iso')"
       elif (( wh_proc_epoch >= wh_file_mtime )); then
         pass "webhook" "deploy-webhook process started after webhook_server.py mtime (proc=$wh_proc_iso)"
       else
