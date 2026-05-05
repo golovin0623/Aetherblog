@@ -56,6 +56,13 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
     echo "[$(date -Iseconds)] Refusing to run host-side deploy using an unpinned remote ref: $deploy_ref"
     exit 1
   fi
+  # 仅接受完整 hex SHA。否则像 HEAD / FETCH_HEAD / 本地分支名都能通过后面
+  # cat-file -e + merge-base --is-ancestor 校验，让 git reset --hard 跟着浮动
+  # ref 走，整个 pin 形同虚设（gemini / codex review 指出的绕过路径）。
+  if ! [[ "$deploy_commit_sha" =~ ^[0-9a-f]{40,64}$ ]]; then
+    echo "[$(date -Iseconds)] ERROR: DEPLOY_COMMIT_SHA must be a full lowercase hex SHA (40-64 chars), got: $deploy_commit_sha"
+    exit 1
+  fi
 
   echo "[$(date -Iseconds)] Syncing repo to $deploy_ref at pinned commit $deploy_commit_sha"
   if ! git diff --quiet HEAD 2>/dev/null; then
