@@ -71,6 +71,33 @@ webhook 路径**不受此限制**：
 
 ## 服务器安装步骤
 
+### 一键脚本（推荐）
+
+仓库根目录下：
+
+```bash
+# 全新机器 (从当前 checkout 直接 rsync 过去, 适合 fresh install)
+sudo ./ops/bootstrap-webhook.sh
+
+# 从旧 root 模式 /root/Aetherblog 迁移过来
+sudo ./ops/bootstrap-webhook.sh --from /root/Aetherblog
+
+# 复用现有 secret (从其它服务器拷过来时)
+sudo ./ops/bootstrap-webhook.sh --secret "<32+ hex>"
+
+# 只看会做什么, 不实际执行
+sudo ./ops/bootstrap-webhook.sh --dry-run
+```
+
+脚本幂等：会检测已存在的用户/目录/secret 文件并跳过对应步骤，重复执行安全。
+
+执行完毕后：
+1. 把脚本最后打印的 `WEBHOOK_SECRET` 同步到 GitHub Actions repo secret `DEPLOY_WEBHOOK_SECRET`
+2. 设置 GitHub Actions repo secret `DEPLOY_WEBHOOK_URL` = `http://<server-public-ip>:7868/deploy`
+3. 推一个 trivial commit 触发 CI, 用 `journalctl -u deploy-webhook -f` 观察自动部署
+
+### 手动步骤（仅供理解 / 调试参考，正常路径走上面的脚本）
+
 > 假设你在仓库 checkout 路径下执行 (例如临时 clone 到 `/tmp/aetherblog-src`)。安装结束后 `PROJECT_DIR` 会接管为 `/var/lib/aetherblog/repo`。
 
 ```bash
@@ -87,13 +114,16 @@ install -d -m 0755 -o root    -g root    /var/lib/aetherblog
 install -d -m 0750 -o webhook -g webhook /var/lib/aetherblog/webhook
 install -d -m 0750 -o webhook -g webhook /var/lib/aetherblog/repo
 install -d -m 0750 -o root    -g webhook /etc/aetherblog
+# /var/log/aetherblog: LogsDirectory= 在 systemd 235+ 才有, CentOS 7 systemd 219
+# 不识别 → 需要在 install 阶段手动 chown.
+install -d -m 0750 -o webhook -g webhook /var/log/aetherblog
 
 # 3) 同步仓库到 PROJECT_DIR
 #    - 全新机器: 直接克隆
 #    - 已有 /root/Aetherblog 的迁移机器: 用 rsync 把现有仓库搬过去, 保留 .env
 if [ ! -d /var/lib/aetherblog/repo/.git ]; then
   if [ -d /root/Aetherblog/.git ]; then
-    rsync -a --exclude='node_modules' --exclude='.next' \
+    rsync -aH --exclude='node_modules' --exclude='.next' --exclude='__pycache__' \
       /root/Aetherblog/ /var/lib/aetherblog/repo/
   else
     git clone https://github.com/golovin0623/Aetherblog.git \
@@ -120,7 +150,9 @@ chmod 0640 /etc/aetherblog/webhook.env
 chown root:webhook /etc/aetherblog/webhook.env
 unset WEBHOOK_SECRET
 
-# 6) 安装 systemd unit 并启动
+# 6) 安装 systemd unit 并启动 (清掉旧 systemctl edit override, 否则 ExecStart
+#    可能被覆盖回 /root/.pyenv 或老路径)
+rm -rf /etc/systemd/system/deploy-webhook.service.d
 cp ops/webhook/deploy-webhook.service /etc/systemd/system/deploy-webhook.service
 systemctl daemon-reload
 systemctl enable deploy-webhook
@@ -128,13 +160,9 @@ systemctl restart deploy-webhook
 systemctl status deploy-webhook --no-pager
 ```
 
-> **代码热更新如何到达 webhook 目录**: `webhook_server.py` 在收到 webhook 时先 `git fetch + reset --hard FETCH_HEAD` 到 `/var/lib/aetherblog/repo`，再 spawn `/var/lib/aetherblog/webhook/deploy.sh`。`deploy.sh` 自身改动**不会**自动从 repo 拉到 webhook 目录 —— 需要部署流水线在 deploy 完后 `cp /var/lib/aetherblog/repo/ops/webhook/{webhook_server.py,deploy.sh} /var/lib/aetherblog/webhook/` 并 `systemctl restart deploy-webhook` (跟旧 `ops/webhook/webhook_server.py` 改动需要 restart 的边界一致, 见下表)。
+> **代码热更新如何到达 webhook 目录**: `webhook_server.py` 收到 webhook 时先 `git fetch + reset --hard FETCH_HEAD` 到 `/var/lib/aetherblog/repo`，spawn `/var/lib/aetherblog/webhook/deploy.sh`。deploy.sh 末尾 `trap _post_deploy_hooks EXIT` 调用 `sync_webhook_files_to_runtime`，把 repo 下的 `ops/webhook/{deploy.sh,webhook_server.py}` cp 到 `/var/lib/aetherblog/webhook/`，再调 `restart_webhook_if_stale` 用 `systemd-run --on-active=2s` 调度延迟 restart。下次部署起来就是新代码了；deploy.sh / webhook_server.py 改动当次部署即生效，不再需要手动 cp + systemctl restart（详见下表）。
 
-> **从旧 root 模式迁移**: 旧装法把代码软链到 `/root/Aetherblog/webhook`、内联 `WEBHOOK_SECRET` 到 unit。迁移后:
-> 1. `systemctl stop deploy-webhook`
-> 2. 按上面 1-6 步重做
-> 3. 确认 `journalctl -u deploy-webhook -n 50` 没有 `Permission denied` (尤其是 `/var/run/docker.sock`、`PROJECT_DIR` 的 git 操作)
-> 4. 删除旧 `/root/Aetherblog/webhook` 软链；旧 secret 在 GitHub Settings → Secrets 也一并轮换
+> **从旧 root 模式迁移**: 旧装法把代码软链到 `/root/Aetherblog/webhook`、内联 `WEBHOOK_SECRET` 到 unit。一键脚本支持 `--from /root/Aetherblog`，会自动 rsync 过去 + 清掉旧 systemctl override + 切到 webhook user。完成后旧 `/root/Aetherblog` 改名留底、加个 symlink `ln -sfn /var/lib/aetherblog/repo /root/Aetherblog` 保留 muscle memory。旧 secret 一并到 GitHub Settings → Secrets 轮换。
 
 ## GitHub Actions Secrets
 
