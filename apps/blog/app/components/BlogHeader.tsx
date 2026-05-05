@@ -452,7 +452,7 @@ export default function BlogHeader() {
                   }`}
               >
                 <span className="inline-flex items-center gap-1">
-                  Agent
+                  灵境
                   <span
                     aria-hidden="true"
                     className="inline-block w-1 h-1 rounded-full bg-[var(--aurora-1)] opacity-70 group-hover/agent:opacity-100 transition-opacity"

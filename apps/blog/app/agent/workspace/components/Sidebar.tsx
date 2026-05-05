@@ -14,6 +14,7 @@ import {
   X,
   MoreHorizontal,
   AlertTriangle,
+  ArrowLeft,
 } from 'lucide-react';
 import type { AgentSession } from '../../lib/agentSessions';
 import { groupSessionsByRecency } from '../../lib/agentSessions';
@@ -109,13 +110,21 @@ export default function Sidebar({
 
   const SidebarBody = (
     <div className="surface-raised h-full w-full md:w-[280px] flex-shrink-0 border-r border-[var(--ink-subtle)]/15 flex flex-col">
-      {/* 头部：wordmark + 新对话 */}
-      <div className="p-4 space-y-3 border-b border-[var(--ink-subtle)]/12">
-        <div className="flex items-center justify-between">
+      {/* 头部：wordmark + 新对话
+          顶部 padding 走 safe-area-inset-top，避免 drawer 被 iOS 状态栏区
+          压在底下；移动端 drawer top:0 是物理 0，状态栏区会被 OS UI 占据。 */}
+      <div
+        className="px-4 pb-3 space-y-3 border-b border-[var(--ink-subtle)]/12"
+        style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          {/* wordmark 兼任"返回主页"入口 —— 加 ArrowLeft icon 让链接性更可见。
+              桌面端 hover 着色，移动端首次接触靠图标暗示。 */}
           <Link
             href="/agent"
-            className="font-display text-[17px] leading-none tracking-[-0.01em] text-[var(--ink-primary)] inline-flex items-center gap-2 hover:text-[var(--aurora-1)] transition-colors"
+            className="group/home font-display text-[17px] leading-none tracking-[-0.01em] text-[var(--ink-primary)] inline-flex items-center gap-2 hover:text-[var(--aurora-1)] transition-colors min-w-0"
           >
+            <ArrowLeft className="w-4 h-4 flex-shrink-0 text-[var(--ink-muted)] group-hover/home:text-[var(--aurora-1)] transition-colors" />
             <span className="aurora-text">灵境</span>
             <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-[var(--ink-muted)] mt-0.5">workspace</span>
           </Link>
@@ -124,7 +133,7 @@ export default function Sidebar({
               type="button"
               onClick={onMobileClose}
               aria-label="关闭侧栏"
-              className="md:hidden p-1.5 rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors"
+              className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors flex-shrink-0"
             >
               <X className="w-4 h-4" />
             </button>
@@ -231,9 +240,18 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* 底部用户卡 */}
-      <div className="p-3 border-t border-[var(--ink-subtle)]/12 flex items-center gap-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="w-8 h-8 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 flex items-center justify-center text-[var(--ink-primary)] text-sm font-medium overflow-hidden flex-shrink-0">
+      {/* 底部用户卡
+          头像移动端放大到 40×40（桌面 32×32），平衡可识别性 + 信息密度。
+          padding-right 走 safe-area-inset-right，避免 iPhone Pro 系圆角
+          屏角把 logout 按钮裁掉一半。 */}
+      <div
+        className="px-3 pt-3 border-t border-[var(--ink-subtle)]/12 flex items-center gap-3"
+        style={{
+          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+          paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+        }}
+      >
+        <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/15 flex items-center justify-center text-[var(--ink-primary)] text-sm font-medium overflow-hidden flex-shrink-0">
           {user.avatar ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={user.avatar} alt="" className="w-full h-full object-cover" />
@@ -242,7 +260,7 @@ export default function Sidebar({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[12.5px] text-[var(--ink-primary)] truncate">{user.nickname || user.username}</div>
+          <div className="text-[13px] md:text-[12.5px] text-[var(--ink-primary)] truncate">{user.nickname || user.username}</div>
           <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)] truncate">{user.role}</div>
         </div>
         <button
@@ -250,7 +268,7 @@ export default function Sidebar({
           onClick={onLogout}
           aria-label="登出"
           title="登出"
-          className="p-1.5 rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--signal-danger)] transition-colors"
+          className="inline-flex items-center justify-center w-9 h-9 md:w-7 md:h-7 rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg-raised)] hover:text-[var(--signal-danger)] transition-colors flex-shrink-0"
         >
           <LogOut className="w-4 h-4" />
         </button>
@@ -292,7 +310,10 @@ export default function Sidebar({
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-              className="md:hidden fixed left-0 top-0 bottom-0 w-[82vw] max-w-[320px] z-[81]"
+              // 右侧加圆角让 drawer 与剩余 backdrop 形成柔和边界（适配 iPhone
+              // Pro 圆角屏的视觉一致性）；overflow-hidden 让 SidebarBody 的
+              // surface-raised 跟随圆角剪裁。左侧紧贴屏幕边（left:0）不留缝。
+              className="md:hidden fixed left-0 top-0 bottom-0 w-[82vw] max-w-[320px] z-[81] rounded-r-2xl overflow-hidden"
             >
               {SidebarBody}
             </motion.aside>
@@ -342,9 +363,14 @@ function SessionMenu({
   }, [open]);
 
   // 点击外部 / ESC 关闭
+  // 用 pointerdown 替代 mousedown：iOS Safari 触屏第一次点击 menu 内"删除会话"
+  // 按钮时，合成 mousedown 的 target 检测时序与 React 重渲染（confirmDelete 切
+  // 换为 true 后 banner 替换原按钮）冲突，导致 banner 被 onClose 立即关掉，
+  // 用户感知为"第一次点击没出现，第二次才出来"。pointerdown 在 iOS 上更早、
+  // 更可靠地拿到正确 target，两次渲染同步。
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (wrapRef.current?.contains(t)) return;
       if (triggerRef.current?.contains(t)) return;
@@ -353,10 +379,10 @@ function SessionMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    document.addEventListener('mousedown', onDown);
+    document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);
@@ -396,7 +422,10 @@ function SessionMenu({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute right-0 top-full mt-1 w-44 surface-overlay rounded-xl border border-[var(--ink-subtle)]/22 z-50 overflow-hidden shadow-[0_18px_40px_-16px_rgba(0,0,0,0.32)]"
+            // 加 bg-[var(--bg-leaf)] 实色兜底：drawer 内 surface-overlay 弹层
+            // 透明会让背后的会话列表 + ... 按钮穿透显形（特别是删除二次确认
+            // banner 时），削弱菜单的视觉权重。实色背景让信息层级清晰。
+            className="absolute right-0 top-full mt-1 w-44 surface-overlay bg-[var(--bg-leaf)] rounded-xl border border-[var(--ink-subtle)]/22 z-50 overflow-hidden shadow-[0_18px_40px_-16px_rgba(0,0,0,0.32)]"
             onClick={(e) => e.stopPropagation()}
           >
             <button

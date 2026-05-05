@@ -20,7 +20,7 @@ type NavPage = 'posts' | 'timeline' | 'agent' | 'friends' | 'about' | 'design' |
 const NAV_LINKS = [
   { href: '/posts', label: '首页', icon: Home, key: 'posts' as NavPage },
   { href: '/timeline', label: '时间线', icon: Clock, key: 'timeline' as NavPage },
-  { href: '/agent', label: 'Agent', icon: Sparkles, key: 'agent' as NavPage },
+  { href: '/agent', label: '灵境', icon: Sparkles, key: 'agent' as NavPage },
   { href: '/friends', label: '友链', icon: LinkIcon, key: 'friends' as NavPage },
   { href: '/about', label: '关于', icon: Info, key: 'about' as NavPage },
   { href: '/design', label: '设计', icon: Palette, key: 'design' as NavPage },
