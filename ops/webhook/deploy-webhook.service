@@ -22,18 +22,15 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/Aetherblog/webhook
+User=webhook
+Group=webhook
+WorkingDirectory=/var/lib/aetherblog/webhook
 
-# WEBHOOK_SECRET 内联在这里. 安装时用 README 的 sed 命令把 change-me 替换成
-# 真正的 32 字节十六进制 secret. systemctl unit 默认权限 0644 root:root,
-# secret 可被本机所有用户读取 —— 接受当前姿态, 不上 EnvironmentFile.
-Environment=WEBHOOK_SECRET=change-me
+EnvironmentFile=-/etc/aetherblog/webhook.env
 
 Environment=WEBHOOK_PORT=7868
-# WEBHOOK_BIND=0.0.0.0 全网监听; 如果你的部署有 nginx 前置可改成 127.0.0.1.
-Environment=WEBHOOK_BIND=0.0.0.0
-Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
+Environment=WEBHOOK_BIND=127.0.0.1
+Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
 
 # PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
@@ -41,7 +38,21 @@ Environment=DEPLOY_TIMEOUT=900
 #   Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
 # 任何升级 Python 版本 / 切换发行版的人, 改这一行不动 ExecStart.
 Environment=PYTHON_BIN=/usr/bin/python3
-ExecStart=${PYTHON_BIN} /root/Aetherblog/webhook/webhook_server.py
+ExecStart=${PYTHON_BIN} /var/lib/aetherblog/webhook/webhook_server.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aetherblog/webhook /var/lock /var/log
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
 Restart=always
 RestartSec=3
 
