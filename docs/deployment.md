@@ -293,11 +293,13 @@ webhook systemd 单元文件见 `ops/webhook/deploy-webhook.service`，部署与
 | ai-service healthcheck | `start_period: 45s, interval: 10s` | Python 冷启动窗口 ≤ 45s 不计 retries，部署 preflight 不会误判 docker=starting |
 | backend healthcheck | `start_period: 30s, interval: 3s` (**VULN-150**) | 避免把 crash loop 识别为 "healthy yet" |
 
-### Docker socket 访问的权衡
+### Docker socket 访问的权衡（默认关闭）
 
-`backend` 以只读方式挂载 `/var/run/docker.sock:ro` 给 `/v1/admin/monitor/*` 做容器列表与 stats 查询。**注意**：`:ro` 只阻止写套接字文件本身，Docker API 仍具备 root 等效能力。自托管且只有 admin JWT 能命中该接口是当前可接受的妥协；加固部署应改用 `tecnativa/docker-socket-proxy` 将 API 限制到 `/containers/json` + `/containers/*/stats`。
+**当前默认部署不再挂载 `/var/run/docker.sock`**。`:ro` 只能阻止对套接字文件本身的写入，无法限制 Docker API 操作面 —— 即只读挂载也等同于把 host root 暴露给 backend 进程。一旦 backend 被攻陷（Go RCE、依赖供应链等），攻击者即可通过 Docker API 创建特权容器逃逸。我们认为这个权衡对绝大多数自托管者不划算，因此移除挂载与对应的 `DOCKER_GID` 配置。
 
-宿主 docker 组 GID 通常不是容器里默认的 999，必须通过 `.env` 的 `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` 显式对齐，否则 UID 1001 无法读套接字。
+**对 `/v1/admin/monitor/*` 的影响：**`apps/server-go/internal/service/container_monitor.go` 默认会 dial 失败并返回 `DockerAvailable: false` 的空概览（已做软失败兜底，不会 panic）。admin 后台"容器监控"页因此会显示"Docker 不可用"占位态。
+
+**需要保留容器监控的部署：**建议引入 [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy) 旁车，把 API 面收敛到 `CONTAINERS=1` + `/containers/*/stats` 只读权限，并把 backend 的 `DialContext` 改为指向 proxy 的 TCP/Unix 端点（需修改 `container_monitor.go`，不在默认 compose 文件内）。这是后续可选 hardening 任务，不在当前默认开箱配置里。
 
 ---
 

@@ -109,7 +109,7 @@ ops/release/preflight.sh
 | 强制密钥存在 | `JWT_SECRET:?...` / `AI_CREDENTIAL_ENCRYPTION_KEYS:?...` / `REDIS_PASSWORD:?...` 必须设置；compose 在缺失时 fail-fast | VULN-056 / -119 / -120 |
 | ai-service 健康检查 | `start_period: 45s`、`interval: 10s` —— 给冷启动留余量（litellm/asyncpg/pgvector import + asyncpg pool + jwt_keys DB fetch） | — |
 | backend 健康检查 | `start_period: 30s`、`interval: 3s` | VULN-150（不要把崩溃循环当"healthy yet"） |
-| Docker socket | backend 挂载 `:ro` 用于 `/v1/admin/monitor/*` —— 注意 `:ro` 只保护 socket 文件，Docker API 本身仍是 root 等价；设 `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` 匹配 host docker 组 | — |
+| Docker socket | **默认不挂载**（PR #604）。`:ro` 不约束 Docker API 操作面 —— 等同 host-root 暴露。`/v1/admin/monitor/*` 会软失败为 `DockerAvailable: false` 空态。需要监控请引入 `tecnativa/docker-socket-proxy` 旁车并在代码侧改 `DialContext`，详见 `docs/deployment.md` §"Docker socket 访问的权衡"。 | — |
 
 ---
 

@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🔒 移除生产 backend 的 docker.sock 挂载 (2026-05-05, PR #604)
+
+**背景:** `docker-compose.prod.yml` 长期把 `/var/run/docker.sock:/var/run/docker.sock:ro` 挂进 backend 容器，并通过 `group_add: ["${DOCKER_GID:-999}"]` 把容器 UID 1001 加入 host docker 组，目的是让 `/v1/admin/monitor/*` 的"容器监控"页能调用 Docker daemon 拉容器列表与 stats。问题是 `:ro` 只阻止对套接字文件本身的写入，**Docker daemon 的 API 操作面不受影响** —— 任何拿到该 socket 的进程都能创建特权容器、绑定 host 根文件系统，等同于 host-root。一旦 backend 被攻陷（Go RCE / 依赖供应链 / handler 反序列化漏洞等），攻击者可借此从容器逃逸到宿主机。对绝大多数自托管者而言，把"管理员能看一个监控页"换"backend 进程被拿下 = 整机被拿下"是不划算的权衡。
+
+**Changed (`docker-compose.prod.yml`):**
+
+- 移除 backend service 的 `/var/run/docker.sock:/var/run/docker.sock:ro` bind mount。
+- 移除 `group_add: ["${DOCKER_GID:-999}"]`。
+- 现在 backend 仅保留命名卷 `aetherblog_uploads` / `aetherblog_logs`，原有 `no-new-privileges` / `cap_drop: ALL` / `read_only: true` 等加固保持不变。
+
+**Changed (`.env.example`):**
+
+- 删除 `DOCKER_GID` 默认值与说明块（不再需要与 host docker 组对齐）。
+
+**对 `/v1/admin/monitor/*` 的影响（不破坏运行时）:**
+
+- `apps/server-go/internal/service/container_monitor.go` 默认会 dial unix `/var/run/docker.sock` 失败，第 182-187 行已有软失败兜底（`return overview` 时 `DockerAvailable: false`），handler 不会 panic，admin 页面会显示"Docker 不可用"占位态。
+- 服务路由 `setupRoutes` 与 `NewContainerMonitorService` 注入保持不变，留给后续通过 `tecnativa/docker-socket-proxy` 旁车恢复时无须改 server.go。
+
+**Changed (`docs/deployment.md` + `.claude/docs/deployment-cicd.md`):**
+
+- §"Docker socket 访问的权衡" 改写：明确"当前默认不挂载"、解释 `:ro` 的假性安全、指出 admin 监控页降级行为、给出 `tecnativa/docker-socket-proxy` 的可选 hardening 路径（需要改 `container_monitor.go` 的 `DialContext` 指向 proxy，不在默认 compose 文件内）。
+- §5 加固表的 Docker socket 行同步收口至默认不挂载并指向 deployment.md 详述。
+
+**为什么不顺手删 `container_monitor.go` 与 `/v1/admin/monitor/*`:**
+
+- 服务侧软失败已经无副作用；保留代码路径让后续引入 `docker-socket-proxy` 的部署只改 `DialContext` 与 compose，不需要回滚业务逻辑或 admin 路由。删除是一刀切，权衡更不利。
+
+---
+
 ### 📐 Agent 三模式产品定位锁定 · Cowork / Code 设计冻结 (2026-05-05)
 
 **背景:** Workspace 顶部 segmented control 的 Chat / Cowork / Code 长期只切换一行 system prompt 文字, 用户极易把"三模式"误解为"三种 prompt 风格"。但产品愿景里 Cowork 是**主动型异步副手**（cron 任务 + 多工具组合 + 通知 inbox + 知识合成）, Code 是**最底层 Agent 编排平台**（工具注册 + YAML/DAG 工作流 + 节点级 trace + autonomous 固化模板）—— 二者均为独立子系统, 与 Chat 完全不同的能力架构。本批次先把定位与产品路线固化为文档, 同时把 workspace UI 上的 Cowork / Code 上锁防误解, 开发推迟到后续阶段。
