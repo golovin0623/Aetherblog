@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -7,7 +8,7 @@ import { usePathname } from 'next/navigation';
  * 视图模式切换组件
  * 具有滑动胶囊动画效果的首页/时间线切换器
  */
-export default function ViewModeToggle({ compact = false }: { compact?: boolean }) {
+const ViewModeToggleBase = ({ compact = false }: { compact?: boolean }) => {
   const pathname = usePathname();
   const isTimeline = pathname === '/timeline';
 
@@ -52,4 +53,8 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       </Link>
     </div>
   );
-}
+};
+
+// ⚡ Bolt: 使用 React.memo 避免父组件重渲染时导致的无意义重渲染，提升性能。
+export const ViewModeToggle = React.memo(ViewModeToggleBase);
+export default ViewModeToggle;
