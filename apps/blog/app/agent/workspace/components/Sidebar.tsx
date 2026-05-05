@@ -115,7 +115,7 @@ export default function Sidebar({
           压在底下；移动端 drawer top:0 是物理 0，状态栏区会被 OS UI 占据。 */}
       <div
         className="px-4 pb-3 space-y-3 border-b border-[var(--ink-subtle)]/12"
-        style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
+        style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
       >
         <div className="flex items-center justify-between gap-2">
           {/* wordmark 兼任"返回主页"入口 —— 加 ArrowLeft icon 让链接性更可见。
