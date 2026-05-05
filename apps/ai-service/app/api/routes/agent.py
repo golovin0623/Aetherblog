@@ -499,8 +499,7 @@ async def list_agent_models(
     for row in rows:
         caps_raw = row["capabilities"]
         try:
-            import json as _json
-            caps = _json.loads(caps_raw) if isinstance(caps_raw, str) else (caps_raw or {})
+            caps = json.loads(caps_raw) if isinstance(caps_raw, str) else (caps_raw or {})
         except (TypeError, ValueError):
             caps = {}
         if isinstance(caps, dict) and caps.get("chat") is False:
