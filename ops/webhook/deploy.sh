@@ -48,8 +48,23 @@ cd "$PROJECT_DIR"
 if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
   deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
   fetch_ref="${deploy_ref#origin/}"
+  fetch_ref="${fetch_ref#refs/heads/}"
   fetch_ref="${fetch_ref:-main}"
   deploy_commit_sha="${DEPLOY_COMMIT_SHA:-}"
+
+  # 安全边界：webhook 部署只允许同步分支（branch）。若调用方传入 refs/tags/*
+  # 或其他非 refs/heads/* 的全限定 ref，直接拒绝 —— 否则下面拼出来的
+  # `+refs/heads/${fetch_ref}:...` 在远端找不到对象时会失败，但更危险的是
+  # 任何"看起来像分支"的歧义都该被显式挡掉，避免 #602 关闭的 tag 影子攻击
+  # 以新形态绕回来。
+  case "$fetch_ref" in
+    refs/*)
+      echo "[$(date -Iseconds)] ERROR: DEPLOY_GIT_REF must reference a branch (got non-branch ref: $deploy_ref)"
+      exit 1
+      ;;
+  esac
+
+  deploy_remote_ref="refs/remotes/origin/${fetch_ref}"
 
   if [ -z "$deploy_commit_sha" ]; then
     echo "[$(date -Iseconds)] ERROR: DEPLOY_COMMIT_SHA is required when git sync is enabled"
@@ -72,15 +87,29 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
 
   current_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
 
-  if ! git fetch --quiet --tags origin "$fetch_ref"; then
-    echo "[$(date -Iseconds)] ERROR: git fetch origin $fetch_ref failed"
+  # 显式 `+refs/heads/<branch>:refs/remotes/origin/<branch>` + `--no-tags`：
+  #   - 旧版用 `git fetch --tags origin "$fetch_ref"` 把 tag 一起拉下来，
+  #     若攻击者推送了与分支同名 / 含 deploy_commit_sha 的 tag，下游
+  #     FETCH_HEAD 与 reachability 检查都会被污染 (#602)。
+  #   - 现在强制只取 refs/heads/<branch> 写入受控的远端跟踪命名空间
+  #     ($deploy_remote_ref)，下面的 merge-base --is-ancestor 直接拿这个
+  #     ref 当 anchor，配合 #601 的 DEPLOY_COMMIT_SHA pin 把"fetch 到了什么
+  #     对象"和"reset 到了哪个 commit"两件事都钉死，不留 tag / FETCH_HEAD
+  #     歧义。
+  if ! git fetch --quiet --no-tags origin "+refs/heads/${fetch_ref}:${deploy_remote_ref}"; then
+    echo "[$(date -Iseconds)] ERROR: git fetch origin refs/heads/$fetch_ref failed"
     exit 1
   fi
   if ! git cat-file -e "${deploy_commit_sha}^{commit}" 2>/dev/null; then
     echo "[$(date -Iseconds)] ERROR: pinned commit not found after fetch: $deploy_commit_sha"
     exit 1
   fi
-  if ! git merge-base --is-ancestor "$deploy_commit_sha" FETCH_HEAD; then
+  # 用 $deploy_remote_ref 而不是 FETCH_HEAD：fetch 已经强制写到了受控的远端
+  # 跟踪命名空间 (refs/remotes/origin/<branch>)，FETCH_HEAD 在 --no-tags +
+  # 单 refspec 场景下虽然也指向同一个 commit，但显式引用 deploy_remote_ref
+  # 让 reachability 检查与 #602 的 tag-shadow 防护描述一致，未来若有人改回
+  # 多 refspec 也不会让 FETCH_HEAD 的语义偏移影响这条断言。
+  if ! git merge-base --is-ancestor "$deploy_commit_sha" "$deploy_remote_ref"; then
     echo "[$(date -Iseconds)] ERROR: pinned commit $deploy_commit_sha is not reachable from fetched $deploy_ref"
     exit 1
   fi
