@@ -17,7 +17,7 @@
 | 仓库工作树 (`PROJECT_DIR`) | `/var/lib/aetherblog/repo` | `deploy.sh` 在这里 `git fetch + reset --hard FETCH_HEAD`；与 `ProtectHome=true` 兼容 |
 | Python 解释器 | 仓库默认 `/usr/bin/python3` | `ProtectHome=true` 后 `/root/.pyenv/...` 不可读；如需自定义版本，装到 `/usr` 或 `/opt` 后 `systemctl edit` 覆盖 `Environment=PYTHON_BIN=...` |
 | Python 最低版本 | **3.6** (CentOS 7 / RHEL 7 系统默认就是这个版本) | `webhook_server.py` 顶部注释列了不能用的 3.7+ 语法; 改这个文件时盯一下别误用 `from __future__ import annotations` / 海象运算符 / 内置泛型 |
-| 监听地址 | `127.0.0.1:7868` | 建议仅本机监听并通过反向代理暴露 |
+| 监听地址 | `0.0.0.0:7868` | 仓库 nginx 暂无 `/deploy` 反代 + GitHub Actions 直接 POST 公网 7868；切 127.0.0.1 必须与 nginx 反代 + 改 `DEPLOY_WEBHOOK_URL` 同 PR 落地，不在本 unit 里单方面切换 |
 | WEBHOOK_SECRET | `/etc/aetherblog/webhook.env` (`0640 root:webhook`) | 避免密钥出现在 world-readable unit 文件 |
 | 部署日志 | `/var/log/aetherblog/deploy.log` | 由 `LogsDirectory=aetherblog` 自动创建并 chown webhook:webhook |
 | 部署互斥锁 | `/run/aetherblog/deploy.lock` | 由 `RuntimeDirectory=aetherblog` 自动创建；`webhook_server.py` 与 `deploy.sh` 共享，靠 unit 中的 `LOCK_FILE=` 注入 |
@@ -48,15 +48,17 @@ GitHub Actions push to main
 | --- | --- |
 | `apps/server-go/migrations/*.sql` | 当次部署（镜像里有就跑） |
 | `apps/<server-go\|ai-service\|blog\|admin>/**` | 当次部署（CI 重建镜像 → docker pull） |
-| `ops/webhook/deploy.sh` | **下次部署**（webhook ExecStart 路径在 `/var/lib/aetherblog/webhook/`，git sync 只更新 `/var/lib/aetherblog/repo/`；CI 部署完成后需 `cp` 同步并 `systemctl restart deploy-webhook` —— 当前 root 模式下 deploy.sh 在仓库工作树内, 改动当次生效；切到 webhook 用户隔离布局后变成"下次") |
-| `ops/webhook/webhook_server.py` | 需要 `cp` 到 `/var/lib/aetherblog/webhook/` + `systemctl restart deploy-webhook.service` 才生效 |
-| `ops/webhook/deploy-webhook.service` | 需要 `cp` 到 `/etc/systemd/system/` + `systemctl daemon-reload + restart` 才生效 |
+| `ops/webhook/deploy.sh` | **当次部署**（deploy.sh 末尾 `trap EXIT` → `sync_webhook_files_to_runtime` 自动 cp 到 `/var/lib/aetherblog/webhook/`，再 `systemd-run --on-active=2s` 调度 webhook restart；旧 root 模式因软链 ExecStart 直读仓库，改动也是当次生效，无需 cp） |
+| `ops/webhook/webhook_server.py` | **当次部署**（同上，`sync_webhook_files_to_runtime` 把副本 cp 过去后，`restart_webhook_if_stale` 比对 mtime > 进程启动时间触发 systemd-run 调度 +2s 重启）|
+| `ops/webhook/deploy-webhook.service` | **手工**（unit 文件不在 ExecStart 路径下，无法在 ProtectSystem=strict 沙箱里自己写 `/etc/systemd/system/`）：`sudo cp /var/lib/aetherblog/repo/ops/webhook/deploy-webhook.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl restart deploy-webhook` |
 
 ### Sacrificial first deploy 现象（仅限直接调用 deploy.sh，**不影响 webhook 路径**）
 
 如果你**绕过 webhook 直接 `bash deploy.sh`**（手动跑 / cron 调度等），deploy.sh 的内部 git sync 会被启用。但 deploy.sh 顶部 `exec > >(tee ...)` + `exec 200>$LOCK_FILE` + `flock 200` 与 process substitution 叠加，无法在 sync 之后安全 re-exec 自己（会触发 fd 200 锁混乱 / flock 死锁）。所以代码选择"sync 写盘 + 用旧 in-memory bash 文本跑完本次部署"——**直接调用路径**下，任何 `deploy.sh` 自身的修改都需要"牺牲"一次部署才能生效。
 
-webhook 路径**不受此限制**——webhook_server.py 在 spawn deploy.sh 之前已经完成 git sync，deploy.sh 进程加载的就是磁盘上的新版本。这也是 PR #525 把 sync 提前到 webhook 层的根本动因。
+webhook 路径**不受此限制**：
+1. webhook_server.py 在 spawn deploy.sh 之前已经完成 git sync，deploy.sh 进程加载的就是磁盘上的新版本（PR #525 的根本动因）。
+2. webhook_server.py 自己的改动也是**当次生效**：deploy.sh 末尾 `trap EXIT` → `sync_webhook_files_to_runtime` cp 到 `/var/lib/aetherblog/webhook/` → `restart_webhook_if_stale` 用 `systemd-run --on-active=2s` 调度自动重启（`KillMode=control-group` 不会误伤 transient unit；2s 是为了让本次 webhook 把 200 写完再翻进程）。详细历史与坑见 `deploy.sh` 末尾「Post-deploy hooks 设计原理」注释块。
 
 ## 部署模式
 

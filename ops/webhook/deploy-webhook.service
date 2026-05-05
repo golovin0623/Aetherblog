@@ -4,10 +4,9 @@ After=network.target docker.service
 Wants=docker.service
 
 # ============================================================================
-# 安全基线：最小权限 + 本机监听 + 密钥走 EnvironmentFile
+# 安全基线：最小权限 + 密钥走 EnvironmentFile + systemd sandbox
 #
 # - User/Group=webhook 无特权运行
-# - 默认监听 127.0.0.1，建议通过反向代理暴露
 # - WEBHOOK_SECRET 存放在 /etc/aetherblog/webhook.env，避免写入 unit 文件
 # - 启用 systemd sandbox/hardening 指令降低进程逃逸和主机写入面
 # - PROJECT_DIR 显式指向 /var/lib/aetherblog/repo —— 因为 ProtectHome=true 后
@@ -15,6 +14,13 @@ Wants=docker.service
 #   这个值，覆盖各自的默认 /root/Aetherblog。
 # - LOG_FILE / LOCK_FILE 走 LogsDirectory / RuntimeDirectory 自动创建的目录，
 #   避免对 /var/log /var/lock 申请整目录写权限。
+#
+# 监听姿态（继续 0.0.0.0 + HMAC 兜底）：当前仓库 nginx/ 配置里没有 `/deploy`
+# → 127.0.0.1:7868 的反代路由，CI workflow 也是直接 POST 公网 7868 (`DEPLOY_
+# WEBHOOK_URL` secret)。如果在本 PR 里把 bind 切成 127.0.0.1，CI 立刻拿不到
+# 入口、且无法用部署本身把这条修复推下去 (chicken-and-egg)。socket 暴露面靠
+# HMAC + ThreadingMixIn + settimeout 兜底；真要切 127.0.0.1 请单独提一个 PR
+# 同时落地 nginx /deploy 反代 + 改 GitHub Actions secret + 一次成功验证。
 # ============================================================================
 
 [Service]
@@ -28,8 +34,9 @@ WorkingDirectory=/var/lib/aetherblog/webhook
 EnvironmentFile=/etc/aetherblog/webhook.env
 
 Environment=WEBHOOK_PORT=7868
-# WEBHOOK_BIND 默认 127.0.0.1 本机监听; 由 nginx 等反向代理对外暴露.
-Environment=WEBHOOK_BIND=127.0.0.1
+# WEBHOOK_BIND=0.0.0.0 (公网暴露 + HMAC 兜底)：仓库 nginx 当前没有 /deploy 反代
+# 路由，CI 直连公网 7868，切 127.0.0.1 会立刻断 CI。详见文件顶部说明块。
+Environment=WEBHOOK_BIND=0.0.0.0
 Environment=WEBHOOK_REQUEST_TIMEOUT=15
 Environment=WEBHOOK_MAX_BODY_BYTES=8192
 Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
@@ -44,6 +51,17 @@ Environment=PROJECT_DIR=/var/lib/aetherblog/repo
 # 申请写权限。webhook_server.py 与 deploy.sh 都从环境读这两个变量。
 Environment=LOG_FILE=/var/log/aetherblog/deploy.log
 Environment=LOCK_FILE=/run/aetherblog/deploy.lock
+
+# WEBHOOK_RUNTIME_DIR / WEBHOOK_RUNTIME_PY: deploy.sh 末尾 trap EXIT 用这两个值
+# (a) 把 repo 里的 ops/webhook/{deploy.sh,webhook_server.py} cp 到 ExecStart 副本
+#     目录 (sync_webhook_files_to_runtime)，
+# (b) 比对副本 mtime 与 webhook 进程启动时间决定是否调度自动 restart
+#     (restart_webhook_if_stale)。
+# 不设这两个 env 时 deploy.sh fallback 到 $PROJECT_DIR/ops/webhook/，跟旧 root
+# 模式（软链）行为一致；显式设给硬化模式才能正确指向 /var/lib/aetherblog/webhook/
+# 这个独立副本目录。
+Environment=WEBHOOK_RUNTIME_DIR=/var/lib/aetherblog/webhook
+Environment=WEBHOOK_RUNTIME_PY=/var/lib/aetherblog/webhook/webhook_server.py
 
 # PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
 # 注意：ProtectHome=true 后, /root/.pyenv 不再可访问 —— 旧 systemctl edit 覆盖
