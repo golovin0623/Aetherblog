@@ -48,7 +48,21 @@ cd "$PROJECT_DIR"
 if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
   deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
   fetch_ref="${deploy_ref#origin/}"
+  fetch_ref="${fetch_ref#refs/heads/}"
   fetch_ref="${fetch_ref:-main}"
+
+  # 安全边界：webhook 部署只允许同步分支（branch）。若调用方传入 refs/tags/*
+  # 或其他非 refs/heads/* 的全限定 ref，直接拒绝 —— 否则下面拼出来的
+  # `+refs/heads/${fetch_ref}:...` 在远端找不到对象时会失败，但更危险的是
+  # 任何"看起来像分支"的歧义都该被显式挡掉，避免 #602 关闭的 tag 影子攻击
+  # 以新形态绕回来。
+  case "$fetch_ref" in
+    refs/*)
+      echo "[$(date -Iseconds)] ERROR: DEPLOY_GIT_REF must reference a branch (got non-branch ref: $deploy_ref)"
+      exit 1
+      ;;
+  esac
+
   deploy_remote_ref="refs/remotes/origin/${fetch_ref}"
 
   echo "[$(date -Iseconds)] Syncing repo to $deploy_ref"
@@ -59,6 +73,13 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
 
   current_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
 
+  # 显式 `+refs/heads/<branch>:refs/remotes/origin/<branch>` + `--no-tags`：
+  #   - 旧版用 `git fetch --tags origin "$fetch_ref"` + `reset --hard FETCH_HEAD`，
+  #     若攻击者推送了与分支同名的 tag，FETCH_HEAD 可能落到 tag commit 上 (#602)。
+  #   - 现在强制只取 refs/heads/<branch> 写入受控的远端跟踪命名空间，再 reset
+  #     到该精确 ref —— 既消除 tag 影子歧义，又延续 PR #459 的初衷
+  #     （DEPLOY_GIT_REF=main 这种无 origin/ 前缀的写法仍能跟远端同步，因为
+  #     reset 目标是 refs/remotes/origin/<branch> 而不是本地 <branch>）。
   if ! git fetch --quiet --no-tags origin "+refs/heads/${fetch_ref}:${deploy_remote_ref}"; then
     echo "[$(date -Iseconds)] ERROR: git fetch origin refs/heads/$fetch_ref failed"
     exit 1
