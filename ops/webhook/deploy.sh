@@ -49,8 +49,15 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
   deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
   fetch_ref="${deploy_ref#origin/}"
   fetch_ref="${fetch_ref:-main}"
+  deploy_commit_sha="${DEPLOY_COMMIT_SHA:-}"
 
-  echo "[$(date -Iseconds)] Syncing repo to $deploy_ref"
+  if [ -z "$deploy_commit_sha" ]; then
+    echo "[$(date -Iseconds)] ERROR: DEPLOY_COMMIT_SHA is required when git sync is enabled"
+    echo "[$(date -Iseconds)] Refusing to run host-side deploy using an unpinned remote ref: $deploy_ref"
+    exit 1
+  fi
+
+  echo "[$(date -Iseconds)] Syncing repo to $deploy_ref at pinned commit $deploy_commit_sha"
   if ! git diff --quiet HEAD 2>/dev/null; then
     echo "[$(date -Iseconds)] WARN: working tree dirty, reset --hard will discard these tracked changes:"
     git status --porcelain | head -20 || true
@@ -62,10 +69,15 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
     echo "[$(date -Iseconds)] ERROR: git fetch origin $fetch_ref failed"
     exit 1
   fi
-  # 用 FETCH_HEAD 而不是 $deploy_ref：若调用方传的是无 origin/ 前缀的本地分支名
-  # (DEPLOY_GIT_REF=main)，reset 到本地 main 可能落空（git fetch 不更新本地分支
-  # HEAD）。FETCH_HEAD 一定是刚 fetch 下来的那个 ref，确保跟远端同步。
-  git reset --hard FETCH_HEAD
+  if ! git cat-file -e "${deploy_commit_sha}^{commit}" 2>/dev/null; then
+    echo "[$(date -Iseconds)] ERROR: pinned commit not found after fetch: $deploy_commit_sha"
+    exit 1
+  fi
+  if ! git merge-base --is-ancestor "$deploy_commit_sha" FETCH_HEAD; then
+    echo "[$(date -Iseconds)] ERROR: pinned commit $deploy_commit_sha is not reachable from fetched $deploy_ref"
+    exit 1
+  fi
+  git reset --hard "$deploy_commit_sha"
 
   new_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
   if [ -n "$current_self_sha" ] && [ "$current_self_sha" != "$new_self_sha" ]; then
