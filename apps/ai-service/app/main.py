@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -54,6 +55,7 @@ def _redacted_redis_url(url: str) -> str:
 # 会导致容器被错误地判定为 unhealthy。
 # 3 秒对同网段 Redis 完全够用,又紧凑到能快速失败。
 _REDIS_PREFLIGHT_TIMEOUT_SEC = 3.0
+_JWT_REFRESHER_RETRY_INTERVAL_SEC = 10.0
 
 
 async def _redis_preflight() -> None:
@@ -96,15 +98,35 @@ async def _redis_preflight() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    refresher_retry_task: asyncio.Task | None = None
+
+    async def _retry_start_jwt_refresher() -> None:
+        while True:
+            try:
+                pool = await deps_module.get_pg_pool()
+                await start_jwt_key_refresher(pool)
+                logger.info("jwt_keys.startup_retry_succeeded")
+                return
+            except asyncio.CancelledError:
+                return
+            except Exception as retry_exc:
+                logger.warning("jwt_keys.startup_retry_failed", extra={"data": {"error": str(retry_exc)}})
+                await asyncio.sleep(_JWT_REFRESHER_RETRY_INTERVAL_SEC)
+
     # 提前预热 PG pool,这样 JWT key refresher 启动时有目标可对话。
-    # 如果 PG 此时还连不上,start_jwt_key_refresher 的初次拉取会软失败,
-    # 在 refresher 首次成功 tick (默认 60s) 之前我们都靠环境 seed 兜底。
+    # 如果 PG 此时连不上,或者初次 refresh 抛出 (例如 jwt_secrets 表迁移
+    # 还没完成),start_jwt_key_refresher 会把异常抛出且不会创建后台 task,
+    # 此时由 _retry_start_jwt_refresher 每 _JWT_REFRESHER_RETRY_INTERVAL_SEC
+    # 重试一次, 直到 DB 恢复并完成首拉。
     try:
         pool = await deps_module.get_pg_pool()
         await start_jwt_key_refresher(pool)
     except Exception as exc:
-        # 非致命: 鉴权仍可用环境 seed (settings.jwt_secret) 工作。
         logger.warning("jwt_keys.startup_skipped", extra={"data": {"error": str(exc)}})
+        refresher_retry_task = asyncio.create_task(
+            _retry_start_jwt_refresher(),
+            name="jwt_keys_startup_retry",
+        )
 
     # 非致命的 Redis ping —— 这里有意**不**因失败终止启动。
     # 服务依然能提供 /health 和缓存响应;
@@ -123,6 +145,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if refresher_retry_task is not None:
+        refresher_retry_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresher_retry_task
     await stop_jwt_key_refresher()
     if deps_module._redis is not None:
         await deps_module._redis.close()
