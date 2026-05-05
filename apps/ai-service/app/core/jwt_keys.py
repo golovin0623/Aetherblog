@@ -9,9 +9,8 @@ Go 后端把 JWT 签名密钥存放在 ``jwt_secrets`` 表 (migration 000033),
 设计约束:
   * ``decode_token`` 必须保持同步 (它在 ``jwt.decode`` 内被同步代码路径调用),
     因此缓存采用模块级 list,由一个 async 后台任务写入,读取无锁。
-  * 服务首次接受流量时如果数据库不可达,回退到 ``settings.jwt_secret``
-    (启动 seed,与 Go 后端的 bootstrap 环境变量一致),保证鉴权仍可用 ——
-    在 refresher 首次成功之前,行为等同于轮换前的世界。
+  * 服务首次接受流量时如果数据库不可达,缓存保持为空并由调用方 fail-closed;
+    同时由启动阶段的重试逻辑持续拉起 refresher,直到 DB 恢复。
   * 缓存显式声明为 *list*,验签按顺序尝试每个 key。
 """
 from __future__ import annotations
@@ -22,8 +21,6 @@ import time
 from typing import Any, Iterable
 
 import asyncpg
-
-from app.core.config import get_settings
 
 logger = logging.getLogger("ai-service")
 
@@ -61,19 +58,14 @@ async def refresh(pool: asyncpg.Pool) -> list[str]:
 
 
 def get_cached_keys() -> list[str]:
-    """返回缓存的 key 列表,缺失时回退到 ``settings.jwt_secret`` seed。
+    """返回缓存中的活跃 key 列表。
 
-    回退行为: 若 refresher 还没填充缓存 (冷启动 / DB 故障),返回
-    ``[settings.jwt_secret]``,让鉴权可以靠环境 seed 继续工作。
-    这与 Go 后端的 BootstrapIfEmpty 语义一致:
-    环境变量值始终至少是有效验签 key 之一。
+    当缓存为空时返回空列表,调用方应拒绝验签请求并等待 refresher
+    从数据库加载 current/previous key,避免回退到可能已退役的 seed。
     """
     cached: Iterable[str] = _STATE.get("keys") or ()
     cached_list = list(cached)
-    if cached_list:
-        return cached_list
-    seed = get_settings().jwt_secret
-    return [seed] if seed else []
+    return cached_list
 
 
 async def start_refresher(pool: asyncpg.Pool) -> None:
@@ -87,8 +79,7 @@ async def start_refresher(pool: asyncpg.Pool) -> None:
         return
 
     # 初始阻塞拉取一次,这样第一个请求就已经看得到 DB 状态。
-    # 这里失败会记录日志并继续 —— get_cached_keys 通过环境 seed 回退,
-    # 保持鉴权可用。
+    # 这里失败会记录日志并继续 —— 调用方在缓存为空时会 fail-closed。
     try:
         await refresh(pool)
     except Exception as exc:
