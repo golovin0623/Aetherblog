@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """AetherBlog 部署 webhook 服务。
 
-SECURITY (VULN-132 / VULN-140):
+SECURITY (VULN-132 / VULN-134 / VULN-140):
   - 使用 ``WEBHOOK_SECRET`` 对请求体做 HMAC-SHA256 进行鉴权
     （头部 ``X-Hub-Signature-256: sha256=<hex>``）。已移除"以路径作为密钥"
     的旧鉴权方式。
-  - 代码默认监听 ``127.0.0.1``。生产 systemd unit 显式覆盖为 ``0.0.0.0``
-    （HMAC 兜底, 但仍属于较宽姿态）。想换成 nginx 前置 + 127.0.0.1, 在
-    ``deploy-webhook.service`` 里改 ``Environment=WEBHOOK_BIND`` 即可.
+  - 代码默认监听 ``127.0.0.1``，仓库版 systemd unit (PR #586) 同样保持
+    ``WEBHOOK_BIND=127.0.0.1`` + ``EnvironmentFile`` 注入 secret + 无特权
+    ``webhook`` 用户 + ``ProtectSystem=strict`` / ``ProtectHome=true`` 等
+    加固。外部访问走 nginx 前置。
   - ``services`` 字段拒绝未知服务名，而不是静默回退到全量部署
     （VULN-140 的历史行为）。
 
-DEPLOYMENT NOTE (VULN-134 历史尾巴): 仓库历史里有一版 systemd 加固设计
-(``User=webhook`` 无特权用户 + ``ProtectSystem=strict`` + ``ProtectHome=true``
-+ 独立工作目录 ``/var/lib/aetherblog/webhook``), 来自 PR #459. 但跟
-``PROJECT_DIR=/root/Aetherblog`` 默认值有冲突 (ProtectHome 禁止读 /root),
-没有端到端落地. 当前生产仍是 ``User=root`` + 直跑仓库符号链接的姿态.
-想做加固请单独提 PR 配合仓库迁出 /root/. 详见 ops/webhook/README.md.
+DEPLOYMENT NOTE: 加固后的 unit 启用 ``ProtectHome=true`` 屏蔽 ``/root``,
+所以 ``PROJECT_DIR`` **不能**留在 ``/root/Aetherblog``。仓库版 unit 已把
+``Environment=PROJECT_DIR=/var/lib/aetherblog/Aetherblog`` 显式覆盖, 安装
+步骤会把仓库 clone 到那里 (详见 ``ops/webhook/README.md``)。本文件下方
+仍保留 ``/root/Aetherblog`` 作为代码级兜底默认, 仅在直接
+``python3 webhook_server.py`` 跑测试 / 旧机器 fallback 时生效, 走 systemd
+路径会被 unit 显式覆盖。
 """
 # 兼容 Python 3.6+ (CentOS 7 / RHEL 7 默认装的 /usr/bin/python3 是 3.6.8).
 # 这意味着不能用:

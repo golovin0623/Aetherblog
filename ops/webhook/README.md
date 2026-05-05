@@ -6,7 +6,7 @@
 
 - `deploy.sh`：支持 full / incremental / canary / rollback 四种部署模式。
 - `webhook_server.py`：解析 CI 传来的 `{"services": "backend blog"}` JSON，按需触发增量或全量部署。
-- `deploy-webhook.service`：systemd 服务模板（**反映生产现状**，不是 PR #459 加固设计）。
+- `deploy-webhook.service`：systemd 服务模板（已加固：无特权用户 + `127.0.0.1` 监听 + `EnvironmentFile` 注入 secret + `ProtectSystem` / `ProtectHome` / `SystemCallFilter`）。
 
 ## 当前部署形态（必读）
 
@@ -21,7 +21,7 @@
 | 自动 git sync | `deploy.sh` 内部 `git fetch + reset --hard FETCH_HEAD` | 不要设 `SKIP_GIT_SYNC=true`, 否则代码永远不下到服务器 |
 | systemd 加固指令 | 已启用 | `NoNewPrivileges` / `ProtectSystem` / `ProtectHome` / `SystemCallFilter` 等 |
 
-> ⚠️ **PR #459 安全加固的剩余尾巴**: 仓库历史里有一版加固设计 (`User=webhook` + 独立工作目录 + 路径搬迁), 但跟 `PROJECT_DIR=/root/Aetherblog` 默认值有冲突, 没真正端到端验证, 也没下到生产. 当前姿态接受这一现实. 想做加固开单独 PR, 配合仓库迁出 `/root/`、nginx 前置、webhook 用户创建一起处理.
+> ⚠️ **从 `/root/Aetherblog` 迁移**: 加固后的 unit 启用 `ProtectHome=true`, 屏蔽 `/root`。如果服务器上原来仓库就在 `/root/Aetherblog`, **必须**先迁移到 `/var/lib/aetherblog/Aetherblog` (见下方安装步骤)，否则 webhook 进程既看不到工作树、也写不进去, 第一次部署就会 500。
 
 ## Repo sync 顺序
 
@@ -31,7 +31,7 @@
 GitHub Actions push to main
   → webhook (HTTP POST /deploy)
   → webhook_server.py 在 spawn deploy.sh **之前** 完成 git fetch + reset --hard FETCH_HEAD
-    （此时 /root/Aetherblog/ 全量更新, ops/webhook/{deploy.sh, webhook_server.py} 也已写盘）
+    （此时 $PROJECT_DIR (/var/lib/aetherblog/Aetherblog) 全量更新, ops/webhook/{deploy.sh, webhook_server.py} 也已写盘）
   → webhook_server.py 通过 env["SKIP_GIT_SYNC"]="true" spawn deploy.sh
   → bash 加载 deploy.sh 时直接读盘上最新版本
   → deploy.sh 内部 sync 被 env 跳过 (作为直接 `bash deploy.sh` 时的 fallback 保留)
@@ -66,33 +66,64 @@ webhook 路径**不受此限制**——webhook_server.py 在 spawn deploy.sh 之
 ## 服务器安装步骤
 
 ```bash
-# 1) 用软链接指向仓库目录 (git pull 后自动更新, 无需手动 cp)
-ln -sfn /root/Aetherblog/ops/webhook /root/Aetherblog/webhook
-chmod +x /root/Aetherblog/ops/webhook/deploy.sh
+# 0) 创建无特权 webhook 用户/组（unit 里 User=webhook、Group=webhook）。
+#    nologin shell + 系统帐号; 已存在则跳过这一步。
+getent group webhook >/dev/null || groupadd --system webhook
+id -u webhook >/dev/null 2>&1 || \
+  useradd --system --gid webhook --home-dir /var/lib/aetherblog/webhook \
+          --shell /usr/sbin/nologin webhook
 
-# 2) 生成新 secret
+# 1) 准备 /var/lib/aetherblog 目录并把仓库迁/clone 到 PROJECT_DIR.
+#    注意: 加固 unit 的 ProtectHome=true 屏蔽 /root, 仓库不能再放 /root/Aetherblog.
+install -d -m 0755 -o root -g root /var/lib/aetherblog
+if [ -d /root/Aetherblog/.git ] && [ ! -d /var/lib/aetherblog/Aetherblog/.git ]; then
+  # 已有旧仓库: 整体搬过来。停掉 webhook 服务防止并发写。
+  systemctl stop deploy-webhook 2>/dev/null || true
+  mv /root/Aetherblog /var/lib/aetherblog/Aetherblog
+fi
+if [ ! -d /var/lib/aetherblog/Aetherblog/.git ]; then
+  git clone https://github.com/golovin0623/Aetherblog.git /var/lib/aetherblog/Aetherblog
+fi
+chown -R webhook:webhook /var/lib/aetherblog/Aetherblog
+
+# 2) 准备 webhook 运行目录, 把 deploy.sh / webhook_server.py 复制过来.
+#    用 cp 而不是软链接: ProtectHome 屏蔽 /root, 软链接也读不出来; 而且
+#    /var/lib/aetherblog/Aetherblog 已经是仓库本体, 这里只是给 ExecStart 一个稳定路径.
+install -d -m 0755 -o webhook -g webhook /var/lib/aetherblog/webhook
+install -m 0755 -o webhook -g webhook \
+  /var/lib/aetherblog/Aetherblog/ops/webhook/webhook_server.py \
+  /var/lib/aetherblog/webhook/webhook_server.py
+install -m 0755 -o webhook -g webhook \
+  /var/lib/aetherblog/Aetherblog/ops/webhook/deploy.sh \
+  /var/lib/aetherblog/webhook/deploy.sh
+
+# 3) 生成新 secret 并写入 EnvironmentFile（root:webhook 0640, 仅 root + webhook 可读）
 WEBHOOK_SECRET=$(openssl rand -hex 32)
 echo "$WEBHOOK_SECRET"
-
-# 3) 安装 systemd 服务
 install -d -m 0750 -o root -g webhook /etc/aetherblog
+umask 0027
 cat > /etc/aetherblog/webhook.env <<EOF
 WEBHOOK_SECRET=${WEBHOOK_SECRET}
 EOF
 chmod 0640 /etc/aetherblog/webhook.env
 chown root:webhook /etc/aetherblog/webhook.env
 
-cp ops/webhook/deploy-webhook.service /etc/systemd/system/deploy-webhook.service
+# 4) 安装 systemd unit
+cp /var/lib/aetherblog/Aetherblog/ops/webhook/deploy-webhook.service \
+   /etc/systemd/system/deploy-webhook.service
 
-# 4) 重载并启动
+# 5) 重载并启动
 systemctl daemon-reload
 systemctl enable deploy-webhook
 systemctl restart deploy-webhook
 systemctl status deploy-webhook --no-pager
 ```
 
-> **从旧方式迁移**: 如果之前是手动 cp 文件到 `/root/Aetherblog/webhook/`,
-> 先删掉旧目录再建软链接: `rm -rf /root/Aetherblog/webhook && ln -sfn ...`
+> **`webhook_server.py` / `deploy.sh` 改动如何下到生产**: webhook 路径会
+> `git fetch + reset --hard` 更新 `/var/lib/aetherblog/Aetherblog/`, 但不会
+> 自动同步到 `/var/lib/aetherblog/webhook/` 的副本。需要在 deploy.sh 里
+> 加一行 `install -m 0755 ops/webhook/{webhook_server.py,deploy.sh} /var/lib/aetherblog/webhook/`,
+> 或部署完手动 `install` 一次 + `systemctl restart deploy-webhook`。
 
 ## GitHub Actions Secrets
 
@@ -107,15 +138,16 @@ CI 用 HMAC-SHA256 给请求体签名, 头部 `X-Hub-Signature-256: sha256=<hex>
 
 ```bash
 # 健康检查 (HMAC 不通过, 应返回 401)
-curl -i -X POST http://127.0.0.1:7868/deploy
+curl --noproxy '*' -i -X POST http://127.0.0.1:7868/deploy
 
 # 用真 secret 触发增量部署
 WEBHOOK_SECRET=<your-secret>
 body='{"services": "backend gateway"}'
 sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | awk '{print $NF}')
-curl -i -X POST -H "Content-Type: application/json" \
+printf '%s' "$body" | curl --noproxy '*' -i -X POST \
+  -H "Content-Type: application/json" \
   -H "X-Hub-Signature-256: sha256=$sig" \
-  --data-raw "$body" \
+  --data-binary @- \
   http://127.0.0.1:7868/deploy
 
 # 查看 webhook 服务日志

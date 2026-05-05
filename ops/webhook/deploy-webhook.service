@@ -3,21 +3,17 @@ Description=AetherBlog Deployment Webhook Service
 After=network.target
 
 # ============================================================================
-# 部署形态：root 直跑 + 0.0.0.0 暴露 + 仓库直链
+# 部署形态：unprivileged user + 127.0.0.1 + systemd hardening
 #
-# 这份 unit 反映的是当前生产服务器上**真实运行的形态**，不是 PR #459
-# 安全加固设计的目标形态。两者主要差异：
-#   - User=root（vs PR #459 的 User=webhook 无特权用户）
-#   - WorkingDirectory=/root/Aetherblog/webhook  ← 软链接到 ops/webhook
-#     (vs PR #459 的 /var/lib/aetherblog/webhook 独立目录 + cp 同步)
-#   - WEBHOOK_BIND=0.0.0.0（vs PR #459 的 127.0.0.1 + nginx 前置）
-#   - 没有 ProtectSystem / ProtectHome / SystemCallFilter 等加固指令
-#   - WEBHOOK_SECRET 走 systemctl edit 内联，不走 EnvironmentFile
-#
-# PR #459 的加固版有一个未解决的设计冲突: ProtectHome=true 会禁止 webhook
-# 进程读 /root/Aetherblog (因为 PROJECT_DIR 默认还是 /root/Aetherblog),
-# 真正落地需要把仓库迁出 /root/, 当时未完成。等之后想做加固再提单独 PR
-# (路径迁移 + 用户创建 + 文件复制策略 + nginx 前置).
+# 关键约束（PR #459 / #586 的产物，落地前先看 ops/webhook/README.md）：
+#   - User/Group=webhook：无特权账号，需在安装前 useradd 创建。
+#   - WorkingDirectory + ReadWritePaths 集中在 /var/lib/aetherblog/，
+#     ProtectHome=true 会**屏蔽 /root**——仓库不能再放在 /root/Aetherblog。
+#   - PROJECT_DIR 默认指向 /var/lib/aetherblog/Aetherblog；如果你的 git
+#     工作树在别处，覆盖 PROJECT_DIR 并把路径加到 ReadWritePaths。
+#   - WEBHOOK_BIND=127.0.0.1：仅本机监听，外部访问走 nginx/反代前置。
+#   - WEBHOOK_SECRET 由 EnvironmentFile=/etc/aetherblog/webhook.env 注入，
+#     不再内联到 world-readable unit 文件。
 # ============================================================================
 
 [Service]
@@ -32,18 +28,24 @@ Environment=WEBHOOK_PORT=7868
 Environment=WEBHOOK_BIND=127.0.0.1
 Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
+# PROJECT_DIR 必须落在 ReadWritePaths 里, 否则 webhook_server.py 的 git
+# fetch + reset --hard 会被 ProtectSystem=strict 拒掉. webhook_server.py
+# 自己默认是 /root/Aetherblog，但 ProtectHome=true 已经把 /root 屏蔽，
+# 所以这里显式覆盖到 /var/lib/ 下。
+Environment=PROJECT_DIR=/var/lib/aetherblog/Aetherblog
 
 # PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
-# 当前生产装了 pyenv, 安装步骤里用 systemctl edit 覆盖成
-#   Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
 # 任何升级 Python 版本 / 切换发行版的人, 改这一行不动 ExecStart.
+# 注意: ProtectHome=true 屏蔽 /root 与 /home, 走 pyenv 的部署需要把解释器
+# 放到 /opt 或 /usr/local 下 (例如 /opt/pyenv/versions/3.x.y/bin/python3),
+# 或者在 systemctl edit 里同时关闭 ProtectHome.
 Environment=PYTHON_BIN=/usr/bin/python3
 ExecStart=${PYTHON_BIN} /var/lib/aetherblog/webhook/webhook_server.py
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/aetherblog/webhook /var/lock /var/log
+ReadWritePaths=/var/lib/aetherblog/webhook /var/lib/aetherblog/Aetherblog /var/lock /var/log
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
