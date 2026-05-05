@@ -40,6 +40,24 @@ func TestOctetStreamFallbackForSVG(t *testing.T) {
 	}
 }
 
+
+// TestTextPlainFallbackForSVG 覆盖安全报告中的主路径: 常见 <svg 开头载荷会被嗅探成
+// text/plain; charset=utf-8, Upload 的兜底逻辑必须用扩展名抬升为 image/svg+xml 并拒绝。
+func TestTextPlainFallbackForSVG(t *testing.T) {
+	for _, name := range []string{"payload.svg", "payload.SVGZ"} {
+		mimeType := "text/plain; charset=utf-8"
+		if guessed := guessMimeType(name); guessed != "application/octet-stream" {
+			mimeType = guessed
+		}
+		if mimeType != "image/svg+xml" {
+			t.Errorf("expected text/plain fallback mime %q for %s, got %q", "image/svg+xml", name, mimeType)
+		}
+		if allowedMimeTypes[mimeType] {
+			t.Errorf("%s fallback resolved to %q which is in allowedMimeTypes — bypass present", name, mimeType)
+		}
+	}
+}
+
 // TestXMLSniffedSVGStillBlocked 文档化并锁死 text/xml 嗅探绕过:
 // 带 <?xml ?> 头的 SVG 会被 http.DetectContentType 嗅探为 "text/xml; charset=utf-8",
 // 而 text/xml 在 allowedMimeTypes 中(OOXML / 订阅源等需要它),不能整体下白名单。
