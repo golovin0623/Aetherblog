@@ -2,13 +2,22 @@
 
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronRight, Sparkles, User, Copy, Check, Brain } from 'lucide-react';
+import { ChevronDown, ChevronRight, Sparkles, User, Copy, Check, Brain, Pencil, RefreshCcw } from 'lucide-react';
 import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
 import StreamMarkdown from './StreamMarkdown';
 import type { AgentMessage } from '../../lib/agentSessions';
 
 interface Props {
   message: AgentMessage;
+  /** 用户点击「编辑」—— 仅 user 消息可见；onEdit 把消息回填到 composer
+   *  并截断该消息及之后的所有消息（"从此处分叉重新对话"）。 */
+  onEdit?: (message: AgentMessage) => void;
+  /** 用户点击「重试」—— 仅 assistant 消息可见；onRetry 用上一条 user 消息
+   *  重新发起 streaming。错误态与完成态都展示。 */
+  onRetry?: (message: AgentMessage) => void;
+  /** 是否处于全局 streaming busy 状态 —— 此时 edit/retry 应禁用，避免与
+   *  另一条进行中的 stream 抢同一会话状态机。 */
+  busy?: boolean;
 }
 
 /**
@@ -23,7 +32,7 @@ interface Props {
  *  · think 段折叠：流式中默认折叠但可点开看 live preview；流式完同样默认收起；
  *  · 右上 hover 显出 copy。
  */
-function MessageBubbleBase({ message }: Props) {
+function MessageBubbleBase({ message, onEdit, onRetry, busy }: Props) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
 
@@ -36,6 +45,13 @@ function MessageBubbleBase({ message }: Props) {
       /* 拒绝写剪贴板时静默 */
     }
   }
+
+  // user 消息允许「编辑/复制」；编辑会丢弃后续消息，所以 streaming 中禁用。
+  const canEditUser = isUser && !!onEdit && !busy && !!message.content;
+  // assistant 消息允许「重试/复制」；重试同样会触发 streaming，自然要等当前
+  // 流跑完。pending 自身不可重试（要么等完成、要么按 abort 后再点重试）。
+  const canRetryAssistant =
+    !isUser && !!onRetry && !busy && !message.pending && (!!message.content || !!message.error);
 
   // 流式中（pending）且尚未收到正文 token —— 显示 typing dots
   const showTypingDots = !isUser && message.pending && !message.content && !message.error;
@@ -79,24 +95,57 @@ function MessageBubbleBase({ message }: Props) {
             })}
           </span>
           {!isUser && <ThinkingMeta message={message} />}
-          {!isUser && message.content && !message.pending && (
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="ml-1 inline-flex items-center gap-1 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 transition-opacity hover:text-[var(--ink-primary)]"
-              aria-label="复制回复"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3 h-3" /> 已复制
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" /> 复制
-                </>
-              )}
-            </button>
-          )}
+          {/* hover actions —— 与 ChatGPT / Claude 一致的位置：紧贴 meta 行，
+              hover 整条消息时才浮现。focus-within 让键盘用户也能拿到焦点。 */}
+          <div
+            className={`ml-1 inline-flex items-center gap-2 normal-case tracking-normal opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${
+              isUser ? 'flex-row-reverse' : ''
+            }`}
+          >
+            {/* 复制：user / assistant 都允许，pending 中的 assistant 也允许复制
+                已生成部分（与 ChatGPT 一致）。仅在没有正文时隐藏。 */}
+            {!!message.content && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+                aria-label="复制消息"
+                title="复制"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3 h-3" /> 已复制
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" /> 复制
+                  </>
+                )}
+              </button>
+            )}
+            {canEditUser && (
+              <button
+                type="button"
+                onClick={() => onEdit?.(message)}
+                className="inline-flex items-center gap-1 hover:text-[var(--ink-primary)]"
+                aria-label="编辑这条消息"
+                title="编辑（将截断后续对话）"
+              >
+                <Pencil className="w-3 h-3" /> 编辑
+              </button>
+            )}
+            {canRetryAssistant && (
+              <button
+                type="button"
+                onClick={() => onRetry?.(message)}
+                className="inline-flex items-center gap-1 hover:text-[var(--aurora-1)]"
+                aria-label="重试这条回复"
+                title="重新生成"
+              >
+                <RefreshCcw className="w-3 h-3" /> 重试
+              </button>
+            )}
+          </div>
         </div>
 
         {/* think 块（仅 assistant） */}
@@ -120,8 +169,20 @@ function MessageBubbleBase({ message }: Props) {
             <>
               {message.content}
               {message.error && (
-                <div className="mt-2 font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                  ERROR · {message.error}
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                    ERROR · {message.error}
+                  </span>
+                  {canRetryAssistant && (
+                    <button
+                      type="button"
+                      onClick={() => onRetry?.(message)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10.5px] uppercase tracking-[0.18em] border border-[color-mix(in_oklch,var(--signal-danger)_45%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)] hover:text-[var(--ink-primary)] transition-colors"
+                      aria-label="重新生成回复"
+                    >
+                      <RefreshCcw className="w-3 h-3" /> 重试
+                    </button>
+                  )}
                 </div>
               )}
             </>
@@ -361,6 +422,11 @@ function TypingDots() {
 function areEqual(a: Props, b: Props) {
   const ma = a.message;
   const mb = b.message;
+  // busy 翻转直接影响按钮可点性（disabled / hidden），必须穿透 memo 重渲。
+  if (a.busy !== b.busy) return false;
+  // 父级用 useCallback 稳定 onEdit / onRetry —— 它们的引用不变就视为等价；
+  // 真要变（比如父切了 active session）也通常伴随 busy 或 message 变化。
+  if (a.onEdit !== b.onEdit || a.onRetry !== b.onRetry) return false;
   if (ma === mb) return true;
   if (
     ma.id === mb.id &&

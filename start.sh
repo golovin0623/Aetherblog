@@ -226,6 +226,80 @@ bootstrap_secret_field() {
     echo -e "${GREEN}   ✅ 已自动生成 ${key}${NC}"
 }
 
+# 把 AI 凭证加密 key 与 VULN-056 之前的 JWT 派生 key 拼成 MultiFernet 列表。
+# 详见调用处长注释。
+_ensure_ai_credential_keys() {
+    local jwt_secret current legacy_key new_key opt_out
+    jwt_secret=$(get_env_field JWT_SECRET | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    if [ -z "$jwt_secret" ]; then
+        # JWT_SECRET 在 bootstrap_env 上文 bootstrap_secret_field 时已经写入。
+        # 走到这里仍空说明 .env 行被人为破坏，让后续 require_secrets() 抛错即可。
+        return 0
+    fi
+
+    # 计算与 ai-service `_legacy_jwt_derived_key()` 等价的 Fernet key：
+    # urlsafe_b64encode(sha256(JWT_SECRET))，44 字符含 '=' padding。
+    legacy_key=""
+    if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+        legacy_key=$("$PYTHON_BIN" -c "
+import base64, hashlib, sys
+print(base64.urlsafe_b64encode(hashlib.sha256(sys.argv[1].encode()).digest()).decode())
+" "$jwt_secret" 2>/dev/null || true)
+    fi
+    if [ -z "$legacy_key" ]; then
+        legacy_key=$(printf '%s' "$jwt_secret" | openssl dgst -sha256 -binary | base64 | tr -d '\n' | tr '+/' '-_')
+    fi
+    if [ -z "$legacy_key" ]; then
+        # 派生失败（极罕见，cryptography 都没用 sha256+base64 这一步）→ 退化到原行为
+        return 0
+    fi
+
+    current=$(get_env_field AI_CREDENTIAL_ENCRYPTION_KEYS | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    # opt-out：用户跑过 rotate_credentials.py、确认所有行已迁移 → 设
+    # AI_LEGACY_KEY_FALLBACK=false 阻止下次启动再次追加 legacy key。
+    opt_out=$(get_env_field AI_LEGACY_KEY_FALLBACK | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    if [ "$opt_out" = "false" ] || [ "$opt_out" = "0" ] || [ "$opt_out" = "off" ]; then
+        # 用户显式禁用 fallback：保持现状，仅在为空时生成单 key
+        if [ -z "$current" ]; then
+            new_key=""
+            if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+                new_key=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
+            fi
+            if [ -z "$new_key" ]; then
+                new_key="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
+            fi
+            bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$new_key"
+        fi
+        return 0
+    fi
+
+    # 已经包含 legacy key（任意位置）→ 跳过
+    case ",${current}," in
+        *",${legacy_key},"*) return 0 ;;
+    esac
+
+    if [ -z "$current" ]; then
+        # 新装：直接生成新主 key + legacy fallback
+        new_key=""
+        if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+            new_key=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
+        fi
+        if [ -z "$new_key" ]; then
+            new_key="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
+        fi
+        bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "${new_key},${legacy_key}"
+    else
+        # 升级：把 legacy key 追加到末位（不动首位主 key）。base64 字符不含 '|'，sed 安全。
+        sed_inplace "s|^AI_CREDENTIAL_ENCRYPTION_KEYS=.*|AI_CREDENTIAL_ENCRYPTION_KEYS=${current},${legacy_key}|" "$PROJECT_ROOT/.env"
+        echo -e "${GREEN}   ✅ 已自动追加 legacy JWT 派生 key 到 AI_CREDENTIAL_ENCRYPTION_KEYS 末位${NC}"
+    fi
+
+    echo -e "${YELLOW}   ⚠️  VULN-056 升级 fallback：legacy JWT 派生 key 已挂在 AI_CREDENTIAL_ENCRYPTION_KEYS 末位用于解密旧凭证${NC}"
+    echo -e "${YELLOW}      迁移命令：docker exec aetherblog-ai-service python -m scripts.rotate_credentials --repair-orphans${NC}"
+    echo -e "${YELLOW}      迁移完成后请从 .env 移除末位 legacy key 并设置 AI_LEGACY_KEY_FALLBACK=false${NC}"
+}
+
 # 生产模式下，若配置缺失或仍是已知开发默认值，则强制修复为安全值。
 # 仅适用于「容器在每次启动时从 env 读取」的字段（如 REDIS_PASSWORD、AUTH_COOKIE_SECURE）。
 # 对于「有持久化绑定」的字段（如 POSTGRES_PASSWORD 写入 PGDATA 后不再读 env），请用
@@ -349,18 +423,27 @@ bootstrap_env() {
         bootstrap_secret_field "AI_INTERNAL_SERVICE_TOKEN" "$_itoken"
     fi
 
-    # AI Provider Key 加密用 Fernet 密钥（32B base64url + padding）
-    if [ -z "$(get_env_field AI_CREDENTIAL_ENCRYPTION_KEYS)" ]; then
-        local _fkey=""
-        if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-            _fkey=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
-        fi
-        if [ -z "$_fkey" ]; then
-            # Python cryptography 可能未装；回退到等价的 32B base64url + 单 = 填充
-            _fkey="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
-        fi
-        bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$_fkey"
-    fi
+    # AI Provider Key 加密用 Fernet 密钥（32B base64url + padding）。
+    #
+    # VULN-056 之前的旧版本用 _legacy_jwt_derived_key(JWT_SECRET) =
+    # urlsafe_b64encode(sha256(JWT_SECRET)) 派生 Fernet key 加密 ai_credentials。
+    # 升级到 VULN-056 之后这把派生 key 不再写入生产代码路径，只剩
+    # scripts/rotate_credentials.py 在迁移窗口里手动挂上去解密。
+    #
+    # 现实是用户跑 ./start.sh 升级 → bootstrap 生成一把全新的 AI_CREDENTIAL_ENCRYPTION_KEYS
+    # → DB 里旧密文 MultiFernet 全员都解不开 → ai-service `cryptography.fernet.InvalidToken`
+    # → /agent/chat 500、admin 凭证全失效。这里把 legacy 派生 key 自动拼到
+    # AI_CREDENTIAL_ENCRYPTION_KEYS **末位**（首位仍是新生成的强随机 key,加密新数据）：
+    #
+    #   - 新装：DB 没有 legacy 行，附带 fallback 不影响安全；
+    #   - 升级（同一 JWT_SECRET）：旧密文用末位 legacy key 解开 → 不再 InvalidToken；
+    #   - 升级（轮换过 JWT_SECRET）：legacy 派生不出原始密文用的 key,fallback 无效,
+    #     仍需手动按 docs/qa/fix-plans/vuln-056-fernet-jwt-key-split.md 操作。
+    #
+    # 完成迁移后必须跑 rotate_credentials.py --repair-orphans 把所有行重新用
+    # 新 key 加密,然后从 .env 移除末位 legacy key + 设置 AI_LEGACY_KEY_FALLBACK=false
+    # 防止下次启动再次自动追加。
+    _ensure_ai_credential_keys
 
     if [ "$PROD_MODE" = true ]; then
         # POSTGRES_PASSWORD 不能由脚本静默轮换：PG 容器只在 PGDATA 首次初始化时

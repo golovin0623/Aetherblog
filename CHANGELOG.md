@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Aether Codex 设计系统
 
+### 🩹 修复 VULN-056 升级后 ai-service `InvalidToken` + 新增 message 编辑/重试/复制 (2026-05-05, branch claude/fix-credential-decryption-GuiJk)
+
+**背景:** VULN-056 把 AI 凭证加密 key 从 `_legacy_jwt_derived_key(JWT_SECRET) = urlsafe_b64encode(sha256(JWT_SECRET))` 切换到独立的 `AI_CREDENTIAL_ENCRYPTION_KEYS`。已部署的 instance 升级后 `start.sh::bootstrap_env()` 会自动 **生成全新的 Fernet key** 并写进 `.env`,而 `ai_credentials.api_key_encrypted` 列里仍是旧的 JWT 派生 key 加密的密文 —— MultiFernet 全员都解不开,`/api/v1/agent/chat` 直接 500、admin 凭证页显示"未配置凭证"、agent 路由探针记录空错误消息的 `InvalidToken`。`apps/ai-service/scripts/rotate_credentials.py` 是为这种情况设计的迁移工具,但用户得手动把 legacy key 拼到 `AI_CREDENTIAL_ENCRYPTION_KEYS` 末尾再跑脚本,体验断裂。同一个 PR 顺手补上 agent workspace 的 message 操作 —— `MessageBubble` 之前对 user 消息没有任何按钮,assistant 消息只在 `!pending && content` 时才出现复制,error 状态也无重试入口,与 ChatGPT / Claude / LobeChat 的常态相去甚远。
+
+**Changed (`start.sh`):**
+
+- `bootstrap_env()` 新增 `_ensure_ai_credential_keys` helper:从 `.env` 中读 `JWT_SECRET`,用 Python (`hashlib.sha256` + `base64.urlsafe_b64encode`) 或 openssl 兜底计算等价的 legacy Fernet key,然后:
+  - 当 `AI_CREDENTIAL_ENCRYPTION_KEYS` 为空 → 直接生成 `<新主 key>,<legacy key>`;
+  - 当字段已设置但 legacy key 不在列表里 → sed 追加到末位(末位仅参与解密,首位主 key 仍负责加密新数据);
+  - 当 legacy key 已在 → 跳过(幂等)。
+  - 用户跑过 `rotate_credentials.py` 后,设置 `AI_LEGACY_KEY_FALLBACK=false` 即可阻止下次启动再次自动追加 —— 同时保留 fresh-bootstrap 路径只生成单 key,不再带 legacy。
+- 每次自动追加都打 yellow `⚠️` 提示运维: `docker exec aetherblog-ai-service python -m scripts.rotate_credentials --repair-orphans` + 完成后从 `.env` 移除末位 legacy key 并设置 `AI_LEGACY_KEY_FALLBACK=false`。
+
+**为什么 fallback 放在末位是安全的:** MultiFernet 用列表第一项加密新数据,后续项仅在解密时按序尝试。Legacy JWT 派生 key 写在末位 → 新写入的 `ai_credentials` 行始终用强随机主 key 加密,旧行解密时才会落到 legacy。攻击面不会比单纯持有 `JWT_SECRET` 更大(原本就是同一份秘密)。轮换 + 删除 legacy 是最终目标,但允许「自动 fallback + 红字提醒」作过渡 —— 比让用户在 ai-service 全挂的状态下手动救场更可靠。
+
+**为什么不在 ai-service 启动期自动迁移:** 启动期写 DB 风险大(JWT_SECRET 也被换过 / 多副本 ai-service 抢锁 / 中途崩溃导致部分行迁完一半),而且解密逻辑里嵌死 legacy 派生会让"VULN-056 之后生产代码路径不再使用 JWT 派生 key"这一安全承诺失效。`start.sh` 层做 env 拼接 + 提示 + opt-out 是改动面最小、最易审计的中间路径。
+
+**Changed (`apps/blog/app/agent/workspace/WorkspaceClient.tsx`):**
+
+- 把 `handleSend` 拆成 `sendText(text: string)` 核心 + 薄 `handleSend` 包装(读 draft → 清空 → 调 sendText),让重试/编辑后重发能复用同一份 streaming + rAF 平滑 + `setSessions` 状态机,不再走 draft state 的异步窗口。
+- 新增 `handleEditUserMessage(message)`:截断该 user 消息及其后所有消息,把内容回填到 composer 让用户编辑后正常 Enter 发送(与 ChatGPT / Claude 的"从此处分叉"语义一致)。
+- 新增 `handleRetryAssistantMessage(message)`:找到该 assistant 之前的 user msg,截断到 user 之前(不含),立刻 `sendText(prior.content)` 重新拉一份回复 —— sendText 会把 user msg 重新 push 回去走完整 streaming 流程。
+- `busy` 期间两个操作都禁用,避免与正在跑的 stream 抢同一会话状态机。
+
+**Changed (`apps/blog/app/agent/workspace/components/MessageBubble.tsx`):**
+
+- props 新增 `onEdit` / `onRetry` / `busy`。memo `areEqual` 把 `busy` 与两个回调引用纳入比较 —— 父级用 `useCallback` 稳定回调,所以正常情况下不会触发额外重渲。
+- meta 行(消息头部)hover/focus-within 时浮现操作组,`flex-row-reverse` 与 user 消息靠右布局对齐;复制按钮对 user / assistant 都开放(原先只有 assistant)。
+- 错误气泡(`message.error`)内嵌 inline `重试` 按钮 —— 不需要 hover,用户看到红色 ERROR 行的同时直接拿到 CTA。
+- 新 import:`Pencil` / `RefreshCcw` from lucide-react。
+
+**怎么验证:**
+
+1. 凭证修复:停掉 ai-service,在 .env 里把 `AI_CREDENTIAL_ENCRYPTION_KEYS` 改成单 key 或清空,跑 `./start.sh --gateway` —— 启动日志应该看到 yellow ⚠️ 提示 + `AI_CREDENTIAL_ENCRYPTION_KEYS=<新key>,<legacy key>`。再发起 `/api/v1/agent/chat`,旧凭证不再 InvalidToken。
+2. 跑 `docker exec aetherblog-ai-service python -m scripts.rotate_credentials --repair-orphans` → 所有行重新用新 key 加密 → 把 .env 末位 legacy key 删掉,加 `AI_LEGACY_KEY_FALLBACK=false`,重启 ai-service → 解密仍然成功。
+3. UI 操作:`/agent/workspace` 发起对话,hover user 气泡看到 `复制 / 编辑`;hover assistant 气泡看到 `复制 / 重试`;构造 stream 中断错误,error 气泡内的 inline `重试` 直接出现。
+
 ### 🔒 移除生产 backend 的 docker.sock 挂载 / VULN-003 (2026-05-05, PR #603 + PR #604)
 
 **背景:** `docker-compose.prod.yml` 长期把 `/var/run/docker.sock:/var/run/docker.sock:ro` 挂进 backend 容器，并通过 `group_add: ["${DOCKER_GID:-999}"]` 把容器 UID 1001 加入 host docker 组，目的是让 `/v1/admin/monitor/*` 的"容器监控"页能调用 Docker daemon 拉容器列表与 stats。问题是 `:ro` 只阻止对套接字文件本身的写入，**Docker daemon 的 API 操作面不受影响** —— 任何拿到该 socket 的进程都能创建特权容器、绑定 host 根文件系统，等同于 host-root。一旦 backend 被攻陷（Go RCE / 依赖供应链 / handler 反序列化漏洞等），攻击者可借此从容器逃逸到宿主机。对绝大多数自托管者而言，把"管理员能看一个监控页"换"backend 进程被拿下 = 整机被拿下"是不划算的权衡。本条 CHANGELOG 同时覆盖 PR #603（实际落地 main 的 compose / env / 文档变更，标记 VULN-003）与 PR #604（独立提交的同语义改动 + 本 CHANGELOG 与文档对齐）。
