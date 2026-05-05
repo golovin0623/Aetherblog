@@ -186,11 +186,19 @@ docker_compose_project_name() {
         return
     fi
     local name=""
-    if command -v docker >/dev/null 2>&1; then
+    # start.sh 头部 `set -euo pipefail`：命令替换里管道任一段失败都会让父
+    # 脚本直接退出。docker compose 这条路径上至少有两种失败模式：
+    #   1) 主机只装了 docker daemon / 独立 docker-compose 二进制，没有 v2
+    #      plugin → `docker compose version` 直接非零；
+    #   2) 老 plugin 不在 config 输出里写顶层 name → `grep -oE` 无匹配返 1。
+    # 所以先用 plugin probe 守住第一种，pipeline 末尾加 `|| true` 兜住第二种，
+    # 防止 `set -e` 把整个 bootstrap_env 打挂（codex review on PR #613 merge）。
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
         # docker compose v2.4+ 把 project name 写进 config 输出（顶层 `name:`）
         name=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" config --format json 2>/dev/null \
-            | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 \
-            | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+            | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+            | head -1 \
+            | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
     fi
     if [ -z "$name" ]; then
         # 退化到 compose 默认规则（basename，小写 + 仅保留 [a-z0-9_-]）。
