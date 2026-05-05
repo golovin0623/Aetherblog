@@ -302,10 +302,10 @@ bootstrap_env() {
         # 仅当网关前面有 HTTPS 终结时才正确——否则浏览器不回带 Cookie，登录会断。
         bootstrap_prod_secure_field "AUTH_COOKIE_SECURE" "true" "false"
 
-        # 注：不在这里改写 REDIS_HOST。`./start.sh --prod` 把 backend / ai-service
-        # 跑在宿主机进程里，宿主机 DNS 解析不到容器服务名 "redis"。要改成全容器化
-        # 部署请走 `docker compose -f docker-compose.prod.yml up`，那条路径下
-        # REDIS_HOST 由 compose 注入，而不是这个脚本。
+        # 生产模式网关路径会走 docker-compose.prod.yml，backend/ai-service 在容器内
+        # 运行，Redis 服务名应为 redis。首次从 .env.example bootstrap 时若仍是
+        # 本地开发默认 localhost，会导致容器内回环地址并使限流等 Redis 能力失效。
+        bootstrap_prod_secure_field "REDIS_HOST" "redis" "localhost"
     fi
 
     # 前端 .env.local
