@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 44
-- **最新：** `000044_post_embedding_parent_text`（parent_child chunker 父段原文列）
-- **次新：** `000043_add_media_sync`（Phase 4 同步备份字段 + `media_sync_jobs` 表）
+- **总数：** 45
+- **最新：** `000045_default_post_page_size_to_9`（默认每页文章数 10 → 9，配合 3 列网格无尾行单卡）
+- **次新：** `000044_post_embedding_parent_text`（parent_child chunker 父段原文列）
 
 ---
 
@@ -126,6 +126,19 @@ Phase 4 同步备份字段 + `media_sync_jobs` 表。详见 `backend-runtime.md`
 PG 17 上 `ADD COLUMN IF NOT EXISTS` 是 instant DDL（不重写表），即便 `post_embeddings` 已有几百万行也不会触发长锁。父段长度由 `search_profiles.chunk_size_tokens × 4` 经验值决定，固化在 `chunker.py::_split_parent_child`。
 
 > **历史小坑：** 该 migration 一开始误编号为 000042（与同期开发的 align_storage 撞号），最终在 `10a116f9 fix(db): renumber parent text migration` 重编为 000044。生产无影响（开发分支隔离）。
+
+### 000045 · `default_post_page_size_to_9`
+**配置 seed 调整**，非 schema 变更。
+
+`/posts` 文章列表"最新发布"网格在 lg 断点是 `grid-cols-3`；000013 写入的初始默认 `'10'` 会出现 3+3+3+1 末行单卡。改为 `9` 后 3 行整齐。
+
+策略（**不修改 000013，严守 migration 不可变约定**）：
+- 045 作为默认值变更的唯一路径，覆盖两类部署：
+  - **全新安装**：000013 先 INSERT `'10'`，045 再 `UPDATE ... WHERE setting_value = '10'` → `'9'`，幂等。最终命中 `'9'`。
+  - **存量部署（默认值未改）**：当前 `'10'`，跑 045 后变 `'9'`。
+- 已自定义为 5 / 12 / 其他值的实例完全不动（WHERE 不命中）。
+
+> ⚠️ down 已知不对称：如果某实例在 045 之前就被站长手动设成 `'9'`，045 up 不动它，但 045 down 会把它退回 `'10'` —— 默认值类 migration 在没有 audit table 的前提下无法严格逆。down.sql 头部注释里写明了，回滚 045 后请手动校对该项。
 
 ---
 
