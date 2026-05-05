@@ -41,7 +41,7 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.schemas.common import ApiResponse
-from app.services.llm_router import LlmRouter
+from app.services.llm_router import NON_CHAT_MODEL_TYPES, LlmRouter
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +327,7 @@ async def _resolve_for_agent(
     )
     for m in enabled_models:
         mtype = (m.model_type or "").lower()
-        if mtype in {"embedding", "audio", "image"}:
+        if mtype in NON_CHAT_MODEL_TYPES:
             continue
         caps = m.capabilities or {}
         if isinstance(caps, dict) and caps.get("chat") is False:
@@ -456,8 +456,9 @@ async def list_agent_models(
     # 单条 SQL 把模型 + provider + 用户/系统凭证 join 起来，按 provider
     # 优先级倒序、相同 provider 内按 capabilities.sort 排序。
     # 注意 model_type 兼容：DB 里既可能是 'chat' / 'text' / 'all'，也可能是
-    # NULL；我们在 SQL 里用 IN(...) 加 NULL 兜底；显式 'embedding' / 'audio' /
-    # 'image' 这些非聊天类直接剔除。
+    # NULL；我们在 SQL 里用 COALESCE 把 NULL 当作 'chat'；非 chat 类型从
+    # llm_router.NON_CHAT_MODEL_TYPES 注入, 与 _resolve_override / fallback
+    # 保持同源, 避免某天扩 denylist 时漏改 SQL。
     query = """
         SELECT m.id, m.provider_id, p.code AS provider_code, p.display_name AS provider_name,
                p.priority AS provider_priority,
@@ -474,7 +475,7 @@ async def list_agent_models(
         JOIN ai_providers p ON m.provider_id = p.id
         WHERE m.is_enabled = TRUE
           AND p.is_enabled = TRUE
-          AND COALESCE(m.model_type, 'chat') NOT IN ('embedding', 'audio', 'image')
+          AND COALESCE(m.model_type, 'chat') <> ALL($2::text[])
           AND EXISTS (
               SELECT 1 FROM ai_credentials c
               WHERE c.provider_id = m.provider_id
@@ -493,7 +494,7 @@ async def list_agent_models(
           m.display_name ASC
     """
     async with pool.acquire() as conn:
-        rows = await conn.fetch(query, user_id)
+        rows = await conn.fetch(query, user_id, list(NON_CHAT_MODEL_TYPES))
 
     items: list[AgentModelItem] = []
     for row in rows:
