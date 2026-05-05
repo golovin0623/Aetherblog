@@ -631,6 +631,10 @@ func (r *PostRepo) FindByIDs(ctx context.Context, ids []int64) ([]model.Post, er
 
 // MarkEmbeddingPending 将指定 ID 的文章 embedding_status 置为 'PENDING'。
 // 用于异步批量索引前先行登记状态，便于前端进度面板通过 stats 接口感知"待处理"数量。
+//
+// 与 ListEmbeddingStatus / FindByIDs 保持一致：排除 is_hidden = true，
+// 与 ai-service 的 VULN-062 检查对齐——隐藏文章不该进入索引流程，否则会被
+// /api/v1/admin/search/index 拒绝并卡在 PENDING。
 func (r *PostRepo) MarkEmbeddingPending(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
