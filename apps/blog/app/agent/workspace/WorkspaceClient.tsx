@@ -92,10 +92,18 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   // chat 请求并清空。换会话或显式移除时也清空。
   const [pendingArticles, setPendingArticles] = useState<AgentArticle[]>([]);
   const [pendingTags, setPendingTags] = useState<AgentTag[]>([]);
+  // sessionModelOverride 三态：
+  //   · null              —— 未触达；ModelPicker.value 与 send payload 落到
+  //                         activeSession 存档值（或全 null 让后端走默认路由）。
+  //   · { modelId, providerCode } 含 null/null —— 用户主动选"自动选择"。
+  //   · { modelId: 'X', providerCode: 'Y' }   —— 用户主动选了具体模型。
+  // 使用 { ... } | null 而非 nullable 字段是为了区分"未操作"与"主动选自动"
+  // —— 后者的两个 null 值是真实意图，不能被 ?? 当作 missing 兜底回 session。
+  // 切换 activeSession 时清空 override（用户进入新会话视为新意图起点）。
   const [sessionModelOverride, setSessionModelOverride] = useState<{
     modelId: string | null;
     providerCode: string | null;
-  }>({ modelId: null, providerCode: null });
+  } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const streamingMsgIdRef = useRef<string | null>(null);
@@ -131,12 +139,12 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     [sessions, activeId],
   );
 
+  // 切到不同会话时清空 override —— 进入新会话视为新意图起点，不该被前一个
+  // 会话的 picker 选择残留污染。仅依赖 id：会话内 modelId 变化（如自己改名
+  // 或 handleModelChange 更新）不重置 override，避免覆盖即时态。
   useEffect(() => {
-    setSessionModelOverride({
-      modelId: activeSession?.modelId ?? null,
-      providerCode: activeSession?.providerCode ?? null,
-    });
-  }, [activeSession?.id, activeSession?.modelId, activeSession?.providerCode]);
+    setSessionModelOverride(null);
+  }, [activeSession?.id]);
 
   // ---- 会话操作 ----
   // 把 streaming 状态收尾成"已中断"。被两条路径复用：
@@ -276,6 +284,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       // 新会话继承用户在 EmptyState 选过的模型 override —— 这一步配合
       // handleModelChange 的"无 activeId 也保存 override"才闭环：用户在空态
       // 选 gpt-5.5 → 输入 → 发送，新会话从一开始就带上 gpt-5.5。
+      // 没有 override 时（用户没动过模型）落到 null，让后端走默认路由。
       session = {
         id: newSessionId(),
         title: deriveSessionTitle(text),
@@ -283,8 +292,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         createdAt: now,
         updatedAt: now,
         messages: [],
-        modelId: sessionModelOverride.modelId,
-        providerCode: sessionModelOverride.providerCode,
+        modelId: sessionModelOverride ? sessionModelOverride.modelId : null,
+        providerCode: sessionModelOverride ? sessionModelOverride.providerCode : null,
       };
       setSessions((list) => [session as AgentSession, ...list]);
       setActiveId(session.id);
@@ -434,8 +443,15 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         sessionId: sessId,
         mode: effectiveMode,
         messages: history,
-        modelId: sessionModelOverride.modelId ?? session.modelId ?? null,
-        providerCode: sessionModelOverride.providerCode ?? session.providerCode ?? null,
+        // 三元而非 ??：override = { modelId: null, ... } 表示用户主动选了
+        // "自动选择"，应该原样发送（让后端走默认路由）。?? 会把 null 当 missing
+        // 然后回退到 session.modelId（旧值），导致用户看到的"已切换"被静默忽略。
+        modelId: sessionModelOverride
+          ? sessionModelOverride.modelId
+          : (session.modelId ?? null),
+        providerCode: sessionModelOverride
+          ? sessionModelOverride.providerCode
+          : (session.providerCode ?? null),
         articleIds: articleIds.length ? articleIds : null,
         tagSlugs: tagSlugs.length ? tagSlugs : null,
       },
@@ -784,11 +800,14 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             </div>
             <div className="flex items-center gap-1.5">
               <ModelPicker
-                value={{
-                  modelId: activeSession?.modelId ?? sessionModelOverride.modelId,
-                  providerCode:
-                    activeSession?.providerCode ?? sessionModelOverride.providerCode,
-                }}
+                value={
+                  sessionModelOverride
+                    ? sessionModelOverride
+                    : {
+                        modelId: activeSession?.modelId ?? null,
+                        providerCode: activeSession?.providerCode ?? null,
+                      }
+                }
                 onChange={handleModelChange}
                 enabled={state.status === 'authed'}
                 placement="bottom-end"
@@ -863,15 +882,19 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               // 重复渲染（避免触控区域内同一控件出现两次造成歧义 + 节省横向
               // 空间给主行的 @ # / + 发送按钮）。桌面端没有独立控制条，
               // composer 仍承载 ModelPicker。
-              // value 走 activeSession ?? override 兜底：EmptyState 下显示
-              // 用户最近一次选择，避免回退成"自动 · 默认模型"。
+              // value 三元：override 存在时优先采用（含"自动选择"的 null/null
+              // 真值），否则回到 activeSession 存档。EmptyState 下两条路径都
+              // 落到正确显示，且用户主动选"自动"不会被会话存档值覆盖。
               <div className="hidden sm:block">
                 <ModelPicker
-                  value={{
-                    modelId: activeSession?.modelId ?? sessionModelOverride.modelId,
-                    providerCode:
-                      activeSession?.providerCode ?? sessionModelOverride.providerCode,
-                  }}
+                  value={
+                    sessionModelOverride
+                      ? sessionModelOverride
+                      : {
+                          modelId: activeSession?.modelId ?? null,
+                          providerCode: activeSession?.providerCode ?? null,
+                        }
+                  }
                   onChange={handleModelChange}
                   enabled={state.status === 'authed'}
                   placement="top-start"
