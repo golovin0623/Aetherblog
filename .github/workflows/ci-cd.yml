@@ -39,6 +39,11 @@ jobs:
         id: guard
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          # 用 GITHUB_TOKEN 鉴权 fetch，私有仓库 / GHES 才能拉到 ref；
+          # 通过 http.extraheader 注入，避免 token 进入 URL/日志。
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -63,12 +68,21 @@ jobs:
           # branch」的策略。改用 partial clone（tree:0 / blob:none filter）
           # 保留全部 commit 历史，但不下载 tree/blob，速度与流量与浅克隆相当。
           git init -q
-          git remote add origin "https://github.com/${{ github.repository }}.git"
-          if ! git fetch --no-tags --filter=tree:0 origin "${DEFAULT_BRANCH}"; then
-            git fetch --no-tags --filter=blob:none origin "${DEFAULT_BRANCH}"
-          fi
-          git fetch --no-tags --filter=tree:0 origin "refs/tags/${tag_name}:refs/tags/${tag_name}" \
-            || git fetch --no-tags --filter=blob:none origin "refs/tags/${tag_name}:refs/tags/${tag_name}"
+          git remote add origin "${SERVER_URL}/${REPOSITORY}.git"
+          auth_header="AUTHORIZATION: bearer ${GH_TOKEN}"
+          fetch_branch() {
+            local filter="$1"
+            git -c "http.extraheader=${auth_header}" \
+              fetch --no-tags --filter="${filter}" origin "${DEFAULT_BRANCH}"
+          }
+          fetch_tag() {
+            local filter="$1"
+            git -c "http.extraheader=${auth_header}" \
+              fetch --no-tags --filter="${filter}" origin \
+              "refs/tags/${tag_name}:refs/tags/${tag_name}"
+          }
+          fetch_branch "tree:0" || fetch_branch "blob:none"
+          fetch_tag "tree:0" || fetch_tag "blob:none"
 
           if git merge-base --is-ancestor "refs/tags/${tag_name}" "origin/${DEFAULT_BRANCH}"; then
             echo "release_tag_valid=true" >> $GITHUB_OUTPUT
