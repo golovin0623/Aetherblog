@@ -58,10 +58,17 @@ jobs:
             exit 0
           fi
 
+          # ancestry 校验需要 default branch 的完整 commit 图；--depth=1 会让
+          # tag 只有指向 HEAD 时才被判定为祖先，违反「any commit on default
+          # branch」的策略。改用 partial clone（tree:0 / blob:none filter）
+          # 保留全部 commit 历史，但不下载 tree/blob，速度与流量与浅克隆相当。
           git init -q
           git remote add origin "https://github.com/${{ github.repository }}.git"
-          git fetch --no-tags --depth=1 origin "${DEFAULT_BRANCH}"
-          git fetch --depth=1 origin "refs/tags/${tag_name}:refs/tags/${tag_name}"
+          if ! git fetch --no-tags --filter=tree:0 origin "${DEFAULT_BRANCH}"; then
+            git fetch --no-tags --filter=blob:none origin "${DEFAULT_BRANCH}"
+          fi
+          git fetch --no-tags --filter=tree:0 origin "refs/tags/${tag_name}:refs/tags/${tag_name}" \
+            || git fetch --no-tags --filter=blob:none origin "refs/tags/${tag_name}:refs/tags/${tag_name}"
 
           if git merge-base --is-ancestor "refs/tags/${tag_name}" "origin/${DEFAULT_BRANCH}"; then
             echo "release_tag_valid=true" >> $GITHUB_OUTPUT
