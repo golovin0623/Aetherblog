@@ -305,8 +305,11 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   //
   // stride 计算 (computeStride) 在 lag 大时加速，lag 小时变慢，做到既能赶上
   // 模型的真实速率，又能保持稳定的视觉节奏。
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
+  // 拆分 send 流程的实际执行体：把"text 作为字符串入参"暴露出来，让
+  // handleSend / handleRetry / handleResubmitEdited 都能复用同一份 streaming 逻辑。
+  // handleSend 之外的调用方（重试 / 编辑后重发）已自行 setDraft('')，所以这里
+  // 不再清空 draft —— 否则会破坏"用户编辑中按钮无意触发清空 textarea"的体感。
+  const sendText = useCallback(async (text: string) => {
     if (!text || busy || state.status !== 'authed') return;
 
     let session = activeSession;
@@ -361,7 +364,6 @@ export default function WorkspaceClient({ siteTitle }: Props) {
           : s,
       ),
     );
-    setDraft('');
     setBusy(true);
 
     const controller = new AbortController();
@@ -551,11 +553,67 @@ export default function WorkspaceClient({ siteTitle }: Props) {
       streamingMsgIdRef.current = null;
     }
     setBusy(false);
-  }, [draft, busy, state, activeSession, pendingArticles, pendingTags, sessionModelOverride]);
+  }, [busy, state, activeSession, pendingArticles, pendingTags, sessionModelOverride]);
+
+  const handleSend = useCallback(async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft('');
+    await sendText(text);
+  }, [draft, sendText]);
 
   const handleAbort = useCallback(() => {
     finalizeStreamingMessage('已中断');
   }, [finalizeStreamingMessage]);
+
+  // 用户消息「编辑」：把 messageId 之后（含自身）的所有消息从会话里截断，
+  // 把该消息内容回填到 composer，让用户改完后正常 Enter 发送。竞品（ChatGPT
+  // / Claude）一致行为：编辑后是"从此处分叉一条新对话"，原 assistant 回复随
+  // user msg 一起被丢弃。
+  const handleEditUserMessage = useCallback(
+    (message: AgentMessage) => {
+      if (busy) return;
+      if (message.role !== 'user') return;
+      setSessions((list) =>
+        list.map((s) => {
+          if (s.id !== activeId) return s;
+          const idx = s.messages.findIndex((m) => m.id === message.id);
+          if (idx < 0) return s;
+          return { ...s, messages: s.messages.slice(0, idx), updatedAt: Date.now() };
+        }),
+      );
+      setDraft(message.content);
+      requestAnimationFrame(() => composerRef.current?.focus());
+    },
+    [busy, activeId],
+  );
+
+  // assistant 消息「重试」：找到该消息上一条 user msg，把 assistant（含自身）
+  // 之后所有消息截断，立刻用 user 内容重新发起 streaming。错误态 / 完成态都
+  // 走这一条路径。注意必须先把 streaming setSessions 落库再 sendText —— 否则
+  // sendText 内 history 还会带上"被截"的旧 assistant 错误消息。
+  const handleRetryAssistantMessage = useCallback(
+    (message: AgentMessage) => {
+      if (busy) return;
+      if (message.role !== 'assistant') return;
+      const sess = sessions.find((s) => s.id === activeId);
+      if (!sess) return;
+      const idx = sess.messages.findIndex((m) => m.id === message.id);
+      if (idx <= 0) return;
+      const prior = sess.messages[idx - 1];
+      if (prior.role !== 'user') return;
+      // 截断到上一条 user 之前（不含 user 本身）—— sendText 会重新把它 push 回去
+      setSessions((list) =>
+        list.map((s) =>
+          s.id === sess.id
+            ? { ...s, messages: s.messages.slice(0, idx - 1), updatedAt: Date.now() }
+            : s,
+        ),
+      );
+      void sendText(prior.content);
+    },
+    [busy, sessions, activeId, sendText],
+  );
 
   const handleSuggestion = useCallback((text: string) => {
     setDraft(text);
@@ -860,7 +918,13 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             ) : (
               <div className="px-3 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-7">
                 {activeSession.messages.map((m) => (
-                  <MessageBubble key={m.id} message={m} />
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    busy={busy}
+                    onEdit={handleEditUserMessage}
+                    onRetry={handleRetryAssistantMessage}
+                  />
                 ))}
                 {/* 留出一点尾部空间，避免最后一条贴在 composer 上 */}
                 <div className="h-2" aria-hidden="true" />
