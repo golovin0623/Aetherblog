@@ -32,4 +32,16 @@ func TestCheckUserCanLogin(t *testing.T) {
 			t.Fatalf("CheckUserCanLogin 不应在 service 层拦截 must_change_password 用户, got %v", err)
 		}
 	})
+
+	t.Run("seeded_default_admin_blocked_until_rotated", func(t *testing.T) {
+		user := &model.User{
+			Username:           "admin",
+			Status:             "ACTIVE",
+			MustChangePassword: true,
+			PasswordHash:       "$2a$10$1B6fti5pzyTwI58rszwobe/Lpbe2GUzhUk7xVlkGe8kpTckIPsdHe",
+		}
+		if err := svc.CheckUserCanLogin(user); err == nil {
+			t.Fatal("expected seeded default admin to be blocked, got nil")
+		}
+	})
 }

@@ -21,6 +21,8 @@ import (
 const (
 	loginFailKeyPrefix = "auth:login:fail:" // Redis 失败计数键前缀
 	loginLockKeyPrefix = "auth:login:lock:" // Redis 锁定键前缀
+	seedAdminUsername  = "admin"
+	seedAdminHash      = "$2a$10$1B6fti5pzyTwI58rszwobe/Lpbe2GUzhUk7xVlkGe8kpTckIPsdHe"
 
 	maxFailedAttempts     = 5              // 触发账号锁定所需的连续失败次数（单 IP）
 	maxFailedAttemptsAll = 20             // 触发账号锁定所需的连续失败次数（全 IP 汇总）
@@ -61,6 +63,11 @@ func (s *AuthService) FindByUsernameOrEmail(ctx context.Context, identifier stri
 func (s *AuthService) CheckUserCanLogin(u *model.User) error {
 	if u.Status != "ACTIVE" {
 		return errors.New("账号已被禁用或未激活")
+	}
+	if strings.EqualFold(strings.TrimSpace(u.Username), seedAdminUsername) &&
+		u.MustChangePassword &&
+		u.PasswordHash == seedAdminHash {
+		return errors.New("默认管理员密码已禁用，请由部署人员先完成初始化")
 	}
 	return nil
 }
