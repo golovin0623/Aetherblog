@@ -209,6 +209,35 @@ main() {
     else
       fail "logs" "backend log directory unreadable (/app/logs)"
     fi
+
+    # ------------------------------------------------------------------------
+    # webhook 进程新鲜度：deploy-webhook 是常驻 systemd 进程，磁盘上
+    # webhook_server.py 改了之后必须重启进程才会被加载。
+    # 若进程启动时间比文件 mtime 早 → 跑的是过期代码，FAIL 让运维立刻看见。
+    # 历史事故 2026-05-05：进程跑 5 月 3 日的旧版本 8 小时，scanner 半开连接
+    # 把单线程 recvfrom 钉死，PR #602 / #597 部署连续失败。详见
+    # ops/webhook/deploy.sh 末尾的 restart_webhook_if_stale。
+    # ------------------------------------------------------------------------
+    local webhook_py="$PROJECT_DIR/ops/webhook/webhook_server.py"
+    if ! command -v systemctl >/dev/null 2>&1; then
+      skip "webhook" "systemctl not available, cannot check deploy-webhook freshness"
+    elif [[ ! -f "$webhook_py" ]]; then
+      skip "webhook" "webhook_server.py not found at $webhook_py"
+    elif [[ "$(systemctl is-active deploy-webhook 2>/dev/null || true)" != "active" ]]; then
+      skip "webhook" "deploy-webhook service not active on this host"
+    else
+      local wh_file_mtime wh_proc_iso wh_proc_epoch
+      wh_file_mtime=$(stat -c %Y "$webhook_py" 2>/dev/null || echo 0)
+      wh_proc_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp --value 2>/dev/null || true)
+      wh_proc_epoch=$(date -d "$wh_proc_iso" +%s 2>/dev/null || echo 0)
+      if (( wh_proc_epoch == 0 )); then
+        skip "webhook" "deploy-webhook ActiveEnterTimestamp unavailable"
+      elif (( wh_proc_epoch >= wh_file_mtime )); then
+        pass "webhook" "deploy-webhook process started after webhook_server.py mtime (proc=$wh_proc_iso)"
+      else
+        fail "webhook" "deploy-webhook process is older than webhook_server.py — run: sudo systemctl restart deploy-webhook (proc=$wh_proc_iso, file_mtime_epoch=$wh_file_mtime)"
+      fi
+    fi
   fi
 
   echo "[INFO] preflight summary: pass=$passed fail=$failed skip=$skipped"

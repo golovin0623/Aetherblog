@@ -400,6 +400,29 @@ class DeployHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     def get_request(self):
         request, client_address = super(DeployHTTPServer, self).get_request()
         request.settimeout(REQUEST_TIMEOUT)
+        # 内核层兜底：settimeout 只有等到 worker 线程实际进入 recv 才生效，
+        # 半开连接 / TCP 层故障在 Python 看不见。SO_KEEPALIVE + 短探测周期 +
+        # TCP_USER_TIMEOUT 让内核在 ~25s 内主动 RST 失活连接，配合 ThreadingMixIn
+        # 把 scanner 阻塞的爆炸半径锁在单个 worker 线程里。所有 setsockopt 都是
+        # Linux 特化路径，包成 try/except 让非 Linux 与古内核回落到原 settimeout。
+        try:
+            request.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            # 9 秒空闲就开始探测、3 秒一次、3 次没回应即 RST → 总 18 秒。
+            for opt_name, value in (
+                ("TCP_KEEPIDLE", 9),
+                ("TCP_KEEPINTVL", 3),
+                ("TCP_KEEPCNT", 3),
+            ):
+                opt = getattr(socket, opt_name, None)
+                if opt is not None:
+                    request.setsockopt(socket.IPPROTO_TCP, opt, value)
+            # TCP_USER_TIMEOUT (Linux 2.6.37+, RFC 5482): 任何已发数据未收到
+            # ack 超过 N ms 就关连接。Python <3.6 没把它包进 socket 模块，用
+            # IPPROTO_TCP 协议号 + 数字常量 18 兜底。
+            tcp_user_timeout = getattr(socket, "TCP_USER_TIMEOUT", 18)
+            request.setsockopt(socket.IPPROTO_TCP, tcp_user_timeout, 25_000)
+        except (AttributeError, OSError) as exc:
+            logging.debug("TCP keepalive tuning skipped: %s", exc)
         return request, client_address
 
 

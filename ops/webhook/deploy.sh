@@ -457,4 +457,60 @@ fi
 echo "[$(date -Iseconds)] Running docker image prune -f"
 docker image prune -f
 
+# ---------------------------------------------------------------------------
+# 自动重启 deploy-webhook：webhook 是常驻 systemd 进程，磁盘上的 webhook_server.py
+# 改了不会被进程自己捡起来。这里在 deploy 末尾比对 mtime；新于进程启动时间就用
+# `systemd-run --on-active=2s` 调度一次延迟 restart —— 既让本次 webhook 请求把
+# 200 写完，又让新代码在下一次部署立刻生效。
+#
+# 历史事故 2026-05-05：webhook 进程 5 月 3 日启动跑老版本（无 ThreadingMixIn /
+# settimeout），磁盘上加固版从未生效；scanner 半开连接把单线程 recvfrom 钉死 7
+# 小时，PR #602 / #597 触发的 CI 部署连接全部堆 backlog 拿 RST，业务停摆。
+#
+# 用 systemd-run 而不是 `(sleep 2; systemctl restart) &`：后者作为 deploy.sh
+# 子进程仍在 deploy-webhook.service 的 cgroup 内，systemctl restart 触发的
+# `KillMode=control-group` 会把这个 sleeper 一起杀掉；transient unit 才能跑出
+# webhook 自己的 cgroup。
+# ---------------------------------------------------------------------------
+restart_webhook_if_stale() {
+  local webhook_py="$PROJECT_DIR/ops/webhook/webhook_server.py"
+  if [ ! -f "$webhook_py" ]; then
+    return
+  fi
+  if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
+    return
+  fi
+  if [ "$(systemctl is-active deploy-webhook 2>/dev/null || true)" != "active" ]; then
+    # 不是 webhook 部署形态（开发机 / CI / 手工 bash deploy.sh）→ 跳过
+    return
+  fi
+
+  local file_mtime proc_start_iso proc_start_epoch
+  file_mtime=$(stat -c %Y "$webhook_py" 2>/dev/null || echo 0)
+  proc_start_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp --value 2>/dev/null || true)
+  if [ -z "$proc_start_iso" ] || [ "$proc_start_iso" = "n/a" ]; then
+    echo "[$(date -Iseconds)] WARN: deploy-webhook ActiveEnterTimestamp unavailable, skipping staleness check"
+    return
+  fi
+  proc_start_epoch=$(date -d "$proc_start_iso" +%s 2>/dev/null || echo 0)
+
+  if [ "$file_mtime" -le "$proc_start_epoch" ]; then
+    return
+  fi
+
+  echo "[$(date -Iseconds)] webhook_server.py is newer than running deploy-webhook (file_mtime=$file_mtime, proc_start=$proc_start_epoch)"
+  echo "[$(date -Iseconds)] Scheduling deploy-webhook restart (+2s) so the current 200 response can flush first"
+
+  # unit 名带纳秒避免快速串行部署时撞名；CentOS 7 的 systemd 219 没有
+  # --collect, transient unit 跑完后仍会以 inactive 形态留在内存直到 reboot,
+  # 影响可忽略。
+  local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
+  if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
+         systemctl restart deploy-webhook 2>&1; then
+    echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+  fi
+}
+
+restart_webhook_if_stale
+
 echo "[$(date -Iseconds)] Deployment completed"
