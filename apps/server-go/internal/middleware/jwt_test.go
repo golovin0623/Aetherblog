@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -89,4 +90,39 @@ func TestRequirePasswordRotated(t *testing.T) {
 			t.Error("下游 handler 不应被调用 —— 默认密码账号必须先改密")
 		}
 	})
+}
+
+// TestJWTAuthWithKeys_PopulatesMustChangePasswordClaim 验证 JWTAuthWithKeys 会把 mcp
+// claim 透传到上下文中的 LoginUser，供 RequirePasswordRotated 在后续链路执行强制改密拦截。
+func TestJWTAuthWithKeys_PopulatesMustChangePasswordClaim(t *testing.T) {
+	secret := "jwt-auth-with-keys-secret"
+	token, err := jwtutil.GenerateToken(99, "seed-admin", "ADMIN", secret, time.Hour, true)
+	if err != nil {
+		t.Fatalf("GenerateToken 失败: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTAuthWithKeys(func() []string { return []string{secret} })
+	h := mw(func(c echo.Context) error {
+		lu := GetLoginUser(c)
+		if lu == nil {
+			t.Fatal("期望 LoginUser 已写入上下文")
+		}
+		if !lu.MustChangePassword {
+			t.Fatal("期望 MustChangePassword=true")
+		}
+		return c.NoContent(http.StatusOK)
+	})
+
+	if err := h(c); err != nil {
+		t.Fatalf("handler 返回错误: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, 期望 200", rec.Code)
+	}
 }
