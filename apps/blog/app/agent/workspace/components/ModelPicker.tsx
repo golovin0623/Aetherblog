@@ -89,7 +89,7 @@ export default function ModelPicker({
 
   // 紧凑（composer 内嵌）时按钮更小、文字更短；常规（topbar）按钮带 mono uppercase。
   const triggerClass = compact
-    ? 'inline-flex items-center gap-1 px-2 h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors text-[12px] max-w-[200px] sm:max-w-[240px]'
+    ? 'inline-flex items-center gap-1 px-2 h-11 sm:h-7 rounded-md bg-transparent text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-colors text-[12px] max-w-[220px] sm:max-w-[240px]'
     : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-raised)] border border-[var(--ink-subtle)]/20 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--aurora-1)]/40 transition-colors text-[12px] max-w-[220px]';
 
   // 弹出位置：top-start 让 popover 出现在按钮上方左对齐，避免遮挡 composer 内容。

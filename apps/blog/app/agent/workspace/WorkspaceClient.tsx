@@ -717,7 +717,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                 {activeSession?.title || '尚未选择会话'}
               </span>
               <span className="font-mono text-[9.5px] uppercase tracking-[0.28em] text-[var(--ink-muted)]">
-                Agent · {activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat'}
+                灵境 · {activeSession && AVAILABLE_MODES.has(activeSession.mode) ? activeSession.mode : 'chat'}
               </span>
             </div>
           </div>
@@ -732,6 +732,33 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             </div>
           </div>
         </header>
+
+        {/* 移动端控制条：把模式/模型/主题集中到可触达区域，减少顶部认知负担 */}
+        <div className="sm:hidden px-3 pt-2 pb-1.5 border-b border-[var(--ink-subtle)]/10 bg-[var(--bg-substrate)]/88 backdrop-blur-md">
+          <div className="surface-leaf rounded-xl border border-[var(--ink-subtle)]/15 px-2.5 py-2 flex items-center justify-between gap-2">
+            <div className="min-w-0 flex items-center gap-2">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                模式
+              </span>
+              <span className="text-[12px] text-[var(--ink-primary)] truncate">
+                {activeSession?.mode ?? 'chat'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ModelPicker
+                value={{
+                  modelId: sessionModelOverride.modelId,
+                  providerCode: sessionModelOverride.providerCode,
+                }}
+                onChange={handleModelChange}
+                enabled={state.status === 'authed'}
+                placement="bottom-end"
+                compact
+              />
+              <ThemeToggle size="sm" />
+            </div>
+          </div>
+        </div>
 
         {/* 对话流 */}
         <div className="relative flex-1 min-h-0">
@@ -776,7 +803,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
         {/* 输入栏（centered，max-w-3xl） —— ModelPicker 内嵌左侧。
             上方加一条从透明到 bg-substrate 的渐变蒙版，让滚动文本"溶入"
             composer 区域，避免最后一行字硬切在 composer 上沿。 */}
-        <div className="relative px-3 sm:px-6 pb-3 sm:pb-5 pt-1 max-w-3xl w-full mx-auto">
+        <div className="relative px-3 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5 pt-1 max-w-3xl w-full mx-auto">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -top-6 left-0 right-0 h-6"
@@ -793,16 +820,18 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             onAbort={handleAbort}
             busy={busy}
             leadingSlot={
-              <ModelPicker
-                value={{
-                  modelId: activeSession?.modelId ?? null,
-                  providerCode: activeSession?.providerCode ?? null,
-                }}
-                onChange={handleModelChange}
-                enabled={state.status === 'authed'}
-                placement="top-start"
-                compact
-              />
+              <div className="hidden sm:block">
+                <ModelPicker
+                  value={{
+                    modelId: sessionModelOverride.modelId,
+                    providerCode: sessionModelOverride.providerCode,
+                  }}
+                  onChange={handleModelChange}
+                  enabled={state.status === 'authed'}
+                  placement="top-start"
+                  compact
+                />
+              </div>
             }
             selectedArticles={pendingArticles}
             selectedTags={pendingTags}
@@ -813,7 +842,7 @@ export default function WorkspaceClient({ siteTitle }: Props) {
             onRemoveTag={handleRemoveTag}
           />
           <p className="mt-1.5 text-center font-mono text-[9.5px] uppercase tracking-[0.24em] text-[var(--ink-muted)]/80">
-            Agent 可能出错 · 关键决定请二次核对
+            灵境 可能出错 · 关键决定请二次核对
           </p>
         </div>
       </section>
@@ -871,7 +900,7 @@ function EmptyState({
         transition={{ duration: 0.6, ease }}
         className="font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--aurora-1)]/85 mb-4"
       >
-        {siteTitle.toUpperCase()} · AGENT
+        {siteTitle.toUpperCase()} · 灵境
       </motion.p>
 
       <motion.h2
