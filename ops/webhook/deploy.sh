@@ -441,7 +441,86 @@ echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
 
 # ---------------------------------------------------------------------------
+# 自动重启 deploy-webhook：webhook 是常驻 systemd 进程，磁盘上的 webhook_server.py
+# 改了不会被进程自己捡起来。这里比对 mtime，新于进程启动时间就用
+# `systemd-run --on-active=2s` 调度一次延迟 restart —— 既让本次 webhook 请求把
+# 200 写完，又让新代码在下一次部署立刻生效。
+#
+# 历史事故 2026-05-05：webhook 进程 5 月 3 日启动跑老版本（无 ThreadingMixIn /
+# settimeout），磁盘上加固版从未生效；scanner 半开连接把单线程 recvfrom 钉死 7
+# 小时，PR #602 / #597 触发的 CI 部署连接全部堆 backlog 拿 RST，业务停摆。
+#
+# 用 systemd-run 而不是 `(sleep 2; systemctl restart) &`：后者作为 deploy.sh
+# 子进程仍在 deploy-webhook.service 的 cgroup 内，systemctl restart 触发的
+# `KillMode=control-group` 会把这个 sleeper 一起杀掉；transient unit 才能跑出
+# webhook 自己的 cgroup。
+#
+# **顺序很关键 —— 必须在 preflight 之前调用**：preflight.sh 里也有同款过期
+# 检查，且 deploy.sh 默认 `PREFLIGHT_BLOCK=true` + `set -e`，preflight 一旦因
+# webhook 过期 fail 就直接 exit，restart hook 跑不到 —— 下次部署还是过期，
+# 死循环直到人工 `systemctl restart deploy-webhook`。把调度提到 preflight 前，
+# `systemd-run` 是 fire-and-forget 异步定时器，独立于 deploy.sh 后续是否成功
+# / 是否被 set -e 终止；2s 后 webhook 必然被替换，下一次部署 preflight 自动
+# 转 PASS，整条恢复链自愈。
+# ---------------------------------------------------------------------------
+restart_webhook_if_stale() {
+  local webhook_py="$PROJECT_DIR/ops/webhook/webhook_server.py"
+  if [ ! -f "$webhook_py" ]; then
+    return
+  fi
+  if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
+    return
+  fi
+  if [ "$(systemctl is-active deploy-webhook 2>/dev/null || true)" != "active" ]; then
+    # 不是 webhook 部署形态（开发机 / CI / 手工 bash deploy.sh）→ 跳过
+    return
+  fi
+
+  local file_mtime proc_start_iso proc_start_epoch
+  file_mtime=$(stat -c %Y "$webhook_py" 2>/dev/null || echo 0)
+  # `systemctl show --value` 是 systemd 230+ 语法；生产是 CentOS 7 + systemd 219，
+  # 不识别这个 flag 会回吐 `ActiveEnterTimestamp=...` 整段字符串，让 date -d
+  # 解析失败、proc_start_epoch 变 0、每次部署都误触发 restart。改成
+  # `cut -d= -f2-` 跨 systemd 版本一致地剥前缀。
+  proc_start_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2- || true)
+  # systemd 219 在服务未进入 active 状态时返回 `[no timestamp]`；新版返回空串或
+  # `n/a`。三种 sentinel 一并兜住，避免 date 解析无效字符串。
+  if [ -z "$proc_start_iso" ] || [ "$proc_start_iso" = "n/a" ] || [ "$proc_start_iso" = "[no timestamp]" ]; then
+    echo "[$(date -Iseconds)] WARN: deploy-webhook ActiveEnterTimestamp unavailable, skipping staleness check"
+    return
+  fi
+  proc_start_epoch=$(date -d "$proc_start_iso" +%s 2>/dev/null || echo 0)
+  if [ "$proc_start_epoch" -eq 0 ]; then
+    # date 解析失败兜底：宁可漏一次重启提示，也不能在每次部署都误触发 systemd-run。
+    echo "[$(date -Iseconds)] WARN: failed to parse deploy-webhook ActiveEnterTimestamp ($proc_start_iso), skipping staleness check"
+    return
+  fi
+
+  if [ "$file_mtime" -le "$proc_start_epoch" ]; then
+    return
+  fi
+
+  echo "[$(date -Iseconds)] webhook_server.py is newer than running deploy-webhook (file_mtime=$file_mtime, proc_start=$proc_start_epoch)"
+  echo "[$(date -Iseconds)] Scheduling deploy-webhook restart (+2s) so the current 200 response can flush first"
+
+  # unit 名带纳秒避免快速串行部署时撞名；CentOS 7 的 systemd 219 没有
+  # --collect, transient unit 跑完后仍会以 inactive 形态留在内存直到 reboot,
+  # 影响可忽略。
+  local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
+  if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
+         systemctl restart deploy-webhook 2>&1; then
+    echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+  fi
+}
+
+restart_webhook_if_stale
+
+# ---------------------------------------------------------------------------
 # 部署后：完整 preflight 校验（运行时检查）
+#
+# 排在 restart_webhook_if_stale 之后：preflight 自带的 webhook 过期检查可能
+# 让 deploy.sh 在 set -e 下 exit 1，但此时 systemd-run 已经把恢复 timer 排
+# 出去了，CI 这次拿 500 是诊断信号，下次部署就自动恢复。
 # ---------------------------------------------------------------------------
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
   echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"
