@@ -118,6 +118,46 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   );
 
   // ---- 会话操作 ----
+  // 把 streaming 状态收尾成"已中断"。被两条路径复用：
+  //   1. 用户按 composer 的"停止"按钮（handleAbort）
+  //   2. 用户切到另一个会话（handleSelect）时若有 streaming 消息（codex
+  //      review #575：fetch 在 AbortError 上 silent return → assistant
+  //      bubble 永远停在 pending:true → 持久化成幻影）。
+  // 必须捕获当前 activeId 作为 sessId —— 调用者在 setActiveId(newId) 之前
+  // 必须先调本函数，闭包此时仍指向"被切走"的旧会话，能正确 patch。
+  const finalizeStreamingMessage = useCallback(
+    (reason: string) => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      if (streamingMsgIdRef.current && activeId) {
+        const targetId = streamingMsgIdRef.current;
+        const sessId = activeId;
+        setSessions((list) =>
+          list.map((s) =>
+            s.id === sessId
+              ? {
+                  ...s,
+                  messages: s.messages.map((m) =>
+                    m.id === targetId
+                      ? {
+                          ...m,
+                          pending: false,
+                          error: m.error || reason,
+                          finishedAt: Date.now(),
+                        }
+                      : m,
+                  ),
+                }
+              : s,
+          ),
+        );
+      }
+      streamingMsgIdRef.current = null;
+      setBusy(false);
+    },
+    [activeId],
+  );
+
   const handleCreate = useCallback(() => {
     const now = Date.now();
     const sess: AgentSession = {
@@ -133,10 +173,18 @@ export default function WorkspaceClient({ siteTitle }: Props) {
     requestAnimationFrame(() => composerRef.current?.focus());
   }, []);
 
-  const handleSelect = useCallback((id: string) => {
-    setActiveId(id);
-    abortRef.current?.abort();
-  }, []);
+  const handleSelect = useCallback(
+    (id: string) => {
+      // 切会话时若还有 streaming 消息，先按"停止"语义收尾旧会话。
+      // 必须先 finalize 后 setActiveId —— finalize 闭包里的 activeId 还指
+      // 着"被切走"的旧会话，这样才能 patch 对消息。
+      if (streamingMsgIdRef.current) {
+        finalizeStreamingMessage('已中断');
+      }
+      setActiveId(id);
+    },
+    [finalizeStreamingMessage],
+  );
 
   const handleRename = useCallback((id: string, title: string) => {
     setSessions((list) =>
@@ -429,34 +477,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   }, [draft, busy, state, activeSession, pendingArticles, pendingTags]);
 
   const handleAbort = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    if (streamingMsgIdRef.current && activeId) {
-      const targetId = streamingMsgIdRef.current;
-      const sessId = activeId;
-      setSessions((list) =>
-        list.map((s) =>
-          s.id === sessId
-            ? {
-                ...s,
-                messages: s.messages.map((m) =>
-                  m.id === targetId
-                    ? {
-                        ...m,
-                        pending: false,
-                        error: m.error || '已中断',
-                        finishedAt: Date.now(),
-                      }
-                    : m,
-                ),
-              }
-            : s,
-        ),
-      );
-    }
-    streamingMsgIdRef.current = null;
-    setBusy(false);
-  }, [activeId]);
+    finalizeStreamingMessage('已中断');
+  }, [finalizeStreamingMessage]);
 
   const handleSuggestion = useCallback((text: string) => {
     setDraft(text);
