@@ -23,10 +23,13 @@ func TestCheckUserCanLogin(t *testing.T) {
 		}
 	})
 
-	t.Run("must_change_password_user_blocked", func(t *testing.T) {
+	// must_change_password=true 在此层**不**拦截 —— 拦下来用户拿不到 JWT，
+	// 而 /change-password 端点本身需要 JWT，会形成自服务死锁。
+	// 真正的拦截在 middleware.RequirePasswordRotated（见 jwt_test.go）。
+	t.Run("must_change_password_user_allowed_at_service_layer", func(t *testing.T) {
 		user := &model.User{Status: "ACTIVE", MustChangePassword: true}
-		if err := svc.CheckUserCanLogin(user); err == nil {
-			t.Fatal("expected error when must_change_password is true, got nil")
+		if err := svc.CheckUserCanLogin(user); err != nil {
+			t.Fatalf("CheckUserCanLogin 不应在 service 层拦截 must_change_password 用户, got %v", err)
 		}
 	})
 }

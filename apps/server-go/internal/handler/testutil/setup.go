@@ -60,7 +60,7 @@ func DoRequest(e *echo.Echo, method, path string, body string, headers ...http.H
 // DoAuthRequest 向指定的 Echo 实例发送携带有效 JWT Authorization 头的 HTTP 请求。
 // 使用 TestJWTSecret 为指定用户 ID 签发测试用 Token。
 func DoAuthRequest(e *echo.Echo, method, path, body string, userID int64) *httptest.ResponseRecorder {
-	token, _ := jwtutil.GenerateToken(userID, "admin", "ADMIN", TestJWTSecret, time.Hour)
+	token, _ := jwtutil.GenerateToken(userID, "admin", "ADMIN", TestJWTSecret, time.Hour, false)
 	h := http.Header{}
 	h.Set("Authorization", "Bearer "+token)
 	return DoRequest(e, method, path, body, h)

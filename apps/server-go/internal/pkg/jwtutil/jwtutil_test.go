@@ -10,7 +10,7 @@ import (
 func TestGenerateAndParseToken(t *testing.T) {
 	secret := "test-secret"
 	// 使用用户 ID=42、用户名 admin、角色 ADMIN 生成一小时有效期的令牌
-	token, err := GenerateToken(42, "admin", "ADMIN", secret, time.Hour)
+	token, err := GenerateToken(42, "admin", "ADMIN", secret, time.Hour, false)
 	if err != nil {
 		t.Fatalf("GenerateToken 失败: %v", err)
 	}
@@ -35,12 +35,33 @@ func TestGenerateAndParseToken(t *testing.T) {
 	if claims.Role != "ADMIN" {
 		t.Errorf("Role = %q, 期望值为 ADMIN", claims.Role)
 	}
+	// 普通账号 token 不应携带 mcp claim
+	if claims.MustChangePassword {
+		t.Errorf("MustChangePassword = true, 期望值为 false")
+	}
+}
+
+// TestGenerateAndParseToken_MustChangePassword 验证 mcp=true 的 token 能正确
+// 往返 —— middleware.RequirePasswordRotated 据此把默认密码账号关在改密笼子里。
+func TestGenerateAndParseToken_MustChangePassword(t *testing.T) {
+	secret := "test-secret"
+	token, err := GenerateToken(42, "admin", "ADMIN", secret, time.Hour, true)
+	if err != nil {
+		t.Fatalf("GenerateToken 失败: %v", err)
+	}
+	claims, err := ParseToken(token, secret)
+	if err != nil {
+		t.Fatalf("ParseToken 失败: %v", err)
+	}
+	if !claims.MustChangePassword {
+		t.Error("MustChangePassword = false, 期望值为 true")
+	}
 }
 
 // TestParseToken_InvalidSecret 验证使用错误密钥解析令牌时应返回错误。
 func TestParseToken_InvalidSecret(t *testing.T) {
 	// 使用 secret-a 签名，用 secret-b 解析，应当验签失败
-	token, _ := GenerateToken(1, "user", "USER", "secret-a", time.Hour)
+	token, _ := GenerateToken(1, "user", "USER", "secret-a", time.Hour, false)
 	_, err := ParseToken(token, "secret-b")
 	if err == nil {
 		t.Error("期望因密钥不匹配而返回错误，但实际未返回错误")
@@ -50,7 +71,7 @@ func TestParseToken_InvalidSecret(t *testing.T) {
 // TestParseToken_Expired 验证解析已过期令牌时应返回错误。
 func TestParseToken_Expired(t *testing.T) {
 	// 传入负数有效期（-1 小时）使令牌在生成时即已过期
-	token, _ := GenerateToken(1, "user", "USER", "secret", -time.Hour)
+	token, _ := GenerateToken(1, "user", "USER", "secret", -time.Hour, false)
 	_, err := ParseToken(token, "secret")
 	if err == nil {
 		t.Error("期望因令牌已过期而返回错误，但实际未返回错误")
@@ -64,7 +85,7 @@ func TestParseTokenWithKeys_AcceptsPrevious(t *testing.T) {
 	newSecret := "current-secret-padding-to-32-chars!!"
 
 	// 用旧密钥签发一个 token，模拟轮换前发放给用户的 access token
-	token, err := GenerateToken(7, "alice", "USER", oldSecret, time.Hour)
+	token, err := GenerateToken(7, "alice", "USER", oldSecret, time.Hour, false)
 	if err != nil {
 		t.Fatalf("GenerateToken 失败: %v", err)
 	}
@@ -83,7 +104,7 @@ func TestParseTokenWithKeys_AcceptsPrevious(t *testing.T) {
 // 会被正确拒绝 —— 即便它在某个 retired key 下是合法的。
 func TestParseTokenWithKeys_RejectsUnknown(t *testing.T) {
 	retiredSecret := "retired-secret-from-months-ago!!!"
-	token, _ := GenerateToken(1, "bob", "USER", retiredSecret, time.Hour)
+	token, _ := GenerateToken(1, "bob", "USER", retiredSecret, time.Hour, false)
 
 	_, err := ParseTokenWithKeys(token, []string{"current", "previous"})
 	if err == nil {
@@ -93,7 +114,7 @@ func TestParseTokenWithKeys_RejectsUnknown(t *testing.T) {
 
 // TestParseTokenWithKeys_EmptyKeys 验证传入空 keys 切片是参数错误。
 func TestParseTokenWithKeys_EmptyKeys(t *testing.T) {
-	token, _ := GenerateToken(1, "bob", "USER", "k", time.Hour)
+	token, _ := GenerateToken(1, "bob", "USER", "k", time.Hour, false)
 	if _, err := ParseTokenWithKeys(token, nil); err == nil {
 		t.Error("期望空 keys 返回错误")
 	}
