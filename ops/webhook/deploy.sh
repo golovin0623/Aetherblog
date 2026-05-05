@@ -48,9 +48,38 @@ cd "$PROJECT_DIR"
 if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
   deploy_ref="${DEPLOY_GIT_REF:-origin/main}"
   fetch_ref="${deploy_ref#origin/}"
+  fetch_ref="${fetch_ref#refs/heads/}"
   fetch_ref="${fetch_ref:-main}"
+  deploy_commit_sha="${DEPLOY_COMMIT_SHA:-}"
 
-  echo "[$(date -Iseconds)] Syncing repo to $deploy_ref"
+  # 安全边界：webhook 部署只允许同步分支（branch）。若调用方传入 refs/tags/*
+  # 或其他非 refs/heads/* 的全限定 ref，直接拒绝 —— 否则下面拼出来的
+  # `+refs/heads/${fetch_ref}:...` 在远端找不到对象时会失败，但更危险的是
+  # 任何"看起来像分支"的歧义都该被显式挡掉，避免 #602 关闭的 tag 影子攻击
+  # 以新形态绕回来。
+  case "$fetch_ref" in
+    refs/*)
+      echo "[$(date -Iseconds)] ERROR: DEPLOY_GIT_REF must reference a branch (got non-branch ref: $deploy_ref)"
+      exit 1
+      ;;
+  esac
+
+  deploy_remote_ref="refs/remotes/origin/${fetch_ref}"
+
+  if [ -z "$deploy_commit_sha" ]; then
+    echo "[$(date -Iseconds)] ERROR: DEPLOY_COMMIT_SHA is required when git sync is enabled"
+    echo "[$(date -Iseconds)] Refusing to run host-side deploy using an unpinned remote ref: $deploy_ref"
+    exit 1
+  fi
+  # 仅接受完整 hex SHA。否则像 HEAD / FETCH_HEAD / 本地分支名都能通过后面
+  # cat-file -e + merge-base --is-ancestor 校验，让 git reset --hard 跟着浮动
+  # ref 走，整个 pin 形同虚设（gemini / codex review 指出的绕过路径）。
+  if ! [[ "$deploy_commit_sha" =~ ^[0-9a-f]{40,64}$ ]]; then
+    echo "[$(date -Iseconds)] ERROR: DEPLOY_COMMIT_SHA must be a full lowercase hex SHA (40-64 chars), got: $deploy_commit_sha"
+    exit 1
+  fi
+
+  echo "[$(date -Iseconds)] Syncing repo to $deploy_ref at pinned commit $deploy_commit_sha"
   if ! git diff --quiet HEAD 2>/dev/null; then
     echo "[$(date -Iseconds)] WARN: working tree dirty, reset --hard will discard these tracked changes:"
     git status --porcelain | head -20 || true
@@ -58,14 +87,33 @@ if [ "${SKIP_GIT_SYNC:-false}" != "true" ] && [ -d .git ]; then
 
   current_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
 
-  if ! git fetch --quiet --tags origin "$fetch_ref"; then
-    echo "[$(date -Iseconds)] ERROR: git fetch origin $fetch_ref failed"
+  # 显式 `+refs/heads/<branch>:refs/remotes/origin/<branch>` + `--no-tags`：
+  #   - 旧版用 `git fetch --tags origin "$fetch_ref"` 把 tag 一起拉下来，
+  #     若攻击者推送了与分支同名 / 含 deploy_commit_sha 的 tag，下游
+  #     FETCH_HEAD 与 reachability 检查都会被污染 (#602)。
+  #   - 现在强制只取 refs/heads/<branch> 写入受控的远端跟踪命名空间
+  #     ($deploy_remote_ref)，下面的 merge-base --is-ancestor 直接拿这个
+  #     ref 当 anchor，配合 #601 的 DEPLOY_COMMIT_SHA pin 把"fetch 到了什么
+  #     对象"和"reset 到了哪个 commit"两件事都钉死，不留 tag / FETCH_HEAD
+  #     歧义。
+  if ! git fetch --quiet --no-tags origin "+refs/heads/${fetch_ref}:${deploy_remote_ref}"; then
+    echo "[$(date -Iseconds)] ERROR: git fetch origin refs/heads/$fetch_ref failed"
     exit 1
   fi
-  # 用 FETCH_HEAD 而不是 $deploy_ref：若调用方传的是无 origin/ 前缀的本地分支名
-  # (DEPLOY_GIT_REF=main)，reset 到本地 main 可能落空（git fetch 不更新本地分支
-  # HEAD）。FETCH_HEAD 一定是刚 fetch 下来的那个 ref，确保跟远端同步。
-  git reset --hard FETCH_HEAD
+  if ! git cat-file -e "${deploy_commit_sha}^{commit}" 2>/dev/null; then
+    echo "[$(date -Iseconds)] ERROR: pinned commit not found after fetch: $deploy_commit_sha"
+    exit 1
+  fi
+  # 用 $deploy_remote_ref 而不是 FETCH_HEAD：fetch 已经强制写到了受控的远端
+  # 跟踪命名空间 (refs/remotes/origin/<branch>)，FETCH_HEAD 在 --no-tags +
+  # 单 refspec 场景下虽然也指向同一个 commit，但显式引用 deploy_remote_ref
+  # 让 reachability 检查与 #602 的 tag-shadow 防护描述一致，未来若有人改回
+  # 多 refspec 也不会让 FETCH_HEAD 的语义偏移影响这条断言。
+  if ! git merge-base --is-ancestor "$deploy_commit_sha" "$deploy_remote_ref"; then
+    echo "[$(date -Iseconds)] ERROR: pinned commit $deploy_commit_sha is not reachable from fetched $deploy_ref"
+    exit 1
+  fi
+  git reset --hard "$deploy_commit_sha"
 
   new_self_sha=$(sha256sum "$0" 2>/dev/null | awk '{print $1}')
   if [ -n "$current_self_sha" ] && [ "$current_self_sha" != "$new_self_sha" ]; then
@@ -393,7 +441,86 @@ echo "[$(date -Iseconds)] Current compose service status"
 docker compose -f "$COMPOSE_FILE" ps
 
 # ---------------------------------------------------------------------------
+# 自动重启 deploy-webhook：webhook 是常驻 systemd 进程，磁盘上的 webhook_server.py
+# 改了不会被进程自己捡起来。这里比对 mtime，新于进程启动时间就用
+# `systemd-run --on-active=2s` 调度一次延迟 restart —— 既让本次 webhook 请求把
+# 200 写完，又让新代码在下一次部署立刻生效。
+#
+# 历史事故 2026-05-05：webhook 进程 5 月 3 日启动跑老版本（无 ThreadingMixIn /
+# settimeout），磁盘上加固版从未生效；scanner 半开连接把单线程 recvfrom 钉死 7
+# 小时，PR #602 / #597 触发的 CI 部署连接全部堆 backlog 拿 RST，业务停摆。
+#
+# 用 systemd-run 而不是 `(sleep 2; systemctl restart) &`：后者作为 deploy.sh
+# 子进程仍在 deploy-webhook.service 的 cgroup 内，systemctl restart 触发的
+# `KillMode=control-group` 会把这个 sleeper 一起杀掉；transient unit 才能跑出
+# webhook 自己的 cgroup。
+#
+# **顺序很关键 —— 必须在 preflight 之前调用**：preflight.sh 里也有同款过期
+# 检查，且 deploy.sh 默认 `PREFLIGHT_BLOCK=true` + `set -e`，preflight 一旦因
+# webhook 过期 fail 就直接 exit，restart hook 跑不到 —— 下次部署还是过期，
+# 死循环直到人工 `systemctl restart deploy-webhook`。把调度提到 preflight 前，
+# `systemd-run` 是 fire-and-forget 异步定时器，独立于 deploy.sh 后续是否成功
+# / 是否被 set -e 终止；2s 后 webhook 必然被替换，下一次部署 preflight 自动
+# 转 PASS，整条恢复链自愈。
+# ---------------------------------------------------------------------------
+restart_webhook_if_stale() {
+  local webhook_py="$PROJECT_DIR/ops/webhook/webhook_server.py"
+  if [ ! -f "$webhook_py" ]; then
+    return
+  fi
+  if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1; then
+    return
+  fi
+  if [ "$(systemctl is-active deploy-webhook 2>/dev/null || true)" != "active" ]; then
+    # 不是 webhook 部署形态（开发机 / CI / 手工 bash deploy.sh）→ 跳过
+    return
+  fi
+
+  local file_mtime proc_start_iso proc_start_epoch
+  file_mtime=$(stat -c %Y "$webhook_py" 2>/dev/null || echo 0)
+  # `systemctl show --value` 是 systemd 230+ 语法；生产是 CentOS 7 + systemd 219，
+  # 不识别这个 flag 会回吐 `ActiveEnterTimestamp=...` 整段字符串，让 date -d
+  # 解析失败、proc_start_epoch 变 0、每次部署都误触发 restart。改成
+  # `cut -d= -f2-` 跨 systemd 版本一致地剥前缀。
+  proc_start_iso=$(systemctl show deploy-webhook --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2- || true)
+  # systemd 219 在服务未进入 active 状态时返回 `[no timestamp]`；新版返回空串或
+  # `n/a`。三种 sentinel 一并兜住，避免 date 解析无效字符串。
+  if [ -z "$proc_start_iso" ] || [ "$proc_start_iso" = "n/a" ] || [ "$proc_start_iso" = "[no timestamp]" ]; then
+    echo "[$(date -Iseconds)] WARN: deploy-webhook ActiveEnterTimestamp unavailable, skipping staleness check"
+    return
+  fi
+  proc_start_epoch=$(date -d "$proc_start_iso" +%s 2>/dev/null || echo 0)
+  if [ "$proc_start_epoch" -eq 0 ]; then
+    # date 解析失败兜底：宁可漏一次重启提示，也不能在每次部署都误触发 systemd-run。
+    echo "[$(date -Iseconds)] WARN: failed to parse deploy-webhook ActiveEnterTimestamp ($proc_start_iso), skipping staleness check"
+    return
+  fi
+
+  if [ "$file_mtime" -le "$proc_start_epoch" ]; then
+    return
+  fi
+
+  echo "[$(date -Iseconds)] webhook_server.py is newer than running deploy-webhook (file_mtime=$file_mtime, proc_start=$proc_start_epoch)"
+  echo "[$(date -Iseconds)] Scheduling deploy-webhook restart (+2s) so the current 200 response can flush first"
+
+  # unit 名带纳秒避免快速串行部署时撞名；CentOS 7 的 systemd 219 没有
+  # --collect, transient unit 跑完后仍会以 inactive 形态留在内存直到 reboot,
+  # 影响可忽略。
+  local restart_unit="deploy-webhook-restart-$(date +%s%N).service"
+  if ! systemd-run --on-active=2s --quiet --unit="$restart_unit" \
+         systemctl restart deploy-webhook 2>&1; then
+    echo "[$(date -Iseconds)] WARN: systemd-run failed; manually run: sudo systemctl restart deploy-webhook"
+  fi
+}
+
+restart_webhook_if_stale
+
+# ---------------------------------------------------------------------------
 # 部署后：完整 preflight 校验（运行时检查）
+#
+# 排在 restart_webhook_if_stale 之后：preflight 自带的 webhook 过期检查可能
+# 让 deploy.sh 在 set -e 下 exit 1，但此时 systemd-run 已经把恢复 timer 排
+# 出去了，CI 这次拿 500 是诊断信号，下次部署就自动恢复。
 # ---------------------------------------------------------------------------
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
   echo "[$(date -Iseconds)] Running preflight (post-deploy, full validation)"

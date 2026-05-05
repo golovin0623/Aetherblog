@@ -34,6 +34,7 @@ import http.server
 import json
 import logging
 import os
+import re
 import socket
 import socketserver
 import subprocess
@@ -84,13 +85,29 @@ MAX_BODY_BYTES = int(os.environ.get("WEBHOOK_MAX_BODY_BYTES", "8192"))
 # 允许的服务名白名单
 ALLOWED_SERVICES = {"backend", "ai-service", "blog", "admin", "gateway"}
 
+# 仅接受完整 hex SHA (40 sha1 / 64 sha256). 任何 ref name (HEAD / FETCH_HEAD /
+# 分支名) 都被拒绝, 否则 git reset --hard 会跟着浮动 ref 走, pin 形同虚设.
+_HEX_SHA_RE = re.compile(r"^[0-9a-f]{40,64}$")
 
-def _sync_repo() -> Tuple[bool, str]:
-    """在 invoke deploy.sh 之前把仓库 hard-reset 到 ``DEPLOY_GIT_REF``。
 
-    返回 ``(ok, message)``。失败时调用方应当返回 5xx; 成功时把消息写到 info 日志.
+def _sync_repo(commit_sha: str = "") -> Tuple[bool, str, str]:
+    """在 invoke deploy.sh 之前把仓库 hard-reset 到一个 **immutable** 的 commit SHA。
 
-    *为什么不放到 deploy.sh 里* —— deploy.sh 顶部 ``exec > >(tee ...)`` 与
+    返回 ``(ok, message, resolved_sha)``。失败时调用方应当返回 5xx;
+    成功时 ``resolved_sha`` 是真正 reset 到的不可变 SHA (40 hex), 调用方应当
+    通过 ``DEPLOY_COMMIT_SHA`` env 透传给 deploy.sh 用作审计与二次校验.
+
+    SECURITY (#601 review fix):
+      - 调用方可在请求体里传 ``commit_sha`` 显式 pin 到 CI 已审过的提交;
+        服务端用 ``cat-file -e`` 校验存在, 用 ``merge-base --is-ancestor`` 确认
+        从刚 fetch 的 ``DEPLOY_GIT_REF`` 可达, 才会 reset 过去.
+      - 未传 ``commit_sha`` 时 fallback 到 ``git rev-parse FETCH_HEAD`` 把
+        浮动 ref 解析成快照 SHA, 然后 reset 到那个 SHA. 历史上这里直接
+        ``reset --hard FETCH_HEAD`` —— 即便此刻 FETCH_HEAD 指向 SHA1, 紧随其后
+        的另一个并发 fetch 仍可能把它换走 (例如 deploy.sh 内部 fallback 还在
+        跑 sync 的旧版本路径). 先 rev-parse 拿快照避免这个 TOCTOU 窗口.
+
+    *为什么不全部放到 deploy.sh 里* —— deploy.sh 顶部 ``exec > >(tee ...)`` 与
     后续 ``exec 200>$LOCK_FILE`` 共同导致 deploy.sh 不能在 sync 之后安全地
     re-exec 自己 (会出现双 tee / fd200 锁混乱 / 死锁). 历史上为了规避死锁,
     deploy.sh 内部 sync 写入磁盘但仍用 in-memory 旧文本跑完本次部署 —— 任何
@@ -99,9 +116,9 @@ def _sync_repo() -> Tuple[bool, str]:
     把 sync 提前到 webhook 这层, deploy.sh 在被 spawn 时就已经是新版.
     """
     if SKIP_GIT_SYNC:
-        return True, "SKIP_GIT_SYNC=true, skipping repo sync"
+        return True, "SKIP_GIT_SYNC=true, skipping repo sync", ""
     if not os.path.isdir(os.path.join(PROJECT_DIR, ".git")):
-        return True, f"PROJECT_DIR={PROJECT_DIR} is not a git repo, skipping sync"
+        return True, "PROJECT_DIR=%s is not a git repo, skipping sync" % PROJECT_DIR, ""
     # str.removeprefix 是 Python 3.9+, 这里用 slice 表达式兼容到 3.6 (Ubuntu 20.04 默认 3.8).
     fetch_ref = (DEPLOY_GIT_REF[7:] if DEPLOY_GIT_REF.startswith("origin/") else DEPLOY_GIT_REF) or "main"
     try:
@@ -110,19 +127,49 @@ def _sync_repo() -> Tuple[bool, str]:
             cwd=PROJECT_DIR, check=True, timeout=GIT_FETCH_TIMEOUT,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
-        # FETCH_HEAD 比 origin/$ref 更可靠: 调用方可能传 DEPLOY_GIT_REF=main
-        # (无 origin/ 前缀), 这种情况下 reset 到本地 main 落不到刚 fetch 的提交.
+
+        if commit_sha:
+            # 形参已经在 _parse_request 里校验过 hex 格式, 这里再做对仓库的存在性
+            # 与可达性校验, 避免调用方拿一个本仓库不认识的 hash 把 reset 打到任意
+            # 历史提交.
+            subprocess.run(
+                ["git", "cat-file", "-e", commit_sha + "^{commit}"],
+                cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", commit_sha, "FETCH_HEAD"],
+                cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            target_sha = commit_sha
+        else:
+            # 没显式 pin 时: 把 FETCH_HEAD 即时解析成 immutable SHA, 再 reset 过去.
+            # 这样即便 deploy.sh 跑到中途又有新 commit 落地, 当前 run 仍然只跑
+            # 本次 webhook 触发时刻的快照, 不会半路被换码.
+            resolved = subprocess.run(
+                ["git", "rev-parse", "FETCH_HEAD"],
+                cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            target_sha = (resolved.stdout or "").strip()
+            if not _HEX_SHA_RE.match(target_sha):
+                return False, "git rev-parse FETCH_HEAD did not return a hex SHA: %r" % target_sha, ""
+
         subprocess.run(
-            ["git", "reset", "--hard", "FETCH_HEAD"],
+            ["git", "reset", "--hard", target_sha],
             cwd=PROJECT_DIR, check=True, timeout=GIT_RESET_TIMEOUT,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
-        return True, f"Repo synced to FETCH_HEAD of {fetch_ref}"
+        msg = "Repo synced to %s (from %s)" % (target_sha, fetch_ref)
+        if commit_sha:
+            msg += " [caller-pinned]"
+        return True, msg, target_sha
     except subprocess.TimeoutExpired as exc:
-        return False, f"git sync timed out: {exc.cmd}"
+        return False, "git sync timed out: %s" % (exc.cmd,), ""
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
-        return False, f"git sync failed (exit {exc.returncode}): {stderr or exc.cmd}"
+        return False, "git sync failed (exit %s): %s" % (exc.returncode, stderr or exc.cmd), ""
 
 
 @contextlib.contextmanager
@@ -189,22 +236,48 @@ def _verify_signature(body: bytes, signature_header: Optional[str]) -> bool:
     return hmac.compare_digest(expected, sent_sig)
 
 
-def _parse_services(body: bytes) -> Tuple[str, bool]:
-    """返回 (服务名字符串, 是否合法)。拒绝白名单之外的服务名。"""
+def _parse_request(body: bytes) -> Tuple[str, str, bool]:
+    """返回 (服务名字符串, 已校验过格式的 commit_sha 或空, 是否合法)。
+
+    - ``services``: 拒绝白名单之外的服务名 (VULN-140)。
+    - ``commit_sha``: 可选; 提供时必须是完整 hex SHA (40-64 hex 字符);
+      拒绝任何 ref name (HEAD / FETCH_HEAD / 分支名), 否则下游 git reset
+      会跟着浮动 ref 走, pin 形同虚设 (#601 review fix)。
+    """
     if not body:
-        return "", True
+        return "", "", True
     try:
         data = json.loads(body)
     except (json.JSONDecodeError, ValueError):
-        return "", False
-    raw = data.get("services", "") if isinstance(data, dict) else ""
-    if not raw:
-        return "", True
-    requested = [s.strip() for s in str(raw).split() if s.strip()]
-    invalid = [s for s in requested if s not in ALLOWED_SERVICES]
-    if invalid:
-        return "", False  # VULN-140：显式拒绝优于静默回退到全量部署
-    return " ".join(requested), True
+        return "", "", False
+    if not isinstance(data, dict):
+        return "", "", False
+
+    raw = data.get("services", "")
+    services = ""
+    if raw:
+        requested = [s.strip() for s in str(raw).split() if s.strip()]
+        invalid = [s for s in requested if s not in ALLOWED_SERVICES]
+        if invalid:
+            return "", "", False  # VULN-140：显式拒绝优于静默回退到全量部署
+        services = " ".join(requested)
+
+    raw_sha = data.get("commit_sha", "")
+    commit_sha = ""
+    if raw_sha:
+        # 统一小写, 避免 GitHub Actions / CI 偶尔传大写 hex 时校验失败.
+        candidate = str(raw_sha).strip().lower()
+        if not _HEX_SHA_RE.match(candidate):
+            return "", "", False
+        commit_sha = candidate
+
+    return services, commit_sha, True
+
+
+# 老别名: 单元测试与外部脚本可能直接 import _parse_services. 维持 (services, ok) 形状.
+def _parse_services(body: bytes) -> Tuple[str, bool]:
+    services, _sha, ok = _parse_request(body)
+    return services, ok
 
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
@@ -237,10 +310,10 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             self._send(401, "Invalid signature")
             return
 
-        services, ok = _parse_services(body)
+        services, commit_sha, ok = _parse_request(body)
         if not ok:
-            logging.warning("Webhook rejected: malformed body or non-allowlisted services")
-            self._send(400, "Invalid services field")  # VULN-140
+            logging.warning("Webhook rejected: malformed body, non-allowlisted services, or invalid commit_sha")
+            self._send(400, "Invalid services or commit_sha field")  # VULN-140 / #601
             return
 
         env = os.environ.copy()
@@ -260,7 +333,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         # 重新 acquire (见 _deploy_lock 文档字符串).
         try:
             with _deploy_lock():
-                sync_ok, sync_msg = _sync_repo()
+                sync_ok, sync_msg, resolved_sha = _sync_repo(commit_sha)
         except OSError as exc:
             logging.error("Failed to acquire deploy lock for sync: %s", exc)
             self._send(500, f"Lock acquisition failed: {exc}")
@@ -273,6 +346,13 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         # deploy.sh 仍保留它自己的 sync 逻辑作为直接调用 (非 webhook) 时的
         # fallback；这里通过 env 关闭它, 避免 webhook 路径下做两遍 fetch+reset.
         env["SKIP_GIT_SYNC"] = "true"
+        # #601 review fix: 把 webhook 这一侧 reset 用的 immutable SHA 透传给
+        # deploy.sh 用作审计 (出现在 deploy 日志里) 与潜在的二次校验。即便
+        # SKIP_GIT_SYNC=true 让 deploy.sh 跳过自己的 fetch/reset, 把 SHA 暴露
+        # 出来仍然有意义 —— 出问题时能立刻在 webhook 日志和 deploy 日志间
+        # 对账, 确认两边盯的是同一个 commit.
+        if resolved_sha:
+            env["DEPLOY_COMMIT_SHA"] = resolved_sha
 
         try:
             result = subprocess.run(
@@ -320,6 +400,29 @@ class DeployHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     def get_request(self):
         request, client_address = super(DeployHTTPServer, self).get_request()
         request.settimeout(REQUEST_TIMEOUT)
+        # 内核层兜底：settimeout 只有等到 worker 线程实际进入 recv 才生效，
+        # 半开连接 / TCP 层故障在 Python 看不见。SO_KEEPALIVE + 短探测周期 +
+        # TCP_USER_TIMEOUT 让内核在 ~25s 内主动 RST 失活连接，配合 ThreadingMixIn
+        # 把 scanner 阻塞的爆炸半径锁在单个 worker 线程里。所有 setsockopt 都是
+        # Linux 特化路径，包成 try/except 让非 Linux 与古内核回落到原 settimeout。
+        try:
+            request.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            # 9 秒空闲就开始探测、3 秒一次、3 次没回应即 RST → 总 18 秒。
+            for opt_name, value in (
+                ("TCP_KEEPIDLE", 9),
+                ("TCP_KEEPINTVL", 3),
+                ("TCP_KEEPCNT", 3),
+            ):
+                opt = getattr(socket, opt_name, None)
+                if opt is not None:
+                    request.setsockopt(socket.IPPROTO_TCP, opt, value)
+            # TCP_USER_TIMEOUT (Linux 2.6.37+, RFC 5482): 任何已发数据未收到
+            # ack 超过 N ms 就关连接。Python <3.6 没把它包进 socket 模块，用
+            # IPPROTO_TCP 协议号 + 数字常量 18 兜底。
+            tcp_user_timeout = getattr(socket, "TCP_USER_TIMEOUT", 18)
+            request.setsockopt(socket.IPPROTO_TCP, tcp_user_timeout, 25_000)
+        except (AttributeError, OSError) as exc:
+            logging.debug("TCP keepalive tuning skipped: %s", exc)
         return request, client_address
 
 

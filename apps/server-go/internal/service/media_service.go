@@ -30,14 +30,14 @@ import (
 // 避免高并发上传时 OOM。
 const maxThumbnailMemorySize int64 = 20 * 1024 * 1024 // 20 MB
 
-// allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、可执行文件等危险类型。
+// allowedMimeTypes 是允许上传的文件 MIME 类型白名单，拒绝 HTML、SVG、可执行文件等危险类型。
 //
-// VULN-030 回退：SVG 重新加入白名单以支持站点 logo / 图标 / 可缩放素材。
-// 纵深防御必须同步生效（已在 nginx/nginx.conf VULN-049/070 位置配置）：
-//  1. `/uploads/*.svg` 响应强制携带 `Content-Disposition: attachment` +
-//     `X-Content-Type-Options: nosniff`，浏览器不会按 HTML/JS 解释。
-//  2. 前端渲染只能通过 <img src> 引用，禁止将 SVG inline 到 DOM 树。
-//  3. 若后续有更高信任要求，可追加 Go 层 sanitizer（剥 <script>/<foreignObject>）。
+// SVG 三层防线（任一被破坏都会重新打开存储型 same-origin XSS）：
+//  1. Upload() 入口按文件名硬拒 .svg/.svgz —— 覆盖嗅探到 text/xml 的绕过
+//     （text/xml 是 application/xml 的合法 OOXML/订阅源载体，无法整体下白名单）。
+//  2. guessMimeType 把 .svg/.svgz 显式映射到 image/svg+xml —— 覆盖嗅探退化为
+//     application/octet-stream 时的扩展名兜底分支。
+//  3. image/svg+xml 故意不在本白名单中 —— 保证 (2) 的兜底走到拒绝分支。
 var allowedMimeTypes = map[string]bool{
 	// 图片
 	"image/jpeg":    true,
@@ -47,7 +47,6 @@ var allowedMimeTypes = map[string]bool{
 	"image/bmp":     true,
 	"image/tiff":    true,
 	"image/avif":    true,
-	"image/svg+xml": true, // 依赖 nginx 层 attachment + nosniff
 	// 视频
 	"video/mp4":        true,
 	"video/webm":       true,
@@ -222,6 +221,16 @@ func (s *MediaService) Upload(ctx context.Context, fh *multipart.FileHeader, upl
 		return nil, err
 	}
 	defer f.Close()
+
+	// 文件名层硬拒: 任何映射到 image/svg+xml 的扩展名(.svg / .svgz)直接拒收。
+	// 这是 SVG 防 XSS 的最外层屏障 — 即便:
+	//   (a) http.DetectContentType 把带 <?xml 头的 SVG 嗅探为 text/xml(在白名单内),或
+	//   (b) 嗅探退化为 application/octet-stream 命中扩展名兜底,
+	// 只要保留 .svg/.svgz 文件名落盘,nginx 都会按扩展名以 image/svg+xml 派发,
+	// 触发存储型 same-origin XSS。因此判定基准选用扩展名而非内容嗅探结果。
+	if guessMimeType(fh.Filename) == "image/svg+xml" {
+		return nil, fmt.Errorf("不允许上传该文件类型: %s", "image/svg+xml")
+	}
 
 	// 确定 MIME 类型：通过文件内容嗅探（magic bytes）验证，防止扩展名欺骗
 	sniffBuf := make([]byte, 512)
@@ -813,7 +822,12 @@ func guessMimeType(filename string) string {
 		return "image/tiff"
 	case ".avif":
 		return "image/avif"
-	case ".svg":
+	// SVG 故意保留映射: 不在 allowedMimeTypes 中,这里返回 image/svg+xml 让两条防线生效:
+	//  1. Upload() 入口的文件名硬拒(覆盖 text/xml 嗅探绕过)。
+	//  2. 内容嗅探退化为 application/octet-stream 时,扩展名兜底命中白名单拒绝。
+	// .svgz 是 gzip 压缩的 SVG,浏览器同样按 image/svg+xml 渲染,必须一并拦截。
+	// 任何一条 case 被移除都会重新打开存储型 same-origin XSS。
+	case ".svg", ".svgz":
 		return "image/svg+xml"
 	// 视频
 	case ".mp4":

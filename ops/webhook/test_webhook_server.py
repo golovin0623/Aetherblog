@@ -81,6 +81,75 @@ class RequestBodyTests(unittest.TestCase):
         self.assertEqual(error, (400, "Incomplete request body"))
 
 
+class ParseRequestTests(unittest.TestCase):
+    # #601 review fix: commit_sha 必须是完整 hex SHA, 否则 git reset 会跟着
+    # 浮动 ref 走, 静默绕过 PR 想加的 pin 保护.
+    GOOD_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+    def test_empty_body_is_valid(self):
+        services, sha, ok = webhook_server._parse_request(b"")
+        self.assertEqual(services, "")
+        self.assertEqual(sha, "")
+        self.assertTrue(ok)
+
+    def test_non_object_body_rejected(self):
+        services, sha, ok = webhook_server._parse_request(b'"a string"')
+        self.assertFalse(ok)
+        self.assertEqual(services, "")
+        self.assertEqual(sha, "")
+
+    def test_valid_services_only(self):
+        body = b'{"services": "backend ai-service"}'
+        services, sha, ok = webhook_server._parse_request(body)
+        self.assertTrue(ok)
+        self.assertEqual(services, "backend ai-service")
+        self.assertEqual(sha, "")
+
+    def test_valid_commit_sha_only(self):
+        body = ('{"commit_sha": "%s"}' % self.GOOD_SHA).encode()
+        services, sha, ok = webhook_server._parse_request(body)
+        self.assertTrue(ok)
+        self.assertEqual(services, "")
+        self.assertEqual(sha, self.GOOD_SHA)
+
+    def test_uppercase_sha_normalized_to_lowercase(self):
+        body = ('{"commit_sha": "%s"}' % self.GOOD_SHA.upper()).encode()
+        services, sha, ok = webhook_server._parse_request(body)
+        self.assertTrue(ok)
+        self.assertEqual(sha, self.GOOD_SHA)
+
+    def test_short_sha_rejected(self):
+        # 短哈希在 cat-file -e 下能匹配, 但唯一性不可保证, 也不算"完整 pin".
+        body = b'{"commit_sha": "abc1234"}'
+        _services, _sha, ok = webhook_server._parse_request(body)
+        self.assertFalse(ok)
+
+    def test_ref_name_as_sha_rejected(self):
+        # 关键的安全 case: HEAD / FETCH_HEAD / 分支名都不能伪装成 SHA.
+        for bad in (b"HEAD", b"FETCH_HEAD", b"main", b"origin/main", b"refs/heads/main"):
+            body = b'{"commit_sha": "' + bad + b'"}'
+            _services, _sha, ok = webhook_server._parse_request(body)
+            self.assertFalse(ok, "should reject ref name: %r" % bad)
+
+    def test_non_hex_chars_rejected(self):
+        # 40 长度但含非 hex 字符 (例如 g): 拒绝.
+        body = b'{"commit_sha": "g123456789abcdef0123456789abcdef01234567"}'
+        _services, _sha, ok = webhook_server._parse_request(body)
+        self.assertFalse(ok)
+
+    def test_invalid_services_still_rejected_with_sha(self):
+        # 提供了合法 SHA 也不能洗掉非法 services.
+        body = ('{"services": "evil", "commit_sha": "%s"}' % self.GOOD_SHA).encode()
+        _services, _sha, ok = webhook_server._parse_request(body)
+        self.assertFalse(ok)
+
+    def test_legacy_parse_services_still_works(self):
+        # 旧别名 _parse_services 仍要返回 (services, ok) 两元组, 避免外部脚本崩.
+        services, ok = webhook_server._parse_services(b'{"services": "backend"}')
+        self.assertTrue(ok)
+        self.assertEqual(services, "backend")
+
+
 class DeployHTTPServerTests(unittest.TestCase):
     def test_accepted_connections_get_a_timeout(self):
         server = webhook_server.DeployHTTPServer(("127.0.0.1", 0), webhook_server.WebhookHandler)
