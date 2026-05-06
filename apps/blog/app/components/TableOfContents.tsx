@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { List, ChevronRight, X, ArrowUp } from 'lucide-react';
-import { extractHeadingsFromMarkdown } from '../lib/headingId';
+import { extractHeadingsFromMarkdown, getMinHeadingLevel } from '../lib/headingId';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface TocItem {
@@ -138,7 +138,7 @@ const TableOfContentsBase: React.FC<TableOfContentsProps> = ({
     }
   }, []);
 
-  const minLevel = headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
+  const minLevel = useMemo(() => getMinHeadingLevel(headings), [headings]);
 
   // 渲染目录列表内容
   const renderTocList = () => (

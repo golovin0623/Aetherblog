@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { List, ArrowUp, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { extractHeadingsFromMarkdown } from '../lib/headingId';
+import { extractHeadingsFromMarkdown, getMinHeadingLevel } from '../lib/headingId';
 
 const STROKE_CIRCUMFERENCE = 113;
 
@@ -40,7 +40,7 @@ const ArticleFloatingActionsBase = ({ content }: ArticleFloatingActionsProps) =>
     () => extractHeadingsFromMarkdown(content),
     [content]
   );
-  const minLevel = headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1;
+  const minLevel = useMemo(() => getMinHeadingLevel(headings), [headings]);
 
   useEffect(() => {
     setMounted(true);
