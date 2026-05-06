@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import type { ElementType, ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ButtonHTMLAttributes, ElementType, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
@@ -34,7 +34,11 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { AetherMark } from '@aetherblog/ui';
+import { formatDate } from '@aetherblog/utils';
+import { useAuthStore } from '@/stores';
+import { getMediaUrl } from '@/services/mediaService';
 import { cn } from '@/lib/utils';
 
 type WorkspaceMode = 'chat' | 'cowork' | 'code';
@@ -128,6 +132,19 @@ const resources = [
   { name: 'schema.prisma', type: 'Prisma', size: '6KB', icon: Database },
 ];
 
+interface CurrentUser {
+  nickname: string;
+  initial: string;
+  avatarUrl: string | null;
+}
+
+function pickGreeting(hour: number): string {
+  if (hour >= 5 && hour < 11) return '早上好';
+  if (hour >= 11 && hour < 13) return '中午好';
+  if (hour >= 13 && hour < 18) return '下午好';
+  return '晚上好';
+}
+
 export default function AetherHubWorkspacePage() {
   const navigate = useNavigate();
   const [activeMode, setActiveMode] = useState<WorkspaceMode>('chat');
@@ -135,6 +152,26 @@ export default function AetherHubWorkspacePage() {
     () => modeItems.find((item) => item.id === activeMode) ?? modeItems[0],
     [activeMode],
   );
+
+  const user = useAuthStore((state) => state.user);
+  const currentUser = useMemo<CurrentUser>(() => {
+    const nickname = user?.nickname?.trim() || '管理员';
+    const initial = Array.from(nickname)[0]?.toUpperCase() ?? 'A';
+    return {
+      nickname,
+      initial,
+      avatarUrl: user?.avatar ? getMediaUrl(user.avatar) : null,
+    };
+  }, [user?.nickname, user?.avatar]);
+
+  // 会话元信息使用渲染时的本地时间，避免静态字符串永远停留在某个历史时刻。
+  const [conversationCreatedAt] = useState(() => new Date());
+  const [greeting, setGreeting] = useState(() => pickGreeting(new Date().getHours()));
+  useEffect(() => {
+    const tick = () => setGreeting(pickGreeting(new Date().getHours()));
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <div className="aetherhub-workspace h-dvh max-h-dvh overflow-hidden bg-[var(--bg-void)] text-[var(--ink-primary)]">
@@ -149,15 +186,28 @@ export default function AetherHubWorkspacePage() {
         />
 
         <div className="relative z-10 grid h-dvh max-h-dvh min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
-          <WorkspaceSidebar activeMode={activeMode} onModeChange={setActiveMode} onBack={() => navigate('/dashboard')} />
+          <WorkspaceSidebar
+            activeMode={activeMode}
+            onModeChange={setActiveMode}
+            onBack={() => navigate('/dashboard')}
+            currentUser={currentUser}
+          />
 
           <section className="flex h-dvh max-h-dvh min-w-0 flex-col border-x border-[var(--hub-border)]">
-            <TopBar activeMode={activeModeMeta} onBack={() => navigate('/dashboard')} />
+            <TopBar
+              activeMode={activeModeMeta}
+              onBack={() => navigate('/dashboard')}
+              currentUser={currentUser}
+            />
             <MobileModeSwitch activeMode={activeMode} onModeChange={setActiveMode} />
-            <WorkspaceCanvas activeMode={activeModeMeta} />
+            <WorkspaceCanvas
+              activeMode={activeModeMeta}
+              greeting={greeting}
+              nickname={currentUser.nickname}
+            />
           </section>
 
-          <ContextPanel />
+          <ContextPanel createdAt={conversationCreatedAt} />
         </div>
       </div>
     </div>
@@ -168,10 +218,12 @@ function WorkspaceSidebar({
   activeMode,
   onModeChange,
   onBack,
+  currentUser,
 }: {
   activeMode: WorkspaceMode;
   onModeChange: (mode: WorkspaceMode) => void;
   onBack: () => void;
+  currentUser: CurrentUser;
 }) {
   return (
     <aside className="hidden h-dvh max-h-dvh min-h-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-panel)] px-5 py-4 backdrop-blur-2xl lg:flex">
@@ -286,11 +338,21 @@ function WorkspaceSidebar({
           查看全部对话
         </button>
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-[var(--hub-on-accent)] [background:var(--hub-gradient)]">
-            G
-          </div>
+          {currentUser.avatarUrl ? (
+            <img
+              src={currentUser.avatarUrl}
+              alt={currentUser.nickname}
+              className="h-10 w-10 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-[var(--hub-on-accent)] [background:var(--hub-gradient)]">
+              {currentUser.initial}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-[var(--ink-primary)]">Golovin</div>
+            <div className="truncate text-sm font-medium text-[var(--ink-primary)]">
+              {currentUser.nickname}
+            </div>
             <div className="mt-0.5 inline-flex rounded-md bg-[var(--hub-control)] px-1.5 py-0.5 text-[11px] text-[var(--ink-muted)]">
               Max Plan
             </div>
@@ -311,9 +373,11 @@ function WorkspaceSidebar({
 function TopBar({
   activeMode,
   onBack,
+  currentUser,
 }: {
   activeMode: { label: string; icon: ElementType };
   onBack: () => void;
+  currentUser: CurrentUser;
 }) {
   const ActiveIcon = activeMode.icon;
 
@@ -368,9 +432,20 @@ function TopBar({
           <Diamond className="h-4 w-4" />
           升级
         </button>
-        <div className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_72%,var(--bg-raised))] text-sm font-semibold text-[var(--hub-on-accent)]">
-          G
-        </div>
+        {currentUser.avatarUrl ? (
+          <img
+            src={currentUser.avatarUrl}
+            alt={currentUser.nickname}
+            className="ml-1 h-9 w-9 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-[color-mix(in_oklch,var(--aurora-1)_72%,var(--bg-raised))] text-sm font-semibold text-[var(--hub-on-accent)]"
+            aria-label={currentUser.nickname}
+          >
+            {currentUser.initial}
+          </div>
+        )}
       </div>
     </header>
   );
@@ -411,7 +486,15 @@ function MobileModeSwitch({
   );
 }
 
-function WorkspaceCanvas({ activeMode }: { activeMode: { label: string; icon: ElementType } }) {
+function WorkspaceCanvas({
+  activeMode,
+  greeting,
+  nickname,
+}: {
+  activeMode: { label: string; icon: ElementType };
+  greeting: string;
+  nickname: string;
+}) {
   const ActiveIcon = activeMode.icon;
 
   return (
@@ -423,7 +506,7 @@ function WorkspaceCanvas({ activeMode }: { activeMode: { label: string; icon: El
               <Sparkles className="h-6 w-6 md:h-7 md:w-7" />
             </div>
             <h1 className="font-display text-[clamp(1.85rem,8vw,3.25rem)] leading-tight tracking-normal text-[var(--ink-primary)] md:leading-none">
-              晚上好，Golovin
+              {greeting}，{nickname}
             </h1>
           </div>
           <p className="text-sm text-[var(--ink-secondary)] md:text-[var(--fs-lede)]">有什么可以帮你构建的?</p>
@@ -515,7 +598,27 @@ function WorkspaceCanvas({ activeMode }: { activeMode: { label: string; icon: El
   );
 }
 
-function ContextPanel() {
+const PLACEHOLDER_CONVERSATION_ID = 'conv_abc123def456';
+
+function ContextPanel({ createdAt }: { createdAt: Date }) {
+  const createdAtLabel = useMemo(
+    () => formatDate(createdAt, 'YYYY-MM-DD HH:mm:ss'),
+    [createdAt],
+  );
+
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(PLACEHOLDER_CONVERSATION_ID);
+      toast.success('对话 ID 已复制');
+    } catch {
+      toast.error('复制失败,请手动选中复制');
+    }
+  };
+
+  const handleNotImplemented = (label: string) => {
+    toast.info(`${label}：功能开发中`);
+  };
+
   return (
     <aside className="hidden h-dvh max-h-dvh min-h-0 flex-col gap-4 border-l border-[var(--hub-border)] bg-[var(--hub-panel)] p-4 backdrop-blur-2xl xl:flex">
       <div className="flex items-center justify-between px-2 pb-1 pt-7">
@@ -532,10 +635,10 @@ function ContextPanel() {
 
       <PanelCard>
         <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">对话信息</h3>
-        <MetadataRow label="对话 ID" value="conv_abc123def456" />
-        <MetadataRow label="创建时间" value="2024-05-15 22:42:30" />
+        <MetadataRow label="对话 ID" value={PLACEHOLDER_CONVERSATION_ID} mono />
+        <MetadataRow label="创建时间" value={createdAtLabel} mono />
         <MetadataRow label="模型" value="Claude 3.7 Sonnet" />
-        <MetadataRow label="消息数" value="2" />
+        <MetadataRow label="消息数" value="2" mono />
         <MetadataRow
           label="状态"
           value={
@@ -545,9 +648,10 @@ function ContextPanel() {
             </span>
           }
         />
-        <MetadataRow label="上下文窗口" value="128K" />
+        <MetadataRow label="上下文窗口" value="128K" mono />
         <button
           type="button"
+          onClick={handleCopyId}
           className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[var(--hub-border)] text-sm text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
         >
           <Copy className="h-4 w-4" />
@@ -593,10 +697,16 @@ function ContextPanel() {
       <PanelCard>
         <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">快捷操作</h3>
         <div className="grid grid-cols-2 gap-3">
-          <ActionButton icon={Upload}>导出对话</ActionButton>
-          <ActionButton icon={Share2}>分享对话</ActionButton>
-          <ActionButton icon={Trash2}>清空对话</ActionButton>
-          <ActionButton icon={Trash2} danger>
+          <ActionButton icon={Upload} onClick={() => handleNotImplemented('导出对话')}>
+            导出对话
+          </ActionButton>
+          <ActionButton icon={Share2} onClick={() => handleNotImplemented('分享对话')}>
+            分享对话
+          </ActionButton>
+          <ActionButton icon={Trash2} onClick={() => handleNotImplemented('清空对话')}>
+            清空对话
+          </ActionButton>
+          <ActionButton icon={Trash2} danger onClick={() => handleNotImplemented('删除对话')}>
             删除对话
           </ActionButton>
         </div>
@@ -707,32 +817,47 @@ function PanelCard({ children }: { children: ReactNode }) {
   return <section className="surface-leaf !rounded-xl p-4">{children}</section>;
 }
 
-function MetadataRow({ label, value }: { label: string; value: ReactNode }) {
+function MetadataRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+}) {
   return (
     <div className="mb-4 flex items-center justify-between gap-4 text-sm">
       <span className="text-[var(--ink-muted)]">{label}</span>
-      <span className="min-w-0 truncate text-right text-[var(--ink-primary)]">{value}</span>
+      <span
+        className={cn(
+          'min-w-0 truncate text-right text-[var(--ink-primary)]',
+          mono && 'font-mono tnum',
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-function ActionButton({
-  icon: Icon,
-  children,
-  danger,
-}: {
+type ActionButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
   icon: ElementType;
   children: ReactNode;
   danger?: boolean;
-}) {
+};
+
+function ActionButton({ icon: Icon, children, danger, className, type, ...rest }: ActionButtonProps) {
   return (
     <button
-      type="button"
+      type={type ?? 'button'}
+      {...rest}
       className={cn(
         'flex h-11 items-center justify-center gap-2 rounded-lg border text-sm transition-colors',
         danger
           ? 'border-[color-mix(in_oklch,var(--signal-danger)_22%,transparent)] text-[var(--signal-danger)] hover:bg-[color-mix(in_oklch,var(--signal-danger)_10%,transparent)]'
           : 'border-[var(--hub-border)] text-[var(--ink-primary)] hover:bg-[var(--hub-control-hover)]',
+        className,
       )}
     >
       <Icon className="h-4 w-4" />
