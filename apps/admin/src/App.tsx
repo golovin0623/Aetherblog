@@ -26,6 +26,7 @@ const ActivitiesPage = lazy(() => import('./pages/activities/ActivitiesPage'));
 const SearchConfigPage = lazy(() => import('./pages/SearchConfigPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const CloudExplorerPage = lazy(() => import('./pages/storage/CloudExplorerPage'));
+const AetherHubWorkspacePage = lazy(() => import('./pages/aetherhub/AetherHubWorkspacePage'));
 
 // 命名导出需要特殊处理
 const AiTestPage = lazy(() => import('./pages/AiTestPage').then(module => ({ default: module.AiTestPage })));
@@ -66,6 +67,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/change-password" element={<AuthGuard><ChangePasswordPage /></AuthGuard>} />
+            <Route path="/aetherhub" element={<AuthGuard><AetherHubWorkspacePage /></AuthGuard>} />
             <Route
               path="/"
               element={
