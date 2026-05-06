@@ -34,6 +34,92 @@
   box-shadow: 0 8px 20px -18px rgba(0, 0, 0, 0.7);
 }
 
+/* AetherHub workspace keeps the global Codex system intact while giving the
+   workspace screen its own single-light-source palette and mobile surfaces. */
+.aetherhub-workspace {
+  --hub-accent: var(--aurora-1);
+  --hub-accent-2: var(--aurora-3);
+  --hub-accent-text: color-mix(in oklch, var(--aurora-1) 84%, var(--ink-primary));
+  --hub-active: color-mix(in oklch, var(--aurora-1) 14%, transparent);
+  --hub-border: rgb(from var(--ink-primary) r g b / 0.08);
+  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 22%, transparent);
+  --hub-control: rgb(from var(--bg-leaf) r g b / 0.70);
+  --hub-control-hover: color-mix(in oklch, var(--aurora-1) 8%, var(--bg-leaf));
+  --hub-gradient: linear-gradient(135deg, var(--aurora-1), var(--aurora-3));
+  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.74);
+  --hub-panel-strong: rgb(from var(--bg-leaf) r g b / 0.78);
+  --hub-on-accent: var(--bg-void);
+  --hub-soft: color-mix(in oklch, var(--aurora-1) 9%, transparent);
+  --hub-card-shadow: 0 16px 44px -34px color-mix(in oklch, var(--aurora-1) 32%, black);
+  --hub-accent-shadow: 0 16px 40px -22px var(--aurora-1);
+  --hub-canvas-overlay:
+    linear-gradient(180deg,
+      rgb(from var(--bg-void) r g b / 0.50),
+      rgb(from var(--bg-void) r g b / 0.96));
+}
+
+:root.light .aetherhub-workspace {
+  --color-primary: oklch(0.66 0.18 46);
+  --color-accent: oklch(0.72 0.14 64);
+  --aurora-1: oklch(0.66 0.18 46);
+  --aurora-2: oklch(0.68 0.166 64);
+  --aurora-3: oklch(0.71 0.148 82);
+  --aurora-4: oklch(0.74 0.122 106);
+  --hub-accent-text: color-mix(in oklch, var(--aurora-1) 88%, var(--ink-primary));
+  --hub-border: rgb(from var(--ink-primary) r g b / 0.075);
+  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 26%, transparent);
+  --hub-control: rgb(from var(--bg-leaf) r g b / 0.78);
+  --hub-control-hover: color-mix(in oklch, var(--aurora-1) 7%, #ffffff);
+  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.82);
+  --hub-panel-strong: rgb(from var(--bg-leaf) r g b / 0.88);
+  --hub-on-accent: #ffffff;
+  --hub-card-shadow: 0 18px 48px -34px rgba(128, 74, 24, 0.28);
+  --hub-accent-shadow: 0 16px 34px -20px color-mix(in oklch, var(--aurora-1) 55%, transparent);
+  --hub-canvas-overlay:
+    linear-gradient(180deg,
+      rgb(from var(--bg-void) r g b / 0.78),
+      rgb(from var(--bg-void) r g b / 0.98));
+}
+
+:root.dark .aetherhub-workspace {
+  --color-primary: #818cf8;
+  --color-accent: #a78bfa;
+  --aurora-1: oklch(0.72 0.150 270);
+  --aurora-2: oklch(0.74 0.138 288);
+  --aurora-3: oklch(0.77 0.123 306);
+  --aurora-4: oklch(0.80 0.102 330);
+  --hub-border: rgba(255, 255, 255, 0.08);
+  --hub-border-strong: color-mix(in oklch, var(--aurora-1) 24%, transparent);
+  --hub-control: rgba(255, 255, 255, 0.035);
+  --hub-control-hover: rgba(255, 255, 255, 0.06);
+  --hub-panel: rgb(from var(--bg-substrate) r g b / 0.74);
+  --hub-panel-strong: rgb(from var(--bg-raised) r g b / 0.66);
+  --hub-on-accent: var(--bg-void);
+  --hub-card-shadow: 0 24px 80px -50px var(--aurora-1);
+}
+
+.aetherhub-workspace .surface-leaf {
+  background: var(--hub-panel-strong);
+  border-color: var(--hub-border);
+  box-shadow: var(--hub-card-shadow);
+}
+
+.aetherhub-workspace .surface-overlay {
+  border-color: var(--hub-border-strong);
+  box-shadow:
+    0 1px 0 inset rgb(from var(--bg-leaf) r g b / 0.20),
+    var(--hub-card-shadow),
+    0 0 0 1px color-mix(in oklch, var(--aurora-1) 12%, transparent);
+}
+
+:root.light .aetherhub-workspace .surface-overlay {
+  background: rgb(from var(--bg-leaf) r g b / 0.86);
+}
+
+:root.dark .aetherhub-workspace .surface-overlay {
+  background: rgb(from var(--bg-raised) r g b / 0.68);
+}
+
 /* ============================================================
    Focus Mode —— ⌘. 专注写作模式:隐藏侧栏/顶栏,最大化编辑区
    ============================================================ */
@@ -622,7 +708,7 @@ html[data-theme-transition="to-dark"]::view-transition-new(root) {
 .cm-editor .cm-line:has(.cm-heading2) { font-size: 1.35em; line-height: 1.3; }
 .cm-editor .cm-line:has(.cm-heading3) { font-size: 1.15em; }
 
-/* Markdown 标记符号(#/**/`/>)淡化到透明度 0.4,符合 iA Writer 哲学 */
+/* Markdown 标记符号(# / ** / ` / >)淡化到透明度 0.4,符合 iA Writer 哲学 */
 .cm-editor .cm-punctuation,
 .cm-editor .cm-formatting-heading,
 .cm-editor .cm-formatting-strong,
