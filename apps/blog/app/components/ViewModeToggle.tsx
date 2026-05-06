@@ -18,9 +18,9 @@ const ViewModeToggleBase = ({ compact = false }: { compact?: boolean }) => {
   const textClass = compact ? 'text-xs' : 'text-sm';
   const pillInset = compact ? '2px' : '4px';
 
-  // 链接基础样式 —— 焦点环使用 var(--bg-body) 偏移色，符合项目约定
-  // (该控件直接位于页面而非容器内, 与 ArticleFloatingActions 等同源)。
-  const linkBaseClass = `relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]`;
+  // 链接基础样式 —— 焦点环偏移色匹配 Link 的直接父容器背景 (--bg-secondary)，
+  // 这样 ring-offset 在视觉上呈现为透明间隙而非异色描边。
+  const linkBaseClass = `relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-secondary)]`;
 
   return (
     <div

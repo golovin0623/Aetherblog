@@ -23,7 +23,7 @@ export interface ThemeToggleLabels {
   toDark: string;
   /** 下拉触发器 title */
   selectTitle: string;
-  /** 下拉触发器 aria-label 前缀 ("当前主题：X。点击选择主题") */
+  /** 下拉触发器 aria-label 前缀 ("当前主题：X{selectAction}") */
   currentPrefix: string;
   selectAction: string;
   /** 下拉菜单 aria-label */
@@ -39,7 +39,7 @@ const DEFAULT_LABELS: ThemeToggleLabels = {
   toDark: '切换到暗色主题',
   selectTitle: '选择主题',
   currentPrefix: '当前主题：',
-  selectAction: '点击选择主题',
+  selectAction: '。点击选择主题',
   menuLabel: '主题选项',
   optionLight: '亮色',
   optionDark: '暗色',
@@ -173,8 +173,9 @@ export function ThemeToggle({
   ];
 
   // 触发器 aria-label 包含当前主题, 屏幕阅读器无需展开菜单即可知晓状态。
+  // 标点完全由 labels (currentPrefix / selectAction) 控制, 便于多语言定制。
   const currentOptionLabel = options.find((o) => o.value === theme)?.label ?? '';
-  const triggerAriaLabel = `${labels.currentPrefix}${currentOptionLabel}。${labels.selectAction}`;
+  const triggerAriaLabel = `${labels.currentPrefix}${currentOptionLabel}${labels.selectAction}`;
 
   const currentIcon = theme === 'system'
     ? <Monitor className={iconSize} />
