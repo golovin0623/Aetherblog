@@ -95,7 +95,10 @@ func (r *MediaSyncRepo) FindPendingBatch(ctx context.Context, limit int) ([]mode
 	}
 
 	// 标 RUNNING + started_at
-	q1, args1, err := sqlx.In(`UPDATE media_sync_jobs SET status='RUNNING', started_at=$1 WHERE id IN (?)`, time.Now(), ids)
+	// 注意:sqlx.In 只认 ?,不认 $N。两个占位符必须都用 ?,否则会触发
+	// "number of bindVars less than number arguments" 错误。tx.Rebind 会
+	// 把所有 ? 一并翻译成 PostgreSQL 风格的 $1/$2/...。
+	q1, args1, err := sqlx.In(`UPDATE media_sync_jobs SET status='RUNNING', started_at=? WHERE id IN (?)`, time.Now(), ids)
 	if err != nil {
 		return nil, err
 	}

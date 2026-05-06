@@ -75,7 +75,7 @@ const SETTING_GROUPS: Record<string, { label: string; icon: any; fields: Setting
       { key: 'enable_dark_mode', label: '强制暗黑模式', type: 'boolean', description: '若关闭则跟随系统主题自动切换（如 iPhone 暗黑模式）' },
       { key: 'font_family', label: '全局字体', type: 'font-picker', description: '选择博客全局显示字体，支持预览体验' },
       { key: 'show_banner', label: '显示欢迎页', type: 'boolean', description: '控制首页欢迎页（含「浏览文章」和「关于我」按钮），关闭后直接进入文章列表' },
-      { key: 'post_page_size', label: '每页文章数', type: 'number', placeholder: '10', description: '文章列表页面的分页数量' },
+      { key: 'post_page_size', label: '每页文章数', type: 'number', placeholder: '9', description: '文章列表页面的分页数量。默认 9，配合 3 列网格无尾行单卡' },
       { key: 'custom_css', label: '自定义 CSS', type: 'textarea', description: '注入博客前台的自定义样式，可用于替换背景图、调整间距等个性化定制。留空则使用默认样式' },
     ]
   },

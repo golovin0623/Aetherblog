@@ -15,7 +15,7 @@ interface TopPostsProps {
 export function TopPosts({ posts, loading }: TopPostsProps) {
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-[420px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-[420px]">
         <div className="flex justify-between items-center mb-6">
            <div className="w-24 h-6 bg-[var(--bg-secondary)] rounded animate-pulse" />
            <div className="w-16 h-4 bg-[var(--bg-secondary)] rounded animate-pulse" />
@@ -36,7 +36,7 @@ export function TopPosts({ posts, loading }: TopPostsProps) {
   }
 
   return (
-    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] h-full flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">热门文章</h3>
         <button

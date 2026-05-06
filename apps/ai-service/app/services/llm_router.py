@@ -29,6 +29,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ai-service")
 
+# 已知的"非 chat"模型类型集合 —— agent override / ModelPicker / fallback
+# 三处 (llm_router._resolve_override / agent.py:agent fallback loop /
+# agent.py:list_agent_models SQL) 必须共享同一份口径, 否则用户能从某条
+# 路径绕过, 选到 ModelPicker 故意藏起来的 embedding / TTS 等模型。
+#
+# 设计选择: 用 denylist 而非 allowlist —— DB 中 model_type 历史值还包含
+# 'text' / 'all' / NULL 这些被视作 chat-capable 的 legacy 值, allowlist
+# 会把它们一并误剔。新增非 chat 模型类型时, 只需扩这一处。
+NON_CHAT_MODEL_TYPES: frozenset[str] = frozenset(
+    {"embedding", "audio", "image", "tts", "stt", "text2video", "video"}
+)
+
 # 当 DB 路由配置与 task type 的 ``default_max_tokens`` 均缺失（仅依赖
 # 环境变量回退路径）时的 max_tokens 兜底上限。没有这一层兜底，LiteLLM
 # 会把 ``None`` 直接转发给上游 provider，模型会一直生成直至填满上下文
@@ -230,8 +242,9 @@ class LlmRouter:
         provider_code: str | None,
         user_id: int | None,
         model_alias: str | None = None,
+        allow_override: bool = False,
     ) -> "LlmRouter._ResolvedRoute | None":
-        if not model_id:
+        if not model_id or not allow_override:
             return None
         if not self.model_router:
             raise ValueError("Model override is not available")
@@ -239,6 +252,17 @@ class LlmRouter:
         model = await self.model_router.provider_registry.get_model(model_id, provider_code)
         if not model:
             raise ValueError("Requested model not found")
+
+        model_type = (model.model_type or "chat").lower()
+        capabilities = model.capabilities if isinstance(model.capabilities, dict) else {}
+        # is_enabled 校验有意保留: provider_registry 的 _model_cache 不会因为
+        # disable 操作主动失效, 这道闸是 stale-cache 命中后的最后兜底。
+        if (
+            not model.is_enabled
+            or model_type in NON_CHAT_MODEL_TYPES
+            or capabilities.get("chat") is False
+        ):
+            raise ValueError("Requested model is not available for agent chat")
 
         credential = await self.model_router.credential_resolver.get_credential(
             model.provider_code,
@@ -277,8 +301,15 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> "LlmRouter._ResolvedRoute":
-        override = await self._resolve_override(model_id, provider_code, user_id, model_alias=model_alias)
+        override = await self._resolve_override(
+            model_id,
+            provider_code,
+            user_id,
+            model_alias=model_alias,
+            allow_override=allow_override,
+        )
         if override:
             return override
 
@@ -328,12 +359,14 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> dict[str, str | float | None]:
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
         normalized_provider, normalized_model_id = _normalize_model_parts(resolved.model)
         effective_provider = resolved.provider_code or normalized_provider
@@ -353,12 +386,14 @@ class LlmRouter:
         user_id: int | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> str:
         resolved = await self._resolve_route(
             model_alias=model_alias,
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
         return resolved.model
 
@@ -615,6 +650,7 @@ class LlmRouter:
         custom_prompt: str | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> str:
         """发起一次 chat completion 调用，并根据需要渲染 prompt 模板。"""
         resolved = await self._resolve_route(
@@ -622,6 +658,7 @@ class LlmRouter:
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
 
         prompt_template = custom_prompt or resolved.prompt_template
@@ -771,6 +808,7 @@ class LlmRouter:
         custom_prompt: str | None = None,
         model_id: str | None = None,
         provider_code: str | None = None,
+        allow_override: bool = False,
     ) -> AsyncGenerator[str, None]:
         """流式返回 chat completion 响应，支持动态 prompt 渲染。
 
@@ -786,6 +824,7 @@ class LlmRouter:
             user_id=user_id,
             model_id=model_id,
             provider_code=provider_code,
+            allow_override=allow_override,
         )
 
         prompt_template = custom_prompt or resolved.prompt_template

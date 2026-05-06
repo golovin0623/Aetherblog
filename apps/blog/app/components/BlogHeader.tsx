@@ -30,6 +30,10 @@ export default function BlogHeader() {
   const isTimelinePage = pathname === '/timeline';
   const isPostsPage = pathname === '/posts';
   const isArticleDetail = pathname.startsWith('/posts/') && pathname !== '/posts';
+  // Agent 工作台是完整 app shell（自带 sidebar / topbar / composer），完全
+  // 不需要博客的全局 header。提前 return null 让出整个视口高度，避免
+  // sidebar 顶部按钮被 fixed header 盖住、composer 被底部安全区截断。
+  const isAgentWorkspace = pathname.startsWith('/agent/workspace');
   const adminLinkConfig = getAdminLinkConfig();
   const adminHomeUrl = buildAdminUrl('/');
   const isAdminLinkAvailable = Boolean(adminHomeUrl);
@@ -43,13 +47,13 @@ export default function BlogHeader() {
   const siteLogo = sanitizeImageUrl(settings?.site_logo, '');
 
   // 导航页面类型
-  type NavPage = 'posts' | 'timeline' | 'archives' | 'friends' | 'about' | 'design' | null;
+  type NavPage = 'posts' | 'timeline' | 'agent' | 'friends' | 'about' | 'design' | null;
 
   // 当前激活的导航页面（用于乐观更新）
   const [activePage, setActivePage] = useState<NavPage>(() => {
     if (pathname === '/timeline') return 'timeline';
     if (pathname === '/posts') return 'posts';
-    if (pathname === '/archives') return 'archives';
+    if (pathname.startsWith('/agent')) return 'agent';
     if (pathname === '/friends') return 'friends';
     if (pathname === '/about') return 'about';
     if (pathname === '/design') return 'design';
@@ -70,8 +74,8 @@ export default function BlogHeader() {
       setActivePage('posts');
       setActiveTab('posts');
       sessionStorage.setItem('blogNavSource', 'posts');
-    } else if (pathname === '/archives') {
-      setActivePage('archives');
+    } else if (pathname.startsWith('/agent')) {
+      setActivePage('agent');
     } else if (pathname === '/friends') {
       setActivePage('friends');
     } else if (pathname === '/about') {
@@ -108,7 +112,7 @@ export default function BlogHeader() {
     const routes: Record<NonNullable<NavPage>, string> = {
       posts: '/posts',
       timeline: '/timeline',
-      archives: '/archives',
+      agent: '/agent',
       friends: '/friends',
       about: '/about',
       design: '/design',
@@ -258,6 +262,14 @@ export default function BlogHeader() {
       };
     }
   }, [isArticleDetail, handleGlobalMouseMove]);
+
+  // Workspace 是 standalone app shell，提前退出避免双层 chrome。这要放在
+  // 所有 hooks 之后 —— React 规定 hook 调用顺序在每次渲染必须一致；如果
+  // 在 hooks 之前 return null，路由从 /posts 切换到 /agent/workspace 时 React
+  // 会因为 hook 数量发生变化抛错。
+  if (isAgentWorkspace) {
+    return null;
+  }
 
   return (
     <>
@@ -426,21 +438,28 @@ export default function BlogHeader() {
 
               <div className="h-4 w-px bg-[var(--border-default)] mx-2"></div>
               <Link
-                href="/archives"
-                aria-current={activePage === 'archives' ? 'page' : undefined}
+                href="/agent"
+                aria-current={activePage === 'agent' ? 'page' : undefined}
                 onClick={(e) => {
                   if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
                     e.preventDefault();
-                    handleNavClick('archives');
+                    handleNavClick('agent');
                   }
                 }}
-                className={`relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'archives'
+                className={`group/agent relative text-sm font-medium transition-all duration-200 hover:text-[var(--aurora-1)] cursor-pointer ${activePage === 'agent'
                     ? 'text-[var(--aurora-1)]'
                     : 'text-[var(--ink-secondary)]'
                   }`}
               >
-                归档
-                {activePage === 'archives' && (
+                <span className="inline-flex items-center gap-1">
+                  灵境
+                  <span
+                    aria-hidden="true"
+                    className="inline-block w-1 h-1 rounded-full bg-[var(--aurora-1)] opacity-70 group-hover/agent:opacity-100 transition-opacity"
+                    style={{ animation: 'breath-soft 2.4s cubic-bezier(0.5, 0, 0.25, 1) infinite' }}
+                  />
+                </span>
+                {activePage === 'agent' && (
                   <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[var(--aurora-1)] rounded-full" />
                 )}
               </Link>

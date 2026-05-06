@@ -12,6 +12,40 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { useTheme, Theme } from './useTheme';
 
+/**
+ * ThemeToggle 文案 —— 通过 props 注入以便 i18n。
+ * 默认中文与项目主体语言保持一致;
+ * 在多语种场景下消费者可全部或部分覆盖。
+ */
+export interface ThemeToggleLabels {
+  /** 简单模式下按钮 title / aria-label 模板 (动态拼接当前 isDark 状态) */
+  toLight: string;
+  toDark: string;
+  /** 下拉触发器 title */
+  selectTitle: string;
+  /** 下拉触发器 aria-label 前缀 ("当前主题：X{selectAction}") */
+  currentPrefix: string;
+  selectAction: string;
+  /** 下拉菜单 aria-label */
+  menuLabel: string;
+  /** 选项文案 */
+  optionLight: string;
+  optionDark: string;
+  optionSystem: string;
+}
+
+const DEFAULT_LABELS: ThemeToggleLabels = {
+  toLight: '切换到亮色主题',
+  toDark: '切换到暗色主题',
+  selectTitle: '选择主题',
+  currentPrefix: '当前主题：',
+  selectAction: '。点击选择主题',
+  menuLabel: '主题选项',
+  optionLight: '亮色',
+  optionDark: '暗色',
+  optionSystem: '系统',
+};
+
 export interface ThemeToggleProps {
   /** 按钮尺寸 */
   size?: 'sm' | 'md' | 'lg';
@@ -19,6 +53,9 @@ export interface ThemeToggleProps {
   showSystem?: boolean;
   /** 自定义类名 */
   className?: string;
+  /** 自定义文案 (i18n) ——
+   * 局部覆盖默认中文文案; 仅传入需要替换的字段即可。 */
+  labels?: Partial<ThemeToggleLabels>;
 }
 
 const sizeMap = {
@@ -45,12 +82,15 @@ const sizeMap = {
 export function ThemeToggle({
   size = 'md',
   showSystem = false,
-  className = ''
+  className = '',
+  labels: labelsProp,
 }: ThemeToggleProps) {
   const { theme, isDark, setTheme, toggleThemeWithAnimation } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   const [isOpen, setIsOpen] = React.useState(false);
   const { button: buttonSize, icon: iconSize } = sizeMap[size];
+  const labels: ThemeToggleLabels = { ...DEFAULT_LABELS, ...labelsProp };
+  const toggleLabel = isDark ? labels.toLight : labels.toDark;
 
   React.useEffect(() => {
     setMounted(true);
@@ -81,8 +121,8 @@ export function ThemeToggle({
           transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
           ${buttonSize} ${className}
         `}
-        title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
-        aria-label="Toggle theme"
+        title={toggleLabel}
+        aria-label={toggleLabel}
       >
         <AnimatePresence mode="wait">
           {isDark ? (
@@ -127,10 +167,15 @@ export function ThemeToggle({
 
   // 带系统选项的下拉菜单
   const options: { value: Theme; icon: React.ReactNode; label: string }[] = [
-    { value: 'light', icon: <Sun className={iconSize} />, label: '亮色' },
-    { value: 'dark', icon: <Moon className={iconSize} />, label: '暗色' },
-    { value: 'system', icon: <Monitor className={iconSize} />, label: '系统' },
+    { value: 'light', icon: <Sun className={iconSize} />, label: labels.optionLight },
+    { value: 'dark', icon: <Moon className={iconSize} />, label: labels.optionDark },
+    { value: 'system', icon: <Monitor className={iconSize} />, label: labels.optionSystem },
   ];
+
+  // 触发器 aria-label 包含当前主题, 屏幕阅读器无需展开菜单即可知晓状态。
+  // 标点完全由 labels (currentPrefix / selectAction) 控制, 便于多语言定制。
+  const currentOptionLabel = options.find((o) => o.value === theme)?.label ?? '';
+  const triggerAriaLabel = `${labels.currentPrefix}${currentOptionLabel}${labels.selectAction}`;
 
   const currentIcon = theme === 'system'
     ? <Monitor className={iconSize} />
@@ -152,8 +197,8 @@ export function ThemeToggle({
           transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
           ${buttonSize}
         `}
-        title="选择主题"
-        aria-label="Select theme"
+        title={labels.selectTitle}
+        aria-label={triggerAriaLabel}
       >
         <motion.div
           initial={false}
@@ -176,7 +221,7 @@ export function ThemeToggle({
             {/* 下拉菜单 */}
             <motion.div
               role="menu"
-              aria-label="Theme options"
+              aria-label={labels.menuLabel}
               initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.95 }}

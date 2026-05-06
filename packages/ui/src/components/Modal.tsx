@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils';
 import { X } from 'lucide-react';
@@ -14,6 +15,11 @@ interface ModalProps {
   showCloseButton?: boolean;
   /** 隐藏背景遮罩 - 适用于弹出式模态框 */
   hideBackdrop?: boolean;
+  /**
+   * 自定义 z-index 数值。默认 100,确保覆盖 admin Sidebar (z-40 / z-50 移动端抽屉)
+   * 与 ConfirmModal (默认 50)。父级在更高层级时(如 z-9999 的 TrashDialog)请显式抬升。
+   */
+  zIndex?: number;
 }
 
 export function Modal({
@@ -24,6 +30,7 @@ export function Modal({
   size = 'md',
   showCloseButton = true,
   hideBackdrop = false,
+  zIndex = 100,
 }: ModalProps) {
   React.useEffect(() => {
     if (isOpen) {
@@ -52,10 +59,15 @@ export function Modal({
     full: 'max-w-[calc(100vw-2rem)] sm:max-w-4xl',
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ zIndex }}
+        >
           {/* 背景遮罩 - 条件渲染 */}
           {!hideBackdrop && (
             <motion.div
@@ -71,7 +83,7 @@ export function Modal({
           {hideBackdrop && (
             <div className="absolute inset-0" onClick={onClose} />
           )}
-          
+
           {/* 模态框 */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -86,7 +98,7 @@ export function Modal({
               {(title || showCloseButton) && (
                 <div className="relative flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[var(--border-subtle)] flex-shrink-0">
                   {title && (
-                    <motion.h2 
+                    <motion.h2
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.1 }}
@@ -107,7 +119,7 @@ export function Modal({
                   )}
                 </div>
               )}
-              
+
               {/* 内容 */}
               <motion.div
                 initial={{ opacity: 0 }}
@@ -121,6 +133,7 @@ export function Modal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

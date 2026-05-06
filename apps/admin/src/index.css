@@ -34,6 +34,22 @@
   box-shadow: 0 8px 20px -18px rgba(0, 0, 0, 0.7);
 }
 
+/* Dashboard panels should read as cards on the warm off-white canvas.
+   Use an explicit leaf surface instead of --bg-card, which is a translucent tint. */
+.surface-leaf.surface-dashboard-card,
+.surface-leaf.surface-admin-card {
+  background: var(--bg-leaf);
+  border-color: rgb(from var(--ink-primary) r g b / 0.07);
+  box-shadow: 0 1px 2px rgba(28, 26, 20, 0.04);
+}
+
+:root.dark .surface-dashboard-card,
+:root.dark .surface-admin-card {
+  background: rgb(from var(--bg-leaf) r g b / 0.85);
+  border-color: rgba(255, 255, 255, 0.075);
+  box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.65);
+}
+
 /* AetherHub workspace keeps the global Codex system intact while giving the
    workspace screen its own single-light-source palette and mobile surfaces. */
 .aetherhub-workspace {

@@ -368,8 +368,13 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 		return response.Error(c, err)
 	}
 
-	// 修改密码后吊销所有会话并清除 Cookie
-	h.session.RevokeAllUserSessions(ctx, lu.UserID)
+	// 修改密码后吊销所有会话，并额外吊销当前请求携带的 Refresh Token。
+	// 这样即便用户会话索引缺失（如历史令牌或索引写入失败），当前会话也会被强制失效。
+	// 批量撤销失败时不阻塞响应（密码已写入数据库），但必须打日志以便运维介入处理残留会话。
+	if err := h.session.RevokeAllUserSessions(ctx, lu.UserID); err != nil {
+		log.Error().Err(err).Int64("user_id", lu.UserID).Msg("revoke all user sessions failed after password change")
+	}
+	h.session.RevokeRefreshToken(ctx, getCookieValue(c, middleware.RefreshTokenCookie))
 	h.clearAuthCookies(c)
 	return response.OKEmpty(c)
 }
@@ -439,8 +444,19 @@ func truncateForLog(s string) string {
 // generateAccessToken 为指定用户签发 JWT Access Token。
 // 始终用 jwtKeys.Current() 作为签名密钥 —— 轮换发生后立即使用新 key，
 // 旧 key 仅在 JWTAuth 中间件验证阶段（Verifiers 中的 previous）保留。
+//
+// SECURITY: 把 user.MustChangePassword 透传进 claim，让 token 自身携带"必须改密"
+// 状态。middleware.RequirePasswordRotated 据此把这类 token 限制在 /me /change-password
+// /refresh /logout 范围内，杜绝默认密码账号在改密前调用业务接口。
 func (h *AuthHandler) generateAccessToken(user *model.User) (string, error) {
-	return jwtutil.GenerateToken(user.ID, user.Username, user.Role, h.jwtKeys.Current(), h.cfg.JWT.Expiration)
+	return jwtutil.GenerateToken(
+		user.ID,
+		user.Username,
+		user.Role,
+		h.jwtKeys.Current(),
+		h.cfg.JWT.Expiration,
+		user.MustChangePassword,
+	)
 }
 
 // buildLoginResponse 从用户模型和 Access Token 构建 LoginResponse DTO。

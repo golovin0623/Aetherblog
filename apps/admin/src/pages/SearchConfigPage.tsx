@@ -182,11 +182,38 @@ function IndexingProgressPanel({
   const prevDone = useRef(done);
   useEffect(() => {
     if (prevDone.current < job.jobTotal && done >= job.jobTotal) {
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         const successDelta = Math.max(0, stats.indexed_posts - job.baselineIndexed);
-        toast.success(
-          `${job.label} 完成: 成功 ${successDelta} 篇${failedDelta > 0 ? `, 失败 ${failedDelta} 篇` : ''}`
-        );
+
+        // batch / single 任务：拉一次 last-batch 摘要，把 ai-service 给的
+        // 具体失败原因（detail 字段）带到 toast，避免管理员去翻 docker 日志。
+        // full / retry 走的是 ai-service 自己的 reindex 流，summary 不覆盖。
+        let detailReason = '';
+        let actualFailed = failedDelta;
+        if (job.kind === 'batch' || job.kind === 'single') {
+          try {
+            const res = await searchConfigService.getLastBatch();
+            const summary = res?.data ?? null;
+            // finishedAt 必须在本任务启动之后，才能视作"这次任务的结果"
+            if (summary && new Date(summary.finishedAt).getTime() >= job.startTime) {
+              detailReason = summary.reason ?? '';
+              actualFailed = summary.failed;
+            }
+          } catch {
+            // 拉不到 last-batch 不要影响主流程，回退到只显示 stats 推算的计数
+          }
+        }
+
+        const baseMsg = `${job.label} 完成: 成功 ${successDelta} 篇${actualFailed > 0 ? `, 失败 ${actualFailed} 篇` : ''}`;
+        const msg = detailReason ? `${baseMsg}\n${detailReason}` : baseMsg;
+
+        if (actualFailed > 0 && successDelta === 0) {
+          toast.error(msg, { duration: 8000 });
+        } else if (actualFailed > 0) {
+          toast.warning(msg, { duration: 6000 });
+        } else {
+          toast.success(baseMsg);
+        }
         onDone();
       }, 1500);
       return () => clearTimeout(timer);

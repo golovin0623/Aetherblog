@@ -1,4 +1,4 @@
-import { Bell, Search, User, LogOut, Sun, Moon } from 'lucide-react';
+import { Bell, User, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuthStore } from '@/stores';
 import { useTheme } from '@/hooks';
 import { cn } from '@/lib/utils';
@@ -8,26 +8,7 @@ export function Header() {
   const { isDark, toggleThemeWithAnimation } = useTheme();
 
   return (
-    <header className="hidden md:flex h-16 items-center justify-between px-6 border-b border-border bg-[var(--bg-overlay)] backdrop-blur-md sticky top-0 z-30">
-      {/* 搜索框 */}
-      <div className="flex-1 max-w-md">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-          <input
-            type="text"
-            placeholder="搜索..."
-            className={cn(
-              'w-full pl-10 pr-4 py-2 rounded-lg',
-              'w-full pl-10 pr-4 py-2 rounded-lg',
-              'bg-[var(--bg-card)] border border-border',
-              'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]',
-              'focus:outline-none focus:border-primary/50',
-              'transition-colors duration-200'
-            )}
-          />
-        </div>
-      </div>
-
+    <header className="hidden md:flex h-16 items-center justify-end px-6 border-b border-border bg-[var(--bg-overlay)] backdrop-blur-md sticky top-0 z-30">
       <div className="flex items-center gap-4">
         {/* 主题切换 */}
         <button

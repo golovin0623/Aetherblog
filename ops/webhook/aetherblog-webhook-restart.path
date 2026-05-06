@@ -1,0 +1,16 @@
+[Unit]
+Description=Watch for AetherBlog webhook restart sentinel
+# 当 webhook user 写出 /run/aetherblog/restart-webhook 时, root 的 service-unit
+# 触发延迟 restart deploy-webhook. webhook 进程本身只需对该文件 W 权限 (来自
+# RuntimeDirectory=aetherblog 自动 chown), 不需要 sudo / polkit / NoNewPrivileges
+# 关掉就能完成自重启 —— 解决 PR #605 切到 User=webhook 后 systemd-run +
+# systemctl restart 失权的问题.
+
+[Path]
+PathExists=/run/aetherblog/restart-webhook
+Unit=aetherblog-webhook-restart.service
+# MakeDirectory=false (默认), /run/aetherblog 由 deploy-webhook 的
+# RuntimeDirectory 创建; 本 path-unit 只看文件不管目录.
+
+[Install]
+WantedBy=multi-user.target

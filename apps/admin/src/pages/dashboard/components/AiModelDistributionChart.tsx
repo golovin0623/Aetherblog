@@ -55,7 +55,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
 
   if (loading) {
     return (
-      <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[360px] md:h-[360px]">
+      <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px]">
         <div className="h-6 w-44 bg-[var(--bg-secondary)] rounded animate-pulse mb-6" />
         <div className="flex gap-4">
           <div className="w-[150px] h-[150px] rounded-full bg-[var(--bg-secondary)] animate-pulse" />
@@ -81,7 +81,7 @@ export function AiModelDistributionChart({ data, loading = false }: AiModelDistr
   const hasData = chartData.length > 0 && totalCalls > 0;
 
   return (
-    <div className="p-6 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] min-h-[360px] md:h-[360px] flex flex-col">
+    <div className="surface-leaf surface-dashboard-card p-6 rounded-xl min-h-[360px] md:h-[360px] flex flex-col">
       <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">模型调用占比</h3>
       <div className="flex-1 min-h-0 flex flex-col md:flex-row items-center gap-4">
         {/* 左侧：增强环形图 —— 桌面端 50% 宽度，移动端全宽 */}

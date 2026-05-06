@@ -351,6 +351,8 @@ class ProviderRegistry:
             JOIN ai_providers p ON m.provider_id = p.id
             WHERE m.model_id = $1
               AND ($2::text IS NULL OR p.code = $2)
+              AND m.is_enabled = TRUE
+              AND p.is_enabled = TRUE
             LIMIT 1
         """
         async with self.pool.acquire() as conn:

@@ -95,6 +95,16 @@ function cleanMarkdownHeading(raw: string): string {
     .trim();
 }
 
+/**
+ * 计算标题数组中最浅层级（最小 level 值）。
+ * 用于 TOC 渲染时计算缩进基线，避免在 TableOfContents / ArticleFloatingActions 中
+ * 重复实现 `Math.min(...headings.map(...))` —— 同时改用 reduce 规避大数组 spread 调用栈风险。
+ */
+export function getMinHeadingLevel(headings: Pick<ParsedHeading, 'level'>[]): number {
+  if (headings.length === 0) return 1;
+  return headings.reduce((min, h) => Math.min(min, h.level), headings[0].level);
+}
+
 export function extractHeadingsFromMarkdown(content: string): ParsedHeading[] {
   const getHeadingId = createHeadingIdFactory();
   const lines = content.split('\n');

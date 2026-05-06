@@ -32,6 +32,10 @@ export default function FloatingThemeToggle() {
 
   if (!mounted) return null;
 
+  // Agent 工作台自带主题入口，不让全局浮层占用 fixed bottom-right 位置
+  // 与 composer / FAB 相互遮挡。
+  if (pathname.startsWith('/agent/workspace')) return null;
+
   // 判断当前路由是否属于移动端重页面
   const isHeavyPage = MOBILE_HEAVY_PAGES.includes(pathname);
 
@@ -54,7 +58,8 @@ export default function FloatingThemeToggle() {
         transition-all duration-300 hover:scale-110 active:scale-95
         flex items-center justify-center group
         focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none overflow-hidden"
-      aria-label={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+      aria-label={isDark ? '切换到亮色主题' : '切换到暗色主题'}
+      title={isDark ? '切换到亮色主题' : '切换到暗色主题'}
     >
       <AnimatePresence mode="wait" initial={false}>
         {isDark ? (

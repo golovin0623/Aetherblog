@@ -5,8 +5,6 @@ on:
     branches:
       - main
       - develop
-    tags:
-      - 'v*'
   pull_request:
     branches:
       - main
@@ -37,6 +35,7 @@ jobs:
       ai-service: ${{ steps.filter.outputs.ai-service }}
       blog: ${{ steps.filter.outputs.blog }}
       admin: ${{ steps.filter.outputs.admin }}
+      ops_webhook: ${{ steps.filter.outputs.ops_webhook }}
       frontend: ${{ steps.check.outputs.frontend }}
       any_changed: ${{ steps.check.outputs.any_changed }}
     steps:
@@ -72,17 +71,12 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'docker-compose*.yml'
               - '.github/workflows/ci-cd.yml'
+            ops_webhook:
+              - 'ops/webhook/**'
 
       - name: Compute aggregate flags
         id: check
         run: |
-          # Tag 推送时全量构建，所有标志置为 true
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            echo "frontend=true" >> $GITHUB_OUTPUT
-            echo "any_changed=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
           # 前端聚合标志: blog 或 admin 任一变更
           if [[ "${{ steps.filter.outputs.blog }}" == "true" || \
                 "${{ steps.filter.outputs.admin }}" == "true" ]]; then
@@ -91,11 +85,15 @@ jobs:
             echo "frontend=false" >> $GITHUB_OUTPUT
           fi
 
-          # 任意模块变更标志
+          # 任意模块变更标志 (含 ops/webhook —— 它的改动需要触发 deploy job
+          # 走一遍 deploy.sh 的 trap EXIT 链路, 把新 webhook 代码 cp 到
+          # /var/lib/aetherblog/webhook/ 副本并通过 path-unit + sentinel 完成
+          # 自动 restart, 见 ops/webhook/README.md)
           if [[ "${{ steps.filter.outputs.backend }}" == "true" || \
                 "${{ steps.filter.outputs.ai-service }}" == "true" || \
                 "${{ steps.filter.outputs.blog }}" == "true" || \
-                "${{ steps.filter.outputs.admin }}" == "true" ]]; then
+                "${{ steps.filter.outputs.admin }}" == "true" || \
+                "${{ steps.filter.outputs.ops_webhook }}" == "true" ]]; then
             echo "any_changed=true" >> $GITHUB_OUTPUT
           else
             echo "any_changed=false" >> $GITHUB_OUTPUT
@@ -105,11 +103,12 @@ jobs:
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📦 变更检测结果:"
-          echo "  backend:    ${{ steps.filter.outputs.backend }}"
-          echo "  ai-service: ${{ steps.filter.outputs.ai-service }}"
-          echo "  blog:       ${{ steps.filter.outputs.blog }}"
-          echo "  admin:      ${{ steps.filter.outputs.admin }}"
-          echo "  frontend:   ${{ steps.check.outputs.frontend }}"
+          echo "  backend:     ${{ steps.filter.outputs.backend }}"
+          echo "  ai-service:  ${{ steps.filter.outputs.ai-service }}"
+          echo "  blog:        ${{ steps.filter.outputs.blog }}"
+          echo "  admin:       ${{ steps.filter.outputs.admin }}"
+          echo "  ops_webhook: ${{ steps.filter.outputs.ops_webhook }}"
+          echo "  frontend:    ${{ steps.check.outputs.frontend }}"
           echo "  any_changed: ${{ steps.check.outputs.any_changed }}"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -264,7 +263,7 @@ jobs:
   # ===========================================================================
   frontend-quality:
     needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true' || startsWith(github.ref, 'refs/tags/v')
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -307,7 +306,7 @@ jobs:
   # ===========================================================================
   backend-test:
     needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true' || startsWith(github.ref, 'refs/tags/v')
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -343,7 +342,7 @@ jobs:
   # ===========================================================================
   ai-test:
     needs: detect-changes
-    if: needs.detect-changes.outputs.ai-service == 'true' || startsWith(github.ref, 'refs/tags/v')
+    if: needs.detect-changes.outputs.ai-service == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -393,9 +392,8 @@ jobs:
   build-backend:
     needs: [detect-changes, backend-test]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.backend == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -418,10 +416,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-backend
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-            type=semver,pattern={{version}}
-            type=semver,pattern=v{{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -442,9 +438,8 @@ jobs:
   build-ai-service:
     needs: [detect-changes, ai-test]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.ai-service == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.ai-service == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -467,10 +462,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-ai-service
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-            type=semver,pattern={{version}}
-            type=semver,pattern=v{{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -491,9 +484,8 @@ jobs:
   build-blog:
     needs: [detect-changes, frontend-quality]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.blog == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.blog == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -516,10 +508,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-blog
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-            type=semver,pattern={{version}}
-            type=semver,pattern=v{{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -541,9 +531,8 @@ jobs:
   build-admin:
     needs: [detect-changes, frontend-quality]
     if: >-
-      (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.detect-changes.outputs.admin == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -566,10 +555,8 @@ jobs:
           images: ${{ env.DOCKER_REGISTRY }}/aetherblog-admin
           tags: |
             type=ref,event=branch
-            type=sha,prefix={{branch}}-,enable=${{ github.ref_type != 'tag' }}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-            type=semver,pattern={{version}}
-            type=semver,pattern=v{{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -596,9 +583,8 @@ jobs:
     if: |
       always() &&
       (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-        needs.detect-changes.outputs.any_changed == 'true') ||
-        startsWith(github.ref, 'refs/tags/v')
+        github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+        needs.detect-changes.outputs.any_changed == 'true'
       ) &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
@@ -614,13 +600,19 @@ jobs:
           [[ "${{ needs.detect-changes.outputs.blog }}" == "true" ]] && SERVICES="$SERVICES blog"
           [[ "${{ needs.detect-changes.outputs.admin }}" == "true" ]] && SERVICES="$SERVICES admin"
 
-          # Tag 推送 → 全量部署
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            SERVICES="backend ai-service blog admin"
+          # 仅 ops/webhook/** 变更 (没有应用镜像需要重建): 退化成 gateway-only 增量
+          # 部署. webhook_server.py / deploy.sh 的更新通过 deploy.sh 末尾的
+          # `trap _post_deploy_hooks EXIT` 自动 cp 到 /var/lib/aetherblog/webhook/
+          # 副本, 再走 sentinel + path-unit 触发 deploy-webhook restart. gateway
+          # 重启虽然多余但开销极小 (~3s nginx reload), 比让 webhook 长期运行
+          # 在过期代码上要安全得多.
+          if [ -z "$SERVICES" ] && \
+             [[ "${{ needs.detect-changes.outputs.ops_webhook }}" == "true" ]]; then
+            SERVICES="gateway"
           fi
 
           # 任何应用变更都要重启 gateway（nginx 路由可能受影响）
-          if [ -n "$SERVICES" ]; then
+          if [ -n "$SERVICES" ] && [[ "$SERVICES" != *gateway* ]]; then
             SERVICES="$SERVICES gateway"
           fi
 

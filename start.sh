@@ -167,6 +167,46 @@ sed_inplace() {
     fi
 }
 
+# 生成 URL 安全的强随机密钥（base64url，无 padding / 无 '+' '/'）。
+# POSTGRES_PASSWORD 等密钥后续会被直接拼进 postgresql+asyncpg://user:pass@…
+# 这种 DSN，标准 base64 里的 '/' 在 URL userinfo 段是分隔符（'+' 也是保留字符），
+# 会让 asyncpg 把 DSN 解析坏（codex review on PR #613）。统一改用 base64url。
+gen_url_safe_secret() {
+    openssl rand -base64 48 | tr -d '\n' | tr '+/' '-_' | tr -d '='
+}
+
+# 解析当前 docker-compose project 的实际名字。优先级与 docker compose v2 一致：
+# 显式 COMPOSE_PROJECT_NAME > docker compose config 输出中的 .name > 目录名
+# normalized（小写、剥掉非 [a-z0-9_-]）。bootstrap_env 用这个来定位 postgres
+# 数据卷，硬编码 `aetherblog_postgres_data` 在用户改了项目名时会漏判（codex
+# P2 review on PR #613）。
+docker_compose_project_name() {
+    if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
+        echo "$COMPOSE_PROJECT_NAME"
+        return
+    fi
+    local name=""
+    # start.sh 头部 `set -euo pipefail`：命令替换里管道任一段失败都会让父
+    # 脚本直接退出。docker compose 这条路径上至少有两种失败模式：
+    #   1) 主机只装了 docker daemon / 独立 docker-compose 二进制，没有 v2
+    #      plugin → `docker compose version` 直接非零；
+    #   2) 老 plugin 不在 config 输出里写顶层 name → `grep -oE` 无匹配返 1。
+    # 所以先用 plugin probe 守住第一种，pipeline 末尾加 `|| true` 兜住第二种，
+    # 防止 `set -e` 把整个 bootstrap_env 打挂（codex review on PR #613 merge）。
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        # docker compose v2.4+ 把 project name 写进 config 输出（顶层 `name:`）
+        name=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" config --format json 2>/dev/null \
+            | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+            | head -1 \
+            | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+    fi
+    if [ -z "$name" ]; then
+        # 退化到 compose 默认规则（basename，小写 + 仅保留 [a-z0-9_-]）。
+        name=$(basename "$PROJECT_ROOT" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]//g')
+    fi
+    echo "${name:-aetherblog}"
+}
+
 # 如果 .env 中 KEY 当前为空（或不存在），就把它就地设置为 VALUE。
 # 已经有非空值时不会覆盖，保护用户手填的密钥。
 bootstrap_secret_field() {
@@ -186,6 +226,135 @@ bootstrap_secret_field() {
     echo -e "${GREEN}   ✅ 已自动生成 ${key}${NC}"
 }
 
+# 把 AI 凭证加密 key 与 VULN-056 之前的 JWT 派生 key 拼成 MultiFernet 列表。
+# 详见调用处长注释。
+_ensure_ai_credential_keys() {
+    local jwt_secret current legacy_key new_key opt_out
+    jwt_secret=$(get_env_field JWT_SECRET | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    if [ -z "$jwt_secret" ]; then
+        # JWT_SECRET 在 bootstrap_env 上文 bootstrap_secret_field 时已经写入。
+        # 走到这里仍空说明 .env 行被人为破坏，让后续 require_secrets() 抛错即可。
+        return 0
+    fi
+
+    # 计算与 ai-service `_legacy_jwt_derived_key()` 等价的 Fernet key：
+    # urlsafe_b64encode(sha256(JWT_SECRET))，44 字符含 '=' padding。
+    legacy_key=""
+    if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+        legacy_key=$("$PYTHON_BIN" -c "
+import base64, hashlib, sys
+print(base64.urlsafe_b64encode(hashlib.sha256(sys.argv[1].encode()).digest()).decode())
+" "$jwt_secret" 2>/dev/null || true)
+    fi
+    if [ -z "$legacy_key" ]; then
+        legacy_key=$(printf '%s' "$jwt_secret" | openssl dgst -sha256 -binary | base64 | tr -d '\n' | tr '+/' '-_')
+    fi
+    if [ -z "$legacy_key" ]; then
+        # 派生失败（极罕见，cryptography 都没用 sha256+base64 这一步）→ 退化到原行为
+        return 0
+    fi
+
+    current=$(get_env_field AI_CREDENTIAL_ENCRYPTION_KEYS | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    # opt-out：用户跑过 rotate_credentials.py、确认所有行已迁移 → 设
+    # AI_LEGACY_KEY_FALLBACK=false 阻止下次启动再次追加 legacy key。
+    opt_out=$(get_env_field AI_LEGACY_KEY_FALLBACK | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    if [ "$opt_out" = "false" ] || [ "$opt_out" = "0" ] || [ "$opt_out" = "off" ]; then
+        # 用户显式禁用 fallback：保持现状，仅在为空时生成单 key
+        if [ -z "$current" ]; then
+            new_key=""
+            if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+                new_key=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
+            fi
+            if [ -z "$new_key" ]; then
+                new_key="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
+            fi
+            bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$new_key"
+        fi
+        return 0
+    fi
+
+    # 已经包含 legacy key（任意位置）→ 跳过
+    case ",${current}," in
+        *",${legacy_key},"*) return 0 ;;
+    esac
+
+    if [ -z "$current" ]; then
+        # 新装：直接生成新主 key + legacy fallback
+        new_key=""
+        if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+            new_key=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
+        fi
+        if [ -z "$new_key" ]; then
+            new_key="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
+        fi
+        bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "${new_key},${legacy_key}"
+    else
+        # 升级：把 legacy key 追加到末位（不动首位主 key）。base64 字符不含 '|'，sed 安全。
+        sed_inplace "s|^AI_CREDENTIAL_ENCRYPTION_KEYS=.*|AI_CREDENTIAL_ENCRYPTION_KEYS=${current},${legacy_key}|" "$PROJECT_ROOT/.env"
+        echo -e "${GREEN}   ✅ 已自动追加 legacy JWT 派生 key 到 AI_CREDENTIAL_ENCRYPTION_KEYS 末位${NC}"
+    fi
+
+    echo -e "${YELLOW}   ⚠️  VULN-056 升级 fallback：legacy JWT 派生 key 已挂在 AI_CREDENTIAL_ENCRYPTION_KEYS 末位用于解密旧凭证${NC}"
+    echo -e "${YELLOW}      迁移命令：docker exec aetherblog-ai-service python -m scripts.rotate_credentials --repair-orphans${NC}"
+    echo -e "${YELLOW}      迁移完成后请从 .env 移除末位 legacy key 并设置 AI_LEGACY_KEY_FALLBACK=false${NC}"
+}
+
+# 生产模式下，若配置缺失或仍是已知开发默认值，则强制修复为安全值。
+# 仅适用于「容器在每次启动时从 env 读取」的字段（如 REDIS_PASSWORD、AUTH_COOKIE_SECURE）。
+# 对于「有持久化绑定」的字段（如 POSTGRES_PASSWORD 写入 PGDATA 后不再读 env），请用
+# require_prod_secure_field 走「检测到默认值则报错引导手动轮换」的路径，避免静默改写后
+# 与已初始化的数据卷分叉、把跑着的部署打挂。
+bootstrap_prod_secure_field() {
+    local key=$1
+    local secure_value=$2
+    shift 2
+    local insecure_values=("$@")
+    local current
+    current=$(get_env_field "$key" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    if [ -z "$current" ]; then
+        bootstrap_secret_field "$key" "$secure_value"
+        return 0
+    fi
+
+    local insecure
+    for insecure in "${insecure_values[@]}"; do
+        if [ "$current" = "$insecure" ]; then
+            sed_inplace "s|^${key}=.*|${key}=${secure_value}|" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}   ✅ 生产模式已修复 ${key}${NC}"
+            return 0
+        fi
+    done
+}
+
+# 生产模式下，若关键字段缺失或仍是已知开发默认值，则报错并引导手动处理。
+# 用于「有持久化绑定」的字段：例如 POSTGRES_PASSWORD 一旦 PGDATA 完成初始化就锁定在
+# 容器内，再去 .env 里改密只会让 backend 拿新密码连库 28P01。这种字段不能由脚本静默替换。
+require_prod_secure_field() {
+    local key=$1
+    local hint=$2
+    shift 2
+    local insecure_values=("$@")
+    local current
+    current=$(get_env_field "$key" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    if [ -z "$current" ]; then
+        echo -e "${RED}❌ FATAL: 生产模式下 ${key} 必须显式设置${NC}" >&2
+        echo -e "${YELLOW}   ${hint}${NC}" >&2
+        exit 1
+    fi
+
+    local insecure
+    for insecure in "${insecure_values[@]}"; do
+        if [ "$current" = "$insecure" ]; then
+            echo -e "${RED}❌ FATAL: 生产模式下 ${key} 仍为已知开发默认值 (${insecure})${NC}" >&2
+            echo -e "${YELLOW}   ${hint}${NC}" >&2
+            exit 1
+        fi
+    done
+}
+
 # 自动 bootstrap 缺失的 env 文件（首次启动友好）
 # 1) 根 .env 缺失 → 从 .env.example 拷贝
 # 2) .env 中关键密钥字段为空 → 就地生成强密钥（JWT/内部令牌/Fernet）
@@ -198,8 +367,49 @@ bootstrap_env() {
             echo -e "${RED}❌ 既无 .env 也无 .env.example，无法 bootstrap${NC}" >&2
             exit 1
         fi
+        if [ "$PROD_MODE" = true ]; then
+            echo -e "${RED}❌ 生产模式检测到缺失 .env。为避免使用示例弱口令，请先手动创建安全 .env 后重试。${NC}" >&2
+            echo -e "${YELLOW}   提示：至少请设置 POSTGRES_PASSWORD、REDIS_PASSWORD、AUTH_COOKIE_SECURE=true。${NC}" >&2
+            exit 1
+        fi
         cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
         echo -e "${GREEN}   ✅ 已从 .env.example 创建 .env${NC}"
+    fi
+
+    # 数据库/缓存密码：非生产模式下自动生成（或保留现值）强随机口令。
+    # docker-compose.yml 已改为读取 .env 中的 POSTGRES/REDIS 密码（并保留
+    # 仅兜底默认值），避免把公开弱口令写入共享根 .env 后被生产 compose 复用。
+    # 字符集走 gen_url_safe_secret（base64url）：POSTGRES_PASSWORD 后续会被拼进
+    # postgresql+asyncpg://user:pass@... DSN，含 '/' '+' 会被 URL 解析器截断
+    # （codex review on PR #613）。同时只在字段为空时才调 openssl，避免重复
+    # 启动时白白生成一次随机串再丢弃（gemini review on PR #613）。
+    if [ "$PROD_MODE" = false ]; then
+        if [ -z "$(get_env_field POSTGRES_PASSWORD)" ]; then
+            # PGDATA 一次性绑定 POSTGRES_PASSWORD：postgres 容器只在卷首次
+            # 初始化时写入该口令，之后启动忽略 env。若 postgres_data 卷已存在
+            # （老版本用 docker-compose 兜底默认 aetherblog123 起过），现在生成
+            # 新随机口令会让 backend / AI 28P01（codex P2 review on PR #613）。
+            # 策略：仅在能确认卷不存在（fresh install）时才生成强随机口令；
+            # 其他情况（卷已存在 / docker daemon 离线无法判断）沿用历史默认值
+            # 保护升级路径，用户可手动改 .env + ALTER ROLE 切到强随机。
+            # 卷名走 docker_compose_project_name 解析，避免硬编码项目名在
+            # COMPOSE_PROJECT_NAME / -p / 非默认目录下漏判（codex P2 review）。
+            local _pg_volume
+            _pg_volume="$(docker_compose_project_name)_postgres_data"
+            if command -v docker >/dev/null 2>&1 \
+               && docker info >/dev/null 2>&1 \
+               && ! docker volume inspect "$_pg_volume" >/dev/null 2>&1; then
+                bootstrap_secret_field "POSTGRES_PASSWORD" "$(gen_url_safe_secret)"
+            else
+                bootstrap_secret_field "POSTGRES_PASSWORD" "aetherblog123"
+                echo -e "${YELLOW}   ℹ️  POSTGRES_PASSWORD 沿用 docker-compose 历史默认值，避免与既存 ${_pg_volume} 卷分叉；如需强随机口令请手动改 .env 后 ALTER ROLE${NC}"
+            fi
+        fi
+        # REDIS_PASSWORD 不持久化：redis 容器每次启动从 --requirepass 读 env，
+        # AOF/RDB 不存口令，所以即使 redis_data 卷已存在也可以安全轮换。
+        if [ -z "$(get_env_field REDIS_PASSWORD)" ]; then
+            bootstrap_secret_field "REDIS_PASSWORD" "$(gen_url_safe_secret)"
+        fi
     fi
 
     # JWT 签名启动 seed
@@ -213,17 +423,58 @@ bootstrap_env() {
         bootstrap_secret_field "AI_INTERNAL_SERVICE_TOKEN" "$_itoken"
     fi
 
-    # AI Provider Key 加密用 Fernet 密钥（32B base64url + padding）
-    if [ -z "$(get_env_field AI_CREDENTIAL_ENCRYPTION_KEYS)" ]; then
-        local _fkey=""
-        if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-            _fkey=$("$PYTHON_BIN" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || true)
+    # AI Provider Key 加密用 Fernet 密钥（32B base64url + padding）。
+    #
+    # VULN-056 之前的旧版本用 _legacy_jwt_derived_key(JWT_SECRET) =
+    # urlsafe_b64encode(sha256(JWT_SECRET)) 派生 Fernet key 加密 ai_credentials。
+    # 升级到 VULN-056 之后这把派生 key 不再写入生产代码路径，只剩
+    # scripts/rotate_credentials.py 在迁移窗口里手动挂上去解密。
+    #
+    # 现实是用户跑 ./start.sh 升级 → bootstrap 生成一把全新的 AI_CREDENTIAL_ENCRYPTION_KEYS
+    # → DB 里旧密文 MultiFernet 全员都解不开 → ai-service `cryptography.fernet.InvalidToken`
+    # → /agent/chat 500、admin 凭证全失效。这里把 legacy 派生 key 自动拼到
+    # AI_CREDENTIAL_ENCRYPTION_KEYS **末位**（首位仍是新生成的强随机 key,加密新数据）：
+    #
+    #   - 新装：DB 没有 legacy 行，附带 fallback 不影响安全；
+    #   - 升级（同一 JWT_SECRET）：旧密文用末位 legacy key 解开 → 不再 InvalidToken；
+    #   - 升级（轮换过 JWT_SECRET）：legacy 派生不出原始密文用的 key,fallback 无效,
+    #     仍需手动按 docs/qa/fix-plans/vuln-056-fernet-jwt-key-split.md 操作。
+    #
+    # 完成迁移后必须跑 rotate_credentials.py --repair-orphans 把所有行重新用
+    # 新 key 加密,然后从 .env 移除末位 legacy key + 设置 AI_LEGACY_KEY_FALLBACK=false
+    # 防止下次启动再次自动追加。
+    _ensure_ai_credential_keys
+
+    if [ "$PROD_MODE" = true ]; then
+        # POSTGRES_PASSWORD 不能由脚本静默轮换：PG 容器只在 PGDATA 首次初始化时
+        # 写入这个口令，之后启动忽略 env。强行替换会让 backend 拿新口令连库直接
+        # 28P01，已部署的实例会被这次「加固」打挂。改成检测到默认值即停机引导
+        # 运维手动 ALTER ROLE。
+        require_prod_secure_field "POSTGRES_PASSWORD" \
+            "请在 .env 中将 POSTGRES_PASSWORD 设为强随机值 (e.g. openssl rand -base64 48)；如已用默认值初始化数据库，请同步执行 ALTER ROLE aetherblog WITH PASSWORD '...'; 然后再重启。" \
+            "aetherblog123"
+
+        # REDIS_PASSWORD 安全可旋转：Redis 容器在每次启动时从 --requirepass 读取
+        # 当前 env 值，AOF/RDB 不持久化口令，所以静默生成强密钥不会与持久数据分叉。
+        bootstrap_prod_secure_field "REDIS_PASSWORD" "$(openssl rand -base64 48 | tr -d '\n')" "aetherblog_dev"
+
+        # 仅当网关前面有 HTTPS 终结时才正确——否则浏览器不回带 Cookie，登录会断。
+        bootstrap_prod_secure_field "AUTH_COOKIE_SECURE" "true" "false"
+
+        # REDIS_HOST 不能在 .env 里写死：
+        #   - `./start.sh --prod` 把 backend / ai-service 跑成宿主机进程，宿主机 DNS
+        #     解析不到容器服务名 `redis`，需要 `localhost` 通过端口映射连容器；
+        #   - `docker compose -f docker-compose.prod.yml up` 在容器内运行 backend/ai，
+        #     需要 `redis` 才能在 compose 网络里寻址。
+        # 同一个 .env 不可能同时满足两条路径，所以这里只在值仍是 .env.example 的开发
+        # 默认 `localhost` 时把这一行删掉，交给各运行环境自己的默认接管：
+        #   - Go 配置 yaml 默认 `localhost`（host 进程正确）；
+        #   - docker-compose.prod.yml 里 `${REDIS_HOST:-redis}` 默认 `redis`（容器正确）。
+        # 用户显式设了别的值（外部 Redis IP / 自管 redis-server）则原样保留。
+        if [ "$(get_env_field "REDIS_HOST" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")" = "localhost" ]; then
+            sed_inplace "/^REDIS_HOST=/d" "$PROJECT_ROOT/.env"
+            echo -e "${GREEN}   ✅ 生产模式：移除 .env 中的 REDIS_HOST=localhost，让各运行环境默认值接管${NC}"
         fi
-        if [ -z "$_fkey" ]; then
-            # Python cryptography 可能未装；回退到等价的 32B base64url + 单 = 填充
-            _fkey="$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')="
-        fi
-        bootstrap_secret_field "AI_CREDENTIAL_ENCRYPTION_KEYS" "$_fkey"
     fi
 
     # 前端 .env.local
@@ -236,6 +487,19 @@ bootstrap_env() {
             echo -e "${GREEN}   ✅ 已为 $app 创建 .env.local${NC}"
         fi
     done
+
+    # 把 .env 中的容器口令显式导出到当前 shell，覆盖任何上层 shell 已经导出
+    # 的同名变量。docker-compose interpolation 优先级是 host shell > .env，
+    # 多 project 公用 dev shell 时若 host 已经 export 过 POSTGRES_PASSWORD /
+    # REDIS_PASSWORD，`docker compose up` 会用 host 值起 postgres/redis 容器，
+    # 而 start_backend / start_ai_service 后面 source .env 又拿到 .env 的值，
+    # 造成 28P01（codex P2 review on PR #613）。这里强制把 .env 值塞回 host
+    # env 把两条路径拉齐。
+    local _pg_pw _rd_pw
+    _pg_pw=$(get_env_field POSTGRES_PASSWORD | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    _rd_pw=$(get_env_field REDIS_PASSWORD | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+    [ -n "$_pg_pw" ] && export POSTGRES_PASSWORD="$_pg_pw"
+    [ -n "$_rd_pw" ] && export REDIS_PASSWORD="$_rd_pw"
 
     echo -e "${GREEN}✅ 环境配置就绪${NC}"
 }

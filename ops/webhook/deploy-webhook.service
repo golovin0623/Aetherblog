@@ -1,49 +1,105 @@
 [Unit]
 Description=AetherBlog Deployment Webhook Service
-After=network.target
+After=network.target docker.service
+Wants=docker.service
 
 # ============================================================================
-# 部署形态：root 直跑 + 0.0.0.0 暴露 + 仓库直链
+# 安全基线 (systemd 219 / CentOS 7 兼容版)
 #
-# 这份 unit 反映的是当前生产服务器上**真实运行的形态**，不是 PR #459
-# 安全加固设计的目标形态。两者主要差异：
-#   - User=root（vs PR #459 的 User=webhook 无特权用户）
-#   - WorkingDirectory=/root/Aetherblog/webhook  ← 软链接到 ops/webhook
-#     (vs PR #459 的 /var/lib/aetherblog/webhook 独立目录 + cp 同步)
-#   - WEBHOOK_BIND=0.0.0.0（vs PR #459 的 127.0.0.1 + nginx 前置）
-#   - 没有 ProtectSystem / ProtectHome / SystemCallFilter 等加固指令
-#   - WEBHOOK_SECRET 走 systemctl edit 内联，不走 EnvironmentFile
+# - User/Group=webhook 无特权运行
+# - WEBHOOK_SECRET 存放在 /etc/aetherblog/webhook.env，避免写入 unit 文件
+# - 启用 systemd 219 支持的 sandbox/hardening 指令降低进程逃逸面
+# - PROJECT_DIR 显式指向 /var/lib/aetherblog/repo —— 因为 ProtectHome=true 后
+#   webhook 用户读不到 /root/Aetherblog；deploy.sh 与 webhook_server.py 共享
+#   这个值，覆盖各自的默认 /root/Aetherblog。
 #
-# PR #459 的加固版有一个未解决的设计冲突: ProtectHome=true 会禁止 webhook
-# 进程读 /root/Aetherblog (因为 PROJECT_DIR 默认还是 /root/Aetherblog),
-# 真正落地需要把仓库迁出 /root/, 当时未完成。等之后想做加固再提单独 PR
-# (路径迁移 + 用户创建 + 文件复制策略 + nginx 前置).
+# 监听姿态（继续 0.0.0.0 + HMAC 兜底）：当前仓库 nginx/ 配置里没有 `/deploy`
+# → 127.0.0.1:7868 的反代路由，CI workflow 也是直接 POST 公网 7868 (`DEPLOY_
+# WEBHOOK_URL` secret)。如果在本 PR 里把 bind 切成 127.0.0.1，CI 立刻拿不到
+# 入口、且无法用部署本身把这条修复推下去 (chicken-and-egg)。socket 暴露面靠
+# HMAC + ThreadingMixIn + settimeout 兜底；真要切 127.0.0.1 请单独提一个 PR
+# 同时落地 nginx /deploy 反代 + 改 GitHub Actions secret + 一次成功验证。
+#
+# === systemd 219 (CentOS 7 / RHEL 7 baseline) 兼容性 ===
+# 第一版 unit 写了一堆 systemd 232+ / 235+ 才有的现代加固指令，到生产 CentOS 7
+# 上 systemd 219 全部 reject 后整个 unit 加载失败、ExecStart 都没装上 —— 等
+# 价于完全没改。已剔除以下不兼容指令:
+#   - LogsDirectory          (systemd 235+)  → install 阶段手动 mkdir + chown
+#   - ReadWritePaths         (systemd 231+)  → 不需要; ProtectSystem=full 已让 /var 可写
+#   - ProtectSystem=strict   (systemd 232+)  → 降级到 full
+#   - ProtectKernelTunables  (systemd 232+)
+#   - ProtectKernelModules   (systemd 232+)
+#   - ProtectControlGroups   (systemd 232+)
+#   - LockPersonality        (systemd 235+)
+#   - MemoryDenyWriteExecute (systemd 232+)
+#   - AmbientCapabilities    (systemd 229+)
+#   - ${VAR} expansion in ExecStart (systemd 235+) → ExecStart 必须硬编码绝对路径
+#   - SystemCallFilter=@system-service (systemd 240+ 才有这个 syscall 集合名)
+# 等服务器 OS 升级到 systemd 232+ 再回头加回这些防御层 (相关注释保留下来便于检索).
 # ============================================================================
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/Aetherblog/webhook
+User=webhook
+Group=webhook
+WorkingDirectory=/var/lib/aetherblog/webhook
 
-# WEBHOOK_SECRET 内联在这里. 安装时用 README 的 sed 命令把 change-me 替换成
-# 真正的 32 字节十六进制 secret. systemctl unit 默认权限 0644 root:root,
-# secret 可被本机所有用户读取 —— 接受当前姿态, 不上 EnvironmentFile.
-Environment=WEBHOOK_SECRET=change-me
+# 必须存在；webhook_server.py 启动时若 WEBHOOK_SECRET 未注入会 sys.exit(1).
+# 去掉 `-` 前缀让 systemd 在文件缺失时直接报 condition failed, 不要静默启动.
+EnvironmentFile=/etc/aetherblog/webhook.env
 
 Environment=WEBHOOK_PORT=7868
-# WEBHOOK_BIND=0.0.0.0 全网监听; 如果你的部署有 nginx 前置可改成 127.0.0.1.
+# WEBHOOK_BIND=0.0.0.0 (公网暴露 + HMAC 兜底)：仓库 nginx 当前没有 /deploy 反代
+# 路由，CI 直连公网 7868，切 127.0.0.1 会立刻断 CI。详见文件顶部说明块。
 Environment=WEBHOOK_BIND=0.0.0.0
 Environment=WEBHOOK_REQUEST_TIMEOUT=15
 Environment=WEBHOOK_MAX_BODY_BYTES=8192
-Environment=DEPLOY_SCRIPT=/root/Aetherblog/webhook/deploy.sh
+Environment=DEPLOY_SCRIPT=/var/lib/aetherblog/webhook/deploy.sh
 Environment=DEPLOY_TIMEOUT=900
 
-# PYTHON_BIN 默认走系统 python3, 跟其他发行版的 webhook 部署习惯对齐.
-# 当前生产装了 pyenv, 安装步骤里用 systemctl edit 覆盖成
-#   Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3
-# 任何升级 Python 版本 / 切换发行版的人, 改这一行不动 ExecStart.
+# 仓库工作树：webhook 用户可读写，与 ProtectHome=true 兼容。
+# 安装时把仓库克隆/迁移到这里 (见 README §服务器安装步骤)。
+Environment=PROJECT_DIR=/var/lib/aetherblog/repo
+
+# LogsDirectory 是 systemd 235+ 特性, 在 219 上不识别 → 改为 install 阶段
+# 手动 `install -d -m 0750 -o webhook -g webhook /var/log/aetherblog`.
+# RuntimeDirectory 在 systemd 211+ 已支持, /run/aetherblog 仍由 systemd 自动创建.
+Environment=LOG_FILE=/var/log/aetherblog/deploy.log
+Environment=LOCK_FILE=/run/aetherblog/deploy.lock
+
+# WEBHOOK_RUNTIME_DIR / WEBHOOK_RUNTIME_PY: deploy.sh 末尾 trap EXIT 用这两个值
+# (a) 把 repo 里的 ops/webhook/{deploy.sh,webhook_server.py} cp 到 ExecStart 副本
+#     目录 (sync_webhook_files_to_runtime)，
+# (b) 比对副本 mtime 与 webhook 进程启动时间决定是否调度自动 restart
+#     (restart_webhook_if_stale)。
+# 不设这两个 env 时 deploy.sh fallback 到 $PROJECT_DIR/ops/webhook/，跟旧 root
+# 模式（软链）行为一致；显式设给硬化模式才能正确指向 /var/lib/aetherblog/webhook/
+# 这个独立副本目录。
+Environment=WEBHOOK_RUNTIME_DIR=/var/lib/aetherblog/webhook
+Environment=WEBHOOK_RUNTIME_PY=/var/lib/aetherblog/webhook/webhook_server.py
+
+# PYTHON_BIN 仅供 deploy.sh 子进程读取使用; ExecStart 必须用绝对路径硬编码,
+# 因为 systemd 219 不支持 ExecStart 里 ${VAR} 展开 (要到 235+ 才有).
+# 注意 ProtectHome=true 让 /root/.pyenv 不可访问 —— 老的 `systemctl edit` 覆盖
+# Environment=PYTHON_BIN=/root/.pyenv/versions/3.9.9/bin/python3 必须撤销;
+# 解释器需装到 /usr 或 /opt 下, 否则 deploy.sh 读 PYTHON_BIN 时 ENOENT.
 Environment=PYTHON_BIN=/usr/bin/python3
-ExecStart=${PYTHON_BIN} /root/Aetherblog/webhook/webhook_server.py
+ExecStart=/usr/bin/python3 /var/lib/aetherblog/webhook/webhook_server.py
+
+# systemd 自动创建 /run/aetherblog/, 并 chown webhook:webhook.
+RuntimeDirectory=aetherblog
+
+NoNewPrivileges=true
+PrivateTmp=true
+# ProtectSystem=full 是 systemd 219 支持的最强档 (strict 是 232+).
+# full 让 /usr /boot /etc 只读; /var 仍可写, 配合 webhook user 自身权限即可
+# 限定到 /var/lib/aetherblog/{webhook,repo} 与 /var/log/aetherblog.
+ProtectSystem=full
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# CapabilityBoundingSet= (空值) 在 systemd 219 上等价于"放弃所有 cap";
+# AmbientCapabilities= 是 229+ 才有, 此处不设也不影响 (默认就是空).
+CapabilityBoundingSet=
 Restart=always
 RestartSec=3
 

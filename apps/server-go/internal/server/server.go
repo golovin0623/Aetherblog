@@ -186,21 +186,26 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	authHandler := handler.NewAuthHandler(authSvc, sessionSvc, s.Config, activitySvc, s.JWTKeys, jwtSecretRepo)
 	// 所有鉴权中间件走 JWT Store 版本，支持 current+previous 双 key 验证。
 	authMW := middleware.JWTAuthWithStore(s.JWTKeys)
+	// SECURITY: pwdRotated 拦截 must_change_password=true 的 token —— 仅放行登录流程
+	// 必需的 /me /change-password /refresh /logout，业务接口（含 admin / agent）一律 403。
+	// 必须挂在 authMW 之后，且**绝对不能**挂在改密相关端点上（会造成自服务死锁）。
+	pwdRotated := middleware.RequirePasswordRotated()
 	// 按路由挂载速率限制
 	authGroup.POST("/login", authHandler.Login, middleware.RateLimitByIP(s.Redis, "rate:login", 10, time.Minute))
-	authGroup.POST("/register", authHandler.RegisterUser, authMW, middleware.RequireRole("admin"), middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
+	authGroup.POST("/register", authHandler.RegisterUser, authMW, pwdRotated, middleware.RequireRole("admin"), middleware.RateLimitByIP(s.Redis, "rate:register", 5, time.Minute))
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.POST("/logout", authHandler.Logout)
 	authGroup.GET("/me", authHandler.Me, authMW)
 	authGroup.POST("/change-password", authHandler.ChangePassword, authMW, middleware.RateLimitByUser(s.Redis, "rate:changepwd", 5, time.Minute))
-	authGroup.PUT("/profile", authHandler.UpdateProfile, authMW)
-	authGroup.PUT("/avatar", authHandler.UpdateAvatar, authMW)
+	authGroup.PUT("/profile", authHandler.UpdateProfile, authMW, pwdRotated)
+	authGroup.PUT("/avatar", authHandler.UpdateAvatar, authMW, pwdRotated)
 
 	// --- 管理员路由（JWT 认证 + 角色强校验） ---
 	// SECURITY (VULN-052): /v1/admin/* 必须强制 role==admin，否则任何已登录 USER 都能
 	// 命中管理端点，导致 IDOR 簇 (VULN-029/037/038/039/040/041/042/044) 与 AI 代理 (VULN-172)
 	// 授权失效。此处必须与 handler 层 ownership check 协同，不可单独省略。
-	admin := api.Group("/v1/admin", authMW, middleware.RequireRole("admin"))
+	// pwdRotated 在 RequireRole 之前 —— 默认密码账号即便是 admin 也得先改密才能进。
+	admin := api.Group("/v1/admin", authMW, pwdRotated, middleware.RequireRole("admin"))
 
 	// 管理员专用 auth 端点（手动轮换 JWT 密钥等）。
 	authHandler.MountAdmin(admin.Group("/auth"))
@@ -340,6 +345,23 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	aiHandler := handler.NewAiHandler(s.Config, activitySvc)
 	aiHandler.Mount(admin.Group("/ai"))
 
+	// --- Agent 对话接口（任意已登录用户可访问，区别于 admin /ai 代理） ---
+	// SECURITY: 这里只挂 authMW，不强制 RequireRole("admin")。理由是 /agent 工作台
+	// 对所有注册用户开放，但下游 ai-service 仍走 internal-token 通道（在 handler 内
+	// 注入 X-Internal-Service），以防止用户拿到的 JWT 直接打到 ai-service。
+	//
+	// 限流分两桶（PR #573 codex review 反馈）：
+	//   · chat（30/min/user）—— POST /chat 是 LLM 真正费 token 的路径，紧。
+	//   · picker（120/min/user）—— GET /models /articles /tags 只命中本地 DB，
+	//     `@` picker 一边输入一边搜，给 4x 头部空间避免用户还没发消息就 429。
+	agentHandler := handler.NewAgentHandler(s.Config, postRepo, tagRepo)
+	agentGroup := api.Group("/v1/agent", authMW, pwdRotated)
+	agentHandler.Mount(
+		agentGroup,
+		middleware.RateLimitByUser(s.Redis, "rate:agent:chat", 30, time.Minute),
+		middleware.RateLimitByUser(s.Redis, "rate:agent:picker", 120, time.Minute),
+	)
+
 	// Provider 管理代理路由默认限制请求体为 10MB，避免异常大包占用后端资源。
 	const providerProxyBodyLimit = "10M"
 	aiHandler.MountProviders(admin.Group("/providers", echomiddleware.BodyLimit(providerProxyBodyLimit)))
@@ -356,6 +378,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	searchAdmin.GET("/embedding-status", searchHandler.EmbeddingStatus)
 	searchAdmin.GET("/posts", searchHandler.ListPostsEmbedding)
 	searchAdmin.POST("/index-batch", searchHandler.IndexBatch)
+	searchAdmin.GET("/last-batch", searchHandler.LastBatch)
 	// Search profile 管理（list / create / activate / deprecate / delete + SSE reindex）
 	// 通配代理至 ai-service profiles.py。SSE 流式端点（POST /{code}/reindex/stream）
 	// 在 handler 内自动检测 path 后缀切到 DoStream + 行级转发。

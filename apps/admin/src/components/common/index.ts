@@ -1,4 +1,6 @@
 export { DataTable } from './DataTable';
+export { StyledSelect } from './StyledSelect';
+export type { StyledSelectOption } from './StyledSelect';
 export { Pagination } from './Pagination';
 export { ConfirmDialog } from './ConfirmDialog';
 export { LoadingSpinner, LoadingOverlay } from './LoadingSpinner';

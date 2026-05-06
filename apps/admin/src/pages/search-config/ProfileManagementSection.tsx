@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Layers, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, Layers, Loader2, AlertTriangle, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmModal } from '@aetherblog/ui';
 import { cn } from '@/lib/utils';
@@ -141,11 +141,32 @@ export function ProfileManagementSection({
           </div>
         </div>
       ) : profiles.length === 0 ? (
-        <div className="text-center py-10 text-sm text-[var(--text-muted)]">
-          <p className="mb-2">暂无 profile。</p>
-          <p className="text-xs">
-            点"创建 profile"开始 —— 创建后处于 shadow 状态，需先全量 reindex 再激活。
-          </p>
+        <div className="surface-leaf !rounded-xl p-6 sm:p-8 text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[color-mix(in_oklch,var(--aurora-1)_15%,transparent)]">
+            <Sparkles className="w-6 h-6 text-[var(--aurora-1)]" />
+          </div>
+          <div className="space-y-1.5 max-w-md mx-auto">
+            <p className="text-base font-display text-[var(--text-primary)]">
+              开始你的第一个搜索配置
+            </p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Profile 把 embedding 模型、切片策略、token 预算绑成一个完整的索引单元。
+              先创建,再 reindex,最后激活 —— 全程蓝绿,可随时回滚。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm',
+              'bg-[var(--aurora-1)] text-white',
+              'hover:bg-[color-mix(in_oklch,var(--aurora-1)_85%,white)]',
+              'transition-colors shadow-lg shadow-[var(--aurora-1)]/20',
+            )}
+          >
+            <Plus className="w-4 h-4" />
+            创建第一个 profile
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

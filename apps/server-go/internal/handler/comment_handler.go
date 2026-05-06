@@ -215,7 +215,7 @@ func (h *CommentHandler) ListByPost(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	return response.OK(c, map[string]any{"list": vos})
+	return response.OK(c, map[string]any{"list": dto.ToPublicCommentVOs(vos)})
 }
 
 // Submit 处理 POST /public/comments/post/:postId 请求（附有限流控制），
@@ -237,7 +237,7 @@ func (h *CommentHandler) Submit(c echo.Context) error {
 	if err != nil {
 		return response.FailWith(c, response.BadRequest, err.Error())
 	}
-	return response.OK(c, vo)
+	return response.OK(c, vo.ToPublic())
 }
 
 // recordCommentActivity 记录评论相关活动事件，失败时仅记录日志不阻塞主流程。
