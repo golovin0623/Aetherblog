@@ -8,6 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/golovin0623/aetherblog-server/internal/model"
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 // SiteSettingRepo 提供对 site_settings 表的数据访问能力。
@@ -49,7 +50,7 @@ func (r *SiteSettingRepo) FindByKey(ctx context.Context, key string) (*model.Sit
 func (r *SiteSettingRepo) FindByKeyPrefix(ctx context.Context, prefix string) ([]model.SiteSetting, error) {
 	var settings []model.SiteSetting
 	err := r.db.SelectContext(ctx, &settings,
-		`SELECT * FROM site_settings WHERE setting_key LIKE $1 ORDER BY setting_key`, prefix+"%")
+		`SELECT * FROM site_settings WHERE setting_key LIKE $1 ORDER BY setting_key`, dbutil.EscapeLike(prefix)+"%")
 	return settings, err
 }
 
