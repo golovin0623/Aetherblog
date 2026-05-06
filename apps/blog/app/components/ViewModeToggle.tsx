@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -7,7 +8,7 @@ import { usePathname } from 'next/navigation';
  * 视图模式切换组件
  * 具有滑动胶囊动画效果的首页/时间线切换器
  */
-export default function ViewModeToggle({ compact = false }: { compact?: boolean }) {
+const ViewModeToggleBase = ({ compact = false }: { compact?: boolean }) => {
   const pathname = usePathname();
   const isTimeline = pathname === '/timeline';
 
@@ -16,6 +17,10 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
   const paddingClass = compact ? 'p-0.5' : 'p-1';
   const textClass = compact ? 'text-xs' : 'text-sm';
   const pillInset = compact ? '2px' : '4px';
+
+  // 链接基础样式 —— 焦点环使用 var(--bg-body) 偏移色，符合项目约定
+  // (该控件直接位于页面而非容器内, 与 ArticleFloatingActions 等同源)。
+  const linkBaseClass = `relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-body)]`;
 
   return (
     <div
@@ -30,12 +35,12 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
           left: isTimeline ? `calc(50% + ${compact ? '0px' : '2px'})` : pillInset,
         }}
       />
-      
+
       {/* 链接 - 固定宽度防止布局偏移 */}
       <Link
         href="/posts"
         aria-current={!isTimeline ? 'page' : undefined}
-        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+        className={`${linkBaseClass} ${
           !isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
       >
@@ -44,7 +49,7 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       <Link
         href="/timeline"
         aria-current={isTimeline ? 'page' : undefined}
-        className={`relative z-10 ${widthClass} text-center py-1.5 rounded-full ${textClass} font-medium transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+        className={`${linkBaseClass} ${
           isTimeline ? 'text-primary' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
         }`}
       >
@@ -52,4 +57,8 @@ export default function ViewModeToggle({ compact = false }: { compact?: boolean 
       </Link>
     </div>
   );
-}
+};
+
+// 使用 React.memo 避免父组件重渲染时引发的无意义重渲染。
+const ViewModeToggle = React.memo(ViewModeToggleBase);
+export default ViewModeToggle;
