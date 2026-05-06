@@ -820,6 +820,10 @@ body {
    ======================================== */
 .markdown-body {
   line-height: var(--markdown-line-height);  /* 1.8 */
+  /* 长 URL / JWT / Base64 等"不可断词"连续字符串必须强制换行,
+     否则突破 max-w-4xl 容器右边界(典型:blockquote 内 URL 穿模)。
+     `anywhere` 比 `break-word` 额外影响 min-content,在 flex 容器内更稳。 */
+  overflow-wrap: anywhere;
 }
 
 /* -------------------------------------------------------------
