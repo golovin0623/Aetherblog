@@ -115,7 +115,7 @@ export function StepSummary({ state, onRestart }: Props) {
         </section>
       )}
 
-      <div className="flex justify-stretch sm:justify-end gap-3">
+      <div className="flex sm:justify-end gap-3">
         <button
           onClick={onRestart}
           className="w-full sm:w-auto rounded-xl bg-[var(--bg-secondary)] px-5 py-3 sm:py-2.5 text-sm text-[var(--text-primary)] active:scale-[0.98] transition-transform touch-manipulation"

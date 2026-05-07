@@ -550,7 +550,7 @@ function ProviderDialog({
           </div>
 
           {/* 操作按钮 */}
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 pt-2">
             <Button type="button" onClick={onClose} variant="secondary" className="flex-1">
               取消
             </Button>

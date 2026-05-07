@@ -146,7 +146,7 @@ export function StepExecute({ state, onExecuteStart, onExecuteEvent, onExecuteEn
                 {it.title || it.sourceId}
               </span>
               {it.postId && <span className="text-[var(--text-muted)] shrink-0">#{it.postId}</span>}
-              {it.error && <span className="text-red-300 truncate">{it.error}</span>}
+              {it.error && <span className="text-red-300 truncate min-w-0">{it.error}</span>}
             </div>
           ))}
         </div>
