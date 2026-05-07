@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
   AtSign,
+  BookOpen,
   Bot,
   Brain,
   Check,
@@ -31,6 +32,7 @@ import {
   FileText,
   LayoutGrid,
   Loader2,
+  MessageCircle,
   Moon,
   MoreHorizontal,
   Pencil,
@@ -486,6 +488,8 @@ export default function AetherHubWorkspacePage() {
               activeSession={activeSession}
               modelsState={modelsState}
               streaming={streaming}
+              displayMode={displayMode}
+              onSetDisplayMode={setDisplayMode}
               onSetModel={handleSetModel}
               onBack={() => navigate('/dashboard')}
               onNewSession={handleNewSession}
@@ -729,6 +733,8 @@ function TopBar({
   activeSession,
   modelsState,
   streaming,
+  displayMode,
+  onSetDisplayMode,
   onSetModel,
   onBack,
   onNewSession,
@@ -737,6 +743,8 @@ function TopBar({
   activeSession: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   streaming: boolean;
+  displayMode: DisplayMode;
+  onSetDisplayMode: (mode: DisplayMode) => void;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
   onBack: () => void;
   onNewSession: () => void;
@@ -789,6 +797,15 @@ function TopBar({
             onSetModel={onSetModel}
           />
         </div>
+        <button
+          type="button"
+          onClick={() => onSetDisplayMode(displayMode === 'bubble' ? 'engraved' : 'bubble')}
+          aria-label={displayMode === 'bubble' ? '切换到版书模式' : '切换到气泡模式'}
+          title={displayMode === 'bubble' ? '切换到版书模式' : '切换到气泡模式'}
+          className="grid h-9 w-9 place-items-center rounded-lg text-[var(--ink-secondary)] transition-colors hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]"
+        >
+          {displayMode === 'bubble' ? <BookOpen className="h-4 w-4" /> : <MessageCircle className="h-4 w-4" />}
+        </button>
         <button
           type="button"
           onClick={(e) => toggleThemeWithAnimation(e.clientX, e.clientY)}
