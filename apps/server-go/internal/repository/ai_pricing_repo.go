@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/golovin0623/aetherblog-server/internal/pkg/dbutil"
 )
 
 var ErrAICostArchiveSchemaMissing = errors.New("ai_usage_logs cost archive columns missing")
@@ -76,7 +78,7 @@ func buildAIDashboardWhereWithAlias(f AIDashboardFilter, alias string) (string, 
 			qualifyColumn(alias, "provider_code"), argIdx,
 			qualifyColumn(alias, "error_code"), argIdx,
 		)
-		args = append(args, "%"+f.Keyword+"%")
+		args = append(args, "%"+dbutil.EscapeLike(f.Keyword)+"%")
 	}
 
 	return where, args
