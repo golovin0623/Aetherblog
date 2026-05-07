@@ -602,7 +602,7 @@ const PLACEHOLDER_CONVERSATION_ID = 'conv_abc123def456';
 
 function ContextPanel({ createdAt }: { createdAt: Date }) {
   const createdAtLabel = useMemo(
-    () => formatDate(createdAt, 'YYYY-MM-DD HH:mm:ss'),
+    () => formatDate(createdAt, 'yyyy-MM-dd HH:mm:ss'),
     [createdAt],
   );
 
