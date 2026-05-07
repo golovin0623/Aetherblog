@@ -455,14 +455,16 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="space-y-5">
-                  {activeGroup.fields.map((field) => (
+                  {activeGroup.fields.map((field) => {
+                    const isOn = formData[field.key] === 'true' || formData[field.key] === true;
+                    return (
                     <div key={field.key} className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-sm font-medium text-[var(--text-secondary)]">
                           {field.label}
                         </label>
                       </div>
-                      
+
                       {/* 动态字段渲染 */}
                       {field.type === 'text' || field.type === 'url' || field.type === 'number' ? (
                         <input
@@ -481,20 +483,15 @@ export default function SettingsPage() {
                           className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-[var(--text-muted)] transition-all resize-none font-mono"
                         />
                       ) : field.type === 'boolean' ? (
-                        (() => {
-                          const isOn = formData[field.key] === 'true' || formData[field.key] === true;
-                          return (
-                            <div className="flex items-center gap-3">
-                              <Toggle
-                                checked={isOn}
-                                onChange={(next) => handleInputChange(field.key, next)}
-                              />
-                              <span className="text-sm text-[var(--text-muted)]">
-                                {isOn ? '已开启' : '已关闭'}
-                              </span>
-                            </div>
-                          );
-                        })()
+                        <div className="flex items-center gap-3">
+                          <Toggle
+                            checked={isOn}
+                            onChange={(next) => handleInputChange(field.key, next)}
+                          />
+                          <span className="text-sm text-[var(--text-muted)]">
+                            {isOn ? '已开启' : '已关闭'}
+                          </span>
+                        </div>
                       ) : field.type === 'color' ? (
                         <div className="flex items-center gap-3">
                           <input
@@ -563,7 +560,8 @@ export default function SettingsPage() {
                         <p className="text-xs text-[var(--text-muted)]">{field.description}</p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
