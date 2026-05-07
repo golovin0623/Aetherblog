@@ -72,6 +72,7 @@ import {
   loadSessions,
   modelLabel,
   newMessageId,
+  normalizeCjkInlineMarkdown,
   saveSessions,
   streamAgentChat,
   useAgentModels,
@@ -1547,6 +1548,11 @@ function AssistantContent({
 }) {
   // 节流后的内容 —— 流式中按用户选择的速率匀速吐字；完成态立即同步到完整文本。
   const smoothed = useSmoothStream(message.content, !!message.pending, streamAnimation);
+  // CJK 友好预处理 —— 修正 `**xx：**汉字` 这类中文标点 + bold 闭合失败的盲点。
+  const renderableContent = useMemo(
+    () => normalizeCjkInlineMarkdown(smoothed),
+    [smoothed],
+  );
 
   return (
     <div className="w-full">
@@ -1575,7 +1581,7 @@ function AssistantContent({
               style={{ fontSize: `${fontSize}px` }}
             >
               <MarkdownPreview
-                content={smoothed}
+                content={renderableContent}
                 theme={isDark ? 'dark' : 'light'}
                 className={cn(
                   'leading-relaxed',
