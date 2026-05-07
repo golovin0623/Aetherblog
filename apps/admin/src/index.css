@@ -203,6 +203,31 @@
   letter-spacing: 0.005em;
 }
 
+/* 防御性规则 —— 把任何遗漏的 .drop-cap / .markdown-body 类首字下沉
+   关掉。chat 上下文里每条消息都从首字开始，不能让首字膨胀成 3.6em。
+   blog globals.css 在文章详情里会启用，admin 这边一律压下。 */
+.aetherhub-workspace p:first-of-type::first-letter,
+.aetherhub-workspace .markdown-preview > p:first-of-type::first-letter,
+.aetherhub-workspace .markdown-preview p:first-of-type::first-letter,
+.aetherhub-workspace .hub-engraved-md p:first-of-type::first-letter {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-family: inherit !important;
+  font-style: inherit !important;
+  line-height: inherit !important;
+  float: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  background: none !important;
+  text-shadow: inherit !important;
+  -webkit-background-clip: initial !important;
+          background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  initial-letter: normal !important;
+  -webkit-initial-letter: normal !important;
+}
+
 /* 浮印 / 凸起效果 ——
    白底用上明下暗一线的极轻投影，让字像从纸面抬起 0.5px；
    深色底改成"上沿微反光、下沿微沉影"，体感是从板上凸起。 */
@@ -373,6 +398,74 @@
 
 @media (prefers-reduced-motion: reduce) {
   .aetherhub-workspace .hub-engraved-streaming::before { animation: none !important; }
+}
+
+/* ============================================================
+   流式吐字过渡 —— LobeHub 风格：速率节流由 useSmoothStream 控；
+   这里只负责给"匀速吐出来的字"叠一层视觉柔化（fade 模式有过渡，
+   smooth 模式无过渡，让节流本身完成观感差异）。
+   ============================================================ */
+.aetherhub-workspace .hub-stream-fade {
+  /* none / smooth：直接渲染，不叠 transition */
+  transition: none;
+}
+
+.aetherhub-workspace .hub-stream-fade--fade {
+  /* fade 模式：随 content 增长，整段做轻微的 opacity 与 translateY 复合
+     渐入。与 useSmoothStream(80 chars/s) 协同，让单个字符弹出时有个 "纸面浮起"
+     的极轻动效。 */
+  animation: hub-stream-fade-tween 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes hub-stream-fade-tween {
+  from { opacity: 0.78; transform: translateY(0.5px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aetherhub-workspace .hub-stream-fade--fade { animation: none !important; }
+}
+
+/* 字体大小 range slider —— 与气泡 / 版书 segmented control 同款克制视觉 */
+.aetherhub-workspace .hub-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--aurora-1) 0%,
+    var(--aurora-1) calc((var(--hub-range-progress, 0.5)) * 100%),
+    color-mix(in oklch, var(--ink-primary) 12%, transparent) calc((var(--hub-range-progress, 0.5)) * 100%),
+    color-mix(in oklch, var(--ink-primary) 12%, transparent) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.aetherhub-workspace .hub-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-leaf);
+  border: 2px solid var(--aurora-1);
+  box-shadow: 0 2px 6px -2px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  transition: transform 0.16s ease;
+  cursor: grab;
+}
+.aetherhub-workspace .hub-range::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+  cursor: grabbing;
+}
+.aetherhub-workspace .hub-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-leaf);
+  border: 2px solid var(--aurora-1);
+  box-shadow: 0 2px 6px -2px color-mix(in oklch, var(--aurora-1) 60%, transparent);
+  cursor: grab;
 }
 
 /* ============================================================

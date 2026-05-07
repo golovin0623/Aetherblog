@@ -1,4 +1,4 @@
-import {
+import React, {
   forwardRef,
   useCallback,
   useEffect,
@@ -63,6 +63,7 @@ import {
   type AgentSession,
   type ChatStreamRequest,
   type SlashCommand,
+  type StreamAnimationMode,
   SLASH_COMMANDS,
   createEmptySession,
   deriveSessionTitle,
@@ -75,6 +76,7 @@ import {
   streamAgentChat,
   useAgentModels,
   useArticleSearch,
+  useSmoothStream,
 } from '@/services/agent';
 
 const promptChips = [
@@ -180,6 +182,33 @@ export default function AetherHubWorkspacePage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('aetherblog.admin.aetherhub.displayMode', displayMode);
   }, [displayMode]);
+
+  // ----- 流式吐字动画：none / fade / smooth -----
+  const [streamAnimation, setStreamAnimation] = useState<StreamAnimationMode>('smooth');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('aetherblog.admin.aetherhub.streamAnimation');
+    if (stored === 'none' || stored === 'fade' || stored === 'smooth') setStreamAnimation(stored);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('aetherblog.admin.aetherhub.streamAnimation', streamAnimation);
+  }, [streamAnimation]);
+
+  // ----- 字体大小：13-17px，默认 14.5（与文章详情正文同档） -----
+  const [fontSize, setFontSize] = useState<number>(14.5);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('aetherblog.admin.aetherhub.fontSize');
+    if (stored) {
+      const n = Number(stored);
+      if (Number.isFinite(n) && n >= 12 && n <= 20) setFontSize(n);
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('aetherblog.admin.aetherhub.fontSize', String(fontSize));
+  }, [fontSize]);
 
   const updateSession = useCallback(
     (id: string, updater: (s: AgentSession) => AgentSession) => {
@@ -504,6 +533,8 @@ export default function AetherHubWorkspacePage() {
               streaming={streaming}
               composer={composer}
               displayMode={displayMode}
+              streamAnimation={streamAnimation}
+              fontSize={fontSize}
               onComposerChange={setComposer}
               onSend={handleSend}
               onAbort={handleAbort}
@@ -528,6 +559,10 @@ export default function AetherHubWorkspacePage() {
             collapsed={panelCollapsed}
             displayMode={displayMode}
             onSetDisplayMode={setDisplayMode}
+            streamAnimation={streamAnimation}
+            onSetStreamAnimation={setStreamAnimation}
+            fontSize={fontSize}
+            onSetFontSize={setFontSize}
             onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
             onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
             onClearMessages={() => {
@@ -1045,6 +1080,8 @@ function WorkspaceCanvas({
   streaming,
   composer,
   displayMode,
+  streamAnimation,
+  fontSize,
   onComposerChange,
   onSend,
   onAbort,
@@ -1063,6 +1100,8 @@ function WorkspaceCanvas({
   streaming: boolean;
   composer: string;
   displayMode: DisplayMode;
+  streamAnimation: StreamAnimationMode;
+  fontSize: number;
   onComposerChange: (value: string) => void;
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -1107,6 +1146,8 @@ function WorkspaceCanvas({
                   key={m.id}
                   message={m}
                   displayMode={displayMode}
+                  streamAnimation={streamAnimation}
+                  fontSize={fontSize}
                   currentUser={currentUser}
                 />
               ))}
@@ -1179,10 +1220,14 @@ function EmptyState({
 function MessageRow({
   message,
   displayMode,
+  streamAnimation,
+  fontSize,
   currentUser,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
+  streamAnimation: StreamAnimationMode;
+  fontSize: number;
   currentUser: CurrentUser;
 }) {
   const { isDark } = useTheme();
@@ -1199,7 +1244,7 @@ function MessageRow({
     );
 
   const body = isUser ? (
-    <UserContent message={message} displayMode={displayMode} />
+    <UserContent message={message} displayMode={displayMode} fontSize={fontSize} />
   ) : showTypingDots ? (
     <AssistantSurface displayMode={displayMode} isStreaming={false} hasError={false}>
       <TypingDots />
@@ -1208,6 +1253,8 @@ function MessageRow({
     <AssistantContent
       message={message}
       displayMode={displayMode}
+      streamAnimation={streamAnimation}
+      fontSize={fontSize}
       isDark={isDark}
       isStreaming={isStreaming}
       thinkStreaming={thinkStreaming}
@@ -1352,19 +1399,27 @@ function Avatar({
 function UserContent({
   message,
   displayMode,
+  fontSize,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
+  fontSize: number;
 }) {
   if (displayMode === 'engraved') {
     return (
-      <div className="hub-engraved-text mx-auto max-w-full whitespace-pre-wrap text-[15.5px] leading-[1.85] text-[var(--ink-primary)]">
+      <div
+        className="hub-engraved-text mx-auto max-w-full whitespace-pre-wrap leading-[1.85] text-[var(--ink-primary)]"
+        style={{ fontSize: `${fontSize + 1}px` }}
+      >
         {message.content}
       </div>
     );
   }
   return (
-    <div className="inline-block max-w-[85%] rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-4 py-3 text-[14.5px] leading-relaxed text-[var(--ink-primary)] whitespace-pre-wrap break-words">
+    <div
+      className="inline-block max-w-[85%] rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-4 py-3 leading-relaxed text-[var(--ink-primary)] whitespace-pre-wrap break-words"
+      style={{ fontSize: `${fontSize}px` }}
+    >
       {message.content}
     </div>
   );
@@ -1412,16 +1467,23 @@ function AssistantSurface({
 function AssistantContent({
   message,
   displayMode,
+  streamAnimation,
+  fontSize,
   isDark,
   isStreaming,
   thinkStreaming,
 }: {
   message: AgentMessage;
   displayMode: DisplayMode;
+  streamAnimation: StreamAnimationMode;
+  fontSize: number;
   isDark: boolean;
   isStreaming: boolean;
   thinkStreaming: boolean;
 }) {
+  // 节流后的内容 —— 流式中按用户选择的速率匀速吐字；完成态立即同步到完整文本。
+  const smoothed = useSmoothStream(message.content, !!message.pending, streamAnimation);
+
   return (
     <div className="w-full">
       {message.think && (
@@ -1440,14 +1502,24 @@ function AssistantContent({
           </div>
         ) : (
           <>
-            <MarkdownPreview
-              content={message.content}
-              theme={isDark ? 'dark' : 'light'}
+            <div
               className={cn(
-                'text-[14.5px] leading-relaxed',
-                displayMode === 'engraved' && 'hub-engraved-md',
+                'hub-stream-fade',
+                streamAnimation === 'fade' && 'hub-stream-fade--fade',
+                streamAnimation === 'smooth' && 'hub-stream-fade--smooth',
               )}
-            />
+              style={{ fontSize: `${fontSize}px` }}
+            >
+              <MarkdownPreview
+                content={smoothed}
+                theme={isDark ? 'dark' : 'light'}
+                className={cn(
+                  'leading-relaxed',
+                  displayMode === 'engraved' && 'hub-engraved-md',
+                )}
+                style={{ fontSize: `${fontSize}px` }}
+              />
+            </div>
             {message.pending && (
               <span
                 className="hub-caret text-[var(--aurora-1)]"
@@ -2129,6 +2201,10 @@ function ContextPanel({
   collapsed,
   displayMode,
   onSetDisplayMode,
+  streamAnimation,
+  onSetStreamAnimation,
+  fontSize,
+  onSetFontSize,
   onToggleCollapsed,
   onDeleteSession,
   onClearMessages,
@@ -2138,6 +2214,10 @@ function ContextPanel({
   collapsed: boolean;
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
+  streamAnimation: StreamAnimationMode;
+  onSetStreamAnimation: (m: StreamAnimationMode) => void;
+  fontSize: number;
+  onSetFontSize: (n: number) => void;
   onToggleCollapsed: () => void;
   onDeleteSession: () => void;
   onClearMessages: () => void;
@@ -2251,6 +2331,49 @@ function ContextPanel({
       </PanelCard>
 
       <PanelCard>
+        <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">过渡动画</h3>
+        <p className="mb-3 text-[11.5px] leading-snug text-[var(--ink-muted)]">
+          流式吐字节流；越平滑阅读节奏越稳。完成态立即显示完整文本。
+        </p>
+        <SegmentedControl
+          value={streamAnimation}
+          options={[
+            { value: 'none', label: '无' },
+            { value: 'fade', label: '淡入' },
+            { value: 'smooth', label: '平滑' },
+          ]}
+          onChange={(v) => onSetStreamAnimation(v as StreamAnimationMode)}
+        />
+      </PanelCard>
+
+      <PanelCard>
+        <div className="mb-2 flex items-baseline justify-between">
+          <h3 className="text-sm font-medium text-[var(--ink-primary)]">字体大小</h3>
+          <span className="font-mono text-[11px] tnum text-[var(--ink-muted)]">{fontSize}px</span>
+        </div>
+        <input
+          type="range"
+          min={12}
+          max={18}
+          step={0.5}
+          value={fontSize}
+          onChange={(e) => onSetFontSize(Number(e.target.value))}
+          className="hub-range w-full"
+          aria-label="字体大小"
+          style={
+            {
+              '--hub-range-progress': `${(fontSize - 12) / (18 - 12)}`,
+            } as React.CSSProperties
+          }
+        />
+        <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+          <span>A</span>
+          <span>标准</span>
+          <span>A</span>
+        </div>
+      </PanelCard>
+
+      <PanelCard>
         <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">快捷操作</h3>
         <div className="grid grid-cols-1 gap-3">
           <ActionButton icon={Pencil} onClick={() => toast.info('对话重命名功能开发中')}>
@@ -2285,6 +2408,44 @@ function ContextPanel({
         </button>
       </div>
     </motion.aside>
+  );
+}
+
+function SegmentedControl({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      className="grid grid-cols-3 gap-1 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-control)] p-1"
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              'h-8 rounded-lg text-[12.5px] transition-all',
+              active
+                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] shadow-[0_2px_6px_-3px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]'
+                : 'text-[var(--ink-secondary)] hover:bg-[var(--hub-control-hover)] hover:text-[var(--ink-primary)]',
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
