@@ -1114,18 +1114,68 @@ function WorkspaceCanvas({
 }) {
   const isEmpty = !activeSession || activeSession.messages.length === 0;
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // 用户主动滚动到非底部 → 暂停自动跟随；滚回底部 80px 内 → 恢复跟随
+  const [stickToBottom, setStickToBottom] = useState(true);
+  const lastSessionIdRef = useRef<string | null | undefined>(undefined);
 
   const messages = activeSession?.messages ?? [];
 
-  // 流式过程中保持滚到底
-  useLayoutEffect(() => {
+  // 切换会话时重置为"贴底"，并立即跳到底部
+  useEffect(() => {
+    if (lastSessionIdRef.current !== activeSession?.id) {
+      lastSessionIdRef.current = activeSession?.id;
+      setStickToBottom(true);
+    }
+  }, [activeSession?.id]);
+
+  // 监听用户滚动 —— 距底部 < 80px 视为"想跟随"，> 80px 视为"主动往上看"
+  useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
-    node.scrollTop = node.scrollHeight;
-  }, [messages, streaming]);
+    let raf = 0;
+    const onScroll = () => {
+      // 节流：合并同帧多次 scroll 事件
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (!node.isConnected) return;
+        const distFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+        setStickToBottom((prev) => {
+          const next = distFromBottom < 80;
+          return prev === next ? prev : next;
+        });
+      });
+    };
+    node.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      node.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // 仅当 stickToBottom=true 才 auto-scroll，且走 rAF 等布局稳定后再设
+  // scrollTop —— 之前 useLayoutEffect 同步设置 scrollHeight 在 streaming
+  // 高频 reflow 下会读到陈旧值（content 已增但 layout 未完），导致内容被
+  // 顶到视口外。
+  useEffect(() => {
+    if (!stickToBottom) return;
+    const node = scrollRef.current;
+    if (!node) return;
+    const id = requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [messages, streaming, stickToBottom]);
+
+  const scrollToBottom = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    setStickToBottom(true);
+    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+  }, []);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col">
+    <main className="relative flex min-h-0 flex-1 flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 md:px-8 md:pt-12">
         <div className="mx-auto w-full max-w-[820px]">
           {isEmpty ? (
@@ -1151,15 +1201,29 @@ function WorkspaceCanvas({
                   currentUser={currentUser}
                 />
               ))}
-              {streaming && messages[messages.length - 1]?.role === 'assistant' && (
-                <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
-                  按下 ⏹ 可随时停止
-                </div>
-              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* 用户滚到上方阅读时，浮一个"跳到最新"按钮；点完恢复 stickToBottom */}
+      <AnimatePresence>
+        {!isEmpty && !stickToBottom && (
+          <motion.button
+            type="button"
+            onClick={scrollToBottom}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] px-3 py-1.5 text-[12px] text-[var(--ink-secondary)] shadow-[var(--hub-card-shadow)] backdrop-blur-2xl transition-colors hover:text-[var(--ink-primary)]"
+            aria-label="滚动到最新"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            跳到最新
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <Composer
         value={composer}
