@@ -8,9 +8,9 @@
 
 ## 当前基线
 
-- **总数：** 45
-- **最新：** `000045_default_post_page_size_to_9`（默认每页文章数 10 → 9，配合 3 列网格无尾行单卡）
-- **次新：** `000044_post_embedding_parent_text`（parent_child chunker 父段原文列）
+- **总数：** 46
+- **最新：** `000046_activity_event_category_security`（`activity_events.event_category` 白名单扩展到 8 类，新增 `security`，配合 AI 模块 / JWT 轮换审计落库）
+- **次新：** `000045_default_post_page_size_to_9`（默认每页文章数 10 → 9，配合 3 列网格无尾行单卡）
 
 ---
 
@@ -139,6 +139,17 @@ PG 17 上 `ADD COLUMN IF NOT EXISTS` 是 instant DDL（不重写表），即便 
 - 已自定义为 5 / 12 / 其他值的实例完全不动（WHERE 不命中）。
 
 > ⚠️ down 已知不对称：如果某实例在 045 之前就被站长手动设成 `'9'`，045 up 不动它，但 045 down 会把它退回 `'10'` —— 默认值类 migration 在没有 audit table 的前提下无法严格逆。down.sql 头部注释里写明了，回滚 045 后请手动校对该项。
+
+### 000046 · `activity_event_category_security`
+
+**约束放宽**，非 schema 变更。
+
+把 `activity_events.event_category` 的 CHECK 白名单从 7 类扩展到 8 类（新增 `'security'`）。背景：
+
+- 000022 创建表时把 `security` 漏在白名单外，但 `auth_handler.go::RotateJWTSecret` 一直直接写 `EventCategory="security"`、前端 `ActivitiesPage` 的 `categoryConfig.security` 也已展示「安全」分类。生产环境每次 JWT 轮换都因 `chk_activity_event_category` 静默失败 —— Go 侧 `_ = h.activitySvc.Create(...)` / `log.Warn()` 把 PostgreSQL 错误吞掉，前端永远拿不到这条审计。
+- 同期补全的 AI 模块审计 (`ai.generation.*` / `ai.agent_chat` / `ai.prompt_update` / `ai.task_*`) 仍归类 `'ai'`（已在白名单），不需要再加新分类。
+
+> ⚠️ 回滚提示：若线上已有 `event_category='security'` 的行，down.sql 会因为 CHECK 重建失败。回滚前需先 `DELETE FROM activity_events WHERE event_category = 'security'` 或把这些行迁到 `'system'`。
 
 ---
 

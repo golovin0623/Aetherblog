@@ -354,7 +354,7 @@ func (s *Server) setupRoutes(bgCtx context.Context) {
 	//   · chat（30/min/user）—— POST /chat 是 LLM 真正费 token 的路径，紧。
 	//   · picker（120/min/user）—— GET /models /articles /tags 只命中本地 DB，
 	//     `@` picker 一边输入一边搜，给 4x 头部空间避免用户还没发消息就 429。
-	agentHandler := handler.NewAgentHandler(s.Config, postRepo, tagRepo)
+	agentHandler := handler.NewAgentHandler(s.Config, postRepo, tagRepo, activitySvc)
 	agentGroup := api.Group("/v1/agent", authMW, pwdRotated)
 	agentHandler.Mount(
 		agentGroup,

@@ -172,11 +172,26 @@ func (h *AiHandler) ProxyProviders(c echo.Context) error {
 	return err
 }
 
-// recordProviderProxyActivity 把一次 /providers/* 写操作写入 activity_events，
-// 失败仅 log.Warn 不阻塞主代理流程。Description 同时记下子路径与 HTTP
-// 状态码，方便事后定位"管理员 X 在 T 时间向 /providers/credentials/Y 发了 PUT
-// 失败 HTTP 401"这种细节。
-func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath string) {
+// statusFromHTTP 把 HTTP 响应状态码映射到 activity_events.status 枚举
+// (INFO/SUCCESS/WARNING/ERROR)。注意必须严格遵守 chk_activity_event_status，
+// 早期版本曾使用 "FAILED" 直接被 CHECK 拒绝、审计静默丢失；这里把 4xx 归为
+// WARNING(客户端错误，多为参数 / 鉴权问题)，5xx 归为 ERROR (上游 / 系统错误)，
+// 让 admin 在前端筛选「警告 / 错误」时能区分严重程度。
+func statusFromHTTP(httpStatus int) string {
+	switch {
+	case httpStatus >= 500:
+		return "ERROR"
+	case httpStatus >= 400:
+		return "WARNING"
+	default:
+		return "SUCCESS"
+	}
+}
+
+// recordAIEvent 是所有 AI 子模块写审计的统一入口。任意 nil 字段安全省略。
+// 成功插入失败仅 log.Warn 不阻塞主响应路径，让审计写入永远不会成为 LLM 路径
+// 的故障源。所有 AI 类事件在此处统一打 EventCategory="ai"。
+func (h *AiHandler) recordAIEvent(ctx context.Context, c echo.Context, eventType, title, description string, httpStatus int) {
 	if h.activitySvc == nil {
 		return
 	}
@@ -186,56 +201,113 @@ func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath 
 	}
 	ip := c.RealIP()
 	evtCat := "ai"
-	respStatus := c.Response().Status
-	statusText := "SUCCESS"
-	if respStatus >= 400 {
-		statusText = "FAILED"
+	statusText := statusFromHTTP(httpStatus)
+	var descPtr *string
+	if description != "" {
+		descPtr = &description
 	}
-	desc := fmt.Sprintf("%s /providers%s → HTTP %d", method, subPath, respStatus)
 	evt := &model.ActivityEvent{
-		EventType:     "ai.provider_proxy_write",
+		EventType:     eventType,
 		EventCategory: &evtCat,
-		Title:         fmt.Sprintf("AI 提供商代理 %s %s", method, subPath),
-		Description:   &desc,
+		Title:         title,
+		Description:   descPtr,
 		UserID:        userID,
 		IP:            &ip,
 		Status:        &statusText,
 	}
-	if err := h.activitySvc.Create(c.Request().Context(), evt); err != nil {
-		log.Warn().Err(err).Msg("record AI provider proxy activity failed")
+	if err := h.activitySvc.Create(ctx, evt); err != nil {
+		log.Warn().Err(err).Str("eventType", eventType).Msg("record AI activity failed")
 	}
+}
+
+// recordProviderProxyActivity 把一次 /providers/* 写操作写入 activity_events，
+// 失败仅 log.Warn 不阻塞主代理流程。Description 同时记下子路径与 HTTP
+// 状态码，方便事后定位"管理员 X 在 T 时间向 /providers/credentials/Y 发了 PUT
+// 失败 HTTP 401"这种细节。
+//
+// 注意:必须用 readUpstreamStatus 而非 c.Response().Status —— ai_handler 的所有
+// proxy 方法都把错误包装成 R{} 信封 (HTTP 200),直接读 response status 会把上游
+// 5xx 失败误记成 SUCCESS (codex review P1)。
+func (h *AiHandler) recordProviderProxyActivity(c echo.Context, method, subPath string) {
+	respStatus := readUpstreamStatus(c)
+	desc := fmt.Sprintf("%s /providers%s → 上游 HTTP %d", method, subPath, respStatus)
+	title := fmt.Sprintf("AI 提供商代理 %s %s", method, subPath)
+	h.recordAIEvent(c.Request().Context(), c, "ai.provider_proxy_write", title, desc, respStatus)
 }
 
 // --- 同步 AI 生成接口 ---
 
+// generationTaskLabels 把内部 task code 映射成给运维 / 管理员看的中文标题，
+// 让 activity_events 列表里的「AI 生成 - 摘要 / 标签 / ...」一眼就能识别出
+// 是哪个面板触发的调用。Source of truth：与前端 ActivitiesPage eventTypeOptions.ai
+// 对齐 (`ai.generation.<task>`)。
+var generationTaskLabels = map[string]string{
+	"summary":   "摘要",
+	"tags":      "标签",
+	"titles":    "标题建议",
+	"polish":    "文章润色",
+	"outline":   "大纲",
+	"translate": "翻译",
+}
+
+// runGeneration 是六个同步 AI 生成端点的共用骨架：
+//   - 先把客户端请求体大小记下来 (Content-Length)，用作 Description 一行流水；
+//   - 走 proxySyncPost 转发给 ai-service；
+//   - 不论成功或失败都写一条 ai.generation.<task> 审计，让管理员能在
+//     Activities 页面按「AI」分类筛选出每次 LLM 调用。
+//
+// 关键 (codex review P1):必须用 readUpstreamStatus 拿上游真实状态;客户端响应一律
+// 是 R{} 信封包装的 HTTP 200,直接读 c.Response().Status 会把所有失败都记成 SUCCESS。
+//
+// 不打 metadata JSONB —— 当前 ActivityRepo / 前端没有展示 metadata，多写了
+// 也只是字节占用，等需要时再开。
+func (h *AiHandler) runGeneration(c echo.Context, task, path string) error {
+	contentLen := c.Request().ContentLength
+	err := h.proxySyncPost(c, path)
+	upstreamStatus := readUpstreamStatus(c)
+	taskLabel := generationTaskLabels[task]
+	if taskLabel == "" {
+		taskLabel = task
+	}
+	desc := fmt.Sprintf("POST %s · 请求体 %d B · 上游 HTTP %d", path, contentLen, upstreamStatus)
+	h.recordAIEvent(
+		c.Request().Context(), c,
+		"ai.generation."+task,
+		"AI 生成 - "+taskLabel,
+		desc,
+		upstreamStatus,
+	)
+	return err
+}
+
 // Summary 处理 POST /ai/summary 请求，代理至 AI 服务生成文章摘要。
 func (h *AiHandler) Summary(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/summary")
+	return h.runGeneration(c, "summary", "/api/v1/ai/summary")
 }
 
 // Tags 处理 POST /ai/tags 请求，代理至 AI 服务生成文章标签。
 func (h *AiHandler) Tags(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/tags")
+	return h.runGeneration(c, "tags", "/api/v1/ai/tags")
 }
 
 // Titles 处理 POST /ai/titles 请求，代理至 AI 服务生成文章标题建议。
 func (h *AiHandler) Titles(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/titles")
+	return h.runGeneration(c, "titles", "/api/v1/ai/titles")
 }
 
 // Polish 处理 POST /ai/polish 请求，代理至 AI 服务进行文章润色。
 func (h *AiHandler) Polish(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/polish")
+	return h.runGeneration(c, "polish", "/api/v1/ai/polish")
 }
 
 // Outline 处理 POST /ai/outline 请求，代理至 AI 服务生成文章大纲。
 func (h *AiHandler) Outline(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/outline")
+	return h.runGeneration(c, "outline", "/api/v1/ai/outline")
 }
 
 // Translate 处理 POST /ai/translate 请求，代理至 AI 服务进行翻译。
 func (h *AiHandler) Translate(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/ai/translate")
+	return h.runGeneration(c, "translate", "/api/v1/ai/translate")
 }
 
 // --- SSE 流式接口 ---
@@ -254,13 +326,23 @@ func (h *AiHandler) SummaryStream(c echo.Context) error {
 		proxyHeaders(c),
 	)
 	if err != nil {
+		// 客户端 / 上游连接层错误：不知道 HTTP 状态码，按 503 落审计 (Status=ERROR)。
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式)", "POST /api/v1/ai/summary/stream · 上游连接失败", http.StatusServiceUnavailable)
 		return h.handleClientError(c, err)
 	}
 	defer respBody.Close()
 
 	if statusCode != http.StatusOK {
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式)", fmt.Sprintf("POST /api/v1/ai/summary/stream · 上游 HTTP %d", statusCode), statusCode)
 		return h.handleUpstreamError(c, respBody, statusCode)
 	}
+
+	// 上游已 200，准备开流。这里就把成功事件写下；后续 SSE 行级转发若中途
+	// 异常会留 log.Warn，不再补审计 —— 否则一次会话最多 2 条 ai 事件，列表噪声大。
+	h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+		"AI 生成 - 摘要(流式)", "POST /api/v1/ai/summary/stream · 流式开始", http.StatusOK)
 
 	// 设置 SSE 响应头
 	w := c.Response()
@@ -326,13 +408,20 @@ func (h *AiHandler) SummaryStreamGET(c echo.Context) error {
 		proxyHeaders(c),
 	)
 	if err != nil {
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式 GET)", "GET /ai/summary/stream · 上游连接失败", http.StatusServiceUnavailable)
 		return h.handleClientError(c, err)
 	}
 	defer respBody.Close()
 
 	if statusCode != http.StatusOK {
+		h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+			"AI 生成 - 摘要(流式 GET)", fmt.Sprintf("GET /ai/summary/stream · 上游 HTTP %d", statusCode), statusCode)
 		return h.handleUpstreamError(c, respBody, statusCode)
 	}
+
+	h.recordAIEvent(c.Request().Context(), c, "ai.generation.summary_stream",
+		"AI 生成 - 摘要(流式 GET)", "GET /ai/summary/stream · 流式开始", http.StatusOK)
 
 	// 设置 SSE 响应头
 	w := c.Response()
@@ -401,9 +490,15 @@ func (h *AiHandler) GetPrompt(c echo.Context) error {
 }
 
 // UpdatePrompt 处理 PUT /ai/prompts/:taskType 请求，更新指定任务类型的提示词。
+// 审计读 readUpstreamStatus,避免 R{} 信封 HTTP 200 把上游失败误记 SUCCESS。
 func (h *AiHandler) UpdatePrompt(c echo.Context) error {
 	taskType := c.Param("taskType")
-	return h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/prompts/"+taskType)
+	err := h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/prompts/"+taskType)
+	upstreamStatus := readUpstreamStatus(c)
+	desc := fmt.Sprintf("PUT /ai/prompts/%s → 上游 HTTP %d", taskType, upstreamStatus)
+	h.recordAIEvent(c.Request().Context(), c, "ai.prompt_update",
+		"AI 提示词更新: "+taskType, desc, upstreamStatus)
+	return err
 }
 
 // --- 任务 CRUD ---
@@ -414,20 +509,35 @@ func (h *AiHandler) ListTasks(c echo.Context) error {
 }
 
 // CreateTask 处理 POST /ai/tasks 请求，创建新的 AI 任务配置。
+// 审计读 readUpstreamStatus (R{} 信封下 c.Response().Status 恒为 200)。
 func (h *AiHandler) CreateTask(c echo.Context) error {
-	return h.proxySyncPost(c, "/api/v1/admin/ai/tasks")
+	err := h.proxySyncPost(c, "/api/v1/admin/ai/tasks")
+	upstreamStatus := readUpstreamStatus(c)
+	h.recordAIEvent(c.Request().Context(), c, "ai.task_create",
+		"AI 任务创建", fmt.Sprintf("POST /ai/tasks → 上游 HTTP %d", upstreamStatus), upstreamStatus)
+	return err
 }
 
 // UpdateTask 处理 PUT /ai/tasks/:code 请求，更新指定 code 的 AI 任务配置。
 func (h *AiHandler) UpdateTask(c echo.Context) error {
 	code := c.Param("code")
-	return h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/tasks/"+code)
+	err := h.proxySyncRequest(c, http.MethodPut, "/api/v1/admin/ai/tasks/"+code)
+	upstreamStatus := readUpstreamStatus(c)
+	h.recordAIEvent(c.Request().Context(), c, "ai.task_update",
+		"AI 任务更新: "+code,
+		fmt.Sprintf("PUT /ai/tasks/%s → 上游 HTTP %d", code, upstreamStatus), upstreamStatus)
+	return err
 }
 
 // DeleteTask 处理 DELETE /ai/tasks/:code 请求，删除指定 code 的 AI 任务配置。
 func (h *AiHandler) DeleteTask(c echo.Context) error {
 	code := c.Param("code")
-	return h.proxySyncRequest(c, http.MethodDelete, "/api/v1/admin/ai/tasks/"+code)
+	err := h.proxySyncRequest(c, http.MethodDelete, "/api/v1/admin/ai/tasks/"+code)
+	upstreamStatus := readUpstreamStatus(c)
+	h.recordAIEvent(c.Request().Context(), c, "ai.task_delete",
+		"AI 任务删除: "+code,
+		fmt.Sprintf("DELETE /ai/tasks/%s → 上游 HTTP %d", code, upstreamStatus), upstreamStatus)
+	return err
 }
 
 // --- SSE 事件验证 ---
@@ -493,6 +603,46 @@ func validateSSELine(line string) bool {
 
 // --- 内部代理辅助函数 ---
 
+// upstreamStatusKey 是 echo.Context 上「上游 ai-service 真实 HTTP 状态」的存键。
+// 必须存在 context 上 (而非 AiHandler 字段),因为同一 *AiHandler 会被多个并发请求
+// 共享 —— 写入 handler 字段会跨请求互相覆盖。
+const upstreamStatusKey = "ai.upstreamStatus"
+
+// stashUpstreamStatus 把上游 ai-service 返回的 HTTP 状态码记到 echo.Context,
+// 让审计代码 (runGeneration / recordProviderProxyActivity / 各 prompt/task 端点)
+// 能读到「真实失败」而不是被 response.Fail(...) 包装后恒为 200 的客户端响应状态。
+//
+// 背景:codex review 指出原实现用 c.Response().Status 推断成败 —— 但本系统的
+// response.Fail / mapStatusToError 都用 R{code, message} 信封承载错误,HTTP 一律
+// 200,导致 5xx/502 上游故障被审计成 SUCCESS。这里在 proxySyncRequest / proxyGet /
+// SSE 流路径上调用 stashUpstreamStatus,保证 readUpstreamStatus 永远能拿到上游真值。
+func stashUpstreamStatus(c echo.Context, status int) {
+	c.Set(upstreamStatusKey, status)
+}
+
+// readUpstreamStatus 取出上游 HTTP 状态;未被 stash 过(理论上不会发生在已走代理
+// 的端点上)时回退到 c.Response().Status,再不济回 500 —— 永不返回 0,避免被
+// statusFromHTTP 误判为 SUCCESS。
+func readUpstreamStatus(c echo.Context) int {
+	if v, ok := c.Get(upstreamStatusKey).(int); ok && v > 0 {
+		return v
+	}
+	if s := c.Response().Status; s > 0 {
+		return s
+	}
+	return http.StatusInternalServerError
+}
+
+// upstreamStatusFromClientErr 从 AIClientError 取真实状态码,用于 DoSync/DoStream
+// 在拨号 / 解码层就失败、根本拿不到上游 HTTP 状态时给审计一个有意义的回退值。
+// 非 AIClientError 一律落 503 (服务不可用) —— 与「上游连接失败」语义对齐。
+func upstreamStatusFromClientErr(err error) int {
+	if clientErr, ok := err.(*service.AIClientError); ok && clientErr.StatusCode > 0 {
+		return clientErr.StatusCode
+	}
+	return http.StatusServiceUnavailable
+}
+
 // proxyHeaders 构建转发至 AI 服务的请求头映射。
 // 优先从 Authorization 头提取 JWT，若不存在则尝试读取 ab_access_token HttpOnly Cookie，
 // 确保 FastAPI 服务始终能收到有效的 Authorization 头。
@@ -516,6 +666,11 @@ func (h *AiHandler) proxySyncPost(c echo.Context, path string) error {
 }
 
 // proxySyncRequest 将带请求体的请求转发至 AI 服务。
+//
+// 在返回前会把上游 ai-service 的真实 HTTP 状态码 stash 到 echo.Context;DoSync 自身
+// 出错时(连接 / 超时)按 AIClientError.StatusCode 回退,默认 503。审计代码必须用
+// readUpstreamStatus 读取,而不是 c.Response().Status —— 后者被 response.Fail 包装
+// 后恒为 200,会把上游 5xx 误记成 SUCCESS。
 func (h *AiHandler) proxySyncRequest(c echo.Context, method, path string) error {
 	var body io.Reader
 	if method != http.MethodGet && method != http.MethodDelete {
@@ -531,9 +686,12 @@ func (h *AiHandler) proxySyncRequest(c echo.Context, method, path string) error 
 		proxyHeaders(c),
 	)
 	if err != nil {
+		stashUpstreamStatus(c, upstreamStatusFromClientErr(err))
 		return h.handleClientError(c, err)
 	}
 	defer respBody.Close()
+
+	stashUpstreamStatus(c, statusCode)
 
 	if statusCode == http.StatusNoContent {
 		return response.OKEmpty(c)
@@ -543,6 +701,7 @@ func (h *AiHandler) proxySyncRequest(c echo.Context, method, path string) error 
 }
 
 // proxyGet 将 GET 请求（含查询字符串）转发至 AI 服务。
+// 上游真实状态 stash 规则同 proxySyncRequest。
 func (h *AiHandler) proxyGet(c echo.Context, path string) error {
 	// 透传查询参数
 	queryString := c.QueryString()
@@ -559,10 +718,12 @@ func (h *AiHandler) proxyGet(c echo.Context, path string) error {
 		proxyHeaders(c),
 	)
 	if err != nil {
+		stashUpstreamStatus(c, upstreamStatusFromClientErr(err))
 		return h.handleClientError(c, err)
 	}
 	defer respBody.Close()
 
+	stashUpstreamStatus(c, statusCode)
 	return h.parseAndRespond(c, respBody, statusCode)
 }
 

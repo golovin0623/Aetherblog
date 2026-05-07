@@ -33,6 +33,7 @@ import (
 
 	"github.com/golovin0623/aetherblog-server/internal/config"
 	"github.com/golovin0623/aetherblog-server/internal/middleware"
+	"github.com/golovin0623/aetherblog-server/internal/model"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/ctxutil"
 	"github.com/golovin0623/aetherblog-server/internal/pkg/response"
 	"github.com/golovin0623/aetherblog-server/internal/repository"
@@ -50,20 +51,25 @@ type AgentHandler struct {
 	internalToken string
 	postRepo      *repository.PostRepo
 	tagRepo       *repository.TagRepo
+	activitySvc   activityRecorder
 }
 
 // NewAgentHandler 注入 AI client、token 与本地查询所需 repo（@/# picker 走本地 DB，
 // 不再 round-trip 到 ai-service —— 那些只是名录类只读查询，没必要让 Python 进程介入）。
+// activitySvc 用于把 /chat 调用写入 activity_events 表 (审计 LLM 真正费 token 的路径);
+// nil 时跳过审计但不阻塞主流程，兼容旧调用方与单测。
 func NewAgentHandler(
 	cfg *config.Config,
 	postRepo *repository.PostRepo,
 	tagRepo *repository.TagRepo,
+	activitySvc activityRecorder,
 ) *AgentHandler {
 	return &AgentHandler{
 		client:        service.NewAIClient(cfg.AI),
 		internalToken: cfg.AI.InternalServiceToken,
 		postRepo:      postRepo,
 		tagRepo:       tagRepo,
+		activitySvc:   activitySvc,
 	}
 }
 
@@ -92,6 +98,10 @@ func (h *AgentHandler) Mount(g *echo.Group, chatLimit, pickerLimit echo.Middlewa
 //   - 中间件已校验 JWT，确保上下文里有 LoginUser（任意 role）；
 //   - body 上限 96KB，避免 admin token 被滥用做 OOM；
 //   - SSE 输出复用 validateSSELine 白名单，不放未知 type 透传。
+//
+// 审计：每次 /chat 调用写一条 ai.agent_chat 事件 (流开始时入库一次)。
+// 不在每条 SSE 事件上写审计 —— 一次问答几十条 think/delta/sources，过细只会
+// 把 activity_events 表灌爆。
 func (h *AgentHandler) Chat(c echo.Context) error {
 	lu := middleware.GetLoginUser(c)
 	if lu == nil {
@@ -106,6 +116,7 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 	defer limited.Close()
 	bodyBytes, err := io.ReadAll(limited)
 	if err != nil {
+		h.recordChatActivity(c, len(bodyBytes), http.StatusBadRequest, "请求体过大或无法读取")
 		return response.FailWith(c, response.BadRequest, "请求体过大或无法读取")
 	}
 
@@ -124,16 +135,23 @@ func (h *AgentHandler) Chat(c echo.Context) error {
 	)
 	if err != nil {
 		if aiErr, ok := err.(*service.AIClientError); ok {
+			h.recordChatActivity(c, len(bodyBytes), aiErr.StatusCode, aiErr.Message)
 			return c.JSON(aiErr.StatusCode, map[string]any{"code": aiErr.StatusCode, "message": aiErr.Message})
 		}
+		h.recordChatActivity(c, len(bodyBytes), http.StatusServiceUnavailable, "AI 服务调用失败")
 		return response.FailWith(c, response.InternalError, "AI 服务调用失败")
 	}
 	defer respBody.Close()
 
 	if statusCode != http.StatusOK {
 		respBytes, _ := io.ReadAll(respBody)
+		h.recordChatActivity(c, len(bodyBytes), statusCode, fmt.Sprintf("上游 HTTP %d", statusCode))
 		return c.Blob(statusCode, "application/json", respBytes)
 	}
+
+	// 上游 200，开流前写一条「开始」审计 —— 这里写入是 fire-and-forget，
+	// 不计算 token 或耗时（耗时统计应当在 ai-service 自己的 metrics 里做）。
+	h.recordChatActivity(c, len(bodyBytes), http.StatusOK, "流式开始")
 
 	w := c.Response()
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -382,6 +400,40 @@ func (h *AgentHandler) Tags(c echo.Context) error {
 		})
 	}
 	return response.OK(c, out)
+}
+
+// ============================================================================
+// 审计
+// ============================================================================
+
+// recordChatActivity 把一次 /chat 调用写入 activity_events。bodySize 是请求体
+// 字节数 (粗略反映用户问答 + context 上下文规模)，httpStatus 决定 status 列：
+// 2xx → SUCCESS, 4xx → WARNING, 5xx → ERROR (与 ai_handler.statusFromHTTP 一致)。
+// 失败仅 log.Warn，不阻塞主链路。
+func (h *AgentHandler) recordChatActivity(c echo.Context, bodySize, httpStatus int, note string) {
+	if h.activitySvc == nil {
+		return
+	}
+	var userID *int64
+	if lu := middleware.GetLoginUser(c); lu != nil {
+		userID = &lu.UserID
+	}
+	ip := c.RealIP()
+	evtCat := "ai"
+	statusText := statusFromHTTP(httpStatus)
+	desc := fmt.Sprintf("POST /agent/chat · 请求体 %d B · → HTTP %d (%s)", bodySize, httpStatus, note)
+	evt := &model.ActivityEvent{
+		EventType:     "ai.agent_chat",
+		EventCategory: &evtCat,
+		Title:         "Agent 工作台对话",
+		Description:   &desc,
+		UserID:        userID,
+		IP:            &ip,
+		Status:        &statusText,
+	}
+	if err := h.activitySvc.Create(c.Request().Context(), evt); err != nil {
+		log.Warn().Err(err).Msg("record agent chat activity failed")
+	}
 }
 
 // ============================================================================
