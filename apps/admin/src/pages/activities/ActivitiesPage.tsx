@@ -378,35 +378,62 @@ export default function ActivitiesPage() {
           </div>
         </div>
 
-        {/* 行 2 · 分类 segmented chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] min-w-[60px]">
+        {/* 行 2 · 分类 —— 「全部」固定在左，其余 chips 在一行内左右滚动 */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--ink-muted)] shrink-0">
             <Layers className="w-3.5 h-3.5" />
-            <span>分类</span>
+            <span className="hidden sm:inline">分类</span>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {categories.map((cat) => {
-              const config = cat === 'all' ? null : categoryConfig[cat];
-              const isSelected = selectedCategory === cat;
-              const Icon = config?.icon;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium',
-                    'transition-[background-color,border-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
-                    'border',
-                    isSelected
-                      ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_25%,transparent)]'
-                      : 'bg-[var(--bg-leaf)] border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] hover:text-[var(--ink-primary)]'
-                  )}
-                >
-                  {Icon && <Icon className={cn('w-3.5 h-3.5', isSelected ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} />}
-                  {cat === 'all' ? '全部' : config?.label}
-                </button>
-              );
-            })}
+
+          {/* 「全部」固定锚点 */}
+          <button
+            onClick={() => setSelectedCategory('all')}
+            className={cn(
+              'shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium',
+              'transition-[background-color,border-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+              'border',
+              selectedCategory === 'all'
+                ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_25%,transparent)]'
+                : 'bg-[var(--bg-leaf)] border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] hover:text-[var(--ink-primary)]'
+            )}
+          >
+            全部
+          </button>
+
+          {/* 视觉分隔 */}
+          <div className="shrink-0 w-px h-5 bg-[color-mix(in_oklch,var(--ink-primary)_10%,transparent)]" aria-hidden />
+
+          {/* 其余分类 —— 单行横向滚动；右侧渐隐遮罩提示可滑动 */}
+          <div
+            className="flex-1 min-w-0 overflow-x-auto overscroll-x-contain no-scrollbar touch-pan-x [scrollbar-width:none] [-webkit-mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)] [mask-image:linear-gradient(to_right,black_0,black_calc(100%-20px),transparent_100%)]"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+            role="group"
+            aria-label="分类筛选"
+          >
+            <div className="flex items-center gap-1.5 flex-nowrap pr-5">
+              {categories.filter((c): c is CategoryKey => c !== 'all').map((cat) => {
+                const config = categoryConfig[cat];
+                const isSelected = selectedCategory === cat;
+                const Icon = config.icon;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={cn(
+                      'shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium',
+                      'transition-[background-color,border-color,color,box-shadow] duration-[var(--dur-quick)] ease-[var(--ease-out)]',
+                      'border',
+                      isSelected
+                        ? 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] border-[color-mix(in_oklch,var(--aurora-1)_40%,transparent)] text-[var(--ink-primary)] shadow-[0_0_0_1px_color-mix(in_oklch,var(--aurora-1)_25%,transparent)]'
+                        : 'bg-[var(--bg-leaf)] border-[color-mix(in_oklch,var(--ink-primary)_8%,transparent)] text-[var(--ink-secondary)] hover:border-[color-mix(in_oklch,var(--aurora-1)_25%,transparent)] hover:text-[var(--ink-primary)]'
+                    )}
+                  >
+                    <Icon className={cn('w-3.5 h-3.5', isSelected ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-muted)]')} />
+                    {config.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
