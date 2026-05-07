@@ -687,11 +687,15 @@ function ModelPickerButton({
   modelsState,
   disabled,
   onSetModel,
+  placement = 'bottom',
+  align = 'end',
 }: {
   activeSession: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   disabled: boolean;
   onSetModel: (modelId: string | null, providerCode: string | null) => void;
+  placement?: 'top' | 'bottom';
+  align?: 'start' | 'end';
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -704,6 +708,16 @@ function ModelPickerButton({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // ESC 关闭
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [open]);
 
   const items = modelsState.status === 'ready' ? modelsState.items : [];
@@ -731,17 +745,31 @@ function ModelPickerButton({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className={cn(
-          'inline-flex h-9 max-w-[200px] items-center gap-2 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)]',
+          'inline-flex h-9 max-w-[220px] items-center gap-2 rounded-lg border border-[var(--hub-border)] bg-[var(--hub-control)] px-3 text-sm text-[var(--ink-primary)] transition-colors hover:bg-[var(--hub-control-hover)]',
           disabled && 'cursor-not-allowed opacity-60',
         )}
       >
-        <Bot className="h-4 w-4 text-[var(--ink-secondary)]" />
+        <Bot className="h-4 w-4 shrink-0 text-[var(--ink-secondary)]" />
         <span className="truncate">{currentLabel}</span>
-        <ChevronDown className="h-4 w-4 text-[var(--ink-muted)]" />
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 shrink-0 text-[var(--ink-muted)] transition-transform',
+            open && 'rotate-180',
+          )}
+        />
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-[280px] max-h-[420px] overflow-y-auto rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[var(--hub-card-shadow)] backdrop-blur-2xl">
+        <div
+          role="listbox"
+          className={cn(
+            'absolute z-30 w-[min(320px,calc(100vw-2rem))] max-h-[min(420px,60vh)] overflow-y-auto rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel-strong)] p-2 shadow-[var(--hub-card-shadow)] backdrop-blur-2xl',
+            placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2',
+            align === 'end' ? 'right-0' : 'left-0',
+          )}
+        >
           <button
             type="button"
             onClick={() => {
@@ -1092,6 +1120,8 @@ function Composer({
               modelsState={modelsState}
               disabled={streaming}
               onSetModel={onSetModel}
+              placement="top"
+              align="start"
             />
             {streaming ? (
               <button
