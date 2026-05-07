@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
 import { ThemeToggle } from '@aetherblog/hooks';
@@ -31,6 +32,7 @@ import {
   newSessionId,
   saveSessions,
 } from '../lib/agentSessions';
+import type { StreamAnimationMode } from '../lib/smooth';
 import { streamAgentChat } from '../lib/agentChatStream';
 import {
   type AgentArticle,
@@ -109,6 +111,25 @@ export default function WorkspaceClient({ siteTitle }: Props) {
   const streamingMsgIdRef = useRef<string | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+
+  // ---- 渲染偏好（流式吐字模式 / 字体大小），localStorage 持久化 ----
+  const [streamAnimation, setStreamAnimation] = useState<StreamAnimationMode>('smooth');
+  const [fontSize, setFontSize] = useState<number>(14.5);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sa = window.localStorage.getItem('aetherblog.agent.streamAnimation');
+    if (sa === 'none' || sa === 'fade' || sa === 'smooth') setStreamAnimation(sa);
+    const fs = Number(window.localStorage.getItem('aetherblog.agent.fontSize'));
+    if (Number.isFinite(fs) && fs >= 12 && fs <= 18) setFontSize(fs);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('aetherblog.agent.streamAnimation', streamAnimation);
+  }, [streamAnimation]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('aetherblog.agent.fontSize', String(fontSize));
+  }, [fontSize]);
 
   // ---- 鉴权门禁 ----
   // guest 状态时立刻 replace 走，不渲染工作台主体（仍显示 skeleton 避免空白闪现）。
@@ -867,7 +888,22 @@ export default function WorkspaceClient({ siteTitle }: Props) {
               <Plus className="w-[18px] h-[18px]" />
             </button>
             <div className="hidden sm:flex items-center gap-1 pl-1 ml-1 border-l border-[var(--ink-subtle)]/15">
+              <RenderingPreferencesButton
+                streamAnimation={streamAnimation}
+                onSetStreamAnimation={setStreamAnimation}
+                fontSize={fontSize}
+                onSetFontSize={setFontSize}
+              />
               <ThemeToggle size="sm" />
+            </div>
+            {/* 移动端：把渲染偏好挂在 + 旁边，避免顶栏拥挤 */}
+            <div className="sm:hidden inline-flex">
+              <RenderingPreferencesButton
+                streamAnimation={streamAnimation}
+                onSetStreamAnimation={setStreamAnimation}
+                fontSize={fontSize}
+                onSetFontSize={setFontSize}
+              />
             </div>
           </div>
         </header>
@@ -922,6 +958,8 @@ export default function WorkspaceClient({ siteTitle }: Props) {
                     key={m.id}
                     message={m}
                     busy={busy}
+                    streamAnimation={streamAnimation}
+                    fontSize={fontSize}
                     onEdit={handleEditUserMessage}
                     onRetry={handleRetryAssistantMessage}
                   />
@@ -1111,5 +1149,137 @@ function EmptyState({
         ))}
       </motion.ul>
     </motion.div>
+  );
+}
+
+/**
+ * RenderingPreferencesButton —— 顶栏挂的"渲染偏好"小弹层。
+ * 包含「过渡动画」三段（无 / 淡入 / 平滑）+「字体大小」12-18px 滑块。
+ * localStorage 持久化由父组件负责。
+ */
+function RenderingPreferencesButton({
+  streamAnimation,
+  onSetStreamAnimation,
+  fontSize,
+  onSetFontSize,
+}: {
+  streamAnimation: StreamAnimationMode;
+  onSetStreamAnimation: (m: StreamAnimationMode) => void;
+  fontSize: number;
+  onSetFontSize: (n: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="渲染偏好"
+        title="渲染偏好"
+        aria-expanded={open}
+        className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)] transition-all active:scale-90"
+      >
+        <SlidersHorizontal className="w-[18px] h-[18px]" />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            role="dialog"
+            aria-label="渲染偏好"
+            className="absolute right-0 top-full mt-2 w-[280px] rounded-xl border border-[var(--ink-subtle)]/22 bg-[var(--bg-leaf)] shadow-[0_24px_48px_-16px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-40 p-3"
+          >
+            {/* 过渡动画 */}
+            <div className="mb-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--ink-primary)]">过渡动画</span>
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+                  STREAM
+                </span>
+              </div>
+              <div
+                role="radiogroup"
+                className="grid grid-cols-3 gap-1 rounded-lg border border-[var(--ink-subtle)]/15 bg-[var(--bg-raised)]/60 p-1"
+              >
+                {(
+                  [
+                    { value: 'none', label: '无' },
+                    { value: 'fade', label: '淡入' },
+                    { value: 'smooth', label: '平滑' },
+                  ] as const
+                ).map((opt) => {
+                  const active = opt.value === streamAnimation;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => onSetStreamAnimation(opt.value)}
+                      className={`h-7 rounded-md text-[12px] transition-all ${
+                        active
+                          ? 'bg-[color-mix(in_oklch,var(--aurora-1)_18%,transparent)] text-[var(--aurora-1)] shadow-[0_2px_6px_-3px_color-mix(in_oklch,var(--aurora-1)_50%,transparent)]'
+                          : 'text-[var(--ink-secondary)] hover:bg-[var(--bg-raised)] hover:text-[var(--ink-primary)]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--ink-muted)]">
+                节流模型 SSE 颗粒，平滑越好阅读节奏越稳。
+              </p>
+            </div>
+
+            {/* 字体大小 */}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--ink-primary)]">字体大小</span>
+                <span className="font-mono text-[10.5px] tabular-nums text-[var(--ink-muted)]">
+                  {fontSize}px
+                </span>
+              </div>
+              <input
+                type="range"
+                min={12}
+                max={18}
+                step={0.5}
+                value={fontSize}
+                onChange={(e) => onSetFontSize(Number(e.target.value))}
+                aria-label="字体大小"
+                className="w-full accent-[var(--aurora-1)]"
+              />
+              <div className="mt-0.5 flex justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--ink-muted)]">
+                <span>A</span>
+                <span>标准</span>
+                <span>A</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

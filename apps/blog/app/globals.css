@@ -780,6 +780,50 @@ body {
 }
 
 /* ----------------------------------------
+ · Agent · 流式吐字"淡入"模式
+ 与 useSmoothStream(rawContent, pending, 'fade') 协同 ——
+ hook 把模型 SSE 节流成 ~80 chars/s 的匀速 typewriter；这里给容器叠
+ 0.32s ease-out-quint 的 opacity + translateY 复合渐入。'none' 与
+ 'smooth' 模式不挂这个动画，让节流本身完成观感差异。
+ ---------------------------------------- */
+@keyframes agent-stream-fade-tween {
+  from { opacity: 0.78; transform: translateY(0.5px); }
+  to   { opacity: 1;    transform: translateY(0); }
+}
+.agent-stream-fade--fade {
+  animation: agent-stream-fade-tween 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-stream-fade--fade { animation: none !important; }
+}
+
+/* ----------------------------------------
+ · Agent · chat 上下文里禁用 drop-cap
+ .markdown-body > p:first-of-type::first-letter 是文章详情页的设计，
+ chat 每条消息从首字开始，3.6em 浮印首字会让阅读体感断片。
+ .agent-md 是 MessageBubble 在 chat 容器外覆的 wrapper，整段消息都被它包住。
+ ---------------------------------------- */
+.agent-md .markdown-body > p:first-of-type::first-letter,
+.agent-md p:first-of-type::first-letter {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-family: inherit !important;
+  font-style: inherit !important;
+  line-height: inherit !important;
+  float: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  background: none !important;
+  text-shadow: inherit !important;
+  -webkit-background-clip: initial !important;
+          background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+  initial-letter: normal !important;
+  -webkit-initial-letter: normal !important;
+}
+
+/* ----------------------------------------
  · Agent · 工作台滚动条统一打磨
  ----------------------------------------
  默认浏览器滚动条（尤其 macOS Chrome）在 surface-leaf 玻璃卡里

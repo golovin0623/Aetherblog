@@ -1,11 +1,13 @@
 'use client';
 
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronRight, Sparkles, User, Copy, Check, Brain, Pencil, RefreshCcw } from 'lucide-react';
 import { MarkdownRenderer } from '@/app/components/MarkdownRenderer';
 import StreamMarkdown from './StreamMarkdown';
 import type { AgentMessage } from '../../lib/agentSessions';
+import { normalizeCjkInlineMarkdown } from '../../lib/cjkMarkdown';
+import { useSmoothStream, type StreamAnimationMode } from '../../lib/smooth';
 
 interface Props {
   message: AgentMessage;
@@ -18,6 +20,10 @@ interface Props {
   /** 是否处于全局 streaming busy 状态 —— 此时 edit/retry 应禁用，避免与
    *  另一条进行中的 stream 抢同一会话状态机。 */
   busy?: boolean;
+  /** 流式吐字模式 —— none / fade / smooth；默认 smooth。 */
+  streamAnimation?: StreamAnimationMode;
+  /** 字体大小（px），默认 14.5 与文章正文同档。 */
+  fontSize?: number;
 }
 
 /**
@@ -32,9 +38,35 @@ interface Props {
  *  · think 段折叠：流式中默认折叠但可点开看 live preview；流式完同样默认收起；
  *  · 右上 hover 显出 copy。
  */
-function MessageBubbleBase({ message, onEdit, onRetry, busy }: Props) {
+function MessageBubbleBase({
+  message,
+  onEdit,
+  onRetry,
+  busy,
+  streamAnimation = 'smooth',
+  fontSize,
+}: Props) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+
+  // 流式吐字节流 —— 模型 SSE 大颗粒抖动 → UI 看到匀速 typewriter。
+  // 仅 assistant pending 时启用；user 消息和 finished assistant 直接 raw。
+  const smoothedContent = useSmoothStream(
+    message.content,
+    !isUser && !!message.pending,
+    streamAnimation,
+  );
+
+  // CJK 友好预处理 —— 修正 `**xx：**汉字` 等 CommonMark 闭合盲点。
+  const renderableContent = useMemo(
+    () => normalizeCjkInlineMarkdown(smoothedContent),
+    [smoothedContent],
+  );
+
+  const finalContent = useMemo(
+    () => (isUser ? message.content : normalizeCjkInlineMarkdown(message.content)),
+    [isUser, message.content],
+  );
 
   async function handleCopy() {
     try {
@@ -190,14 +222,20 @@ function MessageBubbleBase({ message, onEdit, onRetry, busy }: Props) {
             <TypingDots />
           ) : message.pending ? (
             // 流式中：StreamMarkdown 边出边渲染（远轻于完整 MarkdownRenderer）
-            <>
-              <StreamMarkdown content={message.content} />
+            <div
+              className={`agent-stream-fade${streamAnimation === 'fade' ? ' agent-stream-fade--fade' : ''}`}
+              style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
+            >
+              <StreamMarkdown content={renderableContent} />
               <span className="agent-caret text-[var(--aurora-1)]" aria-hidden="true" />
-            </>
+            </div>
           ) : (
             // 完成态：切到完整 MarkdownRenderer，math / shiki / alert 全部上色
-            <div className="agent-md">
-              <MarkdownRenderer content={message.content} />
+            <div
+              className="agent-md"
+              style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
+            >
+              <MarkdownRenderer content={finalContent} />
             </div>
           )}
         </div>
@@ -424,6 +462,9 @@ function areEqual(a: Props, b: Props) {
   const mb = b.message;
   // busy 翻转直接影响按钮可点性（disabled / hidden），必须穿透 memo 重渲。
   if (a.busy !== b.busy) return false;
+  // 设置变化（吐字模式 / 字号）也要穿透：用户切档时即时生效。
+  if (a.streamAnimation !== b.streamAnimation) return false;
+  if (a.fontSize !== b.fontSize) return false;
   // 父级用 useCallback 稳定 onEdit / onRetry —— 它们的引用不变就视为等价；
   // 真要变（比如父切了 active session）也通常伴随 busy 或 message 变化。
   if (a.onEdit !== b.onEdit || a.onRetry !== b.onRetry) return false;
