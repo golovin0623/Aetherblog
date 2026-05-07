@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,9 +172,10 @@ func TestAiHandler_MapStatusToError504FallsBackToDefaultWhenMessageEmpty(t *test
 // --- PR3 审计日志 + body limit 回归 ---
 
 // TestAiHandler_RecordProviderProxyActivity_WritesAuditOnSuccess 验证：
-// 写操作成功 (HTTP 2xx) 时, recordProviderProxyActivity 写入一条带
+// 写操作成功 (上游 ai-service 200) 时, recordProviderProxyActivity 写入一条带
 // status=SUCCESS、event_type=ai.provider_proxy_write、Title 含 method+subPath
-// 的 activity_events 记录。
+// 的 activity_events 记录。审计读的是 stash 进来的上游状态 (codex review P1
+// 之后),所以测试用 stashUpstreamStatus 模拟 proxy 层已写入。
 func TestAiHandler_RecordProviderProxyActivity_WritesAuditOnSuccess(t *testing.T) {
 	rec := &fakeRecorder{}
 	h := &AiHandler{activitySvc: rec}
@@ -181,7 +183,7 @@ func TestAiHandler_RecordProviderProxyActivity_WritesAuditOnSuccess(t *testing.T
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/providers/credentials/42", nil)
 	resp := httptest.NewRecorder()
 	c := e.NewContext(req, resp)
-	c.Response().Status = http.StatusOK
+	stashUpstreamStatus(c, http.StatusOK)
 
 	h.recordProviderProxyActivity(c, http.MethodPut, "/credentials/42")
 
@@ -206,8 +208,81 @@ func TestAiHandler_RecordProviderProxyActivity_WritesAuditOnSuccess(t *testing.T
 	}
 }
 
+// TestAiHandler_RecordProviderProxyActivity_UsesUpstreamNotWrappedStatus 锁死
+// codex review P1 修复:即使 c.Response().Status 是 200 (R{} 信封包装),
+// 只要 proxy 层把上游真实状态 stash 到 ctx,审计就必须读上游状态。
+// 没有这个保护,5xx/502 上游故障会被错误地记成 SUCCESS,Activities 页 AI 流
+// 上看起来一片岁月静好,实际事故被掩盖。
+func TestAiHandler_RecordProviderProxyActivity_UsesUpstreamNotWrappedStatus(t *testing.T) {
+	rec := &fakeRecorder{}
+	h := &AiHandler{activitySvc: rec}
+	e := handlertest.NewEcho()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/providers/credentials/1", nil)
+	resp := httptest.NewRecorder()
+	c := e.NewContext(req, resp)
+	// 模拟生产路径:response.Fail(...) 已经把客户端响应写成 R{code:500, msg} HTTP 200,
+	// 但上游 ai-service 真实返回的是 502 Bad Gateway。
+	c.Response().Status = http.StatusOK
+	stashUpstreamStatus(c, http.StatusBadGateway)
+
+	h.recordProviderProxyActivity(c, http.MethodPut, "/credentials/1")
+
+	if len(rec.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(rec.events))
+	}
+	got := rec.events[0]
+	if got.Status == nil || *got.Status != "ERROR" {
+		t.Errorf("expected Status=ERROR (5xx upstream), got %v —— audit must NOT trust wrapped HTTP 200", got.Status)
+	}
+	if got.Description == nil || !strings.Contains(*got.Description, "HTTP 502") {
+		t.Errorf("Description should record upstream 502, got %v", got.Description)
+	}
+}
+
+// TestReadUpstreamStatus_FallbackChain 验证 readUpstreamStatus 的多级回退：
+// 优先 stash → c.Response().Status → 500 兜底,任何路径都不会返回 0。
+func TestReadUpstreamStatus_FallbackChain(t *testing.T) {
+	e := handlertest.NewEcho()
+
+	// 1) stash 命中
+	c1 := e.NewContext(httptest.NewRequest(http.MethodGet, "/x", nil), httptest.NewRecorder())
+	stashUpstreamStatus(c1, http.StatusBadGateway)
+	if got := readUpstreamStatus(c1); got != http.StatusBadGateway {
+		t.Errorf("stash hit: want 502, got %d", got)
+	}
+
+	// 2) 未 stash,落 c.Response().Status
+	c2 := e.NewContext(httptest.NewRequest(http.MethodGet, "/x", nil), httptest.NewRecorder())
+	c2.Response().Status = http.StatusForbidden
+	if got := readUpstreamStatus(c2); got != http.StatusForbidden {
+		t.Errorf("response fallback: want 403, got %d", got)
+	}
+
+	// 3) 都没有 → 500 兜底,绝对不返回 0
+	c3 := e.NewContext(httptest.NewRequest(http.MethodGet, "/x", nil), httptest.NewRecorder())
+	c3.Response().Status = 0
+	if got := readUpstreamStatus(c3); got != http.StatusInternalServerError {
+		t.Errorf("zero fallback: want 500, got %d", got)
+	}
+}
+
+// TestUpstreamStatusFromClientErr 验证 DoSync/DoStream 客户端层错误的状态映射:
+// AIClientError 走 .StatusCode (允许 504 timeout 被准确归类成 ERROR);
+// 其它错误一律 503 Service Unavailable。
+func TestUpstreamStatusFromClientErr(t *testing.T) {
+	if got := upstreamStatusFromClientErr(&service.AIClientError{StatusCode: http.StatusGatewayTimeout, Message: "timeout"}); got != http.StatusGatewayTimeout {
+		t.Errorf("AIClientError 504: want 504, got %d", got)
+	}
+	if got := upstreamStatusFromClientErr(&service.AIClientError{StatusCode: 0, Message: "zero status"}); got != http.StatusServiceUnavailable {
+		t.Errorf("AIClientError zero status: want 503 fallback, got %d", got)
+	}
+	if got := upstreamStatusFromClientErr(errors.New("plain net err")); got != http.StatusServiceUnavailable {
+		t.Errorf("plain error: want 503, got %d", got)
+	}
+}
+
 // TestAiHandler_RecordProviderProxyActivity_MarksWarningOn4xx 验证：
-// 写操作返回 4xx 时,审计记录的 Status=WARNING (符合 chk_activity_event_status
+// 上游 4xx 时,审计记录的 Status=WARNING (符合 chk_activity_event_status
 // 白名单 INFO/SUCCESS/WARNING/ERROR; 早期版本曾误用 "FAILED" 直接被 CHECK 拒绝),
 // Description 仍记下真实状态码,不被默认值掩盖。
 func TestAiHandler_RecordProviderProxyActivity_MarksWarningOn4xx(t *testing.T) {
@@ -217,7 +292,7 @@ func TestAiHandler_RecordProviderProxyActivity_MarksWarningOn4xx(t *testing.T) {
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/providers/credentials/99", nil)
 	resp := httptest.NewRecorder()
 	c := e.NewContext(req, resp)
-	c.Response().Status = http.StatusUnauthorized
+	stashUpstreamStatus(c, http.StatusUnauthorized)
 
 	h.recordProviderProxyActivity(c, http.MethodDelete, "/credentials/99")
 
@@ -230,29 +305,6 @@ func TestAiHandler_RecordProviderProxyActivity_MarksWarningOn4xx(t *testing.T) {
 	}
 	if got.Description == nil || !strings.Contains(*got.Description, "HTTP 401") {
 		t.Errorf("Description should contain HTTP 401, got %v", got.Description)
-	}
-}
-
-// TestAiHandler_RecordProviderProxyActivity_MarksErrorOn5xx 验证：
-// 5xx 服务端错误归为 ERROR,与 4xx 客户端错误的 WARNING 区分,让 admin
-// 在前端筛选「错误」时能聚焦到上游 / 系统层故障。
-func TestAiHandler_RecordProviderProxyActivity_MarksErrorOn5xx(t *testing.T) {
-	rec := &fakeRecorder{}
-	h := &AiHandler{activitySvc: rec}
-	e := handlertest.NewEcho()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/providers/credentials/1", nil)
-	resp := httptest.NewRecorder()
-	c := e.NewContext(req, resp)
-	c.Response().Status = http.StatusBadGateway
-
-	h.recordProviderProxyActivity(c, http.MethodPut, "/credentials/1")
-
-	if len(rec.events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(rec.events))
-	}
-	got := rec.events[0]
-	if got.Status == nil || *got.Status != "ERROR" {
-		t.Errorf("expected Status=ERROR for 5xx, got %v", got.Status)
 	}
 }
 
