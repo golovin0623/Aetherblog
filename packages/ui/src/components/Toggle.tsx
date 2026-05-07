@@ -33,10 +33,12 @@ export function Toggle({
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       className={cn(
-        'relative inline-flex shrink-0 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+        'relative inline-flex shrink-0 rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
         isMd ? 'h-6 w-11' : 'h-5 w-9',
         disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
-        checked ? 'bg-primary' : 'bg-[var(--bg-secondary)]',
+        checked
+          ? 'bg-primary'
+          : 'bg-[var(--bg-quaternary)] shadow-[inset_0_0_0_1px_var(--border-hover)]',
         className,
       )}
     >
@@ -45,7 +47,7 @@ export function Toggle({
         animate={{ x: checked ? (isMd ? 20 : 16) : 0 }}
         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
         className={cn(
-          'absolute top-0.5 left-0.5 rounded-full bg-white shadow-sm',
+          'absolute top-0.5 left-0.5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] ring-1 ring-black/10',
           isMd ? 'h-5 w-5' : 'h-4 w-4',
         )}
       />

@@ -13,7 +13,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { EditorWithPreview, EditorView, useEditorCommands, useTableCommands, useImageUpload, UploadProgress, type ViewMode, type TableInfo, type UploadResult } from '@aetherblog/editor';
 import { cn } from '@/lib/utils';
-import { Tooltip } from '@aetherblog/ui';
+import { Tooltip, Toggle } from '@aetherblog/ui';
 import {
   ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, Trash2,
   AlignLeft, AlignCenter, AlignRight
@@ -3331,18 +3331,14 @@ export function CreatePostPage() {
                     </div>
 
                     {/* 自动保存 */}
-                    <label className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_40%,transparent)] px-4 py-3 text-sm text-[var(--ink-secondary)] cursor-pointer hover:bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] transition-colors">
+                    <div className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[color-mix(in_oklch,var(--bg-substrate)_40%,transparent)] px-4 py-3 text-sm text-[var(--ink-secondary)] hover:bg-[color-mix(in_oklch,var(--aurora-1)_6%,transparent)] transition-colors">
                       <span className="font-mono text-[11px] tracking-[0.2em] uppercase">自动保存</span>
-                      <div className="relative inline-flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={isAutoSaveEnabled}
-                          onChange={(e) => setIsAutoSaveEnabled(e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="relative w-9 h-5 rounded-full bg-[var(--border-subtle)] peer-checked:bg-[var(--aurora-1)] transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4" />
-                      </div>
-                    </label>
+                      <Toggle
+                        size="sm"
+                        checked={isAutoSaveEnabled}
+                        onChange={setIsAutoSaveEnabled}
+                      />
+                    </div>
                   </div>
                 )}
               </div>

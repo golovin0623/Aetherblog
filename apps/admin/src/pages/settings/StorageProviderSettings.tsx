@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Server, Check, Trash2, TestTube, Edit3, Cloud, HardDrive, Loader2 } from 'lucide-react';
-import { Button } from '@aetherblog/ui';
+import { Button, Toggle } from '@aetherblog/ui';
 import { storageProviderService, CreateStorageProviderRequest } from '@/services/storageProviderService';
 import { storageSyncService } from '@/services/storageSyncService';
 import type { StorageProvider, StorageProviderType } from '@aetherblog/types';
@@ -597,26 +597,14 @@ function AutoBackupToggle() {
           关闭时仅响应"立即备份"按钮 — 适合首次切云时人工触发,避免意外费用。
         </p>
       </div>
-      <button
-        type="button"
-        disabled={isLoading || setMutation.isPending}
-        onClick={() => setMutation.mutate(!enabled)}
-        className="ml-4 shrink-0 inline-flex items-center gap-2"
-        aria-pressed={enabled}
-      >
+      <div className="ml-4 shrink-0 inline-flex items-center gap-2">
         {setMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-muted)]" />}
-        <span
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            enabled ? 'bg-primary' : 'bg-[var(--bg-input)]'
-          } ${(isLoading || setMutation.isPending) && 'opacity-60'}`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-              enabled ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </span>
-      </button>
+        <Toggle
+          checked={enabled}
+          disabled={isLoading || setMutation.isPending}
+          onChange={(next) => setMutation.mutate(next)}
+        />
+      </div>
     </div>
   );
 }

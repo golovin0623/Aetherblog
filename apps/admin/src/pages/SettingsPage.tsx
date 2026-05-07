@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { SocialLinksEditor } from '@/components/settings/SocialLinksEditor';
 import FontPickerModal, { getFontOption } from '@/components/settings/FontPickerModal';
 import { useFontPreview } from '@/contexts/FontPreviewContext';
+import { Toggle } from '@aetherblog/ui';
 
 const MigrationPage = lazy(() => import('./MigrationPage'));
 // 存储管理 tab — Phase 2: 入口落在 /settings 顶层 tab 而非新页面,与现有 migration tab 同套机制
@@ -454,14 +455,16 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="space-y-5">
-                  {activeGroup.fields.map((field) => (
+                  {activeGroup.fields.map((field) => {
+                    const isOn = formData[field.key] === 'true' || formData[field.key] === true;
+                    return (
                     <div key={field.key} className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-sm font-medium text-[var(--text-secondary)]">
                           {field.label}
                         </label>
                       </div>
-                      
+
                       {/* 动态字段渲染 */}
                       {field.type === 'text' || field.type === 'url' || field.type === 'number' ? (
                         <input
@@ -481,20 +484,12 @@ export default function SettingsPage() {
                         />
                       ) : field.type === 'boolean' ? (
                         <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => handleInputChange(field.key, !formData[field.key])}
-                            className={cn(
-                              "w-11 h-6 rounded-full transition-colors relative",
-                              formData[field.key] === 'true' || formData[field.key] === true ? "bg-primary" : "bg-[var(--bg-input)]"
-                            )}
-                          >
-                            <motion.div
-                              animate={{ x: formData[field.key] === 'true' || formData[field.key] === true ? 20 : 2 }}
-                              className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
-                            />
-                          </button>
+                          <Toggle
+                            checked={isOn}
+                            onChange={(next) => handleInputChange(field.key, next)}
+                          />
                           <span className="text-sm text-[var(--text-muted)]">
-                            {formData[field.key] === 'true' || formData[field.key] === true ? '已开启' : '已关闭'}
+                            {isOn ? '已开启' : '已关闭'}
                           </span>
                         </div>
                       ) : field.type === 'color' ? (
@@ -565,7 +560,8 @@ export default function SettingsPage() {
                         <p className="text-xs text-[var(--text-muted)]">{field.description}</p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
