@@ -82,6 +82,8 @@ const promptChips = [
   '解释 pgvector 半自动调优策略',
 ];
 
+type DisplayMode = 'bubble' | 'engraved';
+
 interface CurrentUser {
   id: string;
   nickname: string;
@@ -164,6 +166,19 @@ export default function AetherHubWorkspacePage() {
   // ----- 右侧上下文面板：收起 / 展开 -----
   const [panelCollapsed, setPanelCollapsed] = useState(false);
 
+  // ----- 显示模式：bubble（气泡） vs engraved（版书）-----
+  // 版书模式下，user/agent 标识行变成居中浮动分隔线，正文以"凸起浮印"质感渲染。
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('bubble');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('aetherblog.admin.aetherhub.displayMode');
+    if (stored === 'engraved' || stored === 'bubble') setDisplayMode(stored);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('aetherblog.admin.aetherhub.displayMode', displayMode);
+  }, [displayMode]);
+
   const updateSession = useCallback(
     (id: string, updater: (s: AgentSession) => AgentSession) => {
       setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
@@ -229,6 +244,24 @@ export default function AetherHubWorkspacePage() {
     abortRef.current?.abort();
     abortRef.current = null;
     setStreaming(false);
+    // 关键修复：abort 走 AbortError 分支不会触发 onDone/onError，pending 永远不会被
+    // 清掉，导致 ThinkingMeta 的 100ms tick 一直滚（你看到的 "正在生成 · 1413s"）。
+    // 这里手动把"还在 pending 的 assistant 消息"全部落定到完成态。
+    setSessions((prev) =>
+      prev.map((s) => ({
+        ...s,
+        messages: s.messages.map((m) =>
+          m.role === 'assistant' && m.pending
+            ? {
+                ...m,
+                pending: false,
+                finishedAt: Date.now(),
+                error: m.content ? undefined : '已停止生成',
+              }
+            : m,
+        ),
+      })),
+    );
   }, []);
 
   const handleSend = useCallback(
@@ -461,10 +494,12 @@ export default function AetherHubWorkspacePage() {
             <WorkspaceCanvas
               greeting={greeting}
               nickname={currentUser.nickname}
+              currentUser={currentUser}
               activeSession={activeSession}
               modelsState={modelsState}
               streaming={streaming}
               composer={composer}
+              displayMode={displayMode}
               onComposerChange={setComposer}
               onSend={handleSend}
               onAbort={handleAbort}
@@ -487,6 +522,8 @@ export default function AetherHubWorkspacePage() {
             session={activeSession}
             modelsState={modelsState}
             collapsed={panelCollapsed}
+            displayMode={displayMode}
+            onSetDisplayMode={setDisplayMode}
             onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
             onDeleteSession={() => activeSession && handleDeleteSession(activeSession.id)}
             onClearMessages={() => {
@@ -985,10 +1022,12 @@ function ModelPickerButton({
 function WorkspaceCanvas({
   greeting,
   nickname,
+  currentUser,
   activeSession,
   modelsState,
   streaming,
   composer,
+  displayMode,
   onComposerChange,
   onSend,
   onAbort,
@@ -1001,10 +1040,12 @@ function WorkspaceCanvas({
 }: {
   greeting: string;
   nickname: string;
+  currentUser: CurrentUser;
   activeSession: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   streaming: boolean;
   composer: string;
+  displayMode: DisplayMode;
   onComposerChange: (value: string) => void;
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -1038,9 +1079,19 @@ function WorkspaceCanvas({
               onPickPrompt={onPickPrompt}
             />
           ) : (
-            <div className="flex flex-col gap-6 pb-6">
+            <div
+              className={cn(
+                'flex flex-col pb-6',
+                displayMode === 'engraved' ? 'gap-2' : 'gap-6',
+              )}
+            >
               {messages.map((m) => (
-                <MessageRow key={m.id} message={m} />
+                <MessageRow
+                  key={m.id}
+                  message={m}
+                  displayMode={displayMode}
+                  currentUser={currentUser}
+                />
               ))}
               {streaming && messages[messages.length - 1]?.role === 'assistant' && (
                 <div className="text-[var(--fs-caption)] text-[var(--ink-muted)]">
@@ -1108,15 +1159,43 @@ function EmptyState({
   );
 }
 
-function MessageRow({ message }: { message: AgentMessage }) {
+function MessageRow({
+  message,
+  displayMode,
+  currentUser,
+}: {
+  message: AgentMessage;
+  displayMode: DisplayMode;
+  currentUser: CurrentUser;
+}) {
   const { isDark } = useTheme();
   const isUser = message.role === 'user';
-  // 流式中尚未收到正文 token —— 显示 typing dots
   const showTypingDots = !isUser && !!message.pending && !message.content && !message.error;
-  // 流式中且已有正文 —— 气泡边沿走 aurora 呼吸
   const isStreaming = !isUser && !!message.pending && !!message.content;
-  // think 还在进行（首 token 未到）
   const thinkStreaming = !!message.pending && !message.firstTokenAt;
+
+  const header =
+    displayMode === 'engraved' ? (
+      <EngravedHeader message={message} isUser={isUser} currentUser={currentUser} />
+    ) : (
+      <BubbleHeader message={message} isUser={isUser} currentUser={currentUser} />
+    );
+
+  const body = isUser ? (
+    <UserContent message={message} displayMode={displayMode} />
+  ) : showTypingDots ? (
+    <AssistantSurface displayMode={displayMode} isStreaming={false} hasError={false}>
+      <TypingDots />
+    </AssistantSurface>
+  ) : (
+    <AssistantContent
+      message={message}
+      displayMode={displayMode}
+      isDark={isDark}
+      isStreaming={isStreaming}
+      thinkStreaming={thinkStreaming}
+    />
+  );
 
   return (
     <motion.article
@@ -1124,107 +1203,250 @@ function MessageRow({ message }: { message: AgentMessage }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-      className={cn(
-        'group/msg relative flex max-w-3xl gap-3 mx-auto',
-        isUser ? 'flex-row-reverse' : 'flex-row',
-      )}
+      className="group/msg relative mx-auto flex w-full max-w-3xl flex-col"
       aria-label={isUser ? '用户消息' : 'Agent 回复'}
     >
+      {header}
+      <div className={cn(displayMode === 'bubble' && (isUser ? 'flex justify-end' : 'flex justify-start'))}>
+        {body}
+      </div>
+      {message.sources && message.sources.length > 0 && (
+        <div className="mt-3 max-w-full">
+          <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]">
+            § Sources
+          </div>
+          <ul className="flex flex-wrap gap-1.5">
+            {message.sources.map((s) => (
+              <li key={s.slug + s.title}>
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-2.5 py-1 text-[11.5px] text-[var(--ink-secondary)]">
+                  {s.title || s.slug}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </motion.article>
+  );
+}
+
+function BubbleHeader({
+  message,
+  isUser,
+  currentUser,
+}: {
+  message: AgentMessage;
+  isUser: boolean;
+  currentUser: CurrentUser;
+}) {
+  return (
+    <div
+      className={cn(
+        'mb-2 flex items-center gap-2',
+        isUser ? 'flex-row-reverse self-end' : 'self-start',
+      )}
+    >
+      <Avatar isUser={isUser} currentUser={currentUser} size={28} />
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-muted)]">
+        {isUser ? 'YOU' : 'AGENT'}
+      </span>
+      <span aria-hidden="true" className="text-[10.5px] text-[var(--ink-muted)]">
+        ·
+      </span>
+      <span className="tnum font-mono text-[10.5px] text-[var(--ink-muted)]">
+        {formatDate(new Date(message.createdAt), 'HH:mm')}
+      </span>
+      {!isUser && <ThinkingMeta message={message} />}
+    </div>
+  );
+}
+
+function EngravedHeader({
+  message,
+  isUser,
+  currentUser,
+}: {
+  message: AgentMessage;
+  isUser: boolean;
+  currentUser: CurrentUser;
+}) {
+  return (
+    <div className="my-6 flex items-center gap-3 px-1" aria-label={isUser ? 'YOU' : 'AGENT'}>
+      <span
+        className="h-px flex-1 bg-gradient-to-r from-transparent to-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]"
+        aria-hidden="true"
+      />
+      <span className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--ink-muted)]">
+        <Avatar isUser={isUser} currentUser={currentUser} size={20} />
+        {isUser ? 'YOU' : 'AGENT'}
+        <span aria-hidden="true">·</span>
+        <span className="tnum normal-case tracking-[0.14em]">
+          {formatDate(new Date(message.createdAt), 'HH:mm')}
+        </span>
+        {!isUser && <ThinkingMeta message={message} />}
+      </span>
+      <span
+        className="h-px flex-1 bg-gradient-to-l from-transparent to-[color-mix(in_oklch,var(--ink-primary)_18%,transparent)]"
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
+function Avatar({
+  isUser,
+  currentUser,
+  size,
+}: {
+  isUser: boolean;
+  currentUser: CurrentUser;
+  size: number;
+}) {
+  if (isUser && currentUser.avatarUrl) {
+    return (
+      <img
+        src={currentUser.avatarUrl}
+        alt={currentUser.nickname}
+        className="rounded-full object-cover"
+        style={{ height: size, width: size }}
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-full',
+        isUser
+          ? 'border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]'
+          : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]',
+      )}
+      style={{ height: size, width: size }}
+      aria-hidden="true"
+    >
+      {isUser ? (
+        <UserIcon style={{ width: size * 0.5, height: size * 0.5 }} />
+      ) : (
+        <Sparkles style={{ width: size * 0.55, height: size * 0.55 }} />
+      )}
+    </span>
+  );
+}
+
+function UserContent({
+  message,
+  displayMode,
+}: {
+  message: AgentMessage;
+  displayMode: DisplayMode;
+}) {
+  if (displayMode === 'engraved') {
+    return (
+      <div className="hub-engraved-text mx-auto max-w-full whitespace-pre-wrap text-[15.5px] leading-[1.85] text-[var(--ink-primary)]">
+        {message.content}
+      </div>
+    );
+  }
+  return (
+    <div className="inline-block max-w-[85%] rounded-2xl border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] px-4 py-3 text-[14.5px] leading-relaxed text-[var(--ink-primary)] whitespace-pre-wrap break-words">
+      {message.content}
+    </div>
+  );
+}
+
+function AssistantSurface({
+  children,
+  displayMode,
+  isStreaming,
+  hasError,
+}: {
+  children: ReactNode;
+  displayMode: DisplayMode;
+  isStreaming: boolean;
+  hasError: boolean;
+}) {
+  if (displayMode === 'engraved') {
+    return (
       <div
         className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px]',
-          isUser
-            ? 'border border-[var(--hub-border)] bg-[var(--hub-control)] text-[var(--ink-primary)]'
-            : 'bg-[color-mix(in_oklch,var(--aurora-1)_14%,transparent)] text-[var(--aurora-1)]',
+          'hub-engraved-text mx-auto max-w-full text-[15.5px] leading-[1.85] text-[var(--ink-primary)]',
+          isStreaming && 'hub-engraved-streaming',
         )}
-        aria-hidden="true"
       >
-        {isUser ? <UserIcon className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+        {children}
       </div>
+    );
+  }
+  return (
+    <div
+      className={cn(
+        'inline-block max-w-full break-words rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed',
+        hasError
+          ? 'whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--ink-primary)]'
+          : isStreaming
+            ? 'surface-leaf hub-bubble-pending border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)]'
+            : 'surface-leaf border border-[var(--hub-border)] text-[var(--ink-primary)]',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 
-      <div className={cn('min-w-0 flex-1', isUser ? 'flex flex-col items-end' : '')}>
-        {/* 元信息 + 状态行 */}
-        <div
-          className={cn(
-            'mb-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--ink-muted)]',
-            isUser ? 'flex-row-reverse' : '',
-          )}
-        >
-          <span>{isUser ? 'YOU' : 'AGENT'}</span>
-          <span aria-hidden="true">·</span>
-          <span className="tnum">{formatDate(new Date(message.createdAt), 'HH:mm')}</span>
-          {!isUser && <ThinkingMeta message={message} />}
-        </div>
-
-        {/* think 块 —— 仅 assistant 有 */}
-        {!isUser && message.think && (
+function AssistantContent({
+  message,
+  displayMode,
+  isDark,
+  isStreaming,
+  thinkStreaming,
+}: {
+  message: AgentMessage;
+  displayMode: DisplayMode;
+  isDark: boolean;
+  isStreaming: boolean;
+  thinkStreaming: boolean;
+}) {
+  return (
+    <div className="w-full">
+      {message.think && (
+        <div className={cn(displayMode === 'engraved' && 'mx-auto mb-3 max-w-full')}>
           <ThinkingBlock think={message.think} streaming={thinkStreaming} />
-        )}
-
-        {/* 主体气泡 */}
-        <div
-          className={cn(
-            'inline-block max-w-full rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed break-words',
-            isUser
-              ? 'whitespace-pre-wrap border border-[color-mix(in_oklch,var(--aurora-1)_24%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_12%,transparent)] text-[var(--ink-primary)]'
-              : message.error
-                ? 'whitespace-pre-wrap border border-[color-mix(in_oklch,var(--signal-danger)_30%,transparent)] bg-[color-mix(in_oklch,var(--signal-danger)_8%,transparent)] text-[var(--ink-primary)]'
-                : isStreaming
-                  ? 'surface-leaf hub-bubble-pending border border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] text-[var(--ink-primary)]'
-                  : 'surface-leaf border border-[var(--hub-border)] text-[var(--ink-primary)]',
-          )}
-        >
-          {isUser || message.error ? (
-            <>
-              {message.content || (message.error ? '' : ' ')}
-              {message.error && (
-                <div className="mt-2 font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
-                  ERROR · {message.error}
-                </div>
-              )}
-            </>
-          ) : showTypingDots ? (
-            <TypingDots />
-          ) : message.pending ? (
-            <span className="inline-flex w-full flex-col">
-              <MarkdownPreview
+        </div>
+      )}
+      <AssistantSurface
+        displayMode={displayMode}
+        isStreaming={isStreaming}
+        hasError={!!message.error}
+      >
+        {message.error && !message.content ? (
+          <div className="font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+            ERROR · {message.error}
+          </div>
+        ) : (
+          <>
+            <MarkdownPreview
               content={message.content}
               theme={isDark ? 'dark' : 'light'}
-              className="text-[14.5px] leading-relaxed"
+              className={cn(
+                'text-[14.5px] leading-relaxed',
+                displayMode === 'engraved' && 'hub-engraved-md',
+              )}
             />
+            {message.pending && (
               <span
                 className="hub-caret text-[var(--aurora-1)]"
                 aria-hidden="true"
                 style={{ marginTop: '-1.05em' }}
               />
-            </span>
-          ) : (
-            <MarkdownPreview
-              content={message.content}
-              theme={isDark ? 'dark' : 'light'}
-              className="text-[14.5px] leading-relaxed"
-            />
-          )}
-        </div>
-
-        {message.sources && message.sources.length > 0 && (
-          <div className="mt-3 max-w-full">
-            <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.3em] text-[var(--ink-muted)]">
-              § Sources
-            </div>
-            <ul className="flex flex-wrap gap-1.5">
-              {message.sources.map((s) => (
-                <li key={s.slug + s.title}>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--hub-border)] bg-[var(--hub-control)] px-2.5 py-1 text-[11.5px] text-[var(--ink-secondary)]">
-                    {s.title || s.slug}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+            )}
+            {message.error && (
+              <div className="mt-3 font-mono text-[11px] tracking-[0.06em] text-[var(--signal-danger)]">
+                ERROR · {message.error}
+              </div>
+            )}
+          </>
         )}
-      </div>
-    </motion.article>
+      </AssistantSurface>
+    </div>
   );
 }
 
@@ -1888,6 +2110,8 @@ function ContextPanel({
   session,
   modelsState,
   collapsed,
+  displayMode,
+  onSetDisplayMode,
   onToggleCollapsed,
   onDeleteSession,
   onClearMessages,
@@ -1895,6 +2119,8 @@ function ContextPanel({
   session: AgentSession | null;
   modelsState: ReturnType<typeof useAgentModels>;
   collapsed: boolean;
+  displayMode: DisplayMode;
+  onSetDisplayMode: (mode: DisplayMode) => void;
   onToggleCollapsed: () => void;
   onDeleteSession: () => void;
   onClearMessages: () => void;
@@ -1990,6 +2216,24 @@ function ContextPanel({
       </PanelCard>
 
       <PanelCard>
+        <h3 className="mb-3 text-sm font-medium text-[var(--ink-primary)]">显示模式</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <DisplayModeOption
+            active={displayMode === 'bubble'}
+            label="气泡"
+            description="彩色卡片承载"
+            onClick={() => onSetDisplayMode('bubble')}
+          />
+          <DisplayModeOption
+            active={displayMode === 'engraved'}
+            label="版书"
+            description="文字浮印纸面"
+            onClick={() => onSetDisplayMode('engraved')}
+          />
+        </div>
+      </PanelCard>
+
+      <PanelCard>
         <h3 className="mb-4 text-sm font-medium text-[var(--ink-primary)]">快捷操作</h3>
         <div className="grid grid-cols-1 gap-3">
           <ActionButton icon={Pencil} onClick={() => toast.info('对话重命名功能开发中')}>
@@ -2024,6 +2268,42 @@ function ContextPanel({
         </button>
       </div>
     </motion.aside>
+  );
+}
+
+function DisplayModeOption({
+  active,
+  label,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-all',
+        active
+          ? 'border-[color-mix(in_oklch,var(--aurora-1)_42%,transparent)] bg-[color-mix(in_oklch,var(--aurora-1)_8%,transparent)]'
+          : 'border-[var(--hub-border)] bg-[var(--hub-control)] hover:border-[color-mix(in_oklch,var(--aurora-1)_28%,transparent)] hover:bg-[var(--hub-control-hover)]',
+      )}
+    >
+      <span
+        className={cn(
+          'text-[13px] font-medium',
+          active ? 'text-[var(--aurora-1)]' : 'text-[var(--ink-primary)]',
+        )}
+      >
+        {label}
+      </span>
+      <span className="text-[11px] text-[var(--ink-muted)]">{description}</span>
+    </button>
   );
 }
 
